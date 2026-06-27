@@ -6,10 +6,10 @@ package com.openjiuwen.auto_harness.rails;
 
 import com.openjiuwen.auto_harness.tools.ExperienceSearchTool;
 import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.single_agent.AbilityManager;
-import com.openjiuwen.core.single_agent.AddAbilityResult;
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
-import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
+import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.AddAbilityResult;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.rails.CallbackContext;

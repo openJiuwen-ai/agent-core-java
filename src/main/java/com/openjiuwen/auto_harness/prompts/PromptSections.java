@@ -4,7 +4,7 @@
 
 package com.openjiuwen.auto_harness.prompts;
 
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

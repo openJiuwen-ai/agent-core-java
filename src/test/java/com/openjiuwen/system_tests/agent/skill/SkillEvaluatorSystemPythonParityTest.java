@@ -5,8 +5,8 @@
 package com.openjiuwen.system_tests.agent.skill;
 
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.agents.ReActAgent;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.dev_tools.skill_evaluator.SkillEvaluator;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;

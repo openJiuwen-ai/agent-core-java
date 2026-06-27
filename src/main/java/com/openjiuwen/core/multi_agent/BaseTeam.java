@@ -12,7 +12,7 @@ import com.openjiuwen.core.multi_agent.team_runtime.MessageBusConfig;
 import com.openjiuwen.core.multi_agent.team_runtime.RuntimeConfig;
 import com.openjiuwen.core.multi_agent.team_runtime.TeamRuntime;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.ArrayList;
 import java.util.List;

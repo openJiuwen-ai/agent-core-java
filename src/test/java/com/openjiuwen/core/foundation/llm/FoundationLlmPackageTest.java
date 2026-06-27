@@ -62,7 +62,8 @@ class FoundationLlmPackageTest {
                 FoundationLlmPackage.group("messages"));
         assertIterableEquals(List.of("AssistantMessageChunk"), FoundationLlmPackage.group("message_chunks"));
         assertIterableEquals(List.of("ToolCall"), FoundationLlmPackage.group("tools"));
-        assertIterableEquals(List.of("OpenAIModelClient"), FoundationLlmPackage.group("prebuilt_model_clients"));
+        assertIterableEquals(List.of("OpenAIModelClient"),
+                FoundationLlmPackage.group("prebuilt_model_clients"));
         assertIterableEquals(List.of("JsonOutputParser", "MarkdownOutputParser"),
                 FoundationLlmPackage.group("prebuilt_output_parsers"));
         assertIterableEquals(List.of(), FoundationLlmPackage.group("missing"));

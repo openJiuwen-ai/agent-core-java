@@ -7,6 +7,7 @@ package com.openjiuwen.harness.rails;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.harness.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
@@ -42,7 +43,7 @@ class ProgressiveToolRailMissingTest {
                         tool("hidden_tool", "Hidden tool")));
 
         SystemPromptBuilder builder = new SystemPromptBuilder("cn");
-        builder.addSection(new com.openjiuwen.core.single_agent.prompts.PromptSection(
+        builder.addSection(new PromptSection(
                 "identity",
                 Map.of("cn", "Base system prompt.", "en", "Base system prompt."),
                 10));

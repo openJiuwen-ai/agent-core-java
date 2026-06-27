@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.rails.interrupt;
 
-import com.openjiuwen.core.single_agent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 
 /**
  * Decision to interrupt and wait for user input.

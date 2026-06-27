@@ -27,24 +27,28 @@ public abstract class BaseRedisStorage {
     protected final Logger log = LoggerFactory.getLogger(getClass());
     protected final RedisStore redisStore;
     protected final Serializer serializer;
+    protected final String dumpType;
     protected Integer ttlSeconds;
     protected boolean refreshOnRead;
 
+    private static final String DEFAULT_DUMP_TYPE = "java";
+    private static final String DUMP_TYPE = "dump_type";
     private static final String DEFAULT_TTL = "default_ttl";
     private static final int SECONDS_PER_MINUTE = 60;
     private static final String REFRESH_ON_READ = "refresh_on_read";
 
-    protected BaseRedisStorage(RedisStore redisStore, Map<String, Object> ttl) {
+    protected BaseRedisStorage(RedisStore redisStore, Map<String, Object> config) {
         this.redisStore = redisStore;
-        this.serializer = Serializer.create("java");
+        this.dumpType = resolveDumpType(config);
+        this.serializer = Serializer.create(dumpType);
         this.ttlSeconds = null;
         this.refreshOnRead = false;
 
-        if (ttl != null && ttl.containsKey(DEFAULT_TTL)) {
-            this.ttlSeconds = (int) (((Number) ttl.get(DEFAULT_TTL)).doubleValue() * SECONDS_PER_MINUTE);
+        if (config != null && config.containsKey(DEFAULT_TTL)) {
+            this.ttlSeconds = (int) (((Number) config.get(DEFAULT_TTL)).doubleValue() * SECONDS_PER_MINUTE);
         }
-        if (ttl != null && ttl.containsKey(REFRESH_ON_READ)) {
-            this.refreshOnRead = Boolean.TRUE.equals(ttl.get(REFRESH_ON_READ));
+        if (config != null && config.containsKey(REFRESH_ON_READ)) {
+            this.refreshOnRead = Boolean.TRUE.equals(config.get(REFRESH_ON_READ));
         }
     }
 
@@ -52,31 +56,22 @@ public abstract class BaseRedisStorage {
         if (state == null) {
             return null;
         }
-        try {
-            return serializer.dumpsTyped(state);
-        } catch (RuntimeException e) {
-            log.warn("Failed to serialize Redis state: {}", e.getMessage());
-            return null;
-        }
+        return serializer.dumpsTyped(state);
     }
 
     protected Object deserializeState(Object dumpType, Object blob) {
-        if (dumpType == null || blob == null) {
+        if (dumpType == null && blob == null) {
             return null;
+        }
+        if (dumpType == null || blob == null) {
+            throw new IllegalArgumentException("Redis checkpoint is incomplete: dump type and blob must both exist");
         }
         if (!(blob instanceof byte[] bytes)) {
-            return null;
+            throw new IllegalArgumentException("Redis checkpoint blob must be byte[]");
         }
         String dumpTypeText = decodeDumpType(dumpType);
-        if (dumpTypeText.isEmpty()) {
-            return null;
-        }
-        try {
-            return serializer.loadsTyped(new Serializer.TypedBytes(dumpTypeText, bytes));
-        } catch (RuntimeException e) {
-            log.warn("Failed to deserialize Redis state: {}", e.getMessage());
-            return null;
-        }
+        validateStoredDumpType(dumpTypeText);
+        return Serializer.create(dumpTypeText).loadsTyped(new Serializer.TypedBytes(dumpTypeText, bytes));
     }
 
     protected String decodeDumpType(Object dumpType) {
@@ -132,6 +127,25 @@ public abstract class BaseRedisStorage {
             return runtimeException;
         }
         return new RuntimeException(throwable);
+    }
+
+    private static String resolveDumpType(Map<String, Object> config) {
+        Object dumpTypeValue = config != null ? config.get(DUMP_TYPE) : null;
+        String resolvedDumpType = dumpTypeValue != null ? String.valueOf(dumpTypeValue) : DEFAULT_DUMP_TYPE;
+        validateConfiguredDumpType(resolvedDumpType);
+        return resolvedDumpType;
+    }
+
+    private static void validateConfiguredDumpType(String dumpType) {
+        if (!DEFAULT_DUMP_TYPE.equals(dumpType) && !"json".equals(dumpType)) {
+            throw new IllegalArgumentException("Unsupported dump_type: " + dumpType);
+        }
+    }
+
+    private static void validateStoredDumpType(String dumpType) {
+        if (!DEFAULT_DUMP_TYPE.equals(dumpType) && !"json".equals(dumpType)) {
+            throw new IllegalArgumentException("Unsupported Redis checkpoint dump type: " + dumpType);
+        }
     }
 
     protected static String makeRedisKey(String... args) {

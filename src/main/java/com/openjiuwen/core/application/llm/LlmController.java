@@ -10,7 +10,7 @@ import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.schema.Event;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.legacy.config.LegacyReActAgentConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 
 import java.lang.reflect.Method;
 import java.time.LocalDateTime;

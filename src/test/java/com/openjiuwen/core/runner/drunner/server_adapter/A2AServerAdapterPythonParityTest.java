@@ -5,7 +5,7 @@
 package com.openjiuwen.core.runner.drunner.server_adapter;
 
 import com.openjiuwen.core.runner.RunnerConfig;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.extensions.a2a.A2AServer;
 import com.openjiuwen.extensions.a2a.A2AServerAdapter;
 

@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.graph.store;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,7 +13,10 @@ import java.util.List;
  * Mirrors Python's {@code PendingNode} in
  * {@code openjiuwen/core/graph/store/base.py}.
  */
-public class PendingNode {
+public class PendingNode implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     private final String nodeName;
     private final String status;
@@ -36,6 +41,10 @@ public class PendingNode {
     }
 
     public List<Exception> getException() {
+        return getExceptions();
+    }
+
+    public List<Exception> getExceptions() {
         return exception != null ? new ArrayList<>(exception) : null;
     }
 }

@@ -5,7 +5,7 @@
 package com.openjiuwen.harness.rails.memory;
 
 import com.openjiuwen.core.memory.external.MemoryProvider;
-import com.openjiuwen.core.single_agent.rail.RunKind;
+import com.openjiuwen.core.singleagent.rail.RunKind;
 import com.openjiuwen.harness.prompts.sections.ExternalMemorySection;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;

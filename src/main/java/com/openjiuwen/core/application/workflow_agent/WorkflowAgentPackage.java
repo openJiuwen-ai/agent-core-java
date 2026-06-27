@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.application.workflow_agent;
 
-import com.openjiuwen.core.single_agent.legacy.config.WorkflowAgentConfig;
+import com.openjiuwen.core.singleagent.legacy.config.WorkflowAgentConfig;
 
 import java.util.List;
 import java.util.Map;

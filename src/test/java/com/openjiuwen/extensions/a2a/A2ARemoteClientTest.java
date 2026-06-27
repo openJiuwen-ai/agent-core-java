@@ -9,7 +9,8 @@ import com.openjiuwen.core.runner.drunner.remote_client.ProtocolEnum;
 import com.openjiuwen.core.runner.drunner.remote_client.RemoteAgent;
 import com.openjiuwen.core.runner.drunner.remote_client.RemoteClientFactory;
 import com.openjiuwen.core.runner.drunner.remote_client.RemoteClientConfig;
-import com.openjiuwen.core.single_agent.schema.AgentResult;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentResult;
 import com.openjiuwen.extensions.a2a.A2AAgentCardAdapter.A2aAgentCard;
 import com.openjiuwen.extensions.a2a.A2AAgentCardAdapter.AgentInterface;
 import com.openjiuwen.extensions.a2a.A2AClient.A2AClientTransport;
@@ -266,8 +267,8 @@ class A2ARemoteClientTest {
                 .build();
     }
 
-    private static com.openjiuwen.core.single_agent.schema.AgentCard card() {
-        return new com.openjiuwen.core.single_agent.schema.AgentCard("a2a-agent", "a2a-agent", "test agent");
+    private static AgentCard card() {
+        return new AgentCard("a2a-agent", "a2a-agent", "test agent");
     }
 
     private static StreamResponse response(String taskId, String contextId, String text) {

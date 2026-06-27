@@ -279,7 +279,7 @@ public class PersistenceCheckpointer extends Checkpointer {
         private static final String EMPTY_TYPE = "empty";
 
         protected final BaseKVStore kvStore;
-        private final Serializer serializer = Serializer.create("pickle");
+        private final Serializer serializer = Serializer.create("java");
 
         BaseStorage(BaseKVStore kvStore) {
             this.kvStore = kvStore;

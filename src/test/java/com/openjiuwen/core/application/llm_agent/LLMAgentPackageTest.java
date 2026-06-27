@@ -5,9 +5,9 @@
 package com.openjiuwen.core.application.llm_agent;
 
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
-import com.openjiuwen.core.single_agent.legacy.config.ConstrainConfig;
-import com.openjiuwen.core.single_agent.legacy.config.IntentDetectionConfig;
-import com.openjiuwen.core.single_agent.legacy.config.LegacyReActAgentConfig;
+import com.openjiuwen.core.singleagent.legacy.config.ConstrainConfig;
+import com.openjiuwen.core.singleagent.legacy.config.IntentDetectionConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 
 import org.junit.jupiter.api.Test;
 

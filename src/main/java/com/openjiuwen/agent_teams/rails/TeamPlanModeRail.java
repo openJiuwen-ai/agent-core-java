@@ -6,7 +6,7 @@ package com.openjiuwen.agent_teams.rails;
 
 import com.openjiuwen.agent_teams.prompts.TeamPlanAgent;
 import com.openjiuwen.agent_teams.prompts.TeamPlanMode;
-import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 import com.openjiuwen.harness.schema.DeepAgentState;

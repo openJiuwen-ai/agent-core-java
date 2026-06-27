@@ -5,9 +5,9 @@
 package com.openjiuwen.unit_tests.auto_harness.rails;
 
 import com.openjiuwen.auto_harness.rails.SecurityRail;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.ModelCallInputs;
-import com.openjiuwen.core.single_agent.rail.ToolCallInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;

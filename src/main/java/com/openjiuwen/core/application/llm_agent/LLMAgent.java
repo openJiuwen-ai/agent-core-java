@@ -19,9 +19,9 @@ import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.single_agent.legacy.agent.ControllerAgent;
-import com.openjiuwen.core.single_agent.legacy.config.LegacyReActAgentConfig;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.legacy.agent.ControllerAgent;
+import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.lang.reflect.Method;
 import java.time.ZonedDateTime;

@@ -4,10 +4,10 @@
 
 package com.openjiuwen.harness.rails.context_engineer;
 
-import com.openjiuwen.core.single_agent.AbilityManager;
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
-import com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder;
-import com.openjiuwen.core.single_agent.rail.RunKind;
+import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder;
+import com.openjiuwen.core.singleagent.rail.RunKind;
 import com.openjiuwen.core.sys_operation.SysOperation;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.ContextSection;

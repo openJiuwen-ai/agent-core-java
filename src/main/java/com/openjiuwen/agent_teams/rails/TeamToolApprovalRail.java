@@ -7,7 +7,7 @@ package com.openjiuwen.agent_teams.rails;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import com.openjiuwen.core.single_agent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 
 import java.util.Collection;
 import java.util.LinkedHashMap;

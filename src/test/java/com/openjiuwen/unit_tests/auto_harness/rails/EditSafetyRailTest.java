@@ -6,8 +6,8 @@ package com.openjiuwen.unit_tests.auto_harness.rails;
 
 import com.openjiuwen.auto_harness.rails.EditSafetyRail;
 import com.openjiuwen.auto_harness.rails.EditSafetyRail.RuffResult;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.ToolCallInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;

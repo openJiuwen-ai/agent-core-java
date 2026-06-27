@@ -25,7 +25,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.OptimizationTask;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.PipelineSelectionArtifact;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.PipelineSpec;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.ProjectProfile;
-import com.openjiuwen.core.single_agent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.harness.DeepAgent;
 

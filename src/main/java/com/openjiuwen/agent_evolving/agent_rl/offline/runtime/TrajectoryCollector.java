@@ -9,8 +9,8 @@ import com.openjiuwen.agent_evolving.trajectory.InMemoryTrajectoryStore;
 import com.openjiuwen.agent_evolving.trajectory.Trajectory;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.single_agent.BaseAgent;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.BaseAgent;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;

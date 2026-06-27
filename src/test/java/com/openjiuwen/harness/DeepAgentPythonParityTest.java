@@ -9,13 +9,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 import com.openjiuwen.harness.rails.SysOperationRail;
 import com.openjiuwen.harness.rails.TaskPlanningRail;
 import com.openjiuwen.harness.rails.skills.SkillUseRail;
-import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.subagents.CodeAgentFactory;
 import com.openjiuwen.harness.subagents.ResearchAgentFactory;
@@ -26,7 +25,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletionException;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

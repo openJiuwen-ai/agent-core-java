@@ -5,7 +5,7 @@
 package com.openjiuwen.harness;
 
 import com.openjiuwen.core.session.AgentSessionApi;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.schema.DeepAgentState;
 import com.openjiuwen.harness.schema.task.TaskPlan;
 import com.openjiuwen.harness.schema.task.TodoItem;

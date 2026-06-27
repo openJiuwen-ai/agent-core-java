@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.prompts;
 
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.harness.prompts.sections.SectionName;
 
 import java.util.Locale;
@@ -18,9 +18,9 @@ public final class HarnessPromptsPackage {
 
     public static final String PYTHON_MODULE = "openjiuwen/harness/prompts/__init__.py";
     public static final String DEFAULT_LANGUAGE =
-            com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder.DEFAULT_LANGUAGE;
+            com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder.DEFAULT_LANGUAGE;
     public static final Set<String> SUPPORTED_LANGUAGES =
-            com.openjiuwen.core.single_agent.prompts.SystemPromptBuilder.SUPPORTED_LANGUAGES;
+            com.openjiuwen.core.singleagent.prompts.SystemPromptBuilder.SUPPORTED_LANGUAGES;
     public static final Class<PromptMode> PROMPT_MODE = PromptMode.class;
     public static final Class<PromptSection> PROMPT_SECTION = PromptSection.class;
     public static final Class<PromptReport> PROMPT_REPORT = PromptReport.class;

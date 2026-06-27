@@ -18,7 +18,7 @@ import java.util.UUID;
  * <p>Mirrors Python's {@code Session} in
  * {@code openjiuwen/core/session/agent_team.py}.</p>
  */
-public class AgentTeamSession implements AgentSessionApi {
+public class AgentTeamSession implements AgentSessionApi, AgentSessionLifecycle {
 
     private final String sessionId;
     private final String teamId;
@@ -44,6 +44,7 @@ public class AgentTeamSession implements AgentSessionApi {
         return new AgentTeamSession(sessionId, envs, teamId);
     }
 
+    @Override
     public String getSessionId() {
         return sessionId;
     }
@@ -60,6 +61,7 @@ public class AgentTeamSession implements AgentSessionApi {
         return inner.config().getEnvs();
     }
 
+    @Override
     public void updateState(Map<String, Object> data) {
         inner.state().updateGlobal(data);
     }
@@ -77,6 +79,7 @@ public class AgentTeamSession implements AgentSessionApi {
         return inner.state().dump();
     }
 
+    @Override
     public void writeStream(Object data) {
         inner.streamWriterManager().getOutputWriter().write(normalizeOutput(tagTeamPayload(data)));
     }
@@ -85,14 +88,17 @@ public class AgentTeamSession implements AgentSessionApi {
         inner.streamWriterManager().getCustomWriter().write(tagTeamPayload(data));
     }
 
+    @Override
     public Iterator<Object> streamIterator() {
         return inner.streamWriterManager().streamIterator();
     }
 
+    @Override
     public void closeStream() {
         inner.streamWriterManager().streamEmitter().close();
     }
 
+    @Override
     public AgentTeamSession preRun(Map<String, Object> kwargs) {
         if (preRunDone) {
             return this;
@@ -115,6 +121,7 @@ public class AgentTeamSession implements AgentSessionApi {
         return this;
     }
 
+    @Override
     public void commit() {
         if (inner.checkpointer() instanceof com.openjiuwen.core.session.checkpointer.Checkpointer checkpointer) {
             checkpointer.postAgentTeamExecute(inner);

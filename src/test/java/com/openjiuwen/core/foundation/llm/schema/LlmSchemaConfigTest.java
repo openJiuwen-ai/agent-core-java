@@ -162,6 +162,70 @@ class LlmSchemaConfigTest {
         assertEquals(Map.of("X-Custom", "custom"), config.getCustomHeaders());
     }
 
+    @Test
+    void modelClientConfigPreservesHttpVersion() {
+        ModelClientConfig configured = ModelClientConfig.builder()
+                .clientProvider(ProviderType.OPEN_AI)
+                .apiKey("sk-test")
+                .apiBase("http://localhost")
+                .httpVersion(ModelHttpVersion.HTTP_1_1)
+                .build();
+        ModelClientConfig unset = ModelClientConfig.builder()
+                .clientProvider(ProviderType.OPEN_AI)
+                .apiKey("sk-test")
+                .apiBase("http://localhost")
+                .build();
+
+        assertEquals(ModelHttpVersion.HTTP_1_1, configured.getHttpVersion());
+        assertEquals(null, unset.getHttpVersion());
+    }
+
+    @Test
+    void jacksonReadsHttpVersionAliases() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
+        ModelClientConfig clientConfig = mapper.readValue("""
+                {"client_provider":"OpenAI","api_key":"sk-test","api_base":"http://localhost","http_version":"HTTP/1.1"}
+                """, ModelClientConfig.class);
+        BaseModelInfo modelInfo = mapper.readValue("""
+                {"model_name":"gpt-test","http_version":"2"}
+                """, BaseModelInfo.class);
+
+        assertEquals(ModelHttpVersion.HTTP_1_1, clientConfig.getHttpVersion());
+        assertEquals(ModelHttpVersion.HTTP_2, modelInfo.getHttpVersion());
+        assertEquals(false, modelInfo.getExtraFields().containsKey("http_version"));
+    }
+
+    @Test
+    void baseModelInfoKeepsOldAllArgsConstructorSignature() {
+        Map<String, Object> customHeaders = new LinkedHashMap<>();
+        customHeaders.put("X-Trace", "trace-1");
+        Map<String, Object> extraFields = new LinkedHashMap<>();
+        extraFields.put("extra", "value");
+
+        BaseModelInfo modelInfo = new BaseModelInfo(
+                "sk-test",
+                "http://localhost",
+                "gpt-test",
+                0.2d,
+                0.8d,
+                true,
+                30,
+                customHeaders,
+                extraFields);
+
+        assertEquals("sk-test", modelInfo.getApiKey());
+        assertEquals("http://localhost", modelInfo.getApiBase());
+        assertEquals("gpt-test", modelInfo.getModelName());
+        assertEquals(0.2d, modelInfo.getTemperature());
+        assertEquals(0.8d, modelInfo.getTopP());
+        assertEquals(true, modelInfo.isStreaming());
+        assertEquals(30, modelInfo.getTimeout());
+        assertEquals(customHeaders, modelInfo.getCustomHeaders());
+        assertEquals(null, modelInfo.getHttpVersion());
+        assertEquals(extraFields, modelInfo.getExtraFields());
+    }
+
     private static void unregisterIfPresent(ClientRegistry registry, String provider) {
         if (registry.listClients().contains("llm_" + provider)) {
             registry.unregister(provider, "llm");

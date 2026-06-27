@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.schema;
 
-import com.openjiuwen.core.single_agent.rail.TaskIterationInputs;
+import com.openjiuwen.core.singleagent.rail.TaskIterationInputs;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

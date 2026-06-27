@@ -12,8 +12,8 @@ import com.openjiuwen.core.runner.drunner.remote_client.ProtocolEnum;
 import com.openjiuwen.core.runner.drunner.remote_client.RemoteClient;
 import com.openjiuwen.core.runner.drunner.remote_client.RemoteClientConfig;
 import com.openjiuwen.core.runner.drunner.remote_client.RemoteClientFactory;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
-import com.openjiuwen.core.single_agent.schema.AgentResult;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentResult;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;

@@ -40,7 +40,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CoreBaseSupportTest {
 
@@ -61,13 +60,11 @@ class CoreBaseSupportTest {
         assertThat(channel.consume()).isEqualTo(7);
         assertThat(new BarrierMessage("x", "y").getTarget()).isEqualTo("y");
 
-        Serializer.PickleSerializer serializer = new Serializer.PickleSerializer();
+        Serializer serializer = Serializer.createSerializer("java");
         Serializer.TypedBytes dumped = serializer.dumpsTyped("demo");
-        assertThat(dumped.type()).isEqualTo("pickle");
+        assertThat(dumped.type()).isEqualTo("java");
         assertThat(serializer.loadsTyped(dumped)).isEqualTo("demo");
-        assertThatThrownBy(() -> Serializer.createSerializer("json"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("not yet supported");
+        assertThat(Serializer.createSerializer("json")).isInstanceOf(Serializer.JsonSerializer.class);
     }
 
     @Test

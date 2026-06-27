@@ -4,8 +4,8 @@
 
 package com.openjiuwen.extensions.a2a;
 
-import com.openjiuwen.core.single_agent.schema.AgentCard;
-import com.openjiuwen.core.single_agent.schema.AgentResult;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentResult;
 import com.openjiuwen.extensions.a2a.A2AAgentExecutor.A2AInvokeHandler;
 import com.openjiuwen.extensions.a2a.A2AAgentExecutor.A2AStreamHandler;
 import com.openjiuwen.extensions.a2a.A2AAgentCardAdapter.A2aAgentCard;

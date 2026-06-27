@@ -10,6 +10,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
@@ -17,6 +18,7 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import org.junit.jupiter.api.Test;
 
+import java.net.http.HttpClient;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -233,6 +235,22 @@ class SiliconFlowModelClientTest {
         Object client = ModelClients.createModelClient(clientConfig("https://api.siliconflow.cn/v1"), requestConfig());
 
         assertThat(client).isInstanceOf(SiliconFlowModelClient.class);
+    }
+
+    @Test
+    void appliesConfiguredHttpVersionToHttpClient() {
+        SiliconFlowModelClient client = new SiliconFlowModelClient(
+                requestConfig(),
+                ModelClientConfig.builder()
+                        .clientProvider(ProviderType.SILICON_FLOW)
+                        .apiKey("sk-test")
+                        .apiBase("https://api.siliconflow.cn/v1")
+                        .verifySsl(false)
+                        .httpVersion(ModelHttpVersion.HTTP_2)
+                        .build());
+
+        assertThat(client.createHttpClient("https://api.siliconflow.cn/v1/chat/completions").version())
+                .isEqualTo(HttpClient.Version.HTTP_2);
     }
 
     private static List<AssistantMessageChunk> iteratorToList(Iterator<AssistantMessageChunk> iterator) {

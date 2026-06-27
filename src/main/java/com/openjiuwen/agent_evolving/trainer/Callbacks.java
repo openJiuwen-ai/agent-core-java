@@ -5,7 +5,7 @@
 package com.openjiuwen.agent_evolving.trainer;
 
 import com.openjiuwen.agent_evolving.dataset.EvaluatedCase;
-import com.openjiuwen.core.single_agent.BaseAgent;
+import com.openjiuwen.core.singleagent.BaseAgent;
 
 import java.util.List;
 

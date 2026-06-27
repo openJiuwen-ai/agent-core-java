@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.cli.prompts;
 
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
 import com.openjiuwen.harness.prompts.PromptMode;
 import com.openjiuwen.harness.prompts.SystemPromptBuilder;

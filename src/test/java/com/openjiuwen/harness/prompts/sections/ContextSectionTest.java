@@ -5,8 +5,8 @@
 package com.openjiuwen.harness.prompts.sections;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
-import com.openjiuwen.core.single_agent.AbilityManager;
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.harness.workspace.Workspace;
 import org.junit.jupiter.api.Test;
 

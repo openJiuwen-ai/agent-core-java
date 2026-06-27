@@ -10,7 +10,7 @@ import com.openjiuwen.core.memory.LongTermMemory;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.single_agent.legacy.config.LegacyReActAgentConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 

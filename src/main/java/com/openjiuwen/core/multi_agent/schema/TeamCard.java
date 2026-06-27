@@ -7,7 +7,7 @@ package com.openjiuwen.core.multi_agent.schema;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.common.schema.BaseCard;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -4,7 +4,7 @@
 
 package com.openjiuwen.core.workflow.components.llm.react;
 
-import com.openjiuwen.core.single_agent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;

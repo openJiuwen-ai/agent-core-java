@@ -4,6 +4,7 @@
 
 package com.openjiuwen.extensions.checkpointer.redis;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -17,6 +18,9 @@ import java.util.Map;
  */
 public class RedisCheckpointerConfig {
 
+    private static final String DEFAULT_DUMP_TYPE = "java";
+    private static final String DUMP_TYPE = "dump_type";
+
     /**
      * Redis connection configuration.
      */
@@ -26,6 +30,11 @@ public class RedisCheckpointerConfig {
      * TTL configuration for stored data.
      */
     private RedisTTLConfig ttl;
+
+    /**
+     * Serialization protocol for checkpoint payloads.
+     */
+    private String dumpType = DEFAULT_DUMP_TYPE;
 
     /**
      * Default constructor.
@@ -54,6 +63,19 @@ public class RedisCheckpointerConfig {
     }
 
     /**
+     * Constructor with all parameters.
+     *
+     * @param connection Redis connection configuration
+     * @param ttl        TTL configuration for stored data
+     * @param dumpType   Serialization protocol for checkpoint payloads
+     */
+    public RedisCheckpointerConfig(RedisConnectionConfig connection, RedisTTLConfig ttl, String dumpType) {
+        this.connection = connection;
+        this.ttl = ttl;
+        setDumpType(dumpType);
+    }
+
+    /**
      * Create from a configuration map.
      *
      * @param config Configuration map
@@ -77,7 +99,10 @@ public class RedisCheckpointerConfig {
         Map<String, Object> ttlMap = (Map<String, Object>) config.get("ttl");
         RedisTTLConfig ttl = ttlMap != null ? RedisTTLConfig.fromMap(ttlMap) : null;
 
-        return new RedisCheckpointerConfig(connection, ttl);
+        Object dumpTypeValue = config.get(DUMP_TYPE);
+        String dumpType = dumpTypeValue != null ? String.valueOf(dumpTypeValue) : DEFAULT_DUMP_TYPE;
+
+        return new RedisCheckpointerConfig(connection, ttl, dumpType);
     }
 
     /**
@@ -88,6 +113,7 @@ public class RedisCheckpointerConfig {
             throw new IllegalArgumentException("Connection configuration is required");
         }
         connection.validate();
+        validateDumpType(dumpType);
     }
 
     // Getters and Setters
@@ -107,6 +133,15 @@ public class RedisCheckpointerConfig {
         this.ttl = ttl;
     }
 
+    public String getDumpType() {
+        return dumpType;
+    }
+
+    public void setDumpType(String dumpType) {
+        this.dumpType = dumpType != null ? dumpType : DEFAULT_DUMP_TYPE;
+        validateDumpType(this.dumpType);
+    }
+
     /**
      * Convert the TTL portion into the storage-facing map contract.
      *
@@ -114,5 +149,25 @@ public class RedisCheckpointerConfig {
      */
     public Map<String, Object> getTtlMap() {
         return ttl != null ? ttl.toMap() : null;
+    }
+
+    /**
+     * Convert storage-facing options into the map contract used by Redis storage helpers.
+     *
+     * @return storage configuration map containing TTL settings when present and dump type
+     */
+    public Map<String, Object> getStorageConfigMap() {
+        Map<String, Object> storageConfig = new LinkedHashMap<>();
+        if (ttl != null) {
+            storageConfig.putAll(ttl.toMap());
+        }
+        storageConfig.put(DUMP_TYPE, dumpType);
+        return storageConfig;
+    }
+
+    private static void validateDumpType(String dumpType) {
+        if (!DEFAULT_DUMP_TYPE.equals(dumpType) && !"json".equals(dumpType)) {
+            throw new IllegalArgumentException("Unsupported dump_type: " + dumpType);
+        }
     }
 }

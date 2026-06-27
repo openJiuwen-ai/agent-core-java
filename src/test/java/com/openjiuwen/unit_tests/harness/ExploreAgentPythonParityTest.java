@@ -5,7 +5,7 @@
 package com.openjiuwen.unit_tests.harness;
 
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.rails.SysOperationRail;
 import com.openjiuwen.harness.schema.DeepAgentConfig;

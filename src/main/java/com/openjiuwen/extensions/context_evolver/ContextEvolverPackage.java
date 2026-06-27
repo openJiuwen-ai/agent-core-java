@@ -5,7 +5,7 @@
 package com.openjiuwen.extensions.context_evolver;
 
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
-import com.openjiuwen.core.single_agent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.extensions.context_evolver.core.file_connector.FileConnectorPackage;
 import com.openjiuwen.extensions.context_evolver.core.file_connector.JsonFileConnector;
 import com.openjiuwen.extensions.context_evolver.core.vector_store.MemoryVectorStore;

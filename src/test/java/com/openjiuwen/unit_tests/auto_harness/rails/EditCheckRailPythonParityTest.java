@@ -8,8 +8,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.auto_harness.rails.EditSafetyRail;
 import com.openjiuwen.auto_harness.rails.EditSafetyRail.RuffResult;
-import com.openjiuwen.core.single_agent.rail.AgentCallbackContext;
-import com.openjiuwen.core.single_agent.rail.ToolCallInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import java.util.ArrayDeque;
 import java.util.Map;
 import java.util.Queue;

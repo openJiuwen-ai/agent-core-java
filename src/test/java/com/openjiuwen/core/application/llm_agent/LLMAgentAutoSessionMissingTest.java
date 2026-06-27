@@ -10,7 +10,7 @@ import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.single_agent.legacy.config.LegacyReActAgentConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 import com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema;
 import org.junit.jupiter.api.Test;
 

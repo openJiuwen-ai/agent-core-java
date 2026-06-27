@@ -11,7 +11,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.single_agent.legacy.LegacyBaseAgent;
+import com.openjiuwen.core.singleagent.legacy.LegacyBaseAgent;
 import com.openjiuwen.dev_tools.tune.Case;
 import com.openjiuwen.dev_tools.tune.EvaluatedCase;
 import com.openjiuwen.dev_tools.tune.TuneUtils;

@@ -18,6 +18,10 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+/**
+ * Mirrors Python's {@code Document}, {@code TextChunk}, and {@code MultimodalDocument} behavior in
+ * {@code openjiuwen/core/retrieval/common/document.py}.
+ */
 class DocumentTypesTest {
 
     @TempDir

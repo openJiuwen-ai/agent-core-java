@@ -21,7 +21,7 @@ import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.StageSlot;
 import com.openjiuwen.auto_harness.schema.AutoHarnessSchema.TaskStatus;
 import com.openjiuwen.auto_harness.stages.BaseStage;
 import com.openjiuwen.core.session.AgentSession;
-import com.openjiuwen.core.single_agent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 

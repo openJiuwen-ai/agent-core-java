@@ -4,9 +4,9 @@
 
 package com.openjiuwen.harness.rails;
 
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
-import com.openjiuwen.core.single_agent.rail.InvokeInputs;
-import com.openjiuwen.core.single_agent.rail.RunKind;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.rail.InvokeInputs;
+import com.openjiuwen.core.singleagent.rail.RunKind;
 import com.openjiuwen.harness.DeepAgent;
 import com.openjiuwen.harness.prompts.SystemPromptBuilder;
 import com.openjiuwen.harness.prompts.sections.HeartbeatSection;

@@ -7,7 +7,7 @@ package com.openjiuwen.harness.rails.interrupt;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
-import com.openjiuwen.core.single_agent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.harness.rails.CallbackContext;
 
 import java.util.ArrayList;

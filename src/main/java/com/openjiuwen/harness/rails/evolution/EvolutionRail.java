@@ -14,9 +14,9 @@ import com.openjiuwen.agent_evolving.trajectory.TrajectoryBuilder;
 import com.openjiuwen.agent_evolving.trajectory.TrajectorySink;
 import com.openjiuwen.agent_evolving.trajectory.TrajectoryStep;
 import com.openjiuwen.agent_evolving.trajectory.TrajectoryStore;
-import com.openjiuwen.core.single_agent.rail.InvokeInputs;
-import com.openjiuwen.core.single_agent.rail.ModelCallInputs;
-import com.openjiuwen.core.single_agent.rail.ToolCallInputs;
+import com.openjiuwen.core.singleagent.rail.InvokeInputs;
+import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
+import com.openjiuwen.core.singleagent.rail.ToolCallInputs;
 import com.openjiuwen.harness.rails.CallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 

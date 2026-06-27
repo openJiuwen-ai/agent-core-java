@@ -57,8 +57,17 @@ public class BaseModelInfo {
     @JsonProperty("custom_headers")
     private Map<String, Object> customHeaders;
 
+    @JsonProperty("http_version")
+    private ModelHttpVersion httpVersion;
+
     @Builder.Default
     private Map<String, Object> extraFields = new LinkedHashMap<>();
+
+    public BaseModelInfo(String apiKey, String apiBase, String modelName, double temperature, double topP,
+                         boolean streaming, int timeout, Map<String, Object> customHeaders,
+                         Map<String, Object> extraFields) {
+        this(apiKey, apiBase, modelName, temperature, topP, streaming, timeout, customHeaders, null, extraFields);
+    }
 
     @JsonAnySetter
     public void putExtraField(String key, Object value) {
@@ -82,6 +91,7 @@ public class BaseModelInfo {
                 || "streaming".equals(key)
                 || "stream".equals(key)
                 || "timeout".equals(key)
+                || "http_version".equals(key)
                 || "custom_headers".equals(key);
     }
 }

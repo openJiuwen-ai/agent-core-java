@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.AgentCard;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.harness.workspace.Workspace;
@@ -25,7 +26,7 @@ import org.junit.jupiter.api.Test;
 class DeepAgentSpecTest {
 
     @Test
-    void teamModelConfigBuildDelegatesToModelValidation() {
+    void teamModelConfigBuildConstructsModelWithProvidedConfigs() {
         ModelClientConfig client = new ModelClientConfig();
         client.setClientProvider("openai");
         client.setApiKey("test-key");
@@ -35,8 +36,10 @@ class DeepAgentSpecTest {
 
         TeamModelConfig config = new TeamModelConfig(client, request);
 
-        assertThatThrownBy(config::build)
-                .hasMessageContaining("provider");
+        Model model = config.build();
+
+        assertThat(model.getModelClientConfig()).isSameAs(client);
+        assertThat(model.getModelConfig()).isSameAs(request);
     }
 
     @Test

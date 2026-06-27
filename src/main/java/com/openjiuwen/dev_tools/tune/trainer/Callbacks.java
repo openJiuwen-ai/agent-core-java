@@ -4,7 +4,7 @@
 
 package com.openjiuwen.dev_tools.tune.trainer;
 
-import com.openjiuwen.core.single_agent.legacy.LegacyBaseAgent;
+import com.openjiuwen.core.singleagent.legacy.LegacyBaseAgent;
 import com.openjiuwen.dev_tools.tune.EvaluatedCase;
 
 import java.util.List;

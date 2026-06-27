@@ -4,6 +4,7 @@
 
 package com.openjiuwen.agent_evolving.trainer;
 
+import com.openjiuwen.core.singleagent.BaseAgent;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -161,13 +162,13 @@ class ProgressTest {
 
         class TrackingCallbacks extends Callbacks {
             @Override
-            public void onTrainBegin(com.openjiuwen.core.single_agent.BaseAgent agent, Progress progress,
-                    List<com.openjiuwen.agent_evolving.dataset.EvaluatedCase> evalInfo) {
+            public void onTrainBegin(BaseAgent agent, Progress progress,
+                                     List<com.openjiuwen.agent_evolving.dataset.EvaluatedCase> evalInfo) {
                 calls.add("begin");
             }
 
             @Override
-            public void onTrainEpochBegin(com.openjiuwen.core.single_agent.BaseAgent agent, Progress progress) {
+            public void onTrainEpochBegin(BaseAgent agent, Progress progress) {
                 calls.add("epoch_begin");
             }
         }

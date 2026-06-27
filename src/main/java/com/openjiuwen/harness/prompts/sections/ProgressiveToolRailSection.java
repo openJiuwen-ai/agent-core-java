@@ -4,7 +4,7 @@
 
 package com.openjiuwen.harness.prompts.sections;
 
-import com.openjiuwen.core.single_agent.prompts.PromptSection;
+import com.openjiuwen.core.singleagent.prompts.PromptSection;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

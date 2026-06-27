@@ -6,7 +6,7 @@ package com.openjiuwen.extensions.a2a;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;

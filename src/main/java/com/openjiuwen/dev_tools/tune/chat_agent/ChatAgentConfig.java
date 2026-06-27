@@ -8,8 +8,8 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
-import com.openjiuwen.core.single_agent.legacy.config.AgentConfig;
-import com.openjiuwen.core.single_agent.legacy.config.LlmCallConfig;
+import com.openjiuwen.core.singleagent.legacy.config.AgentConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
 
 /**
  * Chat agent configuration.

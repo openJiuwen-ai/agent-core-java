@@ -5,7 +5,7 @@
 package com.openjiuwen.dev_tools.tune.chat_agent;
 
 import com.openjiuwen.core.foundation.tool.Tool;
-import com.openjiuwen.core.single_agent.legacy.config.LlmCallConfig;
+import com.openjiuwen.core.singleagent.legacy.config.LlmCallConfig;
 
 import java.util.List;
 

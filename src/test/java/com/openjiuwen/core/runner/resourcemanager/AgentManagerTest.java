@@ -7,7 +7,7 @@ package com.openjiuwen.core.runner.resourcemanager;
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.drunner.server_adapter.AgentAdapter;
 import com.openjiuwen.core.runner.drunner.server_adapter.MqServerAdapter;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
