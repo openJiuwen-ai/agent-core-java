@@ -65,9 +65,6 @@ public class OpenAIModelClient extends BaseModelClient {
     private final HttpClient httpClient;
     private final Map<String, String> baseHeaders;
 
-    private record RequestHeaders(String authorization) {
-    }
-
     static {
         registerClientClass(OpenAIModelClient.class);
     }
@@ -199,7 +196,8 @@ public class OpenAIModelClient extends BaseModelClient {
                 false,
                 effectiveKwargs
         );
-        RequestHeaders requestHeaders = applyExtraHeadersParam(params, requestCustomHeaders);
+        String authorization = extractAuthorizationOverride(requestCustomHeaders);
+        applyExtraHeadersParam(params, requestCustomHeaders);
         recordTracerData(tracerRecordData, "llm_params", params);
 
         try {
@@ -208,7 +206,7 @@ public class OpenAIModelClient extends BaseModelClient {
                             "timeout", timeout != null ? timeout : modelClientConfig.getTimeout(),
                             "max_retries", modelClientConfig.getMaxRetries()
                     ));
-            Map<String, Object> responseData = postJson(params, timeout, requestHeaders.authorization());
+            Map<String, Object> responseData = postJson(params, timeout, authorization);
             Loggers.LLM.info("OpenAI API response received. {}", Map.of("response", responseData));
             AssistantMessage assistantMessage = parseResponse(responseData, outputParser);
             recordTracerData(tracerRecordData, "llm_response", assistantMessage);
@@ -250,12 +248,13 @@ public class OpenAIModelClient extends BaseModelClient {
                 true,
                 effectiveKwargs
         );
-        RequestHeaders requestHeaders = applyExtraHeadersParam(params, requestCustomHeaders);
+        String authorization = extractAuthorizationOverride(requestCustomHeaders);
+        applyExtraHeadersParam(params, requestCustomHeaders);
         recordTracerData(tracerRecordData, "llm_params", params);
 
         try {
             return tracingIterator(
-                    streamChunks(params, outputParser, timeout, requestHeaders.authorization()),
+                    streamChunks(params, outputParser, timeout, authorization),
                     tracerRecordData
             );
         } catch (Exception exception) {
@@ -452,12 +451,11 @@ public class OpenAIModelClient extends BaseModelClient {
         return body;
     }
 
-    private RequestHeaders applyExtraHeadersParam(Map<String, Object> params, Map<String, ?> requestCustomHeaders) {
+    private void applyExtraHeadersParam(Map<String, Object> params, Map<String, ?> requestCustomHeaders) {
         Map<String, String> effectiveHeaders = buildRequestHeaders(baseHeaders, requestCustomHeaders);
         if (!effectiveHeaders.isEmpty()) {
             params.put("extra_headers", effectiveHeaders);
         }
-        return new RequestHeaders(extractAuthorizationOverride(requestCustomHeaders));
     }
 
     private static String extractAuthorizationOverride(Map<String, ?> requestCustomHeaders) {
