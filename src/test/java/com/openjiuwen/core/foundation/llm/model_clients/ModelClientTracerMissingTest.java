@@ -103,6 +103,47 @@ class ModelClientTracerMissingTest {
     }
 
     @Test
+    void openAiStreamDoesNotTraceAuthorizationOverrideInExtraHeaders() throws Exception {
+        String streamBody = String.join("\n",
+                "data: " + json(streamPayload("Hello", "stop")),
+                "data: [DONE]");
+        RecordingTracer tracer = new RecordingTracer();
+        Map<String, Object> requestHeaders = new LinkedHashMap<>();
+        requestHeaders.put("Authorization", "Bearer stream-secret");
+        requestHeaders.put("X-Trace", "visible-stream-trace");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(streamBody)) {
+            OpenAIModelClient client = openAiClient(server.baseUrl());
+
+            List<AssistantMessageChunk> chunks = iteratorToList(client.stream(
+                    List.of(new UserMessage("Hello")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Map.of(
+                            "tracer_record_data", tracer,
+                            "custom_headers", requestHeaders
+                    )
+            ));
+
+            assertThat(chunks).isNotEmpty();
+            assertThat(tracer.records).hasSize(2);
+            Map<?, ?> llmParams = (Map<?, ?>) tracer.records.getFirst().get("llm_params");
+            Map<?, ?> tracedHeaders = (Map<?, ?>) llmParams.get("extra_headers");
+            assertThat(tracedHeaders.get("X-Trace")).isEqualTo("visible-stream-trace");
+            assertThat(tracedHeaders.keySet())
+                    .as("Authorization header key should not be traced")
+                    .noneMatch(key -> "Authorization".equalsIgnoreCase(String.valueOf(key)));
+            assertThat(tracedHeaders.values()).noneMatch(value -> "Bearer stream-secret".equals(value));
+        }
+    }
+
+    @Test
     void openAiStreamAccumulatesFinalMessageAndCallsTracer() throws Exception {
         String streamBody = String.join("\n",
                 "data: " + json(streamPayload("Hello", null)),

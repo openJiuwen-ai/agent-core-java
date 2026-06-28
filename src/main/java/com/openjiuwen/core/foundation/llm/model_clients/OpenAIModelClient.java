@@ -425,6 +425,7 @@ public class OpenAIModelClient extends BaseModelClient {
         String effectiveAuthorization = authorization != null
                 ? authorization
                 : "Bearer " + modelClientConfig.getApiKey();
+        validateAuthorizationHeader(effectiveAuthorization);
 
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(trimTrailingSlash(modelClientConfig.getApiBase()) + CHAT_COMPLETIONS_PATH))
@@ -438,6 +439,18 @@ public class OpenAIModelClient extends BaseModelClient {
             builder.setHeader(entry.getKey(), entry.getValue());
         }
         return builder.build();
+    }
+
+    private static void validateAuthorizationHeader(String authorization) {
+        if (authorization == null) {
+            throw new IllegalArgumentException("Invalid Authorization header value");
+        }
+        for (int i = 0; i < authorization.length(); i++) {
+            char current = authorization.charAt(i);
+            if (current < ' ' || current == 127) {
+                throw new IllegalArgumentException("Invalid Authorization header value");
+            }
+        }
     }
 
     private Map<String, Object> requestBodyParams(Map<String, Object> params) {

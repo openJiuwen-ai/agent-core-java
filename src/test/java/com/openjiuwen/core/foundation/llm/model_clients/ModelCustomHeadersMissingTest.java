@@ -6,6 +6,8 @@ package com.openjiuwen.core.foundation.llm.model_clients;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.utils.HashUtil;
 import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
@@ -26,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * <p>Mirrors Python's {@code tests/unit_tests/core/foundation/llm/test_model_custom_headers.py}.</p>
@@ -123,6 +126,32 @@ class ModelCustomHeadersMissingTest {
     }
 
     @Test
+    void blankRequestAuthorizationOverrideFallsBackToConfiguredApiKey() throws Exception {
+        Map<String, Object> requestHeaders = new LinkedHashMap<>();
+        requestHeaders.put("Authorization", "   ");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(jsonResponse("ok"))) {
+            OpenAIModelClient client = openAiClient(server.baseUrl(), Map.of());
+
+            client.invoke(
+                    List.of(new UserMessage("hello")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Map.of("custom_headers", requestHeaders)
+            );
+
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Bearer sk-test");
+            assertThat(server.lastBody).doesNotContainKey("extra_headers");
+        }
+    }
+
+    @Test
     void requestAuthorizationOverrideUsesProvidedValueWithoutBearerRequirement() throws Exception {
         Map<String, Object> requestHeaders = new LinkedHashMap<>();
         requestHeaders.put("Authorization", "Basic abc123");
@@ -145,6 +174,40 @@ class ModelCustomHeadersMissingTest {
 
             assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Basic abc123");
             assertThat(server.lastBody).doesNotContainKey("extra_headers");
+        }
+    }
+
+    @Test
+    void invalidRequestAuthorizationOverrideDoesNotLeakHeaderValueInError() throws Exception {
+        String secret = "secret-token";
+        Map<String, Object> requestHeaders = new LinkedHashMap<>();
+        requestHeaders.put("Authorization", "Bearer " + secret + "\nX-Injected: yes");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(jsonResponse("ok"))) {
+            OpenAIModelClient client = openAiClient(server.baseUrl(), Map.of());
+
+            assertThatThrownBy(() -> client.invoke(
+                    List.of(new UserMessage("hello")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Map.of("custom_headers", requestHeaders)
+            ))
+                    .isInstanceOf(BaseError.class)
+                    .satisfies(error -> {
+                        BaseError baseError = (BaseError) error;
+                        assertThat(baseError.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
+                        assertThat(baseError.getMessage()).contains("Invalid Authorization header");
+                        assertThat(baseError.getMessage()).doesNotContain(secret);
+                        assertThat(baseError.toJson()).doesNotContain(secret);
+                    });
+
+            assertThat(server.lastHeaders).isNull();
         }
     }
 
