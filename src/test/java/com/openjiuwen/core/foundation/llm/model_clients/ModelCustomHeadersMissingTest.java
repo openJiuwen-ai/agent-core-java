@@ -123,6 +123,32 @@ class ModelCustomHeadersMissingTest {
     }
 
     @Test
+    void requestAuthorizationOverrideUsesProvidedValueWithoutBearerRequirement() throws Exception {
+        Map<String, Object> requestHeaders = new LinkedHashMap<>();
+        requestHeaders.put("Authorization", "Basic abc123");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(jsonResponse("ok"))) {
+            OpenAIModelClient client = openAiClient(server.baseUrl(), Map.of());
+
+            client.invoke(
+                    List.of(new UserMessage("hello")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Map.of("custom_headers", requestHeaders)
+            );
+
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Basic abc123");
+            assertThat(server.lastBody).doesNotContainKey("extra_headers");
+        }
+    }
+
+    @Test
     void configuredAuthorizationHeaderIsIgnored() throws Exception {
         Map<String, Object> configHeaders = new LinkedHashMap<>();
         configHeaders.put("Token", "token-static");

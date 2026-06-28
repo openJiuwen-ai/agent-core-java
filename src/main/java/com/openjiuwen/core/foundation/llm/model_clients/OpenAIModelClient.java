@@ -465,22 +465,16 @@ public class OpenAIModelClient extends BaseModelClient {
             return null;
         }
         for (Map.Entry<String, ?> entry : requestCustomHeaders.entrySet()) {
-            if (!"Authorization".equalsIgnoreCase(entry.getKey()) || entry.getValue() == null) {
+            String key = entry.getKey();
+            if (key == null || !"Authorization".equalsIgnoreCase(key.trim()) || entry.getValue() == null) {
                 continue;
             }
             String authorization = String.valueOf(entry.getValue());
-            if (isBearerAuthorization(authorization)) {
+            if (!authorization.trim().isEmpty()) {
                 return authorization;
             }
         }
         return null;
-    }
-
-    private static boolean isBearerAuthorization(String authorization) {
-        String prefix = "Bearer ";
-        return authorization != null
-                && authorization.regionMatches(true, 0, prefix, 0, prefix.length())
-                && !authorization.substring(prefix.length()).isBlank();
     }
 
     @SuppressWarnings("unchecked")

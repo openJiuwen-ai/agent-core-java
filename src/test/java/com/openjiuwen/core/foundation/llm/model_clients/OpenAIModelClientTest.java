@@ -108,7 +108,7 @@ class OpenAIModelClientTest {
             Map<String, Object> kwargs = new LinkedHashMap<>();
             kwargs.put("return_token_ids", true);
             kwargs.put("extra_body", extraBody);
-            kwargs.put("custom_headers", Map.of("X-Trace", "request", "Authorization", "ignored"));
+            kwargs.put("custom_headers", Map.of("X-Trace", "request", "Authorization", "Custom token-1"));
 
             AssistantMessage message = client.invoke(
                     "hello",
@@ -122,7 +122,7 @@ class OpenAIModelClientTest {
                     null,
                     kwargs);
 
-            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Bearer sk-test");
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Custom token-1");
             assertThat(header(server.lastHeaders, "X-Base")).isEqualTo("base");
             assertThat(header(server.lastHeaders, "X-Trace")).isEqualTo("request");
             assertThat(server.lastBody).containsEntry("return_token_ids", true)
