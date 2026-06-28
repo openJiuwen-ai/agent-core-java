@@ -149,6 +149,32 @@ class ModelCustomHeadersMissingTest {
     }
 
     @Test
+    void requestAuthorizationOverrideSupportsCamelCaseCustomHeadersAlias() throws Exception {
+        Map<String, Object> requestHeaders = new LinkedHashMap<>();
+        requestHeaders.put("Authorization", "Custom alias-token");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(jsonResponse("ok"))) {
+            OpenAIModelClient client = openAiClient(server.baseUrl(), Map.of());
+
+            client.invoke(
+                    List.of(new UserMessage("hello")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Map.of("customHeaders", requestHeaders)
+            );
+
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Custom alias-token");
+            assertThat(server.lastBody).doesNotContainKey("extra_headers");
+        }
+    }
+
+    @Test
     void configuredAuthorizationHeaderIsIgnored() throws Exception {
         Map<String, Object> configHeaders = new LinkedHashMap<>();
         configHeaders.put("Token", "token-static");
