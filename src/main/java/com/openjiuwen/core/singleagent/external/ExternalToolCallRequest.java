@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.singleagent.external;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 public final class ExternalToolCallRequest {
     private final String toolCallId;
     private final String toolName;
@@ -31,5 +34,13 @@ public final class ExternalToolCallRequest {
 
     public String getArguments() {
         return arguments;
+    }
+
+    public Map<String, Object> toMap() {
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("tool_call_id", toolCallId);
+        item.put("tool_name", toolName);
+        item.put("arguments", arguments);
+        return item;
     }
 }

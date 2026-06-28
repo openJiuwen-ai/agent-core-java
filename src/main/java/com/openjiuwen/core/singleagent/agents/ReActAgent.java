@@ -900,7 +900,7 @@ public class ReActAgent extends BaseAgent {
         result.put("result_type", "external_tool_call_required");
         result.put("external_tool_calls", state.getExternalToolCalls()
                 .stream()
-                .map(ReActAgent::externalToolCallRequestMap)
+                .map(ExternalToolCallRequest::toMap)
                 .toList());
         return result;
     }
@@ -979,14 +979,6 @@ public class ReActAgent extends BaseAgent {
             }
         }
         return ids;
-    }
-
-    private static Map<String, Object> externalToolCallRequestMap(ExternalToolCallRequest request) {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("tool_call_id", request.getToolCallId());
-        item.put("tool_name", request.getToolName());
-        item.put("arguments", request.getArguments());
-        return item;
     }
 
     private record ExternalResumeValidation(boolean valid, Map<String, ExternalToolResult> resultsById) {
@@ -1239,6 +1231,7 @@ public class ReActAgent extends BaseAgent {
                         );
                         saveExternalToolPendingState(pendingState, session);
                         contextEngine.saveContexts(session);
+                        writeExternalToolPendingOutput(ctx, session, pendingState);
                         invokeInputs.setResult(buildExternalToolPendingResult(pendingState));
                         break;
                     }
@@ -1355,6 +1348,23 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
+    private void writeExternalToolPendingOutput(
+            AgentCallbackContext ctx,
+            AgentSessionApi session,
+            ExternalToolPendingState pendingState
+    ) {
+        if (session == null || pendingState == null) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
+            return;
+        }
+        session.writeStream(ToolLifecycleOutputFactory.buildExternalToolPendingOutput(
+                pendingState.getExternalToolCalls(),
+                nextStreamIndex(ctx)
+        ));
+    }
+
     private void writeToolResultOutputs(
             AgentCallbackContext ctx,
             AgentSessionApi session,
@@ -1411,6 +1421,9 @@ public class ReActAgent extends BaseAgent {
             return;
         }
         Object resultType = result.get("result_type");
+        if ("external_tool_call_required".equals(resultType)) {
+            return;
+        }
         if ("interrupt".equals(resultType)) {
             if (result.containsKey("interrupt_ids")) {
                 ToolInterruptHandler.writeInterruptToStream(result, session);
