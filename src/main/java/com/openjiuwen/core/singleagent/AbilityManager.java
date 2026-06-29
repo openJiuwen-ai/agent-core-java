@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import com.openjiuwen.core.foundation.tool.ExternalTool;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
@@ -40,6 +41,7 @@ public class AbilityManager {
     private Map<String, ToolCard> tools = new LinkedHashMap<>();
     private Map<String, WorkflowCard> workflows = new LinkedHashMap<>();
     private Map<String, AgentCard> agents = new LinkedHashMap<>();
+    private Map<String, ExternalTool> externalTools = new LinkedHashMap<>();
     private Map<String, McpServerConfig> mcpServers = new LinkedHashMap<>();
     private Object contextEngine;
 
@@ -67,6 +69,9 @@ public class AbilityManager {
     }
 
     public AddAbilityResult add(Object ability) {
+        if (ability instanceof ExternalTool externalTool) {
+            return addExternalTool(externalTool);
+        }
         if (ability instanceof ToolCard toolCard) {
             return addToolCard(toolCard);
         }
@@ -92,6 +97,9 @@ public class AbilityManager {
         }
         if (agents.containsKey(name)) {
             removed = agents.remove(name);
+        }
+        if (externalTools.containsKey(name)) {
+            removed = externalTools.remove(name);
         }
         if (mcpServers.containsKey(name)) {
             McpServerConfig mcpServer = mcpServers.remove(name);
@@ -147,6 +155,9 @@ public class AbilityManager {
         if (agents.containsKey(name)) {
             return Optional.of(agents.get(name));
         }
+        if (externalTools.containsKey(name)) {
+            return Optional.of(externalTools.get(name));
+        }
         return Optional.ofNullable(mcpServers.get(name));
     }
 
@@ -155,6 +166,7 @@ public class AbilityManager {
         result.addAll(tools.values());
         result.addAll(workflows.values());
         result.addAll(agents.values());
+        result.addAll(externalTools.values());
         result.addAll(mcpServers.values());
         return result;
     }
@@ -180,6 +192,11 @@ public class AbilityManager {
                 infos.add(agentToolInfo(entry.getValue()));
             }
         }
+        for (Map.Entry<String, ExternalTool> entry : externalTools.entrySet()) {
+            if (matches(names, entry.getKey())) {
+                infos.add(entry.getValue().toolInfo());
+            }
+        }
         if (names == null) {
             for (Map.Entry<String, McpServerConfig> entry : mcpServers.entrySet()) {
                 appendMcpToolInfos(entry.getKey(), entry.getValue(), infos);
@@ -196,6 +213,10 @@ public class AbilityManager {
         if (toolCall == null) {
             return List.of();
         }
+        Object ability = get(toolCall.getName()).orElse(null);
+        if (ability instanceof ExternalTool) {
+            return List.of();
+        }
         Object parsedArguments;
         try {
             parsedArguments = parseToolArguments(toolCall.getArguments());
@@ -204,7 +225,6 @@ public class AbilityManager {
             ToolMessage errorMessage = new ToolMessage(messageText, toolCall.getId(), toolCall.getName());
             return List.of(new ExecutionResult(null, errorMessage));
         }
-        Object ability = get(toolCall.getName()).orElse(null);
         if (ability instanceof ToolCard toolCard) {
             Tool resolvedTool = Runner.resourceMgr().getTool(toolCard.getId());
             if (resolvedTool != null) {
@@ -293,6 +313,7 @@ public class AbilityManager {
         result.putAll(tools);
         result.putAll(workflows);
         result.putAll(agents);
+        result.putAll(externalTools);
         result.putAll(mcpServers);
         return Collections.unmodifiableMap(result);
     }
@@ -307,6 +328,18 @@ public class AbilityManager {
 
     public Map<String, AgentCard> getAgents() {
         return Map.copyOf(agents);
+    }
+
+    public Optional<ExternalTool> getExternalTool(String name) {
+        return Optional.ofNullable(externalTools.get(name));
+    }
+
+    public Map<String, ExternalTool> getExternalTools() {
+        return Map.copyOf(externalTools);
+    }
+
+    public boolean isExternalTool(String name) {
+        return externalTools.containsKey(name);
     }
 
     public Map<String, McpServerConfig> getMcpServers() {
@@ -391,6 +424,9 @@ public class AbilityManager {
         if (ability instanceof BaseCard card) {
             return Objects.toString(card.getName(), "");
         }
+        if (ability instanceof ExternalTool externalTool) {
+            return Objects.toString(externalTool.getCard().getName(), "");
+        }
         if (ability instanceof McpServerConfig mcpServerConfig) {
             return Objects.toString(mcpServerConfig.getServerName(), "");
         }
@@ -402,8 +438,9 @@ public class AbilityManager {
 
     private AddAbilityResult addToolCard(ToolCard toolCard) {
         String name = Objects.toString(toolCard.getName(), "");
-        if (tools.containsKey(name)) {
-            return new AddAbilityResult(name, false, "duplicate_tool");
+        String duplicateReason = duplicateReason(name);
+        if (duplicateReason != null) {
+            return new AddAbilityResult(name, false, duplicateReason);
         }
         tools.put(name, toolCard);
         return new AddAbilityResult(name, true, "added_tool");
@@ -411,8 +448,9 @@ public class AbilityManager {
 
     private AddAbilityResult addWorkflowCard(WorkflowCard workflowCard) {
         String name = Objects.toString(workflowCard.getName(), "");
-        if (workflows.containsKey(name)) {
-            return new AddAbilityResult(name, false, "duplicate_workflow");
+        String duplicateReason = duplicateReason(name);
+        if (duplicateReason != null) {
+            return new AddAbilityResult(name, false, duplicateReason);
         }
         workflows.put(name, workflowCard);
         return new AddAbilityResult(name, true, "added_workflow");
@@ -420,20 +458,51 @@ public class AbilityManager {
 
     private AddAbilityResult addAgentCard(AgentCard agentCard) {
         String name = Objects.toString(agentCard.getName(), "");
-        if (agents.containsKey(name)) {
-            return new AddAbilityResult(name, false, "duplicate_agent");
+        String duplicateReason = duplicateReason(name);
+        if (duplicateReason != null) {
+            return new AddAbilityResult(name, false, duplicateReason);
         }
         agents.put(name, agentCard);
         return new AddAbilityResult(name, true, "added_agent");
     }
 
+    private AddAbilityResult addExternalTool(ExternalTool externalTool) {
+        String name = Objects.toString(externalTool.getCard().getName(), "");
+        String duplicateReason = duplicateReason(name);
+        if (duplicateReason != null) {
+            return new AddAbilityResult(name, false, duplicateReason);
+        }
+        externalTools.put(name, externalTool);
+        return new AddAbilityResult(name, true, "added_external_tool");
+    }
+
     private AddAbilityResult addMcpServerConfig(McpServerConfig mcpServerConfig) {
         String name = Objects.toString(mcpServerConfig.getServerName(), "");
-        if (mcpServers.containsKey(name)) {
-            return new AddAbilityResult(name, false, "duplicate_mcp_server");
+        String duplicateReason = duplicateReason(name);
+        if (duplicateReason != null) {
+            return new AddAbilityResult(name, false, duplicateReason);
         }
         mcpServers.put(name, mcpServerConfig);
         return new AddAbilityResult(name, true, "added_mcp_server");
+    }
+
+    private String duplicateReason(String name) {
+        if (tools.containsKey(name)) {
+            return "duplicate_tool";
+        }
+        if (workflows.containsKey(name)) {
+            return "duplicate_workflow";
+        }
+        if (agents.containsKey(name)) {
+            return "duplicate_agent";
+        }
+        if (externalTools.containsKey(name)) {
+            return "duplicate_external_tool";
+        }
+        if (mcpServers.containsKey(name)) {
+            return "duplicate_mcp_server";
+        }
+        return null;
     }
 
     private void removeMcpTools(McpServerConfig mcpServer) {
@@ -473,14 +542,27 @@ public class AbilityManager {
             String originalName = Objects.toString(mcpTool.getName(), "");
             String mcpToolName = "mcp_" + serverName + "_" + originalName;
             String mcpToolId = mcpServer.getServerId() + "." + serverName + "." + originalName;
-            mcpTool.setName(mcpToolName);
+            ToolCard existingTool = tools.get(mcpToolName);
+            if (existingTool != null && !Objects.equals(existingTool.getId(), mcpToolId)) {
+                continue;
+            }
+            if (existingTool == null && duplicateReason(mcpToolName) != null) {
+                continue;
+            }
+            Map<String, Object> parameters = mcpTool.getParameters() == null ? Map.of() : mcpTool.getParameters();
+            ToolInfo emittedTool = ToolInfo.builder()
+                    .type(Objects.toString(mcpTool.getType(), "function"))
+                    .name(mcpToolName)
+                    .description(Objects.toString(mcpTool.getDescription(), ""))
+                    .parameters(parameters)
+                    .build();
             tools.put(mcpToolName, new ToolCard(
                     mcpToolId,
                     mcpToolName,
-                    Objects.toString(mcpTool.getDescription(), ""),
-                    mcpTool.getParameters() == null ? Map.of() : mcpTool.getParameters()
+                    emittedTool.getDescription(),
+                    parameters
             ));
-            infos.add(mcpTool);
+            infos.add(emittedTool);
         }
     }
 

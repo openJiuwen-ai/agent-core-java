@@ -5,8 +5,11 @@
 package com.openjiuwen.core.graph.store;
 
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.graph.pregel.Message;
+import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
+import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -90,6 +93,47 @@ class SerializerTest {
     }
 
     @Test
+    void jsonSerializerRoundTripsExternalToolPendingStateInsideAgentState() {
+        Serializer serializer = Serializer.create("json");
+        ToolCall toolCall = ToolCall.builder()
+                .id("call-browser-1")
+                .type("function")
+                .name("frontend_read_text_input")
+                .arguments("{\"field_id\":\"demo_external_text\"}")
+                .build();
+        AssistantMessage assistantMessage = AssistantMessage.builder()
+                .content("")
+                .toolCalls(List.of(toolCall))
+                .build();
+        ExternalToolPendingState pendingState = new ExternalToolPendingState(
+                assistantMessage,
+                2,
+                "read browser input",
+                List.of(toolCall),
+                List.of(new ExternalToolCallRequest(
+                        "call-browser-1",
+                        "frontend_read_text_input",
+                        "{\"field_id\":\"demo_external_text\"}"
+                ))
+        );
+        Map<String, Object> state = Map.of("__react_agent_external_tool_pending__", pendingState);
+
+        Object restored = serializer.loadsTyped(serializer.dumpsTyped(state));
+
+        Map<?, ?> restoredMap = assertInstanceOf(Map.class, restored);
+        ExternalToolPendingState restoredPending = assertInstanceOf(
+                ExternalToolPendingState.class,
+                restoredMap.get("__react_agent_external_tool_pending__"));
+        assertEquals(2, restoredPending.getIteration());
+        assertEquals("read browser input", restoredPending.getOriginalQuery());
+        assertEquals("", restoredPending.getAssistantMessage().getContentAsString());
+        assertEquals("call-browser-1", restoredPending.getPendingToolCalls().get(0).getId());
+        assertEquals("frontend_read_text_input", restoredPending.getPendingToolCalls().get(0).getName());
+        assertEquals("call-browser-1", restoredPending.getExternalToolCalls().get(0).getToolCallId());
+        assertEquals("frontend_read_text_input", restoredPending.getExternalToolCalls().get(0).getToolName());
+    }
+
+    @Test
     void jsonSerializerRejectsUnknownJavaObject() {
         Serializer serializer = Serializer.create("json");
 
@@ -132,6 +176,38 @@ class SerializerTest {
         assertEquals("interrupted", pendingNode.getStatus());
         assertEquals(1, pendingNode.getExceptions().size());
         assertEquals("boom", pendingNode.getExceptions().get(0).getMessage());
+    }
+
+    @Test
+    void javaSerializerRoundTripsExternalToolPendingStateInsideAgentState() {
+        Serializer serializer = Serializer.create("java");
+        ToolCall toolCall = ToolCall.builder()
+                .id("call-browser-1")
+                .type("function")
+                .name("frontend_read_text_input")
+                .arguments("{\"field_id\":\"demo_external_text\"}")
+                .build();
+        ExternalToolPendingState pendingState = new ExternalToolPendingState(
+                AssistantMessage.builder().content("").toolCalls(List.of(toolCall)).build(),
+                2,
+                "read browser input",
+                List.of(toolCall),
+                List.of(new ExternalToolCallRequest(
+                        "call-browser-1",
+                        "frontend_read_text_input",
+                        "{\"field_id\":\"demo_external_text\"}"
+                ))
+        );
+
+        Object restored = serializer.loadsTyped(serializer.dumpsTyped(
+                Map.of("__react_agent_external_tool_pending__", pendingState)));
+
+        Map<?, ?> restoredMap = assertInstanceOf(Map.class, restored);
+        ExternalToolPendingState restoredPending = assertInstanceOf(
+                ExternalToolPendingState.class,
+                restoredMap.get("__react_agent_external_tool_pending__"));
+        assertEquals("call-browser-1", restoredPending.getPendingToolCalls().get(0).getId());
+        assertEquals("call-browser-1", restoredPending.getExternalToolCalls().get(0).getToolCallId());
     }
 
     @Test

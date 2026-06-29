@@ -14,6 +14,8 @@ import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.graph.pregel.Message;
+import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
+import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -69,6 +71,7 @@ public abstract class Serializer {
         private static final String TYPE_GRAPH_STORE_STATE = "graph.storeState";
         private static final String TYPE_GRAPH_MESSAGE = "graph.message";
         private static final String TYPE_GRAPH_PENDING_NODE = "graph.pendingNode";
+        private static final String TYPE_EXTERNAL_TOOL_PENDING_STATE = "singleagent.externalToolPendingState";
         private static final ObjectMapper MAPPER = new ObjectMapper();
 
         @Override
@@ -118,6 +121,9 @@ public abstract class Serializer {
             }
             if (value instanceof PendingNode pendingNode) {
                 return pendingNodeToMap(pendingNode);
+            }
+            if (value instanceof ExternalToolPendingState state) {
+                return externalToolPendingStateToMap(state);
             }
             if (value instanceof List<?> list) {
                 List<Object> result = new ArrayList<>(list.size());
@@ -218,6 +224,17 @@ public abstract class Serializer {
             return result;
         }
 
+        private static Map<String, Object> externalToolPendingStateToMap(ExternalToolPendingState state) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put(TYPE_FIELD, TYPE_EXTERNAL_TOOL_PENDING_STATE);
+            result.put("assistantMessage", toProtocolValue(state.getAssistantMessage()));
+            result.put("iteration", state.getIteration());
+            result.put("originalQuery", state.getOriginalQuery());
+            result.put("pendingToolCalls", toolCallsToProtocolValue(state.getPendingToolCalls()));
+            result.put("externalToolCalls", externalToolCallRequestsToProtocolValue(state.getExternalToolCalls()));
+            return result;
+        }
+
         private static List<Map<String, Object>> exceptionsToProtocolValue(List<Exception> exceptions) {
             if (exceptions == null) {
                 return null;
@@ -228,6 +245,31 @@ public abstract class Serializer {
                 item.put("className", exception.getClass().getName());
                 item.put("message", exception.getMessage());
                 result.add(item);
+            }
+            return result;
+        }
+
+        private static List<Object> toolCallsToProtocolValue(List<ToolCall> toolCalls) {
+            if (toolCalls == null) {
+                return null;
+            }
+            List<Object> result = new ArrayList<>(toolCalls.size());
+            for (ToolCall toolCall : toolCalls) {
+                result.add(toolCall == null ? null : mapToProtocolValue(MAPPER.convertValue(
+                        toolCall, new TypeReference<Map<String, Object>>() {
+                        })));
+            }
+            return result;
+        }
+
+        private static List<Object> externalToolCallRequestsToProtocolValue(
+                List<ExternalToolCallRequest> requests) {
+            if (requests == null) {
+                return null;
+            }
+            List<Object> result = new ArrayList<>(requests.size());
+            for (ExternalToolCallRequest request : requests) {
+                result.add(request == null ? null : mapToProtocolValue(request.toMap()));
             }
             return result;
         }
@@ -275,6 +317,7 @@ public abstract class Serializer {
                     case TYPE_GRAPH_STORE_STATE -> restoreGraphStoreState(stringMap);
                     case TYPE_GRAPH_MESSAGE -> restoreGraphMessage(stringMap);
                     case TYPE_GRAPH_PENDING_NODE -> restorePendingNode(stringMap);
+                    case TYPE_EXTERNAL_TOOL_PENDING_STATE -> restoreExternalToolPendingState(stringMap);
                     default -> throw new IllegalArgumentException("Unknown JSON type: " + typeName);
                 };
             }
@@ -390,6 +433,23 @@ public abstract class Serializer {
             );
         }
 
+        private static ExternalToolPendingState restoreExternalToolPendingState(Map<String, Object> map) {
+            requireAllowedFields(TYPE_EXTERNAL_TOOL_PENDING_STATE, map, Set.of(
+                    TYPE_FIELD, "assistantMessage", "iteration", "originalQuery",
+                    "pendingToolCalls", "externalToolCalls"));
+            Object assistant = fromProtocolValue(requireField(map, "assistantMessage"));
+            if (assistant != null && !(assistant instanceof AssistantMessage)) {
+                throw new IllegalArgumentException("JSON external tool pending assistantMessage must be AssistantMessage");
+            }
+            return new ExternalToolPendingState(
+                    (AssistantMessage) assistant,
+                    requireIntField(map, "iteration"),
+                    optionalStringField(map, "originalQuery"),
+                    restoreToolCalls(requireField(map, "pendingToolCalls")),
+                    restoreExternalToolCallRequests(requireField(map, "externalToolCalls"))
+            );
+        }
+
         private static Map<String, Object> restoreObjectMap(Object value) {
             Object restored = fromProtocolValue(value);
             if (restored == null) {
@@ -404,6 +464,60 @@ public abstract class Serializer {
                     throw new IllegalArgumentException("JSON Map key must be String: " + entry.getKey());
                 }
                 result.put(key, entry.getValue());
+            }
+            return result;
+        }
+
+        private static List<ToolCall> restoreToolCalls(Object value) {
+            Object restored = fromProtocolValue(value);
+            if (restored == null) {
+                return List.of();
+            }
+            if (!(restored instanceof List<?> list)) {
+                throw new IllegalArgumentException("JSON external tool pendingToolCalls must be List");
+            }
+            List<ToolCall> result = new ArrayList<>(list.size());
+            for (Object item : list) {
+                if (item == null) {
+                    throw new IllegalArgumentException("JSON external tool pendingToolCalls item must not be null");
+                }
+                if (item instanceof ToolCall toolCall) {
+                    result.add(toolCall);
+                    continue;
+                }
+                if (!(item instanceof Map<?, ?> map)) {
+                    throw new IllegalArgumentException("JSON external tool pendingToolCalls item must be Map");
+                }
+                result.add(MAPPER.convertValue(requireStringMap(map), ToolCall.class));
+            }
+            return result;
+        }
+
+        private static List<ExternalToolCallRequest> restoreExternalToolCallRequests(Object value) {
+            Object restored = fromProtocolValue(value);
+            if (restored == null) {
+                return List.of();
+            }
+            if (!(restored instanceof List<?> list)) {
+                throw new IllegalArgumentException("JSON externalToolCalls must be List");
+            }
+            List<ExternalToolCallRequest> result = new ArrayList<>(list.size());
+            for (Object item : list) {
+                if (!(item instanceof Map<?, ?> map)) {
+                    throw new IllegalArgumentException("JSON externalToolCalls item must be Map");
+                }
+                Map<String, Object> request = requireStringMap(map);
+                requireAllowedFields("externalToolCall", request,
+                        Set.of("tool_call_id", "tool_name", "arguments"));
+                Object arguments = requireField(request, "arguments");
+                if (arguments != null && !(arguments instanceof String)) {
+                    throw new IllegalArgumentException("JSON field must be String: arguments");
+                }
+                result.add(new ExternalToolCallRequest(
+                        requireStringField(request, "tool_call_id"),
+                        requireStringField(request, "tool_name"),
+                        (String) arguments
+                ));
             }
             return result;
         }

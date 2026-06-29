@@ -6,6 +6,8 @@ package com.openjiuwen.core.foundation.llm.model_clients;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.utils.HashUtil;
 import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
@@ -26,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * <p>Mirrors Python's {@code tests/unit_tests/core/foundation/llm/test_model_custom_headers.py}.</p>
@@ -68,7 +71,7 @@ class ModelCustomHeadersMissingTest {
         requestHeaders.put("token", "token-req");
         requestHeaders.put("UserID", "user-req");
         requestHeaders.put("Transfer-Encoding", "blocked");
-        requestHeaders.put("Authorization", "Bearer blocked");
+        requestHeaders.put("Authorization", "Bearer request-token");
         requestHeaders.put("X-Empty", "");
 
         try (MockOpenAiServer server = new MockOpenAiServer(jsonResponse("ok"))) {
@@ -90,8 +93,163 @@ class ModelCustomHeadersMissingTest {
             assertThat(header(server.lastHeaders, "Token")).isEqualTo("token-req");
             assertThat(header(server.lastHeaders, "UserID")).isEqualTo("user-req");
             assertThat(header(server.lastHeaders, "Transfer-Encoding")).isNotEqualTo("blocked");
-            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Bearer sk-test");
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Bearer request-token");
             assertThat(header(server.lastHeaders, "X-Empty")).isNull();
+            assertThat(server.lastBody).doesNotContainKey("extra_headers");
+        }
+    }
+
+    @Test
+    void requestAuthorizationOverrideIsCaseInsensitive() throws Exception {
+        Map<String, Object> requestHeaders = new LinkedHashMap<>();
+        requestHeaders.put("authorization", "Bearer lower-token");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(jsonResponse("ok"))) {
+            OpenAIModelClient client = openAiClient(server.baseUrl(), Map.of());
+
+            client.invoke(
+                    List.of(new UserMessage("hello")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Map.of("custom_headers", requestHeaders)
+            );
+
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Bearer lower-token");
+            assertThat(server.lastBody).doesNotContainKey("extra_headers");
+        }
+    }
+
+    @Test
+    void blankRequestAuthorizationOverrideFallsBackToConfiguredApiKey() throws Exception {
+        Map<String, Object> requestHeaders = new LinkedHashMap<>();
+        requestHeaders.put("Authorization", "   ");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(jsonResponse("ok"))) {
+            OpenAIModelClient client = openAiClient(server.baseUrl(), Map.of());
+
+            client.invoke(
+                    List.of(new UserMessage("hello")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Map.of("custom_headers", requestHeaders)
+            );
+
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Bearer sk-test");
+            assertThat(server.lastBody).doesNotContainKey("extra_headers");
+        }
+    }
+
+    @Test
+    void requestAuthorizationOverrideUsesProvidedValueWithoutBearerRequirement() throws Exception {
+        Map<String, Object> requestHeaders = new LinkedHashMap<>();
+        requestHeaders.put("Authorization", "Basic abc123");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(jsonResponse("ok"))) {
+            OpenAIModelClient client = openAiClient(server.baseUrl(), Map.of());
+
+            client.invoke(
+                    List.of(new UserMessage("hello")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Map.of("custom_headers", requestHeaders)
+            );
+
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Basic abc123");
+            assertThat(server.lastBody).doesNotContainKey("extra_headers");
+        }
+    }
+
+    @Test
+    void invalidRequestAuthorizationOverrideDoesNotLeakHeaderValueInError() throws Exception {
+        String secret = "secret-token";
+        Map<String, Object> requestHeaders = new LinkedHashMap<>();
+        requestHeaders.put("Authorization", "Bearer " + secret + "\nX-Injected: yes");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(jsonResponse("ok"))) {
+            OpenAIModelClient client = openAiClient(server.baseUrl(), Map.of());
+
+            assertThatThrownBy(() -> client.invoke(
+                    List.of(new UserMessage("hello")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Map.of("custom_headers", requestHeaders)
+            ))
+                    .isInstanceOf(BaseError.class)
+                    .satisfies(error -> {
+                        BaseError baseError = (BaseError) error;
+                        assertThat(baseError.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
+                        assertThat(baseError.getMessage()).contains("Invalid Authorization header");
+                        assertThat(baseError.getMessage()).doesNotContain(secret);
+                        assertThat(baseError.toJson()).doesNotContain(secret);
+                    });
+
+            assertThat(server.lastHeaders).isNull();
+        }
+    }
+
+    @Test
+    void requestAuthorizationOverrideSupportsCamelCaseCustomHeadersAlias() throws Exception {
+        Map<String, Object> requestHeaders = new LinkedHashMap<>();
+        requestHeaders.put("Authorization", "Custom alias-token");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(jsonResponse("ok"))) {
+            OpenAIModelClient client = openAiClient(server.baseUrl(), Map.of());
+
+            client.invoke(
+                    List.of(new UserMessage("hello")),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    Map.of("customHeaders", requestHeaders)
+            );
+
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Custom alias-token");
+            assertThat(server.lastBody).doesNotContainKey("extra_headers");
+        }
+    }
+
+    @Test
+    void configuredAuthorizationHeaderIsIgnored() throws Exception {
+        Map<String, Object> configHeaders = new LinkedHashMap<>();
+        configHeaders.put("Token", "token-static");
+        configHeaders.put("Authorization", "Bearer static-token");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(jsonResponse("ok"))) {
+            OpenAIModelClient client = openAiClient(server.baseUrl(), configHeaders);
+
+            client.invoke(List.of(new UserMessage("hello")), null, null, null, null, null, null, null, null, Map.of());
+
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Bearer sk-test");
+            assertThat(header(server.lastHeaders, "Token")).isEqualTo("token-static");
         }
     }
 
@@ -171,6 +329,7 @@ class ModelCustomHeadersMissingTest {
         Map<String, Object> requestHeaders = new LinkedHashMap<>();
         requestHeaders.put("UserID", "user-req");
         requestHeaders.put("Connection", "blocked");
+        requestHeaders.put("Authorization", "Bearer stream-token");
 
         try (MockOpenAiServer server = new MockOpenAiServer(streamResponse())) {
             OpenAIModelClient client = openAiClient(server.baseUrl(), configHeaders);
@@ -192,6 +351,7 @@ class ModelCustomHeadersMissingTest {
             }
 
             assertThat(header(server.lastHeaders, "UserID")).isEqualTo("user-req");
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Bearer stream-token");
             assertThat(header(server.lastHeaders, "Host")).isNotEqualTo("blocked");
             assertThat(header(server.lastHeaders, "Connection")).isNotEqualTo("blocked");
         }
@@ -286,6 +446,7 @@ class ModelCustomHeadersMissingTest {
         private final HttpServer server;
         private final String responseBody;
         private Map<String, String> lastHeaders;
+        private Map<String, Object> lastBody;
 
         private MockOpenAiServer(String responseBody) throws IOException {
             this.responseBody = responseBody;
@@ -299,7 +460,7 @@ class ModelCustomHeadersMissingTest {
         }
 
         private void handle(HttpExchange exchange) throws IOException {
-            OBJECT_MAPPER.readValue(
+            lastBody = OBJECT_MAPPER.readValue(
                     exchange.getRequestBody().readAllBytes(),
                     new TypeReference<LinkedHashMap<String, Object>>() {
                     }

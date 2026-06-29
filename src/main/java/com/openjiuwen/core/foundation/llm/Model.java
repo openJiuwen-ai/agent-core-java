@@ -191,6 +191,7 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
                     "provider and invoker are required"
             );
         }
+        removeProviderRegistration(CLIENT_FACTORIES, provider);
         INVOKERS.put(provider, invoker);
     }
 
@@ -202,6 +203,7 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
                     "provider and client factory are required"
             );
         }
+        removeProviderRegistration(INVOKERS, provider);
         CLIENT_FACTORIES.put(provider, factory);
     }
 
@@ -434,6 +436,11 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
             }
         }
         return null;
+    }
+
+    private static <T> void removeProviderRegistration(Map<String, T> registrations, String provider) {
+        String normalized = provider.toLowerCase(Locale.ROOT);
+        registrations.keySet().removeIf(key -> key.toLowerCase(Locale.ROOT).equals(normalized));
     }
 
     private static List<String> availableProviders() {

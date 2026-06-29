@@ -16,6 +16,9 @@ import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.InMemoryState;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
+import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
+import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -81,6 +84,44 @@ class RedisCheckpointerStorageTest {
         List<?> messages = assertInstanceOf(List.class, restored.state().getGlobal("messages"));
         UserMessage userMessage = assertInstanceOf(UserMessage.class, messages.get(0));
         assertEquals("legacy java checkpoint", userMessage.getContentAsString());
+    }
+
+    @Test
+    void jsonDumpTypePersistsExternalToolPendingStateForAgentState() {
+        FakeRedisClient redisClient = new FakeRedisClient();
+        RedisCheckpointer checkpointer = jsonCheckpointer(redisClient);
+        Config config = agentConfig("agent-1");
+        ToolCall toolCall = ToolCall.builder()
+                .id("call-browser-1")
+                .type("function")
+                .name("frontend_read_text_input")
+                .arguments("{\"field_id\":\"demo_external_text\"}")
+                .build();
+        ExternalToolPendingState pendingState = new ExternalToolPendingState(
+                AssistantMessage.builder().content("").toolCalls(List.of(toolCall)).build(),
+                2,
+                "read browser input",
+                List.of(toolCall),
+                List.of(new ExternalToolCallRequest(
+                        "call-browser-1",
+                        "frontend_read_text_input",
+                        "{\"field_id\":\"demo_external_text\"}"
+                ))
+        );
+        AgentSession session = agentSession("session-1", config, checkpointer);
+        session.state().updateGlobal(Map.of(ReActAgent.EXTERNAL_TOOL_PENDING_KEY, pendingState));
+
+        checkpointer.postAgentExecute(session);
+
+        AgentSession restored = agentSession("session-1", config, checkpointer);
+        checkpointer.preAgentExecute(restored, null);
+
+        ExternalToolPendingState restoredPending = assertInstanceOf(
+                ExternalToolPendingState.class,
+                restored.state().getGlobal(ReActAgent.EXTERNAL_TOOL_PENDING_KEY));
+        assertEquals(2, restoredPending.getIteration());
+        assertEquals("call-browser-1", restoredPending.getPendingToolCalls().get(0).getId());
+        assertEquals("frontend_read_text_input", restoredPending.getExternalToolCalls().get(0).getToolName());
     }
 
     @Test
