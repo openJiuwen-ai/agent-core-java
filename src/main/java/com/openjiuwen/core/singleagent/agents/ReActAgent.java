@@ -1697,8 +1697,11 @@ public class ReActAgent extends BaseAgent {
     }
 
     private static void closeStreamAndCommit(AgentSessionLifecycle session) {
-        session.closeStream();
-        session.commit();
+        try {
+            session.commit();
+        } finally {
+            session.closeStream();
+        }
     }
 
     private static void closeIterator(Iterator<?> iterator) {

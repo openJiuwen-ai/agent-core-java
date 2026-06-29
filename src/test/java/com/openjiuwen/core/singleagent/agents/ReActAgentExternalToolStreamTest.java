@@ -14,7 +14,11 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
+import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -28,9 +32,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ReActAgentExternalToolStreamTest {
     private static final String EXTERNAL_TOOL_NAME = "frontend_read_text_input";
@@ -40,6 +50,7 @@ class ReActAgentExternalToolStreamTest {
 
     @AfterEach
     void tearDown() {
+        CheckpointerFactory.setDefaultCheckpointer(null);
         for (String toolId : registeredToolIds) {
             Runner.resourceMgr().removeTool(toolId);
         }
@@ -100,6 +111,33 @@ class ReActAgentExternalToolStreamTest {
                 .containsEntry("result_type", "answer")
                 .containsEntry("output", "final answer");
         assertThat(normalToolInvokes).hasValue(1);
+    }
+
+    @Test
+    void streamIteratorDoesNotCompleteBeforeCloseTimeCommitFinishes() throws Exception {
+        ScriptedReActAgent agent = new ScriptedReActAgent(List.of(new AssistantMessage("final answer")));
+        BlockingPostAgentCheckpointer checkpointer = new BlockingPostAgentCheckpointer();
+        CheckpointerFactory.setDefaultCheckpointer(checkpointer);
+
+        Iterator<Object> stream = agent.stream(
+                Map.of("query", "say hello"),
+                new AgentSession("stream-close-commit-" + UUID.randomUUID(), null, agent.getCard()),
+                List.of()
+        );
+        CompletableFuture<List<OutputSchema>> drained = CompletableFuture.supplyAsync(() -> collectOutput(stream));
+
+        assertThat(checkpointer.awaitCommitStarted()).isTrue();
+        try {
+            assertThatThrownBy(() -> drained.get(200, TimeUnit.MILLISECONDS))
+                    .as("stream iterator must stay open until close-time checkpoint commit finishes")
+                    .isInstanceOf(TimeoutException.class);
+        } finally {
+            checkpointer.releaseCommit();
+        }
+
+        assertThat(payload(singleOutput(drained.get(5, TimeUnit.SECONDS), "answer")))
+                .containsEntry("result_type", "answer")
+                .containsEntry("output", "final answer");
     }
 
     private ScriptedReActAgent pendingAgent(AtomicInteger normalToolInvokes) {
@@ -248,6 +286,36 @@ class ReActAgentExternalToolStreamTest {
         public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             invokes.incrementAndGet();
             return Map.of("value", inputs.get("value"), "status", "counted");
+        }
+    }
+
+    private static final class BlockingPostAgentCheckpointer extends InMemoryCheckpointer {
+        private final CountDownLatch commitStarted = new CountDownLatch(1);
+        private final CountDownLatch releaseCommit = new CountDownLatch(1);
+        private final AtomicBoolean blocked = new AtomicBoolean();
+
+        @Override
+        public void postAgentExecute(BaseSession session) {
+            if (blocked.compareAndSet(false, true)) {
+                commitStarted.countDown();
+                try {
+                    if (!releaseCommit.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Timed out waiting to release commit");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                }
+            }
+            super.postAgentExecute(session);
+        }
+
+        boolean awaitCommitStarted() throws InterruptedException {
+            return commitStarted.await(5, TimeUnit.SECONDS);
+        }
+
+        void releaseCommit() {
+            releaseCommit.countDown();
         }
     }
 
