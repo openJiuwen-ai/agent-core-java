@@ -7,9 +7,13 @@ package com.openjiuwen.core.singleagent.external;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 
+import java.io.Serializable;
 import java.util.List;
 
-public final class ExternalToolPendingState {
+public final class ExternalToolPendingState implements Serializable {
+    @java.io.Serial
+    private static final long serialVersionUID = 1L;
+
     private final AssistantMessage assistantMessage;
     private final int iteration;
     private final String originalQuery;

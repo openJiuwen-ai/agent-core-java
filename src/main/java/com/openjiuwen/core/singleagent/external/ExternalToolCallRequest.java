@@ -4,10 +4,14 @@
 
 package com.openjiuwen.core.singleagent.external;
 
+import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public final class ExternalToolCallRequest {
+public final class ExternalToolCallRequest implements Serializable {
+    @java.io.Serial
+    private static final long serialVersionUID = 1L;
+
     private final String toolCallId;
     private final String toolName;
     private final String arguments;
