@@ -20,7 +20,9 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.external.ExternalToolResult;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +33,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -179,6 +182,33 @@ class ReActAgentExternalToolPendingTest {
 
         assertThat(outputToolCallIds(outputsOfType(session, "tool_result")))
                 .containsExactly("call-external", "call-normal");
+    }
+
+    @Test
+    void resumeConsumesPendingForceFinishAfterToolResultsBeforeCallingModelAgain() {
+        AtomicInteger normalToolInvokes = new AtomicInteger();
+        ScriptedReActAgent agent = pendingAgent(normalToolInvokes);
+        MemorySession session = new MemorySession("resume-force-finish-session");
+        agent.invoke(Map.of("query", "read frontend"), session).toCompletableFuture().join();
+        Map<String, Object> forced = new LinkedHashMap<>(Map.of(
+                "output", "forced after resume tools",
+                "result_type", "answer"
+        ));
+        agent.getAgentCallbackManager().registerCallback(AgentCallbackEvent.BEFORE_INVOKE, context -> {
+            if (isExternalResumeInvoke(context)) {
+                context.requestForceFinish(forced);
+            }
+            return CompletableFuture.completedFuture(null);
+        }, 10).toCompletableFuture().join();
+
+        Object result = agent.invoke(Map.of(
+                "external_tool_results", List.of(externalResult("call-external", "from browser"))
+        ), session).toCompletableFuture().join();
+
+        assertThat(objectMap(result)).isEqualTo(forced);
+        assertThat(normalToolInvokes).hasValue(1);
+        assertThat(session.getState(ReActAgent.EXTERNAL_TOOL_PENDING_KEY)).isNull();
+        assertThat(agent.modelCallCount()).isEqualTo(1);
     }
 
     @Test
@@ -406,6 +436,15 @@ class ReActAgentExternalToolPendingTest {
 
     private static List<String> outputToolCallIds(List<OutputSchema> outputs) {
         return outputs.stream().map(output -> String.valueOf(outputPayload(output).get("tool_call_id"))).toList();
+    }
+
+    private static boolean isExternalResumeInvoke(AgentCallbackContext context) {
+        if (!(context.getInputs() instanceof InvokeInputs invokeInputs)) {
+            return false;
+        }
+        return "".equals(invokeInputs.getQuery())
+                && context.getSession() != null
+                && context.getSession().getState(ReActAgent.EXTERNAL_TOOL_PENDING_KEY) != null;
     }
 
     @SuppressWarnings("unchecked")

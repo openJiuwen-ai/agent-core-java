@@ -772,36 +772,85 @@ public class ReActAgent extends BaseAgent {
             activateSkillsLoadedByToolCalls(List.of(toolCall), executionResults, session);
             results.addAll(executionResults);
         }
-        appendMultimodalToolResultsMessage(results, context);
-        writeToolResultOutputs(ctx, session, state.getPendingToolCalls(), results);
-
         clearExternalToolPendingState(session);
+        boolean completed = completeToolExecutionTurn(
+                ctx,
+                context,
+                session,
+                invokeInputs,
+                state.getPendingToolCalls(),
+                results,
+                resumeAiMessage,
+                state.getIteration(),
+                state.getOriginalQuery(),
+                ToolExecutionTurnOrigin.EXTERNAL_RESUME
+        );
+        return completed ? invokeInputs.getResult() : null;
+    }
+
+    private enum ToolExecutionTurnOrigin {
+        NORMAL_TOOL_LOOP,
+        EXTERNAL_RESUME
+    }
+
+    private boolean completeToolExecutionTurn(AgentCallbackContext ctx,
+                                              ModelContext context,
+                                              AgentSessionApi session,
+                                              InvokeInputs invokeInputs,
+                                              List<ToolCall> toolCalls,
+                                              List<AbilityManager.ExecutionResult> results,
+                                              AssistantMessage aiMessage,
+                                              int iteration,
+                                              String originalQuery,
+                                              ToolExecutionTurnOrigin origin) {
+        boolean externalResume = origin == ToolExecutionTurnOrigin.EXTERNAL_RESUME;
+        if (externalResume) {
+            appendMultimodalToolResultsMessage(results, context);
+        }
+        writeToolResultOutputs(ctx, session, toolCalls, results);
+
+        ForceFinishRequest finish = ctx.consumeForceFinish();
+        if (finish != null) {
+            contextEngine.saveContexts(session);
+            invokeInputs.setResult(finish.getResult());
+            return true;
+        }
+
         ToolInterruptHandler.InterruptStateResult hitlInterrupt = hitlHandler.buildInterruptState(
                 results.stream().map(AbilityManager.ExecutionResult::result).toList(),
-                state.getPendingToolCalls(),
-                resumeAiMessage,
-                state.getIteration(),
-                state.getOriginalQuery()
+                toolCalls,
+                aiMessage,
+                iteration,
+                originalQuery
         );
         if (hitlInterrupt.getState() != null) {
-            contextEngine.saveContexts(session);
+            if (externalResume) {
+                contextEngine.saveContexts(session);
+            }
             hitlHandler.commitInterrupt(hitlInterrupt.getState(), session, invokeInputs,
                     hitlInterrupt.getPayloads());
-            return invokeInputs.getResult();
+            return true;
         }
+
         InterruptionState workflowInterrupt = afterExecuteToolCall(
                 results,
-                state.getPendingToolCalls(),
-                resumeAiMessage,
-                state.getIteration(),
-                state.getOriginalQuery()
+                toolCalls,
+                aiMessage,
+                iteration,
+                originalQuery
         );
         if (workflowInterrupt != null) {
-            contextEngine.saveContexts(session);
-            return commitInterrupt(workflowInterrupt, session, invokeInputs);
+            if (externalResume) {
+                contextEngine.saveContexts(session);
+            }
+            commitInterrupt(workflowInterrupt, session, invokeInputs);
+            return true;
         }
-        ctx.getExtra().put(InterruptConstants.RESUME_START_ITERATION_KEY, state.getIteration() + 1);
-        return null;
+
+        if (externalResume) {
+            ctx.getExtra().put(InterruptConstants.RESUME_START_ITERATION_KEY, iteration + 1);
+        }
+        return false;
     }
 
     public Object handleResume(Object interruptionState, Object userInput, AgentCallbackContext ctx,
@@ -1237,34 +1286,17 @@ public class ReActAgent extends BaseAgent {
                     }
                     List<AbilityManager.ExecutionResult> results = executeToolCall(ctx, toolCalls, session, context);
                     activateSkillsLoadedByToolCalls(toolCalls, results, session);
-                    writeToolResultOutputs(ctx, session, toolCalls, results);
-                    finish = ctx.consumeForceFinish();
-                    if (finish != null) {
-                        contextEngine.saveContexts(session);
-                        invokeInputs.setResult(finish.getResult());
-                        break;
-                    }
-                    ToolInterruptHandler.InterruptStateResult hitlInterrupt = hitlHandler.buildInterruptState(
-                            results.stream().map(AbilityManager.ExecutionResult::result).toList(),
+                    if (completeToolExecutionTurn(
+                            ctx,
+                            context,
+                            session,
+                            invokeInputs,
                             toolCalls,
-                            aiMessage,
-                            iteration,
-                            Objects.toString(ctx.getExtra().get("_original_query"), "")
-                    );
-                    if (hitlInterrupt.getState() != null) {
-                        hitlHandler.commitInterrupt(hitlInterrupt.getState(), session, invokeInputs,
-                                hitlInterrupt.getPayloads());
-                        break;
-                    }
-                    InterruptionState workflowInterrupt = afterExecuteToolCall(
                             results,
-                            toolCalls,
                             aiMessage,
                             iteration,
-                            Objects.toString(ctx.getExtra().get("_original_query"), "")
-                    );
-                    if (workflowInterrupt != null) {
-                        commitInterrupt(workflowInterrupt, session, invokeInputs);
+                            Objects.toString(ctx.getExtra().get("_original_query"), ""),
+                            ToolExecutionTurnOrigin.NORMAL_TOOL_LOOP)) {
                         break;
                     }
                 }
