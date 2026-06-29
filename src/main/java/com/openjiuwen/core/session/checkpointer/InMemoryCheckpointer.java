@@ -275,7 +275,8 @@ public class InMemoryCheckpointer extends Checkpointer {
 
         private static String getAgentId(BaseSession session) {
             try {
-                return (String) session.getClass().getMethod("agentId").invoke(session);
+                Object id = session.getClass().getMethod("agentId").invoke(session);
+                return id != null ? id.toString() : session.sessionId();
             } catch (Exception e) {
                 return session.sessionId();
             }
