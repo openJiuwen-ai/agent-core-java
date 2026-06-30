@@ -12,6 +12,7 @@ import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.JedisCluster;
 
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -201,6 +202,18 @@ class RedisCheckpointerProviderTest {
     }
 
     @Test
+    void connectionConfigIgnoresNullAndBlankClusterNodes() {
+        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
+                "nodes", Arrays.asList(null, "", "  ", "127.0.0.1:7000")
+        ));
+
+        connection.validate();
+
+        assertEquals(List.of("127.0.0.1:7000"), connection.getNodes());
+        assertEquals(Set.of(new HostAndPort("127.0.0.1", 7000)), connection.getClusterNodes());
+    }
+
+    @Test
     void connectionConfigAllowsUrlWhenNodesAreBlank() {
         RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
                 "url", "redis://127.0.0.1:6379",
@@ -241,6 +254,21 @@ class RedisCheckpointerProviderTest {
                 "nodes", List.of("127.0.0.1:7000"),
                 "timeout_millis", 2147483648L
         )));
+    }
+
+    @Test
+    void connectionConfigParsesBooleanStringsForSsl() {
+        RedisConnectionConfig sslEnabled = RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("127.0.0.1:7000"),
+                "ssl", "true"
+        ));
+        RedisConnectionConfig sslDisabled = RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("127.0.0.1:7000"),
+                "ssl", "false"
+        ));
+
+        assertTrue(sslEnabled.isSsl());
+        assertFalse(sslDisabled.isSsl());
     }
 
     @Test
