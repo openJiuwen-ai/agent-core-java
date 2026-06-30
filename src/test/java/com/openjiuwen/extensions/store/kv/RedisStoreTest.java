@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -101,6 +102,26 @@ class RedisStoreTest {
         RedisStore failingStore = new RedisStore(new ExplodingRedisClient());
         failingStore.set("volatile", "value").join();
         assertDoesNotThrow(() -> failingStore.refreshTtl(List.of("volatile"), 5));
+    }
+
+    @Test
+    void closeDoesNotReleaseExternalRedisClientByDefault() {
+        CloseableRedisClient redisClient = new CloseableRedisClient();
+        RedisStore store = new RedisStore(redisClient);
+
+        store.close();
+
+        assertEquals(0, redisClient.closeCount());
+    }
+
+    @Test
+    void closeReleasesOwnedRedisClient() {
+        CloseableRedisClient redisClient = new CloseableRedisClient();
+        RedisStore store = new RedisStore(redisClient, true);
+
+        store.close();
+
+        assertEquals(1, redisClient.closeCount());
     }
 
     static class FakeRedisClient {
@@ -193,6 +214,19 @@ class RedisStoreTest {
     }
 
     static final class FakeRedisClusterClient extends FakeRedisClient {
+    }
+
+    static final class CloseableRedisClient extends FakeRedisClient implements AutoCloseable {
+        private final AtomicInteger closeCount = new AtomicInteger();
+
+        @Override
+        public void close() {
+            closeCount.incrementAndGet();
+        }
+
+        int closeCount() {
+            return closeCount.get();
+        }
     }
 
     static class ExplodingRedisClient extends FakeRedisClient {

@@ -69,7 +69,7 @@ class RunnerTest {
     @AfterEach
     void resetConfig() {
         Runner.setConfig(RunnerConfig.DEFAULT_RUNNER_CONFIG.copy());
-        CheckpointerFactory.setDefaultCheckpointer(null);
+        CheckpointerFactory.releaseDefaultCheckpointer();
     }
 
     @Test
@@ -106,10 +106,8 @@ class RunnerTest {
     }
 
     @Test
-    void stopRestoresAndClosesCheckpointerCreatedFromConfig() {
-        Checkpointer previous = new InMemoryCheckpointer();
+    void stopClosesCheckpointerCreatedFromConfigAndFallsBackToInMemory() {
         CloseTrackingCheckpointer created = new CloseTrackingCheckpointer();
-        CheckpointerFactory.setDefaultCheckpointer(previous);
         CheckpointerFactory.register("unit-runner-closeable", conf -> created);
         RunnerConfig config = RunnerConfig.DEFAULT_RUNNER_CONFIG.copy();
         config.setCheckpointerConfig(new CheckpointerConfig("unit-runner-closeable", Map.of()));
@@ -119,15 +117,13 @@ class RunnerTest {
         assertSame(created, CheckpointerFactory.getCheckpointer());
         assertTrue(Runner.stop().toCompletableFuture().join());
 
-        assertSame(previous, CheckpointerFactory.getCheckpointer());
+        assertSame(CheckpointerFactory.defaultInMemoryCheckpointer(), CheckpointerFactory.getCheckpointer());
         assertTrue(created.closed);
     }
 
     @Test
-    void startFailureRestoresAndClosesCheckpointerCreatedFromConfig() {
-        Checkpointer previous = new InMemoryCheckpointer();
+    void startFailureClosesCheckpointerCreatedFromConfigAndFallsBackToInMemory() {
         CloseTrackingCheckpointer created = new CloseTrackingCheckpointer();
-        CheckpointerFactory.setDefaultCheckpointer(previous);
         CheckpointerFactory.register("unit-runner-start-failure", conf -> created);
         RunnerConfig config = RunnerConfig.DEFAULT_RUNNER_CONFIG.copy();
         config.setDistributedMode(true);
@@ -139,8 +135,23 @@ class RunnerTest {
 
         assertThrows(CompletionException.class, () -> Runner.start().toCompletableFuture().join());
 
-        assertSame(previous, CheckpointerFactory.getCheckpointer());
+        assertSame(CheckpointerFactory.defaultInMemoryCheckpointer(), CheckpointerFactory.getCheckpointer());
         assertTrue(created.closed);
+    }
+
+    @Test
+    void stopDoesNotCloseDefaultInstalledOutsideRunnerConfig() {
+        CloseTrackingCheckpointer explicit = new CloseTrackingCheckpointer();
+        CheckpointerFactory.register("unit-runner-external-default", conf -> explicit);
+        CheckpointerFactory.installDefaultCheckpointer(
+                new CheckpointerConfig("unit-runner-external-default", Map.of()));
+        Runner.setConfig(RunnerConfig.DEFAULT_RUNNER_CONFIG.copy());
+
+        assertTrue(Runner.start().toCompletableFuture().join());
+        assertTrue(Runner.stop().toCompletableFuture().join());
+
+        assertSame(explicit, CheckpointerFactory.getCheckpointer());
+        assertFalse(explicit.closed);
     }
 
     @Test
@@ -290,9 +301,9 @@ class RunnerTest {
 
     @Test
     void runAgentTeamRecoversTeamAndChildState() {
-        Checkpointer original = CheckpointerFactory.getCheckpointer();
         InMemoryCheckpointer checkpointer = new InMemoryCheckpointer();
-        CheckpointerFactory.setDefaultCheckpointer(checkpointer);
+        CheckpointerFactory.register("unit-runner-team-state", conf -> checkpointer);
+        CheckpointerFactory.installDefaultCheckpointer(new CheckpointerConfig("unit-runner-team-state", Map.of()));
         String teamId = "team_runner_session_team";
         String sessionId = "team_runner_session_state";
         try {
@@ -323,7 +334,7 @@ class RunnerTest {
             assertEquals(2, result2.get("worker_count"));
         } finally {
             checkpointer.release(sessionId);
-            CheckpointerFactory.setDefaultCheckpointer(original);
+            CheckpointerFactory.releaseDefaultCheckpointer();
         }
     }
 

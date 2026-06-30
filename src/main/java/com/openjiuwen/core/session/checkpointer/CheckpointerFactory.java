@@ -46,8 +46,34 @@ public final class CheckpointerFactory {
         return provider.create(actual.getConf());
     }
 
-    public static void setDefaultCheckpointer(Checkpointer checkpointer) {
+    public static synchronized void installDefaultCheckpointer(CheckpointerConfig config) {
+        if (config == null) {
+            return;
+        }
+        Checkpointer checkpointer = create(config);
+        try {
+            releaseDefaultCheckpointer();
+        } catch (RuntimeException exception) {
+            closeDefaultCheckpointer(checkpointer);
+            throw exception;
+        }
         defaultCheckpointer = checkpointer;
+    }
+
+    public static synchronized void releaseDefaultCheckpointer() {
+        Checkpointer checkpointer = defaultCheckpointer;
+        defaultCheckpointer = null;
+        closeDefaultCheckpointer(checkpointer);
+    }
+
+    private static void closeDefaultCheckpointer(Checkpointer checkpointer) {
+        if (checkpointer instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception exception) {
+                throw new IllegalStateException("Failed to close default checkpointer", exception);
+            }
+        }
     }
 
     public static void setCheckpointer(String storeType, Checkpointer checkpointer) {

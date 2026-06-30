@@ -7,6 +7,7 @@ import com.openjiuwen.core.session.checkpointer.CheckpointerConfig;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.extensions.store.kv.JedisClusterRedisStore;
+import com.openjiuwen.extensions.store.kv.RedisStore;
 import org.junit.jupiter.api.Test;
 import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.JedisClientConfig;
@@ -96,7 +97,7 @@ class RedisCheckpointerProviderTest {
     }
 
     @Test
-    void closeClosesOnlyOwnedJedisCluster() {
+    void closeClosesOwnedJedisClusterAndLeavesExternalClusterOpen() {
         JedisCluster ownedCluster = mock(JedisCluster.class);
         RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider((nodes, clientConfig) -> ownedCluster);
 
@@ -105,7 +106,6 @@ class RedisCheckpointerProviderTest {
                 "dump_type", "json"
         )));
 
-        ownedCheckpointer.close();
         ownedCheckpointer.close();
 
         verify(ownedCluster).close();
@@ -119,6 +119,16 @@ class RedisCheckpointerProviderTest {
         externalCheckpointer.close();
 
         verify(externalCluster, never()).close();
+    }
+
+    @Test
+    void closeDelegatesResourceReleaseToRedisStore() {
+        CloseTrackingRedisStore redisStore = new CloseTrackingRedisStore(new FakeRedisClient());
+        RedisCheckpointer checkpointer = new RedisCheckpointer(redisStore, Map.of());
+
+        checkpointer.close();
+
+        assertEquals(1, redisStore.closeCount());
     }
 
     @Test
@@ -471,6 +481,23 @@ class RedisCheckpointerProviderTest {
             operations.forEach(Runnable::run);
             operations.clear();
             return List.of();
+        }
+    }
+
+    static final class CloseTrackingRedisStore extends RedisStore {
+        private int closeCount;
+
+        CloseTrackingRedisStore(Object redisClient) {
+            super(redisClient);
+        }
+
+        @Override
+        public void close() {
+            closeCount++;
+        }
+
+        int closeCount() {
+            return closeCount;
         }
     }
 }

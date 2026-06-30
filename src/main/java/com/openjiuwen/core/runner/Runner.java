@@ -41,7 +41,6 @@ import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
 import com.openjiuwen.core.session.WorkflowSessionApi;
-import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -296,8 +295,7 @@ public final class Runner {
         private ReplyTopicSubscription systemReplySub;
         private Object rootTaskGroup;
         private TeamRuntimeManager teamRuntimeManager;
-        private Checkpointer configuredCheckpointer;
-        private Checkpointer previousDefaultCheckpointer;
+        private boolean defaultCheckpointerInstalledFromConfig;
 
         private RunnerImpl(RunnerConfig config) {
             this("global", config);
@@ -354,7 +352,7 @@ public final class Runner {
                     }
                     return true;
                 } catch (RuntimeException | Error error) {
-                    restoreConfiguredCheckpointerOnStartFailure(error);
+                    releaseConfiguredCheckpointerOnStartFailure(error);
                     throw error;
                 }
             });
@@ -376,7 +374,7 @@ public final class Runner {
                     return messageQueue.stop();
                 } finally {
                     resourceManager.release().toCompletableFuture().join();
-                    restoreConfiguredCheckpointer();
+                    releaseConfiguredCheckpointer();
                     rootTaskGroup = null;
                 }
             });
@@ -1260,39 +1258,27 @@ public final class Runner {
         }
 
         private void initializeCheckpointer(RunnerConfig config) {
+            defaultCheckpointerInstalledFromConfig = false;
             if (config == null || config.getCheckpointerConfig() == null) {
                 return;
             }
-            restoreConfiguredCheckpointer();
-            previousDefaultCheckpointer = CheckpointerFactory.getCheckpointer();
-            Checkpointer checkpointer = CheckpointerFactory.create(config.getCheckpointerConfig());
-            configuredCheckpointer = checkpointer;
-            CheckpointerFactory.setDefaultCheckpointer(checkpointer);
+            CheckpointerFactory.installDefaultCheckpointer(config.getCheckpointerConfig());
+            defaultCheckpointerInstalledFromConfig = true;
         }
 
-        private void restoreConfiguredCheckpointer() {
-            Checkpointer checkpointer = configuredCheckpointer;
-            if (checkpointer == null) {
-                return;
-            }
-
-            CheckpointerFactory.setDefaultCheckpointer(previousDefaultCheckpointer);
-            configuredCheckpointer = null;
-            previousDefaultCheckpointer = null;
-            if (checkpointer instanceof AutoCloseable closeable) {
-                try {
-                    closeable.close();
-                } catch (Exception exception) {
-                    throw new IllegalStateException("Failed to close runner checkpointer", exception);
-                }
-            }
-        }
-
-        private void restoreConfiguredCheckpointerOnStartFailure(Throwable error) {
+        private void releaseConfiguredCheckpointerOnStartFailure(Throwable error) {
             try {
-                restoreConfiguredCheckpointer();
+                releaseConfiguredCheckpointer();
             } catch (RuntimeException cleanupError) {
                 error.addSuppressed(cleanupError);
+            }
+        }
+
+        private void releaseConfiguredCheckpointer() {
+            boolean installed = defaultCheckpointerInstalledFromConfig;
+            defaultCheckpointerInstalledFromConfig = false;
+            if (installed) {
+                CheckpointerFactory.releaseDefaultCheckpointer();
             }
         }
 

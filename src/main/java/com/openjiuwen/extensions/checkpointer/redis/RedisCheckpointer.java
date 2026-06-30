@@ -35,7 +35,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Redis-based checkpointer implementation.
@@ -49,8 +48,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
 
     private final RedisStore redisStore;
-    private final AutoCloseable ownedClient;
-    private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AgentStorage agentStorage;
     private final AgentGroupStorage agentGroupStorage;
     private final WorkflowStorage workflowStorage;
@@ -64,12 +61,7 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
      * @param ttl        Optional storage configuration, including TTL and dump type
      */
     public RedisCheckpointer(RedisStore redisStore, Map<String, Object> ttl) {
-        this(redisStore, ttl, null);
-    }
-
-    RedisCheckpointer(RedisStore redisStore, Map<String, Object> ttl, AutoCloseable ownedClient) {
         this.redisStore = redisStore;
-        this.ownedClient = ownedClient;
         this.agentStorage = new AgentStorage(redisStore, ttl);
         this.agentGroupStorage = new AgentGroupStorage(redisStore, ttl);
         this.workflowStorage = new WorkflowStorage(redisStore, ttl);
@@ -231,14 +223,7 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
 
     @Override
     public void close() {
-        if (ownedClient == null || !closed.compareAndSet(false, true)) {
-            return;
-        }
-        try {
-            ownedClient.close();
-        } catch (Exception e) {
-            throw new IllegalStateException("Failed to close Redis checkpointer client", e);
-        }
+        redisStore.close();
     }
 
     /**
@@ -331,8 +316,8 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
             if (!connection.getNodes().isEmpty()) {
                 JedisCluster jedisCluster = jedisClusterFactory.create(connection.getClusterNodes(),
                         buildClientConfig(connection));
-                return new RedisCheckpointer(new JedisClusterRedisStore(jedisCluster), config.getStorageConfigMap(),
-                        jedisCluster);
+                return new RedisCheckpointer(new JedisClusterRedisStore(jedisCluster, true),
+                        config.getStorageConfigMap());
             }
 
             String connectionUrl = connection.getConnectionUrl();
@@ -344,7 +329,7 @@ public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
                     ? new UrlBackedRedisClusterClient(connectionUrl, connection.getConnectionArgs())
                     : new UrlBackedRedisClient(connectionUrl, connection.getConnectionArgs());
 
-            RedisStore redisStore = new RedisStore(redisClient);
+            RedisStore redisStore = new RedisStore(redisClient, true);
             return new RedisCheckpointer(redisStore, config.getStorageConfigMap());
         }
 

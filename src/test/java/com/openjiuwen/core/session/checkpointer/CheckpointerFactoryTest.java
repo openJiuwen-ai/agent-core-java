@@ -9,6 +9,7 @@ import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -29,7 +30,7 @@ class CheckpointerFactoryTest {
 
     @AfterEach
     void resetDefault() {
-        CheckpointerFactory.setDefaultCheckpointer(null);
+        CheckpointerFactory.releaseDefaultCheckpointer();
     }
 
     @Test
@@ -38,6 +39,14 @@ class CheckpointerFactoryTest {
 
         assertInstanceOf(InMemoryCheckpointer.class, checkpointer);
         assertSame(CheckpointerFactory.defaultInMemoryCheckpointer(), CheckpointerFactory.getCheckpointer("in_memory"));
+    }
+
+    @Test
+    void doesNotExposeRawDefaultCheckpointerSetter() {
+        boolean exposesSetter = Arrays.stream(CheckpointerFactory.class.getDeclaredMethods())
+                .anyMatch(method -> method.getName().equals("setDefaultCheckpointer"));
+
+        assertFalse(exposesSetter);
     }
 
     @Test
@@ -57,6 +66,55 @@ class CheckpointerFactoryTest {
         Checkpointer created = CheckpointerFactory.create(new CheckpointerConfig("unit-custom", Map.of("x", 1)));
 
         assertSame(expected, created);
+    }
+
+    @Test
+    void installDefaultCheckpointerSetsDefaultUntilReleased() {
+        CloseTrackingCheckpointer created = new CloseTrackingCheckpointer();
+        CheckpointerFactory.register("unit-configured-closeable", conf -> created);
+
+        CheckpointerFactory.installDefaultCheckpointer(new CheckpointerConfig("unit-configured-closeable", Map.of()));
+
+        assertSame(created, CheckpointerFactory.getCheckpointer());
+        assertFalse(created.closed);
+
+        CheckpointerFactory.releaseDefaultCheckpointer();
+
+        assertSame(CheckpointerFactory.defaultInMemoryCheckpointer(), CheckpointerFactory.getCheckpointer());
+        assertTrue(created.closed);
+    }
+
+    @Test
+    void installDefaultCheckpointerWithNullConfigLeavesDefaultUnchanged() {
+        Checkpointer existing = new InMemoryCheckpointer();
+        CheckpointerFactory.register("unit-existing-default", conf -> existing);
+        CheckpointerFactory.installDefaultCheckpointer(new CheckpointerConfig("unit-existing-default", Map.of()));
+
+        CheckpointerFactory.installDefaultCheckpointer(null);
+
+        assertSame(existing, CheckpointerFactory.getCheckpointer());
+    }
+
+    @Test
+    void installDefaultCheckpointerReplacesCurrentDefaultAndClosesPreviousDefault() {
+        CloseTrackingCheckpointer first = new CloseTrackingCheckpointer();
+        CloseTrackingCheckpointer second = new CloseTrackingCheckpointer();
+        CheckpointerFactory.register("unit-configured-replace-first", conf -> first);
+        CheckpointerFactory.register("unit-configured-replace-second", conf -> second);
+
+        CheckpointerFactory.installDefaultCheckpointer(
+                new CheckpointerConfig("unit-configured-replace-first", Map.of()));
+        CheckpointerFactory.installDefaultCheckpointer(
+                new CheckpointerConfig("unit-configured-replace-second", Map.of()));
+
+        assertSame(second, CheckpointerFactory.getCheckpointer());
+        assertTrue(first.closed);
+        assertFalse(second.closed);
+
+        CheckpointerFactory.releaseDefaultCheckpointer();
+
+        assertSame(CheckpointerFactory.defaultInMemoryCheckpointer(), CheckpointerFactory.getCheckpointer());
+        assertTrue(second.closed);
     }
 
     @Test
@@ -100,5 +158,14 @@ class CheckpointerFactoryTest {
         assertTrue(text.contains(":***@example.com"));
         assertFalse(text.contains("plain-redis-password"));
         assertFalse(text.contains("plain-api-key"));
+    }
+
+    private static final class CloseTrackingCheckpointer extends Checkpointer implements AutoCloseable {
+        private boolean closed;
+
+        @Override
+        public void close() {
+            closed = true;
+        }
     }
 }
