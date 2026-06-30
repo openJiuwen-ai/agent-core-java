@@ -21,6 +21,9 @@ import com.openjiuwen.extensions.checkpointer.redis.storage.GraphStore;
 import com.openjiuwen.extensions.checkpointer.redis.storage.WorkflowStorage;
 import com.openjiuwen.extensions.store.kv.JedisClusterRedisStore;
 import com.openjiuwen.extensions.store.kv.RedisStore;
+import redis.clients.jedis.DefaultJedisClientConfig;
+import redis.clients.jedis.HostAndPort;
+import redis.clients.jedis.JedisClientConfig;
 import redis.clients.jedis.JedisCluster;
 
 import java.time.Duration;
@@ -29,8 +32,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Redis-based checkpointer implementation.
@@ -41,9 +46,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>Mirrors Python's {@code RedisCheckpointer} in
  * {@code openjiuwen/extensions/checkpointer/redis/checkpointer.py}.</p>
  */
-public class RedisCheckpointer extends Checkpointer {
+public class RedisCheckpointer extends Checkpointer implements AutoCloseable {
 
     private final RedisStore redisStore;
+    private final AutoCloseable ownedClient;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
     private final AgentStorage agentStorage;
     private final AgentGroupStorage agentGroupStorage;
     private final WorkflowStorage workflowStorage;
@@ -57,7 +64,12 @@ public class RedisCheckpointer extends Checkpointer {
      * @param ttl        Optional storage configuration, including TTL and dump type
      */
     public RedisCheckpointer(RedisStore redisStore, Map<String, Object> ttl) {
+        this(redisStore, ttl, null);
+    }
+
+    RedisCheckpointer(RedisStore redisStore, Map<String, Object> ttl, AutoCloseable ownedClient) {
         this.redisStore = redisStore;
+        this.ownedClient = ownedClient;
         this.agentStorage = new AgentStorage(redisStore, ttl);
         this.agentGroupStorage = new AgentGroupStorage(redisStore, ttl);
         this.workflowStorage = new WorkflowStorage(redisStore, ttl);
@@ -217,6 +229,18 @@ public class RedisCheckpointer extends Checkpointer {
         release(sessionId, null);
     }
 
+    @Override
+    public void close() {
+        if (ownedClient == null || !closed.compareAndSet(false, true)) {
+            return;
+        }
+        try {
+            ownedClient.close();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to close Redis checkpointer client", e);
+        }
+    }
+
     /**
      * Get the graph store.
      *
@@ -267,6 +291,21 @@ public class RedisCheckpointer extends Checkpointer {
      */
     public static final class Provider implements CheckpointerProvider {
 
+        @FunctionalInterface
+        interface JedisClusterFactory {
+            JedisCluster create(Set<HostAndPort> nodes, JedisClientConfig clientConfig);
+        }
+
+        private final JedisClusterFactory jedisClusterFactory;
+
+        public Provider() {
+            this(JedisCluster::new);
+        }
+
+        Provider(JedisClusterFactory jedisClusterFactory) {
+            this.jedisClusterFactory = jedisClusterFactory;
+        }
+
         @Override
         public Checkpointer create(Map<String, Object> conf) {
             RedisCheckpointerConfig config;
@@ -276,27 +315,49 @@ public class RedisCheckpointer extends Checkpointer {
             } catch (RuntimeException e) {
                 throw new IllegalArgumentException(
                         "Invalid Redis checkpointer configuration: " + e.getMessage()
-                                + ". Configuration must include a 'connection' map with either 'redis_client' or 'url'.",
+                                + ". Configuration must include a 'connection' map with either 'redis_client', 'url', "
+                                + "or 'nodes'.",
                         e);
             }
 
             RedisConnectionConfig connection = config.getConnection();
             Object redisClient = connection.getRedisClient();
-            if (redisClient == null) {
-                String connectionUrl = connection.getConnectionUrl();
-                if (connectionUrl == null) {
-                    throw new IllegalArgumentException(
-                            "Either 'redis_client' or 'url' must be provided in connection configuration");
-                }
-                redisClient = connection.isClusterMode()
-                        ? new UrlBackedRedisClusterClient(connectionUrl, connection.getConnectionArgs())
-                        : new UrlBackedRedisClient(connectionUrl, connection.getConnectionArgs());
+            if (redisClient instanceof JedisCluster jedisCluster) {
+                return new RedisCheckpointer(new JedisClusterRedisStore(jedisCluster), config.getStorageConfigMap());
+            }
+            if (redisClient != null) {
+                return new RedisCheckpointer(new RedisStore(redisClient), config.getStorageConfigMap());
+            }
+            if (!connection.getNodes().isEmpty()) {
+                JedisCluster jedisCluster = jedisClusterFactory.create(connection.getClusterNodes(),
+                        buildClientConfig(connection));
+                return new RedisCheckpointer(new JedisClusterRedisStore(jedisCluster), config.getStorageConfigMap(),
+                        jedisCluster);
             }
 
-            RedisStore redisStore = redisClient instanceof JedisCluster jedisCluster
-                    ? new JedisClusterRedisStore(jedisCluster)
-                    : new RedisStore(redisClient);
+            String connectionUrl = connection.getConnectionUrl();
+            if (connectionUrl == null) {
+                throw new IllegalArgumentException(
+                        "Either 'redis_client', 'url', or 'nodes' must be provided in connection configuration");
+            }
+            redisClient = connection.isClusterMode()
+                    ? new UrlBackedRedisClusterClient(connectionUrl, connection.getConnectionArgs())
+                    : new UrlBackedRedisClient(connectionUrl, connection.getConnectionArgs());
+
+            RedisStore redisStore = new RedisStore(redisClient);
             return new RedisCheckpointer(redisStore, config.getStorageConfigMap());
+        }
+
+        private JedisClientConfig buildClientConfig(RedisConnectionConfig connection) {
+            DefaultJedisClientConfig.Builder builder = DefaultJedisClientConfig.builder()
+                    .connectionTimeoutMillis(connection.getTimeoutMillis())
+                    .socketTimeoutMillis(connection.getTimeoutMillis())
+                    .blockingSocketTimeoutMillis(connection.getTimeoutMillis())
+                    .ssl(connection.isSsl());
+            if (connection.getPassword() != null) {
+                builder.password(connection.getPassword());
+            }
+            return builder.build();
         }
     }
 
