@@ -22,6 +22,7 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentTeamSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.CheckpointerConfig;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -41,6 +42,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Stream;
 
@@ -50,6 +52,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -66,6 +69,7 @@ class RunnerTest {
     @AfterEach
     void resetConfig() {
         Runner.setConfig(RunnerConfig.DEFAULT_RUNNER_CONFIG.copy());
+        CheckpointerFactory.setDefaultCheckpointer(null);
     }
 
     @Test
@@ -99,6 +103,44 @@ class RunnerTest {
         assertFalse(Runner.getConfig().isDistributedMode());
         assertNull(Runner.getDistPubsub());
         assertTrue(Runner.stop().toCompletableFuture().join());
+    }
+
+    @Test
+    void stopRestoresAndClosesCheckpointerCreatedFromConfig() {
+        Checkpointer previous = new InMemoryCheckpointer();
+        CloseTrackingCheckpointer created = new CloseTrackingCheckpointer();
+        CheckpointerFactory.setDefaultCheckpointer(previous);
+        CheckpointerFactory.register("unit-runner-closeable", conf -> created);
+        RunnerConfig config = RunnerConfig.DEFAULT_RUNNER_CONFIG.copy();
+        config.setCheckpointerConfig(new CheckpointerConfig("unit-runner-closeable", Map.of()));
+        Runner.setConfig(config);
+
+        assertTrue(Runner.start().toCompletableFuture().join());
+        assertSame(created, CheckpointerFactory.getCheckpointer());
+        assertTrue(Runner.stop().toCompletableFuture().join());
+
+        assertSame(previous, CheckpointerFactory.getCheckpointer());
+        assertTrue(created.closed);
+    }
+
+    @Test
+    void startFailureRestoresAndClosesCheckpointerCreatedFromConfig() {
+        Checkpointer previous = new InMemoryCheckpointer();
+        CloseTrackingCheckpointer created = new CloseTrackingCheckpointer();
+        CheckpointerFactory.setDefaultCheckpointer(previous);
+        CheckpointerFactory.register("unit-runner-start-failure", conf -> created);
+        RunnerConfig config = RunnerConfig.DEFAULT_RUNNER_CONFIG.copy();
+        config.setDistributedMode(true);
+        config.setDistributedConfig(DistributedConfig.builder()
+                .messageQueueConfig(MessageQueueConfig.builder().type("missing-mq").build())
+                .build());
+        config.setCheckpointerConfig(new CheckpointerConfig("unit-runner-start-failure", Map.of()));
+        Runner.setConfig(config);
+
+        assertThrows(CompletionException.class, () -> Runner.start().toCompletableFuture().join());
+
+        assertSame(previous, CheckpointerFactory.getCheckpointer());
+        assertTrue(created.closed);
     }
 
     @Test
@@ -359,6 +401,15 @@ class RunnerTest {
         public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
             lastSession = session;
             return List.of(inputs).iterator();
+        }
+    }
+
+    private static final class CloseTrackingCheckpointer extends Checkpointer implements AutoCloseable {
+        private boolean closed;
+
+        @Override
+        public void close() {
+            closed = true;
         }
     }
 

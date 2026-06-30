@@ -7,6 +7,7 @@ package com.openjiuwen.core.session.checkpointer;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -59,6 +60,13 @@ public class CheckpointerConfig {
 
     @SuppressWarnings("unchecked")
     private Object redact(Object value) {
+        return redact(null, value);
+    }
+
+    private Object redact(String key, Object value) {
+        if (isSensitiveKey(key) && value != null) {
+            return "***";
+        }
         if (value instanceof String text && isUri(text)) {
             try {
                 URI uri = URI.create(text);
@@ -74,14 +82,28 @@ public class CheckpointerConfig {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> copy = new LinkedHashMap<>();
             for (Map.Entry<?, ?> entry : map.entrySet()) {
-                copy.put(String.valueOf(entry.getKey()), redact(entry.getValue()));
+                String entryKey = String.valueOf(entry.getKey());
+                copy.put(entryKey, redact(entryKey, entry.getValue()));
             }
             return copy;
         }
         if (value instanceof List<?> list) {
-            return list.stream().map(this::redact).toList();
+            return list.stream().map(item -> redact(null, item)).toList();
         }
         return value;
+    }
+
+    private boolean isSensitiveKey(String key) {
+        if (key == null) {
+            return false;
+        }
+        String normalized = key.toLowerCase(Locale.ROOT).replace("-", "_");
+        return normalized.contains("password")
+                || normalized.contains("passwd")
+                || normalized.contains("secret")
+                || normalized.contains("token")
+                || normalized.contains("api_key")
+                || normalized.contains("apikey");
     }
 
     private boolean isUri(String text) {

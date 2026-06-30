@@ -296,6 +296,8 @@ public final class Runner {
         private ReplyTopicSubscription systemReplySub;
         private Object rootTaskGroup;
         private TeamRuntimeManager teamRuntimeManager;
+        private Checkpointer configuredCheckpointer;
+        private Checkpointer previousDefaultCheckpointer;
 
         private RunnerImpl(RunnerConfig config) {
             this("global", config);
@@ -342,14 +344,19 @@ public final class Runner {
             return CompletableFuture.supplyAsync(() -> {
                 RunnerConfig config = RunnerConfig.getRunnerConfig();
                 initializeCheckpointer(config);
-                if (config.isDistributedMode()) {
-                    distributedMessageQueue = MessageQueueFactory.create(config.getDistributedConfig().getMessageQueueConfig());
-                    distributedMessageQueue.start();
-                    systemReplySub = new ReplyTopicSubscription(distributedMessageQueue);
-                    systemReplySub.activate();
-                    return messageQueue.start();
+                try {
+                    if (config.isDistributedMode()) {
+                        distributedMessageQueue = MessageQueueFactory.create(config.getDistributedConfig().getMessageQueueConfig());
+                        distributedMessageQueue.start();
+                        systemReplySub = new ReplyTopicSubscription(distributedMessageQueue);
+                        systemReplySub.activate();
+                        return messageQueue.start();
+                    }
+                    return true;
+                } catch (RuntimeException | Error error) {
+                    restoreConfiguredCheckpointerOnStartFailure(error);
+                    throw error;
                 }
-                return true;
             });
         }
 
@@ -369,6 +376,7 @@ public final class Runner {
                     return messageQueue.stop();
                 } finally {
                     resourceManager.release().toCompletableFuture().join();
+                    restoreConfiguredCheckpointer();
                     rootTaskGroup = null;
                 }
             });
@@ -1251,12 +1259,41 @@ public final class Runner {
                     "reason", "agent not exist");
         }
 
-        private static void initializeCheckpointer(RunnerConfig config) {
+        private void initializeCheckpointer(RunnerConfig config) {
             if (config == null || config.getCheckpointerConfig() == null) {
                 return;
             }
+            restoreConfiguredCheckpointer();
+            previousDefaultCheckpointer = CheckpointerFactory.getCheckpointer();
             Checkpointer checkpointer = CheckpointerFactory.create(config.getCheckpointerConfig());
+            configuredCheckpointer = checkpointer;
             CheckpointerFactory.setDefaultCheckpointer(checkpointer);
+        }
+
+        private void restoreConfiguredCheckpointer() {
+            Checkpointer checkpointer = configuredCheckpointer;
+            if (checkpointer == null) {
+                return;
+            }
+
+            CheckpointerFactory.setDefaultCheckpointer(previousDefaultCheckpointer);
+            configuredCheckpointer = null;
+            previousDefaultCheckpointer = null;
+            if (checkpointer instanceof AutoCloseable closeable) {
+                try {
+                    closeable.close();
+                } catch (Exception exception) {
+                    throw new IllegalStateException("Failed to close runner checkpointer", exception);
+                }
+            }
+        }
+
+        private void restoreConfiguredCheckpointerOnStartFailure(Throwable error) {
+            try {
+                restoreConfiguredCheckpointer();
+            } catch (RuntimeException cleanupError) {
+                error.addSuppressed(cleanupError);
+            }
         }
 
         private static Map<String, Object> inputKwargs(Object inputs) {

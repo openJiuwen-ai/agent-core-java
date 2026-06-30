@@ -82,6 +82,9 @@ class CheckpointerFactoryTest {
         CheckpointerConfig config = new CheckpointerConfig("redis", Map.of(
                 "url", "redis://user:secret@example.com:6379/0",
                 "nested", Map.of("endpoint", "postgres://name:password@example.com/db"),
+                "connection", Map.of(
+                        "password", "plain-redis-password",
+                        "api_key", "plain-api-key"),
                 "list", List.of("http://public.example.com", "mysql://root:pw@example.com/db")
         ));
 
@@ -89,9 +92,13 @@ class CheckpointerFactoryTest {
         String text = config.toString();
 
         assertFalse(repr.contains("secret"));
-        assertFalse(repr.contains("password"));
+        assertFalse(repr.contains("name:password"));
+        assertFalse(repr.contains("plain-redis-password"));
+        assertFalse(repr.contains("plain-api-key"));
         assertFalse(repr.contains("root:pw"));
         assertTrue(repr.contains(":***@example.com"));
         assertTrue(text.contains(":***@example.com"));
+        assertFalse(text.contains("plain-redis-password"));
+        assertFalse(text.contains("plain-api-key"));
     }
 }

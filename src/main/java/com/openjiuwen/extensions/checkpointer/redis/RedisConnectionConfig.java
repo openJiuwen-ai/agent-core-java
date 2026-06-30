@@ -169,6 +169,9 @@ public class RedisConnectionConfig {
         }
 
         if (!nodes.isEmpty()) {
+            if (Boolean.FALSE.equals(clusterMode)) {
+                throw new IllegalArgumentException("'nodes' require cluster_mode to be true or omitted");
+            }
             getClusterNodes();
         }
 
@@ -183,6 +186,10 @@ public class RedisConnectionConfig {
      * @return True if cluster mode should be used
      */
     public boolean isClusterMode() {
+        if (clusterMode != null) {
+            return clusterMode;
+        }
+
         if (!nodes.isEmpty()) {
             return true;
         }
@@ -190,10 +197,6 @@ public class RedisConnectionConfig {
         if (redisClient != null) {
             // Check if client is a cluster client
             return redisClient.getClass().getSimpleName().contains("Cluster");
-        }
-
-        if (clusterMode != null) {
-            return clusterMode;
         }
 
         if (connectionArgs != null) {
@@ -331,6 +334,10 @@ public class RedisConnectionConfig {
         }
 
         String trimmedNode = node.trim();
+        if (trimmedNode.contains("://") || trimmedNode.contains(",")) {
+            throw new IllegalArgumentException("Redis cluster node must be in host:port form: " + node);
+        }
+
         int separatorIndex = trimmedNode.lastIndexOf(':');
         if (separatorIndex <= 0 || separatorIndex == trimmedNode.length() - 1) {
             throw new IllegalArgumentException("Redis cluster node must be in host:port form: " + node);

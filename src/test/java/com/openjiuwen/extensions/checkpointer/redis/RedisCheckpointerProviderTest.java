@@ -246,6 +246,21 @@ class RedisCheckpointerProviderTest {
 
         assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
                 "cluster_mode", true,
+                "nodes", List.of("redis://127.0.0.1:7000")
+        )).validate());
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", true,
+                "nodes", List.of("127.0.0.1:7000,127.0.0.1:7001")
+        )).validate());
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", false,
+                "nodes", List.of("127.0.0.1:7000")
+        )).validate());
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", true,
                 "nodes", List.of("127.0.0.1:7000"),
                 "timeout_millis", 0
         )).validate());
