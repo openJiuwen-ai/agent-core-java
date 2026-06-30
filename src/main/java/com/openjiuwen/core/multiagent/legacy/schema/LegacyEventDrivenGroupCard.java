@@ -5,11 +5,9 @@
 package com.openjiuwen.core.multiagent.legacy.schema;
 
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
 import java.util.HashMap;
 import java.util.List;
@@ -23,7 +21,6 @@ import java.util.Map;
  * @deprecated Use {@link com.openjiuwen.core.multiagent.schema.EventDrivenGroupCard}.
  */
 @Data
-@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
@@ -33,6 +30,5 @@ public class LegacyEventDrivenGroupCard extends LegacyGroupCard {
     /**
      * Subscription mapping: {agent_id: [topic1, topic2, ...]}.
      */
-    @Builder.Default
     private Map<String, List<String>> subscriptions = new HashMap<>();
 }

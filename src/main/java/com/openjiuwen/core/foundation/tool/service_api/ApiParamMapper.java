@@ -52,6 +52,9 @@ public class ApiParamMapper {
      * @return map from {@link ApiParamLocation} to parameters for that location
      */
     @SuppressWarnings("unchecked")
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Map<ApiParamLocation, Map<String, Object>> map(Map<String, Object> inputs,
                                                           ApiParamLocation defaultLocation) {
         Map<ApiParamLocation, Map<String, Object>> result;

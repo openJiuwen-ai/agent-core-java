@@ -23,6 +23,17 @@ import java.util.Map;
 @AllArgsConstructor
 public class SandboxGatewayConfig {
 
+    /** Isolation and naming strategy for the sandbox instance. */
+    @Builder.Default
+    private SandboxIsolationConfig isolation = SandboxIsolationConfig.builder().build();
+
+    /** Launcher/runtime acquisition configuration. */
+    private SandboxLauncherConfig launcherConfig;
+
+    /** Unified timeout in seconds for sandbox readiness/invoke operations. */
+    @Builder.Default
+    private int timeoutSeconds = 30;
+
     /** Remote sandbox gateway service endpoint. */
     @Builder.Default
     private String gatewayUrl = "";

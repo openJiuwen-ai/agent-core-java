@@ -11,6 +11,9 @@ import com.openjiuwen.core.retrieval.vector_store.VectorStore;
  */
 public class ChromaIndexer extends InMemoryIndexer {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public ChromaIndexer(VectorStore vectorStore) {
         super(vectorStore);
     }

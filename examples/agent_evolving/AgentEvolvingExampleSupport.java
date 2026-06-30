@@ -6,12 +6,12 @@ package examples.agent_evolving;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.openjiuwen.agent_evolving.dataset.Case;
-import com.openjiuwen.agent_evolving.dataset.CaseLoader;
-import com.openjiuwen.agent_evolving.evaluator.DefaultEvaluator;
-import com.openjiuwen.agent_evolving.optimizer.llm_call.InstructionOptimizer;
-import com.openjiuwen.agent_evolving.trainer.Trainer;
-import com.openjiuwen.agent_evolving.updater.SingleDimUpdater;
+import com.openjiuwen.agentevolving.dataset.Case;
+import com.openjiuwen.agentevolving.dataset.CaseLoader;
+import com.openjiuwen.agentevolving.evaluator.DefaultEvaluator;
+import com.openjiuwen.agentevolving.optimizer.llm_call.InstructionOptimizer;
+import com.openjiuwen.agentevolving.trainer.Trainer;
+import com.openjiuwen.agentevolving.updater.SingleDimUpdater;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;

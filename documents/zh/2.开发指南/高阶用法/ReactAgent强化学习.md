@@ -1,6 +1,6 @@
 # ReActAgent 演化训练
 
-这里重点说明 Java 当前已经落地的 ReActAgent 演化训练链路：`ReActAgentEvolve` 配合 `com.openjiuwen.agent_evolving.*` 提供运行、评估、优化、回写和 checkpoint 闭环。
+这里重点说明 Java 当前已经落地的 ReActAgent 演化训练链路：`ReActAgentEvolve` 配合 `com.openjiuwen.agentevolving.*` 提供运行、评估、优化、回写和 checkpoint 闭环。
 
 当前公开并由示例直接覆盖的主线，是“基于运行时 operator 的自演化 / 指令优化”路径，而不是独立的模型权重训练平台。
 
@@ -9,9 +9,9 @@
 | 能力模块 | Java 当前入口 | 当前状态 |
 | --- | --- | --- |
 | ReActAgent 演化训练入口 | `com.openjiuwen.core.singleagent.ReActAgentEvolve` / `com.openjiuwen.core.singleagent.agents.ReActAgentEvolve` | 已提供，可直接运行与演化 |
-| 训练闭环编排 | `com.openjiuwen.agent_evolving.trainer.Trainer` | 已提供 |
-| 自动评估 | `com.openjiuwen.agent_evolving.evaluator.DefaultEvaluator` | 已提供，使用 LLM-as-a-judge |
-| 指令优化 | `com.openjiuwen.agent_evolving.optimizer.llm_call.InstructionOptimizer` | 已提供 |
+| 训练闭环编排 | `com.openjiuwen.agentevolving.trainer.Trainer` | 已提供 |
+| 自动评估 | `com.openjiuwen.agentevolving.evaluator.DefaultEvaluator` | 已提供，使用 LLM-as-a-judge |
+| 指令优化 | `com.openjiuwen.agentevolving.optimizer.llm_call.InstructionOptimizer` | 已提供 |
 | 参数写回 | `SingleDimUpdater` + `Trainer.applyUpdates(...)` | 已提供 |
 | 训练恢复 | `DefaultCheckpointManager` + `FileCheckpointStore` | 已提供，本地 JSON checkpoint |
 | 模型权重级训练 | 无公开 Java 实现 | 当前未提供 |
@@ -113,9 +113,9 @@ trainer.train(agent, trainCases, valCases, 3, Map.of(
 - [示例：agent_evolving](../../../../examples/agent_evolving/README.md)
 - [源码：ReActAgentEvolve.java](../../../../src/main/java/com/openjiuwen/core/singleagent/ReActAgentEvolve.java)
 - [源码：agents/ReActAgentEvolve.java](../../../../src/main/java/com/openjiuwen/core/singleagent/agents/ReActAgentEvolve.java)
-- [源码：Trainer.java](../../../../src/main/java/com/openjiuwen/agent_evolving/trainer/Trainer.java)
-- [源码：DefaultEvaluator.java](../../../../src/main/java/com/openjiuwen/agent_evolving/evaluator/DefaultEvaluator.java)
-- [源码：InstructionOptimizer.java](../../../../src/main/java/com/openjiuwen/agent_evolving/optimizer/llm_call/InstructionOptimizer.java)
-- [源码：SingleDimUpdater.java](../../../../src/main/java/com/openjiuwen/agent_evolving/updater/SingleDimUpdater.java)
-- [源码：TracerTrajectoryExtractor.java](../../../../src/main/java/com/openjiuwen/agent_evolving/trajectory/TracerTrajectoryExtractor.java)
+- [源码：Trainer.java](../../../../src/main/java/com/openjiuwen/agentevolving/trainer/Trainer.java)
+- [源码：DefaultEvaluator.java](../../../../src/main/java/com/openjiuwen/agentevolving/evaluator/DefaultEvaluator.java)
+- [源码：InstructionOptimizer.java](../../../../src/main/java/com/openjiuwen/agentevolving/optimizer/llm_call/InstructionOptimizer.java)
+- [源码：SingleDimUpdater.java](../../../../src/main/java/com/openjiuwen/agentevolving/updater/SingleDimUpdater.java)
+- [源码：TracerTrajectoryExtractor.java](../../../../src/main/java/com/openjiuwen/agentevolving/trajectory/TracerTrajectoryExtractor.java)
 - [源码：LLMCallOperator.java](../../../../src/main/java/com/openjiuwen/core/operator/llm_call/LLMCallOperator.java)

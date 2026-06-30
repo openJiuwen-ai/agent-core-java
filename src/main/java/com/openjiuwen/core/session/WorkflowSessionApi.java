@@ -45,34 +45,58 @@ public class WorkflowSessionApi {
         }
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public WorkflowSessionApi(BaseSession parent, String sessionId) {
         this(parent, sessionId, null);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public WorkflowSessionApi(String sessionId) {
         this(null, sessionId, null);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public CallbackManager getCallbackManager() {
         return callbackManager;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getSessionId() {
         return sessionId;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Map<String, Object> getEnvs() {
         return envs;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public BaseSession getParent() {
         return parent;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setWorkflowCard(Object card) {
         this.workflowCard = card;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Object getWorkflowCard() {
         return workflowCard;
     }

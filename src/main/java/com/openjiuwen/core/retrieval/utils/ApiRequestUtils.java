@@ -55,7 +55,8 @@ public final class ApiRequestUtils {
                                              int maxRetries,
                                              StatusCode failureCode,
                                              String taskName) {
-        return postJsonWithRetry(httpClient, url, payload, headers, timeout, maxRetries, failureCode, taskName, DEFAULT_CALLBACK);
+        return postJsonWithRetry(
+                httpClient, url, payload, headers, timeout, maxRetries, failureCode, taskName, DEFAULT_CALLBACK);
     }
 
     /**
@@ -80,7 +81,9 @@ public final class ApiRequestUtils {
                 if (headers != null) {
                     headers.forEach(requestBuilder::header);
                 }
-                HttpResponse<String> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
+                HttpResponse<String> response = httpClient.send(
+                        requestBuilder.build(),
+                        HttpResponse.BodyHandlers.ofString());
                 if (response.statusCode() >= 200 && response.statusCode() < 300) {
                     return MAPPER.readTree(response.body());
                 }
@@ -118,7 +121,8 @@ public final class ApiRequestUtils {
                                                                       int maxRetries,
                                                                       StatusCode failureCode,
                                                                       String taskName) {
-        return postJsonWithRetryAsync(httpClient, url, payload, headers, timeout, maxRetries, failureCode, taskName, DEFAULT_CALLBACK);
+        return postJsonWithRetryAsync(
+                httpClient, url, payload, headers, timeout, maxRetries, failureCode, taskName, DEFAULT_CALLBACK);
     }
 
     /**
@@ -134,6 +138,7 @@ public final class ApiRequestUtils {
                                                                       String taskName,
                                                                       StatusCodeCallback callback) {
         return CompletableFuture.supplyAsync(() ->
-                postJsonWithRetry(httpClient, url, payload, headers, timeout, maxRetries, failureCode, taskName, callback));
+                postJsonWithRetry(
+                        httpClient, url, payload, headers, timeout, maxRetries, failureCode, taskName, callback));
     }
 }

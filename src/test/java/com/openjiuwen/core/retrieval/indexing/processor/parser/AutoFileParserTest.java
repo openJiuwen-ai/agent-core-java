@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import com.openjiuwen.core.common.exception.BaseError;
@@ -31,18 +33,23 @@ class AutoFileParserTest {
         List<Document> docs = parser.parse(file.toString(), "doc-1", null, Map.of());
 
         assertEquals(1, docs.size());
-        assertEquals(".json", docs.getFirst().getMetadata().get("file_ext"));
+        assertEquals(".json", docs.get(0).getMetadata().get("file_ext"));
     }
 
     @Test
     void supportsRegisteredFormatsOnlyWhenFileExists() throws IOException {
         Path csv = tempDir.resolve("table.csv");
         Files.writeString(csv, "a,b\n1,2\n", StandardCharsets.UTF_8);
+        Path html = tempDir.resolve("page.html");
+        Files.writeString(html, "<html><body><article>" + "w".repeat(120) + "</article></body></html>", StandardCharsets.UTF_8);
 
         AutoFileParser parser = new AutoFileParser();
 
         assertTrue(parser.supports(csv.toString()));
+        assertTrue(parser.supports(html.toString()));
         assertTrue(AutoFileParser.getSupportedFormats().contains(".csv"));
+        assertTrue(AutoFileParser.getSupportedFormats().contains(".html"));
+        assertTrue(AutoFileParser.getSupportedFormats().contains(".htm"));
     }
 
     @Test

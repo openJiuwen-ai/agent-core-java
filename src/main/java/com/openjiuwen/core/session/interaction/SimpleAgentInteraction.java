@@ -16,6 +16,9 @@ public class SimpleAgentInteraction {
 
     private final BaseSession agentSession;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public SimpleAgentInteraction(BaseSession agentSession) {
         this.agentSession = agentSession;
     }

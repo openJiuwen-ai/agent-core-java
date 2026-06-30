@@ -82,6 +82,9 @@ public final class MessageHandlerUtils {
      * Mirrors Python's {@code create_tasks_from_tool_calls()}.
      */
     @SuppressWarnings("unchecked")
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static List<Task> createTasksFromToolCalls(List<ToolCall> toolCalls, Object agentConfig) {
         if (toolCalls == null || toolCalls.isEmpty()) {
             return Collections.emptyList();

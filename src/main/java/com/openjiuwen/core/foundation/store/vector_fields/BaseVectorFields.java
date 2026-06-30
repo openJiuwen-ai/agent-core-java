@@ -18,6 +18,9 @@ public final class BaseVectorFields {
     private BaseVectorFields() {
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static CollectionSchema defaultSchema(String vectorFieldName, int dimension) {
         return CollectionSchema.fromFields(List.of(
                 FieldSchema.builder().name("id").dtype(VectorDataType.VARCHAR).isPrimary(true).maxLength(256).build(),

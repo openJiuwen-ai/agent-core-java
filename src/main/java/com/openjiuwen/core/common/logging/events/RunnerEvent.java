@@ -26,11 +26,17 @@ public class RunnerEvent extends BaseLogEvent {
     private Object tag;
     private BaseCard card;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public RunnerEvent() {
         super();
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "runner_id", runnerId);
         putIfNotNull(map, "inputs", inputs);

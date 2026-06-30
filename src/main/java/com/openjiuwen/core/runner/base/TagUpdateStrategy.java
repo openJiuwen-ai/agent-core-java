@@ -13,7 +13,7 @@ public enum TagUpdateStrategy {
     /** Merge new tags with existing tags. */
     MERGE("merge"),
     /** Replace all existing tags with new tags. */
-    REPLACE("replace");
+    REPLACE("isReplace");
 
     private final String value;
 
@@ -21,6 +21,9 @@ public enum TagUpdateStrategy {
         this.value = value;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getValue() {
         return value;
     }

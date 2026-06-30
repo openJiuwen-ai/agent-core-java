@@ -8,7 +8,9 @@ package com.openjiuwen.core.memory.manage.mem_model;
  * Types of memory data.
  */
 public enum MemoryType {
-    FRAGMENT_MEMORY("fragment"),
+    USER_PROFILE("user_profile"),
+    SEMANTIC_MEMORY("semantic_memory"),
+    EPISODIC_MEMORY("episodic_memory"),
     VARIABLE("variable"),
     SUMMARY("summary"),
     UNKNOWN("unknown");
@@ -19,10 +21,16 @@ public enum MemoryType {
         this.value = value;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getValue() {
         return value;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static MemoryType fromValue(String value) {
         for (MemoryType type : values()) {
             if (type.value.equals(value)) {

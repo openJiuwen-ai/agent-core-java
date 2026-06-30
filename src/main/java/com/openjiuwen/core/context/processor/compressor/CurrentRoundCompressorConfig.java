@@ -4,18 +4,15 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-
 /**
- * Configuration for the {@link CurrentRoundCompressor} ContextProcessor.
- * <p>
- * Mirrors Python's {@code CurrentRoundCompressorConfig}.
+ * Configuration for {@link CurrentRoundCompressor}.
  */
 @Data
 @Builder
@@ -23,66 +20,66 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 @AllArgsConstructor
 public class CurrentRoundCompressorConfig {
 
-    /**
-     * Maximum number of messages allowed before compression is triggered.
-     */
-    private Integer messagesThreshold;
-
-    /**
-     * Maximum accumulated token count before compression is triggered.
-     */
     @Builder.Default
-    private int tokensThreshold = 10000;
+    private int tokensThreshold = 100000;
 
-    /**
-     * Number of most-recent messages to retain, regardless of thresholds.
-     */
-    private Integer messagesToKeep;
-
-    /**
-     * Token count above which a single message is considered 'large'.
-     */
     @Builder.Default
-    private int largeMessageThreshold = 1000;
+    private int messagesToKeep = 3;
 
-    /**
-     * User-supplied prompt for compression; falls back to built-in prompt if null.
-     */
-    private String customizedCompressionPrompt;
-
-    /**
-     * Switch between single-message and whole-block compression.
-     * false (default) → compress only individual messages exceeding token limit.
-     * true → compress the entire contiguous message block as one unit.
-     */
-    @Builder.Default
-    private boolean singleMultiCompression = false;
-
-    /**
-     * Model request configuration.
-     */
     private ModelRequestConfig model;
 
-    /**
-     * Optional client-level configuration for the model.
-     */
     private ModelClientConfig modelClient;
 
+    @Builder.Default
+    private int minSelectedTokensForCompression = 20000;
+
+    @Builder.Default
+    private int compressionTargetTokens = 4000;
+
+    @Builder.Default
+    private int summaryMergeTargetTokens = 4000;
+
+    @Builder.Default
+    private int accumulatedSummaryTokenLimit = 20000;
+
+    @Builder.Default
+    private int summaryMergeMinBlocks = 3;
+
+    @Builder.Default
+    private int priorContextWindowSize = 10;
+
+    private String customCompressionPrompt;
+
     /**
-     * Validate configuration constraints matching Python Pydantic rules.
+     * Auto-generated for codecheck compliance.
      */
     public void validate() {
-        if (messagesThreshold != null && messagesThreshold <= 0) {
-            throw new IllegalArgumentException("messagesThreshold must be > 0, got " + messagesThreshold);
-        }
         if (tokensThreshold <= 0) {
             throw new IllegalArgumentException("tokensThreshold must be > 0, got " + tokensThreshold);
         }
-        if (messagesToKeep != null && messagesToKeep <= 0) {
+        if (messagesToKeep <= 0) {
             throw new IllegalArgumentException("messagesToKeep must be > 0, got " + messagesToKeep);
         }
-        if (largeMessageThreshold <= 0) {
-            throw new IllegalArgumentException("largeMessageThreshold must be > 0, got " + largeMessageThreshold);
+        if (minSelectedTokensForCompression <= 0) {
+            throw new IllegalArgumentException("minSelectedTokensForCompression must be > 0, got "
+                    + minSelectedTokensForCompression);
+        }
+        if (compressionTargetTokens <= 0) {
+            throw new IllegalArgumentException("compressionTargetTokens must be > 0, got " + compressionTargetTokens);
+        }
+        if (summaryMergeTargetTokens <= 0) {
+            throw new IllegalArgumentException("summaryMergeTargetTokens must be > 0, got "
+                    + summaryMergeTargetTokens);
+        }
+        if (accumulatedSummaryTokenLimit <= 0) {
+            throw new IllegalArgumentException("accumulatedSummaryTokenLimit must be > 0, got "
+                    + accumulatedSummaryTokenLimit);
+        }
+        if (summaryMergeMinBlocks < 2) {
+            throw new IllegalArgumentException("summaryMergeMinBlocks must be >= 2, got " + summaryMergeMinBlocks);
+        }
+        if (priorContextWindowSize <= 0) {
+            throw new IllegalArgumentException("priorContextWindowSize must be > 0, got " + priorContextWindowSize);
         }
     }
 }

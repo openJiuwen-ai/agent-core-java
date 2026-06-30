@@ -6,6 +6,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -16,6 +17,7 @@ import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.harness.task_loop.LoopQueues;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -119,6 +121,18 @@ class ReActAgentTest {
         assertThat(result).isSameAs(agent);
     }
 
+    @Test
+    void testSetLlmOverridesActiveRuntimeModel() {
+        Model model = mock(Model.class);
+
+        agent.setLlm(model);
+
+        assertThat(agent.peekLlm()).isSameAs(model);
+
+        agent.setLlm(null);
+        assertThat(agent.peekLlm()).isNull();
+    }
+
     // ========== Invoke with null/invalid inputs ==========
 
     @Test
@@ -169,14 +183,37 @@ class ReActAgentTest {
     @Test
     void testRailAllEightEvents() {
         AgentRail allHooksRail = new AgentRail() {
-            @Override public void beforeInvoke(AgentCallbackContext ctx) {}
-            @Override public void afterInvoke(AgentCallbackContext ctx) {}
-            @Override public void beforeModelCall(AgentCallbackContext ctx) {}
-            @Override public void afterModelCall(AgentCallbackContext ctx) {}
-            @Override public void onModelException(AgentCallbackContext ctx) {}
-            @Override public void beforeToolCall(AgentCallbackContext ctx) {}
-            @Override public void afterToolCall(AgentCallbackContext ctx) {}
-            @Override public void onToolException(AgentCallbackContext ctx) {}
+            @Override
+            public void beforeInvoke(AgentCallbackContext ctx) {
+            }
+
+            @Override
+            public void afterInvoke(AgentCallbackContext ctx) {
+            }
+
+            @Override
+            public void beforeModelCall(AgentCallbackContext ctx) {
+            }
+
+            @Override
+            public void afterModelCall(AgentCallbackContext ctx) {
+            }
+
+            @Override
+            public void onModelException(AgentCallbackContext ctx) {
+            }
+
+            @Override
+            public void beforeToolCall(AgentCallbackContext ctx) {
+            }
+
+            @Override
+            public void afterToolCall(AgentCallbackContext ctx) {
+            }
+
+            @Override
+            public void onToolException(AgentCallbackContext ctx) {
+            }
         };
 
         agent.registerRail(allHooksRail);
@@ -315,6 +352,54 @@ class ReActAgentTest {
         assertThat(seenInputs).hasSize(1);
         assertThat(seenInputs.get(0)).isInstanceOf(InvokeInputs.class);
         assertThat(((InvokeInputs) seenInputs.get(0)).getQuery()).isEqualTo("needs-model");
+    }
+
+    @Test
+    void testInvokeCopiesTaskLoopMetadataIntoCallbackExtra() {
+        List<Map<String, Object>> seenExtra = new ArrayList<>();
+        agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE,
+                ctx -> seenExtra.add(new HashMap<>(ctx.getExtra())),
+                50);
+
+        assertThatThrownBy(() -> agent.invoke(Map.of(
+                "query", "needs-model",
+                "run_kind", "heartbeat",
+                "run_context", Map.of("source", "task_loop"),
+                "is_follow_up", true
+        ), new TestSession("react-metadata-session")))
+                .isInstanceOf(Exception.class);
+
+        assertThat(seenExtra).hasSize(1);
+        assertThat(seenExtra.get(0))
+                .containsEntry("run_kind", "heartbeat")
+                .containsEntry("is_follow_up", true);
+        assertThat(seenExtra.get(0).get("run_context")).isEqualTo(Map.of("source", "task_loop"));
+    }
+
+    @Test
+    void testLoopQueuesSteeringInjectedBeforeModelCall() throws Exception {
+        ReActAgentConfig config = ReActAgentConfig.builder().maxIterations(1).build();
+        agent.configure(config);
+        LoopQueues queues = new LoopQueues();
+        queues.pushSteer("inspect scope before editing");
+        Model model = mock(Model.class);
+        when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    @SuppressWarnings("unchecked")
+                    List<BaseMessage> messages = (List<BaseMessage>) invocation.getArgument(0);
+                    assertThat(messages).extracting(message -> String.valueOf(message.getContent()))
+                            .anyMatch(content -> content.contains("[STEERING] inspect scope before editing"));
+                    return AssistantMessage.builder().content("done").build();
+                });
+        agent.setLlm(model);
+
+        Object result = agent.invoke(Map.of(
+                "query", "run",
+                "loop_queues", queues
+        ), new TestSession("react-steering-session"));
+
+        assertThat(((Map<?, ?>) result).get("output")).isEqualTo("done");
+        assertThat(queues.drainSteering()).isEmpty();
     }
 
     @Test

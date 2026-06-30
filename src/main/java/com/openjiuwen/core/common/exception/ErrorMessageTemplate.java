@@ -5,6 +5,7 @@
 package com.openjiuwen.core.common.exception;
 
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -25,8 +26,8 @@ public record ErrorMessageTemplate(String template, Set<String> params) {
      * @return generated template
      */
     public static ErrorMessageTemplate generate(String scope, String subject, String failureType, boolean withReason) {
-        String scopeLower = scope.toLowerCase();
-        String subjectLower = subject.toLowerCase();
+        String scopeLower = scope.toLowerCase(Locale.ROOT);
+        String subjectLower = subject.toLowerCase(Locale.ROOT);
         Set<String> params = new HashSet<>();
         String msg;
 

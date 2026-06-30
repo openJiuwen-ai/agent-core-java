@@ -16,12 +16,18 @@ public class NumberConditionInSession extends Condition {
 
     private final int limit;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public NumberConditionInSession(int limit) {
         super();
         this.limit = limit;
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Object doInvoke(Object inputs, BaseSession session) {
         Object currentIdxObj = session.state().get(Constant.INDEX);
         int currentIdx = (currentIdxObj instanceof Number) ? ((Number) currentIdxObj).intValue() : 0;

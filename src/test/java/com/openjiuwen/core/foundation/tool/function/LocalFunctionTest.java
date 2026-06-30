@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.foundation.tool.function;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -62,7 +64,8 @@ class LocalFunctionTest {
                     .description("test")
                     .build();
 
-            assertThrows(Throwable.class, () -> new LocalFunction(card, null));
+            assertThrows(Throwable.class,
+                    () -> new LocalFunction(card, (java.util.function.Function<Map<String, Object>, Object>) null));
         }
 
         @Test

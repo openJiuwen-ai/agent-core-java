@@ -22,6 +22,9 @@ public final class IntentDetectionConstants {
     public static final String CHAT_HISTORY = "chat_history";
     public static final String INPUT = "input";
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static final Map<String, String> ROLE_MAP = Map.of(
             "user", "用户",
             "assistant", "助手",

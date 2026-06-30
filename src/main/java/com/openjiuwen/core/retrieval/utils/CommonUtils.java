@@ -18,6 +18,9 @@ public final class CommonUtils {
     private CommonUtils() {
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static <T, K> List<T> deduplicate(Iterable<T> data, Function<T, K> keyFn) {
         Set<K> seen = new HashSet<>();
         List<T> result = new ArrayList<>();

@@ -10,7 +10,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 
 /**
  * Request object for adding a message.
@@ -26,5 +25,5 @@ public class MessageAddRequest {
     private String role;
     private String sessionId;
     @Builder.Default
-    private OffsetDateTime timestamp = OffsetDateTime.now(ZoneOffset.UTC);
+    private OffsetDateTime timestamp = OffsetDateTime.now();
 }

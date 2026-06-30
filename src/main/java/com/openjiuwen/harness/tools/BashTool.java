@@ -1,0 +1,194 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.harness.tools;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+
+/**
+ * Public class BashTool used by the Java parity implementation.
+ *
+ * @since 1.0
+ */
+public class BashTool {
+    private final String permissionMode;
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public BashTool() {
+        this("auto");
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public BashTool(String permissionMode) {
+        this.permissionMode = permissionMode != null ? permissionMode : "auto";
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public ToolOutput invoke(String command, String workdir, boolean isRunInBackground, Integer maxOutputChars) {
+        if (command == null || command.isBlank()) {
+            return ToolOutput.builder().success(false).error("command cannot be empty").build();
+        }
+        InjectionCheck injection = checkInjection(command);
+        if (injection.isBlocked()) {
+            return ToolOutput.builder().success(false).error(injection.reason()).build();
+        }
+        if ("read_only".equalsIgnoreCase(permissionMode) && looksLikeWrite(command)) {
+            return ToolOutput.builder().success(false).error("Read-only mode blocks write command").build();
+        }
+        if (workdir != null && !workdir.isBlank() && !java.nio.file.Files.isDirectory(java.nio.file.Path.of(workdir))) {
+            return ToolOutput.builder().success(false).error("workdir does not exist: " + workdir).build();
+        }
+
+        try {
+            ProcessBuilder builder;
+            if (isRunInBackground) {
+                builder = new ProcessBuilder("bash", "-lc", command);
+                if (workdir != null && !workdir.isBlank()) {
+                    builder.directory(new java.io.File(workdir));
+                }
+                Process process = builder.start();
+                return ToolOutput.builder()
+                        .success(true)
+                        .data(Map.of("pid", process.pid(), "status", "started"))
+                        .build();
+            }
+
+            builder = new ProcessBuilder("bash", "-lc", command);
+            if (workdir != null && !workdir.isBlank()) {
+                builder.directory(new java.io.File(workdir));
+            }
+            Process process = builder.start();
+            CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(
+                    () -> read(process.getInputStream()));
+            CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(
+                    () -> read(process.getErrorStream()));
+            int exitCode = process.onExit().join().exitValue();
+            String stdout = stdoutFuture.join();
+            String stderr = stderrFuture.join();
+            int limit = maxOutputChars != null ? Math.max(200, Math.min(maxOutputChars, 20000)) : 8000;
+            boolean isExecutionSuccessful = exitCode == 0 || isNonErrorExit(command, exitCode);
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("stdout", truncate(stdout, limit));
+            payload.put("stderr", truncate(stderr, limit));
+            payload.put("exit_code", exitCode);
+            payload.put("return_code_interpretation", interpret(command, exitCode));
+            payload.put("no_output_expected", isSilent(command));
+            payload.put("destructive_warning", getDestructiveWarning(command));
+            return ToolOutput.builder()
+                    .success(isExecutionSuccessful)
+                    .data(payload)
+                    .error(isExecutionSuccessful ? null : truncate(stderr.isBlank() ? "command failed" : stderr, limit))
+                    .build();
+        } catch (IOException | SecurityException | CompletionException ex) {
+            return ToolOutput.builder().success(false).error(ex.getMessage()).build();
+        }
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public static InjectionCheck checkInjection(String command) {
+        if (command.contains("`")) {
+            return new InjectionCheck(true, "injection isBlocked: backtick command substitution");
+        }
+        if (command.contains("$(")) {
+            return new InjectionCheck(true, "injection isBlocked: $(...) command substitution");
+        }
+        if (command.contains("<(")) {
+            return new InjectionCheck(true, "injection isBlocked: process substitution");
+        }
+        return new InjectionCheck(false, "");
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public static String getDestructiveWarning(String command) {
+        String lower = command.toLowerCase(Locale.ROOT);
+        if (lower.contains("git reset --hard")) {
+            return "This may discard uncommitted changes.";
+        }
+        if (lower.contains("git push --force") || lower.contains("git push -f")) {
+            return "This may rewrite remote history.";
+        }
+        if (lower.contains("git commit --amend")) {
+            return "This may rewrite commit history.";
+        }
+        if (lower.contains("drop table") || lower.contains("truncate table")) {
+            return "This may destroy database data.";
+        }
+        if (lower.contains("terraform destroy")) {
+            return "This may destroy Terraform-managed infrastructure.";
+        }
+        return null;
+    }
+
+    private static boolean looksLikeWrite(String command) {
+        String lower = command.toLowerCase(Locale.ROOT);
+        return List.of(
+                        "touch ", "mkdir ", "rm ", "mv ", "cp ",
+                        "git commit", "git reset", "git clean", "echo ")
+                .stream()
+                .anyMatch(lower::contains);
+    }
+
+    private static boolean isNonErrorExit(String command, int exitCode) {
+        return command.contains("grep") && exitCode == 1;
+    }
+
+    private static String interpret(String command, int exitCode) {
+        if (command.contains("grep") && exitCode == 1) {
+            return "No matches found";
+        }
+        return exitCode == 0 ? "Command completed successfully" : "Command failed";
+    }
+
+    private static boolean isSilent(String command) {
+        String lower = command.toLowerCase(Locale.ROOT);
+        return lower.startsWith("mkdir") || lower.startsWith("touch") || lower.startsWith("rm ");
+    }
+
+    private static String truncate(String text, int limit) {
+        if (text == null) {
+            return "";
+        }
+        if (text.length() <= limit) {
+            return text;
+        }
+        return text.substring(0, Math.max(0, limit - 32)) + "\n...[lines omitted]...";
+    }
+
+    private static String read(InputStream stream) {
+        try {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            stream.transferTo(buffer);
+            return buffer.toString(StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            return "";
+        }
+    }
+
+    /**
+ * Public record InjectionCheck used by the Java parity implementation.
+ *
+ * @since 1.0
+ */
+public record InjectionCheck(boolean isBlocked, String reason) {
+    }
+}

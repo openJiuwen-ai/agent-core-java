@@ -62,18 +62,30 @@ public class RedisTTLConfig {
         return new RedisTTLConfig(defaultTtl, refreshOnRead);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Double getDefaultTtl() {
         return defaultTtl;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setDefaultTtl(Double defaultTtl) {
         this.defaultTtl = defaultTtl;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public boolean isRefreshOnRead() {
         return refreshOnRead;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setRefreshOnRead(boolean refreshOnRead) {
         this.refreshOnRead = refreshOnRead;
     }

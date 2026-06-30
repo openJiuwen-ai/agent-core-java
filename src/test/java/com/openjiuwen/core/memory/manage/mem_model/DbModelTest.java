@@ -94,6 +94,35 @@ class DbModelTest {
         assertEquals("2", meta.get("scope_user_mapping"));
     }
 
+    @Test
+    void createTablesDoesNotBackfillMetaForPreexistingBusinessTables() throws Exception {
+        TestDbStore dbStore = new TestDbStore(createDataSource());
+        try (Connection connection = dbStore.getEngine().getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.executeUpdate("CREATE TABLE user_message ("
+                    + "message_id VARCHAR(64) PRIMARY KEY,"
+                    + "user_id VARCHAR(64) NOT NULL,"
+                    + "scope_id VARCHAR(64) NOT NULL,"
+                    + "content VARCHAR(4096) NOT NULL,"
+                    + "session_id VARCHAR(64),"
+                    + "role VARCHAR(32),"
+                    + "timestamp VARCHAR(32)"
+                    + ")");
+            statement.executeUpdate("CREATE TABLE scope_user_mapping ("
+                    + "user_id VARCHAR(64) NOT NULL,"
+                    + "scope_id VARCHAR(64) NOT NULL,"
+                    + "PRIMARY KEY (user_id, scope_id)"
+                    + ")");
+        }
+
+        MigrationPlan.getSqlRegistry().register("user_messages", new TestOperation(5, "user message v5"));
+        MigrationPlan.getSqlRegistry().register("scope_user_mapping", new TestOperation(3, "scope mapping v3"));
+
+        DbModel.createTables(dbStore);
+
+        assertTrue(readMemoryMeta(dbStore.getEngine()).isEmpty());
+    }
+
     private static Map<String, String> readMemoryMeta(DataSource dataSource) throws Exception {
         Map<String, String> meta = new LinkedHashMap<>();
         try (Connection connection = dataSource.getConnection();

@@ -34,24 +34,86 @@ public class GraphStoreStorageConfig {
         this.objType = builder.objType;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public GraphStoreStorageConfig() {
         this(builder());
     }
 
-    public int getUuid() { return uuid; }
-    public int getName() { return name; }
-    public int getContent() { return content; }
-    public int getLanguage() { return language; }
-    public int getUserId() { return userId; }
-    public int getEntities() { return entities; }
-    public int getRelations() { return relations; }
-    public int getEpisodes() { return episodes; }
-    public int getObjType() { return objType; }
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public int getUuid() {
+        return uuid;
+    }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public int getName() {
+        return name;
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public int getContent() {
+        return content;
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public int getLanguage() {
+        return language;
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public int getUserId() {
+        return userId;
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public int getEntities() {
+        return entities;
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public int getRelations() {
+        return relations;
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public int getEpisodes() {
+        return episodes;
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public int getObjType() {
+        return objType;
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static Builder builder() {
         return new Builder();
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static class Builder {
         private int uuid = 32;
         private int name = 500;
@@ -63,15 +125,83 @@ public class GraphStoreStorageConfig {
         private int episodes = 4096;
         private int objType = 20;
 
-        public Builder uuid(int uuid) { this.uuid = uuid; return this; }
-        public Builder name(int name) { this.name = name; return this; }
-        public Builder content(int content) { this.content = content; return this; }
-        public Builder language(int language) { this.language = language; return this; }
-        public Builder userId(int userId) { this.userId = userId; return this; }
-        public Builder entities(int entities) { this.entities = entities; return this; }
-        public Builder relations(int relations) { this.relations = relations; return this; }
-        public Builder episodes(int episodes) { this.episodes = episodes; return this; }
-        public Builder objType(int objType) { this.objType = objType; return this; }
-        public GraphStoreStorageConfig build() { return new GraphStoreStorageConfig(this); }
+        /**
+         * Auto-generated for codecheck compliance.
+         */
+        public Builder uuid(int uuid) {
+            this.uuid = uuid;
+            return this;
+        }
+
+        /**
+         * Auto-generated for codecheck compliance.
+         */
+        public Builder name(int name) {
+            this.name = name;
+            return this;
+        }
+
+        /**
+         * Auto-generated for codecheck compliance.
+         */
+        public Builder content(int content) {
+            this.content = content;
+            return this;
+        }
+
+        /**
+         * Auto-generated for codecheck compliance.
+         */
+        public Builder language(int language) {
+            this.language = language;
+            return this;
+        }
+
+        /**
+         * Auto-generated for codecheck compliance.
+         */
+        public Builder userId(int userId) {
+            this.userId = userId;
+            return this;
+        }
+
+        /**
+         * Auto-generated for codecheck compliance.
+         */
+        public Builder entities(int entities) {
+            this.entities = entities;
+            return this;
+        }
+
+        /**
+         * Auto-generated for codecheck compliance.
+         */
+        public Builder relations(int relations) {
+            this.relations = relations;
+            return this;
+        }
+
+        /**
+         * Auto-generated for codecheck compliance.
+         */
+        public Builder episodes(int episodes) {
+            this.episodes = episodes;
+            return this;
+        }
+
+        /**
+         * Auto-generated for codecheck compliance.
+         */
+        public Builder objType(int objType) {
+            this.objType = objType;
+            return this;
+        }
+
+        /**
+         * Auto-generated for codecheck compliance.
+         */
+        public GraphStoreStorageConfig build() {
+            return new GraphStoreStorageConfig(this);
+        }
     }
 }

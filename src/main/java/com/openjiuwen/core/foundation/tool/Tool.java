@@ -38,11 +38,15 @@ public abstract class Tool {
      */
     protected Tool(ToolCard card) {
         if (card == null) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_CARD_INVALID, "card", "null", "reason", "card is None");
+            throw ErrorHelper.buildError(StatusCode.TOOL_CARD_INVALID, "card", "None", "reason", "card is None");
         }
-        if (card.getId() == null || card.getId().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_CARD_INVALID,
-                    "card", card.toString(), "reason", "card id is None or empty");
+        if (card.getId() == null || card.getId().isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.TOOL_CARD_INVALID,
+                    "card",
+                    "id=''",
+                    "reason",
+                    "card id is None or empty");
         }
         this.card = card;
     }

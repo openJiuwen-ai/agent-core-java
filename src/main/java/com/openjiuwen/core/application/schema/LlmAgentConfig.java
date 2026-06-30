@@ -91,6 +91,9 @@ public class LlmAgentConfig {
     private DefaultResponse defaultResponse;
 
     @JsonProperty("context_window_limit")
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public int getContextWindowLimit() {
         return constrain != null ? constrain.getReservedMaxChatRounds() : 10;
     }

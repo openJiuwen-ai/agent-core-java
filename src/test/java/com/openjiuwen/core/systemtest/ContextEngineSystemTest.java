@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.systemtest;
 
 import com.openjiuwen.core.context.ContextEngine;
@@ -117,7 +119,9 @@ class ContextEngineSystemTest {
 
         @Override
         public void updateState(Map<String, Object> stateMap) {
-            if (stateMap != null) state.putAll(stateMap);
+            if (stateMap != null) {
+                state.putAll(stateMap);
+            }
         }
 
         @Override

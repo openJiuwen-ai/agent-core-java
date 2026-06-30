@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.foundation.tool.service_api.parser;
 
+import java.util.Locale;
+
 /**
  * Base class for response parsers.
  * <p>
@@ -58,7 +60,7 @@ public abstract class BaseResponseParser {
         String[] parts = contentType.split(";");
         for (int i = 1; i < parts.length; i++) {
             String part = parts[i].strip();
-            if (part.toLowerCase().startsWith("charset=")) {
+            if (part.toLowerCase(Locale.ROOT).startsWith("charset=")) {
                 String charset = part.substring("charset=".length()).strip();
                 // Strip quotes
                 if ((charset.startsWith("\"") && charset.endsWith("\""))

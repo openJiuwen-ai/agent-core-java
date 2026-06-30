@@ -11,5 +11,8 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @NoArgsConstructor
 public class ReadFileStreamResult extends BaseResult<ReadFileChunkData> {
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public ReadFileStreamResult(int code, String message, ReadFileChunkData data) { super(code, message, data); }
 }

@@ -23,34 +23,58 @@ public class WorkflowSpec {
     private Map<String, NodeConfig> compConfigs = new HashMap<>();
     private List<String> startNodes = new ArrayList<>();
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Map<String, List<String>> getEdges() {
         return edges;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setEdges(Map<String, List<String>> edges) {
         this.edges = edges;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Map<String, List<String>> getStreamEdges() {
         return streamEdges;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setStreamEdges(Map<String, List<String>> streamEdges) {
         this.streamEdges = streamEdges;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Map<String, NodeConfig> getCompConfigs() {
         return compConfigs;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setCompConfigs(Map<String, NodeConfig> compConfigs) {
         this.compConfigs = compConfigs;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public List<String> getStartNodes() {
         return startNodes;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setStartNodes(List<String> startNodes) {
         this.startNodes = startNodes;
     }

@@ -10,7 +10,10 @@ package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 public class WhitespaceNormalizer implements TextPreprocessor {
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String process(String text) {
-        return text == null ? "" : text.replaceAll("\\s+", " ").trim();
+        return text == null ? null : text.replaceAll("\\s+", " ").trim();
     }
 }

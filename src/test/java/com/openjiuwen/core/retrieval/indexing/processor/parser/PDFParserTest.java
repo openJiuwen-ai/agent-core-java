@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -41,7 +43,7 @@ class PDFParserTest {
         var docs = parser.parse(file.toString(), "pdf-1", null, Map.of());
 
         assertEquals(1, docs.size());
-        assertTrue(docs.getFirst().getText().contains("Page 1 content"));
+        assertTrue(docs.get(0).getText().contains("Page 1 content"));
     }
 
     @Test

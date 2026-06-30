@@ -49,6 +49,12 @@ public class MessageOffloaderConfig {
     private List<String> offloadMessageType = List.of("tool");
 
     /**
+     * Tool messages produced by these tools are never offloaded.
+     */
+    @Builder.Default
+    private List<String> protectedToolNames = List.of("reload_original_context_messages");
+
+    /**
      * Number of tokens to retain when a message is offloaded.
      */
     @Builder.Default

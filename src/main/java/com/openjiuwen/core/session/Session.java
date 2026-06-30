@@ -38,6 +38,14 @@ public interface Session {
     void updateState(Map<String, Object> state);
 
     /**
+     * Write a streaming payload to the session output channel.
+     *
+     * @param data stream payload
+     */
+    default void writeStream(Object data) {
+    }
+
+    /**
      * Set the current operator id for tracing and attribution.
      *
      * @param operatorId operator id, or null to clear it

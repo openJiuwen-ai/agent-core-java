@@ -69,8 +69,8 @@ public final class ChatRerankerExample {
 
     private static boolean runCompatibilityCheck(ChatReranker reranker) {
         try {
-            Map<String, Double> result = reranker.rerankScores(QUERY, List.of(DOCUMENTS.getFirst()), Boolean.TRUE, Map.of());
-            ExampleOutput.line("Compatibility probe succeeded. Score: %.4f", result.getOrDefault(DOCUMENTS.getFirst(), 0.0));
+            Map<String, Double> result = reranker.rerankScores(QUERY, List.of(DOCUMENTS.get(0)), Boolean.TRUE, Map.of());
+            ExampleOutput.line("Compatibility probe succeeded. Score: %.4f", result.getOrDefault(DOCUMENTS.get(0), 0.0));
             return true;
         } catch (RuntimeException ex) {
             ExampleOutput.line("Compatibility probe failed: %s", ex.getMessage());

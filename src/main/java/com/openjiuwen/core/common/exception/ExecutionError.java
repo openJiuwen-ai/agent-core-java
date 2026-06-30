@@ -45,11 +45,17 @@ public class ExecutionError extends BaseError {
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     protected boolean defaultRecoverable() {
         return true;
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     protected boolean defaultFatal() {
         return false;
     }

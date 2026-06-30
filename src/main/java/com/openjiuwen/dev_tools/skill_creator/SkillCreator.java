@@ -100,7 +100,7 @@ public class SkillCreator {
             String apiKey = getEnvOrDefault("API_KEY", "");
             String modelName = getEnvOrDefault("MODEL_NAME", "");
             String modelProvider = getEnvOrDefault("MODEL_PROVIDER", "");
-            boolean verifySsl = Boolean.parseBoolean(getEnvOrDefault("LLM_SSL_VERIFY", "false"));
+            boolean isVerifySsl = Boolean.parseBoolean(getEnvOrDefault("LLM_SSL_VERIFY", "false"));
 
             // Construct agent instance
             this.agent = new ReActAgent(
@@ -114,11 +114,16 @@ public class SkillCreator {
             String systemPrompt = "You are an intelligent assistant.\n"
                     + "All user-provided files are located at '" + filesBaseDir + "'\n";
                 systemPrompt += "You are running on Windows. Any shell command must be Windows-compatible.\n";
-                systemPrompt += "Prefer file tools over shell commands whenever possible. Use writeFile to create or update files.\n";
-                systemPrompt += "When creating a new text file with writeFile, pass createIfNotExist=true and provide content as an object like {value: \"...\"}.\n";
-                systemPrompt += "Use readFile with encoding UTF-8 for text files. Do not read binary files such as PDF files as text.\n";
-                systemPrompt += "Do not duplicate binary assets with writeFile. For PDF or other binary inputs, reference the original absolute path in SKILL.md instead of copying the binary file.\n";
-                systemPrompt += "Create only the files needed for the generated skill and place them under the requested output directory.\n";
+                systemPrompt += "Prefer file tools over shell commands whenever possible. "
+                        + "Use writeFile to create or update files.\n";
+                systemPrompt += "When creating a new text file with writeFile, pass createIfNotExist=true "
+                        + "and provide content as an object like {value: \"...\"}.\n";
+                systemPrompt += "Use readFile with encoding UTF-8 for text files. Do not read binary files "
+                        + "such as PDF files as text.\n";
+                systemPrompt += "Do not duplicate binary assets with writeFile. For PDF or other binary inputs, "
+                        + "reference the original absolute path in SKILL.md instead of copying the binary file.\n";
+                systemPrompt += "Create only the files needed for the generated skill and place them under "
+                        + "the requested output directory.\n";
 
             // Create and register SysOperation
             SysOperationCard sysopCard = SysOperationCard.builder()
@@ -135,7 +140,7 @@ public class SkillCreator {
                             apiKey,
                             apiBase,
                             modelName,
-                            verifySsl
+                            isVerifySsl
                     )
                     .configurePromptTemplate(List.of(
                             Map.of("role", "system", "content", systemPrompt)
@@ -151,7 +156,7 @@ public class SkillCreator {
             addSysOpTool(sysopCard.getId(), "fs", "listDirectories");
             addSysOpTool(sysopCard.getId(), "fs", "searchFiles");
 
-            // Register skills if directory exists
+            // Register skills if directory isExists
             if (Files.exists(skillsDir)) {
                 this.agent.registerSkill(skillsDir.toString());
             } else {

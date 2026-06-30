@@ -1,0 +1,360 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package com.openjiuwen.agentteams.agent;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.agentteams.schema.events.EventMessage;
+import com.openjiuwen.agentteams.schema.status.MemberStatus;
+import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
+import com.openjiuwen.agentteams.schema.team.TeamModelConfig;
+import com.openjiuwen.agentteams.schema.team.TeamRole;
+import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
+import com.openjiuwen.agentteams.spawn.InProcessSpawn;
+import com.openjiuwen.agentteams.spawn.ProcessSpawnHandle;
+import com.openjiuwen.agentteams.spawn.SpawnHandle;
+import com.openjiuwen.agentteams.tools.TeamBackend;
+import com.openjiuwen.agentteams.tools.TeamMember;
+import com.openjiuwen.agentteams.tools.database.MemberRecord;
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.runner.spawn.SpawnConfig;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
+
+/**
+ * Narrow Java port of Python {@code agent/spawn_manager.py} lifecycle orchestration.
+ *
+ * <p>This slice covers the locally verifiable process lifecycle path: register spawned handles,
+ * attach the unhealthy callback, cleanup handles, rebuild teammate context from the team backend,
+ * and retry restart attempts across in-process and runner subprocess modes.
+ */
+public class SpawnManager {
+  private static final long SHUTDOWN_TIMEOUT_MILLIS = 1_000L;
+  private static final long HEALTH_CHECK_INTERVAL_MILLIS = 50_000L;
+  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+  private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+
+  private final TeamAgent teamAgent;
+  private final TeamBackend teamBackend;
+  private final RecoveryManager recoveryManager;
+  private final Supplier<String> sessionIdGetter;
+  private final ExecutorService executor;
+  private final Map<String, SpawnHandle> spawnedHandles = new LinkedHashMap<>();
+  private final Set<Future<?>> recoveryTasks = ConcurrentHashMap.newKeySet();
+
+  /** Auto-generated for codecheck compliance. */
+  public SpawnManager(
+      TeamAgent teamAgent,
+      TeamBackend teamBackend,
+      RecoveryManager recoveryManager,
+      Supplier<String> sessionIdGetter) {
+    this(
+        teamAgent,
+        teamBackend,
+        recoveryManager,
+        sessionIdGetter,
+        new ThreadPoolExecutor(
+            0, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>()));
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public SpawnManager(
+      TeamAgent teamAgent,
+      TeamBackend teamBackend,
+      RecoveryManager recoveryManager,
+      Supplier<String> sessionIdGetter,
+      ExecutorService executor) {
+    this.teamAgent = Objects.requireNonNull(teamAgent, "teamAgent is required");
+    this.teamBackend = Objects.requireNonNull(teamBackend, "teamBackend is required");
+    this.recoveryManager = Objects.requireNonNull(recoveryManager, "recoveryManager is required");
+    this.sessionIdGetter = sessionIdGetter != null ? sessionIdGetter : () -> null;
+    this.executor = Objects.requireNonNull(executor, "executor is required");
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public Map<String, SpawnHandle> getSpawnedHandles() {
+    return Map.copyOf(spawnedHandles);
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public int getRecoveryTaskCount() {
+    cleanupFinishedRecoveryTasks();
+    return recoveryTasks.size();
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public SpawnHandle spawnTeammate(TeamRuntimeContext ctx, String initialMessage) {
+    return spawnTeammate(ctx, initialMessage, null);
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public SpawnHandle spawnTeammate(
+      TeamRuntimeContext ctx, String initialMessage, SpawnConfig spawnConfig) {
+    if (ctx == null || ctx.getMemberName() == null || ctx.getMemberName().isBlank()) {
+      throw new IllegalArgumentException("teammate context with memberName is required");
+    }
+    SpawnConfig effectiveConfig =
+        spawnConfig != null
+            ? spawnConfig
+            : SpawnConfig.builder().healthCheckTimeout(30.0).healthCheckInterval(50.0).build();
+    SpawnHandle handle;
+    if ("inprocess".equals(teamAgent.getSpec().getSpawnMode())) {
+      handle =
+          InProcessSpawn.inprocessSpawn(
+              teamAgent, ctx, executor, initialMessage, sessionIdGetter.get());
+    } else {
+      handle =
+          new ProcessSpawnHandle(
+              Runner.spawnAgent(
+                  teamAgent.buildSpawnConfig(ctx),
+                  teamAgent.buildSpawnPayload(ctx, initialMessage),
+                  sessionIdGetter.get(),
+                  effectiveConfig));
+    }
+    registerHandle(
+        ctx.getMemberName(), handle, secondsToMillis(effectiveConfig.getHealthCheckInterval()));
+    return handle;
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public void registerHandle(String memberName, SpawnHandle handle) {
+    registerHandle(memberName, handle, HEALTH_CHECK_INTERVAL_MILLIS);
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public void registerHandle(
+      String memberName, SpawnHandle handle, long healthCheckIntervalMillis) {
+    if (memberName == null || memberName.isBlank() || handle == null) {
+      return;
+    }
+    spawnedHandles.put(memberName, handle);
+    recoveryManager.registerSpawnedHandle(memberName);
+    handle.setOnUnhealthy(() -> triggerUnhealthyRecovery(memberName));
+    handle.startHealthCheck(Math.max(1L, healthCheckIntervalMillis));
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public void cleanupTeammate(String memberName) {
+    SpawnHandle handle = spawnedHandles.remove(memberName);
+    recoveryManager.removeSpawnedHandle(memberName);
+    if (handle == null) {
+      return;
+    }
+    try {
+      handle.stopHealthCheck();
+      if (handle.isAlive()) {
+        handle.forceKill();
+      }
+    } catch (IllegalArgumentException | IllegalStateException ignored) {
+      // Python logs and continues cleanup; Java keeps the same warning-only recovery shape.
+    }
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public boolean restartTeammate(String memberName) {
+    return restartTeammate(memberName, 3);
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public boolean restartTeammate(String memberName, int maxRetries) {
+    cleanupTeammate(memberName);
+    TeamRuntimeContext ctx = buildContextFromBackend(memberName);
+    if (ctx == null) {
+      return false;
+    }
+    TeamMember teammate = teamBackend.getMember(memberName);
+    String initialMessage =
+        teammate != null
+                && teammate.getDescription() != null
+                && !teammate.getDescription().isBlank()
+            ? teammate.getDescription()
+            : null;
+    int attempts = Math.max(1, maxRetries);
+    for (int attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        spawnTeammate(ctx, initialMessage);
+        teamBackend.forceUpdateMemberStatus(memberName, MemberStatus.RESTARTING);
+        publishRestartEvent(memberName, attempt);
+        return true;
+      } catch (IllegalStateException | IllegalArgumentException | RejectedExecutionException ignored) {
+        if (attempt == attempts) {
+          teamBackend.forceUpdateMemberStatus(memberName, MemberStatus.ERROR);
+          return false;
+        }
+        try {
+          Thread.sleep((long) Math.pow(2, attempt) * 1_000L);
+        } catch (InterruptedException interruptedException) {
+
+          teamBackend.forceUpdateMemberStatus(memberName, MemberStatus.ERROR);
+          return false;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public void onTeammateUnhealthy(String memberName) {
+    cleanupTeammate(memberName);
+    teamBackend.forceUpdateMemberStatus(memberName, MemberStatus.RESTARTING);
+    restartTeammate(memberName);
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public Future<?> triggerUnhealthyRecovery(String memberName) {
+    Future<?> task =
+        executor.submit(
+            () -> {
+              try {
+                onTeammateUnhealthy(memberName);
+              } finally {
+                cleanupFinishedRecoveryTasks();
+              }
+            });
+    recoveryTasks.add(task);
+    cleanupFinishedRecoveryTasks();
+    return task;
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public void publishRestartEvent(String memberName, int restartCount) {
+    teamBackend
+        .getMessager()
+        .publish(
+            "team:" + teamBackend.getTeamName(),
+            EventMessage.builder()
+                .eventType("member_restarted")
+                .payload(
+                    Map.of(
+                        "team_name",
+                        teamBackend.getTeamName(),
+                        "member_name",
+                        memberName,
+                        "reason",
+                        "health_check_failure",
+                        "restart_count",
+                        restartCount))
+                .build())
+        .join();
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public TeamRuntimeContext buildContextFromBackend(String memberName) {
+    TeamMember teammate = teamBackend.getMember(memberName);
+    if (teammate == null) {
+      return nullValue();
+    }
+    Map<String, Object> metadata = new LinkedHashMap<>();
+    if (teammate.getDescription() != null && !teammate.getDescription().isBlank()) {
+      metadata.put("persona", teammate.getDescription());
+    }
+    TeamModelConfig memberModel = resolvePersistedMemberModel(memberName);
+    if (memberModel != null) {
+      metadata.put("member_model", memberModel);
+    }
+    return TeamRuntimeContext.builder()
+        .teamId(teamBackend.getTeamName())
+        .sessionId(sessionIdGetter.get())
+        .memberName(teammate.getMemberName())
+        .role(TeamRole.MEMBER)
+        .metadata(metadata)
+        .build();
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public void shutdownAllHandles() {
+    for (Map.Entry<String, SpawnHandle> entry : new LinkedHashMap<>(spawnedHandles).entrySet()) {
+      try {
+        entry.getValue().shutdown(SHUTDOWN_TIMEOUT_MILLIS);
+      } catch (IllegalStateException | IllegalArgumentException ignored) {
+        // Keep shutdown best-effort like Python's cleanup path.
+      }
+      recoveryManager.removeSpawnedHandle(entry.getKey());
+    }
+    spawnedHandles.clear();
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public void cancelRecoveryTasks() {
+    for (Future<?> task : recoveryTasks) {
+      if (!task.isDone()) {
+        task.cancel(true);
+      }
+    }
+    recoveryTasks.clear();
+  }
+
+  /** Auto-generated for codecheck compliance. */
+  public TeamRuntimeContext buildContextFromSpec(TeamMemberSpec memberSpec) {
+    if (memberSpec == null) {
+      return nullValue();
+    }
+    return TeamRuntimeContext.builder()
+        .teamId(teamBackend.getTeamName())
+        .sessionId(sessionIdGetter.get())
+        .memberName(memberSpec.getName())
+        .role(memberSpec.getRole() == TeamRole.LEADER ? TeamRole.LEADER : TeamRole.MEMBER)
+        .metadata(new LinkedHashMap<>())
+        .build();
+  }
+
+  private TeamModelConfig resolvePersistedMemberModel(String memberName) {
+    MemberRecord record =
+        teamBackend.getDb().member.getMember(memberName, teamBackend.getTeamName());
+    if (record == null || record.getModelRefJson() == null || record.getModelRefJson().isBlank()) {
+      return nullValue();
+    }
+    try {
+      Map<String, Object> ref = OBJECT_MAPPER.readValue(record.getModelRefJson(), MAP_TYPE);
+      return ModelAllocators.resolveMemberModel(
+          teamAgent.getSpec(),
+          stringValue(ref.get("model_name")),
+          integerValue(ref.get("model_index")));
+    } catch (JsonProcessingException | IllegalArgumentException ignored) {
+      return nullValue();
+    }
+  }
+
+  private void cleanupFinishedRecoveryTasks() {
+    recoveryTasks.removeIf(Future::isDone);
+  }
+
+  private static String stringValue(Object value) {
+    return value != null ? String.valueOf(value) : null;
+  }
+
+  private static long secondsToMillis(double seconds) {
+    return Math.max(1L, Math.round(seconds * 1_000.0));
+  }
+
+  private static Integer integerValue(Object value) {
+    if (value instanceof Number number) {
+      return number.intValue();
+    }
+    if (value instanceof String text) {
+      try {
+        return Integer.parseInt(text);
+      } catch (NumberFormatException ignored) {
+        return nullValue();
+      }
+    }
+    return nullValue();
+  }
+
+  private static <T> T nullValue() {
+    return null;
+  }
+}

@@ -14,26 +14,44 @@ public class IOConfig {
     private Object inputsSchema;
     private Object outputsSchema;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public IOConfig() {
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public IOConfig(Object inputsSchema, Object outputsSchema) {
         this.inputsSchema = inputsSchema;
         this.outputsSchema = outputsSchema;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Object getInputsSchema() {
         return inputsSchema;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setInputsSchema(Object inputsSchema) {
         this.inputsSchema = inputsSchema;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Object getOutputsSchema() {
         return outputsSchema;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setOutputsSchema(Object outputsSchema) {
         this.outputsSchema = outputsSchema;
     }

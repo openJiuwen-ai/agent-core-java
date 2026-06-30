@@ -21,6 +21,9 @@ public class PostLoopBody extends Executable<Object, Object> {
     private int finishIndex = -1;
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Object onInvoke(Object inputs, BaseSession session, Object... kwargs) {
         if (session.state() instanceof WorkflowStateCollection state) {
             Object fi = state.get(Constant.FINISH_INDEX);
@@ -37,14 +40,23 @@ public class PostLoopBody extends Executable<Object, Object> {
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public boolean skipTrace() {
         return true;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public int getFinishIndex() {
         return finishIndex;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setFinishIndex(int finishIndex) {
         this.finishIndex = finishIndex;
     }

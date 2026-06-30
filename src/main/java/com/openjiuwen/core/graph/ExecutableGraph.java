@@ -29,6 +29,9 @@ public abstract class ExecutableGraph<I, O> extends Executable<I, O> {
      * @return the output
      */
     @SuppressWarnings("unchecked")
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public O invoke(I inputs, BaseSession session) {
         Map<String, Object> inputMap = (Map<String, Object>) inputs;
         Object actualInputs = inputMap.get(Constant.INPUTS_KEY);

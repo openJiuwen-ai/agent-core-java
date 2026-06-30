@@ -1,7 +1,10 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval.indexing.processor.extractor;
 
 import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -28,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class LLMTripleExtractorTest {
 
     @Test
-    void extractParsesObjectWrapperAndConfidence() {
+    void extractParsesObjectWrapperAndIgnoresConfidence() {
         LLMTripleExtractor extractor = new LLMTripleExtractor(new QueueLlmClient(
                 "{\"triples\":[[\"Alice\",\"knows\",\"Bob\",0.8],[\"Bob\",\"works_at\",\"ACME\"]]}"), "test-model");
 
@@ -36,7 +39,7 @@ class LLMTripleExtractorTest {
 
         assertEquals(2, triples.size());
         assertEquals("Alice", triples.get(0).getSubject());
-        assertEquals(0.8, triples.get(0).getConfidence());
+        assertEquals(null, triples.get(0).getConfidence());
         assertEquals("doc-1", triples.get(0).getMetadata().get("doc_id"));
         assertEquals("chunk-1", triples.get(0).getMetadata().get("chunk_id"));
     }
@@ -44,13 +47,77 @@ class LLMTripleExtractorTest {
     @Test
     void extractRejectsInvalidJson() {
         LLMTripleExtractor extractor = new LLMTripleExtractor(new QueueLlmClient("not json"), "test-model");
-        assertThrows(BaseError.class, () -> extractor.extract(List.of(new TextChunk("chunk-1", "Alice knows Bob", "doc-1")), Map.of()));
+        BaseError error = assertThrows(BaseError.class,
+                () -> extractor.extract(List.of(new TextChunk("chunk-1", "Alice knows Bob", "doc-1")), Map.of()));
+        assertEquals(StatusCode.RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR, error.getStatus());
+        org.assertj.core.api.Assertions.assertThat(error.getMessage()).contains("parsed");
     }
 
     @Test
     void extractReturnsEmptyForEmptyChunks() {
         LLMTripleExtractor extractor = new LLMTripleExtractor(new QueueLlmClient("[]"), "test-model");
         assertEquals(List.of(), extractor.extract(List.of(), Map.of()));
+    }
+
+    @Test
+    void extractShouldRaiseFirstErrorInChunkOrder() {
+        LLMTripleExtractor extractor = new LLMTripleExtractor(new QueueLlmClient(
+                "not json",
+                "{\"triples\":[[\"Bob\",\"works_at\",\"ACME\"]]}"), "test-model", 0.0f, 2);
+
+        BaseError error = assertThrows(BaseError.class, () -> extractor.extract(List.of(
+                new TextChunk("chunk-1", "bad", "doc-1"),
+                new TextChunk("chunk-2", "Bob works at ACME", "doc-1")), Map.of()));
+
+        org.assertj.core.api.Assertions.assertThat(error.getMessage()).contains("chunk-1");
+    }
+
+    @Test
+    void parseTriplesShouldAcceptArrayWrapperDictAndMarkdownFence() {
+        LLMTripleExtractor extractor = new LLMTripleExtractor(new QueueLlmClient("[]"), "test-model");
+        TextChunk chunk = new TextChunk("chunk-1", "Alice knows Bob", "doc-1");
+
+        assertEquals(1, extractor.parseTriples("[[\"a\", \"b\", \"c\"]]", chunk).triples().size());
+        assertEquals(1, extractor.parseTriples("{\"triples\": [[\"x\", \"y\", \"z\"]]}", chunk).triples().size());
+        assertEquals(1, extractor.parseTriples("```json\n{\"triples\": [[\"m\", \"n\", \"o\"]]}\n```", chunk).triples().size());
+    }
+
+    @Test
+    void parseTriplesShouldFailMissingTriplesAndAllInvalidButAllowEmptyList() {
+        LLMTripleExtractor extractor = new LLMTripleExtractor(new QueueLlmClient("[]"), "test-model");
+        TextChunk chunk = new TextChunk("chunk-1", "Alice knows Bob", "doc-1");
+
+        org.assertj.core.api.Assertions.assertThat(extractor.parseTriples("{\"named_entities\": [\"Alice\"]}", chunk).isSuccess()).isFalse();
+        org.assertj.core.api.Assertions.assertThat(extractor.parseTriples("{\"triples\": []}", chunk).isSuccess()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(extractor.parseTriples("{\"triples\": [[\"x\"], {\"bad\": 1}]}", chunk).isSuccess()).isFalse();
+    }
+
+    @Test
+    void parseTriplesShouldIgnoreInvalidItemsAndNestedValues() {
+        LLMTripleExtractor extractor = new LLMTripleExtractor(new QueueLlmClient("[]"), "test-model");
+        TextChunk chunk = new TextChunk("chunk-1", "Alice knows Bob", "doc-1");
+
+        List<Triple> triples = extractor.parseTriples(
+                "{\"triples\": [[\"a\", \"b\", \"c\"], [\"x\"], {\"bad\": 1}, [\"y\", [\"nested\"], \"z\"]]}",
+                chunk).triples();
+
+        assertEquals(1, triples.size());
+        assertEquals("a", triples.get(0).getSubject());
+    }
+
+    @Test
+    void buildPromptShouldExposePythonPromptShape() {
+        LLMTripleExtractor extractor = new LLMTripleExtractor(new QueueLlmClient("[]"), "test-model");
+
+        String prompt = extractor.buildPrompt("Alice knows Bob", "DocTitle");
+
+        org.assertj.core.api.Assertions.assertThat(prompt)
+                .contains("RDF-style graph")
+                .contains("named_entities")
+                .contains("Magic Johnson")
+                .contains("Elden Ring")
+                .contains("DocTitle")
+                .contains("Alice knows Bob");
     }
 
     private static final class QueueLlmClient extends BaseModelClient {

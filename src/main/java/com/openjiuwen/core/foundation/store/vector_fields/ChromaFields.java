@@ -14,6 +14,9 @@ public final class ChromaFields {
     private ChromaFields() {
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static CollectionSchema defaultSchema(int dimension) {
         return BaseVectorFields.defaultSchema("embedding", dimension);
     }

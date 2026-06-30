@@ -43,11 +43,17 @@ public enum AgentCallbackEvent {
         this.value = value;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getValue() {
         return value;
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String toString() {
         return value;
     }

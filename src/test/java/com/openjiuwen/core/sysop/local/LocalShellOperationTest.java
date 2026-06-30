@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.sysop.local;
 
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -61,12 +63,15 @@ class LocalShellOperationTest {
 
     private static boolean isPythonAvailable() {
         String pathEnv = System.getenv("PATH");
-        if (pathEnv == null) return false;
+        if (pathEnv == null) {
+            return false;
+        }
         String pythonExe = isWindows() ? "python.exe" : "python";
         for (String dir : pathEnv.split(File.pathSeparator)) {
             File f = new File(dir, pythonExe);
-            if (f.exists() && f.isFile() && f.canExecute())
+            if (f.exists() && f.isFile() && f.canExecute()) {
                 return true;
+            }
         }
         return false;
     }
@@ -194,13 +199,59 @@ class LocalShellOperationTest {
     }
 
     @Test
+    @DisplayName("Shell dangerous patterns are blocked")
+    void testShellDangerousPatterns() {
+        LocalWorkConfig config = LocalWorkConfig.builder()
+                .shellAllowlist(null)
+                .dangerousPatterns(List.of("rm\\s+-rf", "shutdown"))
+                .workDir(workDir.toString())
+                .build();
+        SysOperationCard card = new SysOperationCard();
+        card.setId("test_dangerous_patterns");
+        card.setMode(OperationMode.LOCAL);
+        card.setWorkConfig(config);
+        SysOperation restrictedOp = new SysOperation(card);
+
+        ExecuteCmdResult deniedRes = restrictedOp.shell().executeCmd("rm -rf /tmp/demo", null, 300, null, null);
+        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), deniedRes.getCode());
+        assertTrue(deniedRes.getMessage().contains("dangerous pattern"));
+    }
+
+    @Test
+    @DisplayName("Shell restrictToSandbox denies cwd outside sandbox roots")
+    void testShellRestrictToSandboxRejectsOutsideCwd() {
+        Path sandboxRoot = workDir.resolve("sandbox");
+        Path cwdInside = sandboxRoot.resolve("work");
+        Path cwdOutside = workDir.resolve("outside");
+        assertTrue(cwdInside.toFile().mkdirs());
+        assertTrue(cwdOutside.toFile().mkdirs());
+
+        LocalWorkConfig config = LocalWorkConfig.builder()
+                .workDir(cwdInside.toString())
+                .sandboxRoot(List.of(sandboxRoot.toString()))
+                .restrictToSandbox(true)
+                .shellAllowlist(null)
+                .build();
+        SysOperationCard card = new SysOperationCard();
+        card.setId("test_shell_sandbox_root");
+        card.setMode(OperationMode.LOCAL);
+        card.setWorkConfig(config);
+        SysOperation restrictedOp = new SysOperation(card);
+
+        ExecuteCmdResult deniedRes = restrictedOp.shell().executeCmd("pwd", cwdOutside.toString(), 300, null, null);
+        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), deniedRes.getCode());
+        assertTrue(deniedRes.getMessage().contains("Access denied"));
+    }
+
+    @Test
     @DisplayName("Shell list tools")
     void testShellListTools() {
         var tools = shell().listTools();
-        assertEquals(2, tools.size());
+        assertEquals(3, tools.size());
         var toolNames = tools.stream().map(t -> t.getName()).toList();
         assertTrue(toolNames.contains("executeCmd"));
         assertTrue(toolNames.contains("executeCmdStream"));
+        assertTrue(toolNames.contains("executeCmdBackground"));
     }
 
     @Test
@@ -209,6 +260,46 @@ class LocalShellOperationTest {
         ExecuteCmdResult res = shell().executeCmd("", null, 300, null, null);
         assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), res.getCode());
         assertTrue(res.getMessage().contains("command can not be empty"));
+    }
+
+    @Test
+    @DisplayName("Shell background execution returns pid")
+    void testShellBackgroundExecution() {
+        String cmd = isWindows()
+                ? "ping -n 3 127.0.0.1 > NUL"
+                : "sleep 2";
+        var result = shell().executeCmdBackground(cmd, null, null, 0.1, null);
+
+        assertEquals(StatusCode.SUCCESS.getCode(), result.getCode());
+        assertNotNull(result.getData());
+        assertNotNull(result.getData().getPid());
+        assertTrue(result.getData().getPid() > 0);
+        ProcessHandle.of(result.getData().getPid()).ifPresent(handle -> {
+            handle.destroy();
+            if (handle.isAlive()) {
+                handle.destroyForcibly();
+            }
+        });
+    }
+
+    @Test
+    @DisplayName("Shell background execution rejects empty command")
+    void testShellBackgroundRejectsEmptyCommand() {
+        var result = shell().executeCmdBackground("", null, null, 0.1, null);
+
+        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), result.getCode());
+        assertTrue(result.getMessage().contains("command can not be empty"));
+    }
+
+    @Test
+    @DisplayName("Shell options can request bash shell type")
+    void testShellTypeOptionBash() {
+        Assumptions.assumeFalse(isWindows(), "bash shell_type test is Unix-like only");
+        ExecuteCmdResult res = shell().executeCmd("echo shell-ok", null, 300, null, Map.of("shell_type", "bash"));
+
+        assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
+        assertEquals("bash", res.getData().getShellType());
+        assertTrue(res.getData().getStdout().contains("shell-ok"));
     }
 
     // ==================== executeCmdStream Test Cases ====================

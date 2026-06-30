@@ -67,6 +67,10 @@ public class CallbackInfo {
     /** Name of the callback for logging purposes. */
     private String callbackName;
 
+    /** Semantic type marker, e.g. "transform". Empty string means normal callback. */
+    @Builder.Default
+    private String callbackType = "";
+
     /**
      * Get the callback name for logging/metrics purposes.
      *

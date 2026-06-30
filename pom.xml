@@ -7,16 +7,16 @@
 
     <groupId>com.openjiuwen</groupId>
     <artifactId>agent-core-java</artifactId>
-    <version>0.1.7</version>
+    <version>0.1.12</version>
     <packaging>jar</packaging>
 
     <name>agent-core-java</name>
     <description>Agent Core Java - openJiuwen framework for Java agents, workflows, and runtime execution</description>
 
     <properties>
-        <java.version>21</java.version>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- Dependency versions (aligned with tech-stack-mapping) -->
@@ -27,13 +27,16 @@
         <lombok.version>1.18.32</lombok.version>
         <bouncy-castle.version>1.77</bouncy-castle.version>
         <milvus.version>2.6.13</milvus.version>
+        <pulsar.version>4.0.9</pulsar.version>
         <pgvector.version>0.1.6</pgvector.version>
         <postgresql.version>42.7.7</postgresql.version>
+        <sqlite-jdbc.version>3.53.0.0</sqlite-jdbc.version>
+        <dashscope.version>2.22.17</dashscope.version>
         <testcontainers.version>1.21.3</testcontainers.version>
 
         <!-- Test dependencies -->
         <junit.version>5.10.2</junit.version>
-        <mockito.version>5.11.0</mockito.version>
+        <mockito.version>5.2.0</mockito.version>
         <assertj.version>3.25.3</assertj.version>
         <jacoco.version>0.8.11</jacoco.version>
         <surefire.groups></surefire.groups>
@@ -94,6 +97,11 @@
             <version>${milvus.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.apache.pulsar</groupId>
+            <artifactId>pulsar-client</artifactId>
+            <version>${pulsar.version}</version>
+        </dependency>
+        <dependency>
             <groupId>com.pgvector</groupId>
             <artifactId>pgvector</artifactId>
             <version>${pgvector.version}</version>
@@ -113,7 +121,16 @@
             <artifactId>poi-ooxml</artifactId>
             <version>5.3.0</version>
         </dependency>
-
+        <dependency>
+            <groupId>com.openai</groupId>
+            <artifactId>openai-java</artifactId>
+            <version>4.32.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.alibaba</groupId>
+            <artifactId>dashscope-sdk-java</artifactId>
+            <version>${dashscope.version}</version>
+        </dependency>
         <!-- Reactive Programming: Project Reactor -->
         <dependency>
             <groupId>io.projectreactor</groupId>
@@ -135,6 +152,12 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-inline</artifactId>
+            <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <version>${assertj.version}</version>
@@ -145,6 +168,11 @@
             <artifactId>h2</artifactId>
             <version>2.2.224</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>${sqlite-jdbc.version}</version>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
@@ -158,11 +186,6 @@
             <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>io.projectreactor</groupId>
-            <artifactId>reactor-core</artifactId>
-            <version>3.6.0</version>
-        </dependency>
     </dependencies>
 
     <build>
@@ -175,9 +198,6 @@
                     <source>${java.version}</source>
                     <target>${java.version}</target>
                     <parameters>true</parameters>
-                    <testExcludes>
-                        <testExclude>**/core/systemtest/**</testExclude>
-                    </testExcludes>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
@@ -206,6 +226,9 @@
                         <goals>
                             <goal>prepare-agent</goal>
                         </goals>
+                        <configuration>
+                            <append>false</append>
+                        </configuration>
                     </execution>
                     <execution>
                         <id>report</id>

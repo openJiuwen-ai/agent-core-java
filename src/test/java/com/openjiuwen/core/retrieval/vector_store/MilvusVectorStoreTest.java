@@ -1,11 +1,26 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval.vector_store;
 
+import com.google.gson.JsonObject;
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
+import com.openjiuwen.core.memory.migration.operation.AddScalarFieldOperation;
+import com.openjiuwen.core.memory.migration.operation.OperationMetadata;
+import io.milvus.orm.iterator.QueryIterator;
+import io.milvus.response.QueryResultsWrapper;
 import io.milvus.v2.client.MilvusClientV2;
+import io.milvus.v2.common.DataType;
+import io.milvus.v2.service.collection.request.AlterCollectionPropertiesReq;
+import io.milvus.v2.service.collection.request.CreateCollectionReq;
+import io.milvus.v2.service.collection.request.DropCollectionReq;
+import io.milvus.v2.service.collection.request.RenameCollectionReq;
+import io.milvus.v2.service.collection.response.DescribeCollectionResp;
 import io.milvus.v2.service.utility.request.FlushReq;
 import io.milvus.v2.service.vector.request.DeleteReq;
+import io.milvus.v2.service.vector.request.InsertReq;
+import io.milvus.v2.service.vector.request.QueryIteratorReq;
 import io.milvus.v2.service.vector.request.QueryReq;
 import io.milvus.v2.service.vector.request.SearchReq;
 import io.milvus.v2.service.vector.response.DeleteResp;
@@ -151,5 +166,88 @@ class MilvusVectorStoreTest {
         verify(client).flush(flushCaptor.capture());
         assertEquals(List.of("kb_chunks"), flushCaptor.getValue().getCollectionNames());
         assertFalse(flushCaptor.getValue().getCollectionNames().isEmpty());
+    }
+
+    @Test
+    void metadataConvertsSchemaVersionAndUpdatesCollectionProperties() {
+        MilvusClientV2 client = mock(MilvusClientV2.class);
+        when(client.describeCollection(any())).thenReturn(DescribeCollectionResp.builder()
+                .collectionName("kb_chunks")
+                .properties(Map.of("schema_version", "7", "owner", "memory"))
+                .build());
+
+        MilvusVectorStore store = new MilvusVectorStore(client, new VectorStoreConfig("milvus", "kb_chunks"), "vector");
+        Map<String, Object> metadata = store.getCollectionMetadata("kb_chunks");
+        assertEquals(7, metadata.get("schema_version"));
+        assertEquals("memory", metadata.get("owner"));
+
+        store.updateCollectionMetadata("kb_chunks", Map.of("schema_version", 8));
+
+        ArgumentCaptor<AlterCollectionPropertiesReq> captor =
+                ArgumentCaptor.forClass(AlterCollectionPropertiesReq.class);
+        verify(client).alterCollectionProperties(captor.capture());
+        assertEquals("8", captor.getValue().getProperties().get("schema_version"));
+        assertEquals(8, store.getCollectionMetadata("kb_chunks").get("schema_version"));
+    }
+
+    @Test
+    void updateSchemaRebuildsCollectionAndCopiesTransformedRows() {
+        MilvusClientV2 client = mock(MilvusClientV2.class);
+        when(client.createSchema()).thenCallRealMethod();
+        when(client.hasCollection(any())).thenReturn(true);
+
+        CreateCollectionReq.CollectionSchema currentSchema = MilvusClientV2.CreateSchema();
+        currentSchema.addField(io.milvus.v2.service.collection.request.AddFieldReq.builder()
+                .fieldName("pk").dataType(DataType.Int64).isPrimaryKey(true).autoID(true).build());
+        currentSchema.addField(io.milvus.v2.service.collection.request.AddFieldReq.builder()
+                .fieldName("text").dataType(DataType.VarChar).maxLength(65535).build());
+        currentSchema.addField(io.milvus.v2.service.collection.request.AddFieldReq.builder()
+                .fieldName("vector").dataType(DataType.FloatVector).dimension(3).build());
+        currentSchema.addField(io.milvus.v2.service.collection.request.AddFieldReq.builder()
+                .fieldName("metadata").dataType(DataType.JSON).build());
+        when(client.describeCollection(any())).thenReturn(DescribeCollectionResp.builder()
+                .collectionName("kb_chunks")
+                .collectionSchema(currentSchema)
+                .properties(Map.of("schema_version", "1", "distance_metric", "COSINE"))
+                .build());
+
+        QueryIterator iterator = mock(QueryIterator.class);
+        QueryResultsWrapper.RowRecord row = new QueryResultsWrapper.RowRecord();
+        row.put("pk", 1L);
+        row.put("text", "hello");
+        row.put("vector", List.of(1.0f, 0.0f, 0.5f));
+        row.put("metadata", new LinkedHashMap<>(Map.of("source", "unit")));
+        when(client.queryIterator(any())).thenReturn(iterator);
+        when(iterator.next()).thenReturn(List.of(row), List.of());
+
+        MilvusVectorStore store = new MilvusVectorStore(client, new VectorStoreConfig("milvus", "kb_chunks"), "vector");
+        store.updateSchema("kb_chunks", List.of(new AddScalarFieldOperation(
+                new OperationMetadata(2, "add field"),
+                "user_profile",
+                "nickname",
+                "string",
+                "unknown"
+        )));
+
+        ArgumentCaptor<CreateCollectionReq> createCaptor = ArgumentCaptor.forClass(CreateCollectionReq.class);
+        verify(client).createCollection(createCaptor.capture());
+        assertTrue(createCaptor.getValue().getCollectionName().startsWith("kb_chunks_migration_"));
+        assertEquals(DataType.VarChar,
+                createCaptor.getValue().getCollectionSchema().getField("nickname").getDataType());
+
+        ArgumentCaptor<QueryIteratorReq> iteratorCaptor = ArgumentCaptor.forClass(QueryIteratorReq.class);
+        verify(client).queryIterator(iteratorCaptor.capture());
+        assertEquals("kb_chunks", iteratorCaptor.getValue().getCollectionName());
+
+        ArgumentCaptor<InsertReq> insertCaptor = ArgumentCaptor.forClass(InsertReq.class);
+        verify(client).insert(insertCaptor.capture());
+        JsonObject migrated = insertCaptor.getValue().getData().get(0);
+        assertFalse(migrated.has("pk"));
+        assertEquals("unknown", migrated.get("nickname").getAsString());
+
+        verify(client).dropCollection(any(DropCollectionReq.class));
+        ArgumentCaptor<RenameCollectionReq> renameCaptor = ArgumentCaptor.forClass(RenameCollectionReq.class);
+        verify(client).renameCollection(renameCaptor.capture());
+        assertEquals("kb_chunks", renameCaptor.getValue().getNewCollectionName());
     }
 }

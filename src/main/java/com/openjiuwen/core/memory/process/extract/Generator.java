@@ -30,23 +30,36 @@ public class Generator {
 
     private final DataIdManager dataIdGenerator;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Generator(DataIdManager dataIdGenerator) {
         this.dataIdGenerator = dataIdGenerator;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Map<String, List<BaseMemoryUnit>> genAllMemory(Map<String, Object> kwargs) {
+        List<BaseMessage> messages = kwargs.get("messages") instanceof List<?> rawMessages
+                ? rawMessages.stream().filter(BaseMessage.class::isInstance).map(BaseMessage.class::cast).toList()
+                : List.of();
+        AgentMemoryConfig config = kwargs.get("config") instanceof AgentMemoryConfig cfg ? cfg : null;
         @SuppressWarnings("unchecked")
-        List<BaseMessage> messages = (List<BaseMessage>) kwargs.get("messages");
-        AgentMemoryConfig config = (AgentMemoryConfig) kwargs.get("config");
-        @SuppressWarnings("unchecked")
-        Map.Entry<String, Model> model = (Map.Entry<String, Model>) kwargs.get("base_chat_model");
-        String userId = (String) kwargs.get("user_id");
-        String scopeId = (String) kwargs.get("scope_id");
-        @SuppressWarnings("unchecked")
-        List<BaseMessage> historyMessages = (List<BaseMessage>) kwargs.get("history_messages");
-        String messageMemId = (String) kwargs.get("message_mem_id");
-        String timestamp = (String) kwargs.get("timestamp");
-        Integer summaryMaxToken = (Integer) kwargs.get("summary_max_token");
+        Map.Entry<String, Model> model = kwargs.get("base_chat_model") instanceof Map.Entry<?, ?> rawModel
+                && rawModel.getKey() instanceof String
+                && rawModel.getValue() instanceof Model
+                ? (Map.Entry<String, Model>) rawModel
+                : null;
+        String userId = kwargs.get("user_id") instanceof String value ? value : null;
+        String scopeId = kwargs.get("scope_id") instanceof String value ? value : null;
+        List<BaseMessage> historyMessages = kwargs.get("history_messages") instanceof List<?> rawHistory
+                ? rawHistory.stream().filter(BaseMessage.class::isInstance).map(BaseMessage.class::cast).toList()
+                : List.of();
+        String messageMemId = kwargs.get("message_mem_id") instanceof String value ? value : null;
+        String timestamp = kwargs.get("timestamp") instanceof String value ? value : null;
+        Integer summaryMaxToken = kwargs.get("summary_max_token") instanceof Integer value ? value : null;
+        String forbiddenVariables = kwargs.get("forbidden_variables") instanceof String value ? value : null;
 
         if (messages == null || config == null || userId == null || scopeId == null || model == null) {
             MEMORY_LOGGER.error("[{}] Messages, config, user_id, scope_id, model are required parameters",
@@ -67,7 +80,8 @@ public class Generator {
         // Analyze memories
         MemoryAnalyzerResult analyzeRes = MemoryAnalyzer.analyze(
                 messages, historyMessages, model, config,
-                summaryMaxToken != null ? summaryMaxToken : 128);
+                summaryMaxToken != null ? summaryMaxToken : 128,
+                forbiddenVariables);
 
         if (analyzeRes == null) {
             return allMemoryResults;
@@ -99,7 +113,7 @@ public class Generator {
 
         // Process fragment memories
         try {
-            List<BaseMemoryUnit> mergedUnits = categoriesToMemoryUnit(extractParams, messageMemId, timestamp);
+            List<BaseMemoryUnit> mergedUnits = categoriesToMemoryUnit(extractParams, messageMemId, timestamp, config);
             for (BaseMemoryUnit unit : mergedUnits) {
                 String memType = unit.getMemType().getValue();
                 allMemoryResults.computeIfAbsent(memType, k -> new ArrayList<>()).add(unit);
@@ -115,16 +129,18 @@ public class Generator {
     }
 
     private List<BaseMemoryUnit> categoriesToMemoryUnit(
-            ExtractMemoryParams params, String messageMemId, String timestamp) {
+            ExtractMemoryParams params, String messageMemId, String timestamp, AgentMemoryConfig config) {
         List<BaseMemoryUnit> memoryUnits = new ArrayList<>();
-        Map<String, List<String>> memoryDict = LongTermMemoryExtractor.extractLongTermMemory(params, timestamp);
-        memoryUnits.addAll(getFragmentMemoryUnits(params.getUserId(), messageMemId, memoryDict, timestamp));
+        Map<String, List<Object>> memoryDict = LongTermMemoryExtractor.extractLongTermMemory(params, timestamp);
+        memoryUnits.addAll(getFragmentMemoryUnits(params.getUserId(), messageMemId, memoryDict, timestamp, config));
         return memoryUnits;
     }
 
     private static List<VariableUnit> processExtractedData(List<VariableResult> variableResults) {
         List<VariableUnit> variableUnits = new ArrayList<>();
-        if (variableResults == null) return variableUnits;
+        if (variableResults == null) {
+            return variableUnits;
+        }
         for (VariableResult tmp : variableResults) {
             if (tmp.getVariableValue() == null || tmp.getVariableValue().isEmpty()) {
                 continue;
@@ -150,15 +166,24 @@ public class Generator {
 
     private List<FragmentMemoryUnit> getFragmentMemoryUnits(
             String userId, String messageMemId,
-            Map<String, List<String>> memoryDict, String timestamp) {
+            Map<String, List<Object>> memoryDict, String timestamp, AgentMemoryConfig config) {
         List<FragmentMemoryUnit> fragmentUnits = new ArrayList<>();
-        if (memoryDict == null) return fragmentUnits;
-        for (Map.Entry<String, List<String>> entry : memoryDict.entrySet()) {
-            String fragmentType = entry.getKey();
-            for (String memContent : entry.getValue()) {
+        if (memoryDict == null) {
+            return fragmentUnits;
+        }
+        for (Map.Entry<String, List<Object>> entry : memoryDict.entrySet()) {
+            MemoryType memoryType = MemoryType.fromValue(entry.getKey());
+            if (memoryType == MemoryType.UNKNOWN) {
+                continue;
+            }
+            if (!config.isMemoryTypeEnabled(memoryType.getValue())) {
+                continue;
+            }
+            for (Object item : entry.getValue()) {
+                String memContent = normalizeFragmentContent(item);
                 String memId = dataIdGenerator.generateNextId(userId);
                 fragmentUnits.add(FragmentMemoryUnit.builder()
-                        .fragmentType(fragmentType)
+                        .memType(memoryType)
                         .content(memContent)
                         .messageMemId(messageMemId)
                         .timestamp(timestamp)
@@ -167,5 +192,18 @@ public class Generator {
             }
         }
         return fragmentUnits;
+    }
+
+    private static String normalizeFragmentContent(Object item) {
+        if (item instanceof String text) {
+            return text;
+        }
+        if (item instanceof Map<?, ?> map) {
+            Object content = map.get("content");
+            if (content != null && !String.valueOf(content).isEmpty()) {
+                return String.valueOf(content);
+            }
+        }
+        return String.valueOf(item);
     }
 }

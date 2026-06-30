@@ -16,6 +16,12 @@ public interface RemoteClient {
 
     void stop();
 
+    boolean isStarted();
+
+    default boolean isStopped() {
+        return !isStarted();
+    }
+
     Object invoke(Map<String, Object> inputs, Double timeoutSeconds) throws Exception;
 
     Iterator<Object> stream(Map<String, Object> inputs, Double timeoutSeconds) throws Exception;

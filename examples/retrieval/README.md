@@ -6,6 +6,7 @@
 
 - `TextEmbeddingExample.java`: 文本 embedding，对比跨语言同主题和相关主题之间的向量差异。
 - `MultimodalEmbeddingExample.java`: 多模态 embedding，比较同图不同格式、不同图片、同图不同文本的相似度。
+- `DashscopeMultimodalEmbeddingExample.java`: DashScope 多模态 embedding，对齐 Python `showcase_dashscope_multimodal_embedding.py`。
 - `StandardRerankerExample.java`: 标准 reranker，对比默认查询和带 instruction 的打分结果。
 - `ChatRerankerExample.java`: chat reranker，增加兼容性探测，并演示 custom instruction 对分数的影响。
 - `QueryRewriterExample.java`: Query Rewriter，多轮对话重写、压缩和 `standalone_query` 输出。
@@ -23,6 +24,8 @@
 
 - `EMBEDDING_MODEL`, `EMBEDDING_API_BASE`, `EMBEDDING_API_KEY`
 - `MULTIMODAL_EMBEDDING_MODEL`, `MULTIMODAL_EMBEDDING_API_BASE`, `MULTIMODAL_EMBEDDING_API_KEY`
+- `DASHSCOPE_EMBEDDING_MODEL`, `DASHSCOPE_EMBEDDING_API_BASE`, `DASHSCOPE_EMBEDDING_API_KEY`, `DASHSCOPE_EMBEDDING_DIM`
+- `DASHSCOPE_API_KEY`, `DASHSCOPE_REFERENCE_IMAGE`
 - `RERANKER_MODEL`, `RERANKER_API_BASE`, `RERANKER_API_KEY`
 - `CHAT_RERANKER_MODEL`, `CHAT_RERANKER_API_BASE`, `CHAT_RERANKER_API_KEY`
 - `CHAT_RERANKER_YES_NO_IDS`
@@ -52,6 +55,7 @@ javac -cp "target/classes;examples;$(Get-Content target/retrieval_examples.class
 $classpath = Get-Content target/retrieval_examples.classpath -Raw
 java -cp "target/classes;examples;examples/retrieval;$classpath" TextEmbeddingExample
 java -cp "target/classes;examples;examples/retrieval;$classpath" MultimodalEmbeddingExample
+java -cp "target/classes;examples;examples/retrieval;$classpath" DashscopeMultimodalEmbeddingExample
 java -cp "target/classes;examples;examples/retrieval;$classpath" StandardRerankerExample
 java -cp "target/classes;examples;examples/retrieval;$classpath" ChatRerankerExample
 java -cp "target/classes;examples;examples/retrieval;$classpath" QueryRewriterExample

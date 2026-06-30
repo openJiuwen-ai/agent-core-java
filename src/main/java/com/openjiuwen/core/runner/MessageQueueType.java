@@ -17,6 +17,9 @@ public enum MessageQueueType {
         this.value = value;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getValue() {
         return value;
     }

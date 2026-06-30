@@ -15,6 +15,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SqlDbStoreTest {
@@ -37,8 +38,8 @@ class SqlDbStoreTest {
 
         assertNotNull(rows);
         assertEquals(1, rows.size());
-        assertEquals("u1", rows.getFirst().get("user_id"));
-        assertEquals("Hello", rows.getFirst().get("content"));
+        assertEquals("u1", rows.get(0).get("user_id"));
+        assertEquals("Hello", rows.get(0).get("content"));
     }
 
     @Test
@@ -57,6 +58,42 @@ class SqlDbStoreTest {
     }
 
     @Test
+    void getWithSortReturnsEmptyWhenSortColumnDoesNotExist() {
+        List<Map<String, Object>> rows = sqlDbStore.getWithSort(
+                "user_message",
+                Map.of("user_id", "u1"),
+                "missing_column",
+                "ASC",
+                10
+        );
+
+        assertTrue(rows.isEmpty());
+    }
+
+    @Test
+    void batchGetUsesOrWithinEachConditionGroupLikePython() {
+        List<Map<String, Object>> rows = sqlDbStore.batchGet("user_message", List.of(
+                Map.of("message_id", "m1", "role", "assistant")
+        ));
+
+        assertEquals(2, rows.size());
+        List<String> ids = rows.stream()
+                .map(row -> String.valueOf(row.get("message_id")))
+                .sorted()
+                .toList();
+        assertEquals(List.of("m1", "m3"), ids);
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void conditionGetReturnsNullWhenConditionValueIsNotList() {
+        Map invalidConditions = new LinkedHashMap();
+        invalidConditions.put("message_id", "m1");
+
+        assertNull(sqlDbStore.conditionGet("user_message", invalidConditions, null));
+    }
+
+    @Test
     void existUpdateAndDeleteFollowPythonSemantics() {
         assertTrue(sqlDbStore.exist("user_message", Map.of("message_id", "m1")));
         assertFalse(sqlDbStore.exist("user_message", Map.of("message_id", "not_exist")));
@@ -68,7 +105,7 @@ class SqlDbStoreTest {
         ));
         Map<String, List<Object>> singleFilter = new LinkedHashMap<>();
         singleFilter.put("message_id", new ArrayList<>(List.of("m1")));
-        assertEquals("hi", sqlDbStore.conditionGet("user_message", singleFilter, null).getFirst().get("content"));
+        assertEquals("hi", sqlDbStore.conditionGet("user_message", singleFilter, null).get(0).get("content"));
 
         Map<String, Object> batchConditions = new LinkedHashMap<>();
         batchConditions.put("message_id", new ArrayList<>(List.of("m2", "m3")));
@@ -82,8 +119,8 @@ class SqlDbStoreTest {
         m2Filter.put("message_id", new ArrayList<>(List.of("m2")));
         Map<String, List<Object>> m3Filter = new LinkedHashMap<>();
         m3Filter.put("message_id", new ArrayList<>(List.of("m3")));
-        assertEquals("batch", sqlDbStore.conditionGet("user_message", m2Filter, null).getFirst().get("content"));
-        assertEquals("batch", sqlDbStore.conditionGet("user_message", m3Filter, null).getFirst().get("content"));
+        assertEquals("batch", sqlDbStore.conditionGet("user_message", m2Filter, null).get(0).get("content"));
+        assertEquals("batch", sqlDbStore.conditionGet("user_message", m3Filter, null).get(0).get("content"));
 
         assertTrue(sqlDbStore.delete("user_message", Map.of("message_id", "m1")));
         assertTrue(sqlDbStore.conditionGet("user_message", singleFilter, null).isEmpty());

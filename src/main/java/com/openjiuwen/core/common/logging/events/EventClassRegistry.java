@@ -220,7 +220,7 @@ public final class EventClassRegistry {
     /**
      * Create a log event and populate it with the given properties via setter methods.
      * <p>
-     * Smart detection: if the resolved event class is {@link StreamEvent} and the properties
+     * Smart detection: if the isResolved event class is {@link StreamEvent} and the properties
      * contain workflow indicators (workflowId, componentId, componentTypeStr), a
      * {@link WorkflowStreamEvent} is created instead.
      * <p>

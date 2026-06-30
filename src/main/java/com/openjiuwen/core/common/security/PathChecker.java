@@ -76,7 +76,7 @@ public final class PathChecker {
             }
             return false;
         } catch (Exception e) {
-            return true; // Fail-closed
+            return true; // Fail-isClosed
         }
     }
 

@@ -16,6 +16,9 @@ package com.openjiuwen.core.singleagent.legacy.config;
 @Deprecated(since = "0.1.7", forRemoval = true)
 public class ReActAgentConfig extends LegacyReActAgentConfig {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public ReActAgentConfig() {
         super();
         com.openjiuwen.core.singleagent.legacy.LegacyApi

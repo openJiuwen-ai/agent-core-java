@@ -14,6 +14,9 @@ package com.openjiuwen.core.operator;
  */
 public record TunableSpec(String name, String kind, String path, Object constraint) {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public TunableSpec(String name, String kind, String path) {
         this(name, kind, path, null);
     }

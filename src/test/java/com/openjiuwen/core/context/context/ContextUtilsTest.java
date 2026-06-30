@@ -1,10 +1,15 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.context.context;
 
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressor;
+import com.openjiuwen.core.context.processor.compressor.RoundLevelCompressorConfig;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -85,6 +90,23 @@ class ContextUtilsTest {
     }
 
     @Test
+    @DisplayName("findAllDialogueRound merges contiguous user blocks and keeps incomplete rounds")
+    void testFindAllDialogueRoundMergesUserBlocks() {
+        List<BaseMessage> messages = List.of(
+                new UserMessage("q1"),
+                new UserMessage("q1-1"),
+                new AssistantMessage("a1"),
+                new UserMessage("q2"),
+                new UserMessage("q2-1")
+        );
+
+        List<int[]> rounds = ContextUtils.findAllDialogueRound(messages);
+        assertEquals(2, rounds.size());
+        assertArrayEquals(new int[]{3, -1}, rounds.get(0));
+        assertArrayEquals(new int[]{0, 2}, rounds.get(1));
+    }
+
+    @Test
     @DisplayName("findLastNDialogueRound returns correct start index")
     void testFindLastNDialogueRound() {
         List<BaseMessage> messages = List.of(
@@ -101,6 +123,19 @@ class ContextUtilsTest {
     }
 
     @Test
+    @DisplayName("findLastNDialogueRound treats only-user input as one round")
+    void testFindLastNDialogueRoundOnlyUsers() {
+        List<BaseMessage> messages = List.of(
+                new UserMessage("q1"),
+                new UserMessage("q2")
+        );
+
+        int idx = ContextUtils.findLastNDialogueRound(messages, 1);
+        assertEquals(0, idx);
+        assertEquals(1, ContextUtils.findAllDialogueRound(messages).size());
+    }
+
+    @Test
     @DisplayName("formatReloadedMessages creates formatted string")
     void testFormatReloadedMessages() {
         List<BaseMessage> messages = List.of(
@@ -112,5 +147,37 @@ class ContextUtilsTest {
         assertTrue(result.contains("handle_123"));
         assertTrue(result.contains("user"));
         assertTrue(result.contains("assistant"));
+    }
+
+    @Test
+    @DisplayName("resolveToolCallFromMessage finds matching tool call")
+    void testResolveToolCallFromMessage() {
+        ToolCall toolCall = ToolCall.builder().id("tc-1").name("grep").arguments("{\"path\":\"README.md\"}").build();
+        List<BaseMessage> messages = List.of(
+                AssistantMessage.builder().content("").toolCalls(List.of(toolCall)).build(),
+                ToolMessage.builder().content("result").toolCallId("tc-1").name("grep").build()
+        );
+
+        ToolCall resolved = ContextUtils.resolveToolCallFromMessage(messages.get(1), messages);
+        assertNotNull(resolved);
+        assertEquals("grep", resolved.getName());
+        assertEquals("grep", ContextUtils.resolveToolNameFromMessage(messages.get(1), messages));
+    }
+
+    @Test
+    @DisplayName("resolveContextMax prefers explicit fallback then mapping")
+    void testResolveContextMax() {
+        assertEquals(123, ContextUtils.resolveContextMax("mapped-model", 123, java.util.Map.of("mapped-model", 456)));
+        assertEquals(456, ContextUtils.resolveContextMax("mapped-model", null, java.util.Map.of("mapped-model", 456)));
+        assertTrue(ContextUtils.resolveContextMax("gpt-4o", null, null) > 0);
+        assertEquals(ContextUtils.DEFAULT_CONTEXT_MAX_TOKENS, ContextUtils.resolveContextMax(null, null, null));
+    }
+
+    @Test
+    @DisplayName("isCompressionProcessor detects compressor types")
+    void testIsCompressionProcessor() {
+        assertTrue(ContextUtils.isCompressionProcessor(
+                new RoundLevelCompressor(RoundLevelCompressorConfig.builder().build())));
+        assertFalse(ContextUtils.isCompressionProcessor(new Object()));
     }
 }

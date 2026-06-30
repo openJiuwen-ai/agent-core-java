@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -84,6 +85,9 @@ public class DictableVariable extends Variable {
 
     @Override
     @SuppressWarnings("unchecked")
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void update(Map<String, Object> kwargs) {
         this.value = recursiveFormat(deepCopy(data), kwargs);
     }
@@ -121,7 +125,7 @@ public class DictableVariable extends Variable {
                         val = m.get(node);
                     } else {
                         var field = val.getClass().getMethod(
-                                "get" + node.substring(0, 1).toUpperCase() + node.substring(1));
+                                "get" + node.substring(0, 1).toUpperCase(Locale.ROOT) + node.substring(1));
                         val = field.invoke(val);
                     }
                 }

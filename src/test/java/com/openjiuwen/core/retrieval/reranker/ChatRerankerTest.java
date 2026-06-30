@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval.reranker;
 
 import com.openjiuwen.core.common.exception.BaseError;
@@ -57,7 +59,7 @@ class ChatRerankerTest {
                 2);
 
         assertEquals(2, results.size());
-        assertEquals("candidate one", results.getFirst().getText());
+        assertEquals("candidate one", results.get(0).getText());
         assertEquals(results.get(0).getScore(), results.get(1).getScore(), 1e-6);
     }
 
