@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
+import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -23,6 +25,7 @@ public final class CheckpointerFactory {
     static {
         register("in_memory", conf -> DEFAULT_IN_MEMORY_CHECKPOINTER);
         register("persistence", PersistenceCheckpointer::createFromConfig);
+        register("redis", new RedisCheckpointer.Provider());
     }
 
     private CheckpointerFactory() {

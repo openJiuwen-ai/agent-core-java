@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.session.checkpointer;
 
+import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -55,6 +57,16 @@ class CheckpointerFactoryTest {
         Checkpointer created = CheckpointerFactory.create(new CheckpointerConfig("unit-custom", Map.of("x", 1)));
 
         assertSame(expected, created);
+    }
+
+    @Test
+    void createSupportsRedisProviderWithoutManualRegistration() {
+        Checkpointer created = CheckpointerFactory.create(new CheckpointerConfig("redis", Map.of(
+                "connection", Map.of("url", "redis://127.0.0.1:6379"),
+                "dump_type", "json"
+        )));
+
+        assertInstanceOf(RedisCheckpointer.class, created);
     }
 
     @Test
