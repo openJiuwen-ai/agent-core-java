@@ -8,11 +8,13 @@ import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.extensions.store.kv.JedisClusterRedisStore;
 import org.junit.jupiter.api.Test;
+import redis.clients.jedis.HostAndPort;
 import redis.clients.jedis.JedisCluster;
 
 import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -129,6 +131,61 @@ class RedisCheckpointerProviderTest {
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
         assertNotNull(redisCheckpointer.graphStore());
+    }
+
+    @Test
+    void connectionConfigParsesClusterNodesAndBasicOptions() {
+        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", true,
+                "nodes", List.of("127.0.0.1:7000", "127.0.0.1:7001"),
+                "password", "secret",
+                "ssl", true,
+                "timeout_millis", 1500
+        ));
+
+        connection.validate();
+
+        assertTrue(connection.isClusterMode());
+        assertEquals(List.of("127.0.0.1:7000", "127.0.0.1:7001"), connection.getNodes());
+        assertEquals("secret", connection.getPassword());
+        assertTrue(connection.isSsl());
+        assertEquals(1500, connection.getTimeoutMillis());
+        assertEquals(Set.of(new HostAndPort("127.0.0.1", 7000), new HostAndPort("127.0.0.1", 7001)),
+                connection.getClusterNodes());
+    }
+
+    @Test
+    void connectionConfigDefaultsClusterOptions() {
+        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("127.0.0.1:7000"),
+                "password", ""
+        ));
+
+        connection.validate();
+
+        assertTrue(connection.isClusterMode());
+        assertEquals(2000, connection.getTimeoutMillis());
+        assertFalse(connection.isSsl());
+        assertEquals(null, connection.getPassword());
+    }
+
+    @Test
+    void connectionConfigRejectsInvalidClusterNodesAndTimeout() {
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", true,
+                "nodes", List.of("127.0.0.1")
+        )).validate());
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", true,
+                "nodes", List.of("127.0.0.1:abc")
+        )).validate());
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", true,
+                "nodes", List.of("127.0.0.1:7000"),
+                "timeout_millis", 0
+        )).validate());
     }
 
     @Test
