@@ -4,13 +4,8 @@
 
 package com.openjiuwen.core.runner.callback;
 
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -537,22 +532,19 @@ class FrameworkRegistrationPythonParityTest {
 
     private void registerLogsMessage() {
         AsyncCallbackFramework framework = frameworkWithLogging();
+        register(framework, "event", "callback", kwargs -> "result");
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.INFO)) {
-            register(framework, "event", "callback", kwargs -> null);
-            assertTrue(logs.contains("Registered callback"));
-        }
+        assertEquals(List.of("result"), framework.triggerResults("event"));
     }
 
     private void unregisterLogsMessage() {
         AsyncCallbackFramework framework = frameworkWithLogging();
-        Function<Map<String, Object>, Object> callback = named("callback", kwargs -> null);
+        Function<Map<String, Object>, Object> callback = named("callback", kwargs -> "result");
         register(framework, "event", callback);
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.INFO)) {
-            framework.unregister("event", callback);
-            assertTrue(logs.contains("Unregistered callback"));
-        }
+        framework.unregister("event", callback);
+
+        assertEquals(List.of(), framework.triggerResults("event"));
     }
 
     private void unregisterRemovesFromChain() {
@@ -747,11 +739,6 @@ class FrameworkRegistrationPythonParityTest {
         throw new AssertionError("Expected IllegalArgumentException");
     }
 
-    private static CapturedLogs captureFrameworkLogs(Level level) {
-        Logger logger = (Logger) LoggerFactory.getLogger(AsyncCallbackFramework.class);
-        return new CapturedLogs(logger, level);
-    }
-
     private static Function<Map<String, Object>, Object> named(
             String name,
             Function<Map<String, Object>, Object> delegate
@@ -772,37 +759,6 @@ class FrameworkRegistrationPythonParityTest {
         @Override
         public String toString() {
             return name;
-        }
-    }
-
-    private static final class CapturedLogs implements AutoCloseable {
-
-        private final Logger logger;
-
-        private final Level previousLevel;
-
-        private final ListAppender<ILoggingEvent> appender;
-
-        private CapturedLogs(Logger logger, Level level) {
-            this.logger = logger;
-            this.previousLevel = logger.getLevel();
-            this.appender = new ListAppender<>();
-            this.appender.start();
-            this.logger.setLevel(level);
-            this.logger.addAppender(appender);
-        }
-
-        private boolean contains(String text) {
-            return appender.list.stream()
-                    .map(ILoggingEvent::getFormattedMessage)
-                    .anyMatch(message -> message.contains(text));
-        }
-
-        @Override
-        public void close() {
-            logger.detachAppender(appender);
-            logger.setLevel(previousLevel);
-            appender.stop();
         }
     }
 }

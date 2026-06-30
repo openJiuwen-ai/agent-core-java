@@ -4,13 +4,9 @@
 
 package com.openjiuwen.core.runner.callback;
 
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
-import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -27,6 +23,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * <p>Mirrors Python's {@code tests.unit_tests.core.runner.callback.test_framework_generators} in
@@ -316,19 +316,19 @@ class FrameworkGeneratorsPythonParityTest {
     }
 
     private void triggerStreamLogsAndRaisesError() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        Logger log = mock(Logger.class);
+        AsyncCallbackFramework framework = frameworkWithLogging(log);
         register(framework, "process", "callback", kwargs -> item(kwargs));
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.ERROR)) {
-            RuntimeException error = assertThrows(RuntimeException.class,
-                    () -> framework.triggerStream("process", streamThatFailsAfterFirstItem(), new Object[0], Map.of()));
-            assertTrue(error.getMessage().contains("Stream error"));
-            assertTrue(logs.contains("Stream processing error"));
-        }
+        RuntimeException error = assertThrows(RuntimeException.class,
+                () -> framework.triggerStream("process", streamThatFailsAfterFirstItem(), new Object[0], Map.of()));
+
+        assertTrue(error.getMessage().contains("Stream error"));
+        verify(log).error("Stream processing error: {}", error.getMessage(), error);
     }
 
     private void emitAfterStreamReraisesError() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        AsyncCallbackFramework framework = framework();
         register(framework, "event", "handler", kwargs -> null);
         Function<Map<String, Object>, Object> failingGenerator = framework.emitAfter(
                 "event", "result", "item", false, "per_item", null)
@@ -348,15 +348,14 @@ class FrameworkGeneratorsPythonParityTest {
     }
 
     private void triggerGeneratorStopFilter() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        Logger log = mock(Logger.class);
+        AsyncCallbackFramework framework = frameworkWithLogging(log);
         framework.addFilter("stream", new ConditionalFilter((event, callback, args, kwargs) -> false,
                 FilterAction.STOP));
         register(framework, "stream", "callback", kwargs -> List.of("item"));
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.INFO)) {
-            assertEquals(List.of(), toList(framework.triggerGenerator("stream", new Object[0], Map.of())));
-            assertTrue(logs.contains("Filter stopped"));
-        }
+        assertEquals(List.of(), toList(framework.triggerGenerator("stream", new Object[0], Map.of())));
+        verify(log).info("Filter stopped processing for {}", "stream");
     }
 
     private void triggerGeneratorCoroutineReturningAsyncGen() {
@@ -419,15 +418,15 @@ class FrameworkGeneratorsPythonParityTest {
     }
 
     private void triggerGeneratorErrorLogging() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        Logger log = mock(Logger.class);
+        AsyncCallbackFramework framework = frameworkWithLogging(log);
         register(framework, "stream", "failing_callback", kwargs -> {
             throw new IllegalArgumentException("Test error!");
         });
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.ERROR)) {
-            toList(framework.triggerGenerator("stream", new Object[0], Map.of()));
-            assertTrue(logs.contains("failed in generator mode"));
-        }
+        assertEquals(List.of(), toList(framework.triggerGenerator("stream", new Object[0], Map.of())));
+        verify(log).error(eq("Callback {} failed in generator mode: {}"), eq("failing_callback"),
+                eq("Test error!"), isA(IllegalArgumentException.class));
     }
 
     private void generatorRespectsRateLimit() {
@@ -449,22 +448,28 @@ class FrameworkGeneratorsPythonParityTest {
     }
 
     private void generatorSkipFilterLogging() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        Logger log = mock(Logger.class);
+        AsyncCallbackFramework framework = frameworkWithLogging(log);
         framework.addFilter("stream", new ValidationFilter((args, kwargs) -> false));
-        register(framework, "stream", "callback", kwargs -> List.of("item"));
+        AtomicInteger callCount = new AtomicInteger();
+        register(framework, "stream", "callback", kwargs -> {
+            callCount.incrementAndGet();
+            return List.of("item");
+        });
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.DEBUG)) {
-            toList(framework.triggerGenerator("stream", new Object[0], Map.of()));
-            assertTrue(logs.containsIgnoreCase("skipped callback"));
-        }
+        List<Object> results = toList(framework.triggerGenerator("stream", new Object[0], Map.of()));
+
+        assertEquals(List.of(), results);
+        assertEquals(0, callCount.get());
+        verify(log).debug("Filter skipped callback {}: {}", "callback", "Argument validation failed");
     }
 
     private static AsyncCallbackFramework framework() {
         return new AsyncCallbackFramework(false, false);
     }
 
-    private static AsyncCallbackFramework frameworkWithLogging() {
-        return new AsyncCallbackFramework(false, true);
+    private static AsyncCallbackFramework frameworkWithLogging(Logger logger) {
+        return new AsyncCallbackFramework(false, true, logger);
     }
 
     private static AsyncCallbackFramework frameworkWithMetrics() {
@@ -587,11 +592,6 @@ class FrameworkGeneratorsPythonParityTest {
         return map;
     }
 
-    private static CapturedLogs captureFrameworkLogs(Level level) {
-        Logger logger = (Logger) LoggerFactory.getLogger(AsyncCallbackFramework.class);
-        return new CapturedLogs(logger, level);
-    }
-
     private record NamedCallback(
             String name,
             Function<Map<String, Object>, Object> delegate
@@ -605,45 +605,6 @@ class FrameworkGeneratorsPythonParityTest {
         @Override
         public String toString() {
             return name;
-        }
-    }
-
-    private static final class CapturedLogs implements AutoCloseable {
-
-        private final Logger logger;
-
-        private final Level previousLevel;
-
-        private final ListAppender<ILoggingEvent> appender;
-
-        private CapturedLogs(Logger logger, Level level) {
-            this.logger = logger;
-            this.previousLevel = logger.getLevel();
-            this.appender = new ListAppender<>();
-            this.appender.start();
-            this.logger.setLevel(level);
-            this.logger.addAppender(appender);
-        }
-
-        private boolean contains(String text) {
-            return appender.list.stream()
-                    .map(ILoggingEvent::getFormattedMessage)
-                    .anyMatch(message -> message.contains(text));
-        }
-
-        private boolean containsIgnoreCase(String text) {
-            String lower = text.toLowerCase();
-            return appender.list.stream()
-                    .map(ILoggingEvent::getFormattedMessage)
-                    .map(String::toLowerCase)
-                    .anyMatch(message -> message.contains(lower));
-        }
-
-        @Override
-        public void close() {
-            logger.detachAppender(appender);
-            logger.setLevel(previousLevel);
-            appender.stop();
         }
     }
 }

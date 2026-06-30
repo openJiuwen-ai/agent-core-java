@@ -52,7 +52,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
 
     public static final Object TRANSFORM_NOOP = CallbackDecorators.TRANSFORM_NOOP;
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(AsyncCallbackFramework.class);
+    private static final Logger DEFAULT_LOGGER = LoggerFactory.getLogger(AsyncCallbackFramework.class);
 
     private static final int MAX_HISTORY_SIZE = 1000;
 
@@ -78,6 +78,8 @@ public class AsyncCallbackFramework implements DecoratorFramework {
 
     private final boolean enableLogging;
 
+    private final Logger logger;
+
     private final Map<String, CircuitBreakerFilter> circuitBreakers = new ConcurrentHashMap<>();
 
     private final Deque<Map<String, Object>> eventHistory = new ArrayDeque<>(MAX_HISTORY_SIZE);
@@ -89,8 +91,13 @@ public class AsyncCallbackFramework implements DecoratorFramework {
     }
 
     public AsyncCallbackFramework(boolean enableMetrics, boolean enableLogging) {
+        this(enableMetrics, enableLogging, DEFAULT_LOGGER);
+    }
+
+    AsyncCallbackFramework(boolean enableMetrics, boolean enableLogging, Logger logger) {
         this.enableMetrics = enableMetrics;
         this.enableLogging = enableLogging;
+        this.logger = Objects.requireNonNull(logger, "logger");
     }
 
     @Override
@@ -335,7 +342,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
         }
 
         if (enableLogging) {
-            LOGGER.info("Registered callback: {} -> {}", event, callbackName(callback));
+            logger.info("Registered callback: {} -> {}", event, callbackName(callback));
         }
         return callbackInfo;
     }
@@ -399,7 +406,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
         circuitBreakers.remove(circuitBreakerKey(event, removeTarget));
 
         if (enableLogging) {
-            LOGGER.info("Unregistered callback: {} -> {}", event, callbackName(removeTarget));
+            logger.info("Unregistered callback: {} -> {}", event, callbackName(removeTarget));
         }
     }
 
@@ -434,7 +441,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
         hooks.remove(event);
         filters.remove(event);
         if (enableLogging) {
-            LOGGER.info("Unregistered all callbacks for event: {}", event);
+            logger.info("Unregistered all callbacks for event: {}", event);
         }
     }
 
@@ -473,13 +480,13 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                 FilterResult filterResult = applyFilters(event, callback, safeArgs, safeKwargs);
                 if (filterResult.getAction() == FilterAction.STOP) {
                     if (enableLogging) {
-                        LOGGER.info("Filter stopped event processing: {}", event);
+                        logger.info("Filter stopped event processing: {}", event);
                     }
                     break;
                 }
                 if (filterResult.getAction() == FilterAction.SKIP) {
                     if (enableLogging) {
-                        LOGGER.debug("Filter skipped callback {}: {}", callbackName(callback), filterResult.getReason());
+                        logger.debug("Filter skipped callback {}: {}", callbackName(callback), filterResult.getReason());
                     }
                     continue;
                 }
@@ -505,7 +512,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                 recordCircuitFailure(event, callback);
                 executeHooks(event, HookType.ERROR, safeArgs, mergeError(safeKwargs, abortError));
                 if (enableLogging) {
-                    LOGGER.error("Callback execution aborted: {} - {}", callbackName(callback), abortError.getReason());
+                    logger.error("Callback execution aborted: {} - {}", callbackName(callback), abortError.getReason());
                 }
                 Throwable cause = abortError.getCause();
                 if (cause != null) {
@@ -517,7 +524,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                 recordCircuitFailure(event, callback);
                 executeHooks(event, HookType.ERROR, safeArgs, mergeError(safeKwargs, error));
                 if (enableLogging) {
-                    LOGGER.error("Callback execution failed: {} - {}", callbackName(callback), error.getMessage(), error);
+                    logger.error("Callback execution failed: {} - {}", callbackName(callback), error.getMessage(), error);
                 }
             }
         }
@@ -652,7 +659,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                 Thread.currentThread().interrupt();
             } catch (ExecutionException error) {
                 if (enableLogging) {
-                    LOGGER.error("Parallel execution exception: {}", error.getMessage(), error);
+                    logger.error("Parallel execution exception: {}", error.getMessage(), error);
                 }
             }
         }
@@ -691,7 +698,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                 Object result = invokeCallback(callback, finalArgs, finalKwargs, callbackInfo.getTimeout());
                 if (condition.test(result)) {
                     if (enableLogging) {
-                        LOGGER.info("Condition satisfied by {}: {}", callbackName(callback), result);
+                        logger.info("Condition satisfied by {}: {}", callbackName(callback), result);
                     }
                     if (callbackInfo.isOnce()) {
                         callbackInfo.setEnabled(false);
@@ -703,7 +710,8 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                 }
             } catch (Exception error) {
                 if (enableLogging) {
-                    LOGGER.error("Callback {} failed in triggerUntil: {}", callbackName(callback), error.getMessage());
+                    logger.error("Callback {} failed in triggerUntil: {}", callbackName(callback),
+                            error.getMessage(), error);
                 }
             }
         }
@@ -726,7 +734,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
         } catch (ExecutionException | TimeoutException error) {
             future.cancel(true);
             if (enableLogging) {
-                LOGGER.warn("Event '{}' execution timeout after {}s", event, timeoutSeconds);
+                logger.warn("Event '{}' execution timeout after {}s", event, timeoutSeconds);
             }
             return Collections.emptyList();
         } finally {
@@ -755,7 +763,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             return output.iterator();
         } catch (RuntimeException error) {
             if (enableLogging) {
-                LOGGER.error("Stream processing error: {}", error.getMessage());
+                logger.error("Stream processing error: {}", error.getMessage(), error);
             }
             throw error;
         }
@@ -777,13 +785,13 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                     FilterResult filterResult = applyFilters(event, callback, safeArgs, safeKwargs);
                     if (filterResult.getAction() == FilterAction.STOP) {
                         if (enableLogging) {
-                            LOGGER.info("Filter stopped processing for {}", event);
+                            logger.info("Filter stopped processing for {}", event);
                         }
                         break;
                     }
                     if (filterResult.getAction() == FilterAction.SKIP) {
                         if (enableLogging) {
-                            LOGGER.debug("Filter skipped callback {}: {}", callbackName(callback),
+                            logger.debug("Filter skipped callback {}: {}", callbackName(callback),
                                     filterResult.getReason());
                         }
                         continue;
@@ -801,8 +809,8 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                 } catch (Exception error) {
                     updateMetrics(event, callback, startNanos, true);
                     if (enableLogging) {
-                        LOGGER.error("Callback {} failed in generator mode: {}", callbackName(callback),
-                                error.getMessage());
+                        logger.error("Callback {} failed in generator mode: {}", callbackName(callback),
+                                error.getMessage(), error);
                     }
                     executeHooks(event, HookType.ERROR, safeArgs, mergeError(safeKwargs, error));
                 }
@@ -1001,13 +1009,13 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             FilterResult filterResult = applyFilters(event, callback, safeArgs(args), safeKwargs(kwargs));
             if (filterResult.getAction() == FilterAction.STOP) {
                 if (enableLogging) {
-                    LOGGER.info("Filter stopped processing for {}", event);
+                    logger.info("Filter stopped processing for {}", event);
                 }
                 return null;
             }
             if (filterResult.getAction() == FilterAction.SKIP) {
                 if (enableLogging) {
-                    LOGGER.debug("Filter skipped {}: {}", callbackName(callback), filterResult.getReason());
+                    logger.debug("Filter skipped {}: {}", callbackName(callback), filterResult.getReason());
                 }
                 return null;
             }
@@ -1022,7 +1030,8 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             return result;
         } catch (Exception error) {
             if (enableLogging) {
-                LOGGER.error("Callback {} failed in parallel execution: {}", callbackName(callback), error.getMessage());
+                logger.error("Callback {} failed in parallel execution: {}", callbackName(callback),
+                        error.getMessage(), error);
             }
             return null;
         }
@@ -1078,7 +1087,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                 hookKwargs.put("_args", safeArgs(args));
                 hook.accept(hookKwargs);
             } catch (Exception error) {
-                LOGGER.error("Hook execution failed: {}", error.getMessage(), error);
+                logger.error("Hook execution failed: {}", error.getMessage(), error);
             }
         }
     }

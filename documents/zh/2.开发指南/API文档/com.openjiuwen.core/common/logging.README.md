@@ -19,6 +19,37 @@
 | [`Loggers`](./logging/Loggers.md) | 预定义的模块级懒加载 logger 单例集合。 |
 | [`LoggingUtils`](./logging/LoggingUtils.md) | 维护线程级 `sessionId/traceId`，并提供日志路径与容量校验工具。 |
 
+## 日志框架选择
+
+`agent-core-java` 主包只依赖 `slf4j-api`，不传递 Logback、Log4j2 或其他具体日志实现。业务应用需要自行选择一个 SLF4J 2 provider。
+
+Logback 示例：
+
+```xml
+<dependency>
+    <groupId>ch.qos.logback</groupId>
+    <artifactId>logback-classic</artifactId>
+    <version>1.5.3</version>
+</dependency>
+```
+
+Log4j2 示例：
+
+```xml
+<dependency>
+    <groupId>org.apache.logging.log4j</groupId>
+    <artifactId>log4j-slf4j2-impl</artifactId>
+    <version>2.23.1</version>
+</dependency>
+<dependency>
+    <groupId>org.apache.logging.log4j</groupId>
+    <artifactId>log4j-core</artifactId>
+    <version>2.23.1</version>
+</dependency>
+```
+
+SDK 的 `level` 配置只控制 SDK 内部日志阈值。日志是否输出到控制台、文件或滚动文件，由应用侧的 `logback.xml`、`log4j2.xml` 或其他 provider 配置决定。
+
 ## 说明
 
 - `LogManagerTest` 覆盖自定义 logger 注册、按需创建、缓存复用、`reset()` 行为，以及 `LoggingUtils` 的线程隔离与默认 `sessionId` 行为。
