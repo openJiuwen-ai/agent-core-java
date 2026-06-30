@@ -41,7 +41,6 @@ import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
 import com.openjiuwen.core.session.WorkflowSessionApi;
-import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -296,6 +295,7 @@ public final class Runner {
         private ReplyTopicSubscription systemReplySub;
         private Object rootTaskGroup;
         private TeamRuntimeManager teamRuntimeManager;
+        private boolean defaultCheckpointerInstalledFromConfig;
 
         private RunnerImpl(RunnerConfig config) {
             this("global", config);
@@ -342,14 +342,19 @@ public final class Runner {
             return CompletableFuture.supplyAsync(() -> {
                 RunnerConfig config = RunnerConfig.getRunnerConfig();
                 initializeCheckpointer(config);
-                if (config.isDistributedMode()) {
-                    distributedMessageQueue = MessageQueueFactory.create(config.getDistributedConfig().getMessageQueueConfig());
-                    distributedMessageQueue.start();
-                    systemReplySub = new ReplyTopicSubscription(distributedMessageQueue);
-                    systemReplySub.activate();
-                    return messageQueue.start();
+                try {
+                    if (config.isDistributedMode()) {
+                        distributedMessageQueue = MessageQueueFactory.create(config.getDistributedConfig().getMessageQueueConfig());
+                        distributedMessageQueue.start();
+                        systemReplySub = new ReplyTopicSubscription(distributedMessageQueue);
+                        systemReplySub.activate();
+                        return messageQueue.start();
+                    }
+                    return true;
+                } catch (RuntimeException | Error error) {
+                    releaseConfiguredCheckpointerOnStartFailure(error);
+                    throw error;
                 }
-                return true;
             });
         }
 
@@ -369,6 +374,7 @@ public final class Runner {
                     return messageQueue.stop();
                 } finally {
                     resourceManager.release().toCompletableFuture().join();
+                    releaseConfiguredCheckpointer();
                     rootTaskGroup = null;
                 }
             });
@@ -1251,12 +1257,29 @@ public final class Runner {
                     "reason", "agent not exist");
         }
 
-        private static void initializeCheckpointer(RunnerConfig config) {
+        private void initializeCheckpointer(RunnerConfig config) {
+            defaultCheckpointerInstalledFromConfig = false;
             if (config == null || config.getCheckpointerConfig() == null) {
                 return;
             }
-            Checkpointer checkpointer = CheckpointerFactory.create(config.getCheckpointerConfig());
-            CheckpointerFactory.setDefaultCheckpointer(checkpointer);
+            CheckpointerFactory.installDefaultCheckpointer(config.getCheckpointerConfig());
+            defaultCheckpointerInstalledFromConfig = true;
+        }
+
+        private void releaseConfiguredCheckpointerOnStartFailure(Throwable error) {
+            try {
+                releaseConfiguredCheckpointer();
+            } catch (RuntimeException cleanupError) {
+                error.addSuppressed(cleanupError);
+            }
+        }
+
+        private void releaseConfiguredCheckpointer() {
+            boolean installed = defaultCheckpointerInstalledFromConfig;
+            defaultCheckpointerInstalledFromConfig = false;
+            if (installed) {
+                CheckpointerFactory.releaseDefaultCheckpointer();
+            }
         }
 
         private static Map<String, Object> inputKwargs(Object inputs) {

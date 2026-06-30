@@ -17,6 +17,8 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.CheckpointerConfig;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -50,7 +52,7 @@ class ReActAgentExternalToolStreamTest {
 
     @AfterEach
     void tearDown() {
-        CheckpointerFactory.setDefaultCheckpointer(null);
+        CheckpointerFactory.releaseDefaultCheckpointer();
         for (String toolId : registeredToolIds) {
             Runner.resourceMgr().removeTool(toolId);
         }
@@ -117,7 +119,7 @@ class ReActAgentExternalToolStreamTest {
     void streamIteratorDoesNotCompleteBeforeCloseTimeCommitFinishes() throws Exception {
         ScriptedReActAgent agent = new ScriptedReActAgent(List.of(new AssistantMessage("final answer")));
         BlockingPostAgentCheckpointer checkpointer = new BlockingPostAgentCheckpointer();
-        CheckpointerFactory.setDefaultCheckpointer(checkpointer);
+        installDefaultCheckpointer("unit-react-blocking-commit", checkpointer);
 
         Iterator<Object> stream = agent.stream(
                 Map.of("query", "say hello"),
@@ -242,6 +244,11 @@ class ReActAgentExternalToolStreamTest {
         for (int i = 1; i < outputs.size(); i++) {
             assertThat(outputs.get(i).getIndex()).isGreaterThan(outputs.get(i - 1).getIndex());
         }
+    }
+
+    private static void installDefaultCheckpointer(String name, Checkpointer checkpointer) {
+        CheckpointerFactory.register(name, conf -> checkpointer);
+        CheckpointerFactory.installDefaultCheckpointer(new CheckpointerConfig(name, Map.of()));
     }
 
     private static AgentCard agentCard(String name) {
