@@ -1,5 +1,6 @@
 package com.openjiuwen.core.memory.graph.graph_memory;
 
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.store.graph.Entity;
 import com.openjiuwen.core.foundation.store.graph.Episode;
 import com.openjiuwen.core.foundation.store.graph.GraphConfig;
@@ -10,6 +11,7 @@ import com.openjiuwen.core.memory.config.graph.AddMemStrategy;
 import com.openjiuwen.core.memory.config.graph.EpisodeType;
 import com.openjiuwen.core.memory.graph.extraction.EntityDeclaration;
 import com.openjiuwen.core.memory.graph.extraction.EntityDef;
+import com.openjiuwen.spi.store.query.QueryExpressions;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.api.Test;
 
@@ -44,6 +46,37 @@ class GraphParseStateTest {
     }
 
     @Test
+    void inMemoryGraphStoreShouldUpsertGraphObjectsByUuid() throws Exception {
+        GraphStore store = InMemoryGraphStore.fromConfig(GraphConfig.builder()
+                .uri(tempDir.resolve("upsert.db").toString())
+                .backend("in_memory")
+                .build());
+        Entity entity = new Entity();
+        entity.setUuid("entity-1");
+        entity.setUserId("user-1");
+        entity.setContent("before");
+        store.addEntity(List.of(entity), false, true, true);
+
+        entity.setContent("after");
+        store.addEntity(List.of(entity), false, true, true);
+
+        assertThat(store.query("ENTITY_COLLECTION", null, null, false))
+                .singleElement()
+                .extracting(item -> item.get("content"))
+                .isEqualTo("after");
+
+        Entity anotherUser = new Entity();
+        anotherUser.setUuid("entity-2");
+        anotherUser.setUserId("user-2");
+        store.addEntity(List.of(anotherUser), false, true, true);
+
+        assertThat(store.query("ENTITY_COLLECTION", null, QueryExpressions.filterUser("user-1"), false))
+                .singleElement()
+                .extracting(item -> item.get("uuid"))
+                .isEqualTo("entity-1");
+    }
+
+    @Test
     void dict2relationAndParseRelationMergingShouldWork() {
         Entity lhs = new Entity();
         lhs.setUuid("e1");
@@ -55,9 +88,9 @@ class GraphParseStateTest {
         Relation relation = ParseLlmResponse.dict2relation(Map.of(
                 "name", "works_with",
                 "fact", "lhs works with rhs",
-                "source_id", 1,
-                "target_id", 2,
-                "valid_since", "2025-01-01T00:00:00+08:00"
+                "sourceId", 1,
+                "targetId", 2,
+                "validSince", "2025-01-01T00:00:00+08:00"
         ), List.of(lhs, rhs), Map.of("user_id", "u1"));
 
         assertThat(relation).isNotNull();
@@ -124,7 +157,10 @@ class GraphParseStateTest {
         var task = new PostprocessGraphObjects.RelationTask(
                 relation,
                 List.of(Map.of("uuid", "old-rel")),
-                CompletableFuture.completedFuture(Map.of("content", "{\"need_merging\":true,\"combined_content\":\"merged\",\"duplicate_ids\":[1]}"))
+                CompletableFuture.completedFuture(AssistantMessage.builder()
+                        .content("{\"need_merging\":true,\"combined_content\":\"merged\","
+                                + "\"duplicate_ids\":[1]}")
+                        .build())
         );
         PostprocessGraphObjects.parseRelationUuidsToRemove(List.of(task), state);
 
@@ -132,5 +168,6 @@ class GraphParseStateTest {
         assertThat(state.getMemUpdate().getAddedEntity()).isNotEmpty();
         assertThat(state.getMemUpdate().getAddedRelation()).hasSize(1);
         assertThat(state.getToRemove()).contains("old-rel");
+        assertThat(state.getMemUpdate().getRemovedRelation()).contains("old-rel");
     }
 }

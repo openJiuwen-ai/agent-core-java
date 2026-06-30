@@ -318,7 +318,7 @@ public record SearchHit(double score, com.openjiuwen.core.foundation.store.graph
                     declarationResult.existingEntityMissing(),
                     userId,
                     state);
-            List<EntityDeclaration> mergedDeclarations = entityMerge(declarationResult.entities(), state);
+            List<Object> mergedDeclarations = entityMerge(declarationResult.entities(), state);
 
             Object relationParsed = ParseResponse.parseJson(
                     relationResponse.getContentAsString(),
@@ -425,40 +425,88 @@ public record SearchHit(double score, com.openjiuwen.core.foundation.store.graph
 
     private Entity mapToEntity(Map<String, Object> map) {
         Entity entity = new Entity();
-        entity.setUuid(String.valueOf(map.getOrDefault("uuid", GraphUtils.getUuid())));
-        entity.setCreatedAt(Integer.parseInt(String.valueOf(
-                map.getOrDefault("created_at", GraphUtils.getCurrentUtcTimestamp()))));
-        entity.setUserId(String.valueOf(map.getOrDefault("user_id", "default_user")));
-        entity.setObjType(String.valueOf(map.getOrDefault("obj_type", "Entity")));
-        entity.setLanguage(String.valueOf(map.getOrDefault("language", "cn")));
-        entity.setContent(String.valueOf(map.getOrDefault("content", "")));
+        populateBaseGraphObject(entity, map, "Entity");
         entity.setName(String.valueOf(map.getOrDefault("name", "")));
+        entity.setNameEmbedding(floatList(map.get("name_embedding")));
+        entity.setRelations(objectList(map.get("relations")));
+        entity.setEpisodes(stringList(map.get("episodes")));
+        entity.setAttributes(objectMap(map.get("attributes")));
         return entity;
     }
 
     private Relation mapToRelation(Map<String, Object> map) {
         Relation relation = new Relation();
-        relation.setUuid(String.valueOf(map.getOrDefault("uuid", GraphUtils.getUuid())));
-        relation.setCreatedAt(Integer.parseInt(String.valueOf(
-                map.getOrDefault("created_at", GraphUtils.getCurrentUtcTimestamp()))));
-        relation.setUserId(String.valueOf(map.getOrDefault("user_id", "default_user")));
-        relation.setObjType(String.valueOf(map.getOrDefault("obj_type", "Relation")));
-        relation.setLanguage(String.valueOf(map.getOrDefault("language", "cn")));
-        relation.setContent(String.valueOf(map.getOrDefault("content", "")));
+        populateBaseGraphObject(relation, map, "Relation");
         relation.setName(String.valueOf(map.getOrDefault("name", "")));
+        relation.setValidSince(intValue(map.get("valid_since"), -1));
+        relation.setValidUntil(intValue(map.get("valid_until"), -1));
+        relation.setOffsetSince(intValue(map.get("offset_since"), 0));
+        relation.setOffsetUntil(intValue(map.get("offset_until"), 0));
+        relation.setLhs(map.get("lhs"));
+        relation.setRhs(map.get("rhs"));
         return relation;
     }
 
     private Episode mapToEpisode(Map<String, Object> map) {
         Episode episode = new Episode();
-        episode.setUuid(String.valueOf(map.getOrDefault("uuid", GraphUtils.getUuid())));
-        episode.setCreatedAt(Integer.parseInt(String.valueOf(
-                map.getOrDefault("created_at", GraphUtils.getCurrentUtcTimestamp()))));
-        episode.setUserId(String.valueOf(map.getOrDefault("user_id", "default_user")));
-        episode.setObjType(String.valueOf(map.getOrDefault("obj_type", "Episode")));
-        episode.setLanguage(String.valueOf(map.getOrDefault("language", "cn")));
-        episode.setContent(String.valueOf(map.getOrDefault("content", "")));
+        populateBaseGraphObject(episode, map, "Episode");
+        episode.setValidSince(intValue(map.get("valid_since"), -1));
+        episode.setEntities(objectList(map.get("entities")));
         return episode;
+    }
+
+    private void populateBaseGraphObject(
+            com.openjiuwen.core.foundation.store.graph.BaseGraphObject target,
+            Map<String, Object> map,
+            String defaultType) {
+        target.setUuid(String.valueOf(map.getOrDefault("uuid", GraphUtils.getUuid())));
+        target.setCreatedAt(intValue(map.get("created_at"), GraphUtils.getCurrentUtcTimestamp()));
+        target.setUserId(String.valueOf(map.getOrDefault("user_id", "default_user")));
+        target.setObjType(String.valueOf(map.getOrDefault("obj_type", defaultType)));
+        target.setLanguage(String.valueOf(map.getOrDefault("language", "cn")));
+        target.setMetadata(objectMap(map.get("metadata")));
+        target.setContent(String.valueOf(map.getOrDefault("content", "")));
+        target.setContentEmbedding(floatList(map.get("content_embedding")));
+        target.setContentBm25(floatList(map.get("content_bm25")));
+    }
+
+    private int intValue(Object value, int defaultValue) {
+        return value == null ? defaultValue : Integer.parseInt(String.valueOf(value));
+    }
+
+    private List<Object> objectList(Object value) {
+        return value instanceof List<?> list ? new ArrayList<>(list) : new ArrayList<>();
+    }
+
+    private List<String> stringList(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return new ArrayList<>();
+        }
+        return list.stream()
+                .map(String::valueOf)
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+    }
+
+    private List<Float> floatList(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return new ArrayList<>();
+        }
+        List<Float> result = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Number number) {
+                result.add(number.floatValue());
+            }
+        }
+        return result;
+    }
+
+    private Map<String, Object> objectMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        map.forEach((key, item) -> result.put(String.valueOf(key), item));
+        return result;
     }
 
     private SearchConfig copySearchConfig(SearchConfig source) {
@@ -742,10 +790,10 @@ public record SearchHit(double score, com.openjiuwen.core.foundation.store.graph
         }
     }
 
-    private List<EntityDeclaration> entityMerge(List<EntityDeclaration> declarations,
-                                                States.GraphMemState state) throws Exception {
+    private List<Object> entityMerge(List<EntityDeclaration> declarations,
+                                     States.GraphMemState state) throws Exception {
         if (state.getRetrievedEntities().isEmpty()) {
-            return declarations;
+            return new ArrayList<>(declarations);
         }
         List<Map<String, Object>> existingEntities = state.getRetrievedEntities().values().stream()
                 .map(Entity::toMap)
@@ -780,13 +828,7 @@ public record SearchHit(double score, com.openjiuwen.core.foundation.store.graph
         if (state.getStrategy().isMergeEntities() && !isResolved.mergingArgs().isEmpty()) {
             resolveEntityMerges(isResolved.mergingArgs(), state);
         }
-        List<EntityDeclaration> result = new ArrayList<>();
-        for (Object value : isResolved.resolvedEntities()) {
-            if (value instanceof EntityDeclaration declaration) {
-                result.add(declaration);
-            }
-        }
-        return result;
+        return new ArrayList<>(isResolved.resolvedEntities());
     }
 
     private List<Entity> entityEnrich(List<Entity> entities,
@@ -905,7 +947,7 @@ public record SearchHit(double score, com.openjiuwen.core.foundation.store.graph
     }
 
     private void updateEntitiesForRelationRemoval(States.GraphMemState state,
-                                                  List<EntityDeclaration> extractedDeclarations) throws Exception {
+                                                  List<Object> extractedDeclarations) throws Exception {
         if (state.getMemUpdate().getRemovedRelation().isEmpty()) {
             return;
         }
@@ -944,8 +986,9 @@ public record SearchHit(double score, com.openjiuwen.core.foundation.store.graph
                         String.valueOf(entityMap.get("uuid")), mapToEntity(entityMap));
                 boolean updateWithoutEmbed = false;
                 boolean needsReEmbed = false;
-                for (EntityDeclaration declaration : extractedDeclarations) {
-                    if (entity.getName().equals(declaration.getName())) {
+                for (Object extracted : extractedDeclarations) {
+                    if (extracted instanceof EntityDeclaration declaration
+                            && entity.getName().equals(declaration.getName())) {
                         needsReEmbed = true;
                         break;
                     }
@@ -1006,17 +1049,24 @@ public record SearchHit(double score, com.openjiuwen.core.foundation.store.graph
         if (state.getStrategy().isMergeFilter()) {
             for (Map.Entry<String, Map<String, Relation>> entry : entityRelationUpdates.entrySet()) {
                 String targetUuid = entry.getKey();
-                Entity targetEntity = state.getLookupTable().getEntities().get(targetUuid);
                 List<Relation> relationList = entry.getValue().values().stream()
                         .filter(relation -> !state.getFaultyRelations().containsKey(relation.getUuid()))
                         .toList();
+                if (relationList.isEmpty()) {
+                    continue;
+                }
+                Entity targetEntity = state.getLookupTable().getEntities().get(targetUuid);
+                if (targetEntity == null && state.getMergeInfos().containsKey(targetUuid)) {
+                    targetEntity = state.getMergeInfos().get(targetUuid).getTarget();
+                }
                 state.getMergeInfos().get(targetUuid).getNewRelations().clear();
                 state.getMergeInfos().get(targetUuid).getNewRelations().addAll(relationList);
+                Entity finalTargetEntity = targetEntity;
                 CompletableFuture<AssistantMessage> task = CompletableFuture.supplyAsync(() -> {
                     try {
                         return invokeLlm(
                                 ExtractionPrompts.filterRelationsForMerge(
-                                        targetEntity,
+                                        finalTargetEntity,
                                         relationList,
                                         state.getPrompting().getLanguage(),
                                         state.getExtras(),

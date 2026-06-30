@@ -11,8 +11,7 @@ import java.util.Map;
 /**
  * Foundation-store Elasticsearch adapter.
  *
- * <p>Current Java baseline is compatibility-first and reuses the retrieval
- * ElasticsearchVectorStore local backend.</p>
+ * <p>Delegates to the retrieval ElasticsearchVectorStore REST backend.</p>
  */
 public class ElasticsearchVectorStore extends AbstractRetrievalVectorStoreAdapter {
     /**

@@ -4,12 +4,18 @@
 
 package com.openjiuwen.core.graph.pregel;
 
+import java.io.Serial;
+import java.io.Serializable;
+
 /**
  * Represents an interrupt value during graph execution.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.Interrupt}.
  */
-public class Interrupt {
+public class Interrupt implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     private final Object value;
 

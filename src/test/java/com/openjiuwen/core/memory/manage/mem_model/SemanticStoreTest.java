@@ -2,6 +2,7 @@ package com.openjiuwen.core.memory.manage.mem_model;
 
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
+import com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore;
 import com.openjiuwen.core.retrieval.vector_store.SchemaMutableVectorStore;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import com.openjiuwen.spi.store.vector.CollectionSchema;
@@ -19,7 +20,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SemanticStoreTest {
 
     @Test
-    void addDocsCreatesCollectionMetadataAndStoresPythonShape() {
+    void addDocsUsesBackendVectorFieldAndSupportsSemanticSearch() {
+        InMemoryVectorStore vectorStore = new InMemoryVectorStore("semantic_store_vector_field_test");
+        SemanticStore semanticStore = new SemanticStore(vectorStore, new KeywordEmbedding());
+
+        assertTrue(semanticStore.addDocs(
+                List.of(Map.entry("name", "name memory"), Map.entry("age", "age memory")),
+                "semantic_store_vector_field_test"));
+
+        List<Map.Entry<String, Double>> results =
+                semanticStore.search("name query", "semantic_store_vector_field_test", 1);
+        assertEquals(1, results.size());
+        assertEquals("name", results.get(0).getKey());
+    }
+
+    @Test
+    void addDocsCreatesCollectionMetadataAndUsesBackendFieldNames() {
         RecordingVectorStore vectorStore = new RecordingVectorStore("default");
         SemanticStore semanticStore = new SemanticStore(vectorStore, new FixedEmbedding());
 
@@ -34,7 +50,7 @@ class SemanticStoreTest {
         Map<String, Object> row = vectorStore.rows.get("uid_user_gid_scope_mtype_user_profile").get(0);
         assertEquals("mem-1", row.get("id"));
         assertTrue(row.containsKey("embedding"));
-        assertFalse(row.containsKey("text"));
+        assertEquals("remember this", row.get("text"));
         assertFalse(row.containsKey("vector"));
     }
 
@@ -64,6 +80,23 @@ class SemanticStoreTest {
         @Override
         public int getDimension() {
             return 3;
+        }
+    }
+
+    private static final class KeywordEmbedding implements Embedding {
+        @Override
+        public List<Float> embedQuery(String text) {
+            return text.contains("name") ? List.of(1.0F, 0.0F) : List.of(0.0F, 1.0F);
+        }
+
+        @Override
+        public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
+            return texts.stream().map(text -> embedQuery(String.valueOf(text))).toList();
+        }
+
+        @Override
+        public int getDimension() {
+            return 2;
         }
     }
 
