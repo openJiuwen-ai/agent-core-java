@@ -189,6 +189,61 @@ class RedisCheckpointerProviderTest {
     }
 
     @Test
+    void connectionConfigIgnoresBlankClusterNodes() {
+        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("", "  ", "127.0.0.1:7000")
+        ));
+
+        connection.validate();
+
+        assertEquals(List.of("127.0.0.1:7000"), connection.getNodes());
+        assertEquals(Set.of(new HostAndPort("127.0.0.1", 7000)), connection.getClusterNodes());
+    }
+
+    @Test
+    void connectionConfigAllowsUrlWhenNodesAreBlank() {
+        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
+                "url", "redis://127.0.0.1:6379",
+                "nodes", List.of("", "  ")
+        ));
+
+        connection.validate();
+
+        assertFalse(connection.isClusterMode());
+        assertEquals(List.of(), connection.getNodes());
+        assertEquals("redis://127.0.0.1:6379", connection.getConnectionUrl());
+    }
+
+    @Test
+    void connectionConfigTreatsOnlyBlankNodesAsMissing() {
+        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("", "  ")
+        ));
+
+        assertEquals(List.of(), connection.getNodes());
+        assertFalse(connection.isClusterMode());
+        assertThrows(IllegalArgumentException.class, connection::validate);
+    }
+
+    @Test
+    void connectionConfigRejectsInvalidBooleanAndTimeoutValues() {
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("127.0.0.1:7000"),
+                "ssl", "tru"
+        )));
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("127.0.0.1:7000"),
+                "timeout_millis", 1.5
+        )));
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("127.0.0.1:7000"),
+                "timeout_millis", 2147483648L
+        )));
+    }
+
+    @Test
     void invalidConfigRaisesHelpfulError() {
         RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider();
 

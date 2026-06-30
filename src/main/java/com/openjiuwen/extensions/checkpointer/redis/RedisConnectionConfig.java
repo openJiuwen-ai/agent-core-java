@@ -6,6 +6,8 @@ package com.openjiuwen.extensions.checkpointer.redis;
 
 import redis.clients.jedis.HostAndPort;
 
+import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -266,7 +268,13 @@ public class RedisConnectionConfig {
             return;
         }
         for (String node : nodes) {
-            this.nodes.add(node == null ? null : node.trim());
+            if (node == null) {
+                continue;
+            }
+            String trimmedNode = node.trim();
+            if (!trimmedNode.isEmpty()) {
+                this.nodes.add(trimmedNode);
+            }
         }
     }
 
@@ -369,22 +377,71 @@ public class RedisConnectionConfig {
             return booleanValue;
         }
         if (sslValue instanceof String stringValue) {
-            return Boolean.parseBoolean(stringValue);
+            String normalizedValue = stringValue.trim();
+            if ("true".equalsIgnoreCase(normalizedValue)) {
+                return true;
+            }
+            if ("false".equalsIgnoreCase(normalizedValue)) {
+                return false;
+            }
+            throw new IllegalArgumentException("'ssl' must be true or false");
         }
         throw new IllegalArgumentException("'ssl' must be a boolean or string");
     }
 
     private static Integer parseTimeoutValue(Object timeoutValue) {
         if (timeoutValue instanceof Number numberValue) {
-            return numberValue.intValue();
+            return requirePositiveTimeout(toExactInt(numberValue));
         }
         if (timeoutValue instanceof String stringValue) {
             try {
-                return Integer.parseInt(stringValue.trim());
+                return requirePositiveTimeout(Integer.parseInt(stringValue.trim()));
             } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("'timeout_millis' must be a number", e);
+                throw new IllegalArgumentException("'timeout_millis' must be an integer", e);
             }
         }
         throw new IllegalArgumentException("'timeout_millis' must be a number or string");
+    }
+
+    private static int toExactInt(Number numberValue) {
+        try {
+            if (numberValue instanceof BigInteger bigIntegerValue) {
+                return bigIntegerValue.intValueExact();
+            }
+            if (numberValue instanceof BigDecimal bigDecimalValue) {
+                return bigDecimalValue.intValueExact();
+            }
+            if (numberValue instanceof Byte || numberValue instanceof Short || numberValue instanceof Integer
+                    || numberValue instanceof Long) {
+                long longValue = numberValue.longValue();
+                if (longValue < Integer.MIN_VALUE || longValue > Integer.MAX_VALUE) {
+                    throw new ArithmeticException("integer overflow");
+                }
+                return (int) longValue;
+            }
+            if (numberValue instanceof Float || numberValue instanceof Double) {
+                double doubleValue = numberValue.doubleValue();
+                if (!Double.isFinite(doubleValue) || doubleValue != Math.rint(doubleValue)
+                        || doubleValue < Integer.MIN_VALUE || doubleValue > Integer.MAX_VALUE) {
+                    throw new ArithmeticException("not an exact integer");
+                }
+                return (int) doubleValue;
+            }
+
+            long longValue = numberValue.longValue();
+            if (longValue < Integer.MIN_VALUE || longValue > Integer.MAX_VALUE) {
+                throw new ArithmeticException("integer overflow");
+            }
+            return (int) longValue;
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException("'timeout_millis' must be an integer within int range", e);
+        }
+    }
+
+    private static int requirePositiveTimeout(int timeoutMillis) {
+        if (timeoutMillis <= 0) {
+            throw new IllegalArgumentException("'timeout_millis' must be greater than 0");
+        }
+        return timeoutMillis;
     }
 }
