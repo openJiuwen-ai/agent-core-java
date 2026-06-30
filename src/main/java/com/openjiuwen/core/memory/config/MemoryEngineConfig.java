@@ -10,7 +10,6 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.memory.common.MemoryCrypto;
-import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -21,7 +20,6 @@ import lombok.NoArgsConstructor;
 @Data
 @Builder
 @NoArgsConstructor
-@AllArgsConstructor
 public class MemoryEngineConfig {
 
     @JsonProperty("default_model_cfg")
@@ -39,8 +37,37 @@ public class MemoryEngineConfig {
     private byte[] cryptoKey = new byte[0];
 
     @Builder.Default
+    @JsonProperty("forbidden_variables")
+    private String forbiddenVariables = "";
+
+    @Builder.Default
     @JsonProperty("single_turn_history_summary_max_token")
     private int singleTurnHistorySummaryMaxToken = 128;
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public MemoryEngineConfig(ModelRequestConfig defaultModelCfg,
+                              ModelClientConfig defaultModelClientCfg,
+                              int inputMsgMaxLen,
+                              byte[] cryptoKey,
+                              String forbiddenVariables,
+                              int singleTurnHistorySummaryMaxToken) {
+        this.defaultModelCfg = defaultModelCfg;
+        this.defaultModelClientCfg = defaultModelClientCfg;
+        this.inputMsgMaxLen = inputMsgMaxLen;
+        this.forbiddenVariables = forbiddenVariables != null ? forbiddenVariables : "";
+        this.singleTurnHistorySummaryMaxToken = singleTurnHistorySummaryMaxToken;
+        setCryptoKey(cryptoKey);
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public void setCryptoKey(byte[] cryptoKey) {
+        this.cryptoKey = cryptoKey != null ? cryptoKey : new byte[0];
+        validateCryptoKey();
+    }
 
     /**
      * Validate crypto key: must be empty or exactly 32 bytes.

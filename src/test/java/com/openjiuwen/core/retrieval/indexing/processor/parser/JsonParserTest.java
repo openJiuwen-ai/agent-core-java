@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import com.openjiuwen.core.retrieval.common.Document;
@@ -29,8 +31,8 @@ class JsonParserTest {
         List<Document> docs = parser.parse(file.toString(), "doc-1", null, Map.of());
 
         assertEquals(1, docs.size());
-        assertTrue(docs.getFirst().getText().contains("\"name\""));
-        assertTrue(docs.getFirst().getText().contains("\n"));
+        assertTrue(docs.get(0).getText().contains("\"name\""));
+        assertTrue(docs.get(0).getText().contains("\n"));
     }
 
     @Test
@@ -42,7 +44,7 @@ class JsonParserTest {
         List<Document> docs = parser.parse(file.toString(), "doc-1", null, Map.of());
 
         assertEquals(1, docs.size());
-        assertEquals("{ invalid json }", docs.getFirst().getText());
+        assertEquals("{ invalid json }", docs.get(0).getText());
     }
 
     @Test

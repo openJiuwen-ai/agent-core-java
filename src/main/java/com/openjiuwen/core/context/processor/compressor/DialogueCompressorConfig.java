@@ -46,15 +46,15 @@ public class DialogueCompressorConfig {
     private boolean keepLastRound = true;
 
     /**
-     * User-supplied prompt for the compression step.
-     */
-    private String customizedCompressionPrompt;
-
-    /**
-     * Max tokens allowed in the compressed summary.
+     * Per-block summary size hint used in the compression prompt.
      */
     @Builder.Default
-    private int compressionTokenLimit = 2000;
+    private int compressionTargetTokens = 1800;
+
+    /**
+     * User-supplied prompt for the compression step.
+     */
+    private String customCompressionPrompt;
 
     /**
      * Model request configuration.
@@ -79,8 +79,8 @@ public class DialogueCompressorConfig {
         if (messagesToKeep != null && messagesToKeep <= 0) {
             throw new IllegalArgumentException("messagesToKeep must be > 0, got " + messagesToKeep);
         }
-        if (compressionTokenLimit <= 0) {
-            throw new IllegalArgumentException("compressionTokenLimit must be > 0, got " + compressionTokenLimit);
+        if (compressionTargetTokens <= 0) {
+            throw new IllegalArgumentException("compressionTargetTokens must be > 0, got " + compressionTargetTokens);
         }
     }
 }

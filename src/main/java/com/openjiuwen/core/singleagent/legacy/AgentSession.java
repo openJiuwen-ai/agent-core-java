@@ -21,6 +21,9 @@ public class AgentSession {
 
     private final Checkpointer checkpointer;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public AgentSession() {
         this.checkpointer = CheckpointerFactory.getCheckpointer();
     }

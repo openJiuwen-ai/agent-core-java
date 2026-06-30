@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.systemtest;
 
 import com.openjiuwen.core.context.ContextEngine;
@@ -47,13 +49,32 @@ class ContextEngineAdvancedSystemTest {
             this.sessionId = sessionId;
         }
 
-        @Override public String getSessionId() { return sessionId; }
-        @Override public Object getState(String key) { return state.get(key); }
-        @Override public void updateState(Map<String, Object> stateMap) {
-            if (stateMap != null) state.putAll(stateMap);
+        @Override
+        public String getSessionId() {
+            return sessionId;
         }
-        @Override public void setCurrentOperatorId(String operatorId) { this.currentOperatorId = operatorId; }
-        @Override public String getCurrentOperatorId() { return currentOperatorId; }
+
+        @Override
+        public Object getState(String key) {
+            return state.get(key);
+        }
+
+        @Override
+        public void updateState(Map<String, Object> stateMap) {
+            if (stateMap != null) {
+                state.putAll(stateMap);
+            }
+        }
+
+        @Override
+        public void setCurrentOperatorId(String operatorId) {
+            this.currentOperatorId = operatorId;
+        }
+
+        @Override
+        public String getCurrentOperatorId() {
+            return currentOperatorId;
+        }
     }
 
     @Nested
@@ -207,9 +228,10 @@ class ContextEngineAdvancedSystemTest {
         @DisplayName("CurrentRoundCompressorConfig defaults")
         void testCurrentRoundCompressorDefaults() {
             CurrentRoundCompressorConfig config = new CurrentRoundCompressorConfig();
-            assertEquals(10000, config.getTokensThreshold());
-            assertEquals(1000, config.getLargeMessageThreshold());
-            assertEquals(false, config.isSingleMultiCompression());
+            assertEquals(100000, config.getTokensThreshold());
+            assertEquals(3, config.getMessagesToKeep());
+            assertEquals(20000, config.getMinSelectedTokensForCompression());
+            assertEquals(4000, config.getCompressionTargetTokens());
         }
 
         @Test
@@ -219,27 +241,27 @@ class ContextEngineAdvancedSystemTest {
                     .messagesThreshold(20)
                     .tokensThreshold(8000)
                     .keepLastRound(true)
-                    .compressionTokenLimit(3000)
+                    .compressionTargetTokens(3000)
                     .build();
 
             assertEquals(20, config.getMessagesThreshold());
             assertEquals(8000, config.getTokensThreshold());
             assertTrue(config.isKeepLastRound());
-            assertEquals(3000, config.getCompressionTokenLimit());
+            assertEquals(3000, config.getCompressionTargetTokens());
         }
 
         @Test
         @DisplayName("RoundLevelCompressorConfig builder")
         void testRoundLevelCompressorBuilder() {
             RoundLevelCompressorConfig config = RoundLevelCompressorConfig.builder()
-                    .roundsThreshold(5)
-                    .tokensThreshold(5000)
-                    .keepLastRound(false)
+                    .triggerTotalTokens(5000)
+                    .targetTotalTokens(3000)
+                    .keepRecentMessages(2)
                     .build();
 
-            assertEquals(5, config.getRoundsThreshold());
-            assertEquals(5000, config.getTokensThreshold());
-            assertEquals(false, config.isKeepLastRound());
+            assertEquals(5000, config.getTriggerTotalTokens());
+            assertEquals(3000, config.getTargetTotalTokens());
+            assertEquals(2, config.getKeepRecentMessages());
         }
     }
 
@@ -281,12 +303,14 @@ class ContextEngineAdvancedSystemTest {
             MessageSummaryOffloaderConfig config = MessageSummaryOffloaderConfig.builder()
                     .messagesThreshold(30)
                     .tokensThreshold(10000)
-                    .customizedSummaryPrompt("Summarize the following message:")
+                    .summaryMaxTokens(600)
+                    .enablePreciseStep(true)
                     .build();
 
             assertEquals(30, config.getMessagesThreshold());
             assertEquals(10000, config.getTokensThreshold());
-            assertNotNull(config.getCustomizedSummaryPrompt());
+            assertEquals(600, config.getSummaryMaxTokens());
+            assertTrue(config.isEnablePreciseStep());
         }
     }
 }

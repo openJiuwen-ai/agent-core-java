@@ -32,6 +32,9 @@ public class Drawable {
     private final DrawableGraph graph;
     private final Set<String> loopNodes;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Drawable() {
         this.graph = new DrawableGraph();
         this.loopNodes = new HashSet<>();

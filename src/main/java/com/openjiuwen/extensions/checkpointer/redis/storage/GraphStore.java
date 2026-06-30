@@ -24,6 +24,9 @@ public class GraphStore extends BaseRedisStorage {
     private static final String DATA_VALUE = "checkpoint_data_value";
     private static final int KEY_NUMS = 2;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public GraphStore(RedisStore redisStore, Map<String, Object> ttl) {
         super(redisStore, ttl);
     }

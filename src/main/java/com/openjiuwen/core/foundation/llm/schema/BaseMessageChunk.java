@@ -7,7 +7,6 @@ package com.openjiuwen.core.foundation.llm.schema;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 
 import java.util.List;
 
@@ -17,7 +16,6 @@ import java.util.List;
  * Mirrors Python's {@code BaseMessageChunk} model.
  */
 @Data
-@SuperBuilder
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class BaseMessageChunk extends BaseMessage {
@@ -59,6 +57,9 @@ public class BaseMessageChunk extends BaseMessage {
      * @return the merged content
      */
     @SuppressWarnings("unchecked")
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     protected static Object mergeContent(Object left, Object right) {
         if (left instanceof String ls && right instanceof String rs) {
             return ls + rs;

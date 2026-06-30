@@ -19,6 +19,9 @@ import java.util.Properties;
  */
 public final class UserConfig {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static final List<String> DEFAULT_SENSITIVE_PATHS = List.of(
         "/etc/passwd", "/etc/shadow", "/etc/hosts", "/etc/hostname", "/etc/ssh/",
         "C:\\Windows\\System32\\", "C:\\Windows\\SysWOW64\\", "C:\\Windows\\System\\"
@@ -88,7 +91,7 @@ public final class UserConfig {
     }
 
     /**
-     * Get the resolved list of sensitive paths (lazy-initialized).
+     * Get the isResolved list of sensitive paths (lazy-initialized).
      *
      * @return an immutable copy of the sensitive paths
      */

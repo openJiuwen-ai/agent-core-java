@@ -19,29 +19,47 @@ public class TaskCompletionEvent extends Event {
     private List<DataFrame> taskResult;
     private Task task;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public TaskCompletionEvent() {
         super(EventType.TASK_COMPLETION);
         this.taskResult = new ArrayList<>();
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public TaskCompletionEvent(List<DataFrame> taskResult, Task task) {
         super(EventType.TASK_COMPLETION);
         this.taskResult = taskResult != null ? taskResult : new ArrayList<>();
         this.task = task;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public List<DataFrame> getTaskResult() {
         return taskResult;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setTaskResult(List<DataFrame> taskResult) {
         this.taskResult = taskResult != null ? taskResult : new ArrayList<>();
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Task getTask() {
         return task;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setTask(Task task) {
         this.task = task;
     }

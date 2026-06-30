@@ -11,6 +11,9 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
  */
 public class StreamableHttpClient extends AbstractHttpMcpClient {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public StreamableHttpClient(McpServerConfig config) {
         super(config);
     }

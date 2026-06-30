@@ -10,6 +10,7 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -27,8 +28,12 @@ public class AgentCallbackManager {
     private final String agentId;
     private final Map<String, Map<Consumer<AgentCallbackContext>, Function<Map<String, Object>, Object>>> wrappedCallbacks =
             new ConcurrentHashMap<>();
+    private final Map<String, List<RegisteredCallback>> localCallbacks = new ConcurrentHashMap<>();
     private final Map<AgentRail, List<RailRegistration>> railRegistrations = new ConcurrentHashMap<>();
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public AgentCallbackManager(String agentId) {
         this.agentId = agentId;
     }
@@ -52,6 +57,10 @@ public class AgentCallbackManager {
         wrappedCallbacks
                 .computeIfAbsent(agentEvent, key -> new ConcurrentHashMap<>())
                 .put(callback, wrappedCallback);
+        localCallbacks
+                .computeIfAbsent(agentEvent, key -> Collections.synchronizedList(new ArrayList<RegisteredCallback>()))
+                .add(new RegisteredCallback(callback, priority));
+        localCallbacks.get(agentEvent).sort((left, right) -> Integer.compare(right.priority(), left.priority()));
         String callbackName = agentEvent + "_cb_" + Integer.toHexString(System.identityHashCode(callback));
         Runner.callbackFramework().register(agentEvent, wrappedCallback, priority, callbackName);
     }
@@ -70,6 +79,7 @@ public class AgentCallbackManager {
      * @param agent the BaseAgent instance (for tool registration)
      */
     public void registerRail(AgentRail rail, Object agent) {
+        rail.init(agent);
         List<RailRegistration> registrations = new ArrayList<>();
         for (Map.Entry<AgentCallbackEvent, Consumer<AgentCallbackContext>> entry : rail.getCallbacks().entrySet()) {
             registerCallback(entry.getKey(), entry.getValue(), rail.getPriority());
@@ -109,6 +119,8 @@ public class AgentCallbackManager {
                 }
             }
         }
+
+        rail.uninit(agent);
     }
 
     /**
@@ -130,6 +142,14 @@ public class AgentCallbackManager {
             return;
         }
 
+        List<RegisteredCallback> callbacksForAgentEvent = localCallbacks.get(agentEvent);
+        if (callbacksForAgentEvent != null) {
+            callbacksForAgentEvent.removeIf(registeredCallback -> registeredCallback.callback().equals(callback));
+            if (callbacksForAgentEvent.isEmpty()) {
+                localCallbacks.remove(agentEvent);
+            }
+        }
+
         Runner.callbackFramework().unregister(agentEvent, wrappedCallback);
         if (callbacksForEvent.isEmpty()) {
             wrappedCallbacks.remove(agentEvent);
@@ -146,6 +166,7 @@ public class AgentCallbackManager {
             String agentEvent = getAgentEvent(event);
             Runner.callbackFramework().unregisterEvent(agentEvent);
             wrappedCallbacks.remove(agentEvent);
+            localCallbacks.remove(agentEvent);
             railRegistrations.values().forEach(registrations ->
                     registrations.removeIf(registration -> registration.event() == event));
         } else {
@@ -154,6 +175,7 @@ public class AgentCallbackManager {
                 Runner.callbackFramework().unregisterEvent(agentEvent);
             }
             wrappedCallbacks.clear();
+            localCallbacks.clear();
             railRegistrations.clear();
         }
     }
@@ -177,7 +199,15 @@ public class AgentCallbackManager {
      */
     public void execute(AgentCallbackEvent event, AgentCallbackContext ctx) {
         String agentEvent = getAgentEvent(event);
-        Runner.callbackFramework().trigger(agentEvent, Map.of("ctx", ctx));
+        List<RegisteredCallback> callbacksForEvent = localCallbacks.get(agentEvent);
+        if (callbacksForEvent == null) {
+            return;
+        }
+        List<RegisteredCallback> snapshot = new ArrayList<RegisteredCallback>(callbacksForEvent);
+        snapshot.sort((left, right) -> Integer.compare(right.priority(), left.priority()));
+        for (RegisteredCallback registeredCallback : snapshot) {
+            registeredCallback.callback().accept(ctx);
+        }
     }
 
     /**
@@ -188,5 +218,8 @@ public class AgentCallbackManager {
     }
 
     private record RailRegistration(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback) {
+    }
+
+    private record RegisteredCallback(Consumer<AgentCallbackContext> callback, int priority) {
     }
 }

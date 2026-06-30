@@ -67,6 +67,9 @@ public class AdoptOptimizer extends BaseOptimizer {
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void bindParameter(Map<String, LLMCall> params) {
         super.bindParameter(params);
     }
@@ -82,6 +85,9 @@ public class AdoptOptimizer extends BaseOptimizer {
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     protected void doBackward(List<EvaluatedCase> evaluatedCases) {
         // 1. Conclude all nodes' descriptions
         concludeJobForEachNode();
@@ -107,6 +113,9 @@ public class AdoptOptimizer extends BaseOptimizer {
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     protected void doUpdate() {
         PartialOptimizer optimizer = new PartialOptimizer(model, modelName, null);
         
@@ -280,6 +289,9 @@ public class AdoptOptimizer extends BaseOptimizer {
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     protected List<EvaluatedCase> getBadCases(List<EvaluatedCase> evaluatedCases) {
         List<EvaluatedCase> badCases = evaluatedCases.stream()
                 .filter(c -> c.getScore() == 0.0f)

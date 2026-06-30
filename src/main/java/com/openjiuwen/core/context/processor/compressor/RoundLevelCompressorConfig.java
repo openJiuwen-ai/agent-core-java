@@ -14,8 +14,6 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
 /**
  * Configuration for the {@link RoundLevelCompressor} ContextProcessor.
- * <p>
- * Mirrors Python's {@code RoundLevelCompressorConfig}.
  */
 @Data
 @Builder
@@ -23,50 +21,67 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 @AllArgsConstructor
 public class RoundLevelCompressorConfig {
 
-    /**
-     * Maximum number of consecutive dialogue rounds before compression is triggered.
-     * Must be > 1.
-     */
     @Builder.Default
-    private int roundsThreshold = 10;
+    private int triggerTotalTokens = 230000;
 
-    /**
-     * Maximum accumulated token count before compression is triggered.
-     * Must be > 0.
-     */
     @Builder.Default
-    private int tokensThreshold = 10000;
+    private int targetTotalTokens = 160000;
 
-    /**
-     * If true, the most recent user-assistant round is always preserved.
-     */
     @Builder.Default
-    private boolean keepLastRound = true;
+    private int keepRecentMessages = 0;
 
-    /**
-     * User-defined prompt template for round compression.
-     */
-    private String customizedCompressionPrompt;
+    @Builder.Default
+    private int compressionCallMaxTokens = 250000;
 
-    /**
-     * Model request configuration.
-     */
+    @Builder.Default
+    private int firstPassTargetTokens = 30000;
+
+    @Builder.Default
+    private int secondPassTargetTokens = 20000;
+
+    @Builder.Default
+    private int thirdPassTargetTokens = 10000;
+
+    @Builder.Default
+    private double truncateHeadRatio = 0.2;
+
+    @Builder.Default
+    private String truncatedMarker = "...[TRUNCATED]...";
+
+    @Builder.Default
+    private String compressionMarker = RoundLevelCompressor.ROUND_LEVEL_FALLBACK_MARKER;
+
     private ModelRequestConfig model;
 
-    /**
-     * Optional client-level configuration for the model.
-     */
     private ModelClientConfig modelClient;
 
     /**
-     * Validate configuration constraints matching Python Pydantic rules.
+     * Auto-generated for codecheck compliance.
      */
     public void validate() {
-        if (roundsThreshold <= 1) {
-            throw new IllegalArgumentException("roundsThreshold must be > 1, got " + roundsThreshold);
+        if (triggerTotalTokens <= 0) {
+            throw new IllegalArgumentException("triggerTotalTokens must be > 0, got " + triggerTotalTokens);
         }
-        if (tokensThreshold <= 0) {
-            throw new IllegalArgumentException("tokensThreshold must be > 0, got " + tokensThreshold);
+        if (targetTotalTokens <= 0) {
+            throw new IllegalArgumentException("targetTotalTokens must be > 0, got " + targetTotalTokens);
+        }
+        if (keepRecentMessages < 0) {
+            throw new IllegalArgumentException("keepRecentMessages must be >= 0, got " + keepRecentMessages);
+        }
+        if (compressionCallMaxTokens <= 0) {
+            throw new IllegalArgumentException("compressionCallMaxTokens must be > 0, got " + compressionCallMaxTokens);
+        }
+        if (firstPassTargetTokens <= 0) {
+            throw new IllegalArgumentException("firstPassTargetTokens must be > 0, got " + firstPassTargetTokens);
+        }
+        if (secondPassTargetTokens <= 0) {
+            throw new IllegalArgumentException("secondPassTargetTokens must be > 0, got " + secondPassTargetTokens);
+        }
+        if (thirdPassTargetTokens <= 0) {
+            throw new IllegalArgumentException("thirdPassTargetTokens must be > 0, got " + thirdPassTargetTokens);
+        }
+        if (truncateHeadRatio <= 0.0 || truncateHeadRatio >= 1.0) {
+            throw new IllegalArgumentException("truncateHeadRatio must be > 0 and < 1, got " + truncateHeadRatio);
         }
     }
 }

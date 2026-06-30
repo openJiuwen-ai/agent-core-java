@@ -36,6 +36,33 @@ public class AgentMemoryConfig {
     private boolean enableFragmentMemory = true;
 
     @Builder.Default
+    @JsonProperty("enable_user_profile")
+    private boolean enableUserProfile = true;
+
+    @Builder.Default
+    @JsonProperty("enable_semantic_memory")
+    private boolean enableSemanticMemory = true;
+
+    @Builder.Default
+    @JsonProperty("enable_episodic_memory")
+    private boolean enableEpisodicMemory = true;
+
+    @Builder.Default
     @JsonProperty("enable_summary_memory")
     private boolean enableSummaryMemory = true;
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public boolean isMemoryTypeEnabled(String memoryType) {
+        if (!enableFragmentMemory) {
+            return false;
+        }
+        return switch (memoryType) {
+            case "user_profile" -> enableUserProfile;
+            case "semantic_memory" -> enableSemanticMemory;
+            case "episodic_memory" -> enableEpisodicMemory;
+            default -> true;
+        };
+    }
 }

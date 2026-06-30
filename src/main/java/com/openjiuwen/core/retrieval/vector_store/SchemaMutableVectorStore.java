@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.retrieval.vector_store;
 
+import com.openjiuwen.spi.store.vector.CollectionSchema;
+
 import java.util.List;
 import java.util.Map;
 
@@ -19,4 +21,6 @@ public interface SchemaMutableVectorStore extends VectorStore {
     void updateCollectionMetadata(String collectionName, Map<String, Object> metadata);
 
     void updateSchema(String collectionName, List<?> operations);
+
+    CollectionSchema getSchema(String collectionName);
 }

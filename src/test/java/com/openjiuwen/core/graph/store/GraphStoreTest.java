@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.graph.store;
 
 import com.openjiuwen.core.graph.pregel.Message;
@@ -117,6 +119,49 @@ class GraphStoreTest {
             // Original should be unaffected
             Optional<GraphStoreState> reloaded = saver.get(convId, ns);
             assertEquals("original", reloaded.get().getChannelValues().get("key"));
+        }
+
+        @Test
+        @DisplayName("save and get recursively isolate nested mutable graph state")
+        @SuppressWarnings("unchecked")
+        void testRecursiveIsolation() {
+            InMemoryStore saver = new InMemoryStore();
+            String convId = "conv1";
+            String ns = "ns1";
+
+            Map<String, Object> nested = new HashMap<>();
+            nested.put("list", new ArrayList<>(List.of("original")));
+            Map<String, Object> channelVals = new HashMap<>();
+            channelVals.put("nested", nested);
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("items", new ArrayList<>(List.of("payload-original")));
+            List<Message> pendingBuffer = new ArrayList<>(List.of(new Message("sender", "target", payload)));
+
+            List<Exception> exceptions = new ArrayList<>();
+            exceptions.add(new RuntimeException("first"));
+            Map<String, PendingNode> pendingNode = new HashMap<>();
+            pendingNode.put("node1", new PendingNode("node1", "__error__", exceptions));
+
+            GraphStoreState state = GraphStoreState.create(ns, 1, channelVals, pendingBuffer, pendingNode, Map.of("node1", 1));
+            saver.save(convId, ns, state);
+
+            ((List<String>) nested.get("list")).add("mutated-after-save");
+            ((List<String>) payload.get("items")).add("payload-mutated-after-save");
+            exceptions.add(new RuntimeException("second"));
+
+            GraphStoreState loaded = saver.get(convId, ns).orElseThrow();
+            ((List<String>) ((Map<String, Object>) loaded.getChannelValues().get("nested")).get("list")).add("mutated-after-get");
+            ((List<String>) ((Map<String, Object>) loaded.getPendingBuffer().get(0).getPayload()).get("items"))
+                    .add("payload-mutated-after-get");
+            loaded.getPendingNode().get("node1").getExceptions().add(new RuntimeException("third"));
+
+            GraphStoreState reloaded = saver.get(convId, ns).orElseThrow();
+            assertEquals(List.of("original"),
+                    ((Map<String, Object>) reloaded.getChannelValues().get("nested")).get("list"));
+            assertEquals(List.of("payload-original"),
+                    ((Map<String, Object>) reloaded.getPendingBuffer().get(0).getPayload()).get("items"));
+            assertEquals(1, reloaded.getPendingNode().get("node1").getExceptions().size());
         }
     }
 

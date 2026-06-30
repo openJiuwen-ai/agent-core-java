@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval;
 
 import com.openjiuwen.core.common.exception.BaseError;
@@ -471,10 +473,10 @@ class RetrievalCoreTest {
         }
 
         @Override
-        public List<List<Float>> embedDocuments(List<String> texts, Integer batchSize) {
+        public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
             List<List<Float>> result = new ArrayList<>();
-            for (String text : texts) {
-                result.add(embedQuery(text));
+            for (Object text : texts) {
+                result.add(embedQuery(String.valueOf(text)));
             }
             return result;
         }

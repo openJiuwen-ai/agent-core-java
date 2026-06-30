@@ -11,5 +11,8 @@ import lombok.experimental.SuperBuilder;
 @SuperBuilder
 @NoArgsConstructor
 public class DownloadFileResult extends BaseResult<DownloadFileData> {
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public DownloadFileResult(int code, String message, DownloadFileData data) { super(code, message, data); }
 }

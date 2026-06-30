@@ -23,6 +23,7 @@ import java.util.Map;
 @AllArgsConstructor
 public class InvokeInputs implements EventInputs {
     private String query;
+    private Object queryPayload;
     private String conversationId;
     private Map<String, Object> result;
 }

@@ -1,11 +1,12 @@
 # Retrieval Java Examples
 
-这个目录对应 Python 版 `examples/retrieval`，提供了一组基于 Java retrieval 框架的独立示例入口。
+这个目录提供了一组基于 Java retrieval 框架的独立示例入口。
 
 ## 文件说明
 
 - `TextEmbeddingExample.java`: 文本 embedding，对比跨语言同主题和相关主题之间的向量差异。
 - `MultimodalEmbeddingExample.java`: 多模态 embedding，比较同图不同格式、不同图片、同图不同文本的相似度。
+- `DashscopeMultimodalEmbeddingExample.java`: DashScope 多模态 embedding，对齐 Python `showcase_dashscope_multimodal_embedding.py`。
 - `StandardRerankerExample.java`: 标准 reranker，对比默认查询和带 instruction 的打分结果。
 - `ChatRerankerExample.java`: chat reranker，增加兼容性探测，并演示 custom instruction 对分数的影响。
 - `QueryRewriterExample.java`: Query Rewriter，多轮对话重写、压缩和 `standalone_query` 输出。
@@ -23,6 +24,8 @@
 
 - `EMBEDDING_MODEL`, `EMBEDDING_API_BASE`, `EMBEDDING_API_KEY`
 - `MULTIMODAL_EMBEDDING_MODEL`, `MULTIMODAL_EMBEDDING_API_BASE`, `MULTIMODAL_EMBEDDING_API_KEY`
+- `DASHSCOPE_EMBEDDING_MODEL`, `DASHSCOPE_EMBEDDING_API_BASE`, `DASHSCOPE_EMBEDDING_API_KEY`, `DASHSCOPE_EMBEDDING_DIM`
+- `DASHSCOPE_API_KEY`, `DASHSCOPE_REFERENCE_IMAGE`
 - `RERANKER_MODEL`, `RERANKER_API_BASE`, `RERANKER_API_KEY`
 - `CHAT_RERANKER_MODEL`, `CHAT_RERANKER_API_BASE`, `CHAT_RERANKER_API_KEY`
 - `CHAT_RERANKER_YES_NO_IDS`
@@ -37,7 +40,7 @@
 
 ## 运行方式
 
-建议先在 `agent-core-java-myfork` 目录执行一次编译：
+以下命令假设当前目录是 Java 仓库根目录，也就是包含 `pom.xml`、`examples` 和 `src` 的目录。建议先执行一次编译：
 
 ```powershell
 mvn -DskipTests compile
@@ -52,6 +55,7 @@ javac -cp "target/classes;examples;$(Get-Content target/retrieval_examples.class
 $classpath = Get-Content target/retrieval_examples.classpath -Raw
 java -cp "target/classes;examples;examples/retrieval;$classpath" TextEmbeddingExample
 java -cp "target/classes;examples;examples/retrieval;$classpath" MultimodalEmbeddingExample
+java -cp "target/classes;examples;examples/retrieval;$classpath" DashscopeMultimodalEmbeddingExample
 java -cp "target/classes;examples;examples/retrieval;$classpath" StandardRerankerExample
 java -cp "target/classes;examples;examples/retrieval;$classpath" ChatRerankerExample
 java -cp "target/classes;examples;examples/retrieval;$classpath" QueryRewriterExample
@@ -66,11 +70,11 @@ java -DCHAT_RERANKER_YES_NO_IDS=9454,2753 -cp "target/classes;examples;examples/
 java -DMILVUS_URI=http://localhost:19530 -cp "target/classes;examples;examples/retrieval;$classpath" MilvusFilterExample
 ```
 
-## 与 Python 示例的差异
+## 当前实现说明
 
 - Java retrieval 层当前的 `VectorStore` 过滤接口接收 `Map<String, Object>`，因此本目录的 filter 示例按 Java 现有语义演示。
 - `ChromaFilterExample` 侧重本地 store 的等值和 in-list 过滤；`MilvusFilterExample` 侧重 `doc_id` / `chunk_id` 这类已知 collection 字段。
-- Python 版 `query_expr` 中的范围和逻辑表达式 DSL 还没有直接接到 Java retrieval `VectorStore` 公共接口上，因此这里没有伪造一层一比一 API。
+- 范围和逻辑表达式 DSL 还没有直接接到 Java retrieval `VectorStore` 公共接口上，因此这里没有额外封装一层一比一 API。
 
 ## 输出预期
 

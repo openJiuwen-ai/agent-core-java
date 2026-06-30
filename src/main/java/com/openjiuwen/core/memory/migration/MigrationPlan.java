@@ -18,14 +18,23 @@ public final class MigrationPlan {
 
     private MigrationPlan() {}
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static OperationRegistry getSqlRegistry() {
         return SQL_REGISTRY;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static OperationRegistry getVectorRegistry() {
         return VECTOR_REGISTRY;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static OperationRegistry getKvRegistry() {
         return KV_REGISTRY;
     }

@@ -2,7 +2,7 @@
 
 这个目录现在同时提供：
 
-1. 对齐 Python 版 `examples/workflow_agent/multi_workflow_agent_demo` 的推荐子目录入口
+1. 推荐子目录入口 `multi_workflow_agent_demo`
 2. 兼容旧命令的 `WorkflowAgentExample` 入口
 
 整体演示目标不变，仍然是在 Java 框架里：
@@ -14,7 +14,7 @@
 
 ## 文件说明
 
-- `multi_workflow_agent_demo/MultiWorkflowAgentDemo.java`: 推荐入口，目录命名与 Python 保持一致。
+- `multi_workflow_agent_demo/MultiWorkflowAgentDemo.java`: 推荐入口。
 - `WorkflowAgentExampleSupport.java`: 共享的多工作流示例实现，负责创建金融助手、注册三个工作流并启动命令行交互。
 - `WorkflowAgentExample.java`: 兼容入口，转发到新的共享实现。
 - `../SharedExampleApiConfigLoader.java`: 读取 `examples/apiconfig.json` 中的大模型配置。
@@ -30,12 +30,12 @@
 ## 运行前提
 
 1. 在 `examples/apiconfig.json` 中填入真实模型配置。
-2. 从 `f:\openJiuwenTT\agent-core-java-myfork` 目录运行命令。
+2. 从当前 Java 仓库根目录运行下面的命令，也就是包含 `pom.xml`、`examples` 和 `src` 的目录。
 3. 如果模型服务启用了自签名证书，请在 `apiconfig.json` 中把 `LLM_SSL_VERIFY` 配成合适的值。
 
 ## 运行方式
 
-建议先在 `agent-core-java-myfork` 目录执行一次编译：
+建议先在仓库根目录执行一次编译：
 
 ```powershell
 mvn -DskipTests compile
@@ -142,4 +142,4 @@ assistant> 余额查询完成，登记的账户号码为 62220001。
 - 在 `reply>` 回答后，是否进入对应 workflow 的完成结果。
 - 是否最终输出了用户可读的完成文本，而不是停在异常堆栈后无响应。
 
-更多与 Python 目录对齐的说明见 `multi_workflow_agent_demo/README.md`。
+更多关于推荐子目录入口的说明见 `multi_workflow_agent_demo/README.md`。

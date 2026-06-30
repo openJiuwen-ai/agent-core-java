@@ -34,10 +34,16 @@ public class ChatAgentConfig extends AgentConfig {
     @Setter(AccessLevel.NONE)
     private LLMCallConfig model;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public LLMCallConfig getLlmCallConfig() {
         return model;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setLlmCallConfig(LLMCallConfig model) {
         this.model = model;
     }

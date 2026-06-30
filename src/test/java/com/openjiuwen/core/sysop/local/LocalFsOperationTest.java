@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.sysop.local;
 
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -434,6 +436,30 @@ class LocalFsOperationTest {
         assertEquals(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR.getCode(), res.getCode());
         assertTrue(res.getMessage().contains("Access denied") || res.getMessage().contains("traverses outside"),
                 "Error message should mention access denial: " + res.getMessage());
+    }
+
+    @Test
+    @DisplayName("Sandbox root can be wider than workDir")
+    void testSandboxRootIndependentFromWorkDir() throws IOException {
+        Path sandboxRoot = workDir.resolve("sandbox-root");
+        Path workspace = sandboxRoot.resolve("workspace");
+        Files.createDirectories(workspace);
+        Files.writeString(sandboxRoot.resolve("shared.txt"), "shared");
+
+        LocalWorkConfig config = LocalWorkConfig.builder()
+                .workDir(workspace.toString())
+                .sandboxRoot(List.of(sandboxRoot.toString()))
+                .restrictToSandbox(true)
+                .build();
+        SysOperationCard card = new SysOperationCard();
+        card.setId("test_fs_sandbox_root");
+        card.setMode(OperationMode.LOCAL);
+        card.setWorkConfig(config);
+        SysOperation op = new SysOperation(card);
+
+        ReadFileResult res = op.fs().readFile("../shared.txt", "text", null, null, null, "utf-8", 0, null);
+        assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
+        assertEquals("shared", res.getData().getContentAsString());
     }
 
     // ==================== Basic Stream ====================

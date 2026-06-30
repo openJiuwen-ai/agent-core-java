@@ -11,6 +11,9 @@ import com.openjiuwen.core.singleagent.schema.AgentCard;
  */
 public class ReActAgentEvolve extends com.openjiuwen.core.singleagent.agents.ReActAgentEvolve {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public ReActAgentEvolve(AgentCard card) {
         super(card);
     }

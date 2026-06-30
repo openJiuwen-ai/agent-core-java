@@ -22,6 +22,9 @@ public class MultiKBRetrievalResult extends RetrievalResult {
     private double rawScoreScaled;
     private List<String> kbIds = new ArrayList<>();
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public MultiKBRetrievalResult(String text,
                                   double score,
                                   double rawScore,

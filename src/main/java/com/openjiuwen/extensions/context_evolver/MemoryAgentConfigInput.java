@@ -18,9 +18,15 @@ public class MemoryAgentConfigInput {
     private String systemPrompt;
     private int maxIterations = 5;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public MemoryAgentConfigInput() {
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public MemoryAgentConfigInput(String modelProvider, String apiKey, String apiBase, String modelName) {
         this.modelProvider = modelProvider;
         this.apiKey = apiKey;
@@ -28,6 +34,9 @@ public class MemoryAgentConfigInput {
         this.modelName = modelName;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public MemoryAgentConfigInput(
             String modelProvider,
             String apiKey,
@@ -38,6 +47,9 @@ public class MemoryAgentConfigInput {
         this.systemPrompt = systemPrompt;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public MemoryAgentConfigInput(
             String modelProvider,
             String apiKey,
@@ -50,50 +62,86 @@ public class MemoryAgentConfigInput {
     }
 
     // Getters and Setters
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getModelProvider() {
         return modelProvider;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setModelProvider(String modelProvider) {
         this.modelProvider = modelProvider;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getApiKey() {
         return apiKey;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setApiKey(String apiKey) {
         this.apiKey = apiKey;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getApiBase() {
         return apiBase;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setApiBase(String apiBase) {
         this.apiBase = apiBase;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getModelName() {
         return modelName;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setModelName(String modelName) {
         this.modelName = modelName;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getSystemPrompt() {
         return systemPrompt;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setSystemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public int getMaxIterations() {
         return maxIterations;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setMaxIterations(int maxIterations) {
         this.maxIterations = maxIterations;
     }

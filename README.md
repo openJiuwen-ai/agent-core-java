@@ -4,7 +4,7 @@
 
 ## Introduction
 
-**openJiuwen Core Java** is a Java port of the OpenJiuwen Core Python version, a Java software development toolkit designed for large language model applications. It provides a high-performance runtime for agents running on the **openJiuwen** framework. This development toolkit not only encapsulates multi-layered, easy-to-use external interfaces for Agent creation, workflow orchestration, large language model invocation, and tool calling; it also includes a high-performance runtime with support for asynchronous I/O and stream processing, enabling agent state persistence and interruption resumption; furthermore, it is equipped with a complete suite of debugging and optimization tools for full-link observability. The **openJiuwen Core Java** development toolkit balances flexibility and stability, helping developers efficiently build robust large language model applications.
+**openJiuwen Core Java** is an independent Java implementation for the openJiuwen framework, a Java software development toolkit designed for large language model applications. It provides a high-performance runtime for agents running on the **openJiuwen** framework. This development toolkit not only encapsulates multi-layered, easy-to-use external interfaces for Agent creation, workflow orchestration, large language model invocation, and tool calling; it also includes a high-performance runtime with support for asynchronous I/O and stream processing, enabling agent state persistence and interruption resumption; furthermore, it is equipped with a complete suite of debugging and optimization tools for full-link observability. The **openJiuwen Core Java** development toolkit balances flexibility and stability, helping developers efficiently build robust large language model applications.
 
 ## Why Choose openJiuwen Core Java?
 
@@ -21,7 +21,7 @@
 ### Environment Requirements
 
 - **Operating System**: Compatible with Windows, Linux, macOS.
-- **Java Version**: Java 21 or higher.
+- **Java Version**: Java 17 or higher.
 - **Build Tool**: Maven 3.9+.
 
 ### Installation
@@ -39,7 +39,7 @@ Then add agent-core-java as a dependency to your Maven project:
 <dependency>
     <groupId>com.openjiuwen</groupId>
     <artifactId>agent-core-java</artifactId>
-    <version>0.1.7</version>
+    <version>0.1.12</version>
 </dependency>
 ```
 

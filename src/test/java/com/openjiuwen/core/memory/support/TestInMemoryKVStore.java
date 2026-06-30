@@ -29,7 +29,7 @@ public class TestInMemoryKVStore extends BaseKVStore {
     }
 
     @Override
-    public boolean exists(String key) {
+    public boolean isExists(String key) {
         return data.containsKey(key);
     }
 
@@ -89,7 +89,7 @@ public class TestInMemoryKVStore extends BaseKVStore {
                         results.add(null);
                     }
                     case "get" -> results.add(get(key));
-                    case "exists" -> results.add(exists(key));
+                    case "exists" -> results.add(isExists(key));
                     default -> throw new IllegalArgumentException("Unsupported pipeline op: " + op);
                 }
             }

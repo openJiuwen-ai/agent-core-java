@@ -34,6 +34,34 @@ public class LocalWorkConfig {
             "cp", "copy", "mv", "move", "grep", "find", "curl", "wget", "ps", "df", "ping"
     );
 
+    /**
+     * Security boundary roots for file operations and shell working-directory resolution.
+     */
+    private List<String> sandboxRoot;
+
+    /**
+     * Whether sandbox roots should be enforced.
+     */
+    @Builder.Default
+    private boolean isRestrictToSandbox = false;
+
+    /**
+     * Regex patterns for dangerous commands to block.
+     */
+    private List<String> dangerousPatterns;
+
     /** Local working directory path. */
     private String workDir;
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public static class LocalWorkConfigBuilder {
+        /**
+         * Auto-generated for codecheck compliance.
+         */
+        public LocalWorkConfigBuilder restrictToSandbox(boolean value) {
+            return this.isRestrictToSandbox(value);
+        }
+    }
 }

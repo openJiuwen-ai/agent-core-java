@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
@@ -35,8 +37,8 @@ class WordParserTest {
         var docs = parser.parse(file.toString(), "docx-1", null, Map.of());
 
         assertEquals(1, docs.size());
-        assertTrue(docs.getFirst().getText().contains("Paragraph 1"));
-        assertTrue(docs.getFirst().getText().contains("Paragraph 2"));
+        assertTrue(docs.get(0).getText().contains("Paragraph 1"));
+        assertTrue(docs.get(0).getText().contains("Paragraph 2"));
     }
 
     @Test

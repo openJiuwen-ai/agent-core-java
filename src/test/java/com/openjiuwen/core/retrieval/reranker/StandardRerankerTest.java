@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval.reranker;
 
 import com.openjiuwen.core.retrieval.common.RerankerConfig;
@@ -70,7 +72,7 @@ class StandardRerankerTest {
                 List.of(new RetrievalResult("doc one", 0.0), new RetrievalResult("doc two", 0.0)),
                 2);
 
-        assertEquals("doc two", results.getFirst().getText());
+        assertEquals("doc two", results.get(0).getText());
     }
 
     @Test

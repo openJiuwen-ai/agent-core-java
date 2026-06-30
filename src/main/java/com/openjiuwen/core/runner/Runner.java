@@ -10,6 +10,9 @@ import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopi
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
 import com.openjiuwen.core.runner.mq.MessageQueueBase;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
+import com.openjiuwen.core.runner.spawn.SpawnAgentConfig;
+import com.openjiuwen.core.runner.spawn.SpawnConfig;
+import com.openjiuwen.core.runner.spawn.SpawnedProcessHandle;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 
@@ -200,6 +203,14 @@ public final class Runner {
                                                       ModelContext context, List<StreamMode> streamModes,
                                                       Map<String, Object> envs) {
         return GLOBAL_RUNNER.runAgentStreaming(agent, inputs, session, context, streamModes, envs);
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public static SpawnedProcessHandle spawnAgent(SpawnAgentConfig agentConfig, Object inputs, Object session,
+                                                  SpawnConfig spawnConfig) {
+        return GLOBAL_RUNNER.spawnAgent(agentConfig, inputs, session, spawnConfig);
     }
 
     // ========== Agent Group ==========

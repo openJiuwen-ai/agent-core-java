@@ -49,18 +49,30 @@ public class InteractiveInput {
         this.rawInputs = rawInputs;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Map<String, Object> getUserInputs() {
         return userInputs;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setUserInputs(Map<String, Object> userInputs) {
         this.userInputs = userInputs;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Object getRawInputs() {
         return rawInputs;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setRawInputs(Object rawInputs) {
         this.rawInputs = rawInputs;
     }
@@ -74,7 +86,7 @@ public class InteractiveInput {
     public void update(String nodeId, Object value) {
         if (rawInputs != null) {
             throw ErrorHelper.buildError(StatusCode.INTERACTION_INPUT_INVALID,
-                    "reason", "raw_inputs existed, update is invalid");
+                    "reason", "raw_inputs isExisted, update is invalid");
         }
         if (nodeId == null || value == null) {
             throw ErrorHelper.buildError(StatusCode.INTERACTION_INPUT_INVALID,

@@ -27,6 +27,7 @@ class ReActAgentConfigTest {
         assertThat(config.getApiBase()).isEmpty();
         assertThat(config.getPromptTemplateName()).isEmpty();
         assertThat(config.getPromptTemplate()).isNotNull().isEmpty();
+        assertThat(config.getCustomHeaders()).isNull();
         assertThat(config.getMaxIterations()).isEqualTo(5);
         assertThat(config.getModelClientConfig()).isNull();
         assertThat(config.getModelConfigObj()).isNull();
@@ -130,6 +131,29 @@ class ReActAgentConfigTest {
         ReActAgentConfig config = ReActAgentConfig.builder().build();
         config.configureContextProcessors(List.of("proc1", "proc2"));
         assertThat(config.getContextProcessors()).hasSize(2);
+    }
+
+    @Test
+    void testConfigureCustomHeadersBeforeModelClient() {
+        ReActAgentConfig config = ReActAgentConfig.builder().build();
+
+        config.configureCustomHeaders(Map.of("token", "token-123", "userId", "user-456"))
+                .configureModelClient("openai", "key", "https://api.example.com", "gpt-4", false);
+
+        assertThat(config.getCustomHeaders()).containsEntry("token", "token-123");
+        assertThat(config.getModelClientConfig().getHeaders())
+                .containsEntry("token", "token-123")
+                .containsEntry("userId", "user-456");
+    }
+
+    @Test
+    void testConfigureCustomHeadersAfterModelClient() {
+        ReActAgentConfig config = ReActAgentConfig.builder().build();
+
+        config.configureModelClient("openai", "key", "https://api.example.com", "gpt-4", false);
+        config.configureCustomHeaders(Map.of("token", "token-123"));
+
+        assertThat(config.getModelClientConfig().getHeaders()).containsEntry("token", "token-123");
     }
 
     @Test

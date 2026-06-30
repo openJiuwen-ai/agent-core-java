@@ -56,9 +56,15 @@ public final class UrlUtils {
             return null;
         }
         String proxy = System.getenv("http_proxy");
-        if (proxy == null) proxy = System.getenv("https_proxy");
-        if (proxy == null) proxy = System.getenv("HTTP_PROXY");
-        if (proxy == null) proxy = System.getenv("HTTPS_PROXY");
+        if (proxy == null) {
+            proxy = System.getenv("https_proxy");
+        }
+        if (proxy == null) {
+            proxy = System.getenv("HTTP_PROXY");
+        }
+        if (proxy == null) {
+            proxy = System.getenv("HTTPS_PROXY");
+        }
         return proxy != null ? proxy.trim() : null;
     }
 
@@ -84,7 +90,7 @@ public final class UrlUtils {
                 return false;
             }
             List<String> noProxyList = getNoProxyList();
-            return !noProxyList.isEmpty() && hostnameMatchesNoProxy(hostname.toLowerCase(), noProxyList);
+            return !noProxyList.isEmpty() && hostnameMatchesNoProxy(hostname.toLowerCase(Locale.ROOT), noProxyList);
         } catch (Exception e) {
             return false;
         }
@@ -123,7 +129,7 @@ public final class UrlUtils {
         }
         String normalized = proxyStr.replace(" ", ",").replace(";", ",");
         for (String item : normalized.split(",")) {
-            String trimmed = item.trim().toLowerCase();
+            String trimmed = item.trim().toLowerCase(Locale.ROOT);
             if (!trimmed.isEmpty()) {
                 seen.add(trimmed);
             }
@@ -132,10 +138,18 @@ public final class UrlUtils {
 
     private static boolean hostnameMatchesNoProxy(String hostname, List<String> noProxyList) {
         for (String entry : noProxyList) {
-            if ("*".equals(entry)) return true;
-            if (entry.equals(hostname)) return true;
-            if (entry.startsWith(".") && hostname.endsWith(entry)) return true;
-            if (isIpMatch(hostname, entry)) return true;
+            if ("*".equals(entry)) {
+                return true;
+            }
+            if (entry.equals(hostname)) {
+                return true;
+            }
+            if (entry.startsWith(".") && hostname.endsWith(entry)) {
+                return true;
+            }
+            if (isIpMatch(hostname, entry)) {
+                return true;
+            }
         }
         return false;
     }
@@ -163,16 +177,22 @@ public final class UrlUtils {
 
             byte[] addrBytes = addr.getAddress();
             byte[] networkBytes = network.getAddress();
-            if (addrBytes.length != networkBytes.length) return false;
+            if (addrBytes.length != networkBytes.length) {
+                return false;
+            }
 
             int fullBytes = prefixLen / 8;
             int remainBits = prefixLen % 8;
             for (int i = 0; i < fullBytes; i++) {
-                if (addrBytes[i] != networkBytes[i]) return false;
+                if (addrBytes[i] != networkBytes[i]) {
+                    return false;
+                }
             }
             if (remainBits > 0 && fullBytes < addrBytes.length) {
                 int mask = 0xFF << (8 - remainBits);
-                if ((addrBytes[fullBytes] & mask) != (networkBytes[fullBytes] & mask)) return false;
+                if ((addrBytes[fullBytes] & mask) != (networkBytes[fullBytes] & mask)) {
+                    return false;
+                }
             }
             return true;
         } catch (Exception e) {

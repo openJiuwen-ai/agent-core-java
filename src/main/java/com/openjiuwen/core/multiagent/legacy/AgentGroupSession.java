@@ -20,18 +20,30 @@ import java.util.Map;
 @Deprecated
 public class AgentGroupSession extends AgentGroupSessionApi {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public AgentGroupSession(String sessionId, Map<String, Object> envs) {
         super(sessionId, envs);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public AgentGroupSession(String sessionId) {
         super(sessionId);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public AgentGroupSession() {
         super();
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static AgentGroupSession create(String sessionId, Map<String, Object> envs) {
         return new AgentGroupSession(sessionId, envs);
     }

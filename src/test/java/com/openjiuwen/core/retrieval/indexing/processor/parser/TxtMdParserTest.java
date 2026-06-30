@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import com.openjiuwen.core.retrieval.common.Document;
@@ -29,7 +31,7 @@ class TxtMdParserTest {
         List<Document> docs = parser.parse(file.toString(), "doc-1", null, Map.of());
 
         assertEquals(1, docs.size());
-        assertEquals("Content", docs.getFirst().getText());
+        assertEquals("Content", docs.get(0).getText());
     }
 
     @Test

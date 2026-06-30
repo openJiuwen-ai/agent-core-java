@@ -21,11 +21,17 @@ import java.util.Map;
  */
 public class AgentInteraction extends BaseInteraction {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public AgentInteraction(BaseSession session) {
         super(session);
     }
 
     @Override
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Object waitUserInputs(Object value) {
         Object inputs = getNextInteractiveInput();
         if (inputs != null) {

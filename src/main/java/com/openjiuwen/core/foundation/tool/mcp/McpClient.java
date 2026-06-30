@@ -66,6 +66,43 @@ public interface McpClient {
     }
 
     /**
+     * List all available resources on the MCP server.
+     *
+     * @param timeout operation timeout in seconds
+     * @return list of resource metadata
+     * @throws Exception if the operation fails
+     */
+    default List<Object> listResources(float timeout) throws Exception {
+        return List.of();
+    }
+
+    /**
+     * List resources with no timeout.
+     */
+    default List<Object> listResources() throws Exception {
+        return listResources(McpServerConfig.NO_TIMEOUT);
+    }
+
+    /**
+     * Read one MCP resource by URI.
+     *
+     * @param uri resource URI
+     * @param timeout operation timeout in seconds
+     * @return list of resource content blocks
+     * @throws Exception if the operation fails
+     */
+    default List<Object> readResource(String uri, float timeout) throws Exception {
+        throw new UnsupportedOperationException("MCP resource read is not supported by this client");
+    }
+
+    /**
+     * Read one MCP resource with no timeout.
+     */
+    default List<Object> readResource(String uri) throws Exception {
+        return readResource(uri, McpServerConfig.NO_TIMEOUT);
+    }
+
+    /**
      * Call a tool on the MCP server.
      *
      * @param toolName  name of the tool to call

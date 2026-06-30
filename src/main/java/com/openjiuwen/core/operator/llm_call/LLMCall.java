@@ -13,6 +13,9 @@ import java.util.function.BiConsumer;
  */
 public class LLMCall extends LLMCallOperator {
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public LLMCall(String modelName,
                    Model llm,
                    Object systemPrompt,
@@ -25,6 +28,9 @@ public class LLMCall extends LLMCallOperator {
                 onParameterUpdated);
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public LLMCall(String modelName, Model llm, Object systemPrompt, Object userPrompt) {
         super(modelName, llm, systemPrompt, userPrompt);
     }

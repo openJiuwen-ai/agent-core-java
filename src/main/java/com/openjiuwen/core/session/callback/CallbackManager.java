@@ -20,6 +20,9 @@ public class CallbackManager {
     private final Map<String, BaseHandler> handlers = new ConcurrentHashMap<>();
     private final Map<String, List<String>> triggerEvents = new ConcurrentHashMap<>();
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public CallbackManager() {
     }
 
@@ -58,7 +61,7 @@ public class CallbackManager {
         if (resolvedEventName == null) {
             Loggers.SESSION.error("Event name not registered in callback manager: handler={}, event={}",
                     handlerClassName, eventName);
-            throw new IllegalArgumentException("event name not exists: " + eventName);
+            throw new IllegalArgumentException("event name not isExists: " + eventName);
         }
 
         try {

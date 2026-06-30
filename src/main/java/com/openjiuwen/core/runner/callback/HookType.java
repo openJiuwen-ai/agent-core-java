@@ -23,6 +23,9 @@ public enum HookType {
         this.value = value;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getValue() {
         return value;
     }

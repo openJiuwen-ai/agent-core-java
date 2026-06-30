@@ -32,9 +32,15 @@ public class MarkdownContent {
 
     private List<String> lists = new ArrayList<>();
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public MarkdownContent() {
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public MarkdownContent(String rawContent) {
         this.rawContent = rawContent != null ? rawContent : "";
     }

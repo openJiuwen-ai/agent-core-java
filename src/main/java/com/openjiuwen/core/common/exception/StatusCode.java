@@ -16,6 +16,7 @@ public enum StatusCode {
 
     // ===== Generic =====
     SUCCESS(0, "success"),
+
     ERROR(-1, "error"),
 
     // =============================================================================================================
@@ -24,117 +25,198 @@ public enum StatusCode {
 
     // 0. Workflow Validation Error Codes (100000 - 100099)
     WORKFLOW_COMPONENT_ID_INVALID(100010,
-            "the component id is invalid for component ''{comp_id}'', reason=''{reason}'', workflow=''{workflow}''"),
+            "the component id is invalid for component '{comp_id}', reason='{reason}', workflow='{workflow}'"),
+
     WORKFLOW_COMPONENT_ABILITY_INVALID(100011,
-            "the ability is invalid for component ''{comp_id}'', ability={ability}, reason=''{reason}'', workflow=''{workflow}''"),
+            "the ability is invalid for component '{comp_id}', ability={ability},"
+                    + " reason='{reason}', workflow='{workflow}'"),
+
     WORKFLOW_EDGE_INVALID(100012,
-            "edge is invalid, reason=''{reason}'', source=''{src_cmp_id}'', target=''{target_cmp_id}'', workflow=''{workflow}''"),
+            "edge is invalid, reason='{reason}', source='{src_cmp_id}',"
+                    + " target='{target_cmp_id}', workflow='{workflow}'"),
+
     WORKFLOW_CONDITION_EDGE_INVALID(100013,
-            "condition edge is invalid, reason=''{reason}''. source=''{src_cmp_id}'', workflow=''{workflow}''"),
+            "condition edge is invalid, reason='{reason}'. source='{src_cmp_id}', workflow='{workflow}'"),
+
     WORKFLOW_COMPONENT_SCHEMA_INVALID(100014,
-            "component input/output schema is invalid for component ''{comp_id}'', reason=''{reason}'', workflow=''{workflow}''"),
+            "component input/output schema is invalid for component '{comp_id}',"
+                    + " reason='{reason}', workflow='{workflow}'"),
+
     WORKFLOW_STREAM_EDGE_INVALID(100015,
-            "stream edge is invalid, reason=''{reason}'', source=''{src_cmp_id}'', target=''{target_cmp_id}'', workflow=''{workflow}''"),
+            "stream edge is invalid, reason='{reason}', source='{src_cmp_id}',"
+                    + " target='{target_cmp_id}', workflow='{workflow}'"),
+
     WORKFLOW_EXECUTE_INPUT_INVALID(100016,
-            "workflow execute input is invalid, inputs=''{inputs}'', reason=''{reason}'', workflow=''{workflow}''"),
+            "workflow execute input is invalid, inputs='{inputs}', reason='{reason}', workflow='{workflow}'"),
+
     WORKFLOW_EXECUTE_SESSION_INVALID(100017,
-            "execute session is invalid, reason=''{reason}'', workflow=''{workflow}''"),
+            "execute session is invalid, reason='{reason}', workflow='{workflow}'"),
 
     // 1. Workflow Execution Error Codes (100100 - 100199)
-    WORKFLOW_COMPILE_ERROR(100100, "workflow compilation has error, error=''{reason}'', workflow={workflow}"),
-    WORKFLOW_EXECUTION_TIMEOUT(100101, "workflow execution exceeded time limit of {timeout} seconds, workflow=''{workflow}''"),
-    WORKFLOW_EXECUTION_ERROR(100102, "workflow execution has error, error=''{reason}'', workflow=''{workflow}''"),
+    WORKFLOW_COMPILE_ERROR(100100, "workflow compilation has error, error='{reason}', workflow={workflow}"),
+
+    WORKFLOW_EXECUTION_TIMEOUT(100101,
+            "workflow execution exceeded time limit of {timeout} seconds, workflow='{workflow}'"),
+
+    WORKFLOW_EXECUTION_ERROR(100102, "workflow execution has error, error='{reason}', workflow='{workflow}'"),
 
     // 2. Workflow Component orchestration Error Codes (100200 - 100299)
-    WORKFLOW_INNER_ORCHESTRATION_ERROR(100053, "workflow inner orchestration error, error=''{reason}''"),
+    WORKFLOW_INNER_ORCHESTRATION_ERROR(100053, "workflow inner orchestration error, error='{reason}'"),
+
     WORKFLOW_COMPONENT_EXECUTION_ERROR(100054,
-            "component ''{comp}'' execute ''{ability}'' error, reason=''{reason}'', workflow=''{workflow}''"),
+            "component '{comp}' execute '{ability}' error, reason='{reason}', workflow='{workflow}'"),
 
     // =============================================================================================================
     // 101. Built-in Workflow Component 101000–101999
     // =============================================================================================================
 
     // 01. End Component 101010 - 101019
-    COMPONENT_END_PARAM_INVALID(100010, "component end params is invalid, error=''{reason}''"),
+    COMPONENT_END_PARAM_INVALID(100010, "component end params is invalid, error='{reason}'"),
 
     // 02. BranchComponent 101020 - 101029
-    COMPONENT_BRANCH_PARAM_INVALID(101020, "component branch params is invalid, error=''{reason}''"),
-    COMPONENT_BRANCH_EXECUTION_ERROR(101021, "component branch execution error, error=''{reason}''"),
+    COMPONENT_BRANCH_PARAM_INVALID(101020, "component branch params is invalid, error='{reason}'"),
+
+    COMPONENT_BRANCH_EXECUTION_ERROR(101021, "component branch execution error, error='{reason}'"),
+
     EXPRESSION_SYNTAX_ERROR(101024, "expression syntax error"),
+
     EXPRESSION_EVAL_ERROR(101025, "expression evaluation error, reason: {error_msg}"),
+
     ARRAY_CONDITION_ERROR(101026, "array condition error"),
+
     NUMBER_CONDITION_ERROR(101027, "number condition error, reason: {error_msg}"),
 
     // 03. LoopComponent 101030 - 101049
-    COMPONENT_LOOP_GROUP_PARAM_INVALID(101030, "loop group params is invalid, error=''{reason}''"),
-    COMPONENT_LOOP_SET_VAR_PARAM_INVALID(101031, "loop set_var params invalid, error=''{reason}''"),
-    COMPONENT_LOOP_EXECUTION_ERROR(101040, "loop execution error, error=''{reason}'', comp=''{comp}''"),
-    COMPONENT_LOOP_CONDITION_EXECUTION_ERROR(101041, "loop condition execution error, error=''{reason}'', comp=''{comp}''"),
-    COMPONENT_LOOP_BREAK_EXECUTION_ERROR(101042, "loop break execution error, error=''{reason}'', comp=''{comp}''"),
-    COMPONENT_LOOP_SET_VAR_EXECUTION_ERROR(101043, "loop set_var execution error, error=''{reason}'', comp=''{comp}''"),
+    COMPONENT_LOOP_GROUP_PARAM_INVALID(101030, "loop group params is invalid, error='{reason}'"),
+
+    COMPONENT_LOOP_SET_VAR_PARAM_INVALID(101031, "loop set_var params invalid, error='{reason}'"),
+
+    COMPONENT_LOOP_EXECUTION_ERROR(101040, "loop execution error, error='{reason}', comp='{comp}'"),
+
+    COMPONENT_LOOP_CONDITION_EXECUTION_ERROR(101041,
+            "loop condition execution error, error='{reason}', comp='{comp}'"),
+
+    COMPONENT_LOOP_BREAK_EXECUTION_ERROR(101042, "loop break execution error, error='{reason}', comp='{comp}'"),
+
+    COMPONENT_LOOP_SET_VAR_EXECUTION_ERROR(101043, "loop set_var execution error, error='{reason}', comp='{comp}'"),
 
     // 05. SubWorkflowComponent 101150 - 101159
-    COMPONENT_SUB_WORKFLOW_PARAM_INVALID(101150, "component sub_workflow param is invalid, error=''{reason}''"),
+    COMPONENT_SUB_WORKFLOW_PARAM_INVALID(101150, "component sub_workflow param is invalid, error='{reason}'"),
 
     // LLMComponent 101000 - 101049
     COMPONENT_LLM_TEMPLATE_CONFIG_ERROR(101000, "component llm_template config error, reason: {error_msg}"),
+
     COMPONENT_LLM_RESPONSE_CONFIG_INVALID(101001, "component llm_response_config is invalid, reason: {error_msg}"),
+
     COMPONENT_LLM_CONFIG_ERROR(101002, "component llm config error, reason: {error_msg}"),
+
     COMPONENT_LLM_INVOKE_CALL_FAILED(101003, "component llm_invoke call failed, reason: {error_msg}"),
+
     COMPONENT_LLM_EXECUTION_PROCESS_ERROR(101004, "component llm_execution process error, reason: {error_msg}"),
+
     COMPONENT_LLM_INIT_FAILED(101005, "component llm initialization failed, reason: {error_msg}"),
+
     COMPONENT_LLM_TEMPLATE_PROCESS_ERROR(101006, "component llm_template process error, reason: {error_msg}"),
+
     COMPONENT_LLM_CONFIG_INVALID(101007, "component llm_config is invalid, reason: {error_msg}"),
 
     // IntentDetectionComponent 101050 - 101069
     COMPONENT_INTENT_DETECTION_INPUT_PARAM_ERROR(101050,
             "component intent_detection_input parameter error, reason: {error_msg}"),
+
     COMPONENT_INTENT_DETECTION_LLM_INIT_FAILED(101051,
             "component intent_detection_llm initialization failed, reason: {error_msg}"),
+
     COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED(101052,
             "component intent_detection_invoke call failed, reason: {error_msg}"),
 
     // QuestionComponent 101070 - 101099
     COMPONENT_QUESTIONER_INPUT_PARAM_ERROR(101070, "component questioner_input parameter error, reason: {error_msg}"),
+
     COMPONENT_QUESTIONER_CONFIG_ERROR(101071, "component questioner config error, reason: {error_msg}"),
+
     COMPONENT_QUESTIONER_INPUT_INVALID(101072, "component questioner_input is invalid, reason: {error_msg}"),
-    COMPONENT_QUESTIONER_STATE_INIT_FAILED(101073, "component questioner_state initialization failed, reason: {error_msg}"),
+
+    COMPONENT_QUESTIONER_STATE_INIT_FAILED(101073,
+            "component questioner_state initialization failed, reason: {error_msg}"),
+
     COMPONENT_QUESTIONER_RUNTIME_ERROR(101074, "component questioner runtime error, reason: {error_msg}"),
+
     COMPONENT_QUESTIONER_INVOKE_CALL_FAILED(101075, "component questioner_invoke call failed, reason: {error_msg}"),
-    COMPONENT_QUESTIONER_EXECUTION_PROCESS_ERROR(101076, "component questioner_execution process error, reason: {error_msg}"),
+
+    COMPONENT_QUESTIONER_EXECUTION_PROCESS_ERROR(101076,
+            "component questioner_execution process error, reason: {error_msg}"),
 
     // ToolComponent 102000 - 102019
     COMPONENT_TOOL_EXECUTION_ERROR(102000, "component tool execution error, reason: {error_msg}"),
+
     COMPONENT_TOOL_INPUT_PARAM_ERROR(102001, "component tool_input parameter error, reason: {error_msg}"),
+
     COMPONENT_TOOL_INIT_FAILED(102002, "component tool initialization failed, reason: {error_msg}"),
 
     // KnowledgeRetrievalComponent 102100 - 102119
-    COMPONENT_KNOWLEDGE_RETRIEVAL_INPUT_PARAM_ERROR(102100, "component knowledge_retrieval_input parameter error, reason: {error_msg}"),
-    COMPONENT_KNOWLEDGE_RETRIEVAL_INVOKE_CALL_FAILED(102101, "component knowledge_retrieval_invoke call failed, reason: {error_msg}"),
-    COMPONENT_KNOWLEDGE_RETRIEVAL_EMBED_MODEL_INIT_ERROR(102102, "component knowledge_retrieval_embed_model initialization error, reason: {error_msg}"),
-    COMPONENT_KNOWLEDGE_RETRIEVAL_LLM_MODEL_INIT_ERROR(102103, "component knowledge_retrieval_llm_model initialization error, reason: {error_msg}"),
+    COMPONENT_KNOWLEDGE_RETRIEVAL_INPUT_PARAM_ERROR(102100,
+            "component knowledge_retrieval_input parameter error, reason: {error_msg}"),
+
+    COMPONENT_KNOWLEDGE_RETRIEVAL_INVOKE_CALL_FAILED(102101,
+            "component knowledge_retrieval_invoke call failed, reason: {error_msg}"),
+
+    COMPONENT_KNOWLEDGE_RETRIEVAL_EMBED_MODEL_INIT_ERROR(102102,
+            "component knowledge_retrieval_embed_model initialization error, reason: {error_msg}"),
+
+    COMPONENT_KNOWLEDGE_RETRIEVAL_LLM_MODEL_INIT_ERROR(102103,
+            "component knowledge_retrieval_llm_model initialization error, reason: {error_msg}"),
+
+    // MemoryWriteComponent 102120 - 102129
+    COMPONENT_MEMORY_WRITE_INPUT_PARAM_ERROR(102120,
+            "component memory_write_input parameter error, reason: {error_msg}"),
+
+    COMPONENT_MEMORY_WRITE_INVOKE_CALL_FAILED(102121,
+            "component memory_write_invoke call failed, reason: {error_msg}"),
+
+    // MemoryRetrievalComponent 102130 - 102139
+    COMPONENT_MEMORY_RETRIEVAL_INPUT_PARAM_ERROR(102130,
+            "component memory_retrieval_input parameter error, reason: {error_msg}"),
+
+    COMPONENT_MEMORY_RETRIEVAL_INVOKE_CALL_FAILED(102131,
+            "component memory_retrieval_invoke call failed, reason: {error_msg}"),
 
     // =============================================================================================================
     // Agent Orchestration 120000–129999
     // =============================================================================================================
 
     AGENT_TOOL_NOT_FOUND(120000, "agent tool not found, reason: {error_msg}"),
+
     AGENT_TOOL_EXECUTION_ERROR(120001, "agent tool execution error, reason: {error_msg}"),
+
     AGENT_TASK_NOT_SUPPORT(120002, "agent task is not supported, reason: {error_msg}"),
+
     AGENT_WORKFLOW_EXECUTION_ERROR(120003, "agent workflow execution error, reason: {error_msg}"),
+
     AGENT_PROMPT_PARAM_ERROR(120004, "agent prompt parameter error, reason: {error_msg}"),
 
     // Agent Controller 123000 - 123999
     AGENT_CONTROLLER_INVOKE_CALL_FAILED(123000, "agent controller_invoke call failed, reason: {error_msg}"),
+
     AGENT_SUB_TASK_TYPE_NOT_SUPPORT(123001, "agent sub_task_type is not supported, reason: {error_msg}"),
+
     AGENT_CONTROLLER_USER_INPUT_PROCESS_ERROR(123002, "agent controller_user_input process error, reason: {error_msg}"),
+
     AGENT_CONTROLLER_RUNTIME_ERROR(123003, "agent controller runtime error, reason: {error_msg}"),
+
     AGENT_CONTROLLER_EXECUTION_CALL_FAILED(123004, "agent controller_execution call failed, reason: {error_msg}"),
-    AGENT_CONTROLLER_TOOL_EXECUTION_PROCESS_ERROR(123005, "agent controller_tool_execution process error, reason: {error_msg}"),
+
+    AGENT_CONTROLLER_TOOL_EXECUTION_PROCESS_ERROR(123005,
+            "agent controller_tool_execution process error, reason: {error_msg}"),
+
     AGENT_CONTROLLER_TASK_PARAM_ERROR(123006, "controller task parameter error, reason: {error_msg}"),
+
     AGENT_CONTROLLER_INTENT_PARAM_ERROR(123007, "controller intention parameter error, reason: {error_msg}"),
+
     AGENT_CONTROLLER_TASK_EXECUTION_ERROR(123008, "controller task execution error, reason: {error_msg}"),
+
     AGENT_CONTROLLER_EVENT_HANDLER_ERROR(123009, "controller event handler error, reason: {error_msg}"),
+
     AGENT_CONTROLLER_EVENT_QUEUE_ERROR(123010, "agent controller event queue execution error, reason: {error_msg}"),
 
     // =============================================================================================================
@@ -142,93 +224,152 @@ public enum StatusCode {
     // =============================================================================================================
 
     RUNNER_TERMINATION_ERROR(110002, "runner is already terminate"),
-    RUNNER_RUN_AGENT_ERROR(110022, "runner run agent ''{agent}'' failed, error=''{reason}''"),
 
-    REMOTE_AGENT_EXECUTION_TIMEOUT(110100, "remote agent ''{agent_id}'' execute exceed {timeout} seconds"),
-    REMOTE_AGENT_EXECUTION_ERROR(110101, "remote agent ''{agent_id}'' execute error, error=''{reason}''"),
+    RUNNER_RUN_AGENT_ERROR(110022, "runner run agent '{agent}' failed, error='{reason}'"),
+
+    REMOTE_AGENT_EXECUTION_TIMEOUT(110100, "remote agent '{agent_id}' execute exceed {timeout} seconds"),
+
+    REMOTE_AGENT_EXECUTION_ERROR(110101, "remote agent '{agent_id}' execute error, error='{reason}'"),
+
     REMOTE_AGENT_RESPONSE_PROCESS_ERROR(110102,
-            "remote agent request process error, message_id=''{message_id}'', process_id=''{process_id}'', response=''{code={error_code}'', msg=''{error_msg}''"),
+            "remote agent request process error, message_id='{message_id}',"
+                    + " process_id='{process_id}', response='{code={error_code}', msg='{error_msg}'"),
 
-    MESSAGE_QUEUE_INITIATION_ERROR(110200, "init type ''{type}'' message queue error, error=''{reason}''"),
-    MESSAGE_QUEUE_TOPIC_SUBSCRIPTION_ERROR(110210, "subscribe topic error, topic=''{topic}'', error=''{reason}''"),
+    MESSAGE_QUEUE_INITIATION_ERROR(110200, "init type '{type}' message queue error, error='{reason}'"),
+
+    MESSAGE_QUEUE_TOPIC_SUBSCRIPTION_ERROR(110210, "subscribe topic error, topic='{topic}', error='{reason}'"),
+
     MESSAGE_QUEUE_TOPIC_MESSAGE_PRODUCTION_ERROR(110211,
-            "produce message error, topic=''{topic}'', message=''{message}'', error=''{reason}''"),
-    MESSAGE_QUEUE_MESSAGE_CONSUME_ERROR(110212, "consume message error, error=''{reason}''"),
-    MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR(110213, "process message error, error=''{reason}''"),
+            "produce message error, topic='{topic}', message='{message}', error='{reason}'"),
 
-    DIST_MESSAGE_QUEUE_CLIENT_START_ERROR(110300, "distribute message queue client start error, error=''{reason}''"),
+    MESSAGE_QUEUE_MESSAGE_CONSUME_ERROR(110212, "consume message error, error='{reason}'"),
 
-    RESOURCE_ID_VALUE_INVALID(110400, "{resource_type} id is invalid, reason=''{reason}''"),
-    RESOURCE_TAG_VALUE_INVALID(110401, "tag is invalid, tag={tag}, reason=''{reason}''"),
-    RESOURCE_CARD_VALUE_INVALID(110402, "{resource_type} card is invalid, reason=''{reason}''"),
-    RESOURCE_PROVIDER_INVALID(110403, "{resource_type} provider is invalid, reason=''{reason}''"),
-    RESOURCE_VALUE_INVALID(110404, "{resource_type} value is invalid, reason=''{reason}''"),
-    RESOURCE_ADD_ERROR(110430, "resource add failed, card=''{card}'', error=''{reason}''"),
+    MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR(110213, "process message error, error='{reason}'"),
 
-    RESOURCE_TAG_REMOVE_TAG_ERROR(110480, "tag is invalid, tag=''{tag}'', error=''{reason}''"),
-    RESOURCE_TAG_ADD_RESOURCE_TAG_ERROR(110481, "add tag failed, resource_id=''{resource_id}'', tag=''{tag}'', error=''{reason}''"),
-    RESOURCE_TAG_REMOVE_RESOURCE_TAG_ERROR(110482, "remove resource tag failed, resource_id=''{resource_id}'', tags=''{tags}'', error=''{reason}''"),
-    RESOURCE_TAG_REPLACE_RESOURCE_TAG_ERROR(110483, "replace resource tag failed, resource_id=''{resource_id}'', tags=''{tags}'', error=''{reason}''"),
-    RESOURCE_TAG_FIND_RESOURCE_ERROR(110484, "replace resource tag failed, resource_id=''{resource_id}'', tags=''{tags}'', error=''{reason}''"),
+    DIST_MESSAGE_QUEUE_CLIENT_START_ERROR(110300, "distribute message queue client start error, error='{reason}'"),
 
-    RESOURCE_MCP_SERVER_PARAM_INVALID(110510, "server param is invalid, server_config=''{server_config}'', error=''{reason}''"),
-    RESOURCE_MCP_SERVER_CONNECTION_ERROR(110511, "mcp server connect failed, server_config={server_config}, error=''{reason}''"),
-    RESOURCE_MCP_SERVER_ADD_ERROR(110512, "mcp server add failed, server_config={server_config}, error=''{reason}''"),
-    RESOURCE_MCP_SERVER_REFRESH_ERROR(110513, "mcp server refresh failed, server_id={server_id}, error=''{reason}''"),
-    RESOURCE_MCP_SERVER_REMOVE_ERROR(110514, "mcp server remove failed, server_id={server_id}, error=''{reason}''"),
-    RESOURCE_MCP_TOOL_GET_ERROR(110515, "mcp server tool get failed, server_id={server_id}, error=''{reason}''"),
+    RESOURCE_ID_VALUE_INVALID(110400, "{resource_type} id is invalid, reason='{reason}'"),
+
+    RESOURCE_TAG_VALUE_INVALID(110401, "tag is invalid, tag={tag}, reason='{reason}'"),
+
+    RESOURCE_CARD_VALUE_INVALID(110402, "{resource_type} card is invalid, reason='{reason}'"),
+
+    RESOURCE_PROVIDER_INVALID(110403, "{resource_type} provider is invalid, reason='{reason}'"),
+
+    RESOURCE_VALUE_INVALID(110404, "{resource_type} value is invalid, reason='{reason}'"),
+
+    RESOURCE_ADD_ERROR(110430, "resource add failed, card='{card}', error='{reason}'"),
+
+    RESOURCE_TAG_REMOVE_TAG_ERROR(110480, "tag is invalid, tag='{tag}', error='{reason}'"),
+
+    RESOURCE_TAG_ADD_RESOURCE_TAG_ERROR(110481,
+            "add tag failed, resource_id='{resource_id}', tag='{tag}', error='{reason}'"),
+
+    RESOURCE_TAG_REMOVE_RESOURCE_TAG_ERROR(110482,
+            "remove resource tag failed, resource_id='{resource_id}', tags='{tags}', error='{reason}'"),
+
+    RESOURCE_TAG_REPLACE_RESOURCE_TAG_ERROR(110483,
+            "isReplace resource tag failed, resource_id='{resource_id}', tags='{tags}', error='{reason}'"),
+
+    RESOURCE_TAG_FIND_RESOURCE_ERROR(110484,
+            "isReplace resource tag failed, resource_id='{resource_id}', tags='{tags}', error='{reason}'"),
+
+    RESOURCE_MCP_SERVER_PARAM_INVALID(110510,
+            "server param is invalid, server_config='{server_config}', error='{reason}'"),
+
+    RESOURCE_MCP_SERVER_CONNECTION_ERROR(110511,
+            "mcp server connect failed, server_config={server_config}, error='{reason}'"),
+
+    RESOURCE_MCP_SERVER_ADD_ERROR(110512, "mcp server add failed, server_config={server_config}, error='{reason}'"),
+
+    RESOURCE_MCP_SERVER_REFRESH_ERROR(110513, "mcp server refresh failed, server_id={server_id}, error='{reason}'"),
+
+    RESOURCE_MCP_SERVER_REMOVE_ERROR(110514, "mcp server remove failed, server_id={server_id}, error='{reason}'"),
+
+    RESOURCE_MCP_TOOL_GET_ERROR(110515, "mcp server tool get failed, server_id={server_id}, error='{reason}'"),
 
     // =============================================================================================================
     // 111. Session 111000 – 111999
     // =============================================================================================================
 
-    COMP_SESSION_INTERACT_ERROR(111005, "interact is not support, error=''{reason}'', comp_id={comp_id}, workflow={workflow}"),
+    COMP_SESSION_INTERACT_ERROR(111005,
+            "interact is not support, error='{reason}', comp_id={comp_id}, workflow={workflow}"),
+
     INTERACTION_INPUT_INVALID(111110, "interaction input is invalid, reason={reason}"),
 
-    CHECKPOINTER_POST_WORKFLOW_EXECUTION_ERROR(111120, "post workflow execute error, session_id={session_id}, workflow={workflow}, error=''{reason}''"),
-    CHECKPOINTER_PRE_WORKFLOW_EXECUTION_ERROR(111121, "pre workflow execute error, session_id={session_id}, workflow={workflow}, error=''{reason}''"),
-    CHECKPOINTER_INTERRUPT_AGENT_ERROR(111122, "interrupt agent execute error, session_id={session_id}, agent={agent}, error=''{reason}''"),
-    CHECKPOINTER_POST_AGENT_EXECUTION_ERROR(111123, "post agent execute error, session_id={session_id}, agent={agent}, error=''{reason}''"),
-    CHECKPOINTER_CONFIG_ERROR(111124, "checkpointer config error, session_id={session_id}, error=''{reason}''"),
+    CHECKPOINTER_POST_WORKFLOW_EXECUTION_ERROR(111120,
+            "post workflow execute error, session_id={session_id}, workflow={workflow}, error='{reason}'"),
 
-    STREAM_WRITER_MANAGER_ADD_WRITER_ERROR(111130, "add new stream writer error, mode={mode}, error=''{reason}''"),
-    STREAM_WRITER_MANAGER_REMOVE_WRITER_ERROR(111131, "remove stream writer error, mode={mode}, error=''{reason}''"),
+    CHECKPOINTER_PRE_WORKFLOW_EXECUTION_ERROR(111121,
+            "pre workflow execute error, session_id={session_id}, workflow={workflow}, error='{reason}'"),
+
+    CHECKPOINTER_INTERRUPT_AGENT_ERROR(111122,
+            "interrupt agent execute error, session_id={session_id}, agent={agent}, error='{reason}'"),
+
+    CHECKPOINTER_POST_AGENT_EXECUTION_ERROR(111123,
+            "post agent execute error, session_id={session_id}, agent={agent}, error='{reason}'"),
+
+    CHECKPOINTER_CONFIG_ERROR(111124, "checkpointer config error, session_id={session_id}, error='{reason}'"),
+
+    STREAM_WRITER_MANAGER_ADD_WRITER_ERROR(111130, "add new stream writer error, mode={mode}, error='{reason}'"),
+
+    STREAM_WRITER_MANAGER_REMOVE_WRITER_ERROR(111131, "remove stream writer error, mode={mode}, error='{reason}'"),
+
     STREAM_WRITER_WRITE_STREAM_VALIDATION_ERROR(111132,
-            "writer stream data validate error, stream_type={schema_type}, stream_data={stream_data}, error=''{reason}''"),
-    STREAM_WRITER_WRITE_STREAM_ERROR(111133, "writer stream data error, stream_data={stream_data}, error=''{reason}''"),
-    STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT(111134,
-            "stream output first stream chunk timeout, timeout={timeout}s, error=''{reason}''"),
-    STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT(111135,
-            "stream output next stream chunk timeout, interval_timeout={timeout}s, error=''{reason}''"),
+            "writer stream data validate error, stream_type={schema_type}, stream_data={stream_data},"
+                    + " error='{reason}'"),
 
-    TRACER_WORKFLOW_TRACE_ERROR(111140, "trace workflow error, error=''{reason}''"),
-    TRACER_AGENT_TRACE_ERROR(111141, "trace agent error, error=''{reason}''"),
+    STREAM_WRITER_WRITE_STREAM_ERROR(111133, "writer stream data error, stream_data={stream_data}, error='{reason}'"),
+
+    STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT(111134,
+            "stream output first stream chunk timeout, timeout={timeout}s, error='{reason}'"),
+
+    STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT(111135,
+            "stream output next stream chunk timeout, interval_timeout={timeout}s, error='{reason}'"),
+
+    TRACER_WORKFLOW_TRACE_ERROR(111140, "trace workflow error, error='{reason}'"),
+
+    TRACER_AGENT_TRACE_ERROR(111141, "trace agent error, error='{reason}'"),
 
     // =============================================================================================================
     // 112. Graph Engine 112000–112999
     // =============================================================================================================
 
-    GRAPH_STATE_COMMIT_ERROR(112030, "graph commit state error, error=''{reason}''"),
-    DRAWABLE_GRAPH_START_NODE_INVALID(112020, "drawable_graph start node is invalid, node={node_id}, reason={reason}"),
-    DRAWABLE_GRAPH_END_NODE_INVALID(112021, "drawable_graph end node is invalid, node={node_id}, reason={reason}"),
-    DRAWABLE_GRAPH_BREAK_NODE_INVALID(112022, "drawable_graph break node is invalid, node={node_id}, reason={reason}"),
-    DRAWABLE_GRAPH_TO_MERMAID_INVALID(112043, "drawable_graph to_mermaid error, reason={reason}"),
-    GRAPH_STREAM_ACTOR_EXECUTION_ERROR(112030, "actor manager execute error, error=''{reason}''"),
-    GRAPH_VERTEX_EXECUTION_ERROR(112050, "vertex execute error, error=''{reason}'', node_id={node_id}"),
-    GRAPH_VERTEX_STREAM_CALL_TIMEOUT(112051, "vertex stream timeout, timeout={timeout}, node_id={node_id}"),
-    GRAPH_VERTEX_STREAM_CALL_ERROR(112052, "vertex stream call error, error=''{reason}'', node_id={node_id}"),
+    GRAPH_STATE_COMMIT_ERROR(112030, "graph commit state error, error='{reason}'"),
 
-    PREGEL_GRAPH_NODE_ID_INVALID(112100, "node id is invalid, node_id={node_id}, error=''{reason}''"),
-    PREGEL_GRAPH_NODE_INVALID(112101, "node is invalid, node_id={node_id}, error=''{reason}''"),
-    PREGEL_GRAPH_EDGE_INVALID(112102, "edge is invalid, source_id={source_id}, target_id={target_id}, error=''{reason}''"),
-    PREGEL_GRAPH_CONDITION_EDGE_INVALID(112103, "condition edge is invalid, source_id={source_id}, error=''{reason}''"),
+    DRAWABLE_GRAPH_START_NODE_INVALID(112020, "drawable_graph start node is invalid, node={node_id}, reason={reason}"),
+
+    DRAWABLE_GRAPH_END_NODE_INVALID(112021, "drawable_graph end node is invalid, node={node_id}, reason={reason}"),
+
+    DRAWABLE_GRAPH_BREAK_NODE_INVALID(112022, "drawable_graph break node is invalid, node={node_id}, reason={reason}"),
+
+    DRAWABLE_GRAPH_TO_MERMAID_INVALID(112043, "drawable_graph to_mermaid error, reason={reason}"),
+
+    GRAPH_STREAM_ACTOR_EXECUTION_ERROR(112030, "actor manager execute error, error='{reason}'"),
+
+    GRAPH_VERTEX_EXECUTION_ERROR(112050, "vertex execute error, error='{reason}', node_id={node_id}"),
+
+    GRAPH_VERTEX_STREAM_CALL_TIMEOUT(112051, "vertex stream timeout, timeout={timeout}, node_id={node_id}"),
+
+    GRAPH_VERTEX_STREAM_CALL_ERROR(112052, "vertex stream call error, error='{reason}', node_id={node_id}"),
+
+    PREGEL_GRAPH_NODE_ID_INVALID(112100, "node id is invalid, node_id={node_id}, error='{reason}'"),
+
+    PREGEL_GRAPH_NODE_INVALID(112101, "node is invalid, node_id={node_id}, error='{reason}'"),
+
+    PREGEL_GRAPH_EDGE_INVALID(112102,
+            "edge is invalid, source_id={source_id}, target_id={target_id}, error='{reason}'"),
+
+    PREGEL_GRAPH_CONDITION_EDGE_INVALID(112103, "condition edge is invalid, source_id={source_id}, error='{reason}'"),
 
     // =============================================================================================================
     // Multi-Agent 130000 - 130999
     // =============================================================================================================
 
     AGENT_GROUP_ADD_RUNTIME_ERROR(132000, "agent group_add runtime error, reason: {error_msg}"),
+
     AGENT_GROUP_CREATE_RUNTIME_ERROR(132001, "agent group_create runtime error, reason: {error_msg}"),
+
     AGENT_GROUP_EXECUTION_ERROR(132002, "agent group execution error, reason: {error_msg}"),
 
     // =============================================================================================================
@@ -236,7 +377,9 @@ public enum StatusCode {
     // =============================================================================================================
 
     CONTEXT_MESSAGE_PROCESS_ERROR(153000, "context message process error, reason: {error_msg}"),
+
     CONTEXT_EXECUTION_ERROR(153001, "context execution execution error, reason: {error_msg}"),
+
     CONTEXT_MESSAGE_INVALID(153003, "context message is invalid, reason: {error_msg}"),
 
     // =============================================================================================================
@@ -244,78 +387,150 @@ public enum StatusCode {
     // =============================================================================================================
 
     RETRIEVAL_EMBEDDING_INPUT_INVALID(155000, "retrieval embedding_input is invalid, reason: {error_msg}"),
+
     RETRIEVAL_EMBEDDING_MODEL_NOT_FOUND(155001, "retrieval embedding_model not found, reason: {error_msg}"),
+
     RETRIEVAL_EMBEDDING_CALL_FAILED(155002, "retrieval embedding call failed, reason: {error_msg}"),
+
     RETRIEVAL_EMBEDDING_RESPONSE_INVALID(155003, "retrieval embedding_response is invalid, reason: {error_msg}"),
+
     RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED(155004, "retrieval embedding_request call failed, reason: {error_msg}"),
+
     RETRIEVAL_EMBEDDING_UNREACHABLE_CALL_FAILED(155005, "retrieval embedding call failed, reason: {error_msg}"),
+
     RETRIEVAL_EMBEDDING_CALLBACK_INVALID(155006, "retrieval embedding_callback is invalid, reason: {error_msg}"),
 
     RETRIEVAL_INDEXING_CHUNK_SIZE_INVALID(155100, "retrieval indexing_chunk_size is invalid, reason: {error_msg}"),
-    RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID(155101, "retrieval indexing_chunk_overlap is invalid, reason: {error_msg}"),
-    RETRIEVAL_INDEXING_TOKENIZER_PROCESS_ERROR(155102, "retrieval indexing_tokenizer process error, reason: {error_msg}"),
+
+    RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID(155101,
+            "retrieval indexing_chunk_overlap is invalid, reason: {error_msg}"),
+
+    RETRIEVAL_INDEXING_TOKENIZER_PROCESS_ERROR(155102,
+            "retrieval indexing_tokenizer process error, reason: {error_msg}"),
+
     RETRIEVAL_INDEXING_FILE_NOT_FOUND(155103, "retrieval indexing_file not found, reason: {error_msg}"),
+
     RETRIEVAL_INDEXING_FORMAT_NOT_SUPPORT(155104, "retrieval indexing_format is not supported, reason: {error_msg}"),
+
     RETRIEVAL_INDEXING_EMBED_MODEL_NOT_FOUND(155105, "retrieval indexing_embed_model not found, reason: {error_msg}"),
+
     RETRIEVAL_INDEXING_DIMENSION_NOT_FOUND(155106, "retrieval indexing_dimension not found, reason: {error_msg}"),
+
     RETRIEVAL_INDEXING_PATH_NOT_FOUND(155107, "retrieval indexing_path not found, reason: {error_msg}"),
+
     RETRIEVAL_INDEXING_ADD_DOC_RUNTIME_ERROR(155108, "retrieval indexing_add_doc runtime error, reason: {error_msg}"),
+
     RETRIEVAL_INDEXING_VECTOR_FIELD_INVALID(155109, "retrieval indexing_vector_field is invalid, reason: {error_msg}"),
 
+    RETRIEVAL_INDEXING_FETCH_ERROR(155110, "retrieval indexing_fetch has error, reason: {error_msg}"),
+
     RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT(155200, "retrieval retriever_mode is not supported, reason: {error_msg}"),
-    RETRIEVAL_RETRIEVER_SCORE_THRESHOLD_INVALID(155201, "retrieval retriever_score_threshold is invalid, reason: {error_msg}"),
+
+    RETRIEVAL_RETRIEVER_SCORE_THRESHOLD_INVALID(155201,
+            "retrieval retriever_score_threshold is invalid, reason: {error_msg}"),
+
     RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND(155202, "retrieval retriever_embed_model not found, reason: {error_msg}"),
-    RETRIEVAL_RETRIEVER_INDEX_TYPE_NOT_SUPPORT(155203, "retrieval retriever_index_type is not supported, reason: {error_msg}"),
+
+    RETRIEVAL_RETRIEVER_INDEX_TYPE_NOT_SUPPORT(155203,
+            "retrieval retriever_index_type is not supported, reason: {error_msg}"),
+
     RETRIEVAL_RETRIEVER_MODE_INVALID(155204, "retrieval retriever_mode is invalid, reason: {error_msg}"),
-    RETRIEVAL_RETRIEVER_CAPABILITY_NOT_SUPPORT(155205, "retrieval retriever_capability is not supported, reason: {error_msg}"),
-    RETRIEVAL_RETRIEVER_VECTOR_STORE_NOT_FOUND(155206, "retrieval retriever_vector_store not found, reason: {error_msg}"),
+
+    RETRIEVAL_RETRIEVER_CAPABILITY_NOT_SUPPORT(155205,
+            "retrieval retriever_capability is not supported, reason: {error_msg}"),
+
+    RETRIEVAL_RETRIEVER_VECTOR_STORE_NOT_FOUND(155206,
+            "retrieval retriever_vector_store not found, reason: {error_msg}"),
+
     RETRIEVAL_RETRIEVER_COLLECTION_NOT_FOUND(155207, "retrieval retriever_collection not found, reason: {error_msg}"),
-    RETRIEVAL_RETRIEVER_GRAPH_RETRIEVER_NOT_FOUND(155208, "retrieval retriever_graph_retriever not found, reason: {error_msg}"),
+
+    RETRIEVAL_RETRIEVER_GRAPH_RETRIEVER_NOT_FOUND(155208,
+            "retrieval retriever_graph_retriever not found, reason: {error_msg}"),
+
     RETRIEVAL_RETRIEVER_LLM_CLIENT_NOT_FOUND(155209, "retrieval retriever_llm_client not found, reason: {error_msg}"),
+
     RETRIEVAL_RETRIEVER_TOP_K_NOT_FOUND(155210, "retrieval retriever_top_k not found, reason: {error_msg}"),
 
     RETRIEVAL_UTILS_CONFIG_FILE_NOT_FOUND(155300, "retrieval utils_config_file not found, reason: {error_msg}"),
+
     RETRIEVAL_UTILS_PYYAML_NOT_FOUND(155301, "retrieval utils_pyyaml not found, reason: {error_msg}"),
-    RETRIEVAL_UTILS_CONFIG_FORMAT_NOT_SUPPORT(155302, "retrieval utils_config_format is not supported, reason: {error_msg}"),
+
+    RETRIEVAL_UTILS_CONFIG_FORMAT_NOT_SUPPORT(155302,
+            "retrieval utils_config_format is not supported, reason: {error_msg}"),
+
     RETRIEVAL_UTILS_CONFIG_NOT_FOUND(155303, "retrieval utils_config not found, reason: {error_msg}"),
+
     RETRIEVAL_UTILS_CONFIG_PROCESS_ERROR(155304, "retrieval utils_config process error, reason: {error_msg}"),
 
     RETRIEVAL_VECTOR_STORE_PATH_NOT_FOUND(155400, "retrieval vector_store_path not found, reason: {error_msg}"),
+
     RETRIEVAL_VECTOR_STORE_QUERY_INVALID(155400, "retrieval vector_store_query not valid, reason: {error_msg}"),
 
     RETRIEVAL_KB_PARSER_NOT_FOUND(155500, "retrieval kb_parser not found, reason: {error_msg}"),
+
     RETRIEVAL_KB_CHUNKER_NOT_FOUND(155501, "retrieval kb_chunker not found, reason: {error_msg}"),
+
     RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND(155502, "retrieval kb_index_manager not found, reason: {error_msg}"),
+
     RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND(155503, "retrieval kb_vector_store not found, reason: {error_msg}"),
+
     RETRIEVAL_KB_INDEX_BUILD_EXECUTION_ERROR(155504, "retrieval kb_index_build execution error, reason: {error_msg}"),
-    RETRIEVAL_KB_CHUNK_INDEX_BUILD_EXECUTION_ERROR(155505, "retrieval kb_chunk_index_build execution error, reason: {error_msg}"),
-    RETRIEVAL_KB_TRIPLE_INDEX_BUILD_EXECUTION_ERROR(155506, "retrieval kb_triple_index_build execution error, reason: {error_msg}"),
-    RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR(155507, "retrieval kb_triple_extraction process error, reason: {error_msg}"),
+
+    RETRIEVAL_KB_CHUNK_INDEX_BUILD_EXECUTION_ERROR(155505,
+            "retrieval kb_chunk_index_build execution error, reason: {error_msg}"),
+
+    RETRIEVAL_KB_TRIPLE_INDEX_BUILD_EXECUTION_ERROR(155506,
+            "retrieval kb_triple_index_build execution error, reason: {error_msg}"),
+
+    RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR(155507,
+            "retrieval kb_triple_extraction process error, reason: {error_msg}"),
+
     RETRIEVAL_KB_DATABASE_CONFIG_INVALID(155508, "retrieval kb_database_config is invalid, reason: {error_msg}"),
 
     RETRIEVAL_RERANKER_REQUEST_CALL_FAILED(155600, "retrieval reranker_request call failed, reason: {error_msg}"),
+
     RETRIEVAL_RERANKER_UNREACHABLE_CALL_FAILED(155601, "retrieval reranker call failed, reason: {error_msg}"),
+
     RETRIEVAL_RERANKER_INPUT_INVALID(155602, "retrieval reranker_input is invalid, reason: {error_msg}"),
+
     RETRIEVAL_QUERY_REWRITER_INPUT_INVALID(155603, "retrieval query_rewriter_input is invalid, reason: {error_msg}"),
-    RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED(155604, "retrieval query_rewriter_llm invoke failed, reason: {error_msg}"),
+
+    RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED(155604,
+            "retrieval query_rewriter_llm invoke failed, reason: {error_msg}"),
+
     RETRIEVAL_QUERY_REWRITER_OUTPUT_INVALID(155605, "retrieval query_rewriter_output is invalid, reason: {error_msg}"),
+
     RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND(155606, "retrieval query_rewriter_prompt not found, reason: {error_msg}"),
 
     // =============================================================================================================
     // Memory Engine 158000 – 159999
     // =============================================================================================================
 
-    MEMORY_REGISTER_STORE_EXECUTION_ERROR(158000, "failed to register {store_type} to memory engine, reason: {error_msg}"),
+    MEMORY_REGISTER_STORE_EXECUTION_ERROR(158000,
+            "failed to register {store_type} to memory engine, reason: {error_msg}"),
+
     MEMORY_SET_CONFIG_EXECUTION_ERROR(158001, "failed to set {config_type} config, reason: {error_msg}"),
+
     MEMORY_ADD_MEMORY_EXECUTION_ERROR(158002, "failed to add {memory_type} memory, reason: {error_msg}"),
+
     MEMORY_DELETE_MEMORY_EXECUTION_ERROR(158003, "failed to delete {memory_type} memory, reason: {error_msg}"),
+
     MEMORY_UPDATE_MEMORY_EXECUTION_ERROR(158004, "failed to update {memory_type} memory, reason: {error_msg}"),
+
     MEMORY_GET_MEMORY_EXECUTION_ERROR(158005, "failed to get {memory_type} memory, reason: {error_msg}"),
+
     MEMORY_STORE_INIT_FAILED(158006, "failed to init {store_type}, reason: {error_msg}"),
+
     MEMORY_CONNECT_STORE_EXECUTION_ERROR(158007, "failed to connect {store_type}, reason: {error_msg}"),
+
     MEMORY_STORE_VALIDATION_INVALID(158008, "{store_type} validation failed, reason: {error_msg}"),
+
     MEMORY_MIGRATE_MEMORY_EXECUTION_ERROR(158009, "memory migration failed, reason: {error_msg}"),
-    MEMORY_REGISTER_OPERATION_VALIDATION_INVALID(158010, "failed to register operation for entity {entity_key} with schema_version {schema_version}, reason: {error_msg}"),
+
+    MEMORY_REGISTER_OPERATION_VALIDATION_INVALID(158010,
+            "failed to register operation for entity {entity_key} with schema_version {schema_version},"
+            + " reason: {error_msg}"),
+
     MEMORY_INIT_ERROR(158011, "memory initialization failed, reason: {error_msg}"),
 
     // =============================================================================================================
@@ -323,97 +538,156 @@ public enum StatusCode {
     // =============================================================================================================
 
     TOOLCHAIN_AGENT_PARAM_ERROR(170000, "toolchain agent parameter error, reason: {error_msg}"),
-    TOOLCHAIN_OPTIMIZER_BACKWARD_EXECUTION_ERROR(170001, "toolchain optimizer_backword execution error, reason: {error_msg}"),
-    TOOLCHAIN_OPTIMIZER_UPDATE_EXECUTION_ERROR(170002, "toolchain optimizer_update execution error, reason: {error_msg}"),
+
+    TOOLCHAIN_OPTIMIZER_BACKWARD_EXECUTION_ERROR(170001,
+            "toolchain optimizer_backword execution error, reason: {error_msg}"),
+
+    TOOLCHAIN_OPTIMIZER_UPDATE_EXECUTION_ERROR(170002,
+            "toolchain optimizer_update execution error, reason: {error_msg}"),
+
     TOOLCHAIN_OPTIMIZER_PARAM_ERROR(170003, "toolchain optimizer parameter error, reason: {error_msg}"),
+
     TOOLCHAIN_EVALUATOR_EXECUTION_ERROR(170004, "toolchain evaluator execution error, reason: {error_msg}"),
+
     TOOLCHAIN_TRAINER_EXECUTION_ERROR(170005, "toolchain trainer execution error, reason: {error_msg}"),
 
+    AGENT_RL_REWARD_NAME_INVALID(172070, "agent_rl reward name is invalid, reason: {error_msg}"),
+
+    AGENT_RL_REWARD_NOT_FOUND(172071, "agent_rl reward function not found, name='{name}'"),
+
     TOOLCHAIN_META_TEMPLATE_EXECUTION_ERROR(173000, "toolchain meta_template execution error, reason: {error_msg}"),
-    TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR(173001, "toolchain feedback_template execution error, reason: {error_msg}"),
-    TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR(173002, "toolchain bad_case_template execution error, reason: {error_msg}"),
+
+    TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR(173001,
+            "toolchain feedback_template execution error, reason: {error_msg}"),
+
+    TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR(173002,
+            "toolchain bad_case_template execution error, reason: {error_msg}"),
 
     // =============================================================================================================
     // Foundation 180000 – 189999
     // =============================================================================================================
 
     // Prompt Template 180000 - 180999
-    PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED(180000, "prompt assembler_variable initialization failed, reason: {error_msg}"),
+    PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED(180000,
+            "prompt assembler_variable initialization failed, reason: {error_msg}"),
+
     PROMPT_ASSEMBLER_TEMPLATE_PARAM_ERROR(180001, "prompt assembler_template parameter error, reason: {error_msg}"),
+
     PROMPT_TEMPLATE_RUNTIME_ERROR(180002, "prompt template runtime error, reason: {error_msg}"),
+
     PROMPT_TEMPLATE_NOT_FOUND(180003, "prompt template not found, reason: {error_msg}"),
+
     PROMPT_TEMPLATE_INVALID(180004, "prompt template is invalid, reason: {error_msg}"),
 
     // Model API 181000 - 181999
     MODEL_PROVIDER_INVALID(181000, "model provider is invalid, reason: {error_msg}"),
+
     MODEL_CALL_FAILED(181001, "model call failed, reason: {error_msg}"),
+
     MODEL_SERVICE_CONFIG_ERROR(181002, "model service config error, reason: {error_msg}"),
+
     MODEL_CONFIG_ERROR(181003, "model config error, reason: {error_msg}"),
+
     MODEL_INVOKE_PARAM_ERROR(181004, "model invoke parameter error, reason: {error_msg}"),
+
     MODEL_CLIENT_CONFIG_INVALID(181005, "model client_config is invalid, reason: {error_msg}"),
 
     // Tool Definition and Execution 182000 - 182999
-    TOOL_CARD_INVALID(182000, "card is invalid, card={card}, error=''{reason}''"),
+    TOOL_CARD_INVALID(182000, "card is invalid, card={card}, error='{reason}'"),
+
     TOOL_STREAM_NOT_SUPPORTED(182010, "stream is not support, card={card}"),
+
     TOOL_INVOKE_NOT_SUPPORTED(182011, "invoke is not support, card={card}"),
+
     TOOL_EXECUTION_ERROR(182012, "tool execution error, tool card={card}, reason={reason}"),
 
     TOOL_RESTFUL_API_CARD_CONFIG_INVALID(182100, "config failed, {reason}"),
+
     TOOL_RESTFUL_API_EXECUTION_TIMEOUT(182101,
             "execute {method} failed, request is timeout, timeout={timeout}s, card=[{card}]"),
+
     TOOL_RESTFUL_API_RESPONSE_SIZE_EXCEED_LIMIT(182102,
-            "execute {method} failed, response is too big, max_size={max_length}b, actual={actual_length}b, card=[{card}]"),
-    TOOL_RESTFUL_API_RESPONSE_ERROR(182103, "execute {method} failed, response error, code={code}, error=''{reason}''"),
-    TOOL_RESTFUL_API_EXECUTION_ERROR(182104, "RestfulApi execute {method} failed, error=''{reason}'', card=[{card}]"),
-    TOOL_RESTFUL_API_RESPONSE_PROCESS_ERROR(182105, "RestfulApi parse response failed, error=''{reason}'', card=[{card}]"),
+            "execute {method} failed, response is too big, max_size={max_length}b,"
+                    + " actual={actual_length}b, card=[{card}]"),
+
+    TOOL_RESTFUL_API_RESPONSE_ERROR(182103, "execute {method} failed, response error, code={code}, error='{reason}'"),
+
+    TOOL_RESTFUL_API_EXECUTION_ERROR(182104, "RestfulApi execute {method} failed, error='{reason}', card=[{card}]"),
+
+    TOOL_RESTFUL_API_RESPONSE_PROCESS_ERROR(182105,
+            "RestfulApi parse response failed, error='{reason}', card=[{card}]"),
 
     TOOL_LOCAL_FUNCTION_FUNC_NOT_SUPPORTED(182200, "func is not supported, card={card}"),
-    TOOL_LOCAL_FUNCTION_EXECUTION_ERROR(182205, "execute {method} failed, error=''{reason}'', card={card}"),
+
+    TOOL_LOCAL_FUNCTION_EXECUTION_ERROR(182205, "execute {method} failed, error='{reason}', card={card}"),
 
     TOOL_MCP_CLIENT_NOT_SUPPORTED(182300, "mcp client is not supported, card={card}"),
-    TOOL_MCP_EXECUTION_ERROR(182301, "execute {method} failed, error=''{reason}'', card={card}"),
 
-    TOOL_OPENAPI_CLIENT_EXECUTION_ERROR(182400, "openapi client execute error, error=''{reason}''"),
+    TOOL_MCP_EXECUTION_ERROR(182301, "execute {method} failed, error='{reason}', card={card}"),
+
+    TOOL_OPENAPI_CLIENT_EXECUTION_ERROR(182400, "openapi client execute error, error='{reason}'"),
 
     // Logger 183000 - 183999
     COMMON_LOG_PATH_INVALID(183000, "common log_path is invalid, reason: {error_msg}"),
+
     COMMON_LOG_PATH_INIT_FAILED(183001, "common log_path initialization failed, reason: {error_msg}"),
+
     COMMON_LOG_CONFIG_PROCESS_ERROR(183002, "common log_config process error, reason: {error_msg}"),
+
     COMMON_LOG_CONFIG_INVALID(183003, "common log_config is invalid, reason: {error_msg}"),
+
     COMMON_LOG_EXECUTION_RUNTIME_ERROR(183004, "common log_execution runtime error, reason: {error_msg}"),
 
     // Store supporting 186000 - 186100
     STORE_VECTOR_SCHEMA_INVALID(186000, "store vector_schema is invalid, reason: {error_msg}"),
+
     STORE_VECTOR_DOC_INVALID(186001, "store vector_doc is invalid, reason: {error_msg}"),
+
     STORE_VECTOR_COLLECTION_NOT_FOUND(186002, "store vector_collection not found, collection_name={collection_name}"),
 
     // Common Utility 188000 - 188999
     COMMON_SSL_CONTEXT_INIT_FAILED(188000, "common ssl_context initialization failed, reason: {error_msg}"),
+
     COMMON_USER_CONFIG_PROCESS_ERROR(188001, "common user_config process error, reason: {error_msg}"),
+
     COMMON_JSON_INPUT_PROCESS_ERROR(188002, "common json_input process error, reason: {error_msg}"),
+
     COMMON_JSON_EXECUTION_PROCESS_ERROR(188003, "common json_execution process error, reason: {error_msg}"),
+
     COMMON_URL_INPUT_INVALID(188004, "common url_input is invalid, reason: {error_msg}"),
+
     COMMON_SSL_CERT_INVALID(188005, "common ssl_cert is invalid, reason: {error_msg}"),
 
     // Schema 189000 - 189999
-    SCHEMA_VALIDATE_INVALID(189001, "validate data with schema failed, error=''{reason}'', data={data}"),
-    SCHEMA_FORMAT_INVALID(189002, "format data with schema failed, error=''{reason}'', data={data}"),
+    SCHEMA_VALIDATE_INVALID(189001, "validate data with schema failed, error='{reason}', data={data}"),
+
+    SCHEMA_FORMAT_INVALID(189002, "format data with schema failed, error='{reason}', data={data}"),
 
     // =============================================================================================================
     // Security / Guardrail 190000 - 190999
     // =============================================================================================================
 
-    GUARDRAIL_BLOCKED(190000, "guardrail blocked: risk_type=''{risk_type}'', risk_level=''{risk_level}'', event=''{event}''"),
+    GUARDRAIL_BLOCKED(190000,
+            "guardrail blocked: risk_type='{risk_type}', risk_level='{risk_level}', event='{event}'"),
 
     // =============================================================================================================
     // SysOperation 199000–199999
     // =============================================================================================================
 
-    SYS_OPERATION_MANAGER_PROCESS_ERROR(199001, "sys operation manager process error, process: {process}, reason: {error_msg}"),
+    SYS_OPERATION_MANAGER_PROCESS_ERROR(199001,
+            "sys operation manager process error, process: {process}, reason: {error_msg}"),
+
     SYS_OPERATION_CARD_PARAM_ERROR(199002, "sys operation card param error, reason: {error_msg}"),
-    SYS_OPERATION_FS_EXECUTION_ERROR(199003, "file system operation execution error, execution: {execution}, reason: {error_msg}"),
-    SYS_OPERATION_SHELL_EXECUTION_ERROR(199004, "shell operation execution error, execution: {execution}, reason: {error_msg}"),
-    SYS_OPERATION_CODE_EXECUTION_ERROR(199005, "code operation execution error, execution: {execution}, reason: {error_msg}"),
+
+    SYS_OPERATION_FS_EXECUTION_ERROR(199003,
+            "file system operation execution error, execution: {execution}, reason: {error_msg}"),
+
+    SYS_OPERATION_SHELL_EXECUTION_ERROR(199004,
+            "shell operation execution error, execution: {execution}, reason: {error_msg}"),
+
+    SYS_OPERATION_CODE_EXECUTION_ERROR(199005,
+            "code operation execution error, execution: {execution}, reason: {error_msg}"),
+
     SYS_OPERATION_REGISTRY_ERROR(199006, "sys operation registry error, process: {process}, reason: {error_msg}");
 
     private final int code;

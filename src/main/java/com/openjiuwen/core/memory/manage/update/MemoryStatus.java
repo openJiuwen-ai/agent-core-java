@@ -17,10 +17,16 @@ public enum MemoryStatus {
         this.value = value;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getValue() {
         return value;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public static MemoryStatus fromValue(String value) {
         for (MemoryStatus ms : values()) {
             if (ms.value.equalsIgnoreCase(value)) {

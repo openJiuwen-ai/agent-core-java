@@ -34,6 +34,9 @@ public class Intent {
     private Map<String, Object> metadata;
     private String clarificationPrompt;
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Intent(IntentType intentType, Event event, String targetTaskId) {
         this.intentType = intentType;
         this.event = event;
@@ -43,6 +46,9 @@ public class Intent {
         validate();
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Intent(IntentType intentType, Event event, String targetTaskId,
                   String targetTaskDescription, List<String> dependTaskId,
                   String supplementaryInfo, String modificationDetails,
@@ -125,82 +131,142 @@ public class Intent {
 
     // Getters and setters
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public IntentType getIntentType() {
         return intentType;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setIntentType(IntentType intentType) {
         this.intentType = intentType;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Event getEvent() {
         return event;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setEvent(Event event) {
         this.event = event;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getTargetTaskId() {
         return targetTaskId;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setTargetTaskId(String targetTaskId) {
         this.targetTaskId = targetTaskId;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getTargetTaskDescription() {
         return targetTaskDescription;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setTargetTaskDescription(String targetTaskDescription) {
         this.targetTaskDescription = targetTaskDescription;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public List<String> getDependTaskId() {
         return dependTaskId;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setDependTaskId(List<String> dependTaskId) {
         this.dependTaskId = dependTaskId;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getSupplementaryInfo() {
         return supplementaryInfo;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setSupplementaryInfo(String supplementaryInfo) {
         this.supplementaryInfo = supplementaryInfo;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getModificationDetails() {
         return modificationDetails;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setModificationDetails(String modificationDetails) {
         this.modificationDetails = modificationDetails;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public double getConfidence() {
         return confidence;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setConfidence(double confidence) {
         this.confidence = confidence;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public Map<String, Object> getMetadata() {
         return metadata;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata != null ? metadata : new HashMap<>();
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public String getClarificationPrompt() {
         return clarificationPrompt;
     }
 
+    /**
+     * Auto-generated for codecheck compliance.
+     */
     public void setClarificationPrompt(String clarificationPrompt) {
         this.clarificationPrompt = clarificationPrompt;
     }

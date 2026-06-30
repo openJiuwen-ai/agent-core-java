@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -59,7 +60,7 @@ public final class ParserRegistry {
 
     /** Register a decompressor for the given encoding. */
     public void registerDecompressor(String encoding, BaseResponseDecompressor decompressor) {
-        decompressors.put(encoding.toLowerCase(), decompressor);
+        decompressors.put(encoding.toLowerCase(Locale.ROOT), decompressor);
     }
 
     /**
@@ -75,7 +76,7 @@ public final class ParserRegistry {
         // Normalize headers to lower-case keys
         Map<String, String> lowerHeaders = new LinkedHashMap<>();
         if (responseHeaders != null) {
-            responseHeaders.forEach((k, v) -> lowerHeaders.put(k.toLowerCase(), v));
+            responseHeaders.forEach((k, v) -> lowerHeaders.put(k.toLowerCase(Locale.ROOT), v));
         }
         String contentType = lowerHeaders.getOrDefault("content-type", "text/plain");
         String contentEncoding = lowerHeaders.getOrDefault("content-encoding", "");
@@ -99,7 +100,7 @@ public final class ParserRegistry {
     private byte[] applyDecompression(byte[] data, String contentEncoding) {
         String[] encodings = contentEncoding.split(",");
         for (String encoding : encodings) {
-            String enc = encoding.strip().toLowerCase();
+            String enc = encoding.strip().toLowerCase(Locale.ROOT);
             BaseResponseDecompressor decompressor = decompressors.get(enc);
             if (decompressor != null && decompressor.canDecompress(enc)) {
                 try {

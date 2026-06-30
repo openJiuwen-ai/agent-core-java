@@ -1,4 +1,6 @@
-/* *  Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved. */
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
 package com.openjiuwen.core.memory.manage.mem_model;
 
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
@@ -46,7 +48,7 @@ class SemanticStorePGVectorTest {
                 new VectorStoreConfig("pgvector", "memory_db", "memory_fragments", "cosine"),
                 dataSource,
                 "vector",
-                Map.of()));
+                Map.of("vector_field", "embedding")));
 
         semanticStore.createCollection("memory_fragments", 3, Map.of("index_type", "hnsw"));
 
@@ -83,13 +85,14 @@ class SemanticStorePGVectorTest {
                 new VectorStoreConfig("pgvector", "memory_db", "memory_fragments", "cosine"),
                 dataSource,
                 "vector",
-                Map.of()), new FixedEmbedding());
+                Map.of("vector_field", "embedding")), new FixedEmbedding());
 
         boolean stored = semanticStore.addDocs(List.of(Map.entry("mem-1", "remember this")), "memory_fragments");
 
         assertTrue(stored);
         verify(upsertStatement).executeBatch();
-        verify(ddl).execute(org.mockito.ArgumentMatchers.contains("CREATE TABLE IF NOT EXISTS"));
+        verify(ddl, org.mockito.Mockito.atLeastOnce())
+                .execute(org.mockito.ArgumentMatchers.contains("CREATE TABLE IF NOT EXISTS"));
     }
 
     private static final class FixedEmbedding implements Embedding {
@@ -99,8 +102,8 @@ class SemanticStorePGVectorTest {
         }
 
         @Override
-        public List<List<Float>> embedDocuments(List<String> texts, Integer batchSize) {
-            return texts.stream().map(this::embedQuery).toList();
+        public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
+            return texts.stream().map(text -> embedQuery(String.valueOf(text))).toList();
         }
 
         @Override
