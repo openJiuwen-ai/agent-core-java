@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.security.JdkHttpClientProxySupport;
 import com.openjiuwen.core.common.security.SslUtils;
 import com.openjiuwen.core.retrieval.common.BaseCallback;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
@@ -134,6 +135,7 @@ public class APIEmbedding implements Embedding, AutoCloseable {
             HttpClient.Builder builder = HttpClient.newBuilder()
                     .connectTimeout(Duration.ofSeconds(this.timeout));
             SslUtils.configureHttpClientSsl(builder, this.apiUrl, config.isVerifySsl(), config.getSslCert());
+            JdkHttpClientProxySupport.configureFromEnvironment(builder, this.apiUrl);
             this.httpClient = builder.build();
         } else {
             this.httpClient = httpClient;

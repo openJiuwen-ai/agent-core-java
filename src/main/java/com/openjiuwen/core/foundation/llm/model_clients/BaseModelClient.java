@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm.model_clients;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.security.JdkHttpClientProxySupport;
 import com.openjiuwen.core.common.security.SslUtils;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -104,6 +105,7 @@ public abstract class BaseModelClient {
                 modelClientConfig.getApiBase(),
                 modelClientConfig.isVerifySsl(),
                 modelClientConfig.getSslCert());
+        JdkHttpClientProxySupport.configureFromEnvironment(builder, modelClientConfig.getApiBase());
         return builder.build();
     }
 
