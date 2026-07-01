@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.core.graph.stream_actor;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -17,7 +18,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -31,7 +31,7 @@ public class StreamActor {
 
     private static final LoggerProtocol LOGGER = Loggers.GRAPH;
     private static final long SHUTDOWN_TIMEOUT_MS = 5000L;
-    private static final ExecutorService VIRTUAL_EXECUTOR = Executors.newCachedThreadPool();
+    private static final ExecutorService VIRTUAL_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
 
     private final Map<ComponentAbility, StreamProcessor> processors = new HashMap<>();
     private final StreamConsumer vertex;

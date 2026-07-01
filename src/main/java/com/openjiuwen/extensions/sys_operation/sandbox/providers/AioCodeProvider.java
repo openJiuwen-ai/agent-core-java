@@ -4,6 +4,8 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sys_operation.result.ExecuteCodeChunkData;
@@ -119,7 +121,7 @@ public class AioCodeProvider extends BaseCodeProvider {
             String cwd,
             Map<String, Object> options) {
         SubmissionPublisher<ExecuteCodeStreamResult> publisher = new SubmissionPublisher<>();
-        Thread thread = new Thread(() -> {
+        VirtualThreadSupport.startThread(() -> {
             if (code == null || code.isBlank()) {
                 publisher.submit(AioProviderSupport.buildCodeErrorResult(
                         "execute_code_stream",
@@ -213,7 +215,6 @@ public class AioCodeProvider extends BaseCodeProvider {
                 }
             });
         });
-        thread.start();
         return publisher;
     }
 

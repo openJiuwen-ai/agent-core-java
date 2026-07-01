@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.core.retrieval.embedding;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,7 +26,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -63,7 +63,7 @@ public class DashscopeEmbedding extends APIEmbedding {
         this.configuredDimension = dimension;
         this.matryoshkaDimension = dimension != null;
         this.limiter = new Semaphore(Math.max(1, maxConcurrent));
-        this.asyncExecutor = Executors.newCachedThreadPool();
+        this.asyncExecutor = VirtualThreadSupport.newThreadPerTaskExecutor();
         this.requestParams = new LinkedHashMap<>();
         this.requestParams.put("model", modelName);
         this.requestParams.put("api_key", apiKey);

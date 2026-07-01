@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.common.task_manager;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
 import com.openjiuwen.core.runner.callback.TaskManagerEvents;
 
 import java.time.Duration;
@@ -46,7 +48,7 @@ public class TaskManager {
     private final Map<String, CopyOnWriteArrayList<Consumer<Task>>> callbacks = new LinkedHashMap<>();
 
     public TaskManager() {
-        this(Executors.newCachedThreadPool(), Executors.newSingleThreadScheduledExecutor());
+        this(VirtualThreadSupport.newThreadPerTaskExecutor(), Executors.newSingleThreadScheduledExecutor());
     }
 
     TaskManager(ExecutorService executorService, ScheduledExecutorService timeoutScheduler) {

@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.core.foundation.tool.mcp.client;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -399,6 +400,7 @@ public class SseClient extends McpClient {
         return Collections.unmodifiableMap(new LinkedHashMap<>(values));
     }
 
+    private static final java.util.concurrent.ExecutorService SSE_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("mcp-sse");
     private static <T> CompletableFuture<T> runAsync(Callable<T> callable) {
         return CompletableFuture.supplyAsync(() -> {
             try {
@@ -408,7 +410,7 @@ public class SseClient extends McpClient {
             } catch (Exception error) {
                 throw new CompletionException(error);
             }
-        });
+        }, SSE_EXECUTOR);
     }
 
     /**

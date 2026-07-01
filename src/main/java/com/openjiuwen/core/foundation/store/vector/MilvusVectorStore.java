@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
 import com.openjiuwen.core.foundation.store.FieldSchema;
@@ -73,6 +74,7 @@ public class MilvusVectorStore extends BaseVectorStore {
             "openjiuwen/core/foundation/store/vector/milvus_vector_store.py";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("milvus-vector-store-io");
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
     private static final Logger LOGGER = Logger.getLogger(MilvusVectorStore.class.getName());
@@ -137,7 +139,7 @@ public class MilvusVectorStore extends BaseVectorStore {
     }
 
     public CompletableFuture<MilvusClientAdapter> client() {
-        return CompletableFuture.supplyAsync(this::clientSync);
+        return CompletableFuture.supplyAsync(this::clientSync, IO_EXECUTOR);
     }
 
     public void close() {
@@ -193,7 +195,7 @@ public class MilvusVectorStore extends BaseVectorStore {
             collectionMetadata.put(collectionName, new CollectionMetadata(distanceMetric, vectorField.getName(),
                     vectorField.getDim(), null));
             LOGGER.info("Created collection with " + collectionSchema.getFields().size() + " fields");
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -208,12 +210,12 @@ public class MilvusVectorStore extends BaseVectorStore {
             collectionMetadata.remove(collectionName);
             collectionsLoaded.remove(collectionName);
             LOGGER.info("Deleted collection");
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
     public CompletableFuture<Boolean> collectionExists(String collectionName, Map<String, Object> kwargs) {
-        return CompletableFuture.supplyAsync(() -> clientSync().hasCollection(collectionName));
+        return CompletableFuture.supplyAsync(() -> clientSync().hasCollection(collectionName), IO_EXECUTOR);
     }
 
     @Override
@@ -241,7 +243,7 @@ public class MilvusVectorStore extends BaseVectorStore {
                 ));
             }
             return schema;
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -270,7 +272,7 @@ public class MilvusVectorStore extends BaseVectorStore {
             }
             clientSync().flush(collectionName);
             LOGGER.info("Successfully added documents collection");
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -306,7 +308,7 @@ public class MilvusVectorStore extends BaseVectorStore {
                 searchResults.add(new VectorSearchResult(finalScore, fields));
             }
             return searchResults;
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -321,7 +323,7 @@ public class MilvusVectorStore extends BaseVectorStore {
             clientSync().flush(collectionName);
             Object count = result.getOrDefault("delete_count", ids.size());
             LOGGER.info("Deleted documents from collection, count=" + count);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -337,12 +339,12 @@ public class MilvusVectorStore extends BaseVectorStore {
             clientSync().flush(collectionName);
             LOGGER.info("Deleted documents matching filters from collection, count="
                     + result.getOrDefault("delete_count", 0));
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
     public CompletableFuture<List<String>> listCollectionNames() {
-        return CompletableFuture.supplyAsync(() -> clientSync().listCollections());
+        return CompletableFuture.supplyAsync(() -> clientSync().listCollections(), IO_EXECUTOR);
     }
 
     @Override
@@ -357,7 +359,7 @@ public class MilvusVectorStore extends BaseVectorStore {
                     buildTransformFunctionForOperations(operations);
             Map<String, Object> metadata = getCollectionMetadata(collectionName).join();
             executeMigration(collectionName, newSchema, transform, metadata);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -395,7 +397,7 @@ public class MilvusVectorStore extends BaseVectorStore {
                 collectionMetadata.put(collectionName, cached.withValues(metadata));
             }
             LOGGER.fine("Updated collection metadata for '" + collectionName + "': " + metadata);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -434,7 +436,7 @@ public class MilvusVectorStore extends BaseVectorStore {
                         exception);
                 return new LinkedHashMap<>(Map.of("distance_metric", "COSINE", "schema_version", 0));
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     String buildFilterExpr(Map<String, Object> filters) {

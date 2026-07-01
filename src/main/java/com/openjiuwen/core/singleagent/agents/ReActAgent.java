@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.singleagent.agents;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
 import com.openjiuwen.core.context_engine.ContextEngine;
 import com.openjiuwen.core.context_engine.ContextWindow;
 import com.openjiuwen.core.context_engine.ModelContext;
@@ -1522,10 +1524,9 @@ public class ReActAgent extends BaseAgent {
         AgentSessionLifecycle finalLifecycleSession = lifecycleSession;
         boolean finalNeedCleanup = needCleanup;
         if (finalLifecycleSession != null) {
-            Thread streamThread = new Thread(
-                    () -> runStreamingInvoke(inputs, finalSession, finalLifecycleSession, finalNeedCleanup),
-                    "react-agent-stream-" + getCard().getId());
-            streamThread.start();
+            Thread streamThread = VirtualThreadSupport.startThread(
+                    "react-agent-stream-" + getCard().getId(),
+                    () -> runStreamingInvoke(inputs, finalSession, finalLifecycleSession, finalNeedCleanup));
             return finalSession.streamIterator();
         }
         try {

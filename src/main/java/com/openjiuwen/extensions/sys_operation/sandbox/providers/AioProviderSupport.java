@@ -4,6 +4,8 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

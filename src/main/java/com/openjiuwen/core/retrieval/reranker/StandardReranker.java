@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.store.base_reranker.Document;
 import com.openjiuwen.core.foundation.store.base_reranker.Reranker;
@@ -36,6 +37,7 @@ import java.util.concurrent.CompletableFuture;
 public class StandardReranker extends Reranker {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("standard-reranker-io");
     private static final LoggerProtocol LOGGER = Loggers.RETRIEVAL;
 
     private static final String ENDPOINT = "/rerank";
@@ -83,7 +85,7 @@ public class StandardReranker extends Reranker {
                                                          List<Object> doc,
                                                          Object instruct,
                                                          Map<String, Object> kwargs) {
-        return CompletableFuture.supplyAsync(() -> rerankSync(query, doc, instruct, kwargs));
+        return CompletableFuture.supplyAsync(() -> rerankSync(query, doc, instruct, kwargs), IO_EXECUTOR);
     }
 
     @Override

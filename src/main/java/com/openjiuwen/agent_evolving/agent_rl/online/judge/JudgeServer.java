@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.agent_evolving.agent_rl.online.judge;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -23,7 +24,6 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.Executors;
 import java.util.function.Function;
 
 /**
@@ -52,7 +52,7 @@ public final class JudgeServer implements AutoCloseable {
         this.server = HttpServer.create(new InetSocketAddress(host, port), 0);
         this.server.createContext("/healthz", this::handleHealthz);
         this.server.createContext("/score", this::handleScore);
-        this.server.setExecutor(Executors.newCachedThreadPool());
+        this.server.setExecutor(VirtualThreadSupport.newThreadPerTaskExecutor());
     }
 
     public static JudgeServer start(String host, int port, JudgeConfig config) throws IOException {

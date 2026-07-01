@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
 import com.openjiuwen.core.foundation.store.FieldSchema;
@@ -41,6 +42,7 @@ import static com.openjiuwen.core.common.exception.ErrorHelper.buildError;
 public class ChromaVectorStore extends BaseVectorStore {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("chroma-vector-store-io");
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
     private static final Logger LOGGER = Logger.getLogger(ChromaVectorStore.class.getName());
@@ -99,7 +101,7 @@ public class ChromaVectorStore extends BaseVectorStore {
             Map<String, Object> configuration = Map.of("hnsw", Map.of("space", chromaMetric));
             ChromaCollectionAdapter collection = client.getOrCreateCollection(collectionName, metadata, configuration);
             collections.put(collectionName, collection);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -107,7 +109,7 @@ public class ChromaVectorStore extends BaseVectorStore {
         return CompletableFuture.runAsync(() -> {
             client.deleteCollection(collectionName);
             collections.remove(collectionName);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -119,7 +121,7 @@ public class ChromaVectorStore extends BaseVectorStore {
             } catch (RuntimeException exception) {
                 return false;
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -139,7 +141,7 @@ public class ChromaVectorStore extends BaseVectorStore {
                 LOGGER.log(Level.WARNING, "Could not get schema from collection " + collectionName, exception);
                 return defaultSchema(collectionName, Map.of());
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -159,7 +161,7 @@ public class ChromaVectorStore extends BaseVectorStore {
                 List<Map<String, Object>> batch = docs.subList(index, Math.min(index + batchSize, total));
                 addBatch(collection, fieldMapping, batch);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -171,18 +173,18 @@ public class ChromaVectorStore extends BaseVectorStore {
             FieldMapping fieldMapping = fieldMapping(collection);
             Map<String, Object> result = collection.query(queryVector, topK, filters);
             return buildSearchResults(result, metadata, fieldMapping);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
     public CompletableFuture<Void> deleteDocsByIds(String collectionName, List<String> ids, Map<String, Object> kwargs) {
-        return CompletableFuture.runAsync(() -> getCollection(collectionName).deleteByIds(ids));
+        return CompletableFuture.runAsync(() -> getCollection(collectionName).deleteByIds(ids), IO_EXECUTOR);
     }
 
     @Override
     public CompletableFuture<Void> deleteDocsByFilters(String collectionName, Map<String, Object> filters,
             Map<String, Object> kwargs) {
-        return CompletableFuture.runAsync(() -> getCollection(collectionName).deleteByWhere(filters));
+        return CompletableFuture.runAsync(() -> getCollection(collectionName).deleteByWhere(filters), IO_EXECUTOR);
     }
 
     @Override
@@ -202,7 +204,7 @@ public class ChromaVectorStore extends BaseVectorStore {
                     buildTransformFunctionForOperations(operations);
             Map<String, Object> metadata = getCollectionMetadata(collectionName).join();
             executeMigration(collectionName, newSchema, transform, metadata);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -224,7 +226,7 @@ public class ChromaVectorStore extends BaseVectorStore {
                 currentMetadata.putAll(metadata);
             }
             collection.modify(collectionName, currentMetadata);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -234,7 +236,7 @@ public class ChromaVectorStore extends BaseVectorStore {
             metadata.putIfAbsent("distance_metric", "cosine");
             metadata.putIfAbsent("schema_version", 0);
             return metadata;
-        });
+        }, IO_EXECUTOR);
     }
 
     public CompletableFuture<List<Map<String, Object>>> getAllDocuments(String collectionName) {
@@ -259,7 +261,7 @@ public class ChromaVectorStore extends BaseVectorStore {
                 output.add(doc);
             }
             return output;
-        });
+        }, IO_EXECUTOR);
     }
 
     private ChromaCollectionAdapter getCollection(String collectionName) {

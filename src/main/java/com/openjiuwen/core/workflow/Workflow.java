@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.core.workflow;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -52,7 +53,6 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -69,7 +69,7 @@ import java.util.function.Function;
 public class Workflow {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final ExecutorService STREAM_EXECUTOR = Executors.newCachedThreadPool();
+    private static final ExecutorService STREAM_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
     private static final long SUB_WORKFLOW_STREAM_DRAIN_TIMEOUT_MS = 1000L;
     private static DecoratorFramework callbackFramework;
 

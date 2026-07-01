@@ -9,6 +9,7 @@ import com.openjiuwen.core.foundation.store.BaseDbStore;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.concurrent.CompletableFuture;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import javax.sql.DataSource;
 
@@ -20,6 +21,8 @@ import javax.sql.DataSource;
  * This class wraps a DataSource for GaussDB database operations.
  */
 public class GaussDbStore extends BaseDbStore<DataSource> {
+
+    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("gauss-db-store-io");
 
     private final DataSource dataSource;
 
@@ -60,7 +63,7 @@ public class GaussDbStore extends BaseDbStore<DataSource> {
             } catch (SQLException e) {
                 throw new RuntimeException("Failed to get GaussDB connection", e);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override

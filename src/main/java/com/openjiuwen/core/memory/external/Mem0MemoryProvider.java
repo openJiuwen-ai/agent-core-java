@@ -6,6 +6,7 @@ package com.openjiuwen.core.memory.external;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.util.ArrayList;
@@ -65,6 +66,8 @@ public class Mem0MemoryProvider extends MemoryProvider {
     private static final int BREAKER_THRESHOLD = 5;
     private static final double BREAKER_COOLDOWN_SECS = 120.0;
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("mem0-memory-io");
 
     private String apiKey;
     private String userId;
@@ -179,7 +182,7 @@ public class Mem0MemoryProvider extends MemoryProvider {
                 recordFailure();
                 Loggers.MEMORY.debug("Mem0 queue_prefetch failed: {}", exception.getMessage());
             }
-        });
+        }, IO_EXECUTOR);
         return CompletableFuture.completedFuture(null);
     }
 
@@ -227,7 +230,7 @@ public class Mem0MemoryProvider extends MemoryProvider {
                 recordFailure();
                 Loggers.MEMORY.warn("Mem0 sync failed: {}", exception.getMessage());
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -318,7 +321,7 @@ public class Mem0MemoryProvider extends MemoryProvider {
                 Loggers.MEMORY.debug("Mem0 call failed: {}", exception.getMessage());
                 return fallback;
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     private Mem0Client getClient() {
