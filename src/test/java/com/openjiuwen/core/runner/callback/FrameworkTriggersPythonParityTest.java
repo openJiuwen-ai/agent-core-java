@@ -4,13 +4,9 @@
 
 package com.openjiuwen.core.runner.callback;
 
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
-import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -29,6 +25,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isA;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * <p>Mirrors Python's {@code tests.unit_tests.core.runner.callback.test_framework_triggers} in
@@ -407,30 +407,37 @@ class FrameworkTriggersPythonParityTest {
     }
 
     private void triggerSkipFilterLogsDebug() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        Logger log = mock(Logger.class);
+        AsyncCallbackFramework framework = frameworkWithLogging(log);
         framework.addFilter("event", new ValidationFilter((args, kwargs) -> false));
-        register(framework, "event", "callback", kwargs -> "result");
+        AtomicInteger callCount = new AtomicInteger();
+        register(framework, "event", "callback", kwargs -> {
+            callCount.incrementAndGet();
+            return "result";
+        });
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.DEBUG)) {
-            framework.triggerResults("event");
-            assertTrue(logs.contains("skipped callback"));
-        }
+        List<Object> results = framework.triggerResults("event");
+
+        assertEquals(List.of(), results);
+        assertEquals(0, callCount.get());
+        verify(log).debug("Filter skipped callback {}: {}", "callback", "Argument validation failed");
     }
 
     private void triggerCallbackErrorLogsError() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        Logger log = mock(Logger.class);
+        AsyncCallbackFramework framework = frameworkWithLogging(log);
         register(framework, "event", "failing_callback", kwargs -> {
             throw new IllegalArgumentException("Test error!");
         });
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.ERROR)) {
-            framework.triggerResults("event");
-            assertTrue(logs.contains("Callback execution failed"));
-        }
+        assertEquals(List.of(), framework.triggerResults("event"));
+        verify(log).error(eq("Callback execution failed: {} - {}"), eq("failing_callback"), eq("Test error!"),
+                isA(IllegalArgumentException.class));
     }
 
     private void triggerStopFilterStopsProcessing() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        Logger log = mock(Logger.class);
+        AsyncCallbackFramework framework = frameworkWithLogging(log);
         framework.addFilter("event", new ConditionalFilter((event, callback, args, kwargs) -> false,
                 FilterAction.STOP));
         AtomicInteger callCount = new AtomicInteger();
@@ -439,12 +446,11 @@ class FrameworkTriggersPythonParityTest {
             return null;
         });
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.INFO)) {
-            List<Object> results = framework.triggerResults("event");
-            assertEquals(0, callCount.get());
-            assertEquals(List.of(), results);
-            assertTrue(logs.contains("Filter stopped"));
-        }
+        List<Object> results = framework.triggerResults("event");
+
+        assertEquals(0, callCount.get());
+        assertEquals(List.of(), results);
+        verify(log).info("Filter stopped event processing: {}", "event");
     }
 
     private void circuitBreakerRecordsSuccess() {
@@ -470,7 +476,7 @@ class FrameworkTriggersPythonParityTest {
     }
 
     private void triggerParallelWithStopFilter() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        AsyncCallbackFramework framework = framework();
         framework.addFilter("event", new ConditionalFilter((event, callback, args, kwargs) -> false,
                 FilterAction.STOP));
         register(framework, "event", "callback", kwargs -> "result");
@@ -505,31 +511,38 @@ class FrameworkTriggersPythonParityTest {
     }
 
     private void triggerParallelExceptionLogging() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        Logger log = mock(Logger.class);
+        AsyncCallbackFramework framework = frameworkWithLogging(log);
         register(framework, "event", "failing_callback", kwargs -> {
             throw new IllegalArgumentException("Test error");
         });
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.ERROR)) {
-            List<Object> results = framework.triggerParallel("event", new Object[0], Map.of());
-            assertEquals(List.of(), results);
-            assertTrue(logs.contains("failed in parallel execution"));
-        }
+        List<Object> results = framework.triggerParallel("event", new Object[0], Map.of());
+
+        assertEquals(List.of(), results);
+        verify(log).error(eq("Callback {} failed in parallel execution: {}"), eq("failing_callback"),
+                eq("Test error"), isA(IllegalArgumentException.class));
     }
 
     private void triggerParallelSkipFilterLogsDebug() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        Logger log = mock(Logger.class);
+        AsyncCallbackFramework framework = frameworkWithLogging(log);
         framework.addFilter("event", new ValidationFilter((args, kwargs) -> false));
-        register(framework, "event", "callback", kwargs -> "result");
+        AtomicInteger callCount = new AtomicInteger();
+        register(framework, "event", "callback", kwargs -> {
+            callCount.incrementAndGet();
+            return "result";
+        });
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.DEBUG)) {
-            framework.triggerParallel("event", new Object[0], Map.of());
-            assertTrue(logs.contains("skipped"));
-        }
+        List<Object> results = framework.triggerParallel("event", new Object[0], Map.of());
+
+        assertEquals(List.of(), results);
+        assertEquals(0, callCount.get());
+        verify(log).debug("Filter skipped {}: {}", "callback", "Argument validation failed");
     }
 
     private void triggerParallelGatherExceptionLogging() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        AsyncCallbackFramework framework = framework();
         register(framework, "event", "callback", kwargs -> "success");
 
         assertEquals(List.of("success"), framework.triggerParallel("event", new Object[0], Map.of()));
@@ -568,14 +581,14 @@ class FrameworkTriggersPythonParityTest {
     }
 
     private void triggerUntilConditionSatisfiedLogs() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        Logger log = mock(Logger.class);
+        AsyncCallbackFramework framework = frameworkWithLogging(log);
         register(framework, "event", "callback", kwargs -> 100);
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.INFO)) {
-            Object result = framework.triggerUntil("event", value -> ((Integer) value) > 50, new Object[0], Map.of());
-            assertEquals(100, result);
-            assertTrue(logs.contains("Condition satisfied"));
-        }
+        Object result = framework.triggerUntil("event", value -> ((Integer) value) > 50, new Object[0], Map.of());
+
+        assertEquals(100, result);
+        verify(log).info("Condition satisfied by {}: {}", "callback", 100);
     }
 
     private void triggerUntilOnceCallbackConditionMet() {
@@ -599,30 +612,31 @@ class FrameworkTriggersPythonParityTest {
     }
 
     private void triggerUntilExceptionLogging() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        Logger log = mock(Logger.class);
+        AsyncCallbackFramework framework = frameworkWithLogging(log);
         register(framework, "event", "failing_callback", kwargs -> {
             throw new IllegalArgumentException("Test error");
         });
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.ERROR)) {
-            Object result = framework.triggerUntil("event", value -> true, new Object[0], Map.of());
-            assertNull(result);
-            assertTrue(logs.contains("failed in triggerUntil"));
-        }
+        Object result = framework.triggerUntil("event", value -> true, new Object[0], Map.of());
+
+        assertNull(result);
+        verify(log).error(eq("Callback {} failed in triggerUntil: {}"), eq("failing_callback"), eq("Test error"),
+                isA(IllegalArgumentException.class));
     }
 
     private void triggerWithTimeoutLogsWarning() {
-        AsyncCallbackFramework framework = frameworkWithLogging();
+        Logger log = mock(Logger.class);
+        AsyncCallbackFramework framework = frameworkWithLogging(log);
         register(framework, "event", "slow_callback", kwargs -> {
             sleepQuietly(1000L);
             return "done";
         });
 
-        try (CapturedLogs logs = captureFrameworkLogs(Level.WARN)) {
-            List<Object> results = framework.triggerWithTimeout("event", 0.05, new Object[0], Map.of());
-            assertEquals(List.of(), results);
-            assertTrue(logs.contains("timeout"));
-        }
+        List<Object> results = framework.triggerWithTimeout("event", 0.05, new Object[0], Map.of());
+
+        assertEquals(List.of(), results);
+        verify(log).warn("Event '{}' execution timeout after {}s", "event", 0.05);
     }
 
     private void addFilterToEvent() {
@@ -782,8 +796,8 @@ class FrameworkTriggersPythonParityTest {
         return new AsyncCallbackFramework(false, false);
     }
 
-    private static AsyncCallbackFramework frameworkWithLogging() {
-        return new AsyncCallbackFramework(false, true);
+    private static AsyncCallbackFramework frameworkWithLogging(Logger logger) {
+        return new AsyncCallbackFramework(false, true, logger);
     }
 
     private static void register(
@@ -856,11 +870,6 @@ class FrameworkTriggersPythonParityTest {
         return mapOf(values);
     }
 
-    private static CapturedLogs captureFrameworkLogs(Level level) {
-        Logger logger = (Logger) LoggerFactory.getLogger(AsyncCallbackFramework.class);
-        return new CapturedLogs(logger, level);
-    }
-
     private static void sleepQuietly(long millis) {
         try {
             Thread.sleep(millis);
@@ -882,37 +891,6 @@ class FrameworkTriggersPythonParityTest {
         @Override
         public String toString() {
             return name;
-        }
-    }
-
-    private static final class CapturedLogs implements AutoCloseable {
-
-        private final Logger logger;
-
-        private final Level previousLevel;
-
-        private final ListAppender<ILoggingEvent> appender;
-
-        private CapturedLogs(Logger logger, Level level) {
-            this.logger = logger;
-            this.previousLevel = logger.getLevel();
-            this.appender = new ListAppender<>();
-            this.appender.start();
-            this.logger.setLevel(level);
-            this.logger.addAppender(appender);
-        }
-
-        private boolean contains(String text) {
-            return appender.list.stream()
-                    .map(ILoggingEvent::getFormattedMessage)
-                    .anyMatch(message -> message.contains(text));
-        }
-
-        @Override
-        public void close() {
-            logger.detachAppender(appender);
-            logger.setLevel(previousLevel);
-            appender.stop();
         }
     }
 }

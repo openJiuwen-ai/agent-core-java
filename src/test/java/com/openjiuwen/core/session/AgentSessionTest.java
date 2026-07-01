@@ -11,6 +11,7 @@ import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.EventFilter;
 import com.openjiuwen.core.runner.callback.SessionEvents;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.CheckpointerConfig;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamEmitter;
@@ -42,7 +43,7 @@ class AgentSessionTest {
     @AfterEach
     void resetGlobals() {
         CallbackUtils.resetFrameworkSupplier();
-        CheckpointerFactory.setDefaultCheckpointer(null);
+        CheckpointerFactory.releaseDefaultCheckpointer();
     }
 
     @Test
@@ -50,7 +51,7 @@ class AgentSessionTest {
         RecordingFramework framework = new RecordingFramework();
         RecordingCheckpointer checkpointer = new RecordingCheckpointer();
         CallbackUtils.setCallbackFramework(framework);
-        CheckpointerFactory.setDefaultCheckpointer(checkpointer);
+        installDefaultCheckpointer("unit-agent-session-prerun", checkpointer);
         AgentSession session = new AgentSession("session-pre", Map.of("env", "prod"), new TestCard("agent-1"));
         Map<String, Object> inputs = Map.of("prompt", "hello");
 
@@ -165,7 +166,7 @@ class AgentSessionTest {
     @Test
     void commitPersistsStateWithoutClosingStream() {
         RecordingCheckpointer checkpointer = new RecordingCheckpointer();
-        CheckpointerFactory.setDefaultCheckpointer(checkpointer);
+        installDefaultCheckpointer("unit-agent-session-commit", checkpointer);
         StreamEmitter emitter = new StreamEmitter();
         AgentSession session = new AgentSession(
                 "session-commit",
@@ -181,6 +182,11 @@ class AgentSessionTest {
         assertEquals(1, checkpointer.postCalls);
         assertEquals("session-commit", checkpointer.lastSessionId);
         assertFalse(emitter.isClosed());
+    }
+
+    private static void installDefaultCheckpointer(String name, Checkpointer checkpointer) {
+        CheckpointerFactory.register(name, conf -> checkpointer);
+        CheckpointerFactory.installDefaultCheckpointer(new CheckpointerConfig(name, Map.of()));
     }
 
     private record RecordedCall(String event, Object[] args, Map<String, Object> kwargs) {

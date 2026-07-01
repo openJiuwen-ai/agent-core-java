@@ -8,10 +8,12 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -55,6 +57,16 @@ final class ToolLifecycleOutputFactory {
                     : "");
         }
         return new OutputSchema("tool_result", index, payload);
+    }
+
+    static OutputSchema buildExternalToolPendingOutput(List<ExternalToolCallRequest> calls, int index) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("result_type", "external_tool_call_required");
+        payload.put("external_tool_calls", (calls == null ? List.<ExternalToolCallRequest>of() : calls)
+                .stream()
+                .map(ExternalToolCallRequest::toMap)
+                .toList());
+        return new OutputSchema("external_tool_call_required", index, payload);
     }
 
     private static boolean isErrorResult(AbilityManager.ExecutionResult result) {

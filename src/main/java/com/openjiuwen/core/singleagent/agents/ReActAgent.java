@@ -15,6 +15,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
@@ -40,6 +41,9 @@ import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.rail.Rails;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
+import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
+import com.openjiuwen.core.singleagent.external.ExternalToolResult;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
@@ -74,8 +78,13 @@ public class ReActAgent extends BaseAgent {
     public static final String SKILLS_SECTION = "skills";
     public static final int IDENTITY_SECTION_PRIORITY = 10;
     public static final int SKILLS_SECTION_PRIORITY = 90;
+    public static final String EXTERNAL_TOOL_PENDING_KEY = "__react_agent_external_tool_pending__";
 
     private static final String STREAM_INDEX_REF_KEY = "_stream_index_ref";
+    private static final String EXTERNAL_TOOL_RESULT_ID_ERROR =
+            "External tool results must contain exactly all pending tool_call_id values";
+    private static final String EXTERNAL_TOOL_RESULTS_REQUIRED_ERROR =
+            "External tool results are required before continuing this conversation";
 
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
@@ -335,6 +344,18 @@ public class ReActAgent extends BaseAgent {
 
     public List<AbilityManager.ExecutionResult> executeToolCall(AgentCallbackContext ctx, List<ToolCall> toolCalls,
                                                                 AgentSessionApi session, ModelContext context) {
+        List<AbilityManager.ExecutionResult> results = executeToolCallsAndWriteToolMessages(ctx, toolCalls, session,
+                context);
+        appendMultimodalToolResultsMessage(results, context);
+        return results;
+    }
+
+    private List<AbilityManager.ExecutionResult> executeToolCallsAndWriteToolMessages(
+            AgentCallbackContext ctx,
+            List<ToolCall> toolCalls,
+            AgentSessionApi session,
+            ModelContext context
+    ) {
         if (toolCalls == null || toolCalls.isEmpty()) {
             return List.of();
         }
@@ -352,13 +373,20 @@ public class ReActAgent extends BaseAgent {
                 }
             }
         }
+        return results;
+    }
+
+    private void appendMultimodalToolResultsMessage(List<AbilityManager.ExecutionResult> results,
+                                                    ModelContext context) {
         UserMessage multimodalMessage = buildMultimodalToolResultsMessage(
-                results.stream().map(AbilityManager.ExecutionResult::result).toList()
+                (results == null ? List.<AbilityManager.ExecutionResult>of() : results)
+                        .stream()
+                        .map(AbilityManager.ExecutionResult::result)
+                        .toList()
         );
         if (multimodalMessage != null) {
             context.addMessages(multimodalMessage).toCompletableFuture().join();
         }
-        return results;
     }
 
     private void activateSkillsLoadedByToolCalls(List<ToolCall> toolCalls,
@@ -688,6 +716,143 @@ public class ReActAgent extends BaseAgent {
         return result;
     }
 
+    private void saveExternalToolPendingState(ExternalToolPendingState state, AgentSessionApi session) {
+        if (session != null) {
+            session.updateState(Map.of(EXTERNAL_TOOL_PENDING_KEY, state));
+        }
+    }
+
+    private ExternalToolPendingState loadExternalToolPendingState(AgentSessionApi session) {
+        if (session == null) {
+            return null;
+        }
+        Object state = session.getState(EXTERNAL_TOOL_PENDING_KEY);
+        return state instanceof ExternalToolPendingState pendingState ? pendingState : null;
+    }
+
+    private void clearExternalToolPendingState(AgentSessionApi session) {
+        if (session != null) {
+            Map<String, Object> update = new LinkedHashMap<>();
+            update.put(EXTERNAL_TOOL_PENDING_KEY, null);
+            session.updateState(update);
+        }
+    }
+
+    private Object handleExternalToolResume(ExternalToolPendingState state, Object inputs, AgentCallbackContext ctx,
+                                            ModelContext context, AgentSessionApi session,
+                                            InvokeInputs invokeInputs) {
+        ExternalResumeValidation validation = validateExternalToolResults(state, externalToolResultsInput(inputs));
+        if (!validation.valid()) {
+            Map<String, Object> result = new LinkedHashMap<>(Map.of(
+                    "output", EXTERNAL_TOOL_RESULT_ID_ERROR,
+                    "result_type", "error"
+            ));
+            invokeInputs.setResult(result);
+            return result;
+        }
+
+        AssistantMessage resumeAiMessage = state.getAssistantMessage() == null
+                ? AssistantMessage.builder().content("").toolCalls(state.getPendingToolCalls()).build()
+                : copyAssistantMessage(state.getAssistantMessage());
+        ensurePendingAssistantMessagePresent(context, resumeAiMessage, state.getPendingToolCalls());
+
+        List<AbilityManager.ExecutionResult> results = new ArrayList<>();
+        for (ToolCall toolCall : state.getPendingToolCalls()) {
+            if (getAbilityManager().isExternalTool(toolCall.getName())) {
+                ExternalToolResult externalResult = validation.resultsById().get(toolCall.getId());
+                Object value = externalToolMessageValue(externalResult);
+                ToolMessage message = new ToolMessage(AbilityManager.buildToolMessageContent(value),
+                        toolCall.getId(), toolCall.getName());
+                context.addMessages(message).toCompletableFuture().join();
+                results.add(new AbilityManager.ExecutionResult(value, message));
+                continue;
+            }
+            List<AbilityManager.ExecutionResult> executionResults = executeToolCallsAndWriteToolMessages(ctx,
+                    List.of(toolCall), session, context);
+            activateSkillsLoadedByToolCalls(List.of(toolCall), executionResults, session);
+            results.addAll(executionResults);
+        }
+        clearExternalToolPendingState(session);
+        boolean completed = completeToolExecutionTurn(
+                ctx,
+                context,
+                session,
+                invokeInputs,
+                state.getPendingToolCalls(),
+                results,
+                resumeAiMessage,
+                state.getIteration(),
+                state.getOriginalQuery(),
+                ToolExecutionTurnOrigin.EXTERNAL_RESUME
+        );
+        return completed ? invokeInputs.getResult() : null;
+    }
+
+    private enum ToolExecutionTurnOrigin {
+        NORMAL_TOOL_LOOP,
+        EXTERNAL_RESUME
+    }
+
+    private boolean completeToolExecutionTurn(AgentCallbackContext ctx,
+                                              ModelContext context,
+                                              AgentSessionApi session,
+                                              InvokeInputs invokeInputs,
+                                              List<ToolCall> toolCalls,
+                                              List<AbilityManager.ExecutionResult> results,
+                                              AssistantMessage aiMessage,
+                                              int iteration,
+                                              String originalQuery,
+                                              ToolExecutionTurnOrigin origin) {
+        boolean externalResume = origin == ToolExecutionTurnOrigin.EXTERNAL_RESUME;
+        if (externalResume) {
+            appendMultimodalToolResultsMessage(results, context);
+        }
+        writeToolResultOutputs(ctx, session, toolCalls, results);
+
+        ForceFinishRequest finish = ctx.consumeForceFinish();
+        if (finish != null) {
+            contextEngine.saveContexts(session);
+            invokeInputs.setResult(finish.getResult());
+            return true;
+        }
+
+        ToolInterruptHandler.InterruptStateResult hitlInterrupt = hitlHandler.buildInterruptState(
+                results.stream().map(AbilityManager.ExecutionResult::result).toList(),
+                toolCalls,
+                aiMessage,
+                iteration,
+                originalQuery
+        );
+        if (hitlInterrupt.getState() != null) {
+            if (externalResume) {
+                contextEngine.saveContexts(session);
+            }
+            hitlHandler.commitInterrupt(hitlInterrupt.getState(), session, invokeInputs,
+                    hitlInterrupt.getPayloads());
+            return true;
+        }
+
+        InterruptionState workflowInterrupt = afterExecuteToolCall(
+                results,
+                toolCalls,
+                aiMessage,
+                iteration,
+                originalQuery
+        );
+        if (workflowInterrupt != null) {
+            if (externalResume) {
+                contextEngine.saveContexts(session);
+            }
+            commitInterrupt(workflowInterrupt, session, invokeInputs);
+            return true;
+        }
+
+        if (externalResume) {
+            ctx.getExtra().put(InterruptConstants.RESUME_START_ITERATION_KEY, iteration + 1);
+        }
+        return false;
+    }
+
     public Object handleResume(Object interruptionState, Object userInput, AgentCallbackContext ctx,
                                ModelContext context, AgentSessionApi session, InvokeInputs invokeInputs) {
         if (interruptionState instanceof ToolInterruptionState toolState) {
@@ -745,6 +910,130 @@ public class ReActAgent extends BaseAgent {
             ctx.getExtra().put(InterruptConstants.RESUME_START_ITERATION_KEY, workflowState.getIteration() + 1);
         }
         return null;
+    }
+
+    private boolean isExternalToolResumeInput(Object inputs) {
+        return inputs instanceof Map<?, ?> map && map.containsKey("external_tool_results");
+    }
+
+    private Object externalToolResultsInput(Object inputs) {
+        return inputs instanceof Map<?, ?> map ? map.get("external_tool_results") : null;
+    }
+
+    private boolean hasExternalToolCall(List<ToolCall> toolCalls) {
+        if (toolCalls == null || toolCalls.isEmpty()) {
+            return false;
+        }
+        return toolCalls.stream().anyMatch(toolCall -> getAbilityManager().isExternalTool(toolCall.getName()));
+    }
+
+    private List<ExternalToolCallRequest> externalToolCallRequests(List<ToolCall> toolCalls) {
+        if (toolCalls == null || toolCalls.isEmpty()) {
+            return List.of();
+        }
+        List<ExternalToolCallRequest> requests = new ArrayList<>();
+        for (ToolCall toolCall : toolCalls) {
+            if (getAbilityManager().isExternalTool(toolCall.getName())) {
+                requests.add(new ExternalToolCallRequest(
+                        toolCall.getId(),
+                        toolCall.getName(),
+                        toolCall.getArguments()
+                ));
+            }
+        }
+        return List.copyOf(requests);
+    }
+
+    private Map<String, Object> buildExternalToolPendingResult(ExternalToolPendingState state) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("result_type", "external_tool_call_required");
+        result.put("external_tool_calls", state.getExternalToolCalls()
+                .stream()
+                .map(ExternalToolCallRequest::toMap)
+                .toList());
+        return result;
+    }
+
+    private Map<String, Object> buildExternalToolResultsRequiredResult() {
+        return new LinkedHashMap<>(Map.of(
+                "output", EXTERNAL_TOOL_RESULTS_REQUIRED_ERROR,
+                "result_type", "error"
+        ));
+    }
+
+    private ExternalResumeValidation validateExternalToolResults(ExternalToolPendingState state, Object value) {
+        List<ExternalToolResult> results;
+        try {
+            results = ExternalToolResult.fromInput(value);
+        } catch (IllegalArgumentException exception) {
+            return ExternalResumeValidation.invalid();
+        }
+        List<String> pendingIds = state.getExternalToolCalls()
+                .stream()
+                .map(ExternalToolCallRequest::getToolCallId)
+                .toList();
+        Map<String, ExternalToolResult> byId = new LinkedHashMap<>();
+        Set<String> seen = new HashSet<>();
+        for (ExternalToolResult result : results) {
+            if (!seen.add(result.getToolCallId())) {
+                return ExternalResumeValidation.invalid();
+            }
+            byId.put(result.getToolCallId(), result);
+        }
+        if (byId.size() != pendingIds.size()) {
+            return ExternalResumeValidation.invalid();
+        }
+        for (String pendingId : pendingIds) {
+            if (!byId.containsKey(pendingId)) {
+                return ExternalResumeValidation.invalid();
+            }
+        }
+        return new ExternalResumeValidation(true, byId);
+    }
+
+    private Object externalToolMessageValue(ExternalToolResult result) {
+        if (result.getError() != null) {
+            return Map.of("success", false, "error", result.getError());
+        }
+        return result.getResult();
+    }
+
+    private void ensurePendingAssistantMessagePresent(ModelContext context, AssistantMessage assistantMessage,
+                                                      List<ToolCall> pendingToolCalls) {
+        if (hasAssistantWithToolCallIds(context.getMessages(null, true), pendingToolCalls)) {
+            return;
+        }
+        context.addMessages(assistantMessage).toCompletableFuture().join();
+    }
+
+    private static boolean hasAssistantWithToolCallIds(List<BaseMessage> messages, List<ToolCall> pendingToolCalls) {
+        Set<String> pendingIds = toolCallIds(pendingToolCalls);
+        if (pendingIds.isEmpty()) {
+            return false;
+        }
+        for (BaseMessage message : messages == null ? List.<BaseMessage>of() : messages) {
+            if (message instanceof AssistantMessage assistantMessage
+                    && toolCallIds(assistantMessage.getToolCalls()).containsAll(pendingIds)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Set<String> toolCallIds(List<ToolCall> toolCalls) {
+        Set<String> ids = new HashSet<>();
+        for (ToolCall toolCall : toolCalls == null ? List.<ToolCall>of() : toolCalls) {
+            if (toolCall != null && toolCall.getId() != null) {
+                ids.add(toolCall.getId());
+            }
+        }
+        return ids;
+    }
+
+    private record ExternalResumeValidation(boolean valid, Map<String, ExternalToolResult> resultsById) {
+        private static ExternalResumeValidation invalid() {
+            return new ExternalResumeValidation(false, Map.of());
+        }
     }
 
     public String extractUserText(Object userInput) {
@@ -879,12 +1168,24 @@ public class ReActAgent extends BaseAgent {
         try {
             getAgentCallbackManager().execute(AgentCallbackEvent.BEFORE_INVOKE, ctx).toCompletableFuture().join();
             Object userInput = invokeInputs.getQuery();
-            if (userInput == null || String.valueOf(userInput).isEmpty()) {
+            ExternalToolPendingState externalPending = loadExternalToolPendingState(session);
+            boolean externalResume = externalPending != null && isExternalToolResumeInput(inputs);
+            if (externalPending != null && !externalResume) {
+                invokeInputs.setResult(buildExternalToolResultsRequiredResult());
+                getAgentCallbackManager().execute(AgentCallbackEvent.AFTER_INVOKE, ctx).toCompletableFuture().join();
+                Object result = ctx.getExtra().getOrDefault("invoke_result", invokeInputs.getResult());
+                if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && result instanceof Map<?, ?> map) {
+                    writeInvokeResultToStreamInternal(stringObjectMap(map), session, streamIndexRef(ctx));
+                }
+                return result;
+            }
+            if (!externalResume && (userInput == null || String.valueOf(userInput).isEmpty())) {
                 throw new IllegalArgumentException("Input must contain 'query'");
             }
 
-            ToolInterruptionState hitlState = hitlHandler.load(session);
-            Object interruptionState = hitlState != null ? hitlState : loadInterruptionState(session);
+            ToolInterruptionState hitlState = externalResume ? null : hitlHandler.load(session);
+            Object interruptionState = hitlState != null ? hitlState
+                    : (externalResume ? null : loadInterruptionState(session));
             if (interruptionState != null) {
                 if (hitlState != null) {
                     hitlHandler.clear(session);
@@ -896,6 +1197,10 @@ public class ReActAgent extends BaseAgent {
                 } else if (interruptionState instanceof InterruptionState workflowState) {
                     ctx.getExtra().put("_original_query", workflowState.getOriginalQuery());
                 }
+            } else if (externalResume) {
+                ctx.getExtra().put("_original_query", externalPending.getOriginalQuery());
+            } else {
+                ctx.getExtra().put("_original_query", extractUserText(userInput));
             }
 
             ModelContext context = initContext(session);
@@ -908,7 +1213,13 @@ public class ReActAgent extends BaseAgent {
             updateSkillPromptBuilderSection(renderedSystemPrompt);
 
             int startIteration = 0;
-            if (interruptionState != null) {
+            if (externalResume) {
+                Object resumeResult = handleExternalToolResume(externalPending, inputs, ctx, context, session,
+                        invokeInputs);
+                if (resumeResult == null) {
+                    startIteration = popInt(ctx.getExtra(), InterruptConstants.RESUME_START_ITERATION_KEY, 0);
+                }
+            } else if (interruptionState != null) {
                 if (interruptionState instanceof ToolInterruptionState) {
                     handleResume(interruptionState, userInput, ctx, context, session, invokeInputs);
                     startIteration = popInt(ctx.getExtra(), InterruptConstants.RESUME_START_ITERATION_KEY, 0);
@@ -959,36 +1270,33 @@ public class ReActAgent extends BaseAgent {
                         break;
                     }
                     writeToolCallOutputs(ctx, session, toolCalls);
+                    if (hasExternalToolCall(toolCalls)) {
+                        ExternalToolPendingState pendingState = new ExternalToolPendingState(
+                                copyAssistantMessage(aiMessage),
+                                iteration,
+                                Objects.toString(ctx.getExtra().get("_original_query"), ""),
+                                toolCalls,
+                                externalToolCallRequests(toolCalls)
+                        );
+                        saveExternalToolPendingState(pendingState, session);
+                        contextEngine.saveContexts(session);
+                        writeExternalToolPendingOutput(ctx, session, pendingState);
+                        invokeInputs.setResult(buildExternalToolPendingResult(pendingState));
+                        break;
+                    }
                     List<AbilityManager.ExecutionResult> results = executeToolCall(ctx, toolCalls, session, context);
                     activateSkillsLoadedByToolCalls(toolCalls, results, session);
-                    writeToolResultOutputs(ctx, session, toolCalls, results);
-                    finish = ctx.consumeForceFinish();
-                    if (finish != null) {
-                        contextEngine.saveContexts(session);
-                        invokeInputs.setResult(finish.getResult());
-                        break;
-                    }
-                    ToolInterruptHandler.InterruptStateResult hitlInterrupt = hitlHandler.buildInterruptState(
-                            results.stream().map(AbilityManager.ExecutionResult::result).toList(),
+                    if (completeToolExecutionTurn(
+                            ctx,
+                            context,
+                            session,
+                            invokeInputs,
                             toolCalls,
-                            aiMessage,
-                            iteration,
-                            Objects.toString(ctx.getExtra().get("_original_query"), "")
-                    );
-                    if (hitlInterrupt.getState() != null) {
-                        hitlHandler.commitInterrupt(hitlInterrupt.getState(), session, invokeInputs,
-                                hitlInterrupt.getPayloads());
-                        break;
-                    }
-                    InterruptionState workflowInterrupt = afterExecuteToolCall(
                             results,
-                            toolCalls,
                             aiMessage,
                             iteration,
-                            Objects.toString(ctx.getExtra().get("_original_query"), "")
-                    );
-                    if (workflowInterrupt != null) {
-                        commitInterrupt(workflowInterrupt, session, invokeInputs);
+                            Objects.toString(ctx.getExtra().get("_original_query"), ""),
+                            ToolExecutionTurnOrigin.NORMAL_TOOL_LOOP)) {
                         break;
                     }
                 }
@@ -1072,6 +1380,23 @@ public class ReActAgent extends BaseAgent {
         }
     }
 
+    private void writeExternalToolPendingOutput(
+            AgentCallbackContext ctx,
+            AgentSessionApi session,
+            ExternalToolPendingState pendingState
+    ) {
+        if (session == null || pendingState == null) {
+            return;
+        }
+        if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
+            return;
+        }
+        session.writeStream(ToolLifecycleOutputFactory.buildExternalToolPendingOutput(
+                pendingState.getExternalToolCalls(),
+                nextStreamIndex(ctx)
+        ));
+    }
+
     private void writeToolResultOutputs(
             AgentCallbackContext ctx,
             AgentSessionApi session,
@@ -1128,6 +1453,9 @@ public class ReActAgent extends BaseAgent {
             return;
         }
         Object resultType = result.get("result_type");
+        if ("external_tool_call_required".equals(resultType)) {
+            return;
+        }
         if ("interrupt".equals(resultType)) {
             if (result.containsKey("interrupt_ids")) {
                 ToolInterruptHandler.writeInterruptToStream(result, session);
@@ -1401,8 +1729,11 @@ public class ReActAgent extends BaseAgent {
     }
 
     private static void closeStreamAndCommit(AgentSessionLifecycle session) {
-        session.closeStream();
-        session.commit();
+        try {
+            session.commit();
+        } finally {
+            session.closeStream();
+        }
     }
 
     private static void closeIterator(Iterator<?> iterator) {

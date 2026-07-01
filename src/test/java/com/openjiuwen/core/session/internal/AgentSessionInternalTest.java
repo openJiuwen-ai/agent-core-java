@@ -6,6 +6,7 @@ package com.openjiuwen.core.session.internal;
 
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.CheckpointerConfig;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.state.AgentStateCollection;
@@ -31,7 +32,7 @@ class AgentSessionInternalTest {
 
     @AfterEach
     void resetCheckpointerFactory() {
-        CheckpointerFactory.setDefaultCheckpointer(null);
+        CheckpointerFactory.releaseDefaultCheckpointer();
     }
 
     @Test
@@ -58,10 +59,10 @@ class AgentSessionInternalTest {
     void constructorCachesFactoryCheckpointerAtCreationTime() {
         RecordingCheckpointer first = new RecordingCheckpointer();
         RecordingCheckpointer second = new RecordingCheckpointer();
-        CheckpointerFactory.setDefaultCheckpointer(first);
+        installDefaultCheckpointer("unit-internal-agent-first", first);
 
         AgentSession session = new AgentSession("session-default", new Config(), new TestCard("card-agent"), null);
-        CheckpointerFactory.setDefaultCheckpointer(second);
+        installDefaultCheckpointer("unit-internal-agent-second", second);
 
         assertSame(first, session.checkpointer());
     }
@@ -117,6 +118,11 @@ class AgentSessionInternalTest {
         workflowState.updateGlobal(Map.of("fromWorkflow", "workflow-value"));
         workflowState.commit();
         assertEquals("workflow-value", session.state().getGlobal("fromWorkflow"));
+    }
+
+    private static void installDefaultCheckpointer(String name, Checkpointer checkpointer) {
+        CheckpointerFactory.register(name, conf -> checkpointer);
+        CheckpointerFactory.installDefaultCheckpointer(new CheckpointerConfig(name, Map.of()));
     }
 
     private record AgentConfig(String id) {

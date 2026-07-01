@@ -7,13 +7,19 @@ import com.openjiuwen.core.session.checkpointer.CheckpointerConfig;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.internal.AgentSession;
 import com.openjiuwen.extensions.store.kv.JedisClusterRedisStore;
+import com.openjiuwen.extensions.store.kv.RedisStore;
 import org.junit.jupiter.api.Test;
+import redis.clients.jedis.HostAndPort;
+import redis.clients.jedis.JedisClientConfig;
 import redis.clients.jedis.JedisCluster;
 
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -22,6 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 class RedisCheckpointerProviderTest {
 
@@ -53,6 +61,74 @@ class RedisCheckpointerProviderTest {
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
         assertInstanceOf(JedisClusterRedisStore.class, redisCheckpointer.getRedisStore());
+    }
+
+    @Test
+    void providerBuildsOwnedJedisClusterFromSerializableNodes() {
+        JedisCluster jedisCluster = mock(JedisCluster.class);
+        AtomicReference<Set<HostAndPort>> capturedNodes = new AtomicReference<>();
+        AtomicReference<JedisClientConfig> capturedConfig = new AtomicReference<>();
+        RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider((nodes, clientConfig) -> {
+            capturedNodes.set(nodes);
+            capturedConfig.set(clientConfig);
+            return jedisCluster;
+        });
+
+        Checkpointer checkpointer = provider.create(Map.of(
+                "connection", Map.of(
+                        "cluster_mode", true,
+                        "nodes", List.of("127.0.0.1:7000", "127.0.0.1:7001"),
+                        "password", "secret",
+                        "ssl", true,
+                        "timeout_millis", 1500
+                ),
+                "dump_type", "json"
+        ));
+
+        RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
+        JedisClusterRedisStore redisStore = assertInstanceOf(JedisClusterRedisStore.class,
+                redisCheckpointer.getRedisStore());
+        assertEquals(jedisCluster, redisStore.getJedisCluster());
+        assertEquals(Set.of(new HostAndPort("127.0.0.1", 7000), new HostAndPort("127.0.0.1", 7001)),
+                capturedNodes.get());
+        assertEquals("secret", capturedConfig.get().getPassword());
+        assertTrue(capturedConfig.get().isSsl());
+        assertEquals(1500, capturedConfig.get().getConnectionTimeoutMillis());
+    }
+
+    @Test
+    void closeClosesOwnedJedisClusterAndLeavesExternalClusterOpen() {
+        JedisCluster ownedCluster = mock(JedisCluster.class);
+        RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider((nodes, clientConfig) -> ownedCluster);
+
+        RedisCheckpointer ownedCheckpointer = assertInstanceOf(RedisCheckpointer.class, provider.create(Map.of(
+                "connection", Map.of("nodes", List.of("127.0.0.1:7000")),
+                "dump_type", "json"
+        )));
+
+        ownedCheckpointer.close();
+
+        verify(ownedCluster).close();
+
+        JedisCluster externalCluster = mock(JedisCluster.class);
+        RedisCheckpointer externalCheckpointer = assertInstanceOf(RedisCheckpointer.class, provider.create(Map.of(
+                "connection", Map.of("redis_client", externalCluster),
+                "dump_type", "json"
+        )));
+
+        externalCheckpointer.close();
+
+        verify(externalCluster, never()).close();
+    }
+
+    @Test
+    void closeDelegatesResourceReleaseToRedisStore() {
+        CloseTrackingRedisStore redisStore = new CloseTrackingRedisStore(new FakeRedisClient());
+        RedisCheckpointer checkpointer = new RedisCheckpointer(redisStore, Map.of());
+
+        checkpointer.close();
+
+        assertEquals(1, redisStore.closeCount());
     }
 
     @Test
@@ -121,7 +197,6 @@ class RedisCheckpointerProviderTest {
         assertTrue(connection.isClusterMode());
         assertEquals("redis://127.0.0.1:7000", connection.getConnectionUrl());
 
-        CheckpointerFactory.register("redis", new RedisCheckpointer.Provider());
         Checkpointer checkpointer = CheckpointerFactory.create(new CheckpointerConfig("redis", Map.of(
                 "connection", Map.of("url", "redis://127.0.0.1:6379"),
                 "dump_type", "json"
@@ -129,6 +204,158 @@ class RedisCheckpointerProviderTest {
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
         assertNotNull(redisCheckpointer.graphStore());
+    }
+
+    @Test
+    void connectionConfigParsesClusterNodesAndBasicOptions() {
+        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", true,
+                "nodes", List.of("127.0.0.1:7000", "127.0.0.1:7001"),
+                "password", "secret",
+                "ssl", true,
+                "timeout_millis", 1500
+        ));
+
+        connection.validate();
+
+        assertTrue(connection.isClusterMode());
+        assertEquals(List.of("127.0.0.1:7000", "127.0.0.1:7001"), connection.getNodes());
+        assertEquals("secret", connection.getPassword());
+        assertTrue(connection.isSsl());
+        assertEquals(1500, connection.getTimeoutMillis());
+        assertEquals(Set.of(new HostAndPort("127.0.0.1", 7000), new HostAndPort("127.0.0.1", 7001)),
+                connection.getClusterNodes());
+    }
+
+    @Test
+    void connectionConfigDefaultsClusterOptions() {
+        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("127.0.0.1:7000"),
+                "password", ""
+        ));
+
+        connection.validate();
+
+        assertTrue(connection.isClusterMode());
+        assertEquals(2000, connection.getTimeoutMillis());
+        assertFalse(connection.isSsl());
+        assertEquals(null, connection.getPassword());
+    }
+
+    @Test
+    void connectionConfigRejectsInvalidClusterNodesAndTimeout() {
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", true,
+                "nodes", List.of("127.0.0.1")
+        )).validate());
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", true,
+                "nodes", List.of("127.0.0.1:abc")
+        )).validate());
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", true,
+                "nodes", List.of("redis://127.0.0.1:7000")
+        )).validate());
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", true,
+                "nodes", List.of("127.0.0.1:7000,127.0.0.1:7001")
+        )).validate());
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", false,
+                "nodes", List.of("127.0.0.1:7000")
+        )).validate());
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "cluster_mode", true,
+                "nodes", List.of("127.0.0.1:7000"),
+                "timeout_millis", 0
+        )).validate());
+    }
+
+    @Test
+    void connectionConfigIgnoresBlankClusterNodes() {
+        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("", "  ", "127.0.0.1:7000")
+        ));
+
+        connection.validate();
+
+        assertEquals(List.of("127.0.0.1:7000"), connection.getNodes());
+        assertEquals(Set.of(new HostAndPort("127.0.0.1", 7000)), connection.getClusterNodes());
+    }
+
+    @Test
+    void connectionConfigIgnoresNullAndBlankClusterNodes() {
+        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
+                "nodes", Arrays.asList(null, "", "  ", "127.0.0.1:7000")
+        ));
+
+        connection.validate();
+
+        assertEquals(List.of("127.0.0.1:7000"), connection.getNodes());
+        assertEquals(Set.of(new HostAndPort("127.0.0.1", 7000)), connection.getClusterNodes());
+    }
+
+    @Test
+    void connectionConfigAllowsUrlWhenNodesAreBlank() {
+        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
+                "url", "redis://127.0.0.1:6379",
+                "nodes", List.of("", "  ")
+        ));
+
+        connection.validate();
+
+        assertFalse(connection.isClusterMode());
+        assertEquals(List.of(), connection.getNodes());
+        assertEquals("redis://127.0.0.1:6379", connection.getConnectionUrl());
+    }
+
+    @Test
+    void connectionConfigTreatsOnlyBlankNodesAsMissing() {
+        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("", "  ")
+        ));
+
+        assertEquals(List.of(), connection.getNodes());
+        assertFalse(connection.isClusterMode());
+        assertThrows(IllegalArgumentException.class, connection::validate);
+    }
+
+    @Test
+    void connectionConfigRejectsInvalidBooleanAndTimeoutValues() {
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("127.0.0.1:7000"),
+                "ssl", "tru"
+        )));
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("127.0.0.1:7000"),
+                "timeout_millis", 1.5
+        )));
+
+        assertThrows(IllegalArgumentException.class, () -> RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("127.0.0.1:7000"),
+                "timeout_millis", 2147483648L
+        )));
+    }
+
+    @Test
+    void connectionConfigParsesBooleanStringsForSsl() {
+        RedisConnectionConfig sslEnabled = RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("127.0.0.1:7000"),
+                "ssl", "true"
+        ));
+        RedisConnectionConfig sslDisabled = RedisConnectionConfig.fromMap(Map.of(
+                "nodes", List.of("127.0.0.1:7000"),
+                "ssl", "false"
+        ));
+
+        assertTrue(sslEnabled.isSsl());
+        assertFalse(sslDisabled.isSsl());
     }
 
     @Test
@@ -254,6 +481,23 @@ class RedisCheckpointerProviderTest {
             operations.forEach(Runnable::run);
             operations.clear();
             return List.of();
+        }
+    }
+
+    static final class CloseTrackingRedisStore extends RedisStore {
+        private int closeCount;
+
+        CloseTrackingRedisStore(Object redisClient) {
+            super(redisClient);
+        }
+
+        @Override
+        public void close() {
+            closeCount++;
+        }
+
+        int closeCount() {
+            return closeCount;
         }
     }
 }

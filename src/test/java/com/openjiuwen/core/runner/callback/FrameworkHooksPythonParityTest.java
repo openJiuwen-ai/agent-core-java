@@ -4,11 +4,7 @@
 
 package com.openjiuwen.core.runner.callback;
 
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -236,28 +232,16 @@ class FrameworkHooksPythonParityTest {
     }
 
     @Test
-    void afterHookExceptionLogged() {
-        Logger logger = (Logger) LoggerFactory.getLogger(AsyncCallbackFramework.class);
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        try {
-            AsyncCallbackFramework framework = new AsyncCallbackFramework();
-            framework.addHook("event", HookType.AFTER, kwargs -> {
-                throw new RuntimeException("Hook error!");
-            });
-            framework.on("event").apply(named("callback", kwargs -> "result"));
+    void afterHookExceptionDoesNotBreakCallbackExecution() {
+        AsyncCallbackFramework framework = new AsyncCallbackFramework();
+        framework.addHook("event", HookType.AFTER, kwargs -> {
+            throw new RuntimeException("Hook error!");
+        });
+        framework.on("event").apply(named("callback", kwargs -> "result"));
 
-            framework.triggerResults("event");
+        List<Object> results = framework.triggerResults("event");
 
-            assertThat(appender.list)
-                    .anySatisfy(event -> assertThat(event.getFormattedMessage())
-                            .contains("Hook execution failed")
-                            .contains("Hook error!"));
-        } finally {
-            logger.detachAppender(appender);
-            appender.stop();
-        }
+        assertThat(results).containsExactly("result");
     }
 
     private static Function<Map<String, Object>, Object> named(

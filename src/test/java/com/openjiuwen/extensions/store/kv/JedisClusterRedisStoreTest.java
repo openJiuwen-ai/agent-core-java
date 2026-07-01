@@ -192,6 +192,26 @@ class JedisClusterRedisStoreTest {
     }
 
     @Test
+    void closeDoesNotReleaseExternalClusterByDefault() {
+        JedisCluster cluster = mock(JedisCluster.class);
+        JedisClusterRedisStore store = new JedisClusterRedisStore(cluster);
+
+        store.close();
+
+        verify(cluster, never()).close();
+    }
+
+    @Test
+    void closeReleasesOwnedCluster() {
+        JedisCluster cluster = mock(JedisCluster.class);
+        JedisClusterRedisStore store = new JedisClusterRedisStore(cluster, true);
+
+        store.close();
+
+        verify(cluster).close();
+    }
+
+    @Test
     void isMasterReplicationInfoRequiresExactMasterRoleLine() {
         assertTrue(JedisClusterRedisStore.isMasterReplicationInfo(
                 "# Replication\r\nrole:master\r\nconnected_slaves:1\r\n"));

@@ -92,6 +92,32 @@ class ModelTest {
     }
 
     @Test
+    void registerInvokerOverridesExistingClientFactoryForSameProvider() {
+        Model.registerClientFactory("OpenAI", (clientConfig, requestConfig) ->
+                (messages, options) -> CompletableFuture.completedFuture(new AssistantMessage("factory")));
+        Model.registerInvoker("OpenAI", (messages, modelConfig, modelClientConfig, options) ->
+                CompletableFuture.completedFuture(new AssistantMessage("invoker")));
+
+        Model model = Model.init_model(
+                "OpenAI",
+                "model-a",
+                "key",
+                "https://example.test",
+                0.2f,
+                0.3f,
+                42,
+                7.5f,
+                4,
+                false,
+                null
+        );
+
+        AssistantMessage response = model.invoke("hello").toCompletableFuture().join();
+
+        assertEquals("invoker", response.getContentAsString());
+    }
+
+    @Test
     void constructorCreatesBuiltinOpenAiClientWithoutManualRegistration() {
         ModelClientConfig clientConfig = ModelClientConfig.builder()
                 .clientProvider(ProviderType.OPEN_AI)

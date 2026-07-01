@@ -4,9 +4,18 @@
 
 package com.openjiuwen.extensions.checkpointer.redis;
 
+import redis.clients.jedis.HostAndPort;
+
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Redis connection configuration.
@@ -18,6 +27,8 @@ import java.util.Map;
  * {@code openjiuwen/extensions/checkpointer/redis/checkpointer.py}.</p>
  */
 public class RedisConnectionConfig {
+
+    private static final int DEFAULT_TIMEOUT_MILLIS = 2000;
 
     /**
      * Pre-configured Redis client instance.
@@ -33,6 +44,26 @@ public class RedisConnectionConfig {
      * Explicitly enable/disable cluster mode.
      */
     private Boolean clusterMode;
+
+    /**
+     * Redis cluster node addresses in host:port form.
+     */
+    private List<String> nodes = new ArrayList<>();
+
+    /**
+     * Redis password.
+     */
+    private String password;
+
+    /**
+     * Whether SSL should be used for the Redis connection.
+     */
+    private boolean ssl;
+
+    /**
+     * Redis connection timeout in milliseconds.
+     */
+    private Integer timeoutMillis;
 
     /**
      * Additional connection arguments.
@@ -87,6 +118,26 @@ public class RedisConnectionConfig {
         if (config.get("cluster_mode") != null) {
             connectionConfig.setClusterMode((Boolean) config.get("cluster_mode"));
         }
+
+        Object nodesValue = config.get("nodes");
+        if (nodesValue != null) {
+            connectionConfig.setNodes(parseNodesValue(nodesValue));
+        }
+
+        Object passwordValue = config.get("password");
+        if (passwordValue != null) {
+            connectionConfig.setPassword(String.valueOf(passwordValue));
+        }
+
+        Object sslValue = config.get("ssl");
+        if (sslValue != null) {
+            connectionConfig.setSsl(parseSslValue(sslValue));
+        }
+
+        Object timeoutValue = config.get("timeout_millis");
+        if (timeoutValue != null) {
+            connectionConfig.setTimeoutMillis(parseTimeoutValue(timeoutValue));
+        }
         
         @SuppressWarnings("unchecked")
         Map<String, Object> args = (Map<String, Object>) config.get("connection_args");
@@ -101,9 +152,9 @@ public class RedisConnectionConfig {
      * @throws IllegalArgumentException if configuration is invalid
      */
     public void validate() {
-        if (redisClient == null && (url == null || url.isBlank())) {
+        if (redisClient == null && (url == null || url.isBlank()) && nodes.isEmpty()) {
             throw new IllegalArgumentException(
-                "Either 'redis_client' or 'url' must be provided in RedisConnectionConfig"
+                "Either 'redis_client', 'url', or 'nodes' must be provided in RedisConnectionConfig"
             );
         }
 
@@ -116,6 +167,17 @@ public class RedisConnectionConfig {
                 );
             }
         }
+
+        if (!nodes.isEmpty()) {
+            if (Boolean.FALSE.equals(clusterMode)) {
+                throw new IllegalArgumentException("'nodes' require cluster_mode to be true or omitted");
+            }
+            getClusterNodes();
+        }
+
+        if (timeoutMillis != null && timeoutMillis <= 0) {
+            throw new IllegalArgumentException("'timeout_millis' must be greater than 0");
+        }
     }
 
     /**
@@ -124,13 +186,17 @@ public class RedisConnectionConfig {
      * @return True if cluster mode should be used
      */
     public boolean isClusterMode() {
+        if (clusterMode != null) {
+            return clusterMode;
+        }
+
+        if (!nodes.isEmpty()) {
+            return true;
+        }
+
         if (redisClient != null) {
             // Check if client is a cluster client
             return redisClient.getClass().getSimpleName().contains("Cluster");
-        }
-
-        if (clusterMode != null) {
-            return clusterMode;
         }
 
         if (connectionArgs != null) {
@@ -195,6 +261,58 @@ public class RedisConnectionConfig {
         this.clusterMode = clusterMode;
     }
 
+    public List<String> getNodes() {
+        return Collections.unmodifiableList(nodes);
+    }
+
+    public void setNodes(Collection<String> nodes) {
+        this.nodes = new ArrayList<>();
+        if (nodes == null) {
+            return;
+        }
+        for (String node : nodes) {
+            if (node == null) {
+                continue;
+            }
+            String trimmedNode = node.trim();
+            if (!trimmedNode.isEmpty()) {
+                this.nodes.add(trimmedNode);
+            }
+        }
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password == null || password.isEmpty() ? null : password;
+    }
+
+    public boolean isSsl() {
+        return ssl;
+    }
+
+    public void setSsl(boolean ssl) {
+        this.ssl = ssl;
+    }
+
+    public int getTimeoutMillis() {
+        return timeoutMillis == null ? DEFAULT_TIMEOUT_MILLIS : timeoutMillis;
+    }
+
+    public void setTimeoutMillis(Integer timeoutMillis) {
+        this.timeoutMillis = timeoutMillis;
+    }
+
+    public Set<HostAndPort> getClusterNodes() {
+        Set<HostAndPort> clusterNodes = new LinkedHashSet<>();
+        for (String node : nodes) {
+            clusterNodes.add(parseNode(node));
+        }
+        return clusterNodes;
+    }
+
     public Map<String, Object> getConnectionArgs() {
         if (connectionArgs == null) {
             return Collections.emptyMap();
@@ -208,5 +326,129 @@ public class RedisConnectionConfig {
             return;
         }
         this.connectionArgs = new LinkedHashMap<>(connectionArgs);
+    }
+
+    public static HostAndPort parseNode(String node) {
+        if (node == null || node.isBlank()) {
+            throw new IllegalArgumentException("Redis cluster node must be in host:port form");
+        }
+
+        String trimmedNode = node.trim();
+        if (trimmedNode.contains("://") || trimmedNode.contains(",")) {
+            throw new IllegalArgumentException("Redis cluster node must be in host:port form: " + node);
+        }
+
+        int separatorIndex = trimmedNode.lastIndexOf(':');
+        if (separatorIndex <= 0 || separatorIndex == trimmedNode.length() - 1) {
+            throw new IllegalArgumentException("Redis cluster node must be in host:port form: " + node);
+        }
+
+        String host = trimmedNode.substring(0, separatorIndex).trim();
+        String portText = trimmedNode.substring(separatorIndex + 1).trim();
+        if (host.isEmpty() || portText.isEmpty()) {
+            throw new IllegalArgumentException("Redis cluster node must be in host:port form: " + node);
+        }
+
+        int port;
+        try {
+            port = Integer.parseInt(portText);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Redis cluster node port must be a number: " + node, e);
+        }
+
+        if (port <= 0 || port > 65535) {
+            throw new IllegalArgumentException("Redis cluster node port must be between 1 and 65535: " + node);
+        }
+
+        return new HostAndPort(host, port);
+    }
+
+    private static List<String> parseNodesValue(Object nodesValue) {
+        if (nodesValue instanceof Collection<?> nodeCollection) {
+            List<String> parsedNodes = new ArrayList<>();
+            for (Object node : nodeCollection) {
+                parsedNodes.add(node == null ? null : String.valueOf(node));
+            }
+            return parsedNodes;
+        }
+
+        if (nodesValue instanceof String stringValue) {
+            return List.of(stringValue);
+        }
+
+        throw new IllegalArgumentException("'nodes' must be a collection or string");
+    }
+
+    private static boolean parseSslValue(Object sslValue) {
+        if (sslValue instanceof Boolean booleanValue) {
+            return booleanValue;
+        }
+        if (sslValue instanceof String stringValue) {
+            String normalizedValue = stringValue.trim();
+            if ("true".equalsIgnoreCase(normalizedValue)) {
+                return true;
+            }
+            if ("false".equalsIgnoreCase(normalizedValue)) {
+                return false;
+            }
+            throw new IllegalArgumentException("'ssl' must be true or false");
+        }
+        throw new IllegalArgumentException("'ssl' must be a boolean or string");
+    }
+
+    private static Integer parseTimeoutValue(Object timeoutValue) {
+        if (timeoutValue instanceof Number numberValue) {
+            return requirePositiveTimeout(toExactInt(numberValue));
+        }
+        if (timeoutValue instanceof String stringValue) {
+            try {
+                return requirePositiveTimeout(Integer.parseInt(stringValue.trim()));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("'timeout_millis' must be an integer", e);
+            }
+        }
+        throw new IllegalArgumentException("'timeout_millis' must be a number or string");
+    }
+
+    private static int toExactInt(Number numberValue) {
+        try {
+            if (numberValue instanceof BigInteger bigIntegerValue) {
+                return bigIntegerValue.intValueExact();
+            }
+            if (numberValue instanceof BigDecimal bigDecimalValue) {
+                return bigDecimalValue.intValueExact();
+            }
+            if (numberValue instanceof Byte || numberValue instanceof Short || numberValue instanceof Integer
+                    || numberValue instanceof Long) {
+                long longValue = numberValue.longValue();
+                if (longValue < Integer.MIN_VALUE || longValue > Integer.MAX_VALUE) {
+                    throw new ArithmeticException("integer overflow");
+                }
+                return (int) longValue;
+            }
+            if (numberValue instanceof Float || numberValue instanceof Double) {
+                double doubleValue = numberValue.doubleValue();
+                if (!Double.isFinite(doubleValue) || doubleValue != Math.rint(doubleValue)
+                        || doubleValue < Integer.MIN_VALUE || doubleValue > Integer.MAX_VALUE) {
+                    throw new ArithmeticException("not an exact integer");
+                }
+                return (int) doubleValue;
+            }
+
+            long longValue = numberValue.longValue();
+            if (longValue < Integer.MIN_VALUE || longValue > Integer.MAX_VALUE) {
+                throw new ArithmeticException("integer overflow");
+            }
+            return (int) longValue;
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException("'timeout_millis' must be an integer within int range", e);
+        }
+    }
+
+    private static int requirePositiveTimeout(int timeoutMillis) {
+        if (timeoutMillis <= 0) {
+            throw new IllegalArgumentException("'timeout_millis' must be greater than 0");
+        }
+        return timeoutMillis;
     }
 }

@@ -41,7 +41,11 @@ public class JedisClusterRedisStore extends RedisStore {
     private final JedisCluster jedisCluster;
 
     public JedisClusterRedisStore(JedisCluster jedisCluster) {
-        super(Objects.requireNonNull(jedisCluster, "jedisCluster must not be null"));
+        this(jedisCluster, false);
+    }
+
+    public JedisClusterRedisStore(JedisCluster jedisCluster, boolean ownsClient) {
+        super(Objects.requireNonNull(jedisCluster, "jedisCluster must not be null"), ownsClient);
         this.jedisCluster = jedisCluster;
     }
 

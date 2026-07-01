@@ -36,12 +36,15 @@ import java.util.concurrent.CompletableFuture;
  * <p>Mirrors Python's {@code RedisStore} in
  * {@code openjiuwen/extensions/store/kv/redis_store.py}.</p>
  */
-public class RedisStore extends BaseKVStore {
+public class RedisStore extends BaseKVStore implements AutoCloseable {
 
     private static final Logger logger = LoggerFactory.getLogger(RedisStore.class);
 
     private final Object redisClient;
     private final boolean isCluster;
+    // This is a lifecycle ownership flag, not a closeability check. Caller-supplied clients may also be
+    // AutoCloseable, but RedisStore should close only clients it created or explicitly owns.
+    private final boolean ownsClient;
 
     /**
      * Initialize RedisStore with a Redis client (standalone or cluster).
@@ -49,8 +52,19 @@ public class RedisStore extends BaseKVStore {
      * @param redisClient The Redis client instance (Jedis, Lettuce, or Redisson)
      */
     public RedisStore(Object redisClient) {
+        this(redisClient, false);
+    }
+
+    /**
+     * Initialize RedisStore with a Redis client and ownership semantics.
+     *
+     * @param redisClient The Redis client instance (Jedis, Lettuce, or Redisson)
+     * @param ownsClient  Whether this store should close the client when the store is closed
+     */
+    public RedisStore(Object redisClient, boolean ownsClient) {
         this.redisClient = Objects.requireNonNull(redisClient, "redisClient must not be null");
         this.isCluster = detectClusterMode(redisClient);
+        this.ownsClient = ownsClient;
     }
 
     @Override
@@ -332,6 +346,18 @@ public class RedisStore extends BaseKVStore {
      */
     public boolean isCluster() {
         return isCluster;
+    }
+
+    @Override
+    public void close() {
+        if (!ownsClient || !(redisClient instanceof AutoCloseable closeable)) {
+            return;
+        }
+        try {
+            closeable.close();
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to close Redis client", e);
+        }
     }
 
     private static boolean detectClusterMode(Object client) {

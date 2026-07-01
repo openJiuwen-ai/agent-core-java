@@ -196,6 +196,7 @@ public class OpenAIModelClient extends BaseModelClient {
                 false,
                 effectiveKwargs
         );
+        String authorization = extractAuthorizationOverride(requestCustomHeaders);
         applyExtraHeadersParam(params, requestCustomHeaders);
         recordTracerData(tracerRecordData, "llm_params", params);
 
@@ -205,7 +206,7 @@ public class OpenAIModelClient extends BaseModelClient {
                             "timeout", timeout != null ? timeout : modelClientConfig.getTimeout(),
                             "max_retries", modelClientConfig.getMaxRetries()
                     ));
-            Map<String, Object> responseData = postJson(params, timeout);
+            Map<String, Object> responseData = postJson(params, timeout, authorization);
             Loggers.LLM.info("OpenAI API response received. {}", Map.of("response", responseData));
             AssistantMessage assistantMessage = parseResponse(responseData, outputParser);
             recordTracerData(tracerRecordData, "llm_response", assistantMessage);
@@ -247,11 +248,15 @@ public class OpenAIModelClient extends BaseModelClient {
                 true,
                 effectiveKwargs
         );
+        String authorization = extractAuthorizationOverride(requestCustomHeaders);
         applyExtraHeadersParam(params, requestCustomHeaders);
         recordTracerData(tracerRecordData, "llm_params", params);
 
         try {
-            return tracingIterator(streamChunks(params, outputParser, timeout), tracerRecordData);
+            return tracingIterator(
+                    streamChunks(params, outputParser, timeout, authorization),
+                    tracerRecordData
+            );
         } catch (Exception exception) {
             String detail = errorDetail(exception);
             Loggers.LLM.error("OpenAI API async stream error. {}", detail);
@@ -374,9 +379,12 @@ public class OpenAIModelClient extends BaseModelClient {
                 .build();
     }
 
-    private Map<String, Object> postJson(Map<String, Object> params, Float timeout) throws Exception {
+    private Map<String, Object> postJson(
+            Map<String, Object> params,
+            Float timeout,
+            String authorization) throws Exception {
         HttpResponse<String> response = httpClient.send(
-                buildRequest(params, timeout),
+                buildRequest(params, timeout, authorization),
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
         );
         ensureSuccess(response.statusCode(), response.body());
@@ -386,9 +394,10 @@ public class OpenAIModelClient extends BaseModelClient {
     private Iterator<AssistantMessageChunk> streamChunks(
             Map<String, Object> params,
             BaseOutputParser outputParser,
-            Float timeout) throws Exception {
+            Float timeout,
+            String authorization) throws Exception {
         HttpResponse<InputStream> response = httpClient.send(
-                buildRequest(params, timeout),
+                buildRequest(params, timeout, authorization),
                 HttpResponse.BodyHandlers.ofInputStream()
         );
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
@@ -407,15 +416,22 @@ public class OpenAIModelClient extends BaseModelClient {
         return new TracingChunkIterator(chunks, tracerRecordData);
     }
 
-    private HttpRequest buildRequest(Map<String, Object> params, Float timeout) throws JsonProcessingException {
+    private HttpRequest buildRequest(
+            Map<String, Object> params,
+            Float timeout,
+            String authorization) throws JsonProcessingException {
         Map<String, Object> body = requestBodyParams(params);
         String bodyJson = OBJECT_MAPPER.writeValueAsString(body);
+        String effectiveAuthorization = authorization != null
+                ? authorization
+                : "Bearer " + modelClientConfig.getApiKey();
+        validateAuthorizationHeader(effectiveAuthorization);
 
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(trimTrailingSlash(modelClientConfig.getApiBase()) + CHAT_COMPLETIONS_PATH))
                 .timeout(timeoutDuration(timeout))
                 .header("Content-Type", CONTENT_TYPE)
-                .header("Authorization", "Bearer " + modelClientConfig.getApiKey())
+                .header("Authorization", effectiveAuthorization)
                 .POST(HttpRequest.BodyPublishers.ofString(bodyJson, StandardCharsets.UTF_8));
 
         Map<String, String> extraHeaders = extractExtraHeaders(params.get("extra_headers"));
@@ -423,6 +439,18 @@ public class OpenAIModelClient extends BaseModelClient {
             builder.setHeader(entry.getKey(), entry.getValue());
         }
         return builder.build();
+    }
+
+    private static void validateAuthorizationHeader(String authorization) {
+        if (authorization == null) {
+            throw new IllegalArgumentException("Invalid Authorization header value");
+        }
+        for (int i = 0; i < authorization.length(); i++) {
+            char current = authorization.charAt(i);
+            if (current < ' ' || current == 127) {
+                throw new IllegalArgumentException("Invalid Authorization header value");
+            }
+        }
     }
 
     private Map<String, Object> requestBodyParams(Map<String, Object> params) {
@@ -441,6 +469,23 @@ public class OpenAIModelClient extends BaseModelClient {
         if (!effectiveHeaders.isEmpty()) {
             params.put("extra_headers", effectiveHeaders);
         }
+    }
+
+    private static String extractAuthorizationOverride(Map<String, ?> requestCustomHeaders) {
+        if (requestCustomHeaders == null || requestCustomHeaders.isEmpty()) {
+            return null;
+        }
+        for (Map.Entry<String, ?> entry : requestCustomHeaders.entrySet()) {
+            String key = entry.getKey();
+            if (key == null || !"Authorization".equalsIgnoreCase(key.trim()) || entry.getValue() == null) {
+                continue;
+            }
+            String authorization = String.valueOf(entry.getValue());
+            if (!authorization.trim().isEmpty()) {
+                return authorization;
+            }
+        }
+        return null;
     }
 
     @SuppressWarnings("unchecked")

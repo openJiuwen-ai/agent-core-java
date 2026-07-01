@@ -30,14 +30,14 @@ import java.util.logging.Level;
 import java.util.logging.LogRecord;
 
 /**
- * Default logger implementation backed by SLF4J + Logback.
+ * Default logger implementation backed by provider-neutral SLF4J and a JUL mirror.
  *
  * <p>Mirrors Python's {@code DefaultLogger} in
  * {@code openjiuwen/core/common/logging/default/default_impl.py}.</p>
  * <p>
  * Implements {@link LoggerProtocol} providing:
  * <ul>
- *   <li>Console and file output (configured via Logback)</li>
+ *   <li>Console and file output through the active SLF4J provider</li>
  *   <li>Structured event logging via JSON serialization</li>
  *   <li>MDC-based context injection (trace_id, log_type)</li>
  *   <li>Control character sanitization</li>
@@ -52,6 +52,7 @@ public class DefaultLogger implements LoggerProtocol {
     private final Logger slf4jLogger;
     private final java.util.logging.Logger julLogger;
     private final List<Filter> filters = new CopyOnWriteArrayList<>();
+    private volatile int thresholdLevel = LogLevels.INFO;
 
     public DefaultLogger(String logType, Map<String, Object> config) {
         this.logType = logType;
@@ -68,71 +69,111 @@ public class DefaultLogger implements LoggerProtocol {
 
     @Override
     public void debug(String msg, Object... args) {
+        if (!isThresholdEnabled(LogLevels.DEBUG)) {
+            return;
+        }
         if (slf4jLogger.isDebugEnabled()) {
             setMdc();
-            slf4jLogger.debug(sanitize(msg), args);
-            publishToJul(Level.FINE, msg, null, args);
-            clearMdc();
+            try {
+                slf4jLogger.debug(sanitize(msg), args);
+            } finally {
+                clearMdc();
+            }
         }
+        publishToJul(Level.FINE, msg, null, args);
     }
 
     @Override
     public void info(String msg, Object... args) {
+        if (!isThresholdEnabled(LogLevels.INFO)) {
+            return;
+        }
         if (slf4jLogger.isInfoEnabled()) {
             setMdc();
-            slf4jLogger.info(sanitize(msg), args);
-            publishToJul(Level.INFO, msg, null, args);
-            clearMdc();
+            try {
+                slf4jLogger.info(sanitize(msg), args);
+            } finally {
+                clearMdc();
+            }
         }
+        publishToJul(Level.INFO, msg, null, args);
     }
 
     @Override
     public void warning(String msg, Object... args) {
+        if (!isThresholdEnabled(LogLevels.WARNING)) {
+            return;
+        }
         if (slf4jLogger.isWarnEnabled()) {
             setMdc();
-            slf4jLogger.warn(sanitize(msg), args);
-            publishToJul(Level.WARNING, msg, null, args);
-            clearMdc();
+            try {
+                slf4jLogger.warn(sanitize(msg), args);
+            } finally {
+                clearMdc();
+            }
         }
+        publishToJul(Level.WARNING, msg, null, args);
     }
 
     @Override
     public void error(String msg, Object... args) {
+        if (!isThresholdEnabled(LogLevels.ERROR)) {
+            return;
+        }
         if (slf4jLogger.isErrorEnabled()) {
             setMdc();
-            slf4jLogger.error(sanitize(msg), args);
-            publishToJul(Level.SEVERE, msg, null, args);
-            clearMdc();
+            try {
+                slf4jLogger.error(sanitize(msg), args);
+            } finally {
+                clearMdc();
+            }
         }
+        publishToJul(Level.SEVERE, msg, null, args);
     }
 
     @Override
     public void critical(String msg, Object... args) {
+        if (!isThresholdEnabled(LogLevels.CRITICAL)) {
+            return;
+        }
         // SLF4J has no CRITICAL level; use ERROR
         if (slf4jLogger.isErrorEnabled()) {
             setMdc();
-            slf4jLogger.error("[CRITICAL] " + sanitize(msg), args);
-            publishToJul(Level.SEVERE, "[CRITICAL] " + msg, null, args);
-            clearMdc();
+            try {
+                slf4jLogger.error("[CRITICAL] " + sanitize(msg), args);
+            } finally {
+                clearMdc();
+            }
         }
+        publishToJul(Level.SEVERE, "[CRITICAL] " + msg, null, args);
     }
 
     @Override
     public void exception(String msg, Throwable t, Object... args) {
-        setMdc();
-        slf4jLogger.error(sanitize(msg), t);
+        if (!isThresholdEnabled(LogLevels.ERROR)) {
+            return;
+        }
+        if (slf4jLogger.isErrorEnabled()) {
+            setMdc();
+            try {
+                slf4jLogger.error(sanitize(msg), t);
+            } finally {
+                clearMdc();
+            }
+        }
         publishToJul(Level.SEVERE, msg, t, args);
-        clearMdc();
     }
 
     @Override
     public void log(int level, String msg, Object... args) {
         // Map numeric levels to SLF4J methods
-        if (level >= 40) {
+        if (level >= LogLevels.CRITICAL) {
+            critical(msg, args);
+        } else if (level >= LogLevels.ERROR) {
             error(msg, args);
-        } else if (level >= 30) {
+        } else if (level >= LogLevels.WARNING) {
             warning(msg, args);
-        } else if (level >= 20) {
+        } else if (level >= LogLevels.INFO) {
             info(msg, args);
         } else {
             debug(msg, args);
@@ -141,10 +182,9 @@ public class DefaultLogger implements LoggerProtocol {
 
     @Override
     public void setLevel(int level) {
-        julLogger.setLevel(toJulLevel(level));
-        if (slf4jLogger instanceof ch.qos.logback.classic.Logger logbackLogger) {
-            logbackLogger.setLevel(toLogbackLevel(level));
-        }
+        int normalizedLevel = LogLevels.normalizeLogLevel(level, LogLevels.INFO);
+        thresholdLevel = normalizedLevel;
+        julLogger.setLevel(toJulLevel(normalizedLevel));
     }
 
     @Override
@@ -229,7 +269,8 @@ public class DefaultLogger implements LoggerProtocol {
         switch (logLevel) {
             case DEBUG -> debug(json);
             case WARNING -> warning(json);
-            case ERROR, CRITICAL -> error(json);
+            case ERROR -> error(json);
+            case CRITICAL -> critical(json);
             default -> info(json);
         }
     }
@@ -241,6 +282,10 @@ public class DefaultLogger implements LoggerProtocol {
             return;
         }
         setLevel(LogLevels.normalizeLogLevel(currentConfig.get("level"), LogLevels.INFO));
+    }
+
+    private boolean isThresholdEnabled(int level) {
+        return LogLevels.normalizeLogLevel(level, LogLevels.INFO) >= thresholdLevel;
     }
 
     private void enrichEventContext(BaseLogEvent eventObj) {
@@ -299,22 +344,6 @@ public class DefaultLogger implements LoggerProtocol {
             return Level.INFO;
         }
         return Level.FINE;
-    }
-
-    private static ch.qos.logback.classic.Level toLogbackLevel(int level) {
-        if (level >= 50) {
-            return ch.qos.logback.classic.Level.ERROR;
-        }
-        if (level >= 40) {
-            return ch.qos.logback.classic.Level.ERROR;
-        }
-        if (level >= 30) {
-            return ch.qos.logback.classic.Level.WARN;
-        }
-        if (level >= 20) {
-            return ch.qos.logback.classic.Level.INFO;
-        }
-        return ch.qos.logback.classic.Level.DEBUG;
     }
 
     private static String formatMessage(String msg, Object... args) {

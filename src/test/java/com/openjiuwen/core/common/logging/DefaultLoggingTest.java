@@ -6,7 +6,9 @@ package com.openjiuwen.core.common.logging;
 
 import com.openjiuwen.core.common.logging.defaults.DefaultLogger;
 import com.openjiuwen.core.common.logging.defaults.LoggingDefaults;
+import com.openjiuwen.core.common.logging.events.BaseLogEvent;
 import com.openjiuwen.core.common.logging.events.LogEventType;
+import com.openjiuwen.core.common.logging.events.LogLevel;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -44,6 +46,67 @@ class DefaultLoggingTest {
         assertNotNull(handler.lastRecord);
         assertTrue(handler.lastRecord.getMessage().contains("[CRITICAL]"));
         assertTrue(handler.lastRecord.getMessage().contains("\\n"));
+    }
+
+    @Test
+    void defaultLoggerLogPublishesCriticalWhenThresholdIsCritical() {
+        DefaultLogger logger = new DefaultLogger("critical-threshold",
+                Map.of("output", "console", "level", LogLevels.CRITICAL));
+        CapturingHandler handler = new CapturingHandler();
+        logger.addHandler(handler);
+
+        logger.log(LogLevels.CRITICAL, "visible critical");
+
+        assertNotNull(handler.lastRecord);
+        assertTrue(handler.lastRecord.getMessage().contains("visible critical"));
+    }
+
+    @Test
+    void defaultLoggerLogEventPublishesStructuredCriticalWhenThresholdIsCritical() {
+        DefaultLogger logger = new DefaultLogger("structured-critical-threshold",
+                Map.of("output", "console", "level", LogLevels.CRITICAL));
+        CapturingHandler handler = new CapturingHandler();
+        logger.addHandler(handler);
+        BaseLogEvent event = new BaseLogEvent();
+        event.setLogLevel(LogLevel.CRITICAL);
+        event.setEventType(LogEventType.AGENT_START);
+
+        logger.logEvent("visible structured critical", LogEventType.AGENT_START, event);
+
+        assertNotNull(handler.lastRecord);
+        assertTrue(handler.lastRecord.getMessage().contains("\"log_level\":\"CRITICAL\""));
+        assertTrue(handler.lastRecord.getMessage().contains("visible structured critical"));
+    }
+
+    @Test
+    void defaultLoggerFiltersMessagesBelowConfiguredThreshold() {
+        DefaultLogger logger = new DefaultLogger("threshold", Map.of("output", "console", "level", LogLevels.ERROR));
+        CapturingHandler handler = new CapturingHandler();
+        logger.addHandler(handler);
+
+        logger.info("hidden info");
+        assertFalse(handler.hasRecord(), "INFO must be filtered when threshold is ERROR");
+
+        logger.error("visible error");
+        assertTrue(handler.hasRecord(), "ERROR must be published when threshold is ERROR");
+        assertTrue(handler.lastRecord.getMessage().contains("visible error"));
+    }
+
+    @Test
+    void defaultLoggerReconfigureUpdatesThresholdWithoutBackendSpecificLogger() {
+        DefaultLogger logger = new DefaultLogger("reconfigure-threshold",
+                Map.of("output", "console", "level", LogLevels.ERROR));
+        CapturingHandler handler = new CapturingHandler();
+        logger.addHandler(handler);
+
+        logger.info("hidden before reconfigure");
+        assertFalse(handler.hasRecord());
+
+        logger.reconfigure(Map.of("output", "console", "level", LogLevels.INFO));
+        logger.info("visible after reconfigure");
+
+        assertTrue(handler.hasRecord());
+        assertTrue(handler.lastRecord.getMessage().contains("visible after reconfigure"));
     }
 
     @Test
@@ -86,6 +149,10 @@ class DefaultLoggingTest {
         @Override
         public void publish(LogRecord record) {
             this.lastRecord = record;
+        }
+
+        boolean hasRecord() {
+            return lastRecord != null;
         }
 
         @Override

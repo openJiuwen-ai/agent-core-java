@@ -4,9 +4,6 @@
 
 package com.openjiuwen.harness.rails.subagent;
 
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
 import com.openjiuwen.core.singleagent.prompts.PromptSection;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.DeepAgent;
@@ -16,7 +13,7 @@ import com.openjiuwen.harness.schema.DeepAgentConfig;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.function.Executable;
-import org.slf4j.LoggerFactory;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -31,6 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * Mirrors Python's {@code test_subagent_rail} in
@@ -256,20 +255,11 @@ class SubagentRailPythonParityTest {
     }
 
     private void sessionRailLogsDeprecation() {
-        Logger logger = (Logger) LoggerFactory.getLogger(SessionRail.class);
-        ListAppender<ILoggingEvent> appender = new ListAppender<>();
-        appender.start();
-        logger.addAppender(appender);
-        try {
-            SessionRail rail = new SessionRail();
+        Logger log = mock(Logger.class);
+        SessionRail rail = new SessionRail(log);
 
-            assertTrue(appender.list.stream()
-                    .anyMatch(event -> event.getFormattedMessage().contains("deprecated")
-                            && event.getFormattedMessage().contains("SubagentRail")));
-            assertTrue(rail.isEnableAsyncSubagent());
-        } finally {
-            logger.detachAppender(appender);
-        }
+        assertTrue(rail.isEnableAsyncSubagent());
+        verify(log).warn("SessionRail is deprecated; use SubagentRail(enable_async_subagent=True).");
     }
 
     private void sessionRailInheritsAsyncSemantics() {

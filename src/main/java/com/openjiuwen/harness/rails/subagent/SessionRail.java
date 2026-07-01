@@ -18,7 +18,11 @@ public class SessionRail extends SubagentRail {
     private static final Logger LOGGER = LoggerFactory.getLogger(SessionRail.class);
 
     public SessionRail() {
+        this(LOGGER);
+    }
+
+    SessionRail(Logger logger) {
         super(true);
-        LOGGER.warn("SessionRail is deprecated; use SubagentRail(enable_async_subagent=True).");
+        logger.warn("SessionRail is deprecated; use SubagentRail(enable_async_subagent=True).");
     }
 }

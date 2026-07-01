@@ -9,6 +9,7 @@ import com.openjiuwen.core.runner.callback.CallbackUtils;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.EventFilter;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.CheckpointerConfig;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import org.junit.jupiter.api.AfterEach;
@@ -37,7 +38,7 @@ class AgentTeamSessionTest {
     @AfterEach
     void resetGlobals() {
         CallbackUtils.resetFrameworkSupplier();
-        CheckpointerFactory.setDefaultCheckpointer(null);
+        CheckpointerFactory.releaseDefaultCheckpointer();
     }
 
     @Test
@@ -101,7 +102,7 @@ class AgentTeamSessionTest {
     @Test
     void preRunIsIdempotentAndCommitFlushPersistWithoutClosingStream() {
         RecordingCheckpointer checkpointer = new RecordingCheckpointer();
-        CheckpointerFactory.setDefaultCheckpointer(checkpointer);
+        installDefaultCheckpointer("unit-agent-team-session-commit", checkpointer);
         AgentTeamSession session = new AgentTeamSession("team-session", null, "team-a");
         Map<String, Object> inputs = Map.of("query", "hello");
 
@@ -115,6 +116,11 @@ class AgentTeamSessionTest {
         assertEquals(inputs, checkpointer.lastInputs);
         assertEquals("team-session", checkpointer.lastSessionId);
         assertFalse(session.getInner().streamWriterManager().streamEmitter().isClosed());
+    }
+
+    private static void installDefaultCheckpointer(String name, Checkpointer checkpointer) {
+        CheckpointerFactory.register(name, conf -> checkpointer);
+        CheckpointerFactory.installDefaultCheckpointer(new CheckpointerConfig(name, Map.of()));
     }
 
     /**
