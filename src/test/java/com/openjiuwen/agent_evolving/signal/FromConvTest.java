@@ -67,7 +67,7 @@ class FromConvTest {
         List<EvolutionSignal> signals = new ConversationSignalDetector().detect(buildTrajectoryFromMessages(messages));
 
         assertEquals(1, signals.size());
-        EvolutionSignal signal = signals.getFirst();
+        EvolutionSignal signal = signals.get(0);
         assertEquals("execution_failure", signal.getSignalType());
         assertTrue(signal.getExcerpt().toLowerCase().contains("failed"));
         assertEquals(Map.of("source", "passive_conversation", "tool_name", "bash"), signal.getContext());
@@ -90,9 +90,9 @@ class FromConvTest {
                 .toList();
 
         assertEquals(1, scriptSignals.size());
-        assertEquals("Scripts", scriptSignals.getFirst().getSection());
+        assertEquals("Scripts", scriptSignals.get(0).getSection());
         assertEquals(Map.of("source", "passive_conversation", "tool_name", "python_exec"),
-                scriptSignals.getFirst().getContext());
+                scriptSignals.get(0).getContext());
     }
 
     @Test
@@ -178,9 +178,9 @@ class FromConvTest {
                 .join();
 
         assertEquals(1, signals.size());
-        assertEquals(Protocols.USER_INTENT_SIGNAL, signals.getFirst().getSignalType());
-        assertEquals("my_skill", signals.getFirst().getSkillName());
-        assertEquals(Map.of("source", "passive_conversation"), signals.getFirst().getContext());
+        assertEquals(Protocols.USER_INTENT_SIGNAL, signals.get(0).getSignalType());
+        assertEquals("my_skill", signals.get(0).getSkillName());
+        assertEquals(Map.of("source", "passive_conversation"), signals.get(0).getContext());
         assertEquals("test-model", llm.model);
         assertEquals(30, llm.timeoutSeconds);
     }
@@ -198,8 +198,8 @@ class FromConvTest {
                 .join();
 
         assertEquals(1, signals.size());
-        assertEquals(Protocols.USER_INTENT_SIGNAL, signals.getFirst().getSignalType());
-        assertEquals("That is wrong; check whether the file exists first.", signals.getFirst().getExcerpt());
+        assertEquals(Protocols.USER_INTENT_SIGNAL, signals.get(0).getSignalType());
+        assertEquals("That is wrong; check whether the file exists first.", signals.get(0).getExcerpt());
     }
 
     @Test
@@ -215,8 +215,8 @@ class FromConvTest {
                 .join();
 
         assertEquals(1, signals.size());
-        assertEquals("user_correction", signals.getFirst().getSignalType());
-        assertEquals("Examples", signals.getFirst().getSection());
+        assertEquals("user_correction", signals.get(0).getSignalType());
+        assertEquals("Examples", signals.get(0).getSection());
     }
 
     @Test
@@ -232,8 +232,8 @@ class FromConvTest {
         List<EvolutionSignal> signals = detector.detectUserIntent(messages).toCompletableFuture().join();
 
         assertEquals(1, signals.size());
-        assertEquals(Protocols.USER_INTENT_SIGNAL, signals.getFirst().getSignalType());
-        assertEquals("That is wrong; check whether the file exists first.", signals.getFirst().getExcerpt());
+        assertEquals(Protocols.USER_INTENT_SIGNAL, signals.get(0).getSignalType());
+        assertEquals("That is wrong; check whether the file exists first.", signals.get(0).getExcerpt());
     }
 
     @Test
@@ -249,8 +249,8 @@ class FromConvTest {
         List<EvolutionSignal> signals = detector.detectUserIntent(messages).toCompletableFuture().join();
 
         assertEquals(1, signals.size());
-        assertEquals(Protocols.USER_INTENT_SIGNAL, signals.getFirst().getSignalType());
-        assertEquals("That is wrong; check whether the file exists first.", signals.getFirst().getExcerpt());
+        assertEquals(Protocols.USER_INTENT_SIGNAL, signals.get(0).getSignalType());
+        assertEquals("That is wrong; check whether the file exists first.", signals.get(0).getExcerpt());
     }
 
     @Test
@@ -329,8 +329,8 @@ class FromConvTest {
                 List.of(message("system", "system prompt")));
 
         assertEquals(1, signals.size());
-        assertEquals("collaboration_send", signals.getFirst().getSignalType());
-        assertEquals("coder", signals.getFirst().getContext().get("to_member"));
+        assertEquals("collaboration_send", signals.get(0).getSignalType());
+        assertEquals("coder", signals.get(0).getContext().get("to_member"));
     }
 
     @Test
@@ -345,7 +345,7 @@ class FromConvTest {
         List<EvolutionSignal> signals = new ConversationSignalDetector().detect(trajectory);
 
         assertEquals(1, signals.size());
-        EvolutionSignal signal = signals.getFirst();
+        EvolutionSignal signal = signals.get(0);
         assertEquals("collaboration_claim", signal.getSignalType());
         assertEquals("Collaboration", signal.getSection());
         assertEquals("passive_collaboration", signal.getContext().get("source"));
@@ -366,7 +366,7 @@ class FromConvTest {
         List<EvolutionSignal> signals = new ConversationSignalDetector().detect(trajectory);
 
         assertEquals(1, signals.size());
-        EvolutionSignal signal = signals.getFirst();
+        EvolutionSignal signal = signals.get(0);
         assertEquals("collaboration_view", signal.getSignalType());
         assertEquals("Collaboration", signal.getSection());
         assertEquals("passive_collaboration", signal.getContext().get("source"));
@@ -386,7 +386,7 @@ class FromConvTest {
         List<EvolutionSignal> signals = new ConversationSignalDetector().detect(trajectory);
 
         assertEquals(1, signals.size());
-        EvolutionSignal signal = signals.getFirst();
+        EvolutionSignal signal = signals.get(0);
         assertEquals("collaboration_receive", signal.getSignalType());
         assertEquals("Collaboration", signal.getSection());
         assertEquals("passive_collaboration", signal.getContext().get("source"));
@@ -410,7 +410,7 @@ class FromConvTest {
                 .toList();
 
         assertEquals(1, failureSignals.size());
-        EvolutionSignal signal = failureSignals.getFirst();
+        EvolutionSignal signal = failureSignals.get(0);
         assertEquals("Collaboration", signal.getSection());
         assertTrue(signal.getExcerpt().toLowerCase().contains("timeout"));
         assertEquals("passive_collaboration", signal.getContext().get("source"));

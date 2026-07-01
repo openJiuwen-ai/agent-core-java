@@ -704,7 +704,7 @@ public class TrainingDiagnostics {
             return -1;
         }
         int bestIndex = 0;
-        double bestValue = values.getFirst();
+        double bestValue = values.get(0);
         for (int index = 1; index < values.size(); index++) {
             if (values.get(index) > bestValue) {
                 bestValue = values.get(index);
@@ -786,7 +786,7 @@ public class TrainingDiagnostics {
     }
 
     private static int columnCount(List<List<Double>> matrix) {
-        return matrix.isEmpty() ? 0 : matrix.getFirst().size();
+        return matrix.isEmpty() ? 0 : matrix.get(0).size();
     }
 
     private static Map<String, List<Integer>> groupIndices(List<Object> uids) {

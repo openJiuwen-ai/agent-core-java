@@ -29,8 +29,8 @@ class JudgeEvaluatorTest {
         );
 
         assertEquals(1, messages.size());
-        assertTrue(messages.getFirst().get("content").contains("[tool_call block]"));
-        assertTrue(messages.getFirst().get("content").contains("[tag]tag[/tag]"));
+        assertTrue(messages.get(0).get("content").contains("[tool_call block]"));
+        assertTrue(messages.get(0).get("content").contains("[tag]tag[/tag]"));
     }
 
     @Test
@@ -51,8 +51,8 @@ class JudgeEvaluatorTest {
         assertEquals("judge-model", response.model());
         assertEquals("session-1", response.sessionId());
         assertEquals(2, response.turnNum());
-        assertEquals("POST", client.calls.getFirst().method());
-        assertTrue(client.calls.getFirst().url().endsWith("/v1/chat/completions"));
+        assertEquals("POST", client.calls.get(0).method());
+        assertTrue(client.calls.get(0).url().endsWith("/v1/chat/completions"));
     }
 
     @Test
@@ -80,7 +80,7 @@ class JudgeEvaluatorTest {
         public GatewayHttpResponse request(String method, String url, Map<String, Object> params, Map<String, String> headers,
                                            byte[] content) {
             calls.add(new Call(method, url, headers, new String(content, StandardCharsets.UTF_8)));
-            return responses.removeFirst();
+            return responses.remove(0);
         }
     }
 

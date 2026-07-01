@@ -307,7 +307,7 @@ public class RestfulApi extends Tool {
         Map<String, String> responseHeaders = new LinkedHashMap<>();
         response.headers().map().forEach((key, values) -> {
             if (!values.isEmpty()) {
-                responseHeaders.put(key, values.getFirst());
+                responseHeaders.put(key, values.get(0));
             }
         });
         int statusCode = response.statusCode();

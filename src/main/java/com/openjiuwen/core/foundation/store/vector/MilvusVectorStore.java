@@ -963,7 +963,7 @@ public class MilvusVectorStore extends BaseVectorStore {
         public void createCollection(String collectionName, CollectionSchema schema, String distanceMetric,
                 String indexType) {
             FieldSchema primaryField = schema.getPrimaryKeyField();
-            FieldSchema vectorField = schema.getVectorFields().isEmpty() ? null : schema.getVectorFields().getFirst();
+            FieldSchema vectorField = schema.getVectorFields().isEmpty() ? null : schema.getVectorFields().get(0);
             CreateCollectionReq.CollectionSchema sdkSchema = CreateCollectionReq.CollectionSchema.builder()
                     .enableDynamicField(schema.isEnableDynamicField())
                     .build();
@@ -1102,7 +1102,7 @@ public class MilvusVectorStore extends BaseVectorStore {
             if (response.getSearchResults().isEmpty()) {
                 return hits;
             }
-            for (SearchResp.SearchResult result : response.getSearchResults().getFirst()) {
+            for (SearchResp.SearchResult result : response.getSearchResults().get(0)) {
                 Map<String, Object> entity = result.getEntity() == null ? Map.of() : new LinkedHashMap<>(result.getEntity());
                 hits.add(new SearchHit(result.getId(), result.getPrimaryKey(),
                         result.getScore() == null ? null : result.getScore().doubleValue(), null, entity));
@@ -1148,7 +1148,7 @@ public class MilvusVectorStore extends BaseVectorStore {
                     .build());
             DescribeIndexResp.IndexDesc desc = response.getIndexDescByFieldName(vectorField);
             if (desc == null && !response.getIndexDescriptions().isEmpty()) {
-                desc = response.getIndexDescriptions().getFirst();
+                desc = response.getIndexDescriptions().get(0);
             }
             return desc == null || desc.getMetricType() == null ? "COSINE" : desc.getMetricType().name();
         }

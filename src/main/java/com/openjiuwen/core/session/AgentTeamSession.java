@@ -104,8 +104,8 @@ public class AgentTeamSession implements AgentSessionApi, AgentSessionLifecycle 
             return this;
         }
         Object inputs = kwargs == null ? null : kwargs.get("inputs");
-        if (inner.checkpointer() instanceof com.openjiuwen.core.session.checkpointer.Checkpointer checkpointer) {
-            checkpointer.preAgentTeamExecute(inner, inputs);
+        if (inner.checkpointer() != null) {
+            inner.checkpointer().preAgentTeamExecute(inner, inputs);
         }
         preRunDone = true;
         return this;
@@ -123,8 +123,8 @@ public class AgentTeamSession implements AgentSessionApi, AgentSessionLifecycle 
 
     @Override
     public void commit() {
-        if (inner.checkpointer() instanceof com.openjiuwen.core.session.checkpointer.Checkpointer checkpointer) {
-            checkpointer.postAgentTeamExecute(inner);
+        if (inner.checkpointer() != null) {
+            inner.checkpointer().postAgentTeamExecute(inner);
         }
     }
 

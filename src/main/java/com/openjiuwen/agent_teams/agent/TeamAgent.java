@@ -593,11 +593,11 @@ public class TeamAgent implements CoordinationKernel.KernelHost {
                         return CompletableFuture.completedFuture(null);
                     }
                     ConfiguredTeamBackend backend = configurator.getTeamBackend();
-                    if (!(backend instanceof SpawnManager.TeamBackendView teamBackend)) {
+                    if (backend == null) {
                         return spawnManager.spawnTeammate(ctx, null, getSessionId(), new SpawnManager.SpawnOptions(30, 50))
                                 .thenApply(ignored -> null);
                     }
-                    return teamBackend.getMember(teammateId)
+                    return backend.getMember(teammateId)
                             .thenCompose(rawMember -> {
                                 SpawnManager.MemberRow member = rawMember instanceof SpawnManager.MemberRow row
                                         ? row

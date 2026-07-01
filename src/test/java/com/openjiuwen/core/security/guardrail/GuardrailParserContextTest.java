@@ -704,7 +704,7 @@ class GuardrailParserContextTest {
 
     private static void assertSingleNullResult(List<Object> results) {
         assertEquals(1, results.size());
-        assertEquals(null, results.getFirst());
+        assertEquals(null, results.get(0));
     }
 
     private static Map<String, Object> userMessage(String content) {

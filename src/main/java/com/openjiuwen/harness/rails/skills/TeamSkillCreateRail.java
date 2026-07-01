@@ -14,6 +14,7 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -167,7 +168,9 @@ public class TeamSkillCreateRail extends EvolutionRail {
         if (fromContext != null) {
             return fromContext;
         }
-        for (Map<String, Object> step : buildTrajectory().reversed()) {
+        List<Map<String, Object>> trajectory = buildTrajectory();
+        for (int i = trajectory.size() - 1; i >= 0; i--) {
+            Map<String, Object> step = trajectory.get(i);
             Object values = step.get("values");
             if (values instanceof Map<?, ?> map) {
                 String sessionId = sessionIdFromValues(map);

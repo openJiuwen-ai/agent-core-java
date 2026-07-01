@@ -41,7 +41,7 @@ class WorkflowAgentInterruptInvokeMissingTest {
 
         List<?> firstResult = assertList(first);
         assertThat(firstResult).isNotEmpty();
-        OutputSchema interaction = assertOutput(firstResult.getFirst());
+        OutputSchema interaction = assertOutput(firstResult.get(0));
         assertThat(interaction.getType()).isEqualTo("__interaction__");
 
         InteractiveInput interactiveInput = new InteractiveInput();
@@ -73,7 +73,7 @@ class WorkflowAgentInterruptInvokeMissingTest {
 
         List<?> firstResult = assertList(first);
         assertThat(firstResult).isNotEmpty();
-        OutputSchema interaction = assertOutput(firstResult.getFirst());
+        OutputSchema interaction = assertOutput(firstResult.get(0));
         assertThat(interaction.getType()).isEqualTo("__interaction__");
 
         Object second = agent.invoke(Map.of(

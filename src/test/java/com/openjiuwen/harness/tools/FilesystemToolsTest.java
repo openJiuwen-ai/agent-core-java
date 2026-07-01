@@ -239,7 +239,7 @@ class FilesystemToolsTest {
 
         FilesystemTools.appendOpHistory(historyPath, "/foo/bar.py", "write", null, "content");
 
-        assertThat(loadHistory(historyPath).get("/foo/bar.py").getFirst())
+        assertThat(loadHistory(historyPath).get("/foo/bar.py").get(0))
                 .containsEntry("action", "write")
                 .containsEntry("new_content", "content");
     }
@@ -266,7 +266,7 @@ class FilesystemToolsTest {
         FilesystemTools.detectAndRecordDeletions(historyPath);
 
         List<LinkedHashMap<String, Object>> entries = loadHistory(historyPath).get(target.toString());
-        assertThat(entries.getLast()).containsEntry("action", "delete").containsEntry("old_content", "old content");
+        assertThat(entries.get(entries.size() - 1)).containsEntry("action", "delete").containsEntry("old_content", "old content");
     }
 
     @Test
@@ -288,7 +288,7 @@ class FilesystemToolsTest {
 
         FilesystemTools.recordRmTargetsBeforeDeletion(historyPath, List.of(target.toString()), Files::readString);
 
-        assertThat(loadHistory(historyPath).get(target.toRealPath().toString()).getFirst())
+        assertThat(loadHistory(historyPath).get(target.toRealPath().toString()).get(0))
                 .containsEntry("action", "delete")
                 .containsEntry("old_content", "before delete");
     }
@@ -364,7 +364,7 @@ class FilesystemToolsTest {
         iterator.forEachRemaining(chunks::add);
 
         assertThat(chunks).hasSize(1);
-        assertThat(output(chunks.getFirst()).isSuccess()).isTrue();
+        assertThat(output(chunks.get(0)).isSuccess()).isTrue();
     }
 
     @Test

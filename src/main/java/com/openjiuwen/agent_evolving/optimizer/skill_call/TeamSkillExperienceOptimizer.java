@@ -121,9 +121,10 @@ public class TeamSkillExperienceOptimizer extends BaseOptimizer {
 
     @Override
     protected CompletionStage<Void> doBackward(List<EvolutionSignal> signals) {
-        Trajectory defaultTrajectory = getTrajectories().isEmpty()
+        List<Trajectory> trajectories = getTrajectories();
+        Trajectory defaultTrajectory = trajectories.isEmpty()
                 ? defaultTrajectory()
-                : getTrajectories().getLast();
+                : trajectories.get(trajectories.size() - 1);
         for (Map.Entry<String, Operator> entry : operators.entrySet()) {
             String opId = entry.getKey();
             String skillName = removePrefix(opId, "skill_experience_");

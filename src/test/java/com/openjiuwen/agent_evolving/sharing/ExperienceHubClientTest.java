@@ -47,7 +47,7 @@ class ExperienceHubClientTest {
 
         assertNotNull(client.getSharer());
         assertEquals(1, results.size());
-        assertEquals("sk_python_debug", results.getFirst().getSkillId());
+        assertEquals("sk_python_debug", results.get(0).getSkillId());
         assertEquals(query, backend.lastSearchQuery);
         assertEquals(5, backend.lastSearchTopK);
     }

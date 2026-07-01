@@ -65,7 +65,7 @@ class SkillBranchParsersTest {
         assertNull(outcome.error());
         assertNotNull(outcome.parsed());
         assertTrue(outcome.parsed().visualReferenceNeeded());
-        SkillBranchParsers.LoadSkillImageRequest request = outcome.parsed().requests().getFirst();
+        SkillBranchParsers.LoadSkillImageRequest request = outcome.parsed().requests().get(0);
         assertEquals("landing", request.imageId());
         assertTrue(request.reason().contains("layout"));
     }
@@ -221,7 +221,7 @@ class SkillBranchParsersTest {
         assertNull(outcome.error());
         assertNotNull(outcome.parsed());
         assertEquals(1, outcome.parsed().requests().size());
-        assertEquals("second", outcome.parsed().requests().getFirst().reason());
+        assertEquals("second", outcome.parsed().requests().get(0).reason());
     }
 
     @Test

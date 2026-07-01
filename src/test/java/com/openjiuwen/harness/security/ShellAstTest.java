@@ -17,8 +17,8 @@ class ShellAstTest {
 
         assertEquals("simple", result.getKind());
         assertEquals(1, result.getSubcommands().size());
-        assertEquals("echo hello", result.getSubcommands().getFirst().getText());
-        assertEquals(2, result.getSubcommands().getFirst().getArgv().size());
+        assertEquals("echo hello", result.getSubcommands().get(0).getText());
+        assertEquals(2, result.getSubcommands().get(0).getArgv().size());
     }
 
     @Test

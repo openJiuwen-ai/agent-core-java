@@ -1260,7 +1260,7 @@ public class MilvusGraphStore implements GraphStore {
             if (response.getSearchResults().isEmpty()) {
                 return List.of();
             }
-            return response.getSearchResults().getFirst().stream()
+            return response.getSearchResults().get(0).stream()
                     .map(result -> {
                         Map<String, Object> row = result.getEntity() == null
                                 ? new LinkedHashMap<>()
@@ -1369,7 +1369,7 @@ public class MilvusGraphStore implements GraphStore {
 
         private static CreateCollectionReq.Function toMilvusRanker(RankerSpec ranker) {
             if ("rrf".equals(ranker.name())) {
-                int k = ranker.args().isEmpty() ? 40 : ((Number) ranker.args().getFirst()).intValue();
+                int k = ranker.args().isEmpty() ? 40 : ((Number) ranker.args().get(0)).intValue();
                 return RRFRanker.builder().k(k).build();
             }
             List<Float> weights = ranker.args().stream()

@@ -1053,7 +1053,7 @@ public class MilvusVectorStore implements VectorStore {
                     .build());
             DescribeIndexResp.IndexDesc index = response.getIndexDescByFieldName(fieldName);
             if (index == null && !response.getIndexDescriptions().isEmpty()) {
-                index = response.getIndexDescriptions().getFirst();
+                index = response.getIndexDescriptions().get(0);
             }
             if (index == null) {
                 return Map.of();
@@ -1099,11 +1099,11 @@ public class MilvusVectorStore implements VectorStore {
 
         private List<SearchHit> firstSearchHits(SearchResp response) {
             List<List<SearchResp.SearchResult>> searchResults = response == null ? null : response.getSearchResults();
-            if (searchResults == null || searchResults.isEmpty() || searchResults.getFirst() == null) {
+            if (searchResults == null || searchResults.isEmpty() || searchResults.get(0) == null) {
                 return List.of();
             }
-            List<SearchHit> hits = new ArrayList<>(searchResults.getFirst().size());
-            for (SearchResp.SearchResult result : searchResults.getFirst()) {
+            List<SearchHit> hits = new ArrayList<>(searchResults.get(0).size());
+            for (SearchResp.SearchResult result : searchResults.get(0)) {
                 Map<String, Object> entity = result.getEntity() == null
                         ? Map.of()
                         : new LinkedHashMap<>(result.getEntity());

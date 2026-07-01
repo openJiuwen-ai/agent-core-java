@@ -40,7 +40,7 @@ class SingletonTest {
             }
 
             List<Future<Marker>> futures = executor.invokeAll(tasks);
-            Marker first = futures.getFirst().get();
+            Marker first = futures.get(0).get();
             for (Future<Marker> future : futures) {
                 assertThat(future.get()).isSameAs(first);
             }

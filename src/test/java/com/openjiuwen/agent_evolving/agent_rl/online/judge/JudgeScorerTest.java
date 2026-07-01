@@ -63,9 +63,9 @@ class JudgeScorerTest {
         assertFalse(result.containsKey("session_id"));
         assertFalse(result.containsKey("turn_num"));
         assertEquals(2, client.calls.size());
-        assertEquals("http://judge.local/v1/chat/completions", client.calls.getFirst().url());
+        assertEquals("http://judge.local/v1/chat/completions", client.calls.get(0).url());
         String prompt = String.valueOf(
-                ((Map<?, ?>) ((List<?>) client.calls.getFirst().payload().get("messages")).getFirst()).get("content")
+                ((Map<?, ?>) ((List<?>) client.calls.get(0).payload().get("messages")).get(0)).get("content")
         );
         assertTrue(prompt.contains("[tool_call block]"));
         assertTrue(prompt.contains("[tag]resp[/tag]"));

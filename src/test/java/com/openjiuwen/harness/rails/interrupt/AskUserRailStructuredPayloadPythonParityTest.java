@@ -69,8 +69,8 @@ class AskUserRailStructuredPayloadPythonParityTest {
 
         assertNotNull(request.getQuestions());
         assertEquals(1, request.getQuestions().size());
-        assertEquals("Which feature should be enabled?", request.getQuestions().getFirst().get("question"));
-        assertEquals("Feature", request.getQuestions().getFirst().get("header"));
+        assertEquals("Which feature should be enabled?", request.getQuestions().get(0).get("question"));
+        assertEquals("Feature", request.getQuestions().get(0).get("header"));
         assertEquals("", request.getMessage());
         assertTrue(((Map<?, ?>) request.getPayloadSchema().get("properties")).containsKey("answers"));
     }
@@ -132,7 +132,7 @@ class AskUserRailStructuredPayloadPythonParityTest {
 
         List<Map<String, Object>> questions = request(decision).getQuestions();
         assertEquals(2, questions.size());
-        assertEquals("Framework", questions.getFirst().get("header"));
+        assertEquals("Framework", questions.get(0).get("header"));
         assertEquals("Auth", questions.get(1).get("header"));
     }
 
@@ -169,10 +169,10 @@ class AskUserRailStructuredPayloadPythonParityTest {
 
         List<Map<String, Object>> questions = request(decision).getQuestions();
         assertEquals(1, questions.size());
-        List<Map<String, Object>> options = (List<Map<String, Object>>) questions.getFirst().get("options");
+        List<Map<String, Object>> options = (List<Map<String, Object>>) questions.get(0).get("options");
         assertEquals(2, options.size());
-        assertTrue(options.getFirst().containsKey("preview"));
-        assertTrue(String.valueOf(options.getFirst().get("preview")).startsWith("┌"));
+        assertTrue(options.get(0).containsKey("preview"));
+        assertTrue(String.valueOf(options.get(0).get("preview")).startsWith("┌"));
         assertTrue(options.get(1).containsKey("preview"));
         assertTrue(String.valueOf(options.get(1).get("preview")).startsWith("┌"));
     }

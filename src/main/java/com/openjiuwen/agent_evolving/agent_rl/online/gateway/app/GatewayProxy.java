@@ -232,7 +232,7 @@ public final class GatewayProxy {
         Map<String, String> flattened = new LinkedHashMap<>();
         headers.forEach((name, values) -> {
             if (values != null && !values.isEmpty()) {
-                flattened.put(name, values.getFirst());
+                flattened.put(name, values.get(0));
             }
         });
         return flattened;

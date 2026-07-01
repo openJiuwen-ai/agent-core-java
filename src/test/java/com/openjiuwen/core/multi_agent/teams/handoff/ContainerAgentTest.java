@@ -181,7 +181,7 @@ class ContainerAgentTest {
         HandoffRequest next = (HandoffRequest) agent.publishedMessage;
         assertThat(next.getInputMessage()).isEqualTo("next");
         assertThat(next.getHistory()).hasSize(1);
-        assertThat(next.getHistory().getFirst()).containsEntry("agent", "a")
+        assertThat(next.getHistory().get(0)).containsEntry("agent", "a")
                 .containsEntry("output", signal);
     }
 

@@ -1,130 +1,160 @@
 # 安全护栏 Guardrail
 
-Java 版安全护栏当前公开在 `com.openjiuwen.core.security.guardrail` 子包中。它不是一套独立的“安全平台”，而是一层建立在 `CallbackFramework` 之上的事件检测和阻断机制：某个运行时事件发生时，guardrail 读取事件数据，交给 `GuardrailBackend` 分析，再按结果决定放行还是抛出 `GuardrailError`。
+AI Agent 会调用模型、工具、记忆和外部数据源，攻击面不再只来自用户输入。Python 版文档把 Guardrail 定位为一套事件驱动的安全检测框架，用来在 LLM 调用输入、工具调用输出等关键节点检测提示词注入、越狱、敏感数据泄露等风险。Java 0.1.14 也应按这个主线理解，只是入口名称要以当前 Java 源码为准。
 
-这里讨论的范围是 Java 当前真正公开的能力：`BaseGuardrail`、`GuardrailBackend`、`RiskAssessment`、`GuardrailResult`、`RiskLevel` 和 `UserInputGuardrail`。仓库里没有公开的 `PromptInjectionGuardrail` 一类内置策略，因此使用时应以当前已落地的策略类型为准。
+Java 当前实现位于 `com.openjiuwen.core.security.guardrail`，核心是：
 
-## 能力定位
+- `BaseGuardrail` 负责监听事件、注册回调、调用检测后端和抛出阻断异常。
+- `GuardrailBackend` 是抽象检测后端，通过 `analyze(GuardrailContext ctx)` 返回 `RiskAssessment`。
+- `PromptInjectionGuardrail` 是当前已经落地的内置护栏，默认检测 LLM 输入和工具输出。
+- `RiskLevel.CRITICAL` 会转换为 `AbortError`；其他风险级别会转换为 `GuardrailError`。
 
-- Guardrail 的核心职责是在回调事件点上做风险检测和阻断。
-- 风险分析逻辑由 `GuardrailBackend` 提供，guardrail 本身只负责注册、调度和抛错。
-- 当前默认现成实现是 `UserInputGuardrail`，默认监听 `user_input` 事件。
-- 如果你想保护其他事件，同样可以基于 `BaseGuardrail` 自定义事件列表和检测逻辑。
+## 核心概念
 
-## 核心类型
-
-| 类型 | 作用 | 何时使用 |
+| 概念 | Java 类型 | 说明 |
 | --- | --- | --- |
-| `BaseGuardrail` | 护栏抽象基类，负责事件注册、回调封装和风险阻断 | 自定义 guardrail 或理解通用注册逻辑时 |
-| `GuardrailBackend` | 风险分析函数式接口 | 需要实现自己的检测逻辑时 |
-| `RiskAssessment` | backend 的原始分析结果 | 返回 `hasRisk`、`riskLevel`、`riskType` 等信息时 |
-| `GuardrailResult` | guardrail 的最终判定结果 | 需要显式返回放行或阻断结果时 |
-| `RiskLevel` | 风险级别枚举 | 标注风险严重程度时 |
-| `UserInputGuardrail` | 默认用户输入护栏 | 需要在 `user_input` 事件上做基础防护时 |
+| Guardrail | `BaseGuardrail`、`PromptInjectionGuardrail` | 监听事件并触发检测 |
+| Backend | `GuardrailBackend` | 实现具体检测逻辑 |
+| Context | `GuardrailContext` | 封装待检测内容、内容类型、事件名和元数据 |
+| Assessment | `RiskAssessment` | 后端输出，包含是否有风险、风险等级、类型、置信度和详情 |
+| Result | `GuardrailResult` | 护栏最终判定，安全则放行，不安全则阻断 |
+| RiskLevel | `RiskLevel` | `SAFE`、`LOW`、`MEDIUM`、`HIGH`、`CRITICAL` |
 
-## 接入步骤
+## 事件入口
 
-### 1. 先实现一个 `GuardrailBackend`
+`PromptInjectionGuardrail` 默认监听两个事件：
 
-Java 当前的推荐起点不是“挑一个现成策略类”，而是先写 `GuardrailBackend`：
+| 默认事件 | 来源 | 检测内容 |
+| --- | --- | --- |
+| `LLMCallEvents.LLM_INVOKE_INPUT` | 模型调用前 | `messages` 中最后一条消息的 `content`，或完整 messages |
+| `ToolCallEvents.TOOL_INVOKE_OUTPUT` | 工具调用后 | `result` 字段转成的文本 |
+
+其他事件也可以通过构造函数传入 `events` 自定义。自定义事件会被封装成 `GuardrailContext` 的 `RAW` 内容，由后端自己解释。
+
+## 实现检测后端
+
+Python 版文档强调“后端负责检测逻辑，护栏负责事件接入”。Java 版也是这个分层，只是 `GuardrailBackend` 不是函数式接口，而是抽象类：
 
 ```java
-GuardrailBackend backend = data -> {
-    String text = String.valueOf(data.getOrDefault("text", ""));
-    boolean risky = text.contains("ignore previous instructions");
-
-    return RiskAssessment.builder()
-            .hasRisk(risky)
-            .riskLevel(risky ? RiskLevel.HIGH : RiskLevel.SAFE)
-            .riskType(risky ? "prompt_injection" : null)
-            .details(Map.of("matched", risky))
-            .build();
+GuardrailBackend backend = new GuardrailBackend() {
+    @Override
+    public RiskAssessment analyze(GuardrailContext ctx) {
+        String text = ctx.getText().orElse("");
+        boolean risky = text.toLowerCase().contains("ignore previous instructions");
+        return new RiskAssessment(
+                risky,
+                risky ? RiskLevel.HIGH : RiskLevel.SAFE,
+                risky ? "prompt_injection" : null,
+                1.0d,
+                Map.of("matched", risky)
+        );
+    }
 };
 ```
 
-`GuardrailBackend` 是 `@FunctionalInterface`，因此用 lambda 就能完成最小实现。输入数据至少会包含：
+后端只返回风险分析结果，不负责向 Runner 注册，也不负责抛异常。注册和阻断统一由 `BaseGuardrail` 处理。
 
-- `event`
-- `args`
-- 触发方透传进来的关键字段
+## 使用内置提示词注入护栏
 
-### 2. 选择现成 guardrail，或基于 `BaseGuardrail` 自定义
-
-如果你的入口就是用户文本，先用 `UserInputGuardrail`：
+最小用法如下：
 
 ```java
-UserInputGuardrail guardrail = new UserInputGuardrail(backend, null, true);
+PromptInjectionGuardrail guardrail = new PromptInjectionGuardrail();
+guardrail.register(Runner.getCallbackFramework());
 ```
 
-它的默认行为有三个值得直接记住：
+默认模式是 `rules`，也就是 `RuleBasedPromptInjectionBackend`。默认规则覆盖常见提示词注入片段，例如：
 
-- 默认监听事件是 `user_input`
-- `kwargs["text"]` 不存在或为空字符串时直接放行
-- `backend == null` 时也直接放行，不会抛 `IllegalStateException`
+- `ignore.*previous.*instructions`
+- `disregard.*prior.*commands`
+- `system.*prompt`
+- `you.*are.*now`
+- `act.*as`
+- `forget.*everything`
 
-如果你需要监听的不是 `user_input`，可以：
+如果命中规则，后端返回 `prompt_injection` 风险，默认风险级别是 `RiskLevel.HIGH`。
 
-- 调 `withEvents(...)` 覆盖事件列表
-- 或继承 `BaseGuardrail` 自己实现 `defaultEvents()`，必要时覆写 `detect(...)`
+## 配置检测模式
 
-### 3. 把 guardrail 注册到回调框架
+`PromptInjectionGuardrailConfig` 对应 Python 版的内置护栏配置，Java 当前支持三种模式：
 
-当前接入点就是 `CallbackFramework`。如果你已经在用全局 Runner，可以直接挂到：
+| mode | 后端 | 必要配置 | 说明 |
+| --- | --- | --- | --- |
+| `rules` | `RuleBasedPromptInjectionBackend` | 无 | 默认模式，可传 `customPatterns` 和 `riskLevel` |
+| `api` | `APIModelBackend` | `apiUrl`，以及 `modelType` 或 `parser` | 通过远程模型 API 检测文本 |
+| `local` | `LocalModelBackend` | `modelPath`，以及 `modelType` 或 `parser` | 预留本地模型入口，当前 Java 运行时尚未真正接入本地推理 |
+
+`modelType` 当前可选 `bert` 或 `qwen`。未显式传 `parser` 时：
+
+- `bert` 使用 `BertBinaryParser`；
+- `qwen` 使用 `QwenGuardParser`。
+
+示例：
 
 ```java
-guardrail.register(Runner.callbackFramework());
+PromptInjectionGuardrailConfig config = new PromptInjectionGuardrailConfig();
+config.setMode("rules");
+config.setCustomPatterns(List.of("泄露.*系统提示", "绕过.*安全策略"));
+config.setRiskLevel(RiskLevel.HIGH);
+
+PromptInjectionGuardrail guardrail = new PromptInjectionGuardrail(config);
+guardrail.register(Runner.getCallbackFramework());
 ```
 
-也可以注册到你自己持有的 `CallbackFramework` 实例。`BaseGuardrail.register(...)` 会为每个监听事件做两件事：
-
-1. 先加一个 `HookType.ERROR` hook，确保异常能重新抛出
-2. 再注册真正的检测回调
-
-这意味着 guardrail 不只是“给你一个判断结果”，而是真的参与运行时控制流。
-
-### 4. 让不安全结果变成统一阻断
-
-`BaseGuardrail.detect()` 的默认流程是：
-
-1. 把 `event`、`args` 和 `kwargs` 整理成分析输入
-2. 调 `GuardrailBackend.analyze(...)`
-3. `hasRisk = false` 或返回 `null` 时生成 `GuardrailResult.pass(...)`
-4. 有风险时生成 `GuardrailResult.block(...)`
-5. 注册回调层再把它转成 `GuardrailError(StatusCode.GUARDRAIL_BLOCKED, params)`
-
-也就是说，backend 负责“分析”，guardrail 负责“阻断”。如果你想要统一的错误码和事件参数，应该让这条链路保持原样，而不是在 backend 里直接抛自己的异常。
-
-### 5. 用完后显式注销
+API 模式示例：
 
 ```java
-guardrail.unregister();
+PromptInjectionGuardrailConfig config = new PromptInjectionGuardrailConfig();
+config.setMode("api");
+config.setApiUrl("https://example.com/guardrail");
+config.setApiKey(System.getenv("GUARDRAIL_API_KEY"));
+config.setModelType("qwen");
+
+PromptInjectionGuardrail guardrail = new PromptInjectionGuardrail(config);
+guardrail.register(Runner.getCallbackFramework());
 ```
 
-`unregister()` 会从最近一次注册的 `CallbackFramework` 中移除先前登记的回调。对测试场景、临时工具链和多次重建 Runner 的流程来说，这一步最好显式做掉。
+## 自定义事件和后端
 
-## 示例入口
+如果你要检测自定义业务事件，可以直接传事件列表和后端：
 
-Java 当前没有单独的 `examples/guardrail` 目录，因此这里的“最短示例入口”就是公开源码和回调框架入口本身：
+```java
+PromptInjectionGuardrail guardrail = new PromptInjectionGuardrail(
+        List.of("order.review.before_submit"),
+        backend,
+        true
+);
+guardrail.register(Runner.getCallbackFramework());
+```
 
-- 护栏抽象入口：`../../../../src/main/java/com/openjiuwen/core/security/guardrail/BaseGuardrail.java`
-- 默认用户输入护栏：`../../../../src/main/java/com/openjiuwen/core/security/guardrail/UserInputGuardrail.java`
-- 全局回调框架入口：`../../../../src/main/java/com/openjiuwen/core/runner/Runner.java`
-- 回调框架包说明：`../API文档/com.openjiuwen.core/runner/callback.README.md`
+自定义事件的 `kwargs` 会进入 `GuardrailContext`，后端可以按业务字段提取文本或结构化数据。
 
-如果你要自己补一个最小可运行示例，推荐就从 `UserInputGuardrail + Runner.callbackFramework()` 开始，而不是先尝试寻找仓库里并不存在的内置策略 demo。
+## 阻断行为
 
-## 当前实现边界
+当后端返回风险：
 
-- Java 当前公开包的主线是你自己实现 `GuardrailBackend`；默认现成 guardrail 主要是 `UserInputGuardrail`。
-- 默认事件当前是 `user_input`；LLM / tool 输出护栏和多模式 detector 并未作为内置能力公开。
-- Java 护栏明显依赖 `CallbackFramework` 这条事件链路，注册和阻断语义都以 `BaseGuardrail.register(...)` 的当前实现为准。
-- 这里以 `security.guardrail` 子包当前已公开能力为准，不延伸到仓库外或未实现的策略类型。
+1. `BaseGuardrail.detect(...)` 把 `RiskAssessment` 转成 `GuardrailResult`。
+2. 注册到回调框架的检测回调检查 `result.isSafe()`。
+3. 安全则返回 `null`，不干扰原事件。
+4. `RiskLevel.CRITICAL` 抛 `AbortError`，用于终止当前回调链。
+5. 其他风险级别抛 `GuardrailError(StatusCode.GUARDRAIL_BLOCKED, ...)`。
+
+因此，业务侧不需要在每个工具或模型调用点手工判断风险，只要相关事件会触发 Runner 回调框架，Guardrail 就可以统一接入。
+
+## 当前 Java 边界
+
+- 当前源码没有 `UserInputGuardrail.java`；旧 API 文档里引用该类型是过期内容。
+- `GuardrailBackend` 当前是抽象类，不是 `@FunctionalInterface`。
+- `PromptInjectionGuardrail` 已经存在，不能再写成“Java 没有内置提示词注入护栏”。
+- `LocalModelBackend` 保留本地模型接口，但 `loadModel()` 和 `inference(...)` 当前会抛 `UnsupportedOperationException`，需要应用侧接入具体推理运行时。
+- `LLMPromptInjectionBackend` 当前保留 LLM 检测形态，但实际分析会回退到规则后端。
+- API 模式会发 HTTP POST，payload 为 `{ "text": ... }`，远端响应由配置的 parser 解析。
 
 ## 参考入口
 
-- [API 文档：guardrail 根包](../API文档/com.openjiuwen.core/security/guardrail.README.md)
-- [API 文档：BaseGuardrail](../API文档/com.openjiuwen.core/security/guardrail/BaseGuardrail.md)
-- [API 文档：UserInputGuardrail](../API文档/com.openjiuwen.core/security/guardrail/UserInputGuardrail.md)
+- [API 文档：guardrail 总览](../API文档/com.openjiuwen.core/security/guardrail.README.md)
+- [API 文档：PromptInjectionGuardrail](../API文档/com.openjiuwen.core/security/guardrail/PromptInjectionGuardrail.md)
+- [API 文档：PromptInjectionGuardrailConfig](../API文档/com.openjiuwen.core/security/guardrail/PromptInjectionGuardrailConfig.md)
 - [API 文档：GuardrailBackend](../API文档/com.openjiuwen.core/security/guardrail/GuardrailBackend.md)
-- [API 文档：RiskAssessment](../API文档/com.openjiuwen.core/security/guardrail/RiskAssessment.md)
-- [API 文档：GuardrailResult](../API文档/com.openjiuwen.core/security/guardrail/GuardrailResult.md)
+- [回调框架](异步回调框架.md)
+- [执行器 Runner](执行器Runner.md)

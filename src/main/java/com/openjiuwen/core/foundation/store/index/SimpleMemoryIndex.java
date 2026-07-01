@@ -400,7 +400,7 @@ public class SimpleMemoryIndex extends BaseMemoryIndex {
         return model.embedDocuments(texts).thenCompose(embeddings -> {
             CompletableFuture<Void> ensureCollectionFuture = embeddings.isEmpty()
                     ? CompletableFuture.completedFuture(null)
-                    : ensureCollection(collectionName, embeddings.getFirst().size());
+                    : ensureCollection(collectionName, embeddings.get(0).size());
             return ensureCollectionFuture.thenCompose(ignored -> {
                 List<Map<String, Object>> vectorDocs = new ArrayList<>();
                 for (int index = 0; index < docs.size(); index++) {

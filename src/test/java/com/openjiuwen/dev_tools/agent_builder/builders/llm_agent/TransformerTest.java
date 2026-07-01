@@ -48,14 +48,14 @@ class TransformerTest {
         );
 
         assertThat(plugins).hasSize(1);
-        assertThat(plugins.getFirst())
+        assertThat(plugins.get(0))
                 .containsEntry("plugin_id", "plugin_001")
                 .containsEntry("plugin_name", "Test Plugin")
                 .containsEntry("tool_id", "tool_001")
                 .containsEntry("tool_name", "Test Tool");
 
         assertThat(workflows).hasSize(2);
-        assertThat(workflows.getFirst())
+        assertThat(workflows.get(0))
                 .containsEntry("workflow_id", "wf_001")
                 .containsEntry("workflow_name", "Test Workflow")
                 .containsEntry("description", "A test workflow");
@@ -94,7 +94,7 @@ class TransformerTest {
                         "is_required", true
                 )
         );
-        assertThat(output.getFirst()).containsEntry("is_runtime", false).containsEntry("name", "result");
+        assertThat(output.get(0)).containsEntry("is_runtime", false).containsEntry("name", "result");
     }
 
     @Test
@@ -114,16 +114,16 @@ class TransformerTest {
         );
 
         assertThat(pluginDependencies).hasSize(1);
-        assertThat(pluginDependencies.getFirst())
+        assertThat(pluginDependencies.get(0))
                 .containsEntry("plugin_id", "plugin_001")
                 .containsEntry("plugin_version", "1.0.0")
                 .containsEntry("name", "Test Plugin")
                 .containsEntry("create_time", now)
                 .containsEntry("update_time", now);
-        assertThat((List<?>) pluginDependencies.getFirst().get("tool_list")).hasSize(1);
+        assertThat((List<?>) pluginDependencies.get(0).get("tool_list")).hasSize(1);
 
         assertThat(workflowDependencies).hasSize(1);
-        assertThat(workflowDependencies.getFirst())
+        assertThat(workflowDependencies.get(0))
                 .containsEntry("workflow_id", "wf_001")
                 .containsEntry("workflow_version", "1.0.0")
                 .containsEntry("name", "Test Workflow")

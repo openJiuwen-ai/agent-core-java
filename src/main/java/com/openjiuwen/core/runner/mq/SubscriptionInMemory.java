@@ -67,8 +67,11 @@ public class SubscriptionInMemory extends SubscriptionBase {
     public void activate() {
         if (!active) {
             active = true;
-            consumerExecutor = Executors.newSingleThreadExecutor(
-                    Thread.ofVirtual().name("subscription-inmemory-", 0).factory());
+            consumerExecutor = Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable);
+                thread.setName("subscription-inmemory-" + thread.getId());
+                return thread;
+            });
             consumerExecutor.submit(this::consumeMessages);
         }
     }

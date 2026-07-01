@@ -53,7 +53,7 @@ class TeamToolApprovalRailTest {
 
         assertThat(messageManager.toMembers).containsExactly("leader-1");
         assertThat(messageManager.contents).hasSize(1);
-        assertThat(messageManager.contents.getFirst())
+        assertThat(messageManager.contents.get(0))
                 .contains("Teammate tool approval request.")
                 .contains("Member: member-1")
                 .contains("Tool: execute_command")
@@ -80,7 +80,7 @@ class TeamToolApprovalRailTest {
                 Map.of()
         ).toCompletableFuture().join();
 
-        assertThat(messageManager.contents.getFirst()).contains("Arguments: {}");
+        assertThat(messageManager.contents.get(0)).contains("Arguments: {}");
     }
 
     @Test

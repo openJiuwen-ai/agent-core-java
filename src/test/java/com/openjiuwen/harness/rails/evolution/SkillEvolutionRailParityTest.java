@@ -198,8 +198,10 @@ class SkillEvolutionRailParityTest {
 
         assertThat(rail.getProcessedSignalKeys()).containsExactly("read_file", "skill_tool");
         assertThat(rail.buildTrajectory()).hasSize(3);
-        assertThat(rail.buildTrajectory().getLast().get("event")).isEqualTo("after_tool_call");
-        assertThat(rail.buildTrajectory().getLast().get("kind")).isEqualTo("tool");
+        List<Map<String, Object>> trajectory = rail.buildTrajectory();
+        Map<String, Object> lastStep = trajectory.get(trajectory.size() - 1);
+        assertThat(lastStep.get("event")).isEqualTo("after_tool_call");
+        assertThat(lastStep.get("kind")).isEqualTo("tool");
 
         for (int index = 0; index < SkillEvolutionRail.MAX_PROCESSED_SIGNAL_KEYS + 5; index++) {
             rail.afterToolCall(ctx("tool-" + index));
@@ -279,7 +281,8 @@ class SkillEvolutionRailParityTest {
         rail.beforeInvoke(ctx);
         rail.afterToolCall(ctx);
 
-        Map<String, Object> step = rail.buildTrajectory().getLast();
+        List<Map<String, Object>> trajectory = rail.buildTrajectory();
+        Map<String, Object> step = trajectory.get(trajectory.size() - 1);
         assertThat(step.get("event")).isEqualTo("after_tool_call");
         assertThat(step.get("values")).isInstanceOf(Map.class);
         assertThat(((Map<?, ?>) step.get("values")).get("path")).isEqualTo("skills/demo/SKILL.md");

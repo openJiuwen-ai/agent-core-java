@@ -112,6 +112,6 @@ public class VLLMEmbedding extends OpenAIEmbedding {
             );
         }
         Map<String, Object> kwargs = parseMultimodalInput(document, options);
-        return getEmbeddingsSync(null, kwargs).getFirst();
+        return getEmbeddingsSync(null, kwargs).get(0);
     }
 }

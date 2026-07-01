@@ -175,8 +175,8 @@ class AgenticRetrieverTest {
         assertThat(results).isNotEmpty();
         assertThat(graphRetriever.graphExpansionCalls).isZero();
         assertThat(graphRetriever.chunkRetriever.optionSnapshots).hasSize(1);
-        assertThat(graphRetriever.chunkRetriever.optionSnapshots.getFirst()).doesNotContainKey("graph_expansion");
-        assertThat(graphRetriever.chunkRetriever.optionSnapshots.getFirst()).containsEntry("trace", true);
+        assertThat(graphRetriever.chunkRetriever.optionSnapshots.get(0)).doesNotContainKey("graph_expansion");
+        assertThat(graphRetriever.chunkRetriever.optionSnapshots.get(0)).containsEntry("trace", true);
     }
 
     @Test
@@ -559,7 +559,7 @@ class AgenticRetrieverTest {
 
         @Override
         public List<List<RetrievalResult>> batchRetrieve(List<String> queries, int topK, String mode, Map<String, Object> options) {
-            return queries.stream().map(query -> resultSequence.getFirst()).toList();
+            return queries.stream().map(query -> resultSequence.get(0)).toList();
         }
 
         @Override

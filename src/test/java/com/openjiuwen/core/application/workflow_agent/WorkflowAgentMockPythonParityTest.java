@@ -109,16 +109,16 @@ class WorkflowAgentMockPythonParityTest {
         List<ControllerOutputChunk> chunks = iteratorToList(executor.executeAbility("task-interrupt", session));
 
         assertThat(session.stream).hasSize(1);
-        OutputSchema written = (OutputSchema) session.stream.getFirst();
+        OutputSchema written = (OutputSchema) session.stream.get(0);
         assertThat(written.getType()).isEqualTo(Constant.INTERACTION);
         InteractionOutput payload = (InteractionOutput) written.getPayload();
         assertThat(payload.getId()).isEqualTo("questioner");
         assertThat(payload.getValue()).isEqualTo(Map.of("prompt", "Need location"));
 
         assertThat(chunks).hasSize(1);
-        assertThat(chunks.getFirst().getControllerPayload().getType())
+        assertThat(chunks.get(0).getControllerPayload().getType())
                 .isEqualTo(EventType.TASK_INTERACTION.getValue());
-        WorkflowOutput output = workflowOutput(chunks.getFirst());
+        WorkflowOutput output = workflowOutput(chunks.get(0));
         assertThat(output.getState()).isEqualTo(WorkflowExecutionState.INPUT_REQUIRED);
         assertThat(output.getResult()).isSameAs(written);
 
@@ -149,7 +149,7 @@ class WorkflowAgentMockPythonParityTest {
 
         List<Task> tasks = handler.getTaskManager().getTask(TaskFilter.bySessionId("test_resume"));
         assertThat(tasks).hasSize(1);
-        Task resumeTask = tasks.getFirst();
+        Task resumeTask = tasks.get(0);
         assertThat(resumeTask.getExtensions()).containsEntry("resume_mode", "resume");
         InteractiveInput interactiveInput = (InteractiveInput) resumeTask.getExtensions().get("interactive_input");
         assertThat(interactiveInput.getUserInputs()).containsExactlyEntriesOf(Map.of("questioner", "上海"));
@@ -285,7 +285,7 @@ class WorkflowAgentMockPythonParityTest {
     }
 
     private static WorkflowOutput workflowOutput(ControllerOutputChunk chunk) {
-        DataFrame.JsonDataFrame frame = (DataFrame.JsonDataFrame) chunk.getControllerPayload().getData().getFirst();
+        DataFrame.JsonDataFrame frame = (DataFrame.JsonDataFrame) chunk.getControllerPayload().getData().get(0);
         return (WorkflowOutput) frame.data().get("result");
     }
 

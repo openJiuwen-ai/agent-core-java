@@ -200,7 +200,7 @@ class BrowserRuntimeToolsPythonParityTest {
         assertThat(runtime.query).isEqualTo("next");
         assertThat(result.isSuccess()).isTrue();
         Map<String, Object> data = (Map<String, Object>) result.getData();
-        Map<String, Object> element = (Map<String, Object>) ((List<?>) data.get("elements")).getFirst();
+        Map<String, Object> element = (Map<String, Object>) ((List<?>) data.get("elements")).get(0);
         assertThat(element.get("text")).isEqualTo("Next");
     }
 
@@ -223,7 +223,7 @@ class BrowserRuntimeToolsPythonParityTest {
         assertThat(runtime.query).isEqualTo("book");
         assertThat(result.isSuccess()).isTrue();
         Map<String, Object> data = (Map<String, Object>) result.getData();
-        Map<String, Object> card = (Map<String, Object>) ((List<?>) data.get("cards")).getFirst();
+        Map<String, Object> card = (Map<String, Object>) ((List<?>) data.get("cards")).get(0);
         assertThat(card.get("title")).isEqualTo("Book");
     }
 

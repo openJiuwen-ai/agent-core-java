@@ -67,8 +67,8 @@ class RLOnlineRailTest {
         rail.safeRunEvolution(Map.of("trajectory", trajectory)).toCompletableFuture().join();
 
         assertThat(uploader.batches).hasSize(1);
-        assertThat(uploader.batches.getFirst().getTenantId()).isEqualTo("user-1");
-        assertThat(uploader.batches.getFirst().getSamples().getFirst().getResponseText()).isEqualTo("hello");
+        assertThat(uploader.batches.get(0).getTenantId()).isEqualTo("user-1");
+        assertThat(uploader.batches.get(0).getSamples().get(0).getResponseText()).isEqualTo("hello");
     }
 
     @Test
@@ -89,7 +89,7 @@ class RLOnlineRailTest {
 
         assertThat(uploader.batches).hasSize(2);
         assertThat(uploader.batches).extracting(batch -> batch.getSamples().size()).containsExactly(1, 1);
-        assertThat(uploader.batches.get(1).getSamples().getFirst().getResponseText()).isEqualTo("a2");
+        assertThat(uploader.batches.get(1).getSamples().get(0).getResponseText()).isEqualTo("a2");
     }
 
     @Test
@@ -108,8 +108,8 @@ class RLOnlineRailTest {
         rail.afterInvoke(context(agent, invoke)).toCompletableFuture().join();
 
         assertThat(uploader.batches).hasSize(1);
-        assertThat(uploader.batches.getFirst().getSamples()).hasSize(201);
-        assertThat(uploader.batches.getFirst().getSamples().getFirst().getResponseText()).isEqualTo("a0");
+        assertThat(uploader.batches.get(0).getSamples()).hasSize(201);
+        assertThat(uploader.batches.get(0).getSamples().get(0).getResponseText()).isEqualTo("a0");
     }
 
     private static AgentCallbackContext context(MockAgent agent, Object inputs) {

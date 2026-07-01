@@ -72,9 +72,9 @@ class TxtMdParserTest {
         List<Document> documents = new TxtMdParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getId_()).isEqualTo("doc_1");
-        assertThat(documents.getFirst().getText()).isEqualTo("Content");
-        assertThat(documents.getFirst().getMetadata()).isEmpty();
+        assertThat(documents.get(0).getId_()).isEqualTo("doc_1");
+        assertThat(documents.get(0).getText()).isEqualTo("Content");
+        assertThat(documents.get(0).getMetadata()).isEmpty();
     }
 
     @Test
@@ -104,7 +104,7 @@ class TxtMdParserTest {
         List<Document> documents = new TxtMdParser().parse(file.toString(), "doc-utf16").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).isEqualTo("Markdown body");
+        assertThat(documents.get(0).getText()).isEqualTo("Markdown body");
     }
 
     @Test
@@ -116,7 +116,7 @@ class TxtMdParserTest {
         List<Document> documents = new TxtMdParser().parse(file.toString(), "doc-gb").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).isEqualTo(expected);
+        assertThat(documents.get(0).getText()).isEqualTo(expected);
     }
 
     @Test
@@ -127,7 +127,7 @@ class TxtMdParserTest {
         List<Document> documents = new TxtMdParser().parse(file.toString(), "doc-invalid").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).contains("a").contains("b");
+        assertThat(documents.get(0).getText()).contains("a").contains("b");
     }
 
     @Test
@@ -139,8 +139,8 @@ class TxtMdParserTest {
                 .join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).isEqualTo("note body");
-        assertThat(documents.getFirst().getMetadata())
+        assertThat(documents.get(0).getText()).isEqualTo("note body");
+        assertThat(documents.get(0).getMetadata())
                 .containsEntry("doc_id", "auto-md")
                 .containsEntry("title", "Named note")
                 .containsEntry("file_path", file.toString())

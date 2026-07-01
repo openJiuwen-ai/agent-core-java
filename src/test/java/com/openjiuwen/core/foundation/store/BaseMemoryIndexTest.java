@@ -168,10 +168,10 @@ class BaseMemoryIndexTest {
 
         assertThat(configured.embedding.embedQueryCount).isEqualTo(1);
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst()).containsEntry("id", "test_id_1");
-        assertThat(results.getFirst()).containsEntry("mem", "Test memory 1");
-        assertThat(results.getFirst()).containsEntry("mem_type", MemoryType.USER_PROFILE.getValue());
-        assertThat(results.getFirst()).containsEntry("score", 0.95d);
+        assertThat(results.get(0)).containsEntry("id", "test_id_1");
+        assertThat(results.get(0)).containsEntry("mem", "Test memory 1");
+        assertThat(results.get(0)).containsEntry("mem_type", MemoryType.USER_PROFILE.getValue());
+        assertThat(results.get(0)).containsEntry("score", 0.95d);
     }
 
     @Test
@@ -216,9 +216,9 @@ class BaseMemoryIndexTest {
         assertThat(configured.embedding.embedQueryCount).isEqualTo(1);
         assertThat(configured.vectorStore.searchCount).isGreaterThanOrEqualTo(1);
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getMemInfo().getMemId()).isEqualTo("ltm_search_id_1");
-        assertThat(results.getFirst().getMemInfo().getContent()).isEqualTo("LTM search result");
-        assertThat(results.getFirst().getScore()).isEqualTo(0.95d);
+        assertThat(results.get(0).getMemInfo().getMemId()).isEqualTo("ltm_search_id_1");
+        assertThat(results.get(0).getMemInfo().getContent()).isEqualTo("LTM search result");
+        assertThat(results.get(0).getScore()).isEqualTo(0.95d);
     }
 
     @Test

@@ -111,7 +111,7 @@ class TeamSkillExperienceOptimizerTest {
         assertEquals("sum A", records.get(0).getSummary());
         assertEquals("B", records.get(1).getChange().getContent());
         assertEquals(EvolutionTarget.SCRIPT, records.get(2).getChange().getTarget());
-        assertEquals(12.0f, invoker.options().getFirst().getTimeout());
+        assertEquals(12.0f, invoker.options().get(0).getTimeout());
     }
 
     @Test
@@ -125,8 +125,8 @@ class TeamSkillExperienceOptimizerTest {
                 optimizer.retryParse("bad json", "original", 1, "Expecting value");
 
         assertNotNull(result.patches());
-        assertEquals("fixed", result.patches().getFirst().getContent());
-        assertTrue(invoker.prompts().getFirst().contains("Expecting value"));
+        assertEquals("fixed", result.patches().get(0).getContent());
+        assertTrue(invoker.prompts().get(0).contains("Expecting value"));
     }
 
     @Test
@@ -265,7 +265,7 @@ class TeamSkillExperienceOptimizerTest {
         }
 
         private static String extractPrompt(List<BaseMessage> messages) {
-            if (messages != null && !messages.isEmpty() && messages.getFirst() instanceof UserMessage message) {
+            if (messages != null && !messages.isEmpty() && messages.get(0) instanceof UserMessage message) {
                 Object content = message.getContent();
                 return content == null ? "" : String.valueOf(content);
             }

@@ -84,11 +84,11 @@ class ModelTest {
         AssistantMessage response = model.invoke("hello").toCompletableFuture().join();
 
         assertEquals("ok", response.getContentAsString());
-        assertEquals("model-a", invoker.modelConfigs.getFirst().getModelName());
-        assertEquals("OpenAI", invoker.clientConfigs.getFirst().getClientProvider());
-        assertEquals("https://example.test", invoker.clientConfigs.getFirst().getApiBase());
-        assertEquals("abc", invoker.clientConfigs.getFirst().getCustomHeaders().get("x-trace"));
-        assertInstanceOf(UserMessage.class, invoker.messages.getFirst().getFirst());
+        assertEquals("model-a", invoker.modelConfigs.get(0).getModelName());
+        assertEquals("OpenAI", invoker.clientConfigs.get(0).getClientProvider());
+        assertEquals("https://example.test", invoker.clientConfigs.get(0).getApiBase());
+        assertEquals("abc", invoker.clientConfigs.get(0).getCustomHeaders().get("x-trace"));
+        assertInstanceOf(UserMessage.class, invoker.messages.get(0).get(0));
     }
 
     @Test
@@ -152,8 +152,8 @@ class ModelTest {
                 "transform:" + LLMCallEvents.LLM_INVOKE_OUTPUT,
                 LLMCallEvents.LLM_INVOKE_OUTPUT
         ), framework.events);
-        assertEquals("model-a", client.invokeOptions.getFirst().getModel());
-        assertEquals(0.7f, client.invokeOptions.getFirst().getTemperature());
+        assertEquals("model-a", client.invokeOptions.get(0).getModel());
+        assertEquals(0.7f, client.invokeOptions.get(0).getTemperature());
     }
 
     @Test

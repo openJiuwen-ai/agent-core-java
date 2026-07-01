@@ -42,7 +42,7 @@ class QuestionerConverterTest {
         assertThat(outputs.getProperties().get("output").getDescription()).isEqualTo("输出变量");
         assertThat(outputs.getRequired()).containsExactly("answer", "user_response");
         assertThat(converter.getEdges()).hasSize(1);
-        assertThat(converter.getEdges().getFirst().getTargetNodeId()).isEqualTo("node_end");
+        assertThat(converter.getEdges().get(0).getTargetNodeId()).isEqualTo("node_end");
     }
 
     @Test

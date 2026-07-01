@@ -62,18 +62,19 @@ public class EventHandlerWithIntentRecognition extends EventHandler {
         List<Thread> threads = new ArrayList<>();
 
         for (Intent intent : intents) {
-            Thread t = Thread.ofVirtual().start(() -> {
+            Thread t = new Thread(() -> {
                 switch (intent.getIntentType()) {
-                    case IntentType.CREATE_TASK -> processCreateTaskIntent(intent, inputs.getSession());
-                    case IntentType.PAUSE_TASK -> processPauseTaskIntent(intent, inputs.getSession());
-                    case IntentType.RESUME_TASK -> processResumeTaskIntent(intent, inputs.getSession());
-                    case IntentType.CONTINUE_TASK -> processContinueTaskIntent(intent, inputs.getSession());
-                    case IntentType.SUPPLEMENT_TASK -> processSupplementTaskIntent(intent, inputs.getSession());
-                    case IntentType.CANCEL_TASK -> processCancelTaskIntent(intent, inputs.getSession());
-                    case IntentType.MODIFY_TASK -> processModifyTaskIntent(intent, inputs.getSession());
+                    case CREATE_TASK -> processCreateTaskIntent(intent, inputs.getSession());
+                    case PAUSE_TASK -> processPauseTaskIntent(intent, inputs.getSession());
+                    case RESUME_TASK -> processResumeTaskIntent(intent, inputs.getSession());
+                    case CONTINUE_TASK -> processContinueTaskIntent(intent, inputs.getSession());
+                    case SUPPLEMENT_TASK -> processSupplementTaskIntent(intent, inputs.getSession());
+                    case CANCEL_TASK -> processCancelTaskIntent(intent, inputs.getSession());
+                    case MODIFY_TASK -> processModifyTaskIntent(intent, inputs.getSession());
                     default -> processUnknownTaskIntent(intent, inputs.getSession());
                 }
             });
+            t.start();
             threads.add(t);
         }
 

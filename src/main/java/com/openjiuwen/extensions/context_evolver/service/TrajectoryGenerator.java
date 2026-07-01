@@ -135,7 +135,7 @@ public final class TrajectoryGenerator {
                 : input.getMattsMode();
         List<String> trajectories = normalizeTrajectories(input.getTrajectory());
         if ("sequential".equals(mattsMode) && !trajectories.isEmpty()) {
-            trajectories = List.of(trajectories.getLast());
+            trajectories = List.of(trajectories.get(trajectories.size() - 1));
         }
 
         return memoryService.summarize(
@@ -258,7 +258,7 @@ public final class TrajectoryGenerator {
             if (list.isEmpty()) {
                 return List.of();
             }
-            if (list.getFirst() instanceof Map<?, ?>) {
+            if (list.get(0) instanceof Map<?, ?>) {
                 List<Map<String, Object>> messages = new ArrayList<>();
                 for (Object item : list) {
                     if (item instanceof Map<?, ?> map) {

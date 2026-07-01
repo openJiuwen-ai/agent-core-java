@@ -82,7 +82,7 @@ public final class MessageHandlerUtils {
         List<BaseMessage> safeSystemPrompt = systemPrompt == null ? List.of() : systemPrompt;
         List<BaseMessage> safeChatHistory = chatHistory == null ? List.of() : chatHistory;
 
-        if (safeChatHistory.isEmpty() || !"system".equals(safeChatHistory.getFirst().getRole())) {
+        if (safeChatHistory.isEmpty() || !"system".equals(safeChatHistory.get(0).getRole())) {
             resultMessages.addAll(safeSystemPrompt);
         }
         resultMessages.addAll(safeChatHistory);
@@ -192,7 +192,7 @@ public final class MessageHandlerUtils {
             return true;
         }
 
-        BaseMessage lastMessage = lastMessageList.getFirst();
+        BaseMessage lastMessage = lastMessageList.get(0);
         if ("tool".equals(lastMessage.getRole())) {
             LOG.info("Skipping user message - post-tool-call request");
             return false;

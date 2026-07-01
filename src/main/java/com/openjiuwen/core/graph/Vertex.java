@@ -67,7 +67,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     private static final VertexTraceSink PYTHON_NONE_TRACE_SINK = null;
     private static final ErrorRecoveryHandler PYTHON_NONE_ERROR_RECOVERY_HANDLER = null;
     private static final VertexEventSink PYTHON_NONE_EVENT_SINK = null;
-    private static final Executor STREAM_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+    private static final Executor STREAM_EXECUTOR = Executors.newCachedThreadPool();
 
     private final String nodeId;
     private final Executable<Map<String, Object>, Map<String, Object>> executable;

@@ -96,7 +96,7 @@ class GatewayProcessorComponentsMissingTest {
         );
 
         Map<String, Object> firstChoice = (Map<String, Object>) ((List<?>) result.jsonBody()
-                .get("choices")).getFirst();
+                .get("choices")).get(0);
         Map<String, Object> message = (Map<String, Object>) firstChoice.get("message");
         assertEquals("pong", message.get("content"));
         assertEquals(1, forwarder.forwardCalls.size());
@@ -134,9 +134,9 @@ class GatewayProcessorComponentsMissingTest {
 
         assertEquals(1, count);
         assertEquals(1, scorer.calls.size());
-        assertEquals("hello", scorer.calls.getFirst().get("instruction_text"));
-        assertEquals("", scorer.calls.getFirst().get("followup_user_feedback"));
-        Map<String, Object> recorded = recorder.samples.getFirst();
+        assertEquals("hello", scorer.calls.get(0).get("instruction_text"));
+        assertEquals("", scorer.calls.get(0).get("followup_user_feedback"));
+        Map<String, Object> recorded = recorder.samples.get(0);
         assertEquals(0.25, ((Map<String, Object>) recorded.get("judge")).get("score"));
         assertEquals("session_done", ((Map<String, Object>) recorded.get("judge_feedback")).get("tag"));
     }

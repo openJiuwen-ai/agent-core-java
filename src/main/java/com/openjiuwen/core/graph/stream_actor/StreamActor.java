@@ -31,7 +31,7 @@ public class StreamActor {
 
     private static final LoggerProtocol LOGGER = Loggers.GRAPH;
     private static final long SHUTDOWN_TIMEOUT_MS = 5000L;
-    private static final ExecutorService VIRTUAL_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+    private static final ExecutorService VIRTUAL_EXECUTOR = Executors.newCachedThreadPool();
 
     private final Map<ComponentAbility, StreamProcessor> processors = new HashMap<>();
     private final StreamConsumer vertex;

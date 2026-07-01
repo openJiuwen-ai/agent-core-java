@@ -50,8 +50,8 @@ class MemberMemoryToolkitTest {
         assertThat(toolkit.getContext()).isInstanceOf(MemberMemoryToolkit.MemoryToolContext.class);
         assertThat(toolNames(toolkit.getTools()))
                 .containsExactly("memory_search", "memory_get", "read_memory", "write_memory", "edit_memory");
-        assertThat(provider.requests.getFirst().agentId()).isEqualTo("team1.alice");
-        assertThat(provider.requests.getFirst().nodeName()).isEqualTo("memory");
+        assertThat(provider.requests.get(0).agentId()).isEqualTo("team1.alice");
+        assertThat(provider.requests.get(0).nodeName()).isEqualTo("memory");
     }
 
     @Test
@@ -65,7 +65,7 @@ class MemberMemoryToolkitTest {
         assertThat(toolkit.getContext()).isInstanceOf(MemberMemoryToolkit.CodingMemoryToolContext.class);
         assertThat(toolNames(toolkit.getTools()))
                 .containsExactly("coding_memory_read", "coding_memory_write", "coding_memory_edit");
-        assertThat(provider.requests.getFirst().nodeName()).isEqualTo("coding_memory");
+        assertThat(provider.requests.get(0).nodeName()).isEqualTo("coding_memory");
     }
 
     @Test
@@ -109,7 +109,7 @@ class MemberMemoryToolkitTest {
         FakeProvider provider = new FakeProvider();
         MemberMemoryToolkit toolkit = toolkit("grace", "team1", "general", false, provider);
         await(toolkit.initialize());
-        FakeManager manager = provider.managers.getFirst();
+        FakeManager manager = provider.managers.get(0);
 
         await(toolkit.close());
 
@@ -129,8 +129,8 @@ class MemberMemoryToolkitTest {
 
         await(toolkit.initialize());
 
-        assertThat(toolkit.getManager()).isSameAs(provider.managers.getFirst());
-        assertThat(toolkit.manager()).isSameAs(provider.managers.getFirst());
+        assertThat(toolkit.getManager()).isSameAs(provider.managers.get(0));
+        assertThat(toolkit.manager()).isSameAs(provider.managers.get(0));
     }
 
     @Test

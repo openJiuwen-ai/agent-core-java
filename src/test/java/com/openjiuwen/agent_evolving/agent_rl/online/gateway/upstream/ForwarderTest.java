@@ -32,10 +32,10 @@ class ForwarderTest {
         Map<String, Object> result = forwarder.forward(Map.of("messages", List.of(Map.of("role", "user", "content", "hi"))), Map.of());
 
         assertEquals(expectedStructuredToolCallsPayload(), result);
-        assertEquals("tool_calls", ((Map<?, ?>) ((List<?>) result.get("choices")).getFirst()).get("finish_reason"));
-        assertEquals("m1", upstreamClient.calls.getFirst().jsonBody.get("model"));
-        assertEquals(Boolean.TRUE, upstreamClient.calls.getFirst().jsonBody.get("logprobs"));
-        assertEquals(1, upstreamClient.calls.getFirst().jsonBody.get("top_logprobs"));
+        assertEquals("tool_calls", ((Map<?, ?>) ((List<?>) result.get("choices")).get(0)).get("finish_reason"));
+        assertEquals("m1", upstreamClient.calls.get(0).jsonBody.get("model"));
+        assertEquals(Boolean.TRUE, upstreamClient.calls.get(0).jsonBody.get("logprobs"));
+        assertEquals(1, upstreamClient.calls.get(0).jsonBody.get("top_logprobs"));
     }
 
     @Test

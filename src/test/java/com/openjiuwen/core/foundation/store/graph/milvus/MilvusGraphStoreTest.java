@@ -198,7 +198,7 @@ class MilvusGraphStoreTest {
 
         store.addEntity(List.of(entity), true, false, false).join();
 
-        Map<String, Object> row = client.rowsByCollection.get(GraphStoreConstants.ENTITY_COLLECTION).getFirst();
+        Map<String, Object> row = client.rowsByCollection.get(GraphStoreConstants.ENTITY_COLLECTION).get(0);
         assertEquals("01234...", row.get("content"));
         assertEquals("ab...", row.get("name"));
         assertEquals(List.of("relation-1"), row.get("relations"));
@@ -275,7 +275,7 @@ class MilvusGraphStoreTest {
                 Map.of()
         ).join();
 
-        assertEquals("high", result.get(GraphStoreConstants.ENTITY_COLLECTION).getFirst().get("uuid"));
+        assertEquals("high", result.get(GraphStoreConstants.ENTITY_COLLECTION).get(0).get("uuid"));
         assertEquals(List.of("name_embedding", "content_embedding", "content_bm25"),
                 client.lastSearchRequests.stream().map(MilvusGraphStore.SearchRequest::fieldName).toList());
         assertInstanceOf(String.class, client.lastSearchRequests.get(2).data());

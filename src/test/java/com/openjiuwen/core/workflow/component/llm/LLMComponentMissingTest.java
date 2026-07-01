@@ -89,7 +89,7 @@ class LLMComponentMissingTest {
         List<Object> chunks = collectValues(executable.stream(fakeInput("pytest"), workflowSession(), null));
 
         assertFalse(chunks.isEmpty());
-        assertEquals(Map.of("result", "Hello"), chunks.getFirst());
+        assertEquals(Map.of("result", "Hello"), chunks.get(0));
     }
 
     @Test

@@ -164,8 +164,8 @@ class CoordinationKernelTest {
         self.setSenderId("dev");
         EventMessage other = EventMessage.fromEvent(new TeamStandbyEvent());
         other.setSenderId("other");
-        host.messager.handlers.getFirst().handle(self).toCompletableFuture().join();
-        host.messager.handlers.getFirst().handle(other).toCompletableFuture().join();
+        host.messager.handlers.get(0).handle(self).toCompletableFuture().join();
+        host.messager.handlers.get(0).handle(other).toCompletableFuture().join();
 
         assertEquals(List.of(TeamEvent.STANDBY, TeamEvent.STANDBY), listenerEvents);
         assertEquals(1, kernel.getEventBus().getPendingEventCount());

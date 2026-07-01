@@ -57,14 +57,14 @@ class GraphKnowledgeBaseTest {
         assertThat(docIds).containsExactly("doc-1");
         assertThat(indexer.buildConfigs).extracting(IndexConfig::getIndexName)
                 .containsExactly("kb_graph_chunks", "kb_graph_triples");
-        assertThat(indexer.buildConfigs.getFirst().isUseCaptionForImages()).isTrue();
+        assertThat(indexer.buildConfigs.get(0).isUseCaptionForImages()).isTrue();
         assertThat(indexer.buildConfigs.get(1).isUseCaptionForImages()).isTrue();
         assertThat(indexer.buildChunks.get(1)).hasSize(1);
-        assertThat(indexer.buildChunks.get(1).getFirst().getText()).isEqualTo("Alice knows Bob");
-        assertThat(indexer.buildChunks.get(1).getFirst().getMetadata())
+        assertThat(indexer.buildChunks.get(1).get(0).getText()).isEqualTo("Alice knows Bob");
+        assertThat(indexer.buildChunks.get(1).get(0).getMetadata())
                 .containsEntry("triple", "[\"Alice\",\"knows\",\"Bob\"]")
                 .containsEntry("chunk_id", "chunk-1");
-        assertThat(indexer.buildOptions.getFirst()).containsEntry("database_name", "graph-db");
+        assertThat(indexer.buildOptions.get(0)).containsEntry("database_name", "graph-db");
     }
 
     @Test
@@ -143,7 +143,7 @@ class GraphKnowledgeBaseTest {
         @Override
         public CompletableFuture<Boolean> deleteIndex(String docId, String indexName, Map<String, Object> kwargs) {
             deletedIndexNames.add(indexName);
-            Boolean result = deleteResults.isEmpty() ? Boolean.TRUE : deleteResults.removeFirst();
+            Boolean result = deleteResults.isEmpty() ? Boolean.TRUE : deleteResults.remove(0);
             return CompletableFuture.completedFuture(result);
         }
 

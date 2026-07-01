@@ -204,7 +204,7 @@ public class EvolutionRail extends DeepAgentRail {
         if (trajectory.isEmpty()) {
             return null;
         }
-        return trajectory.getLast();
+        return trajectory.get(trajectory.size() - 1);
     }
 
     public Set<String> getDisabledSkills() {
@@ -281,7 +281,7 @@ public class EvolutionRail extends DeepAgentRail {
         step.put("values", new LinkedHashMap<>(ctx.getValues()));
         trajectory.add(step);
         if (maxTrajectorySteps != null && trajectory.size() > maxTrajectorySteps) {
-            trajectory.removeFirst();
+            trajectory.remove(0);
         }
     }
 

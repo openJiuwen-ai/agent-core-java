@@ -21,7 +21,7 @@ WorkflowAgent是一种专注于多步骤、任务导向的流程自动化Agent�
 
 # 前提条件
 
-JDK 版本应高于或等于 JDK 17，建议使用 JDK 21。Maven 版本建议 3.9+。
+JDK 版本应为 JDK 17。Maven 版本建议 3.9+。
 
 # 添加 Maven 依赖
 

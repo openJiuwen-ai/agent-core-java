@@ -233,7 +233,7 @@ class ReActAgentWorkflowInterruptMockPythonParityTest {
 
     private static String lastPayload(List<OutputSchema> values) {
         assertThat(values).isNotEmpty();
-        return String.valueOf(values.getLast().getPayload());
+        return String.valueOf(values.get(values.size() - 1).getPayload());
     }
 
     private static List<String> historyRoles(ScriptedWorkflowAgent agent, MemorySession session) {

@@ -616,12 +616,12 @@ class StructuredLogPythonParityTest {
 
         private String lastMessage() {
             assertFalse(messages.isEmpty(), "expected at least one captured log record");
-            return messages.getLast();
+            return messages.get(messages.size() - 1);
         }
 
         private Throwable lastThrown() {
             assertFalse(records.isEmpty(), "expected at least one captured log record");
-            return records.getLast().getThrown();
+            return records.get(records.size() - 1).getThrown();
         }
     }
 

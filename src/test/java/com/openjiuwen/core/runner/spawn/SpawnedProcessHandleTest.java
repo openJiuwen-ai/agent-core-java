@@ -71,8 +71,8 @@ class SpawnedProcessHandleTest {
         )).toCompletableFuture().join();
         SpawnMessage received = handle.receiveMessage().toCompletableFuture().join();
 
-        assertEquals(SpawnMessageType.INPUT, process.writtenMessages().getFirst().getType());
-        assertEquals("input-1", process.writtenMessages().getFirst().getMessageId());
+        assertEquals(SpawnMessageType.INPUT, process.writtenMessages().get(0).getType());
+        assertEquals("input-1", process.writtenMessages().get(0).getMessageId());
         assertNotNull(received);
         assertEquals(SpawnMessageType.DONE, received.getType());
         assertEquals("done-1", received.getMessageId());
@@ -111,7 +111,7 @@ class SpawnedProcessHandleTest {
 
         assertTrue(result);
         assertTrue(handle.isHealthy());
-        assertEquals(SpawnMessageType.HEALTH_CHECK, process.writtenMessages().getFirst().getType());
+        assertEquals(SpawnMessageType.HEALTH_CHECK, process.writtenMessages().get(0).getType());
     }
 
     @Test
@@ -149,8 +149,8 @@ class SpawnedProcessHandleTest {
 
         assertTrue(graceful);
         assertFalse(process.destroyed);
-        assertEquals(SpawnMessageType.SHUTDOWN, process.writtenMessages().getFirst().getType());
-        assertEquals(Map.of("reason", "parent_initiated"), process.writtenMessages().getFirst().getPayload());
+        assertEquals(SpawnMessageType.SHUTDOWN, process.writtenMessages().get(0).getType());
+        assertEquals(Map.of("reason", "parent_initiated"), process.writtenMessages().get(0).getPayload());
         assertFalse(handle.isAlive());
     }
 
@@ -213,7 +213,7 @@ class SpawnedProcessHandleTest {
         assertNotNull(handle.getProcessId());
         assertTrue(commandRef.get().contains(SpawnChildProcess.class.getName()));
         assertEquals("{\"backend\":\"default\"}", envRef.get().get(SpawnProcesses.LOGGING_CONFIG_ENV));
-        SpawnMessage init = process.writtenMessages().getFirst();
+        SpawnMessage init = process.writtenMessages().get(0);
         assertEquals(SpawnMessageType.INPUT, init.getType());
         Map<?, ?> payload = assertInstanceOf(Map.class, init.getPayload());
         assertEquals(Map.of("query", "hello"), payload.get("inputs"));

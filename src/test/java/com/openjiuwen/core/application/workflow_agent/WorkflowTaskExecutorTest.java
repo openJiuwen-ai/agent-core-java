@@ -86,14 +86,14 @@ class WorkflowTaskExecutorTest {
         List<ControllerOutputChunk> chunks = iteratorToList(executor.executeAbility("task-complete", session));
 
         assertEquals(1, session.stream.size());
-        OutputSchema workflowFinal = assertInstanceOf(OutputSchema.class, session.stream.getFirst());
+        OutputSchema workflowFinal = assertInstanceOf(OutputSchema.class, session.stream.get(0));
         assertEquals("workflow_final", workflowFinal.getType());
         assertEquals(finalPayload, workflowFinal.getPayload());
         assertEquals(1, chunks.size());
-        assertEquals(EventType.TASK_COMPLETION.getValue(), chunks.getFirst().getControllerPayload().getType());
+        assertEquals(EventType.TASK_COMPLETION.getValue(), chunks.get(0).getControllerPayload().getType());
         DataFrame.JsonDataFrame frame = assertInstanceOf(
                 DataFrame.JsonDataFrame.class,
-                chunks.getFirst().getControllerPayload().getData().getFirst()
+                chunks.get(0).getControllerPayload().getData().get(0)
         );
         WorkflowOutput output = assertInstanceOf(WorkflowOutput.class, frame.data().get("result"));
         assertEquals(WorkflowExecutionState.COMPLETED, output.getState());
@@ -118,10 +118,10 @@ class WorkflowTaskExecutorTest {
         List<ControllerOutputChunk> chunks = iteratorToList(executor.executeAbility("task-interrupt", session));
 
         assertEquals(1, session.stream.size());
-        OutputSchema writtenInteraction = assertInstanceOf(OutputSchema.class, session.stream.getFirst());
+        OutputSchema writtenInteraction = assertInstanceOf(OutputSchema.class, session.stream.get(0));
         assertEquals(Constant.INTERACTION, writtenInteraction.getType());
         assertEquals(1, chunks.size());
-        assertEquals(EventType.TASK_INTERACTION.getValue(), chunks.getFirst().getControllerPayload().getType());
+        assertEquals(EventType.TASK_INTERACTION.getValue(), chunks.get(0).getControllerPayload().getType());
 
         Map<String, Object> state = map(session.getState("workflow_controller"));
         Map<String, Object> interrupted = map(state.get("interrupted_tasks"));
@@ -129,7 +129,7 @@ class WorkflowTaskExecutorTest {
         assertEquals("questioner", info.get("component_id"));
         assertEquals(Map.of("prompt", "Need input"), info.get("last_interaction_value"));
 
-        Task updatedTask = taskManager.getTask(TaskFilter.byTaskId("task-interrupt")).getFirst();
+        Task updatedTask = taskManager.getTask(TaskFilter.byTaskId("task-interrupt")).get(0);
         assertEquals("questioner", updatedTask.getExtensions().get("component_id"));
     }
 

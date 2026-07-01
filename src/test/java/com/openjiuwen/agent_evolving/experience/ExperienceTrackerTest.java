@@ -59,11 +59,11 @@ class ExperienceTrackerTest {
         List<ExperienceTracker.PresentedEntry> recordsB = ExperienceTracker.getSessionPresentedRecords(sessionB);
 
         assertEquals(1, recordsA.size());
-        assertEquals("skill-a", recordsA.getFirst().skillName());
-        assertEquals("snippet-a", recordsA.getFirst().presentationSnippet());
+        assertEquals("skill-a", recordsA.get(0).skillName());
+        assertEquals("snippet-a", recordsA.get(0).presentationSnippet());
         assertEquals(1, recordsB.size());
-        assertEquals("skill-b", recordsB.getFirst().skillName());
-        assertEquals("snippet-b", recordsB.getFirst().presentationSnippet());
+        assertEquals("skill-b", recordsB.get(0).skillName());
+        assertEquals("snippet-b", recordsB.get(0).presentationSnippet());
     }
 
     @Test
@@ -99,9 +99,9 @@ class ExperienceTrackerTest {
 
         List<ExperienceTracker.PresentedEntry> entries = ExperienceTracker.getSessionPresentedRecords(session);
         assertEquals(1, entries.size());
-        assertEquals("skill-a", entries.getFirst().skillName());
-        assertSame(record, entries.getFirst().record());
-        assertEquals("my_snippet", entries.getFirst().presentationSnippet());
+        assertEquals("skill-a", entries.get(0).skillName());
+        assertSame(record, entries.get(0).record());
+        assertEquals("my_snippet", entries.get(0).presentationSnippet());
     }
 
     @Test
@@ -119,7 +119,7 @@ class ExperienceTrackerTest {
 
         List<ExperienceTracker.PresentedEntry> consumed = tracker.consumeEvalState(session);
         assertEquals(1, consumed.size());
-        assertSame(record, consumed.getFirst().record());
+        assertSame(record, consumed.get(0).record());
         assertEquals(List.of(), ExperienceTracker.getSessionPresentedRecords(session));
         assertEquals(0, ExperienceTracker.getSessionEvalCounter(session));
     }
@@ -145,8 +145,8 @@ class ExperienceTrackerTest {
 
         List<ExperienceTracker.PresentedEntry> entries = ExperienceTracker.getSessionPresentedRecords(session);
         assertEquals(1, entries.size());
-        assertEquals("ev_body", entries.getFirst().record().getId());
-        assertEquals("some_snippet", entries.getFirst().presentationSnippet());
+        assertEquals("ev_body", entries.get(0).record().getId());
+        assertEquals("some_snippet", entries.get(0).presentationSnippet());
     }
 
     @Test
@@ -182,7 +182,7 @@ class ExperienceTrackerTest {
         assertEquals(List.of("ev_body"), new ArrayList<>(updates.keySet()));
         List<ExperienceTracker.PresentedEntry> entries = ExperienceTracker.getSessionPresentedRecords(session);
         assertEquals(1, entries.size());
-        assertEquals("ev_body", entries.getFirst().record().getId());
+        assertEquals("ev_body", entries.get(0).record().getId());
     }
 
     @Test

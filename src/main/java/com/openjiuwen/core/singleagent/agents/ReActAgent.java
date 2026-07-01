@@ -1522,9 +1522,10 @@ public class ReActAgent extends BaseAgent {
         AgentSessionLifecycle finalLifecycleSession = lifecycleSession;
         boolean finalNeedCleanup = needCleanup;
         if (finalLifecycleSession != null) {
-            Thread.ofVirtual()
-                    .name("react-agent-stream-" + getCard().getId())
-                    .start(() -> runStreamingInvoke(inputs, finalSession, finalLifecycleSession, finalNeedCleanup));
+            Thread streamThread = new Thread(
+                    () -> runStreamingInvoke(inputs, finalSession, finalLifecycleSession, finalNeedCleanup),
+                    "react-agent-stream-" + getCard().getId());
+            streamThread.start();
             return finalSession.streamIterator();
         }
         try {

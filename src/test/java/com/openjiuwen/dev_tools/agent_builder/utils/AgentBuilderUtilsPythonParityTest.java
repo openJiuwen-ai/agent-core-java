@@ -192,7 +192,7 @@ class AgentBuilderUtilsPythonParityTest {
         List<Map<String, Object>> result = AgentBuilderUtils.mergeDictLists(existing, newItems, "id");
 
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst()).containsEntry("name", "A");
+        assertThat(result.get(0)).containsEntry("name", "A");
     }
 
     @Test

@@ -78,7 +78,7 @@ public class JudgeEvaluator {
                 JudgeScoring.normalizeOverallScore(avgOverall),
                 avgOverall,
                 votes,
-                voteCount == 1 ? details.getFirst() : details,
+                voteCount == 1 ? details.get(0) : details,
                 config.getModelId(),
                 sessionId != null ? sessionId : "",
                 turnNum
@@ -194,7 +194,7 @@ public class JudgeEvaluator {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> firstMap(Map<String, Object> data, String key) {
         Object value = data.get(key);
-        if (value instanceof List<?> list && !list.isEmpty() && list.getFirst() instanceof Map<?, ?> map) {
+        if (value instanceof List<?> list && !list.isEmpty() && list.get(0) instanceof Map<?, ?> map) {
             return (Map<String, Object>) map;
         }
         if (value instanceof Map<?, ?> map) {

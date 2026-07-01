@@ -42,7 +42,7 @@ class FragmentMemoryManagerTest {
 
         assertThat(result).containsExactly(unit);
         assertThat(index.addedDocs).hasSize(1);
-        MemoryDoc doc = index.addedDocs.getFirst();
+        MemoryDoc doc = index.addedDocs.get(0);
         assertThat(doc.getId()).isEqualTo("m1");
         assertThat(doc.getText()).isEqualTo("new memory");
         assertThat(doc.getType()).isEqualTo("user_profile");
@@ -104,7 +104,7 @@ class FragmentMemoryManagerTest {
                 MemoryType.EPISODIC_MEMORY.getValue()
         );
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst()).containsEntry("id", "high").containsEntry("score", 0.9d);
+        assertThat(result.get(0)).containsEntry("id", "high").containsEntry("score", 0.9d);
     }
 
     @Test

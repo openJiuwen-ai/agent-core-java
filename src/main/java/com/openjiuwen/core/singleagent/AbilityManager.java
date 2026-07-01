@@ -395,15 +395,15 @@ public class AbilityManager {
             } else if (character == '{' || character == '[') {
                 stack.add(character);
             } else if (character == '}') {
-                if (stack.isEmpty() || stack.getLast() != '{') {
+                if (stack.isEmpty() || stack.get(stack.size() - 1) != '{') {
                     return null;
                 }
-                stack.removeLast();
+                stack.remove(stack.size() - 1);
             } else if (character == ']') {
-                if (stack.isEmpty() || stack.getLast() != '[') {
+                if (stack.isEmpty() || stack.get(stack.size() - 1) != '[') {
                     return null;
                 }
-                stack.removeLast();
+                stack.remove(stack.size() - 1);
             }
         }
         if (inString) {

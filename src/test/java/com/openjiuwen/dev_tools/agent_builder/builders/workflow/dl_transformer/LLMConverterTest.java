@@ -32,7 +32,7 @@ class LLMConverterTest {
         assertThat(converter.getNode().getData().getInputs().getInputParameters()).containsKey("query");
         assertThat(converter.getNode().getData().getOutputs().getProperties()).containsKeys("answer", "reason");
         assertThat(converter.getEdges()).hasSize(1);
-        assertThat(converter.getEdges().getFirst().getTargetNodeId()).isEqualTo("node_end");
+        assertThat(converter.getEdges().get(0).getTargetNodeId()).isEqualTo("node_end");
     }
 
     @Test

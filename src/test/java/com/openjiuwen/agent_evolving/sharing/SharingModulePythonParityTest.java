@@ -53,7 +53,7 @@ class SharingModulePythonParityTest {
         assertThat(uploadResult.isOk()).isTrue();
         assertThat(uploadResult.getBundleId()).isEqualTo(bundle.getBundleId());
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getBundleId()).isEqualTo(bundle.getBundleId());
+        assertThat(results.get(0).getBundleId()).isEqualTo(bundle.getBundleId());
     }
 
     @Test
@@ -85,8 +85,8 @@ class SharingModulePythonParityTest {
 
         assertThat(firstResults).hasSize(1);
         assertThat(secondResults).hasSize(1);
-        assertThat(firstResults.getFirst().getBundleId()).isEqualTo(first.getBundleId());
-        assertThat(secondResults.getFirst().getBundleId()).isEqualTo(second.getBundleId());
+        assertThat(firstResults.get(0).getBundleId()).isEqualTo(first.getBundleId());
+        assertThat(secondResults.get(0).getBundleId()).isEqualTo(second.getBundleId());
     }
 
     @Test
@@ -207,7 +207,7 @@ class SharingModulePythonParityTest {
         Path installed = client.installSkill(skillId).toCompletableFuture().join();
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getSkillId()).isEqualTo(skillId);
+        assertThat(results.get(0).getSkillId()).isEqualTo(skillId);
         assertThat(installed).isNotNull();
         assertThat(Files.isRegularFile(installed.resolve("SKILL.md"))).isTrue();
         assertThat(Files.isRegularFile(installed.resolve("scripts").resolve("helper.py"))).isTrue();
@@ -236,7 +236,7 @@ class SharingModulePythonParityTest {
                 .join();
 
         assertThat(result.hasShareable()).isFalse();
-        assertThat(result.getDroppedForShare().getFirst().reason())
+        assertThat(result.getDroppedForShare().get(0).reason())
                 .contains("execution failure without successful follow-up tool call");
     }
 

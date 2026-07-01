@@ -119,7 +119,7 @@ public class AioCodeProvider extends BaseCodeProvider {
             String cwd,
             Map<String, Object> options) {
         SubmissionPublisher<ExecuteCodeStreamResult> publisher = new SubmissionPublisher<>();
-        Thread.startVirtualThread(() -> {
+        Thread thread = new Thread(() -> {
             if (code == null || code.isBlank()) {
                 publisher.submit(AioProviderSupport.buildCodeErrorResult(
                         "execute_code_stream",
@@ -213,6 +213,7 @@ public class AioCodeProvider extends BaseCodeProvider {
                 }
             });
         });
+        thread.start();
         return publisher;
     }
 

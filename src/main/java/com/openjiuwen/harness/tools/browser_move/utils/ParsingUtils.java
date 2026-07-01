@@ -51,7 +51,7 @@ public final class ParsingUtils {
                 if (nullCount == 1 && nonNull.size() == 1) {
                     Map<String, Object> merged = new LinkedHashMap<>(working);
                     merged.remove(keyword);
-                    merged.putAll(nonNull.getFirst());
+                    merged.putAll(nonNull.get(0));
                     working = merged;
                 }
             }

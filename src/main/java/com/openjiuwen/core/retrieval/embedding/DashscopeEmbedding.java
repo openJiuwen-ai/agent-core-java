@@ -63,7 +63,7 @@ public class DashscopeEmbedding extends APIEmbedding {
         this.configuredDimension = dimension;
         this.matryoshkaDimension = dimension != null;
         this.limiter = new Semaphore(Math.max(1, maxConcurrent));
-        this.asyncExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        this.asyncExecutor = Executors.newCachedThreadPool();
         this.requestParams = new LinkedHashMap<>();
         this.requestParams.put("model", modelName);
         this.requestParams.put("api_key", apiKey);
@@ -95,7 +95,7 @@ public class DashscopeEmbedding extends APIEmbedding {
     @Override
     public List<Double> embedQuerySync(String text, Map<String, Object> kwargs) {
         List<List<Double>> embeddings = embedDocumentsSync(List.of(text), 1, withDimensions(kwargs));
-        return embeddings.getFirst();
+        return embeddings.get(0);
     }
 
     @Override
@@ -129,7 +129,7 @@ public class DashscopeEmbedding extends APIEmbedding {
             throw invalidMultimodalInput();
         }
         List<List<Double>> embeddings = getEmbeddingsSync(List.of(document.getDashscopeInput()), kwargs);
-        return embeddings.getFirst();
+        return embeddings.get(0);
     }
 
     public List<Double> embedMultimodalSync(Object document, Map<String, Object> kwargs) {
@@ -285,8 +285,8 @@ public class DashscopeEmbedding extends APIEmbedding {
                     "The embeddings field in response is empty: " + output
             );
         }
-        if (inferredDimension == null && !embeddings.getFirst().isEmpty()) {
-            inferredDimension = embeddings.getFirst().size();
+        if (inferredDimension == null && !embeddings.get(0).isEmpty()) {
+            inferredDimension = embeddings.get(0).size();
             LOGGER.debug("Determined embedding dimension: {}", inferredDimension);
         }
         return embeddings;

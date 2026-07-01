@@ -181,7 +181,7 @@ class TeamWorkspaceManagerTest {
 
         manager.initialize().join();
 
-        List<String> subcommands = manager.gitCalls.stream().map(call -> call.getFirst()).toList();
+        List<String> subcommands = manager.gitCalls.stream().map(call -> call.get(0)).toList();
         assertTrue(subcommands.contains("init"));
         assertTrue(subcommands.contains("commit"));
     }

@@ -56,7 +56,7 @@ class ShareStagerTest {
 
         assertEquals(0, result.getStagedForShare().size());
         assertEquals("execution failure without successful follow-up tool call",
-                result.getDroppedForShare().getFirst().reason());
+                result.getDroppedForShare().get(0).reason());
         assertFalse(sharer.hasPending("skill"));
     }
 
@@ -74,7 +74,7 @@ class ShareStagerTest {
                 .join();
 
         assertEquals(1, result.getStagedForShare().size());
-        SharedExperience shared = result.getStagedForShare().getFirst();
+        SharedExperience shared = result.getStagedForShare().get(0);
         assertEquals(List.of("retry", "timeout"), shared.getKeywords());
         assertEquals("summary text", shared.getSummary());
         assertEquals("skill", shared.getSharingMeta().getSkillName());
@@ -97,7 +97,7 @@ class ShareStagerTest {
                 .join();
 
         assertEquals(0, result.getStagedForShare().size());
-        assertEquals("score 0.50 below threshold 0.60", result.getDroppedForShare().getFirst().reason());
+        assertEquals("score 0.50 below threshold 0.60", result.getDroppedForShare().get(0).reason());
         assertFalse(sharer.hasPending("skill"));
     }
 

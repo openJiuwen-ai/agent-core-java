@@ -220,9 +220,9 @@ class BrowserProbeCardsMissingTest {
         assertEquals("A Light in the Attic", firstCard(result).get("title"));
         List<Map<String, Object>> exported = cache.exportForProbe();
         assertEquals(1, exported.size());
-        assertEquals("books.toscrape.com", exported.getFirst().get("domain"));
-        assertEquals(1, exported.getFirst().get("success_count"));
-        assertTrue(Double.parseDouble(String.valueOf(exported.getFirst().get("quality_score"))) > 0);
+        assertEquals("books.toscrape.com", exported.get(0).get("domain"));
+        assertEquals(1, exported.get(0).get("success_count"));
+        assertTrue(Double.parseDouble(String.valueOf(exported.get(0).get("quality_score"))) > 0);
     }
 
     @Test
@@ -318,12 +318,12 @@ class BrowserProbeCardsMissingTest {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> firstCard(ToolOutput output) {
-        return (Map<String, Object>) ((List<?>) dataMap(output).get("cards")).getFirst();
+        return (Map<String, Object>) ((List<?>) dataMap(output).get("cards")).get(0);
     }
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> firstCard(Map<String, Object> result) {
-        return (Map<String, Object>) ((List<?>) result.get("cards")).getFirst();
+        return (Map<String, Object>) ((List<?>) result.get("cards")).get(0);
     }
 
     private static String booksToScrapeResultJson() {

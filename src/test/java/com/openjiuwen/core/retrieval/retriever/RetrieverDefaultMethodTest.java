@@ -43,7 +43,7 @@ class RetrieverDefaultMethodTest {
         List<SearchResult> results = retriever.retrieveSearchResults("query", 5, "hybrid", Map.of());
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getId()).isEqualTo("chunk-1");
-        assertThat(results.getFirst().getText()).isEqualTo("text");
+        assertThat(results.get(0).getId()).isEqualTo("chunk-1");
+        assertThat(results.get(0).getText()).isEqualTo("text");
     }
 }

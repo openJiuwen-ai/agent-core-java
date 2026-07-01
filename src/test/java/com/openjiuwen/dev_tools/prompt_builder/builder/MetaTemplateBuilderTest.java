@@ -70,14 +70,14 @@ class MetaTemplateBuilderTest {
         Optional<String> result = builder.build("travel assistant").join();
 
         String expected = PromptZh.PROMPT_BUILD_GENERAL_META_SYSTEM_TEMPLATE.toMessages()
-                .getFirst()
+                .get(0)
                 .getContentAsString()
                 + PromptZh.PROMPT_BUILD_GENERAL_META_USER_TEMPLATE.format(Map.of(
                 "instruction",
                 "travel assistant",
                 "tools",
                 "None"
-        )).toMessages().getFirst().getContentAsString();
+        )).toMessages().get(0).getContentAsString();
         assertThat(result.orElseThrow()).contains(expected);
         assertThat(client.capturedInvokes()).hasSize(1);
     }
@@ -95,14 +95,14 @@ class MetaTemplateBuilderTest {
         ).join();
 
         String expected = PromptZh.PROMPT_BUILD_PLAN_META_SYSTEM_TEMPLATE.toMessages()
-                .getFirst()
+                .get(0)
                 .getContentAsString()
                 + PromptZh.PROMPT_BUILD_PLAN_META_USER_TEMPLATE.format(Map.of(
                 "instruction",
                 "travel assistant",
                 "tools",
                 "None"
-        )).toMessages().getFirst().getContentAsString();
+        )).toMessages().get(0).getContentAsString();
         assertThat(result.orElseThrow()).contains(expected);
     }
 
@@ -119,7 +119,7 @@ class MetaTemplateBuilderTest {
         ).join();
 
         assertThat(result.orElseThrow()).contains(
-                PromptZh.PROMPT_BUILD_GENERAL_META_SYSTEM_TEMPLATE.toMessages().getFirst().getContentAsString());
+                PromptZh.PROMPT_BUILD_GENERAL_META_SYSTEM_TEMPLATE.toMessages().get(0).getContentAsString());
     }
 
     @Test

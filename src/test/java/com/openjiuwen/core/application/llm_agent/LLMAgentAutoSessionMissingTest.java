@@ -43,7 +43,7 @@ class LLMAgentAutoSessionMissingTest {
 
         List<?> interactionResult = assertList(first);
         assertThat(interactionResult).isNotEmpty();
-        OutputSchema interaction = assertOutput(interactionResult.getFirst());
+        OutputSchema interaction = assertOutput(interactionResult.get(0));
         assertThat(interaction.getType()).isEqualTo("__interaction__");
         assertThat(((InteractionOutput) interaction.getPayload()).getId()).isEqualTo("questioner");
         assertThat(agent.seenSessionIds).contains(conversationId);
@@ -74,7 +74,7 @@ class LLMAgentAutoSessionMissingTest {
         List<OutputSchema> firstInteractions = interactions(first);
 
         assertThat(firstInteractions).hasSize(1);
-        assertThat(((InteractionOutput) firstInteractions.getFirst().getPayload()).getId()).isEqualTo("questioner");
+        assertThat(((InteractionOutput) firstInteractions.get(0).getPayload()).getId()).isEqualTo("questioner");
 
         InteractiveInput userInput = new InteractiveInput();
         userInput.update("questioner", "Beijing");
@@ -85,7 +85,7 @@ class LLMAgentAutoSessionMissingTest {
 
         assertThat(interactions(second)).isEmpty();
         assertThat(second).isNotEmpty();
-        assertThat(String.valueOf(second.getLast().getPayload())).contains("Beijing");
+        assertThat(String.valueOf(second.get(second.size() - 1).getPayload())).contains("Beijing");
         assertThat(agent.seenSessionIds).contains(conversationId);
     }
 

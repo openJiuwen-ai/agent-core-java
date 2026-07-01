@@ -241,7 +241,7 @@ class SessionControllerTest {
 
         List<SessionController.ScopeCleanupResult> cleaned = controller.cleanupScopeInactiveSessions(scope);
         assertThat(cleaned).hasSize(1);
-        assertThat(cleaned.getFirst().sessions()).extracting(SessionMeta::getSessionId).containsExactly("active");
+        assertThat(cleaned.get(0).sessions()).extracting(SessionMeta::getSessionId).containsExactly("active");
         assertThat(SessionPaths.sessionDir(tempDir, "agent-a", "active")).doesNotExist();
         assertThat(controller.getScopeMeta(scope).getSessions()).extracting(SessionMeta::getSessionId)
                 .containsExactly("inactive");
@@ -262,8 +262,8 @@ class SessionControllerTest {
         List<SessionController.RemovedSession> removed = controller.removeSession("session-2");
 
         assertThat(removed).hasSize(1);
-        assertThat(removed.getFirst().sessionScope()).isEqualTo(scope);
-        assertThat(removed.getFirst().session().getSessionId()).isEqualTo("session-2");
+        assertThat(removed.get(0).sessionScope()).isEqualTo(scope);
+        assertThat(removed.get(0).session().getSessionId()).isEqualTo("session-2");
         assertThat(sessionTwoDir).doesNotExist();
         assertThat(controller.removeSession("missing")).isEmpty();
 
@@ -431,7 +431,7 @@ class SessionControllerTest {
         controller.createIfNotExists(mainScope(), "session-1");
         List<SessionController.RemovedSession> removed = controller.removeSession("session-1");
         assertThat(removed).hasSize(1);
-        assertThat(removed.getFirst().session().getSessionId()).isEqualTo("session-1");
+        assertThat(removed.get(0).session().getSessionId()).isEqualTo("session-1");
         assertThat(controller.getScopeSessions(mainScope())).isEmpty();
     }
 
@@ -467,7 +467,7 @@ class SessionControllerTest {
         deactivateCurrent(controller, mainScope());
         controller.createIfNotExists(mainScope(), "session-2");
         List<SessionController.ScopeCleanupResult> cleaned = controller.cleanupScopeInactiveSessions(mainScope());
-        assertThat(cleaned.getFirst().sessions()).extracting(SessionMeta::getSessionId).containsExactly("session-1");
+        assertThat(cleaned.get(0).sessions()).extracting(SessionMeta::getSessionId).containsExactly("session-1");
     }
 
     private void caseCleanupNonexistentScope() throws IOException {
@@ -686,7 +686,7 @@ class SessionControllerTest {
         controller.createIfNotExists(mainScope(), "session-1");
         List<SessionController.ScopeCleanupResult> cleaned = controller.cleanupScopeInactiveSessions(mainScope());
         assertThat(cleaned).hasSize(1);
-        assertThat(cleaned.getFirst().sessions()).isEmpty();
+        assertThat(cleaned.get(0).sessions()).isEmpty();
     }
 
     private void caseCleanupAllInactive() throws IOException {
@@ -694,7 +694,7 @@ class SessionControllerTest {
         controller.createIfNotExists(mainScope(), "session-1");
         deactivateCurrent(controller, mainScope());
         List<SessionController.ScopeCleanupResult> cleaned = controller.cleanupScopeInactiveSessions(mainScope());
-        assertThat(cleaned.getFirst().sessions()).hasSize(1);
+        assertThat(cleaned.get(0).sessions()).hasSize(1);
         assertThat(controller.getScopeSessions(mainScope())).isEmpty();
     }
 

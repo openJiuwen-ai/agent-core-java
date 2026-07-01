@@ -33,7 +33,7 @@ public class TaskExecutorPool {
 
     public TaskExecutorPool(PregelConfig config) {
         this.config = config;
-        this.executorService = Executors.newVirtualThreadPerTaskExecutor();
+        this.executorService = Executors.newCachedThreadPool();
     }
 
     /**

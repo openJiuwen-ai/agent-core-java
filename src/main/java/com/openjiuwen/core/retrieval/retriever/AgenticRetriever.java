@@ -174,7 +174,7 @@ public class AgenticRetriever implements Retriever {
         TripleMemory memory = new TripleMemory();
 
         for (int turn = 1; turn <= maxIter; turn++) {
-            String currentQuery = queries.getLast();
+            String currentQuery = queries.get(queries.size() - 1);
             Retriever chunkRetriever = graph.getRetrieverForMode(mode, true);
             List<RetrievalResult> chunkResults = chunkRetriever.retrieve(
                     currentQuery,
@@ -230,7 +230,7 @@ public class AgenticRetriever implements Retriever {
         TripleMemory memory = new TripleMemory();
 
         for (int turn = 1; turn <= maxIter; turn++) {
-            String currentQuery = queries.getLast();
+            String currentQuery = queries.get(queries.size() - 1);
             List<RetrievalResult> chunkResults = retriever.retrieve(currentQuery, topK, scoreThreshold, mode, options);
             memory.batchExtendMemory(read(currentQuery, chunkResults, memory.getMemory()));
             historyResults.add(chunkResults);
@@ -334,7 +334,7 @@ public class AgenticRetriever implements Retriever {
                         options
                 );
                 if (results != null && !results.isEmpty()) {
-                    candidates.add(results.getFirst());
+                    candidates.add(results.get(0));
                 }
             } catch (RuntimeException exception) {
                 failures.add(exception);

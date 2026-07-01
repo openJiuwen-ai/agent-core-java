@@ -353,8 +353,8 @@ class BaseGuardrailTest {
                     node.endsWith("test_multiple_events_trigger_correct_guardrail") ? List.of("event1", "event2") : null,
                     null);
             guardrail.register(framework);
-            framework.trigger(guardrail.listenEvents().getFirst().toString(), new Object[]{"arg0"}, Map.of("text", "payload"));
-            assertThat(guardrail.lastExtractEvent).isEqualTo(guardrail.listenEvents().getFirst());
+            framework.trigger(guardrail.listenEvents().get(0).toString(), new Object[]{"arg0"}, Map.of("text", "payload"));
+            assertThat(guardrail.lastExtractEvent).isEqualTo(guardrail.listenEvents().get(0));
             assertThat(guardrail.lastExtractArgs).containsExactly("arg0");
         } else {
             FakeGuardrail guardrail = new FakeGuardrail(

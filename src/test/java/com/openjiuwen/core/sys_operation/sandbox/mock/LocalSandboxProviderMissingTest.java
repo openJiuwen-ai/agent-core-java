@@ -110,7 +110,7 @@ class LocalSandboxProviderMissingTest {
         assertEquals("line1\nline2", chunks.stream()
                 .map(chunk -> String.valueOf(chunk.getData().getChunkContent()))
                 .reduce("", String::concat));
-        assertTrue(chunks.getLast().getData().isLastChunk());
+        assertTrue(chunks.get(chunks.size() - 1).getData().isLastChunk());
     }
 
     @Test
@@ -177,7 +177,7 @@ class LocalSandboxProviderMissingTest {
         List<DownloadFileStreamResult> chunks = provider.downloadFileStream("source.txt", localDestination);
 
         assertTrue(chunks.size() > 0);
-        assertTrue(chunks.getLast().getData().isLastChunk());
+        assertTrue(chunks.get(chunks.size() - 1).getData().isLastChunk());
         assertEquals("download me", Files.readString(localDestination, StandardCharsets.UTF_8));
     }
 
@@ -201,7 +201,7 @@ class LocalSandboxProviderMissingTest {
 
         assertTrue(chunks.size() > 0);
         assertTrue(text.contains("stream"));
-        assertEquals(0, chunks.getLast().getData().getExitCode());
+        assertEquals(0, chunks.get(chunks.size() - 1).getData().getExitCode());
     }
 
     @Test
@@ -224,7 +224,7 @@ class LocalSandboxProviderMissingTest {
         assertTrue(chunks.size() >= 1);
         assertTrue(text.contains("line1"));
         assertTrue(text.contains("line2"));
-        assertEquals(0, chunks.getLast().getData().getExitCode());
+        assertEquals(0, chunks.get(chunks.size() - 1).getData().getExitCode());
     }
 
     @Test

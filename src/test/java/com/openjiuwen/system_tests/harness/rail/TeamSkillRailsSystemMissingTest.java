@@ -65,7 +65,7 @@ class TeamSkillRailsSystemMissingTest {
 
         List<String> followUps = drainFollowUps(agent);
         assertThat(followUps).hasSize(1);
-        assertThat(followUps.getFirst())
+        assertThat(followUps.get(0))
                 .contains("ask_user")
                 .contains("team-skill-creator");
     }
@@ -114,7 +114,7 @@ class TeamSkillRailsSystemMissingTest {
                 .toList();
         assertThat(approvalEvents).hasSize(1);
 
-        String requestId = stringValue(payload(approvalEvents.getFirst()).get("request_id"));
+        String requestId = stringValue(payload(approvalEvents.get(0)).get("request_id"));
         assertThat(requestId).isNotBlank();
         rail.onApproveRecord(requestId).toCompletableFuture().join();
 
@@ -122,8 +122,8 @@ class TeamSkillRailsSystemMissingTest {
                 .toCompletableFuture()
                 .join();
         assertThat(evolutionLog.getEntries()).hasSize(1);
-        assertThat(evolutionLog.getEntries().getFirst().getChange().getSection()).isEqualTo("Workflow");
-        assertThat(evolutionLog.getEntries().getFirst().getChange().getContent()).contains("tighten handoff");
+        assertThat(evolutionLog.getEntries().get(0).getChange().getSection()).isEqualTo("Workflow");
+        assertThat(evolutionLog.getEntries().get(0).getChange().getContent()).contains("tighten handoff");
         assertThat(invoker.invokeCount()).isEqualTo(2);
     }
 

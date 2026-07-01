@@ -37,7 +37,7 @@ class SysOperationToolAdapterTest {
         List<SysOperationToolAdapter.ToolBinding> tools = SysOperationToolAdapter.extractTools(card, operation);
 
         assertThat(tools).hasSize(1);
-        SysOperationToolAdapter.ToolBinding binding = tools.getFirst();
+        SysOperationToolAdapter.ToolBinding binding = tools.get(0);
         assertThat(binding.toolId()).isEqualTo("sys_op.shell.execute_cmd");
         assertThat(binding.localFunction().getCard().getId()).isEqualTo("sys_op.shell.execute_cmd");
         assertThat(binding.localFunction().getCard().getName()).isEqualTo("execute_cmd");

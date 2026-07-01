@@ -90,8 +90,8 @@ class TextSplitterTest {
         List<TextChunk> shortChunks = shortSplitter.split(new Document("doc_1", "Short text"));
 
         assertEquals(1, shortChunks.size());
-        assertEquals("Short text", shortChunks.getFirst().getText());
-        assertEquals("doc_1", shortChunks.getFirst().getDocId());
+        assertEquals("Short text", shortChunks.get(0).getText());
+        assertEquals("doc_1", shortChunks.get(0).getDocId());
 
         CharSplitter longSplitter = new CharSplitter(10, 2);
         List<TextChunk> longChunks = longSplitter.split(new Document(
@@ -109,8 +109,8 @@ class TextSplitterTest {
         List<TextChunk> chunks = splitter.split(new Document("doc_1", "Short text"));
 
         assertEquals(1, chunks.size());
-        assertEquals("Short text", chunks.getFirst().getText());
-        assertEquals("doc_1", chunks.getFirst().getDocId());
+        assertEquals("Short text", chunks.get(0).getText());
+        assertEquals("doc_1", chunks.get(0).getDocId());
     }
 
     @Test
@@ -178,8 +178,8 @@ class TextSplitterTest {
         List<TextChunk> chunks = splitter.split(chunk);
 
         assertEquals(1, chunks.size());
-        assertEquals("doc_1", chunks.getFirst().getDocId());
-        assertEquals("v", chunks.getFirst().getMetadata().get("k"));
+        assertEquals("doc_1", chunks.get(0).getDocId());
+        assertEquals("v", chunks.get(0).getMetadata().get("k"));
     }
 
     @Test

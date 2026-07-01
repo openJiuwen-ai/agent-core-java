@@ -39,8 +39,8 @@ class VectorRetrieverTest {
         List<RetrievalResult> results = retriever.retrieve("test query", 5, null, "vector", Map.of());
 
         assertThat(results).hasSize(2);
-        assertThat(results.getFirst().getText()).isEqualTo("Result 1");
-        assertThat(results.getFirst().getScore()).isEqualTo(0.95d);
+        assertThat(results.get(0).getText()).isEqualTo("Result 1");
+        assertThat(results.get(0).getScore()).isEqualTo(0.95d);
         assertThat(embedding.queries).containsExactly("test query");
         assertThat(vectorStore.vectorCalls).isEqualTo(1);
     }
@@ -61,8 +61,8 @@ class VectorRetrieverTest {
         assertThat(vectorStore.vectorCalls).isEqualTo(1);
         assertThat(vectorStore.lastVector).containsExactly(0.1d, 0.2d);
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getDocId()).isEqualTo("doc-high");
-        assertThat(results.getFirst().getChunkId()).isEqualTo("chunk-high");
+        assertThat(results.get(0).getDocId()).isEqualTo("doc-high");
+        assertThat(results.get(0).getChunkId()).isEqualTo("chunk-high");
     }
 
     @Test
@@ -135,7 +135,7 @@ class VectorRetrieverTest {
 
         assertThat(vectorStore.vectorCalls).isEqualTo(1);
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getId()).isEqualTo("vector-id");
+        assertThat(results.get(0).getId()).isEqualTo("vector-id");
     }
 
     private static RetrievalResult result(String chunkId, String text, double score, Map<String, Object> metadata) {

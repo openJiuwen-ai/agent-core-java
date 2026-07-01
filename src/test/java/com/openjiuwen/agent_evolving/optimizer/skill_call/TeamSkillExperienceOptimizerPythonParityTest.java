@@ -171,7 +171,7 @@ class TeamSkillExperienceOptimizerPythonParityTest {
         assertEquals("Require role A to notify role B before handoff.", record.getSummary());
         assertTrue(record.getChange().getContent().contains("角色 A 完成后通知角色 B"));
         assertEquals("team_skill_user_patch", record.getSource());
-        assertEquals(120.0f, invoker.options().getFirst().getTimeout());
+        assertEquals(120.0f, invoker.options().get(0).getTimeout());
     }
 
     @Test
@@ -249,7 +249,7 @@ class TeamSkillExperienceOptimizerPythonParityTest {
         EvolutionRecord record = optimizer.generateUserPatch(emptyTrajectory(), "test-skill", "补充质量门");
 
         assertNotNull(record);
-        String prompt = invoker.prompts().getFirst();
+        String prompt = invoker.prompts().get(0);
         assertTrue(prompt.contains("## 当前 Team Skill 正文"));
         assertTrue(prompt.contains("Existing body"));
         assertTrue(prompt.contains("已有演进经验摘要"));
@@ -289,8 +289,8 @@ class TeamSkillExperienceOptimizerPythonParityTest {
         assertEquals("Cap execution timeout to avoid repeated stalls.", record.getSummary());
         assertTrue(record.getChange().getContent().contains("执行超时不得超过 30 秒"));
         assertEquals("team_skill_trajectory_patch", record.getSource());
-        assertEquals(120.0f, invoker.options().getFirst().getTimeout());
-        assertTrue(invoker.prompts().getFirst().contains(CURRENT_SKILL_CONTENT));
+        assertEquals(120.0f, invoker.options().get(0).getTimeout());
+        assertTrue(invoker.prompts().get(0).contains(CURRENT_SKILL_CONTENT));
     }
 
     @Test
@@ -309,7 +309,7 @@ class TeamSkillExperienceOptimizerPythonParityTest {
         );
 
         assertNotNull(record);
-        String prompt = invoker.prompts().getFirst();
+        String prompt = invoker.prompts().get(0);
         assertTrue(prompt.contains("已有演进经验摘要"));
         assertTrue(prompt.contains("ev_12345678"));
     }
@@ -330,7 +330,7 @@ class TeamSkillExperienceOptimizerPythonParityTest {
         );
 
         assertNotNull(record);
-        assertEquals(15.0f, invoker.options().getFirst().getTimeout());
+        assertEquals(15.0f, invoker.options().get(0).getTimeout());
     }
 
     @Test
@@ -419,7 +419,7 @@ class TeamSkillExperienceOptimizerPythonParityTest {
         )));
 
         assertEquals(List.of("user", "traj"), records.stream().map(EvolutionRecord::getSummary).toList());
-        assertEquals("team_skill_mixed", records.getFirst().getSource());
+        assertEquals("team_skill_mixed", records.get(0).getSource());
     }
 
     @Test
@@ -443,7 +443,7 @@ class TeamSkillExperienceOptimizerPythonParityTest {
         Object gradient = optimizer.parameters().get(operator.getOperatorId()).getGradient(Protocols.EXPERIENCES_TARGET);
         assertInstanceOf(List.class, gradient);
         assertEquals(1, ((List<?>) gradient).size());
-        assertTrue(invoker.prompts().getFirst().contains("# Team Skill"));
+        assertTrue(invoker.prompts().get(0).contains("# Team Skill"));
     }
 
     @Test
@@ -465,8 +465,8 @@ class TeamSkillExperienceOptimizerPythonParityTest {
         );
         optimizer.backward(List.of(signal)).toCompletableFuture().join();
 
-        assertTrue(invoker.prompts().getFirst().contains("# Context Team Skill"));
-        assertTrue(invoker.prompts().getFirst().contains("context query"));
+        assertTrue(invoker.prompts().get(0).contains("# Context Team Skill"));
+        assertTrue(invoker.prompts().get(0).contains("context query"));
     }
 
     @Test
@@ -516,8 +516,8 @@ class TeamSkillExperienceOptimizerPythonParityTest {
         List<EvolutionRecord> records = optimizer.generateRecords(defaultContext(List.of(makeSignal("user_intent"))));
 
         assertEquals(1, records.size());
-        assertEquals(EvolutionTarget.DESCRIPTION, records.getFirst().getChange().getTarget());
-        assertEquals("Instructions", records.getFirst().getChange().getSection());
+        assertEquals(EvolutionTarget.DESCRIPTION, records.get(0).getChange().getTarget());
+        assertEquals("Instructions", records.get(0).getChange().getSection());
         assertEquals(2, invoker.prompts().size());
     }
 
@@ -532,7 +532,7 @@ class TeamSkillExperienceOptimizerPythonParityTest {
         List<EvolutionRecord> records = optimizer.generateRecords(defaultContext(List.of(makeSignal("trajectory_issue"))));
 
         assertEquals(1, records.size());
-        assertEquals("Workflow", records.getFirst().getChange().getSection());
+        assertEquals("Workflow", records.get(0).getChange().getSection());
         assertEquals(invoker.prompts().get(0), invoker.prompts().get(1));
     }
 
@@ -559,9 +559,9 @@ class TeamSkillExperienceOptimizerPythonParityTest {
                 .toList();
         assertEquals(2, textRecords.size());
         assertEquals(1, scriptRecords.size());
-        assertEquals("Add a handoff gate before review starts.", textRecords.getFirst().getSummary());
-        assertEquals("Audit team handoff completeness with a helper script.", scriptRecords.getFirst().getSummary());
-        assertEquals("handoff_audit.py", scriptRecords.getFirst().getChange().getScriptFilename());
+        assertEquals("Add a handoff gate before review starts.", textRecords.get(0).getSummary());
+        assertEquals("Audit team handoff completeness with a helper script.", scriptRecords.get(0).getSummary());
+        assertEquals("handoff_audit.py", scriptRecords.get(0).getChange().getScriptFilename());
     }
 
     private static TeamSkillOptimizer optimizer(RecordingInvoker invoker, String language) {
@@ -737,7 +737,7 @@ class TeamSkillExperienceOptimizerPythonParityTest {
         }
 
         private static String extractPrompt(List<BaseMessage> messages) {
-            if (messages != null && !messages.isEmpty() && messages.getFirst() instanceof UserMessage message) {
+            if (messages != null && !messages.isEmpty() && messages.get(0) instanceof UserMessage message) {
                 Object content = message.getContent();
                 return content == null ? "" : String.valueOf(content);
             }

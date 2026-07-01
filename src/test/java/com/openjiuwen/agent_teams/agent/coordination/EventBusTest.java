@@ -141,7 +141,7 @@ class EventBusTest {
             assertTrue(latch.await(2, TimeUnit.SECONDS));
             bus.stop().toCompletableFuture().join();
             assertEquals(1, woke.size());
-            assertEquals(TeamEvent.MESSAGE, woke.getFirst().eventKey());
+            assertEquals(TeamEvent.MESSAGE, woke.get(0).eventKey());
         } finally {
             bus.close();
         }
@@ -190,8 +190,8 @@ class EventBusTest {
             bus.enqueue(new InnerEventMessage(InnerEventType.USER_INPUT)).toCompletableFuture().join();
 
             assertTrue(latch.await(2, TimeUnit.SECONDS));
-            assertInstanceOf(InnerEventMessage.class, received.getFirst());
-            assertEquals("user_input", received.getFirst().eventKey());
+            assertInstanceOf(InnerEventMessage.class, received.get(0));
+            assertEquals("user_input", received.get(0).eventKey());
         } finally {
             bus.close();
         }
@@ -212,8 +212,8 @@ class EventBusTest {
             bus.enqueue(new EventMessage(TeamEvent.MESSAGE, null, "sender")).toCompletableFuture().join();
 
             assertTrue(latch.await(2, TimeUnit.SECONDS));
-            assertInstanceOf(TransportEvent.class, received.getFirst());
-            assertEquals(TeamEvent.MESSAGE, received.getFirst().eventKey());
+            assertInstanceOf(TransportEvent.class, received.get(0));
+            assertEquals(TeamEvent.MESSAGE, received.get(0).eventKey());
         } finally {
             bus.close();
         }

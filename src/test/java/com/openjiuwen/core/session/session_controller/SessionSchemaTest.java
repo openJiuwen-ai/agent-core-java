@@ -123,7 +123,7 @@ class SessionSchemaTest {
         assertThat(scope.getSessionScopeKey()).isEqualTo("scope-key");
         assertThat(scope.getActiveSession()).isEqualTo("active");
         assertThat(scope.getSessions()).hasSize(1);
-        assertThat(scope.getSessions().getFirst().getDataContainerType())
+        assertThat(scope.getSessions().get(0).getDataContainerType())
                 .isEqualTo(DataContainerFactory.DEFAULT_DATA_CONTAINER_TYPE);
         assertThat(scope.toMap()).containsKeys("session_scope_key", "active_session", "sessions");
     }

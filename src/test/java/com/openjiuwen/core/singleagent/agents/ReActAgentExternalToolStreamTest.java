@@ -212,7 +212,7 @@ class ReActAgentExternalToolStreamTest {
     private static OutputSchema singleOutput(List<OutputSchema> outputs, String type) {
         List<OutputSchema> matches = outputsOfType(outputs, type);
         assertThat(matches).hasSize(1);
-        return matches.getFirst();
+        return matches.get(0);
     }
 
     private static List<OutputSchema> toolCallOutputs(List<OutputSchema> outputs) {

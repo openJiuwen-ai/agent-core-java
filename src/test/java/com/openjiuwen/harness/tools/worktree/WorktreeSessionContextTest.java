@@ -95,8 +95,11 @@ class WorktreeSessionContextTest {
     @Test
     void initializedHolderObservesChildDefaultMutation() throws Exception {
         WorktreeSessionContext.initSessionState();
-        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
             executor.submit(() -> WorktreeSessionContext.setDefaultWorktreeName("shared-default")).get();
+        } finally {
+            executor.shutdownNow();
         }
 
         assertThat(WorktreeSessionContext.getDefaultWorktreeName()).isEqualTo("shared-default");
@@ -106,8 +109,11 @@ class WorktreeSessionContextTest {
     void initializedHolderObservesChildSessionMutation() throws Exception {
         WorktreeSessionContext.initSessionState();
         WorktreeSession session = new WorktreeSession("c:/repo", "c:/repo/.wt", "child");
-        try (ExecutorService executor = Executors.newSingleThreadExecutor()) {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
             executor.submit(() -> WorktreeSessionContext.setCurrentSession(session)).get();
+        } finally {
+            executor.shutdownNow();
         }
 
         assertThat(WorktreeSessionContext.getCurrentSession()).isEqualTo(session);
@@ -120,7 +126,8 @@ class WorktreeSessionContextTest {
         WorktreeSession[] seen = new WorktreeSession[1];
         WorktreeSession shared = new WorktreeSession("c:/repo", "c:/repo/.wt", "shared");
 
-        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
             var first = executor.submit(() -> {
                 WorktreeSessionContext.setCurrentSession(shared);
                 updated.countDown();
@@ -136,6 +143,8 @@ class WorktreeSessionContextTest {
             });
             first.get();
             second.get();
+        } finally {
+            executor.shutdownNow();
         }
 
         assertThat(WorktreeSessionContext.getCurrentSession()).isEqualTo(shared);

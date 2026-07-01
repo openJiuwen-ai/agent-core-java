@@ -93,8 +93,8 @@ class OnlineEvolutionE2eMissingTest {
                 .filter(record -> record.getChange().getTarget() == EvolutionTarget.SCRIPT)
                 .toList();
         assertThat(scriptRecords).hasSize(1);
-        assertThat(scriptRecords.getFirst().getChange().getScriptLanguage()).isEqualTo("python");
-        assertThat(scriptRecords.getFirst().getChange().getScriptFilename()).isEqualTo("generate_bar_chart.py");
+        assertThat(scriptRecords.get(0).getChange().getScriptLanguage()).isEqualTo("python");
+        assertThat(scriptRecords.get(0).getChange().getScriptFilename()).isEqualTo("generate_bar_chart.py");
 
         for (EvolutionRecord record : records) {
             join(store.appendRecord(skillName, record));
@@ -110,7 +110,7 @@ class OnlineEvolutionE2eMissingTest {
             pythonFiles = stream.filter(path -> path.getFileName().toString().endsWith(".py")).toList();
         }
         assertThat(pythonFiles).hasSize(1);
-        String scriptContent = Files.readString(pythonFiles.getFirst(), StandardCharsets.UTF_8);
+        String scriptContent = Files.readString(pythonFiles.get(0), StandardCharsets.UTF_8);
         assertThat(scriptContent).contains("matplotlib", "pandas");
 
         String scriptIndex = Files.readString(scriptsDir.resolve("_index.md"), StandardCharsets.UTF_8);
@@ -179,7 +179,7 @@ class OnlineEvolutionE2eMissingTest {
 
         assertThat(invoker.invokeCount()).isEqualTo(2);
         assertThat(records).hasSize(1);
-        assertThat(records.getFirst().getChange().getContent()).contains("Recovered Fix");
+        assertThat(records.get(0).getChange().getContent()).contains("Recovered Fix");
     }
 
     @Test
@@ -216,7 +216,7 @@ class OnlineEvolutionE2eMissingTest {
         for (EvolutionRecord record : firstRecords) {
             join(store.appendRecord(skillName, record));
         }
-        String oldId = firstRecords.getFirst().getId();
+        String oldId = firstRecords.get(0).getId();
 
         SkillExperienceOptimizer secondOptimizer = new SkillExperienceOptimizer(
                 new Model(new RecordingInvoker(toJson(List.of(bodyPatch(
@@ -247,7 +247,7 @@ class OnlineEvolutionE2eMissingTest {
 
         EvolutionLog finalLog = join(store.loadEvolutionLog(skillName));
         assertThat(finalLog.getEntries()).hasSize(1);
-        assertThat(finalLog.getEntries().getFirst().getChange().getContent()).contains("v2 content");
+        assertThat(finalLog.getEntries().get(0).getChange().getContent()).contains("v2 content");
     }
 
     private static Path prepareSkill(Path root, String name, String content) throws IOException {

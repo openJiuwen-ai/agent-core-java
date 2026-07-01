@@ -180,7 +180,7 @@ class LauncherRunnerTest {
         assertTrue(processes.appProcess().isAlive());
         assertNull(processes.webProcess());
         assertEquals(1, specs.size());
-        Map<String, String> env = specs.getFirst().environment();
+        Map<String, String> env = specs.get(0).environment();
         assertEquals("bob", env.get("WEB_USER_ID"));
         assertEquals("bob", env.get("RL_ONLINE_TENANT_ID"));
         assertEquals("{\"x-user-id\":\"bob\"}", env.get("CUSTOM_HEADERS"));

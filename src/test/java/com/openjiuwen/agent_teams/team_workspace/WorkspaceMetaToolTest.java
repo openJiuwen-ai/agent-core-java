@@ -87,7 +87,7 @@ class WorkspaceMetaToolTest {
 
         assertThat(locks.isSuccess()).isTrue();
         List<?> lockItems = (List<?>) ((Map<?, ?>) locks.getData()).get("locks");
-        Map<?, ?> lockItem = (Map<?, ?>) lockItems.getFirst();
+        Map<?, ?> lockItem = (Map<?, ?>) lockItems.get(0);
         assertThat(lockItem.get("file_path")).isEqualTo("artifacts/report.md");
         assertThat(lockItem.get("holder_id")).isEqualTo("alice");
         assertThat(lockItem.get("holder_name")).isEqualTo("Alice");

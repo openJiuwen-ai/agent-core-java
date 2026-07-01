@@ -47,8 +47,8 @@ class RLRailTest {
         rail.afterInvoke(ctx("conversation_id", "conv-1"));
         List<Trajectory> trajectories = store.queryBySessionId("conv-1");
         assertThat(trajectories).hasSize(1);
-        assertThat(trajectories.getFirst().getSteps()).hasSize(2);
-        assertThat(trajectories.getFirst().getSteps().getFirst().getMeta())
+        assertThat(trajectories.get(0).getSteps()).hasSize(2);
+        assertThat(trajectories.get(0).getSteps().get(0).getMeta())
                 .containsEntry("turn_id", 0)
                 .containsEntry("case_id", "case-1");
     }
@@ -68,14 +68,15 @@ class RLRailTest {
         rail.beforeInvoke(ctx("conversation_id", "conv-2"));
         rail.afterModelCall(ctx("model", "new-invoke"));
 
-        Map<String, Object> lastStep = rail.buildTrajectory().getLast();
+        List<Map<String, Object>> trajectory = rail.buildTrajectory();
+        Map<String, Object> lastStep = trajectory.get(trajectory.size() - 1);
         assertThat(meta(lastStep)).containsEntry("turn_id", 0)
                 .containsEntry("source", "rl_offline")
                 .containsEntry("case_id", null);
         assertThat(rail.getLlmStepCount()).isEqualTo(1);
         rail.afterInvoke(ctx("conversation_id", "conv-2"));
-        assertThat(store.queryBySessionId("conv-1").getFirst().getSteps()).hasSize(1);
-        assertThat(store.queryBySessionId("conv-2").getFirst().getSteps()).hasSize(1);
+        assertThat(store.queryBySessionId("conv-1").get(0).getSteps()).hasSize(1);
+        assertThat(store.queryBySessionId("conv-2").get(0).getSteps()).hasSize(1);
     }
 
     @Test
@@ -98,8 +99,8 @@ class RLRailTest {
 
         assertThat(rail.getSessionId()).isEmpty();
         assertThat(rail.getSource()).isEqualTo("rl_offline");
-        Trajectory trajectory = store.queryBySessionId("conv").getFirst();
-        LLMCallDetail detail = (LLMCallDetail) trajectory.getSteps().getFirst().getDetail();
+        Trajectory trajectory = store.queryBySessionId("conv").get(0);
+        LLMCallDetail detail = (LLMCallDetail) trajectory.getSteps().get(0).getDetail();
         assertThat(detail.getResponse()).isEqualTo(response);
     }
 
@@ -117,10 +118,10 @@ class RLRailTest {
         }
         rail.afterInvoke(ctx("conversation_id", "same-session"));
 
-        Trajectory trajectory = store.queryBySessionId("same-session").getFirst();
+        Trajectory trajectory = store.queryBySessionId("same-session").get(0);
         assertThat(trajectory.getSteps()).hasSize(201);
-        LLMCallDetail firstDetail = (LLMCallDetail) trajectory.getSteps().getFirst().getDetail();
-        assertThat(firstDetail.getMessages().getFirst()).isEqualTo(Map.of("role", "user", "content", "q0"));
+        LLMCallDetail firstDetail = (LLMCallDetail) trajectory.getSteps().get(0).getDetail();
+        assertThat(firstDetail.getMessages().get(0)).isEqualTo(Map.of("role", "user", "content", "q0"));
     }
 
     private static CallbackContext ctx(String key, Object value) {

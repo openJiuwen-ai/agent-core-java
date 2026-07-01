@@ -124,7 +124,7 @@ class ChromaIndexerTest {
         assertThat(success).isTrue();
         assertThat(chunk.getEmbedding()).containsExactly(1.0d, 2.0d);
         assertThat(client.collection.rows).hasSize(1);
-        assertThat(client.collection.rows.getFirst())
+        assertThat(client.collection.rows.get(0))
                 .containsEntry("id", "chunk-1")
                 .containsEntry("document_id", "doc-1")
                 .containsEntry("content", "body");

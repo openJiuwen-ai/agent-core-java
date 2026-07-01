@@ -291,7 +291,7 @@ public final class BrowserSelectorCache {
         List<String> parts = List.of(noNth.split(">")).stream().map(String::trim).filter(part -> !part.isEmpty()).toList();
         List<String> variants = new ArrayList<>();
         if (!parts.isEmpty()) {
-            variants.add(parts.getLast());
+            variants.add(parts.get(parts.size() - 1));
         }
         if (parts.size() >= 2) {
             variants.add(String.join(" > ", parts.subList(parts.size() - 2, parts.size())));

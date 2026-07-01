@@ -31,7 +31,7 @@ class StartConverterTest {
                 .isEqualTo("user query");
         assertThat(converter.getNode().getData().getOutputs().getRequired()).containsExactly("query", "profile");
         assertThat(converter.getEdges()).hasSize(1);
-        assertThat(converter.getEdges().getFirst().getTargetNodeId()).isEqualTo("node_next");
+        assertThat(converter.getEdges().get(0).getTargetNodeId()).isEqualTo("node_next");
     }
 
     @Test

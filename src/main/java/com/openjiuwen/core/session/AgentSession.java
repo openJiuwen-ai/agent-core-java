@@ -146,8 +146,8 @@ public class AgentSession implements AgentSessionApi, AgentSessionLifecycle {
         callbackKwargs.put("session", this);
         CallbackUtils.trigger(SessionEvents.AGENT_SESSION_CREATED, callbackKwargs);
         Object inputs = kwargs == null ? null : kwargs.get("inputs");
-        if (inner.checkpointer() instanceof com.openjiuwen.core.session.checkpointer.Checkpointer checkpointer) {
-            checkpointer.preAgentExecute(inner, inputs);
+        if (inner.checkpointer() != null) {
+            inner.checkpointer().preAgentExecute(inner, inputs);
         }
         preRunDone = true;
         return this;
@@ -167,8 +167,8 @@ public class AgentSession implements AgentSessionApi, AgentSessionLifecycle {
 
     @Override
     public void commit() {
-        if (inner.checkpointer() instanceof com.openjiuwen.core.session.checkpointer.Checkpointer checkpointer) {
-            checkpointer.postAgentExecute(inner);
+        if (inner.checkpointer() != null) {
+            inner.checkpointer().postAgentExecute(inner);
         }
     }
 

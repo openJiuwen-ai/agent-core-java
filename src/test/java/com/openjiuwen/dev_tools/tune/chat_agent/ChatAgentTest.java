@@ -83,10 +83,10 @@ class ChatAgentTest {
         Map<?, ?> result = assertInstanceOf(Map.class, rawResult);
         assertEquals("ok", result.get("output"));
         List<?> toolCalls = assertInstanceOf(List.class, result.get("tool_calls"));
-        ToolCall toolCall = assertInstanceOf(ToolCall.class, toolCalls.getFirst());
+        ToolCall toolCall = assertInstanceOf(ToolCall.class, toolCalls.get(0));
         assertEquals("tool-call", toolCall.getName());
         assertFalse(inputs.containsKey("conversation_id"));
-        assertEquals("hello", agent.client.invokeInputs.getFirst().get("query"));
+        assertEquals("hello", agent.client.invokeInputs.get(0).get("query"));
         assertSame(session, agent.callbackPayload.get(3));
     }
 
@@ -101,7 +101,7 @@ class ChatAgentTest {
 
         agent.invoke(new LinkedHashMap<>(Map.of("query", "hello")), null).toCompletableFuture().join();
 
-        List<?> tools = agent.client.invokeTools.getFirst();
+        List<?> tools = agent.client.invokeTools.get(0);
         assertEquals(List.of("included-tool"), tools.stream()
                 .map(item -> assertInstanceOf(ToolInfo.class, item).getName())
                 .toList());

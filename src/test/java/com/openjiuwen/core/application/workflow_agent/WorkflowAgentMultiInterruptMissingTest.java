@@ -42,7 +42,7 @@ class WorkflowAgentMultiInterruptMissingTest {
 
         List<Object> firstChunks = drain(agent.stream(query("check weather", session.getSessionId()), session));
         assertThat(firstChunks).hasSize(1);
-        OutputSchema first = output(firstChunks.getFirst());
+        OutputSchema first = output(firstChunks.get(0));
         assertThat(first.getType()).isEqualTo(Constant.INTERACTION);
         String firstId = interaction(first).getId();
 
@@ -58,7 +58,7 @@ class WorkflowAgentMultiInterruptMissingTest {
 
         List<Object> secondChunks = drain(agent.stream(query(firstResume, session.getSessionId()), session));
         assertThat(secondChunks).hasSize(1);
-        OutputSchema second = output(secondChunks.getFirst());
+        OutputSchema second = output(secondChunks.get(0));
         assertThat(second.getType()).isEqualTo(Constant.INTERACTION);
         assertThat(interaction(second).getId()).isEqualTo(expectedSecond);
 
@@ -71,7 +71,7 @@ class WorkflowAgentMultiInterruptMissingTest {
 
         List<Object> finalChunks = drain(agent.stream(query(secondResume, session.getSessionId()), session));
         assertThat(finalChunks).hasSize(1);
-        OutputSchema finalChunk = output(finalChunks.getFirst());
+        OutputSchema finalChunk = output(finalChunks.get(0));
         assertThat(finalChunk.getType()).isEqualTo("workflow_final");
         assertThat(map(finalChunk.getPayload())).containsKey("response");
         assertThat(controller.roles(session.getSessionId()))
@@ -88,7 +88,7 @@ class WorkflowAgentMultiInterruptMissingTest {
                 .toCompletableFuture()
                 .join());
         assertThat(firstResult).hasSize(1);
-        assertThat(output(firstResult.getFirst()).getType()).isEqualTo(Constant.INTERACTION);
+        assertThat(output(firstResult.get(0)).getType()).isEqualTo(Constant.INTERACTION);
 
         InteractiveInput interactiveInput = new InteractiveInput();
         interactiveInput.update("interactive", "confirmed");

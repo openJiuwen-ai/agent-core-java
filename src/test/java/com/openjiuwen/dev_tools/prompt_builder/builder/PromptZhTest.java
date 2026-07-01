@@ -27,14 +27,14 @@ class PromptZhTest {
     @Test
     void messageTemplatesPreserveRolesAndContent() {
         PromptTemplate systemTemplate = PromptZh.PROMPT_BUILD_GENERAL_META_SYSTEM_TEMPLATE;
-        BaseMessage systemMessage = systemTemplate.toMessages().getFirst();
+        BaseMessage systemMessage = systemTemplate.toMessages().get(0);
         assertEquals("system", systemMessage.getRole());
         assertTrue(systemMessage.getContentAsString().startsWith("\n"));
         assertTrue(systemMessage.getContentAsString().contains("markdown"));
         assertEquals(518, systemMessage.getContentAsString().length());
 
         PromptTemplate userTemplate = PromptZh.PROMPT_BUILD_GENERAL_META_USER_TEMPLATE;
-        BaseMessage userMessage = userTemplate.toMessages().getFirst();
+        BaseMessage userMessage = userTemplate.toMessages().get(0);
         assertEquals("user", userMessage.getRole());
         assertTrue(userMessage.getContentAsString().contains("{{instruction}}"));
     }

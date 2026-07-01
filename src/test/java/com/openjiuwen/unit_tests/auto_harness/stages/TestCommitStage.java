@@ -72,7 +72,7 @@ class TestCommitStage {
         List<Object> events = toList(new CommitStage().stream(ctx));
 
         assertThat(events).hasSize(1);
-        StageResult result = (StageResult) events.getFirst();
+        StageResult result = (StageResult) events.get(0);
         assertThat(result.getStatus()).isEqualTo("failed");
         assertThat(result.getError()).contains("No agent available for commit phase.");
         assertThat(result.getMessages()).anySatisfy(message ->
@@ -86,7 +86,7 @@ class TestCommitStage {
         assertThat(task.getStatus()).isEqualTo(TaskStatus.FAILED);
         List<Experience> experiences = orchestrator.getExperienceStore().listRecent().join();
         assertThat(experiences).hasSize(1);
-        assertThat(experiences.getFirst().getSummary()).isEqualTo("commit failed");
+        assertThat(experiences.get(0).getSummary()).isEqualTo("commit failed");
     }
 
     @Test
@@ -115,7 +115,7 @@ class TestCommitStage {
         List<Object> events = toList(new CommitStage().stream(ctx));
 
         assertThat(events).hasSize(2);
-        assertThat(events.getFirst()).isEqualTo(Map.of("type", "commit_chunk"));
+        assertThat(events.get(0)).isEqualTo(Map.of("type", "commit_chunk"));
         StageResult result = (StageResult) events.get(1);
         assertThat(result.getStatus()).isEqualTo("success");
         assertThat(result.getMessages()).containsExactly("检查提交范围", "提交变更");
@@ -209,7 +209,7 @@ class TestCommitStage {
             if (heads.isEmpty()) {
                 return "same";
             }
-            return heads.removeFirst();
+            return heads.remove(0);
         }
 
         @Override

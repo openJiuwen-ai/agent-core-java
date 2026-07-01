@@ -29,8 +29,8 @@ class BaseConverterTest {
         assertThat(converter.getNode().getMeta()).containsEntry("position", Map.of("x", 10.0, "y", 20.0));
         assertThat(converter.getNode().getData().getTitle()).isEqualTo("LLM node");
         assertThat(converter.getEdges()).hasSize(1);
-        assertThat(converter.getEdges().getFirst().getSourceNodeId()).isEqualTo("node_llm");
-        assertThat(converter.getEdges().getFirst().getTargetNodeId()).isEqualTo("node_output");
+        assertThat(converter.getEdges().get(0).getSourceNodeId()).isEqualTo("node_llm");
+        assertThat(converter.getEdges().get(0).getTargetNodeId()).isEqualTo("node_output");
         assertThat(converter.specificCalled).isTrue();
     }
 

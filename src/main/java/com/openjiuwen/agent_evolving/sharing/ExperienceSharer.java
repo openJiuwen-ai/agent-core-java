@@ -239,7 +239,7 @@ public class ExperienceSharer {
                 mirrorBundle(bundle, "downloaded");
             }
             if (!bundles.isEmpty()) {
-                SharedSkillBundle first = bundles.getFirst();
+                SharedSkillBundle first = bundles.get(0);
                 LOGGER.info(
                         "[ExperienceSharer] downloaded %d bundle(s) for skill=%s id=%s (top_k=%d)",
                         bundles.size(),

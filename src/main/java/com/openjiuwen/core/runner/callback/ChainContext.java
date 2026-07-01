@@ -44,7 +44,7 @@ public class ChainContext {
     }
 
     public Object getLastResult() {
-        return results.isEmpty() ? null : results.getLast();
+        return results.isEmpty() ? null : results.get(results.size() - 1);
     }
 
     public List<Object> getAllResults() {

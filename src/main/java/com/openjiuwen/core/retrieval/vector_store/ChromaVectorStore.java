@@ -603,21 +603,21 @@ public class ChromaVectorStore implements VectorStore {
         if (!(raw instanceof List<?> outer) || outer.isEmpty()) {
             return List.of();
         }
-        return stringList(outer.getFirst());
+        return stringList(outer.get(0));
     }
 
     private List<Map<String, Object>> firstMapList(Object raw) {
         if (!(raw instanceof List<?> outer) || outer.isEmpty()) {
             return List.of();
         }
-        return mapList(outer.getFirst());
+        return mapList(outer.get(0));
     }
 
     private List<Double> firstDoubleList(Object raw) {
         if (!(raw instanceof List<?> outer) || outer.isEmpty()) {
             return List.of();
         }
-        return doubleList(outer.getFirst());
+        return doubleList(outer.get(0));
     }
 
     private List<String> stringList(Object raw) {

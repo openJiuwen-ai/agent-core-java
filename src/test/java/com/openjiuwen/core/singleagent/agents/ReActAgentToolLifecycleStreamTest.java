@@ -228,8 +228,8 @@ class ReActAgentToolLifecycleStreamTest {
         assertThat(result).isInstanceOf(Map.class);
         assertThat(agent.getCapturedToolMessageIds()).hasSize(1);
         assertThat(agent.getCapturedAssistantToolCallIds()).hasSize(1);
-        String toolMessageId = agent.getCapturedToolMessageIds().getFirst();
-        String assistantToolCallId = agent.getCapturedAssistantToolCallIds().getFirst();
+        String toolMessageId = agent.getCapturedToolMessageIds().get(0);
+        String assistantToolCallId = agent.getCapturedAssistantToolCallIds().get(0);
         assertThat(toolMessageId).isNotBlank();
         assertThat(toolMessageId).isEqualTo(assistantToolCallId);
     }
@@ -410,7 +410,7 @@ class ReActAgentToolLifecycleStreamTest {
     private static OutputSchema singleOutput(List<OutputSchema> outputs, String type) {
         List<OutputSchema> matches = outputsOfType(outputs, type);
         assertThat(matches).hasSize(1);
-        return matches.getFirst();
+        return matches.get(0);
     }
 
     private static List<OutputSchema> outputsOfType(List<OutputSchema> outputs, String type) {

@@ -253,7 +253,7 @@ class TeamMemoryManagerTest {
         await(manager.extractAfterRound());
 
         assertThat(params.extractionInvoker.calls).isEqualTo(1);
-        ExtractionInvocation invocation = params.extractionInvoker.invocations.getFirst();
+        ExtractionInvocation invocation = params.extractionInvoker.invocations.get(0);
         assertThat(invocation.teamName()).isEqualTo("test_team");
         assertThat(invocation.database()).isSameAs(params.database);
         assertThat(invocation.taskManager()).isSameAs(params.taskManager);
@@ -352,7 +352,7 @@ class TeamMemoryManagerTest {
         assertThat(await(manager.initToolkit())).isTrue();
         assertThat(manager.getWorkspace()).isNotNull();
         assertThat(manager.getWorkspace().getRootPath()).isEqualTo(params.readOnlySourceWorkspace);
-        assertThat(params.toolkitFactory.requests.getFirst().readOnly()).isTrue();
+        assertThat(params.toolkitFactory.requests.get(0).readOnly()).isTrue();
     }
 
     @Test

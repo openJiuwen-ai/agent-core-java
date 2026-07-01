@@ -77,8 +77,8 @@ class WordParserTest {
         List<Document> documents = new WordParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getId_()).isEqualTo("doc_1");
-        assertThat(documents.getFirst().getText()).contains("Paragraph 1", "Paragraph 2");
+        assertThat(documents.get(0).getId_()).isEqualTo("doc_1");
+        assertThat(documents.get(0).getText()).contains("Paragraph 1", "Paragraph 2");
     }
 
     @Test
@@ -100,7 +100,7 @@ class WordParserTest {
         List<Document> documents = new WordParser().parse(file.toString(), "e2e_doc").join();
 
         assertThat(documents).hasSize(1);
-        String text = documents.getFirst().getText();
+        String text = documents.get(0).getText();
         assertThat(text).contains("## Hello");
         assertThat(text).contains("First paragraph.");
         assertThat(text).contains("Second paragraph with more text.");
@@ -126,7 +126,7 @@ class WordParserTest {
         List<Document> documents = new WordParser().parse(file.toString(), "headings_doc").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText())
+        assertThat(documents.get(0).getText())
                 .contains("# Document Title Here")
                 .contains("## Section")
                 .contains("### Subsection")
@@ -164,15 +164,15 @@ class WordParserTest {
         List<Document> documents = parser.parse(file.toString(), "e2e_image_doc", null, Map.of()).join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getId_()).isEqualTo("e2e_image_doc");
-        assertThat(documents.getFirst().getText()).contains(
+        assertThat(documents.get(0).getId_()).isEqualTo("e2e_image_doc");
+        assertThat(documents.get(0).getText()).contains(
                 "Before image.\nA red square test image.\nBetween image.\nA red square test image.\nAfter image.");
         verify(captioner, times(2)).captionImages(anyList());
         assertThat(calls).hasSize(2);
         assertThat(calls).allSatisfy(images -> {
             assertThat(images).hasSize(1);
-            assertThat(images.getFirst()).endsWith(".png");
-            assertThat(Files.exists(Path.of(images.getFirst()))).isTrue();
+            assertThat(images.get(0)).endsWith(".png");
+            assertThat(Files.exists(Path.of(images.get(0)))).isTrue();
         });
     }
 
@@ -220,8 +220,8 @@ class WordParserTest {
         List<Document> documents = new AutoFileParser().parse(file.toString(), "auto-word").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).contains("Auto content");
-        assertThat(documents.getFirst().getMetadata())
+        assertThat(documents.get(0).getText()).contains("Auto content");
+        assertThat(documents.get(0).getMetadata())
                 .containsEntry("doc_id", "auto-word")
                 .containsEntry("file_ext", ".docx")
                 .containsEntry("file_path", file.toString());

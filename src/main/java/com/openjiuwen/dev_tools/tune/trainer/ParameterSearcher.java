@@ -76,7 +76,7 @@ public class ParameterSearcher {
         if (parameters == null || parameters.isEmpty()) {
             return List.of();
         }
-        Map<String, ?> first = parameters.getFirst();
+        Map<String, ?> first = parameters.get(0);
         int nParams = first.size();
         int nCandidates = parameters.size();
         List<String> nodeNames = new ArrayList<>(first.keySet());

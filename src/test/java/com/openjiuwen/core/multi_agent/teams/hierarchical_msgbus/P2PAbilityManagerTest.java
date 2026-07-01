@@ -49,8 +49,8 @@ class P2PAbilityManagerTest {
         );
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().result()).isEqualTo("sent:agent-a:{question=hi}:session-1:1800.0");
-        assertThat(results.getFirst().toolMessage().getContent())
+        assertThat(results.get(0).result()).isEqualTo("sent:agent-a:{question=hi}:session-1:1800.0");
+        assertThat(results.get(0).toolMessage().getContent())
                 .isEqualTo("sent:agent-a:{question=hi}:session-1:1800.0");
         assertThat(supervisor.lastMessage.get()).isEqualTo(Map.of("question", "hi"));
         assertThat(supervisor.lastRecipient.get()).isEqualTo("agent-a");
@@ -91,8 +91,8 @@ class P2PAbilityManagerTest {
         );
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().result()).isNull();
-        assertThat(results.getFirst().toolMessage().getContent())
+        assertThat(results.get(0).result()).isNull();
+        assertThat(results.get(0).toolMessage().getContent())
                 .asString()
                 .contains("P2P parallel dispatch failed")
                 .contains("P2P dispatch to 'delegate' failed");

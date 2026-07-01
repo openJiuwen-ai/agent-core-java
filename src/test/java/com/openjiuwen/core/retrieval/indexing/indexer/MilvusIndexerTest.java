@@ -124,7 +124,7 @@ class MilvusIndexerTest {
         assertThat(chunks.get(0).getEmbedding()).containsExactly(9.0d, 8.0d);
         assertThat(chunks.get(1).getEmbedding()).containsExactly(1.0d, 2.0d);
         assertThat(client.insertedRows).hasSize(2);
-        assertThat(client.insertedRows.getFirst())
+        assertThat(client.insertedRows.get(0))
                 .containsEntry("chunk_id", "chunk-1")
                 .containsEntry("document_id", "doc-1")
                 .containsEntry("content", "caption one")
@@ -176,7 +176,7 @@ class MilvusIndexerTest {
         assertThat(client.lastSchema.getField("sparse_vector")).isNotNull();
         assertThat(client.lastSchema.getField("embedding")).isNull();
         assertThat(client.lastSchema.getFunctionList()).hasSize(1);
-        assertThat(client.insertedRows.getFirst()).doesNotContainKey("embedding");
+        assertThat(client.insertedRows.get(0)).doesNotContainKey("embedding");
     }
 
     @Test

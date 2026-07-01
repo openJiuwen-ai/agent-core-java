@@ -90,10 +90,10 @@ class TeamCompletionHandlerTest {
         }
 
         assertEquals(2, messager.topics.size());
-        assertEquals("session:sid-1:team:team:team", messager.topics.getFirst());
-        assertEquals(TeamEvent.TEAM_COMPLETED, messager.messages.getFirst().getEventType());
+        assertEquals("session:sid-1:team:team:team", messager.topics.get(0));
+        assertEquals(TeamEvent.TEAM_COMPLETED, messager.messages.get(0).getEventType());
         assertEquals(2, host.concludedRounds.size());
-        assertEquals("3:5", host.concludedRounds.getFirst());
+        assertEquals("3:5", host.concludedRounds.get(0));
         assertTrue(handler.isTeamCompletedEmitted());
     }
 

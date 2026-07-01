@@ -158,7 +158,7 @@ class TeamTrajectoryAggregatorTest {
         Trajectory result = TeamTrajectoryAggregator.filterMemberTrajectory(trajectory);
 
         assertEquals(1, result.getSteps().size());
-        assertEquals("claim_task", ((ToolCallDetail) result.getSteps().getFirst().getDetail()).getToolName());
+        assertEquals("claim_task", ((ToolCallDetail) result.getSteps().get(0).getDetail()).getToolName());
     }
 
     @Test
@@ -355,10 +355,10 @@ class TeamTrajectoryAggregatorTest {
         TeamTrajectory result = aggregator.aggregate("s1");
 
         assertEquals(2, result.getMembers().get(leaderId).getSteps().size());
-        assertEquals("llm", result.getMembers().get(leaderId).getSteps().getFirst().getKind());
+        assertEquals("llm", result.getMembers().get(leaderId).getSteps().get(0).getKind());
         assertEquals(1, result.getMembers().get("researcher").getSteps().size());
         assertEquals("read_file",
-                ((ToolCallDetail) result.getMembers().get("researcher").getSteps().getFirst().getDetail()).getToolName());
+                ((ToolCallDetail) result.getMembers().get("researcher").getSteps().get(0).getDetail()).getToolName());
         assertEquals(3, result.getCombined().getSteps().size());
         assertEquals(List.of("llm", "tool", "tool"),
                 result.getCombined().getSteps().stream().map(TrajectoryStep::getKind).toList());
@@ -500,6 +500,6 @@ class TeamTrajectoryAggregatorTest {
         );
 
         assertEquals(1, combined.getSteps().size());
-        assertEquals("send_message", ((ToolCallDetail) combined.getSteps().getFirst().getDetail()).getToolName());
+        assertEquals("send_message", ((ToolCallDetail) combined.getSteps().get(0).getDetail()).getToolName());
     }
 }

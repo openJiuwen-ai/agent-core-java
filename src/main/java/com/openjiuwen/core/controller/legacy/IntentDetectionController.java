@@ -282,7 +282,7 @@ public abstract class IntentDetectionController extends BaseController {
                 if (!matches) {
                     Object userValue = userInputs.values().iterator().next();
                     InteractiveInput remappedInput = new InteractiveInput();
-                    remappedInput.update(targetIds.getFirst(), userValue);
+                    remappedInput.update(targetIds.get(0), userValue);
                     return remappedInput;
                 }
             }
@@ -291,7 +291,7 @@ public abstract class IntentDetectionController extends BaseController {
 
         InteractiveInput interactiveInput = new InteractiveInput();
         String queryText = content == null ? "" : content.getQueryText();
-        interactiveInput.update(targetIds.getFirst(), queryText);
+        interactiveInput.update(targetIds.get(0), queryText);
         return interactiveInput;
     }
 

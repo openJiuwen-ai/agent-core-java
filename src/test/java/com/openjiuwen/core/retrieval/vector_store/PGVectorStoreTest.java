@@ -131,11 +131,11 @@ class PGVectorStoreTest {
         ).join();
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getText()).isEqualTo("hello world");
-        assertThat(results.getFirst().getScore()).isEqualTo(0.8d);
-        assertThat(results.getFirst().getDocId()).isEqualTo("doc-1");
-        assertThat(results.getFirst().getChunkId()).isEqualTo("row-1");
-        assertThat(results.getFirst().getMetadata()).containsEntry("raw_score", 0.2d);
+        assertThat(results.get(0).getText()).isEqualTo("hello world");
+        assertThat(results.get(0).getScore()).isEqualTo(0.8d);
+        assertThat(results.get(0).getDocId()).isEqualTo("doc-1");
+        assertThat(results.get(0).getChunkId()).isEqualTo("row-1");
+        assertThat(results.get(0).getMetadata()).containsEntry("raw_score", 0.2d);
     }
 
     @Test
@@ -197,9 +197,9 @@ class PGVectorStoreTest {
         ).join();
 
         assertThat(results).hasSize(2);
-        assertThat(results.getFirst().getChunkId()).isEqualTo("metadata-id");
-        assertThat(results.getFirst().getDocId()).isEqualTo("doc-1");
-        assertThat(results.getFirst().getMetadata()).doesNotContainKey("id");
+        assertThat(results.get(0).getChunkId()).isEqualTo("metadata-id");
+        assertThat(results.get(0).getDocId()).isEqualTo("doc-1");
+        assertThat(results.get(0).getMetadata()).doesNotContainKey("id");
     }
 
     @Test

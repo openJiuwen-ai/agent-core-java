@@ -273,7 +273,7 @@ class MilvusVectorStorePythonParityTest {
         ), Map.of()).join();
 
         assertThat(adapter.insertBatches).hasSize(1);
-        assertThat(adapter.insertBatches.getFirst()).hasSize(2);
+        assertThat(adapter.insertBatches.get(0)).hasSize(2);
         assertThat(adapter.flushCollectionCalls).containsExactly("milvus_vs_test_collection");
     }
 
@@ -352,7 +352,7 @@ class MilvusVectorStorePythonParityTest {
         List<VectorSearchResult> results = store.search("milvus_vs_test_collection",
                 List.of(0.1d, 0.2d, 0.3d), "embedding", 5, null, Map.of()).join();
 
-        assertThat(results.getFirst().getFields()).containsEntry("id", "123");
+        assertThat(results.get(0).getFields()).containsEntry("id", "123");
     }
 
     @Test
@@ -366,7 +366,7 @@ class MilvusVectorStorePythonParityTest {
         List<VectorSearchResult> results = store.search("milvus_vs_test_collection",
                 List.of(0.1d, 0.2d, 0.3d), "embedding", 5, null, Map.of()).join();
 
-        assertThat(results.getFirst().getFields().get("tags")).isEqualTo(List.of("tag1", "tag2"));
+        assertThat(results.get(0).getFields().get("tags")).isEqualTo(List.of("tag1", "tag2"));
     }
 
     @Test

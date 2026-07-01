@@ -81,7 +81,7 @@ class IntentDetectionControllerTest {
         Map<String, Object> output = (Map<String, Object>) result.get("output");
         assertThat(output).containsEntry("answer", "answer");
         assertThat(session.streams).hasSize(1);
-        OutputSchema outputSchema = (OutputSchema) session.streams.getFirst();
+        OutputSchema outputSchema = (OutputSchema) session.streams.get(0);
         assertThat(outputSchema.getType()).isEqualTo("workflow_final");
         assertThat(outputSchema.getIndex()).isZero();
         @SuppressWarnings("unchecked")
@@ -150,8 +150,8 @@ class IntentDetectionControllerTest {
         assertThat(result).containsEntry("status", "default_response");
         List<BaseMessage> messages = context.getMessages(null, true);
         assertThat(messages).hasSize(1);
-        assertThat(messages.getFirst().getRole()).isEqualTo("user");
-        assertThat(messages.getFirst().getContent()).isEqualTo("hello");
+        assertThat(messages.get(0).getRole()).isEqualTo("user");
+        assertThat(messages.get(0).getContent()).isEqualTo("hello");
         assertThat(session.streams).hasSize(1);
     }
 

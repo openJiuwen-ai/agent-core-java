@@ -111,7 +111,7 @@ class TrajectoryUploaderTest {
         assertThat(attempts.get()).isEqualTo(3);
         List<Path> walFiles = listWalFiles(tempDir.resolve("wal"));
         assertThat(walFiles).hasSize(1);
-        assertThat(Files.readString(walFiles.getFirst(), StandardCharsets.UTF_8)).contains("\"id\":\"retry-me\"");
+        assertThat(Files.readString(walFiles.get(0), StandardCharsets.UTF_8)).contains("\"id\":\"retry-me\"");
     }
 
     @Test

@@ -326,7 +326,7 @@ class TestStage01Scrape {
             assertEquals(2, blocks.stream().filter(block -> "heading".equals(block.get("type"))).findFirst()
                     .orElseThrow().get("level"));
         } else if (node.endsWith("test_truncates_long_text_to_400_chars")) {
-            assertEquals(400, String.valueOf(blocks.getFirst().get("text")).length());
+            assertEquals(400, String.valueOf(blocks.get(0).get("text")).length());
         } else {
             assertFalse(blocks.isEmpty());
         }

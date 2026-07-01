@@ -47,14 +47,14 @@ class HarnessConfigLoaderTest {
         assertThat(resolved.getConfig().getLanguage()).isEqualTo("en");
         assertThat(resolved.getSystemPrompt()).isEqualTo("Hello " + workspaceRoot);
         assertThat(resolved.getExtraSections()).hasSize(1);
-        assertThat(resolved.getExtraSections().getFirst().getName()).isEqualTo("extra");
-        assertThat(resolved.getExtraSections().getFirst().getPriority()).isEqualTo(17);
-        assertThat(resolved.getExtraSections().getFirst().getContent())
+        assertThat(resolved.getExtraSections().get(0).getName()).isEqualTo("extra");
+        assertThat(resolved.getExtraSections().get(0).getPriority()).isEqualTo(17);
+        assertThat(resolved.getExtraSections().get(0).getContent())
                 .containsEntry("cn", "Shared demo")
                 .containsEntry("en", "Shared demo");
         assertThat(resolved.getFileSections()).hasSize(1);
-        assertThat(resolved.getFileSections().getFirst().getFilename()).isEqualTo("AGENT.md");
-        assertThat(resolved.getFileSections().getFirst().getContent())
+        assertThat(resolved.getFileSections().get(0).getFilename()).isEqualTo("AGENT.md");
+        assertThat(resolved.getFileSections().get(0).getContent())
                 .containsEntry("cn", "智能体 demo")
                 .containsEntry("en", "Agent demo");
         assertThat(resolved.getSourcePath()).isEqualTo(configPath.toAbsolutePath().normalize());

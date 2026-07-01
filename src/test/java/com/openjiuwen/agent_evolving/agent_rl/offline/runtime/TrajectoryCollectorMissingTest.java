@@ -44,8 +44,8 @@ class TrajectoryCollectorMissingTest {
 
         List<Trajectory> trajectories = store.query(null, null, null);
         assertThat(trajectories).hasSize(1);
-        assertThat(trajectories.getFirst().getSessionId()).isEqualTo("test-session");
-        assertThat(trajectories.getFirst().getSteps().getFirst().getMeta())
+        assertThat(trajectories.get(0).getSessionId()).isEqualTo("test-session");
+        assertThat(trajectories.get(0).getSteps().get(0).getMeta())
                 .containsEntry("turn_id", 0)
                 .containsEntry("case_id", "case-123");
     }
@@ -69,13 +69,13 @@ class TrajectoryCollectorMissingTest {
         rail.afterInvoke(ctx("conversation_id", "test"));
 
         LLMCallDetail detail = (LLMCallDetail) store.query(null, null, null)
-                .getFirst()
+                .get(0)
                 .getSteps()
-                .getFirst()
+                .get(0)
                 .getDetail();
         Map<?, ?> recordedResponse = (Map<?, ?>) detail.getResponse();
         List<?> toolCalls = (List<?>) recordedResponse.get("tool_calls");
-        Map<?, ?> function = (Map<?, ?>) ((Map<?, ?>) toolCalls.getFirst()).get("function");
+        Map<?, ?> function = (Map<?, ?>) ((Map<?, ?>) toolCalls.get(0)).get("function");
         assertThat(function.get("name")).isEqualTo("test_tool");
     }
 
@@ -99,8 +99,8 @@ class TrajectoryCollectorMissingTest {
         List<Trajectory> trajectories = store.query(null, null, null);
         assertThat(trajectories).hasSize(2);
         assertThat(trajectories).extracting(trajectory -> trajectory.getSteps().size()).containsExactly(1, 1);
-        LLMCallDetail secondDetail = (LLMCallDetail) trajectories.get(1).getSteps().getFirst().getDetail();
-        assertThat(secondDetail.getMessages().getFirst()).isEqualTo(Map.of("role", "user", "content", "q2"));
+        LLMCallDetail secondDetail = (LLMCallDetail) trajectories.get(1).getSteps().get(0).getDetail();
+        assertThat(secondDetail.getMessages().get(0)).isEqualTo(Map.of("role", "user", "content", "q2"));
     }
 
     @Test
@@ -116,10 +116,10 @@ class TrajectoryCollectorMissingTest {
         }
         rail.afterInvoke(ctx("conversation_id", "same-session"));
 
-        Trajectory trajectory = store.query(null, null, null).getFirst();
+        Trajectory trajectory = store.query(null, null, null).get(0);
         assertThat(trajectory.getSteps()).hasSize(201);
-        LLMCallDetail firstDetail = (LLMCallDetail) trajectory.getSteps().getFirst().getDetail();
-        assertThat(firstDetail.getMessages().getFirst()).isEqualTo(Map.of("role", "user", "content", "q0"));
+        LLMCallDetail firstDetail = (LLMCallDetail) trajectory.getSteps().get(0).getDetail();
+        assertThat(firstDetail.getMessages().get(0)).isEqualTo(Map.of("role", "user", "content", "q0"));
     }
 
     @Test

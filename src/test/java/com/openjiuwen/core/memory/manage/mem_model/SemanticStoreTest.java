@@ -93,8 +93,8 @@ class SemanticStoreTest {
         ).join();
 
         assertThat(results).hasSize(2);
-        assertThat(results.getFirst().getKey()).isEqualTo("m1");
-        assertThat(results.getFirst().getValue()).isGreaterThanOrEqualTo(results.get(1).getValue());
+        assertThat(results.get(0).getKey()).isEqualTo("m1");
+        assertThat(results.get(0).getValue()).isGreaterThanOrEqualTo(results.get(1).getValue());
     }
 
     @Test

@@ -35,8 +35,8 @@ class OutputConverterTest {
                 .containsEntry("type", "template")
                 .containsEntry("content", "{{answer}}\n{{literal}}");
         assertThat(converter.getEdges()).hasSize(1);
-        assertThat(converter.getEdges().getFirst().getSourceNodeId()).isEqualTo("node_output");
-        assertThat(converter.getEdges().getFirst().getTargetNodeId()).isEqualTo("node_end");
+        assertThat(converter.getEdges().get(0).getSourceNodeId()).isEqualTo("node_output");
+        assertThat(converter.getEdges().get(0).getTargetNodeId()).isEqualTo("node_end");
     }
 
     @Test

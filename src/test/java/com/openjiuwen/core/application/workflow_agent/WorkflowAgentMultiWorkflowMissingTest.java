@@ -184,7 +184,7 @@ class WorkflowAgentMultiWorkflowMissingTest {
     }
 
     private static WorkflowOutput workflowOutput(ControllerOutputChunk chunk) {
-        DataFrame.JsonDataFrame frame = (DataFrame.JsonDataFrame) chunk.getControllerPayload().getData().getFirst();
+        DataFrame.JsonDataFrame frame = (DataFrame.JsonDataFrame) chunk.getControllerPayload().getData().get(0);
         return (WorkflowOutput) frame.data().get("result");
     }
 

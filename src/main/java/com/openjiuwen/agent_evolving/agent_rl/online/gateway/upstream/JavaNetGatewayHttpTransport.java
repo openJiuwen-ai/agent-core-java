@@ -31,7 +31,7 @@ public class JavaNetGatewayHttpTransport implements GatewayHttpTransport, AutoCl
         Map<String, String> headers = new LinkedHashMap<>();
         response.headers().map().forEach((name, values) -> {
             if (!values.isEmpty()) {
-                headers.put(name, values.getFirst());
+                headers.put(name, values.get(0));
             }
         });
         return new GatewayHttpResponse(

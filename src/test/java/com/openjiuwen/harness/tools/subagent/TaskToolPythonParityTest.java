@@ -101,8 +101,8 @@ class TaskToolPythonParityTest {
         List<Tool> tools = TaskTool.createTaskTool(new DeepAgent(), "code,search", "cn");
 
         assertThat(tools).hasSize(1);
-        assertThat(tools.getFirst()).isInstanceOf(TaskTool.class);
-        assertThat(tools.getFirst().getCard().getName()).isEqualTo("task_tool");
+        assertThat(tools.get(0)).isInstanceOf(TaskTool.class);
+        assertThat(tools.get(0).getCard().getName()).isEqualTo("task_tool");
     }
 
     @Test

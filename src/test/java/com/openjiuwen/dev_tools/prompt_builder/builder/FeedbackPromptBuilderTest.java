@@ -51,7 +51,7 @@ class FeedbackPromptBuilderTest {
 
         assertThat(result).contains("general result");
         assertThat(client.capturedInvokes()).hasSize(1);
-        assertThat(client.capturedInvokes().getFirst().getFirst().getContentAsString())
+        assertThat(client.capturedInvokes().get(0).get(0).getContentAsString())
                 .contains("original prompt")
                 .contains("raw feedback");
     }
@@ -68,7 +68,7 @@ class FeedbackPromptBuilderTest {
 
         assertThat(result).contains("insert result");
         assertThat(client.capturedInvokes()).hasSize(2);
-        assertThat(client.capturedInvokes().get(1).getFirst().getContentAsString())
+        assertThat(client.capturedInvokes().get(1).get(0).getContentAsString())
                 .contains("abc" + FeedbackPromptBuilder.INSERT_STR + "def")
                 .contains("optimized feedback");
     }
@@ -85,7 +85,7 @@ class FeedbackPromptBuilderTest {
 
         assertThat(result).contains("select result");
         assertThat(client.capturedInvokes()).hasSize(2);
-        assertThat(client.capturedInvokes().get(1).getFirst().getContentAsString())
+        assertThat(client.capturedInvokes().get(1).get(0).getContentAsString())
                 .contains("abcdef")
                 .contains("bcd")
                 .contains("optimized feedback");
@@ -100,7 +100,7 @@ class FeedbackPromptBuilderTest {
 
         assertThat(result).contains("fallback result");
         assertThat(client.capturedInvokes()).hasSize(1);
-        assertThat(client.capturedInvokes().getFirst().getFirst().getContentAsString())
+        assertThat(client.capturedInvokes().get(0).get(0).getContentAsString())
                 .contains("prompt")
                 .contains("feedback");
     }
@@ -156,7 +156,7 @@ class FeedbackPromptBuilderTest {
         Optional<String> result = builder.build("abcdef", "raw feedback", "insert", 3).join();
 
         assertThat(result).contains("insert result");
-        assertThat(client.capturedInvokes().get(1).getFirst().getContentAsString())
+        assertThat(client.capturedInvokes().get(1).get(0).getContentAsString())
                 .contains("raw feedback");
     }
 

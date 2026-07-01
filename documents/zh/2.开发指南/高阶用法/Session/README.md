@@ -7,7 +7,7 @@
 | 页面 | 关注点 | 主要 Java 依据 |
 | --- | --- | --- |
 | [概述](概述.md) | Session 的角色、核心类型和子系统分工 | `com.openjiuwen.core.session` |
-| [中断恢复](中断恢复.md) | `InteractiveInput`、检查点与同一 `sessionId` 的恢复语义 | `session.interaction`、`session.checkpointer`、`examples/interact` |
+| [中断恢复](中断恢复.md) | `InteractiveInput`、检查点与同一 `sessionId` 的恢复语义 | `session.interaction`、`session.checkpointer`、`workflow_agent` 测试 |
 | [流式输出](流式输出.md) | `stream mode`、chunk、writer、queue / emitter 以及与 workflow / agent 流式接口的关系 | `session.stream`、`Workflow.stream(...)`、`Runner.run*Streaming(...)` |
 | [状态管理](状态管理.md) | 会话状态分区、读写生命周期、提交 / 回滚与恢复边界 | `session.state`、`session.checkpointer` |
 | [调测能力](调测能力.md) | callback、tracer、trace stream 与自定义调试入口 | `session.callback`、`session.tracer`、`session.stream` |
@@ -39,4 +39,4 @@
 - [API 文档：session](../../API文档/com.openjiuwen.core/session.README.md)
 - [API 文档：session.interaction](../../API文档/com.openjiuwen.core/session/interaction.README.md)
 - [API 文档：session.checkpointer](../../API文档/com.openjiuwen.core/session/checkpointer.README.md)
-- [示例：interact](../../../../../examples/interact/README.md)
+- [测试：WorkflowAgent 流式中断恢复](../../../../../src/test/java/com/openjiuwen/core/application/workflow_agent/WorkflowAgentInterruptStreamMissingTest.java)

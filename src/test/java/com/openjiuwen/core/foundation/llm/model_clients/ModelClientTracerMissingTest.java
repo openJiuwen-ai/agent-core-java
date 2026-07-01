@@ -92,7 +92,7 @@ class ModelClientTracerMissingTest {
 
             assertThat(result.getContent()).isEqualTo("Test response");
             assertThat(tracer.records).isNotEmpty();
-            Map<?, ?> llmParams = (Map<?, ?>) tracer.records.getFirst().get("llm_params");
+            Map<?, ?> llmParams = (Map<?, ?>) tracer.records.get(0).get("llm_params");
             Map<?, ?> tracedHeaders = (Map<?, ?>) llmParams.get("extra_headers");
             assertThat(tracedHeaders.get("X-Trace")).isEqualTo("visible-trace");
             assertThat(tracedHeaders.keySet())
@@ -133,7 +133,7 @@ class ModelClientTracerMissingTest {
 
             assertThat(chunks).isNotEmpty();
             assertThat(tracer.records).hasSize(2);
-            Map<?, ?> llmParams = (Map<?, ?>) tracer.records.getFirst().get("llm_params");
+            Map<?, ?> llmParams = (Map<?, ?>) tracer.records.get(0).get("llm_params");
             Map<?, ?> tracedHeaders = (Map<?, ?>) llmParams.get("extra_headers");
             assertThat(tracedHeaders.get("X-Trace")).isEqualTo("visible-stream-trace");
             assertThat(tracedHeaders.keySet())
@@ -234,7 +234,7 @@ class ModelClientTracerMissingTest {
             ((AutoCloseable) iterator).close();
 
             assertThat(tracer.records).hasSize(1);
-            assertThat(tracer.records.getFirst()).containsKey("llm_params");
+            assertThat(tracer.records.get(0)).containsKey("llm_params");
             assertThat(tracer.records)
                     .noneSatisfy(record -> assertThat(record).containsEntry("llm_response", null));
         }
@@ -344,7 +344,7 @@ class ModelClientTracerMissingTest {
             ));
 
             assertThat(chunks).isNotEmpty();
-            assertThat(chunks.getFirst().getContent()).isEqualTo("Hello");
+            assertThat(chunks.get(0).getContent()).isEqualTo("Hello");
         }
     }
 

@@ -70,7 +70,7 @@ class ProgressiveToolRailMissingTest {
                 .contains("load_tools");
         assertThat(builder.hasSection(SectionName.TOOL_NAVIGATION)).isTrue();
         assertThat(builder.hasSection(SectionName.PROGRESSIVE_TOOL_RULES)).isTrue();
-        assertThat(((SystemMessage) previewMessages.getFirst()).getContent()).isEqualTo("preview prompt");
+        assertThat(((SystemMessage) previewMessages.get(0)).getContent()).isEqualTo("preview prompt");
         assertThat(toolNames((List<?>) ctx.get("tools")))
                 .containsExactly("search_tools", "always_tool", "loaded_tool");
     }

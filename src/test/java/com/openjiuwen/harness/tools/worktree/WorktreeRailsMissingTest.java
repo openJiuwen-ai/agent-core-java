@@ -124,7 +124,7 @@ class WorktreeRailsMissingTest {
         List<?> managerRails = (List<?>) railsField.get(rail.getManager());
         assertThat(handlerField.get(rail.getManager())).isSameAs(handler);
         assertThat(managerRails).hasSize(1);
-        assertThat(managerRails.getFirst()).isSameAs(lifecycleRail);
+        assertThat(managerRails.get(0)).isSameAs(lifecycleRail);
     }
 
     private void worktreeRailUninitRemovesToolsFromBothManagers() {

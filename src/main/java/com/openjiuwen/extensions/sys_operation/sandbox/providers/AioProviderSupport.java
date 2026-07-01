@@ -310,7 +310,7 @@ final class AioProviderSupport {
 
     static <T> Flow.Publisher<T> asyncPublisher(Consumer<SubmissionPublisher<T>> emitter) {
         SubmissionPublisher<T> publisher = new SubmissionPublisher<>();
-        Thread.startVirtualThread(() -> {
+        Thread thread = new Thread(() -> {
             try {
                 emitter.accept(publisher);
                 publisher.close();
@@ -318,6 +318,7 @@ final class AioProviderSupport {
                 publisher.closeExceptionally(throwable);
             }
         });
+        thread.start();
         return publisher;
     }
 

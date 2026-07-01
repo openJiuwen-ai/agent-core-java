@@ -129,7 +129,7 @@ public class HandoffTeam extends BaseTeam {
                     "HandoffTeam requires at least one agent"
             );
         }
-        return agentCards.getFirst().getId();
+        return agentCards.get(0).getId();
     }
 
     protected CompletableFuture<Void> ensureInternalAgents() {

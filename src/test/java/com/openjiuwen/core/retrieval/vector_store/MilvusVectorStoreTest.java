@@ -321,11 +321,11 @@ class MilvusVectorStoreTest {
         assertThat(client.lastSearchRequest.annsField()).isEqualTo("embedding");
         assertThat(client.lastOutputFields).containsExactly("content", "metadata", "document_id", "chunk_id");
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getText()).isEqualTo("Test content");
-        assertThat(results.getFirst().getScore()).isEqualTo(0.95d);
-        assertThat(results.getFirst().getDocId()).isEqualTo("doc-field");
-        assertThat(results.getFirst().getChunkId()).isEqualTo("chunk-1");
-        assertThat(results.getFirst().getMetadata())
+        assertThat(results.get(0).getText()).isEqualTo("Test content");
+        assertThat(results.get(0).getScore()).isEqualTo(0.95d);
+        assertThat(results.get(0).getDocId()).isEqualTo("doc-field");
+        assertThat(results.get(0).getChunkId()).isEqualTo("chunk-1");
+        assertThat(results.get(0).getMetadata())
                 .containsEntry("source", "unit")
                 .containsEntry("doc_id", "doc-field")
                 .containsEntry("raw_score", 0.2d)
@@ -379,7 +379,7 @@ class MilvusVectorStoreTest {
         assertThat(client.lastHybridRequests.get(1).metricType()).isEqualTo("BM25");
         assertThat(client.lastHybridOutputFields).containsExactly("content", "metadata", "document_id");
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getScore()).isEqualTo(0.9d);
+        assertThat(results.get(0).getScore()).isEqualTo(0.9d);
     }
 
     @Test
@@ -615,7 +615,7 @@ class MilvusVectorStoreTest {
         ).join();
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getText()).isEqualTo("Test content");
+        assertThat(results.get(0).getText()).isEqualTo("Test content");
         if ("test_sparse_search_with_filters".equals(caseName)) {
             assertThat(client.lastSearchMetricType).isEqualTo("BM25");
             assertThat(client.lastSearchFilter).isEqualTo("source == \"unit\"");
@@ -632,7 +632,7 @@ class MilvusVectorStoreTest {
 
         assertThat(results).isEmpty();
         assertThat(client.lastHybridRequests).hasSize(1);
-        assertThat(client.lastHybridRequests.getFirst().annsField()).isEqualTo("sparse_vector");
+        assertThat(client.lastHybridRequests.get(0).annsField()).isEqualTo("sparse_vector");
     }
 
     private static void assertDeleteNoResults() {

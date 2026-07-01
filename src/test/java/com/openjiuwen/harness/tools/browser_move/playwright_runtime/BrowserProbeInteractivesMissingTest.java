@@ -196,18 +196,18 @@ class BrowserProbeInteractivesMissingTest {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> firstElement(ToolOutput output) {
-        return (Map<String, Object>) ((List<?>) dataMap(output).get("elements")).getFirst();
+        return (Map<String, Object>) ((List<?>) dataMap(output).get("elements")).get(0);
     }
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> firstElement(Map<String, Object> result) {
-        return (Map<String, Object>) ((List<?>) result.get("elements")).getFirst();
+        return (Map<String, Object>) ((List<?>) result.get("elements")).get(0);
     }
 
     @SuppressWarnings("unchecked")
     private static String firstContentText(Object result) {
         Map<String, Object> data = (Map<String, Object>) result;
-        Map<String, Object> content = (Map<String, Object>) ((List<?>) data.get("content")).getFirst();
+        Map<String, Object> content = (Map<String, Object>) ((List<?>) data.get("content")).get(0);
         return String.valueOf(content.get("text"));
     }
 

@@ -45,7 +45,7 @@ class InstructionOptimizerTest {
         assertThat(parameter.getGradient("user_prompt")).isNull();
         assertThat(optimizer.getBadCases()).hasSize(TuneConstant.DEFAULT_MAX_SAMPLED_EXAMPLE_NUM);
         assertThat(model.invocations()).hasSize(1);
-        assertThat(model.invocations().getFirst().getFirst().getContentAsString()).contains("<bad_cases>");
+        assertThat(model.invocations().get(0).get(0).getContentAsString()).contains("<bad_cases>");
     }
 
     @Test

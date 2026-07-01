@@ -198,7 +198,7 @@ class QueryRewriterTest {
 
         List<?> typo = (List<?>) out.get("typo");
         assertEquals(1, typo.size());
-        assertEquals("1", ((Map<?, ?>) typo.getFirst()).get("reason"));
+        assertEquals("1", ((Map<?, ?>) typo.get(0)).get("reason"));
     }
 
     @Test
@@ -329,8 +329,8 @@ class QueryRewriterTest {
 
         assertEquals("那运费呢？", result.get("standalone_query"));
         assertEquals(1, context.getMessages(null, true).size());
-        assertEquals("system", context.getMessages(null, true).getFirst().getRole());
-        assertEquals("compressed_history", context.getMessages(null, true).getFirst().getName());
+        assertEquals("system", context.getMessages(null, true).get(0).getRole());
+        assertEquals("compressed_history", context.getMessages(null, true).get(0).getName());
         assertInstanceOf(List.class, result.get("typo"));
         assertEquals(1, ((List<?>) result.get("typo")).size());
     }
@@ -347,7 +347,7 @@ class QueryRewriterTest {
 
         assertEquals("总结一下", result.get("standalone_query"));
         assertEquals(1, context.getMessages(null, true).size());
-        assertEquals("original_history", context.getMessages(null, true).getFirst().getName());
+        assertEquals("original_history", context.getMessages(null, true).get(0).getName());
     }
 
     @Test
@@ -463,7 +463,7 @@ class QueryRewriterTest {
             assertEquals(Map.of("那", "退货运费"), repaired.get("references"));
             assertEquals(List.of("x"), repaired.get("missing"));
             if (node.endsWith("test_typo_sub_structure")) {
-                assertEquals("1", ((Map<?, ?>) ((List<?>) repaired.get("typo")).getFirst()).get("reason"));
+                assertEquals("1", ((Map<?, ?>) ((List<?>) repaired.get("typo")).get(0)).get("reason"));
             }
         }
     }
@@ -528,7 +528,7 @@ class QueryRewriterTest {
             }
             QueryRewriter rewriter = rewriterWith(context, 5, "not json", makeFullRewriteResponse("总结一下"));
             assertEquals("总结一下", rewriter.rewrite("总结一下").get("standalone_query"));
-            assertEquals("original_history", context.getMessages(null, true).getFirst().getName());
+            assertEquals("original_history", context.getMessages(null, true).get(0).getName());
         } else {
             SimpleContext context = new SimpleContext();
             context.addMessages(List.of(new UserMessage("你好"), new AssistantMessage("你好！")));

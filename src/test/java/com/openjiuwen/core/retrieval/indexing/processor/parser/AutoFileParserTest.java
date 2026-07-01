@@ -52,8 +52,8 @@ class AutoFileParserTest {
                 .join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).isEqualTo("first");
-        assertThat(documents.getFirst().getMetadata())
+        assertThat(documents.get(0).getText()).isEqualTo("first");
+        assertThat(documents.get(0).getMetadata())
                 .containsEntry("doc_id", "doc-1")
                 .containsEntry("title", "Named")
                 .containsEntry("file_path", file.toString())
@@ -68,7 +68,7 @@ class AutoFileParserTest {
 
         List<Document> documents = new AutoFileParser().parse(file.toString(), "doc-2").join();
 
-        assertThat(documents.getFirst().getText()).isEqualTo("new");
+        assertThat(documents.get(0).getText()).isEqualTo("new");
         assertThat(AutoFileParser.getSupportedFormats()).containsExactly(".swap");
     }
 

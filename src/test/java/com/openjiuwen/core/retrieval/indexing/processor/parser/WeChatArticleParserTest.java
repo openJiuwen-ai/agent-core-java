@@ -63,12 +63,12 @@ class WeChatArticleParserTest {
                 Map.of("timeout", 7.5d, "user_agent", "CustomAgent")).join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getId_()).isEqualTo("doc_1");
-        assertThat(documents.getFirst().getMetadata())
+        assertThat(documents.get(0).getId_()).isEqualTo("doc_1");
+        assertThat(documents.get(0).getMetadata())
                 .containsEntry("source_url", url)
                 .containsEntry("title", "Test WeChat Title")
                 .containsEntry("source_type", "wechat_article");
-        assertThat(documents.getFirst().getText()).contains("Article body text here");
+        assertThat(documents.get(0).getText()).contains("Article body text here");
         assertThat(parser.lastUrl).isEqualTo(url);
         assertThat(parser.lastTimeout).isEqualTo(7.5d);
         assertThat(parser.lastUserAgent).isEqualTo("CustomAgent");

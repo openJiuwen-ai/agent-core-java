@@ -55,12 +55,12 @@ class SimpleKnowledgeBaseTest {
         List<String> docIds = kb.addDocuments(List.of(document), Map.of("extra", "value")).join();
 
         assertThat(docIds).hasSize(1);
-        assertThat(docIds.getFirst()).isNotBlank();
+        assertThat(docIds.get(0)).isNotBlank();
         assertThat(indexer.buildConfigs).hasSize(1);
-        assertThat(indexer.buildConfigs.getFirst().getIndexName()).isEqualTo("kb_kb1_chunks");
-        assertThat(indexer.buildConfigs.getFirst().getIndexType()).isEqualTo("vector");
-        assertThat(indexer.buildConfigs.getFirst().isUseCaptionForImages()).isTrue();
-        assertThat(indexer.buildOptions.getFirst())
+        assertThat(indexer.buildConfigs.get(0).getIndexName()).isEqualTo("kb_kb1_chunks");
+        assertThat(indexer.buildConfigs.get(0).getIndexType()).isEqualTo("vector");
+        assertThat(indexer.buildConfigs.get(0).isUseCaptionForImages()).isTrue();
+        assertThat(indexer.buildOptions.get(0))
                 .containsOnly(Map.entry("database_name", "database-a"));
     }
 
@@ -87,7 +87,7 @@ class SimpleKnowledgeBaseTest {
         kb.retrieve("query", config, Map.of("custom", "value")).join();
 
         assertThat(retriever.calls).hasSize(1);
-        RetrieveCall call = retriever.calls.getFirst();
+        RetrieveCall call = retriever.calls.get(0);
         assertThat(call.query()).isEqualTo("query");
         assertThat(call.topK()).isEqualTo(3);
         assertThat(call.mode()).isEqualTo("sparse");
@@ -113,7 +113,7 @@ class SimpleKnowledgeBaseTest {
 
         assertThat(mergedTexts).containsExactly("same", "other");
         assertThat(mergedWithSource).hasSize(2);
-        MultiKBRetrievalResult same = mergedWithSource.getFirst();
+        MultiKBRetrievalResult same = mergedWithSource.get(0);
         assertThat(same.getText()).isEqualTo("same");
         assertThat(same.getScore()).isEqualTo(0.8d);
         assertThat(same.getRawScore()).isEqualTo(9.0d);

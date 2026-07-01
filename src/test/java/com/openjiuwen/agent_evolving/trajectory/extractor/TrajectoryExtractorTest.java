@@ -64,7 +64,7 @@ class TrajectoryExtractorTest {
         Trajectory result = extractor.extract(session, "case1");
 
         assertEquals(1, result.getSteps().size());
-        TrajectoryStep step = result.getSteps().getFirst();
+        TrajectoryStep step = result.getSteps().get(0);
         assertEquals("llm", step.getKind());
         assertEquals("test_op", step.getMeta().get("operator_id"));
     }
@@ -78,7 +78,7 @@ class TrajectoryExtractorTest {
         Trajectory result = extractor.extract(session, "case1");
 
         assertEquals(1, result.getSteps().size());
-        assertEquals("tool", result.getSteps().getFirst().getKind());
+        assertEquals("tool", result.getSteps().get(0).getKind());
     }
 
     @Test
@@ -91,7 +91,7 @@ class TrajectoryExtractorTest {
         Trajectory result = extractor.extract(session, "case1");
 
         assertEquals(1, result.getSteps().size());
-        assertEquals("Test error", result.getSteps().getFirst().getError());
+        assertEquals("Test error", result.getSteps().get(0).getError());
     }
 
     @Test
@@ -109,7 +109,7 @@ class TrajectoryExtractorTest {
 
         Trajectory result = extractor.extract(session, "case1");
 
-        TrajectoryStep step = result.getSteps().getFirst();
+        TrajectoryStep step = result.getSteps().get(0);
         assertNotNull(step.getDetail());
         LLMCallDetail detail = assertInstanceOf(LLMCallDetail.class, step.getDetail());
         assertEquals(List.of(Map.of("role", "user", "content", "nested")), detail.getMessages());
@@ -125,7 +125,7 @@ class TrajectoryExtractorTest {
 
         Trajectory result = extractor.extract(session, "case1");
 
-        assertEquals("llm_call_1", result.getSteps().getFirst().getMeta().get("operator_id"));
+        assertEquals("llm_call_1", result.getSteps().get(0).getMeta().get("operator_id"));
     }
 
     @Test
@@ -139,7 +139,7 @@ class TrajectoryExtractorTest {
 
         Trajectory result = extractor.extract(session, "case1");
 
-        TrajectoryStep step = result.getSteps().getFirst();
+        TrajectoryStep step = result.getSteps().get(0);
         assertEquals("tool", step.getKind());
         ToolCallDetail detail = assertInstanceOf(ToolCallDetail.class, step.getDetail());
         assertEquals("test_tool", detail.getToolName());
@@ -157,7 +157,7 @@ class TrajectoryExtractorTest {
 
         Trajectory result = extractor.extract(session, "case1");
 
-        TrajectoryStep step = result.getSteps().getFirst();
+        TrajectoryStep step = result.getSteps().get(0);
         assertEquals("memory", step.getKind());
         assertEquals(Map.of("key", "value"), step.getMeta().get("inputs"));
         assertEquals(Map.of("result", "data"), step.getMeta().get("outputs"));
@@ -174,8 +174,8 @@ class TrajectoryExtractorTest {
         Trajectory result = extractor.extract(session, "case1");
 
         assertEquals(1, result.getSteps().size());
-        assertNull(result.getSteps().getFirst().getStartTimeMs());
-        assertNull(result.getSteps().getFirst().getEndTimeMs());
+        assertNull(result.getSteps().get(0).getStartTimeMs());
+        assertNull(result.getSteps().get(0).getEndTimeMs());
     }
 
     @Test
@@ -189,8 +189,8 @@ class TrajectoryExtractorTest {
 
         Trajectory result = extractor.extract(session, "case1");
 
-        assertEquals(dateTime.toInstant().toEpochMilli(), result.getSteps().getFirst().getStartTimeMs());
-        assertNull(result.getSteps().getFirst().getEndTimeMs());
+        assertEquals(dateTime.toInstant().toEpochMilli(), result.getSteps().get(0).getStartTimeMs());
+        assertNull(result.getSteps().get(0).getEndTimeMs());
     }
 
     private static TestSession makeSession(List<Object> agentSpans) {

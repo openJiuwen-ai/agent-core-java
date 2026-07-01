@@ -31,7 +31,7 @@ class IntentDetectionConverterTest {
         assertThat(castMap(inputs.getLlmParam().get("prompt"))).containsEntry("content", "Classify the user request");
         assertThat(inputs.getLlmParam()).containsEntry("model", ConverterUtils.LLM_MODEL_CONFIG);
         assertThat(inputs.getIntents()).hasSize(2);
-        assertThat(inputs.getIntents().getFirst()).containsEntry("name", "sales").containsEntry("id", "intent_sales");
+        assertThat(inputs.getIntents().get(0)).containsEntry("name", "sales").containsEntry("id", "intent_sales");
         assertThat(inputs.getIntents().get(1).get("name")).isEqualTo("support");
         assertThat(inputs.getIntents().get(1).get("id")).startsWith("intent_");
         assertThat(converter.getNode().getData().getOutputs().getProperties()).containsKey("classification_id");

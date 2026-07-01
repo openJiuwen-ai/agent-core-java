@@ -100,7 +100,7 @@ public final class QwenGuardParser implements ModelOutputParser {
         details.put("safety", safety);
         details.put("categories", categories);
         details.put("raw_output", text);
-        String resolvedRiskType = categories.isEmpty() ? riskType : categories.getFirst();
+        String resolvedRiskType = categories.isEmpty() ? riskType : categories.get(0);
         return new RiskAssessment(hasRisk, riskLevel, hasRisk ? resolvedRiskType : null, 0.0d, details);
     }
 
@@ -165,7 +165,7 @@ public final class QwenGuardParser implements ModelOutputParser {
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("safety", safety);
         details.put("categories", categories);
-        String resolvedRiskType = categories.isEmpty() ? riskType : categories.getFirst();
+        String resolvedRiskType = categories.isEmpty() ? riskType : categories.get(0);
         return new RiskAssessment(hasRisk, riskLevel, hasRisk ? resolvedRiskType : null, 0.0d, details);
     }
 
@@ -182,7 +182,7 @@ public final class QwenGuardParser implements ModelOutputParser {
         details.put("language", getString(analysis, "language", "unknown"));
         details.put("decision", getString(data, "decision", "unknown"));
         details.put("version", getString(data, "version", "unknown"));
-        String resolvedRiskType = categories.isEmpty() ? riskType : categories.getFirst();
+        String resolvedRiskType = categories.isEmpty() ? riskType : categories.get(0);
         return new RiskAssessment(hasRisk, riskLevel, hasRisk ? resolvedRiskType : null, 0.0d, details);
     }
 

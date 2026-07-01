@@ -39,8 +39,8 @@ class MultimodalToolResultsPythonParityTest {
         List<UserMessage> messages = ReActAgent.buildMultimodalToolResultMessages(result);
 
         assertThat(messages).hasSize(1);
-        assertThat(messages.getFirst().getRole()).isEqualTo("user");
-        List<?> content = content(messages.getFirst());
+        assertThat(messages.get(0).getRole()).isEqualTo("user");
+        List<?> content = content(messages.get(0));
         assertThat(((Map<?, ?>) content.get(0)).get("type")).isEqualTo("text");
         assertThat(content.get(1)).isEqualTo(Map.of(
                 "type", "image_url",

@@ -558,11 +558,10 @@ public class TaskScheduler {
                         continue;
                     }
 
-                    // Start task on virtual thread
+                    // Start task on a background thread.
                     String taskId = task.getTaskId();
-                    Thread virtualThread = Thread.ofVirtual()
-                            .name("task-" + taskId)
-                            .start(() -> executeTaskWrapper(taskId, session));
+                    Thread virtualThread = new Thread(() -> executeTaskWrapper(taskId, session), "task-" + taskId);
+                    virtualThread.start();
 
                     runningTasks.put(taskId, new RunningTaskEntry(null, virtualThread));
                 } finally {

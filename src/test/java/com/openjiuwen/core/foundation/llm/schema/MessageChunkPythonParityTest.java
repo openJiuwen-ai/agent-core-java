@@ -182,10 +182,10 @@ class MessageChunkPythonParityTest {
             AssistantMessageChunk merged = assistant("", List.of(toolCall("call_1", "func", "{", 0)), null, null, null)
                     .merge(assistant("", List.of(toolCall("call_1", "", "\"x\": 1}", null)), null, null, null));
             assertThat(merged.getToolCalls()).hasSize(1);
-            assertThat(merged.getToolCalls().getFirst().getId()).isEqualTo("call_1");
-            assertThat(merged.getToolCalls().getFirst().getName()).isEqualTo("func");
-            assertThat(merged.getToolCalls().getFirst().getArguments()).isEqualTo("{\"x\": 1}");
-            assertThat(merged.getToolCalls().getFirst().getIndex()).isEqualTo(0);
+            assertThat(merged.getToolCalls().get(0).getId()).isEqualTo("call_1");
+            assertThat(merged.getToolCalls().get(0).getName()).isEqualTo("func");
+            assertThat(merged.getToolCalls().get(0).getArguments()).isEqualTo("{\"x\": 1}");
+            assertThat(merged.getToolCalls().get(0).getIndex()).isEqualTo(0);
             return;
         }
         if (name.endsWith("different_tool_calls")) {
@@ -198,9 +198,9 @@ class MessageChunkPythonParityTest {
             AssistantMessageChunk merged = assistant("", List.of(toolCall(null, "func", "{", 0)), null, null, null)
                     .merge(assistant("", List.of(toolCall(null, "", "\"x\": 1}", null)), null, null, null));
             assertThat(merged.getToolCalls()).hasSize(1);
-            assertThat(merged.getToolCalls().getFirst().getName()).isEqualTo("func");
-            assertThat(merged.getToolCalls().getFirst().getArguments()).isEqualTo("{\"x\": 1}");
-            assertThat(merged.getToolCalls().getFirst().getIndex()).isEqualTo(0);
+            assertThat(merged.getToolCalls().get(0).getName()).isEqualTo("func");
+            assertThat(merged.getToolCalls().get(0).getArguments()).isEqualTo("{\"x\": 1}");
+            assertThat(merged.getToolCalls().get(0).getIndex()).isEqualTo(0);
             return;
         }
         if (name.endsWith("with_index")) {

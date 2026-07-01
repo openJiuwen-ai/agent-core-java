@@ -89,7 +89,7 @@ class ReflectorTest {
         reflector.checkFormat("{\"id\":\"only\"}");
 
         assertThat(reflector.getErrors()).hasSize(1);
-        assertThat(reflector.getErrors().getFirst()).startsWith("JSON格式错误:");
+        assertThat(reflector.getErrors().get(0)).startsWith("JSON格式错误:");
     }
 
     @Test

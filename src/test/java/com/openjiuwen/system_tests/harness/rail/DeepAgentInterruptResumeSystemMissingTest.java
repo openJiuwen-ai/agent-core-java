@@ -46,8 +46,8 @@ class DeepAgentInterruptResumeSystemMissingTest {
         assertThat(firstResult.get("interrupt_ids")).isEqualTo(List.of("write-call-1"));
         assertThat(reactAgent.writeInvokeCount()).isZero();
         assertThat(reactAgent.calls()).hasSize(1);
-        assertThat(reactAgent.calls().getFirst().inputs()).containsEntry("is_follow_up", false);
-        assertThat(reactAgent.calls().getFirst().inputs()).containsKey("_steering_queue");
+        assertThat(reactAgent.calls().get(0).inputs()).containsEntry("is_follow_up", false);
+        assertThat(reactAgent.calls().get(0).inputs()).containsKey("_steering_queue");
 
         InteractiveInput interactiveInput = new InteractiveInput();
         interactiveInput.update("write-call-1", Map.of(

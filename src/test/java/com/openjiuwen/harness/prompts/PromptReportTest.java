@@ -97,7 +97,7 @@ class PromptReportTest {
         assertThat(serialized).containsEntry("mode", "full");
         assertThat(serialized).containsEntry("language", "cn");
         assertThat(sections(serialized)).hasSize(1);
-        assertThat(sections(serialized).getFirst()).containsEntry("name", "id");
+        assertThat(sections(serialized).get(0)).containsEntry("name", "id");
     }
 
     @Test

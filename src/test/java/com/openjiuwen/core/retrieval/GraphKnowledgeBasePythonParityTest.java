@@ -127,7 +127,7 @@ class GraphKnowledgeBasePythonParityTest {
         List<RetrievalResult> results = kb.retrieve("test query", RetrievalConfig.builder().useGraph(true).topK(5).build()).join();
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getText()).isEqualTo("Test result");
+        assertThat(results.get(0).getText()).isEqualTo("Test result");
         assertThat(chunkRetriever.retrieveCalls).isGreaterThanOrEqualTo(1);
     }
 
@@ -153,7 +153,7 @@ class GraphKnowledgeBasePythonParityTest {
         List<RetrievalResult> results = kb.retrieve("test query", retrievalConfig).join();
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getText()).isEqualTo("Agentic result");
+        assertThat(results.get(0).getText()).isEqualTo("Agentic result");
         assertThat(llmClient.invokeCalls).isGreaterThanOrEqualTo(1);
     }
 
@@ -176,7 +176,7 @@ class GraphKnowledgeBasePythonParityTest {
         List<RetrievalResult> results = kb.retrieve("test query", RetrievalConfig.builder().useGraph(false).topK(5).build()).join();
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getText()).isEqualTo("Simple result");
+        assertThat(results.get(0).getText()).isEqualTo("Simple result");
         assertThat(vectorStore.searchCalls).isEqualTo(1);
     }
 

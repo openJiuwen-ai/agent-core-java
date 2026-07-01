@@ -36,9 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -710,7 +708,7 @@ class OpenVikingMemoryProviderTest {
     @DisplayName("Shutdown")
     class TestShutdown {
         @Test
-        void testShutdownClosesClient() throws Exception {
+        void testShutdownReleasesClient() throws Exception {
             HttpClient client = mock(HttpClient.class);
             stubSend(client, response(200, "{}"));
             OpenVikingMemoryProvider provider = new OpenVikingMemoryProvider(
@@ -719,7 +717,7 @@ class OpenVikingMemoryProviderTest {
 
             await(provider.shutdown());
 
-            verify(client).close();
+            assertEquals(null, field(provider, "httpClient"));
             assertFalse(provider.isInitialized());
         }
 
@@ -733,14 +731,14 @@ class OpenVikingMemoryProviderTest {
         }
 
         @Test
-        void testShutdownHandlesCloseException() throws Exception {
+        void testShutdownIsIdempotentAfterInitialize() throws Exception {
             HttpClient client = mock(HttpClient.class);
             stubSend(client, response(200, "{}"));
-            doThrow(new RuntimeException("close error")).when(client).close();
             OpenVikingMemoryProvider provider = new OpenVikingMemoryProvider(
                     "http://localhost:8080", "", "", "", "", Map.of(), () -> client);
             await(provider.initialize(Map.of()));
 
+            assertDoesNotThrow(() -> await(provider.shutdown()));
             assertDoesNotThrow(() -> await(provider.shutdown()));
             assertFalse(provider.isInitialized());
         }

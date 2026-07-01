@@ -296,15 +296,7 @@ public class OpenVikingMemoryProvider extends MemoryProvider {
 
     @Override
     public CompletableFuture<Void> shutdown() {
-        if (httpClient != null) {
-            try {
-                httpClient.close();
-            } catch (Exception e) {
-                Loggers.MEMORY.debug("OpenViking client close failed: {}", e.getMessage());
-            } finally {
-                httpClient = null;
-            }
-        }
+        httpClient = null;
         return CompletableFuture.completedFuture(null);
     }
 
