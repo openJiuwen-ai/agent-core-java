@@ -79,7 +79,7 @@ class TrajectoryBuilderTest {
         builder.recordStep(step);
 
         assertEquals(1, builder.getSteps().size());
-        assertEquals(StepKind.LLM, builder.getSteps().getFirst().getKindEnum());
+        assertEquals(StepKind.LLM, builder.getSteps().get(0).getKindEnum());
     }
 
     @Test

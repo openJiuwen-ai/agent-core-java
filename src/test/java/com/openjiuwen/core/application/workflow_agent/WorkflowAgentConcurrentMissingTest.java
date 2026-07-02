@@ -76,7 +76,7 @@ public class WorkflowAgentConcurrentMissingTest {
         List<Object> phase2 = drain(agent.stream(query("check stock", session.getSessionId()), session));
         assertThat(controller.wasCancelled(session.getSessionId())).isTrue();
         assertThat(phase2).hasSize(1);
-        assertThat(((OutputSchema) phase2.getFirst()).getType()).isEqualTo(Constant.INTERACTION);
+        assertThat(((OutputSchema) phase2.get(0)).getType()).isEqualTo(Constant.INTERACTION);
 
         InteractiveInput interactiveInput = new InteractiveInput();
         interactiveInput.update("questioner", "AAPL");
@@ -151,14 +151,14 @@ public class WorkflowAgentConcurrentMissingTest {
     private static OutputSchema firstInteraction(Object result) {
         List<Object> items = list(result);
         assertThat(items).isNotEmpty();
-        assertThat(items.getFirst()).isInstanceOf(OutputSchema.class);
-        return (OutputSchema) items.getFirst();
+        assertThat(items.get(0)).isInstanceOf(OutputSchema.class);
+        return (OutputSchema) items.get(0);
     }
 
     private static OutputSchema onlyChunk(List<Object> chunks) {
         assertThat(chunks).hasSize(1);
-        assertThat(chunks.getFirst()).isInstanceOf(OutputSchema.class);
-        return (OutputSchema) chunks.getFirst();
+        assertThat(chunks.get(0)).isInstanceOf(OutputSchema.class);
+        return (OutputSchema) chunks.get(0);
     }
 
     private static List<Object> drain(Iterator<Object> iterator) {

@@ -62,8 +62,8 @@ class PDFParserTest {
         List<Document> documents = new PDFParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getId_()).isEqualTo("doc_1");
-        assertThat(documents.getFirst().getText()).contains("Page 1 content", "Page 2 content");
+        assertThat(documents.get(0).getId_()).isEqualTo("doc_1");
+        assertThat(documents.get(0).getText()).contains("Page 1 content", "Page 2 content");
     }
 
     @Test
@@ -120,7 +120,7 @@ class PDFParserTest {
 
         assertThat(documents).hasSize(1);
         for (String pageText : pages) {
-            assertThat(documents.getFirst().getText()).contains(pageText);
+            assertThat(documents.get(0).getText()).contains(pageText);
         }
     }
 
@@ -133,7 +133,7 @@ class PDFParserTest {
         List<Document> documents = parser.parse(file.toString(), "doc_capt", null, Map.of()).join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).contains("An example caption", "Second caption");
+        assertThat(documents.get(0).getText()).contains("An example caption", "Second caption");
     }
 
     @Test
@@ -154,8 +154,8 @@ class PDFParserTest {
         List<Document> documents = new AutoFileParser().parse(file.toString(), "auto-pdf").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).contains("Auto parser content");
-        assertThat(documents.getFirst().getMetadata())
+        assertThat(documents.get(0).getText()).contains("Auto parser content");
+        assertThat(documents.get(0).getMetadata())
                 .containsEntry("doc_id", "auto-pdf")
                 .containsEntry("file_ext", ".pdf")
                 .containsEntry("file_path", file.toString());

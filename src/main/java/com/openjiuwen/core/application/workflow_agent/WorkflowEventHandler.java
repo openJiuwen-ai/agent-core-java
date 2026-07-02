@@ -174,7 +174,7 @@ public class WorkflowEventHandler extends EventHandler {
 
         WorkflowCard detectedWorkflow;
         if (workflows.size() == 1) {
-            detectedWorkflow = workflows.getFirst();
+            detectedWorkflow = workflows.get(0);
         } else {
             detectedWorkflow = detectWorkflowViaLlm(event, session);
             if (detectedWorkflow == null) {
@@ -227,27 +227,27 @@ public class WorkflowEventHandler extends EventHandler {
         try {
             ensureIntentDetectionInitialized(session);
             if (intentDetector == null) {
-                return workflows.getFirst();
+                return workflows.get(0);
             }
             List<TaskResult> detectedTasks = intentDetector.processMessage(event);
             if (detectedTasks == null || detectedTasks.isEmpty()) {
                 if (!defaultResponseText(controllerConfig).isEmpty()) {
                     return null;
                 }
-                return workflows.getFirst();
+                return workflows.get(0);
             }
 
-            String workflowName = detectedTasks.getFirst().input().targetName();
+            String workflowName = detectedTasks.get(0).input().targetName();
             for (WorkflowCard workflow : workflows) {
                 if (Objects.equals(workflow.getName(), workflowName)) {
                     return workflow;
                 }
             }
             LOGGER.warning("Workflow '" + workflowName + "' not found, using first");
-            return workflows.getFirst();
+            return workflows.get(0);
         } catch (RuntimeException error) {
             LOGGER.warning("Intent detection failed: " + error.getMessage() + ", using first workflow");
-            return workflows.getFirst();
+            return workflows.get(0);
         }
     }
 
@@ -415,7 +415,7 @@ public class WorkflowEventHandler extends EventHandler {
                 if (!matches) {
                     Object userValue = provided.getUserInputs().values().iterator().next();
                     InteractiveInput remapped = new InteractiveInput();
-                    remapped.update(targetIds.getFirst(), userValue);
+                    remapped.update(targetIds.get(0), userValue);
                     return remapped;
                 }
             }
@@ -423,7 +423,7 @@ public class WorkflowEventHandler extends EventHandler {
         }
 
         InteractiveInput interactiveInput = new InteractiveInput();
-        interactiveInput.update(targetIds.getFirst(), Objects.toString(extractDisplayValue(event), ""));
+        interactiveInput.update(targetIds.get(0), Objects.toString(extractDisplayValue(event), ""));
         return interactiveInput;
     }
 
@@ -584,7 +584,7 @@ public class WorkflowEventHandler extends EventHandler {
         if (!(event instanceof InputEvent inputEvent) || inputEvent.getInputData().isEmpty()) {
             return "";
         }
-        DataFrame firstData = inputEvent.getInputData().getFirst();
+        DataFrame firstData = inputEvent.getInputData().get(0);
         if (firstData instanceof DataFrame.JsonDataFrame jsonDataFrame) {
             Object query = jsonDataFrame.data().getOrDefault("query", "");
             if (query instanceof String text) {
@@ -607,7 +607,7 @@ public class WorkflowEventHandler extends EventHandler {
         }
 
         if (event instanceof InputEvent inputEvent && !inputEvent.getInputData().isEmpty()) {
-            DataFrame firstData = inputEvent.getInputData().getFirst();
+            DataFrame firstData = inputEvent.getInputData().get(0);
             if (firstData instanceof DataFrame.JsonDataFrame jsonDataFrame) {
                 Object inputQuery = jsonDataFrame.data().get("query");
                 if (inputQuery instanceof InteractiveInput interactiveInput) {
@@ -1033,7 +1033,7 @@ public class WorkflowEventHandler extends EventHandler {
             if (!(event instanceof InputEvent inputEvent) || inputEvent.getInputData().isEmpty()) {
                 return "";
             }
-            DataFrame firstData = inputEvent.getInputData().getFirst();
+            DataFrame firstData = inputEvent.getInputData().get(0);
             if (firstData instanceof DataFrame.JsonDataFrame jsonDataFrame) {
                 Object query = jsonDataFrame.data().get("query");
                 return query instanceof String text ? text : "";

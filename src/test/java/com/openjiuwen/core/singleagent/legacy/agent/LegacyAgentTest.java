@@ -63,10 +63,10 @@ class LegacyAgentTest {
         assertEquals(List.of(Map.of("role", "system", "content", "hello")), config.promptTemplate);
         assertEquals(List.of("tool-name"), config.tools);
         assertEquals(1, config.plugins.size());
-        assertEquals("tool-name", config.plugins.getFirst().get("name"));
+        assertEquals("tool-name", config.plugins.get(0).get("name"));
         assertEquals(1, agent.getTools().size());
         assertEquals(1, agent.getWorkflows().size());
-        assertEquals("wf", config.workflows.getFirst().getId());
+        assertEquals("wf", config.workflows.get(0).getId());
     }
 
     @Test

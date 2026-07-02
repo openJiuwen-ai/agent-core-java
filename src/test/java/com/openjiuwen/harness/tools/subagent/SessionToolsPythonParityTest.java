@@ -172,8 +172,8 @@ class SessionToolsPythonParityTest {
         assertThat(data).containsEntry("status", "pending");
         assertThat(String.valueOf(data.get("sub_session_id"))).startsWith("sess-1_sub_");
         assertThat(toolkit.listAll()).hasSize(1);
-        assertThat(toolkit.listAll().getFirst().status()).isEqualTo("running");
-        assertThat(toolkit.listAll().getFirst().description()).isEqualTo("do work");
+        assertThat(toolkit.listAll().get(0).status()).isEqualTo("running");
+        assertThat(toolkit.listAll().get(0).description()).isEqualTo("do work");
     }
 
     @Test

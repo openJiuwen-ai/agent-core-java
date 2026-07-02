@@ -177,8 +177,8 @@ class CliRendererPythonParityTest {
 
         assertEquals(List.of("q1:Yes?"), calls);
         assertEquals(1, rendered.result().pendingInteractions().size());
-        assertEquals("q1", rendered.result().pendingInteractions().getFirst().interactionId());
-        assertEquals("Yes?", rendered.result().pendingInteractions().getFirst().request());
+        assertEquals("q1", rendered.result().pendingInteractions().get(0).interactionId());
+        assertEquals("Yes?", rendered.result().pendingInteractions().get(0).request());
     }
 
     private void toolCallRendered() {

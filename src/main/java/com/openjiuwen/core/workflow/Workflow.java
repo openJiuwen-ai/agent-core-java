@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.core.workflow;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -52,7 +53,6 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -69,7 +69,7 @@ import java.util.function.Function;
 public class Workflow {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final ExecutorService STREAM_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+    private static final ExecutorService STREAM_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
     private static final long SUB_WORKFLOW_STREAM_DRAIN_TIMEOUT_MS = 1000L;
     private static DecoratorFramework callbackFramework;
 
@@ -1458,8 +1458,8 @@ public class Workflow {
     }
 
     private void traceWorkflowDone(WorkflowRuntimeSession workflowSession) {
-        if (workflowSession.tracer() == null
-                || !(workflowSession.state() instanceof WorkflowStateCollection stateCollection)) {
+        WorkflowStateCollection stateCollection = workflowSession.state();
+        if (workflowSession.tracer() == null || stateCollection == null) {
             return;
         }
         Object outputs = WorkflowSessionSupport.getOutputs(workflowSession, endCompId);
@@ -1610,7 +1610,8 @@ public class Workflow {
     }
 
     private Object resolveFinalStreamPayload(WorkflowRuntimeSession workflowSession) {
-        if (!(workflowSession.state() instanceof WorkflowStateCollection stateCollection)) {
+        WorkflowStateCollection stateCollection = workflowSession.state();
+        if (stateCollection == null) {
             return null;
         }
         return WorkflowSessionSupport.getOutputs(workflowSession, endCompId);

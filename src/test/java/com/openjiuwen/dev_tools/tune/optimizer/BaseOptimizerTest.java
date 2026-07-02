@@ -90,9 +90,9 @@ class BaseOptimizerTest {
 
         List<TraceNode> history = optimizer.getHistory().getHistory("case-42");
         assertThat(history).hasSize(1);
-        assertThat(history.getFirst().getLlmCallId()).isEqualTo("main");
-        assertThat(history.getFirst().getInputs()).containsEntry("query", "hello");
-        assertThat(history.getFirst().getOutputs()).isEqualTo("assistant answer");
+        assertThat(history.get(0).getLlmCallId()).isEqualTo("main");
+        assertThat(history.get(0).getInputs()).containsEntry("query", "hello");
+        assertThat(history.get(0).getOutputs()).isEqualTo("assistant answer");
     }
 
     @Test

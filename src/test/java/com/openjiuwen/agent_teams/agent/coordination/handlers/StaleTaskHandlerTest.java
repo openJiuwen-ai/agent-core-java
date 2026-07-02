@@ -68,9 +68,9 @@ class StaleTaskHandlerTest {
 
         assertEquals(List.of(TaskStatus.CLAIMED.value()), taskManager.statusCalls);
         assertEquals(1, host.delivered.size());
-        assertTrue(host.delivered.getFirst().contains("[T1]"));
-        assertFalse(host.delivered.getFirst().contains("[T2]"));
-        assertFalse(host.useSteerValues.getFirst());
+        assertTrue(host.delivered.get(0).contains("[T1]"));
+        assertFalse(host.delivered.get(0).contains("[T2]"));
+        assertFalse(host.useSteerValues.get(0));
         assertTrue(throttle.containsKey("T1"));
         assertSame(throttle, handler.getLastStaleNudge());
     }
@@ -93,9 +93,9 @@ class StaleTaskHandlerTest {
         handler.checkStaleClaimedTasks().toCompletableFuture().join();
 
         assertEquals(List.of("dev"), messageManager.targets);
-        assertTrue(messageManager.sent.getFirst().contains("[T1]"));
+        assertTrue(messageManager.sent.get(0).contains("[T1]"));
         assertEquals(1, host.delivered.size());
-        assertTrue(host.delivered.getFirst().contains("[T2]"));
+        assertTrue(host.delivered.get(0).contains("[T2]"));
     }
 
     @Test
@@ -138,9 +138,9 @@ class StaleTaskHandlerTest {
         handler.checkStalePendingTasks().toCompletableFuture().join();
 
         assertEquals(1, host.delivered.size());
-        assertTrue(host.delivered.getFirst().contains("[P1]"));
-        assertFalse(host.delivered.getFirst().contains("[P2]"));
-        assertFalse(host.delivered.getFirst().contains("[P3]"));
+        assertTrue(host.delivered.get(0).contains("[P1]"));
+        assertFalse(host.delivered.get(0).contains("[P2]"));
+        assertFalse(host.delivered.get(0).contains("[P3]"));
         assertTrue(handler.getLastPendingNudge().containsKey("P1"));
     }
 

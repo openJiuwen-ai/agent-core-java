@@ -3,11 +3,13 @@
  */
 
 package com.openjiuwen.agent_evolving.agent_rl.online.judge;
+
 import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.GatewayHttpTransport;
 import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.HttpUpstreamGatewayClient;
 import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.JavaNetGatewayHttpTransport;
 import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.RetryPolicy;
 import com.openjiuwen.agent_evolving.agent_rl.online.gateway.upstream.UpstreamGatewayClient;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -23,6 +25,9 @@ import java.util.concurrent.CompletableFuture;
  * {@code openjiuwen/agent_evolving/agent_rl/online/judge/judge_scorer.py}.
  */
 public class JudgeScorer implements com.openjiuwen.agent_evolving.agent_rl.online.gateway.trajectory.JudgeScorer {
+
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("judge-scorer-io");
 
     private final String judgeUrl;
     private final String judgeModel;
@@ -97,7 +102,7 @@ public class JudgeScorer implements com.openjiuwen.agent_evolving.agent_rl.onlin
             result.remove("session_id");
             result.remove("turn_num");
             return result;
-        });
+        }, IO_EXECUTOR);
     }
 
     public static Map<String, Object> parseScores(String content) {

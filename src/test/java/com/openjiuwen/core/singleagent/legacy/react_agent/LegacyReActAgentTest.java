@@ -83,7 +83,7 @@ class LegacyReActAgentTest {
         assertEquals("final answer", resultMap.get("output"));
         assertEquals("answer", resultMap.get("result_type"));
         assertFalse(capturedMessages.isEmpty());
-        List<BaseMessage> messages = capturedMessages.getFirst();
+        List<BaseMessage> messages = capturedMessages.get(0);
         assertEquals("system", messages.get(0).getRole());
         assertEquals("guide", messages.get(0).getContent());
         assertEquals("user", messages.get(1).getRole());

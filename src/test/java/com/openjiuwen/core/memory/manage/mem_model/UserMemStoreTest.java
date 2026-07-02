@@ -50,7 +50,7 @@ class UserMemStoreTest {
         assertThat(userMemStore.write("u1", "s1", id(1), data(id(1), "user_profile", "duplicate")).join()).isFalse();
         List<Map<String, Object>> stored = userMemStore.getAll("u1", "s1").join();
         assertThat(stored).hasSize(1);
-        assertThat(stored.getFirst()).containsEntry("text", "alpha");
+        assertThat(stored.get(0)).containsEntry("text", "alpha");
     }
 
     @Test
@@ -71,7 +71,7 @@ class UserMemStoreTest {
 
         assertThat(updated).isTrue();
         assertThat(values).hasSize(2);
-        assertThat(values.getFirst()).containsEntry("text", "alpha-updated").containsEntry("score", 0.9);
+        assertThat(values.get(0)).containsEntry("text", "alpha-updated").containsEntry("score", 0.9);
         assertThat(values.get(1)).containsEntry("text", "beta");
     }
 

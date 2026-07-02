@@ -72,10 +72,10 @@ class MilvusVectorStoreTest {
         ).join();
 
         assertEquals(1, results.size());
-        assertEquals(1.0d, results.getFirst().getScore());
-        assertEquals("a", results.getFirst().getFields().get("id"));
-        assertEquals("alpha", results.getFirst().getFields().get("text"));
-        assertIterableEquals(List.of("x", "y"), (List<?>) results.getFirst().getFields().get("tags"));
+        assertEquals(1.0d, results.get(0).getScore());
+        assertEquals("a", results.get(0).getFields().get("id"));
+        assertEquals("alpha", results.get(0).getFields().get("text"));
+        assertIterableEquals(List.of("x", "y"), (List<?>) results.get(0).getFields().get("tags"));
         assertEquals("score == 3", adapter.lastSearchFilter);
         assertEquals(List.of("doc_id", "embedding", "text", "score"), adapter.lastOutputFields);
 
@@ -126,7 +126,7 @@ class MilvusVectorStoreTest {
         store.updateSchema("docs", List.of(new AddScalarFieldOperation("category", "string", "general"))).join();
 
         assertTrue(store.getSchema("docs", Map.of()).join().hasField("category"));
-        assertEquals("general", adapter.rowsByCollection.get("docs").getFirst().get("category"));
+        assertEquals("general", adapter.rowsByCollection.get("docs").get(0).get("category"));
     }
 
     @Test

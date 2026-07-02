@@ -48,7 +48,7 @@ class EvolutionRailTeamTrajectoryTest {
 
         assertThat(personal.query(null, null, null)).hasSize(1);
         assertThat(sink.snapshots).hasSize(1);
-        MemberTrajectorySnapshot snapshot = sink.snapshots.getFirst();
+        MemberTrajectorySnapshot snapshot = sink.snapshots.get(0);
         assertThat(snapshot.getTeamId()).isEqualTo("team-a");
         assertThat(snapshot.getSessionId()).isEqualTo("test-session");
         assertThat(snapshot.getMemberId()).isEqualTo("test-agent");
@@ -114,7 +114,7 @@ class EvolutionRailTeamTrajectoryTest {
 
         recordToolInvoke(rail, "test-session", "view_task", Map.of(), MockAgent.withoutRole());
 
-        MemberTrajectorySnapshot snapshot = sink.snapshots.getFirst();
+        MemberTrajectorySnapshot snapshot = sink.snapshots.get(0);
         assertThat(snapshot.getMemberRole()).isNull();
         assertThat(snapshot.getTrajectory().getMeta()).doesNotContainKey("member_role");
     }
@@ -128,7 +128,7 @@ class EvolutionRailTeamTrajectoryTest {
 
         recordToolInvoke(rail, "test-session", "view_task", Map.of(), MockAgent.withoutRole());
 
-        MemberTrajectorySnapshot snapshot = sink.snapshots.getFirst();
+        MemberTrajectorySnapshot snapshot = sink.snapshots.get(0);
         assertThat(snapshot.getMemberId()).isEqualTo("jiuwen_team_a_team_leader");
         assertThat(snapshot.getMemberRole()).isEqualTo("leader");
         assertThat(snapshot.getTrajectory().getMeta()).containsEntry("member_role", "leader");

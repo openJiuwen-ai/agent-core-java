@@ -10,6 +10,7 @@ import com.openjiuwen.OpenJiuwenVersion;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.store.base_reranker.Document;
 import com.openjiuwen.core.foundation.store.base_reranker.RerankerConfig;
@@ -36,6 +37,7 @@ import java.util.concurrent.CompletableFuture;
 public class ChatReranker extends StandardReranker {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("chat-reranker-io");
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
@@ -114,7 +116,7 @@ public class ChatReranker extends StandardReranker {
                                                          List<Object> doc,
                                                          Object instruct,
                                                          Map<String, Object> kwargs) {
-        return CompletableFuture.supplyAsync(() -> rerankSync(query, doc, instruct, kwargs));
+        return CompletableFuture.supplyAsync(() -> rerankSync(query, doc, instruct, kwargs), IO_EXECUTOR);
     }
 
     @Override

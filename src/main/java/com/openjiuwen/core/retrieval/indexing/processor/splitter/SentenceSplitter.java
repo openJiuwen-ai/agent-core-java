@@ -212,8 +212,8 @@ public class SentenceSplitter extends Splitter {
         }
         chunks.add(new SplitChunk(
                 chunkText.toString(),
-                currentSentences.getFirst().start(),
-                currentSentences.getLast().end()
+                currentSentences.get(0).start(),
+                currentSentences.get(currentSentences.size() - 1).end()
         ));
 
         List<SentenceSpan> nextSentences = new ArrayList<>();

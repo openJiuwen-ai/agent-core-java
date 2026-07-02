@@ -75,7 +75,7 @@ class WorkflowEventHandlerTest {
         assertEquals(Map.of("status", "success"), result);
         List<Task> tasks = handler.getTaskManager().getTask(TaskFilter.bySessionId("s-create"));
         assertEquals(1, tasks.size());
-        Task task = tasks.getFirst();
+        Task task = tasks.get(0);
         assertTrue(task.getTaskId().startsWith("wf_"));
         assertEquals("workflow", task.getTaskType());
         assertEquals("Main flow", task.getDescription());
@@ -156,7 +156,7 @@ class WorkflowEventHandlerTest {
 
         List<Task> tasks = handler.getTaskManager().getTask(TaskFilter.bySessionId("s-resume"));
         assertEquals(1, tasks.size());
-        Task resumeTask = tasks.getFirst();
+        Task resumeTask = tasks.get(0);
         assertEquals("resume", resumeTask.getExtensions().get("resume_mode"));
         InteractiveInput interactiveInput = assertInstanceOf(
                 InteractiveInput.class,

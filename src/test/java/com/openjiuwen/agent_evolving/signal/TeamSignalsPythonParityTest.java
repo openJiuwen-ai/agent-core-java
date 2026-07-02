@@ -44,8 +44,8 @@ class TeamSignalsPythonParityTest {
         assertThat(parsed).isInstanceOf(List.class);
         List<?> items = (List<?>) parsed;
         assertThat(items).hasSize(2);
-        assertThat(items.getFirst()).isInstanceOf(Map.class);
-        assertThat(((Map<?, ?>) items.getFirst()).get("issue_type")).isEqualTo("coordination");
+        assertThat(items.get(0)).isInstanceOf(Map.class);
+        assertThat(((Map<?, ?>) items.get(0)).get("issue_type")).isEqualTo("coordination");
     }
 
     @Test
@@ -94,7 +94,7 @@ class TeamSignalsPythonParityTest {
                 .join();
 
         assertThat(issues).hasSize(1);
-        assertThat(issues.getFirst()).containsEntry("issue_type", "coordination");
+        assertThat(issues.get(0)).containsEntry("issue_type", "coordination");
         assertThat(calls.get()).isEqualTo(2);
     }
 
@@ -112,7 +112,7 @@ class TeamSignalsPythonParityTest {
                 .join();
 
         assertThat(issues).hasSize(1);
-        assertThat(issues.getFirst()).containsEntry("issue_type", "coordination");
+        assertThat(issues.get(0)).containsEntry("issue_type", "coordination");
     }
 
     @Test
@@ -126,7 +126,7 @@ class TeamSignalsPythonParityTest {
                 .join();
 
         assertThat(issues).hasSize(1);
-        assertThat(issues.getFirst()).containsEntry("severity", "medium");
+        assertThat(issues.get(0)).containsEntry("severity", "medium");
     }
 
     @Test
@@ -155,11 +155,11 @@ class TeamSignalsPythonParityTest {
                 "affected_role", "leader",
                 "severity", "high");
         assertThat(signals).hasSize(1);
-        assertThat(signals.getFirst().getSignalType()).isEqualTo("trajectory_issue");
-        assertThat(signals.getFirst().getSkillName()).isEqualTo("research-team");
-        assertThat(TeamSignals.getTeamTrajectoryIssues(signals.getFirst())).containsExactly(expectedIssue);
-        assertThat(TeamSignals.getTeamSignalSkillContent(signals.getFirst())).isEqualTo("# current skill");
-        assertThat(signals.getFirst().getContext())
+        assertThat(signals.get(0).getSignalType()).isEqualTo("trajectory_issue");
+        assertThat(signals.get(0).getSkillName()).isEqualTo("research-team");
+        assertThat(TeamSignals.getTeamTrajectoryIssues(signals.get(0))).containsExactly(expectedIssue);
+        assertThat(TeamSignals.getTeamSignalSkillContent(signals.get(0))).isEqualTo("# current skill");
+        assertThat(signals.get(0).getContext())
                 .containsEntry("source", "passive_trajectory")
                 .containsEntry(TeamSignals.TEAM_TRAJECTORY_ISSUES_KEY, List.of(expectedIssue))
                 .containsEntry(TeamSignals.TEAM_SKILL_CONTENT_KEY, "# current skill");

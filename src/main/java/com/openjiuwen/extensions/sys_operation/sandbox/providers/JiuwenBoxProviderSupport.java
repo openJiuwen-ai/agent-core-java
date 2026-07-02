@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.sys_operation.config.PreDeployLauncherConfig;
 import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sys_operation.config.SandboxLauncherConfig;
@@ -61,6 +62,8 @@ final class JiuwenBoxProviderSupport {
     private static final Object SHARED_LOCK = new Object();
     private static final Object RECREATE_LOCK = new Object();
     private static final Object IDLE_TIMEOUT_CACHE_LOCK = new Object();
+    private static final java.util.concurrent.Executor LOCAL_PROCESS_IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("jiuwenbox-local-process-io");
     private static final Map<String, String> SHARED_SANDBOX_IDS = new ConcurrentHashMap<>();
     private static final Map<String, TimeoutConfig> IDLE_TIMEOUT_CACHE = new ConcurrentHashMap<>();
 
@@ -178,8 +181,12 @@ final class JiuwenBoxProviderSupport {
         try {
             process = builder.start();
             Process running = process;
-            CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(() -> readStreamSafely(running.getInputStream()));
-            CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(() -> readStreamSafely(running.getErrorStream()));
+            CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(
+                    () -> readStreamSafely(running.getInputStream()),
+                    LOCAL_PROCESS_IO_EXECUTOR);
+            CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(
+                    () -> readStreamSafely(running.getErrorStream()),
+                    LOCAL_PROCESS_IO_EXECUTOR);
             if (stdin != null) {
                 try (OutputStream outputStream = process.getOutputStream()) {
                     outputStream.write(stdin.getBytes(StandardCharsets.UTF_8));

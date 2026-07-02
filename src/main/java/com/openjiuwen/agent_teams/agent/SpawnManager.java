@@ -159,10 +159,10 @@ public class SpawnManager implements RecoveryManager.SpawnManagerPort, SpawnMana
                         return CompletableFuture.completedFuture(false);
                     }
                     ConfiguredTeamBackend backend = configurator.getTeamBackend();
-                    if (!(backend instanceof TeamBackendView teamBackend)) {
+                    if (backend == null) {
                         return CompletableFuture.completedFuture(false);
                     }
-                    return teamBackend.getMember(memberName)
+                    return backend.getMember(memberName)
                             .thenCompose(rawMember -> {
                                 MemberRow member = rawMember instanceof MemberRow row ? row : null;
                                 return restartWithRetries(
@@ -186,10 +186,10 @@ public class SpawnManager implements RecoveryManager.SpawnManagerPort, SpawnMana
 
     public CompletionStage<TeamRuntimeContext> buildContextFromDb(String memberName) {
         ConfiguredTeamBackend backend = configurator.getTeamBackend();
-        if (!(backend instanceof TeamBackendView teamBackend)) {
+        if (backend == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return teamBackend.getMember(memberName).thenApply(rawMember -> {
+        return backend.getMember(memberName).thenApply(rawMember -> {
             MemberRow member = rawMember instanceof MemberRow row ? row : null;
             if (member == null) {
                 TEAM_LOGGER.error("Teammate %s not found in database", memberName);
@@ -205,7 +205,7 @@ public class SpawnManager implements RecoveryManager.SpawnManagerPort, SpawnMana
             ctx.setMessagerConfig(configurator.buildMemberMessagerConfig(member.memberName()));
             ctx.setDbConfig(baseCtx == null ? Map.of() : baseCtx.getDbConfig());
             ctx.setMemberModel(resolveMemberModel(member.modelRefJson()));
-            ctx.setCliAgent(teamBackend.getExternalCliAgent(member.memberName()));
+            ctx.setCliAgent(backend.getExternalCliAgent(member.memberName()));
             return ctx;
         });
     }
@@ -379,8 +379,8 @@ public class SpawnManager implements RecoveryManager.SpawnManagerPort, SpawnMana
     private CompletionStage<Void> markRestarting(String memberName) {
         ConfiguredTeamBackend backend = configurator.getTeamBackend();
         String teamName = configurator.getTeamName();
-        if (backend instanceof TeamBackendView teamBackend && teamName != null) {
-            return teamBackend.updateMemberStatus(memberName, teamName, MemberStatus.RESTARTING.value())
+        if (backend != null && teamName != null) {
+            return backend.updateMemberStatus(memberName, teamName, MemberStatus.RESTARTING.value())
                     .thenApply(ignored -> null);
         }
         return CompletableFuture.completedFuture(null);
@@ -389,8 +389,8 @@ public class SpawnManager implements RecoveryManager.SpawnManagerPort, SpawnMana
     private CompletionStage<Void> markError(String memberName) {
         ConfiguredTeamBackend backend = configurator.getTeamBackend();
         String teamName = configurator.getTeamName();
-        if (backend instanceof TeamBackendView teamBackend && teamName != null) {
-            return teamBackend.updateMemberStatus(memberName, teamName, MemberStatus.ERROR.value())
+        if (backend != null && teamName != null) {
+            return backend.updateMemberStatus(memberName, teamName, MemberStatus.ERROR.value())
                     .thenApply(ignored -> null);
         }
         return CompletableFuture.completedFuture(null);

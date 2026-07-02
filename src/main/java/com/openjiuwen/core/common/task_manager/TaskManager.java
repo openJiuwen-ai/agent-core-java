@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.common.task_manager;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
 import com.openjiuwen.core.runner.callback.TaskManagerEvents;
 
 import java.time.Duration;
@@ -46,7 +48,7 @@ public class TaskManager {
     private final Map<String, CopyOnWriteArrayList<Consumer<Task>>> callbacks = new LinkedHashMap<>();
 
     public TaskManager() {
-        this(Executors.newCachedThreadPool(), Executors.newSingleThreadScheduledExecutor());
+        this(VirtualThreadSupport.newThreadPerTaskExecutor(), Executors.newSingleThreadScheduledExecutor());
     }
 
     TaskManager(ExecutorService executorService, ScheduledExecutorService timeoutScheduler) {
@@ -418,7 +420,12 @@ public class TaskManager {
             chain.add(task.getDisplayName() + "(" + currentId.substring(0, Math.min(8, currentId.length())) + ")");
             currentId = task.getCancelledBy();
         }
-        return chain.isEmpty() ? taskId.substring(0, Math.min(8, taskId.length())) : String.join(" -> ", chain.reversed());
+        if (chain.isEmpty()) {
+            return taskId.substring(0, Math.min(8, taskId.length()));
+        }
+        List<String> reversedChain = new ArrayList<>(chain);
+        java.util.Collections.reverse(reversedChain);
+        return String.join(" -> ", reversedChain);
     }
 
     private void buildTreeRecursive(String taskId, List<String> lines, int indent) {

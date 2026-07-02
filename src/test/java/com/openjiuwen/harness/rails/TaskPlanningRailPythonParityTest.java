@@ -150,7 +150,7 @@ class TaskPlanningRailPythonParityTest {
 
         @SuppressWarnings("unchecked")
         List<TodoItem> saved = (List<TodoItem>) ctx.get("saved_todos");
-        assertEquals(TodoStatus.IN_PROGRESS, saved.getFirst().getStatus());
+        assertEquals(TodoStatus.IN_PROGRESS, saved.get(0).getStatus());
     }
 
     private void afterTaskIterationSyncsTodoStatusFromPlan() {
@@ -250,7 +250,7 @@ class TaskPlanningRailPythonParityTest {
         List<Object> updated = (List<Object>) ctx.get("messages");
         assertEquals(1, rail.getToolCallCount("test-session-id"));
         assertEquals(1, updated.size());
-        assertTrue(String.valueOf(updated.getFirst()).contains("ensure the plan is being executed correctly"));
+        assertTrue(String.valueOf(updated.get(0)).contains("ensure the plan is being executed correctly"));
     }
 
     private void afterToolCallCountsAllTools() {
@@ -335,7 +335,7 @@ class TaskPlanningRailPythonParityTest {
                 todo("task-b", "task-b", TodoStatus.IN_PROGRESS)));
 
         assertEquals(2, plan.getTasks().size());
-        assertInstanceOf(TodoItem.class, plan.getTasks().getFirst());
+        assertInstanceOf(TodoItem.class, plan.getTasks().get(0));
         assertEquals(TodoStatus.IN_PROGRESS, plan.getTasks().get(1).getStatus());
     }
 

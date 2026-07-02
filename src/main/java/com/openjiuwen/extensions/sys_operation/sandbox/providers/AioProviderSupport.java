@@ -4,6 +4,8 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -310,7 +312,7 @@ final class AioProviderSupport {
 
     static <T> Flow.Publisher<T> asyncPublisher(Consumer<SubmissionPublisher<T>> emitter) {
         SubmissionPublisher<T> publisher = new SubmissionPublisher<>();
-        Thread.startVirtualThread(() -> {
+        VirtualThreadSupport.startThread("aio-provider-publisher", () -> {
             try {
                 emitter.accept(publisher);
                 publisher.close();

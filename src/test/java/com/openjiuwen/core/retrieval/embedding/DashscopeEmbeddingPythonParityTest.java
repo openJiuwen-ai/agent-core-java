@@ -100,7 +100,7 @@ class DashscopeEmbeddingPythonParityTest {
                 """), 0);
 
         assertThat(result).hasSize(2);
-        assertThat(result.getFirst()).containsExactly(0.1d, 0.1d, 0.1d);
+        assertThat(result.get(0)).containsExactly(0.1d, 0.1d, 0.1d);
         assertThat(result.get(1)).containsExactly(0.2d, 0.2d, 0.2d);
     }
 
@@ -239,7 +239,7 @@ class DashscopeEmbeddingPythonParityTest {
 
         model.embedDocuments((List) List.of("plain text", document, "another string"), null, Map.of()).join();
 
-        assertThat(model.recordedBatches.getFirst())
+        assertThat(model.recordedBatches.get(0))
                 .containsExactly("plain text", document.getDashscopeInput(), "another string");
     }
 
@@ -283,7 +283,7 @@ class DashscopeEmbeddingPythonParityTest {
 
         model.embedDocumentsSync((List) List.of("plain text", document), null, Map.of());
 
-        assertThat(model.recordedBatches.getFirst()).containsExactly("plain text", document.getDashscopeInput());
+        assertThat(model.recordedBatches.get(0)).containsExactly("plain text", document.getDashscopeInput());
     }
 
     @Test

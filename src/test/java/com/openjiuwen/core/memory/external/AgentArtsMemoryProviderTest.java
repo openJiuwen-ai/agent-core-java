@@ -214,7 +214,7 @@ class AgentArtsMemoryProviderTest {
 
         assertTrue(result.contains("## External Memory"));
         assertTrue(result.contains("- remember this"));
-        FakeAgentArtsClient.SearchCall call = fake.searchCalls.getLast();
+        FakeAgentArtsClient.SearchCall call = fake.searchCalls.get(fake.searchCalls.size() - 1);
         assertEquals("space", call.spaceId());
         assertEquals("who am I", call.filters().query());
         assertEquals(3, call.filters().topK());
@@ -237,7 +237,7 @@ class AgentArtsMemoryProviderTest {
                 "scope_id", "call-scope",
                 "session_id", "call-session")).join();
 
-        AgentArtsMemoryProvider.MemorySearchFilterPayload filters = fake.searchCalls.getLast().filters();
+        AgentArtsMemoryProvider.MemorySearchFilterPayload filters = fake.searchCalls.get(fake.searchCalls.size() - 1).filters();
         assertEquals("call-user", filters.actorId());
     }
 
@@ -315,10 +315,10 @@ class AgentArtsMemoryProviderTest {
         Map<?, ?> data = Jsons.asMap(output);
 
         assertEquals(1, ((Number) data.get("count")).intValue());
-        Map<?, ?> result = ((List<Map<?, ?>>) data.get("results")).getFirst();
+        Map<?, ?> result = ((List<Map<?, ?>>) data.get("results")).get(0);
         assertEquals("remember this", result.get("memory"));
         assertEquals(0.91, ((Number) result.get("score")).doubleValue(), 0.00001);
-        AgentArtsMemoryProvider.MemorySearchFilterPayload filters = fake.searchCalls.getLast().filters();
+        AgentArtsMemoryProvider.MemorySearchFilterPayload filters = fake.searchCalls.get(fake.searchCalls.size() - 1).filters();
         assertEquals("x", filters.query());
         assertEquals(2, filters.topK());
         assertEquals("semantic", filters.strategyType());
@@ -339,7 +339,7 @@ class AgentArtsMemoryProviderTest {
         Map<?, ?> data = Jsons.asMap(output);
 
         assertEquals(1, ((Number) data.get("count")).intValue());
-        assertEquals(10, fake.searchCalls.getLast().filters().topK());
+        assertEquals(10, fake.searchCalls.get(fake.searchCalls.size() - 1).filters().topK());
     }
 
     @Test
@@ -349,13 +349,13 @@ class AgentArtsMemoryProviderTest {
         provider.initialize(Map.of("session_id", "search-session")).join();
 
         provider.handleToolCall("external_memory_search", Map.of("query", "x")).join();
-        assertEquals(0.5, fake.searchCalls.getLast().filters().minScore(), 0.00001);
+        assertEquals(0.5, fake.searchCalls.get(fake.searchCalls.size() - 1).filters().minScore(), 0.00001);
 
         Map<String, Object> args = new LinkedHashMap<>();
         args.put("query", "x");
         args.put("min_score", null);
         provider.handleToolCall("external_memory_search", args).join();
-        assertEquals(0.5, fake.searchCalls.getLast().filters().minScore(), 0.00001);
+        assertEquals(0.5, fake.searchCalls.get(fake.searchCalls.size() - 1).filters().minScore(), 0.00001);
     }
 
     @Test
@@ -377,7 +377,7 @@ class AgentArtsMemoryProviderTest {
         Map<?, ?> data = Jsons.asMap(output);
 
         assertEquals(1, ((Number) data.get("count")).intValue());
-        assertEquals("call-user", fake.searchCalls.getLast().filters().actorId());
+        assertEquals("call-user", fake.searchCalls.get(fake.searchCalls.size() - 1).filters().actorId());
     }
 
     @Test
@@ -407,7 +407,7 @@ class AgentArtsMemoryProviderTest {
         AgentArtsMemoryProvider provider = provider(new FakeAgentArtsClient(), "k", "space");
 
         List<Map<String, Object>> schemas = provider.getToolSchemas();
-        Map<String, Object> schema = schemas.getFirst();
+        Map<String, Object> schema = schemas.get(0);
         Map<String, Object> parameters = (Map<String, Object>) schema.get("parameters");
         Map<String, Object> properties = (Map<String, Object>) parameters.get("properties");
 
@@ -511,16 +511,17 @@ class AgentArtsMemoryProviderTest {
         provider.initialize(Map.of("session_id", "init-session")).join();
 
         provider.syncTurn("u-msg", "a-msg", Map.of("session_id", "session-1")).join();
-        AgentArtsMemoryProvider.TextMessagePayload firstAssistant = fake.messageCalls.getLast().messages().get(1);
+        AgentArtsMemoryProvider.TextMessagePayload firstAssistant =
+                fake.messageCalls.get(fake.messageCalls.size() - 1).messages().get(1);
         provider.syncTurn("u-msg-2", "a-msg-2", Map.of("session_id", "session-1")).join();
         Object storedSessionId = mappingStore.get("agentarts/session_mapping/session-1").join();
 
-        assertEquals(Map.of("space_id", "space"), fake.sessionCalls.getLast());
+        assertEquals(Map.of("space_id", "space"), fake.sessionCalls.get(fake.sessionCalls.size() - 1));
         assertEquals(2, fake.sessionCalls.size());
         assertEquals("server-session-2", storedSessionId);
         assertEquals("a-msg", firstAssistant.content());
         assertEquals("server-session-2", fake.messageCalls.get(fake.messageCalls.size() - 2).sessionId());
-        assertEquals("server-session-2", fake.messageCalls.getLast().sessionId());
+        assertEquals("server-session-2", fake.messageCalls.get(fake.messageCalls.size() - 1).sessionId());
     }
 
     @Test
@@ -557,7 +558,7 @@ class AgentArtsMemoryProviderTest {
 
         assertEquals(2, fake.sessionCalls.size());
         assertEquals("server-session-2", fake.messageCalls.get(fake.messageCalls.size() - 2).sessionId());
-        assertEquals("server-session-2", fake.messageCalls.getLast().sessionId());
+        assertEquals("server-session-2", fake.messageCalls.get(fake.messageCalls.size() - 1).sessionId());
     }
 
     @Test
@@ -572,7 +573,7 @@ class AgentArtsMemoryProviderTest {
         provider.syncTurn("u-msg-2", "a-msg-2", Map.of()).join();
 
         assertFalse(callAgentArtsSessionId.equals(initAgentArtsSessionId));
-        assertEquals(initAgentArtsSessionId, fake.messageCalls.getLast().sessionId());
+        assertEquals(initAgentArtsSessionId, fake.messageCalls.get(fake.messageCalls.size() - 1).sessionId());
     }
 
     @Test
@@ -586,7 +587,7 @@ class AgentArtsMemoryProviderTest {
         provider.syncTurn("u-msg-2", "a-msg-2", mapOf("session_id", null)).join();
 
         assertEquals(initAgentArtsSessionId, fake.messageCalls.get(fake.messageCalls.size() - 2).sessionId());
-        assertEquals(initAgentArtsSessionId, fake.messageCalls.getLast().sessionId());
+        assertEquals(initAgentArtsSessionId, fake.messageCalls.get(fake.messageCalls.size() - 1).sessionId());
     }
 
     @Test
@@ -679,7 +680,7 @@ class AgentArtsMemoryProviderTest {
         @Override
         public String createMemorySession(Map<String, Object> payload) {
             sessionCalls.add(new LinkedHashMap<>(payload));
-            lastSessionCall = sessionCalls.getLast();
+            lastSessionCall = sessionCalls.get(sessionCalls.size() - 1);
             nextSession++;
             return "server-session-" + nextSession;
         }

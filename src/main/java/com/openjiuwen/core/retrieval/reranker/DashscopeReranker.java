@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 /**
  * DashScope text-rerank client.
@@ -36,6 +37,7 @@ public class DashscopeReranker extends StandardReranker {
     public static final String END_POINT = "/services/rerank/text-rerank/text-rerank";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("dashscope-reranker-io");
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
 
@@ -76,7 +78,7 @@ public class DashscopeReranker extends StandardReranker {
                                                          List<Object> doc,
                                                          Object instruct,
                                                          Map<String, Object> kwargs) {
-        return CompletableFuture.supplyAsync(() -> rerankSync(query, doc, instruct, kwargs));
+        return CompletableFuture.supplyAsync(() -> rerankSync(query, doc, instruct, kwargs), IO_EXECUTOR);
     }
 
     @Override

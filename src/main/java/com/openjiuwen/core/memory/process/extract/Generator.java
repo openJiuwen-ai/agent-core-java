@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.memory.process.extract;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
@@ -50,6 +51,8 @@ public class Generator {
             OperationType.UPDATE.getValue(), OperationType.UPDATE,
             OperationType.DELETE.getValue(), OperationType.DELETE
     );
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("memory-generator-io");
 
     private final DataIdManager dataIdGenerator;
     private final SearchManager searchManager;
@@ -64,7 +67,7 @@ public class Generator {
     }
 
     public CompletionStage<Map<String, List<BaseMemoryUnit>>> genAllMemory(Map<String, Object> kwargs) {
-        return CompletableFuture.supplyAsync(() -> genAllMemorySync(kwargs == null ? Map.of() : kwargs));
+        return CompletableFuture.supplyAsync(() -> genAllMemorySync(kwargs == null ? Map.of() : kwargs), IO_EXECUTOR);
     }
 
     @SuppressWarnings("unchecked")

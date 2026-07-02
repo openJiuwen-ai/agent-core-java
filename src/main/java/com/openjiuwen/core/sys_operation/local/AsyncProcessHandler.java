@@ -285,7 +285,8 @@ public final class AsyncProcessHandler {
             }
         }
         List<ProcessHandle> descendants = new ArrayList<>(handle.descendants().toList());
-        for (ProcessHandle descendant : descendants.reversed()) {
+        for (int i = descendants.size() - 1; i >= 0; i--) {
+            ProcessHandle descendant = descendants.get(i);
             descendant.destroyForcibly();
         }
         handle.destroyForcibly();

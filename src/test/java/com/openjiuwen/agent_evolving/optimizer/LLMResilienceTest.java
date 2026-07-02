@@ -82,7 +82,7 @@ class LLMResilienceTest {
         assertEquals(StatusCode.TOOLCHAIN_EVOLVING_TOOL_CALL_LLM_CALL_EXECUTION_ERROR, error.getStatus());
         assertEquals("invoke_failed", error.getParams().get("reason"));
         assertEquals(1, error.getParams().get("attempts"));
-        assertPrompt(invoker.messages().getFirst(), "full prompt");
+        assertPrompt(invoker.messages().get(0), "full prompt");
     }
 
     @Test
@@ -173,7 +173,7 @@ class LLMResilienceTest {
     }
 
     private static void assertPrompt(List<BaseMessage> messages, String expectedPrompt) {
-        UserMessage message = assertInstanceOf(UserMessage.class, messages.getFirst());
+        UserMessage message = assertInstanceOf(UserMessage.class, messages.get(0));
         assertEquals(expectedPrompt, message.getContentAsString());
     }
 

@@ -53,10 +53,10 @@ class JudgeDispatcherTest {
 
         assertEquals(1, count);
         assertEquals(1, scorer.calls.size());
-        assertEquals("hello", scorer.calls.getFirst().get("instruction_text"));
-        assertEquals("", scorer.calls.getFirst().get("followup_user_feedback"));
-        assertEquals(0.25, recorder.samples.getFirst().get("judge_score"));
-        assertEquals("session_done", recorder.samples.getFirst().get("tag"));
+        assertEquals("hello", scorer.calls.get(0).get("instruction_text"));
+        assertEquals("", scorer.calls.get(0).get("followup_user_feedback"));
+        assertEquals(0.25, recorder.samples.get(0).get("judge_score"));
+        assertEquals("session_done", recorder.samples.get(0).get("tag"));
     }
 
     @Test

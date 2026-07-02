@@ -56,7 +56,7 @@ class ExperienceSharerTest {
         assertTrue(second.isOk());
         assertEquals(2, backend.bundleUploadCount);
         assertEquals(1, backend.packageUploadCount);
-        assertEquals(1, backend.uploadedBundles.getFirst().getExperiences().size());
+        assertEquals(1, backend.uploadedBundles.get(0).getExperiences().size());
         assertArrayEquals(new byte[] {1, 2, 3}, backend.downloadSkillPackage("sk_python_debug").toCompletableFuture().join());
         assertFalse(sharer.hasPending("python-debug"));
     }
@@ -114,9 +114,9 @@ class ExperienceSharerTest {
         List<SharedSkillBundle> cached = sharer.listCachedBundles("sk_python_debug");
 
         assertEquals(1, downloaded.size());
-        assertEquals(bundle.getBundleId(), downloaded.getFirst().getBundleId());
+        assertEquals(bundle.getBundleId(), downloaded.get(0).getBundleId());
         assertEquals(1, cached.size());
-        assertEquals(bundle.getBundleId(), cached.getFirst().getBundleId());
+        assertEquals(bundle.getBundleId(), cached.get(0).getBundleId());
         assertTrue(Files.isRegularFile(
                 tempDir.resolve("cache")
                         .resolve("downloaded")
@@ -146,7 +146,7 @@ class ExperienceSharerTest {
         byte[] restoredBytes = sharer.downloadSkillPackage("sk_python_debug").toCompletableFuture().join();
 
         assertEquals(1, results.size());
-        assertEquals("sk_python_debug", results.getFirst().getSkillId());
+        assertEquals("sk_python_debug", results.get(0).getSkillId());
         assertEquals("python-debug", restoredMeta.getSkillName());
         assertArrayEquals(new byte[] {4, 5}, restoredBytes);
     }

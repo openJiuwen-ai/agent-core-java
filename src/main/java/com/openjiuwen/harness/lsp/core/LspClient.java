@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.lsp.core;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -69,7 +71,7 @@ public class LspClient {
         this.config = Objects.requireNonNull(config, "config");
         this.process = Objects.requireNonNull(process, "process");
         this.onExitCallback = onExit;
-        this.ioExecutor = Executors.newCachedThreadPool(new NamedThreadFactory("lsp-client-io"));
+        this.ioExecutor = VirtualThreadSupport.newThreadPerTaskExecutor("lsp-client-io");
         this.scheduler = Executors.newSingleThreadScheduledExecutor(new NamedThreadFactory("lsp-client-timer"));
     }
 

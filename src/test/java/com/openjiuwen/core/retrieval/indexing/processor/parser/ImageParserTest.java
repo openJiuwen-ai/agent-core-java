@@ -43,9 +43,9 @@ class ImageParserTest {
         List<Document> documents = parser.parse(image.toString(), "doc_img_1", null, Map.of()).join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getId_()).isEqualTo("doc_img_1");
-        assertThat(documents.getFirst().getText()).contains(caption);
-        assertThat(documents.getFirst().getMetadata()).containsEntry("image_path", savedPath);
+        assertThat(documents.get(0).getId_()).isEqualTo("doc_img_1");
+        assertThat(documents.get(0).getText()).contains(caption);
+        assertThat(documents.get(0).getMetadata()).containsEntry("image_path", savedPath);
     }
 
     @Test
@@ -57,7 +57,7 @@ class ImageParserTest {
         List<Document> documents = parser.parse(image.toString(), "img_doc", null, Map.of()).join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getMetadata()).containsExactly(Map.entry("image_path", expectedImagePath));
+        assertThat(documents.get(0).getMetadata()).containsExactly(Map.entry("image_path", expectedImagePath));
     }
 
     @Test
@@ -71,9 +71,9 @@ class ImageParserTest {
         List<Document> documents = parser.parse(image.toString(), "doc_img_2", null, Map.of()).join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getId_()).isEqualTo("doc_img_2");
-        assertThat(documents.getFirst().getText()).isEqualTo("A dog\nRunning in a park");
-        assertThat(documents.getFirst().getMetadata()).containsEntry("image_path", "/images/dog.jpg");
+        assertThat(documents.get(0).getId_()).isEqualTo("doc_img_2");
+        assertThat(documents.get(0).getText()).isEqualTo("A dog\nRunning in a park");
+        assertThat(documents.get(0).getMetadata()).containsEntry("image_path", "/images/dog.jpg");
     }
 
     @Test
@@ -95,8 +95,8 @@ class ImageParserTest {
         List<Document> documents = parser.parse(image.toString(), "doc_img_exc", null, Map.of()).join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).isEmpty();
-        assertThat(documents.getFirst().getMetadata()).containsEntry("image_path", savedPath);
+        assertThat(documents.get(0).getText()).isEmpty();
+        assertThat(documents.get(0).getMetadata()).containsEntry("image_path", savedPath);
     }
 
     @Test

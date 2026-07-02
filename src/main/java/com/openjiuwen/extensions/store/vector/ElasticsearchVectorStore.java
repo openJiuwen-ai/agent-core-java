@@ -5,6 +5,7 @@
 package com.openjiuwen.extensions.store.vector;
 
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
 import com.openjiuwen.core.foundation.store.FieldSchema;
@@ -38,6 +39,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
     public static final String METADATA_DOC_ID = "__collection_metadata__";
 
     private static final Logger LOGGER = Logger.getLogger(ElasticsearchVectorStore.class.getName());
+    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("elasticsearch-vector-store-io");
     private static final int DEFAULT_VECTOR_DIM = 768;
     private static final int DEFAULT_BATCH_SIZE = 500;
     private static final Map<String, String> ES_SIMILARITY_MAP = Map.of(
@@ -123,7 +125,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
             storeMetadata(indexName, metadata);
             metadataCache.put(indexName, metadata);
             LOGGER.info("Created collection with " + collectionSchema.getFields().size() + " fields");
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -142,7 +144,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
                 LOGGER.log(Level.SEVERE, "Failed to delete collection", exception);
                 throw exception;
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -153,7 +155,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
             } catch (RuntimeException exception) {
                 return false;
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -199,7 +201,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
                         Map.of("collection_name", collectionName, "error_msg", exception.getMessage())
                 );
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -248,7 +250,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
                 LOGGER.log(Level.FINE, "Failed to refresh index after bulk insert", exception);
             }
             LOGGER.info("Successfully added documents to collection");
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -297,7 +299,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
                 searchResults.add(new VectorSearchResult(score, source));
             }
             return searchResults;
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -321,7 +323,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
                 es.bulk(chunk, true, false);
             }
             LOGGER.info("Deleted documents from collection");
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -334,7 +336,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
             Map<String, Object> response = es.deleteByQuery(indexName(collectionName),
                     Map.of("query", boolFilter(filters)), true);
             LOGGER.info("Deleted documents matching filters, count=" + response.getOrDefault("deleted", 0));
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -354,7 +356,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
                 LOGGER.log(Level.WARNING, "Failed to list collection names", exception);
                 return List.of();
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -412,7 +414,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
                 }
                 throw exception;
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -436,7 +438,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
             storeMetadata(indexName, current);
             metadataCache.put(indexName, current);
             LOGGER.fine("Updated collection metadata for '" + collectionName + "'");
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -446,7 +448,7 @@ public class ElasticsearchVectorStore extends BaseVectorStore {
             metadata.putIfAbsent("distance_metric", "COSINE");
             metadata.putIfAbsent("schema_version", 0);
             return metadata;
-        });
+        }, IO_EXECUTOR);
     }
 
     private Map<String, Object> buildMappings(CollectionSchema schema, String distanceMetric) {

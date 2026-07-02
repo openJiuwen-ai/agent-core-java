@@ -53,7 +53,7 @@ class InterruptExceptionScenariosMissingTest {
         assertThat(result2).containsEntry("result_type", "interrupt");
         assertThat(interruptIds(result2)).hasSize(1);
 
-        Map<String, Object> result3 = agent.run("495", confirmInterrupt(interruptIds(result2).getFirst()));
+        Map<String, Object> result3 = agent.run("495", confirmInterrupt(interruptIds(result2).get(0)));
 
         assertAnswerResult(result3);
         assertThat(agent.executionCount("action")).isEqualTo(1);
@@ -88,7 +88,7 @@ class InterruptExceptionScenariosMissingTest {
         assertThat(result).containsEntry("result_type", "interrupt");
         List<String> ids = interruptIds(result);
         assertThat(ids).hasSize(1);
-        return ids.getFirst();
+        return ids.get(0);
     }
 
     @SuppressWarnings("unchecked")

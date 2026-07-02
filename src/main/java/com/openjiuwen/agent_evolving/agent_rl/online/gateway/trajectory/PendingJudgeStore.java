@@ -96,7 +96,7 @@ public final class PendingJudgeStore {
         if (samples.isEmpty()) {
             return null;
         }
-        Map<String, Object> first = samples.getFirst();
+        Map<String, Object> first = samples.get(0);
         return popOne(
                 sessionId,
                 String.valueOf(first.getOrDefault("trajectory_id", "")),

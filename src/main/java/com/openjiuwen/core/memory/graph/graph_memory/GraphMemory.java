@@ -6,6 +6,7 @@ package com.openjiuwen.core.memory.graph.graph_memory;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -69,6 +70,8 @@ public class GraphMemory {
 
     private static final String STORE_TYPE = "graph mem store";
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("graph-memory-search-io");
 
     private final ReentrantLock threadLock = new ReentrantLock();
     private final Map<String, ReentrantLock> userLocks = new ConcurrentHashMap<>();
@@ -324,7 +327,7 @@ public class GraphMemory {
                     configForCollection,
                     embedding);
             return new SearchResult(rows, collections[collectionIndex]);
-        }));
+        }, IO_EXECUTOR));
     }
 
     public List<Map<String, Object>> searchCollection(String collection,

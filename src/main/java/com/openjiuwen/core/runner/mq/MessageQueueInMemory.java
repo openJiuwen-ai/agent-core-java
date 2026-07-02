@@ -52,8 +52,11 @@ public class MessageQueueInMemory extends MessageQueueBase {
     public void start() {
         if (!running) {
             running = true;
-            consumerExecutor = Executors.newSingleThreadExecutor(
-                    Thread.ofVirtual().name("message-queue-inmemory-", 0).factory());
+            consumerExecutor = Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable);
+                thread.setName("message-queue-inmemory-" + thread.getId());
+                return thread;
+            });
             consumerExecutor.submit(this::consumeMessages);
         }
     }

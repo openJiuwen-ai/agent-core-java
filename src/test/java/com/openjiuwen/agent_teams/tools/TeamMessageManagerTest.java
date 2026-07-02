@@ -432,7 +432,7 @@ class TeamMessageManagerTest {
         String expectedNewMessage = newMessage;
 
         assertThat(messages).singleElement();
-        TeamMessage message = messages.getFirst();
+        TeamMessage message = messages.get(0);
         assertThat(message.getMessageId()).isEqualTo(expectedNewMessage);
         assertThat(message.getIsRead()).isNotEqualTo(Boolean.TRUE);
     }

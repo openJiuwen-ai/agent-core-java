@@ -100,11 +100,11 @@ class BrowserSiteProfilesTest {
 
         List<Map<String, Object>> exported = cache.exportForProbe();
         assertEquals(1, exported.size());
-        assertEquals("books.toscrape.com", exported.getFirst().get("domain"));
-        assertEquals("card_probe", exported.getFirst().get("kind"));
-        assertTrue(Double.parseDouble(String.valueOf(exported.getFirst().get("quality_score"))) > 0);
-        assertEquals(2, Integer.parseInt(String.valueOf(exported.getFirst().get("sample_card_count"))));
-        Map<?, ?> selectors = (Map<?, ?>) exported.getFirst().get("selectors");
+        assertEquals("books.toscrape.com", exported.get(0).get("domain"));
+        assertEquals("card_probe", exported.get(0).get("kind"));
+        assertTrue(Double.parseDouble(String.valueOf(exported.get(0).get("quality_score"))) > 0);
+        assertEquals(2, Integer.parseInt(String.valueOf(exported.get(0).get("sample_card_count"))));
+        Map<?, ?> selectors = (Map<?, ?>) exported.get(0).get("selectors");
         assertTrue(String.valueOf(selectors.get("card_container_selectors")).contains("article.product_pod"));
         assertTrue(String.valueOf(selectors.get("price_selectors")).contains("p.price_color"));
         assertTrue(String.valueOf(selectors.get("rating_selectors")).contains("p.star-rating"));
@@ -177,9 +177,9 @@ class BrowserSiteProfilesTest {
 
         List<Map<String, Object>> exported = cache.exportForProbe();
         assertEquals(1, exported.size());
-        assertEquals("www.amazon.sg", exported.getFirst().get("domain"));
-        assertTrue(Double.parseDouble(String.valueOf(exported.getFirst().get("quality_score"))) > 0);
-        assertTrue(String.valueOf(exported.getFirst().get("selectors")).contains("div.s-result-item"));
-        assertFalse(String.valueOf(exported.getFirst().get("selectors")).contains("li.nav-li"));
+        assertEquals("www.amazon.sg", exported.get(0).get("domain"));
+        assertTrue(Double.parseDouble(String.valueOf(exported.get(0).get("quality_score"))) > 0);
+        assertTrue(String.valueOf(exported.get(0).get("selectors")).contains("div.s-result-item"));
+        assertFalse(String.valueOf(exported.get(0).get("selectors")).contains("li.nav-li"));
     }
 }

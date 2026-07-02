@@ -27,12 +27,12 @@ class PromptEnTest {
     @Test
     void messageTemplatesPreserveRolesAndContent() {
         PromptTemplate systemTemplate = PromptEn.PROMPT_BUILD_GENERAL_META_SYSTEM_TEMPLATE;
-        BaseMessage systemMessage = systemTemplate.toMessages().getFirst();
+        BaseMessage systemMessage = systemTemplate.toMessages().get(0);
         assertEquals("system", systemMessage.getRole());
         assertTrue(systemMessage.getContentAsString().contains("Below is the meta-template in markdown format"));
 
         PromptTemplate userTemplate = PromptEn.PROMPT_BUILD_GENERAL_META_USER_TEMPLATE;
-        BaseMessage userMessage = userTemplate.toMessages().getFirst();
+        BaseMessage userMessage = userTemplate.toMessages().get(0);
         assertEquals("user", userMessage.getRole());
         assertTrue(userMessage.getContentAsString().contains("{{instruction}}"));
     }

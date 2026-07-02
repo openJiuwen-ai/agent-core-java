@@ -78,7 +78,7 @@ class TaskCompletionExtensionsMissingTest {
     @Test
     void taskCompletionRailBuildsMultiConfirmationEvaluator() {
         TaskCompletionRail rail = new TaskCompletionRail(null, "all_tasks_completed", 2, false);
-        StopConditionEvaluator evaluator = rail.buildEvaluators().getFirst();
+        StopConditionEvaluator evaluator = rail.buildEvaluators().get(0);
         CompletionPromiseEvaluator promiseEvaluator = assertInstanceOf(
                 CompletionPromiseEvaluator.class,
                 evaluator

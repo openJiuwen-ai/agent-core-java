@@ -83,10 +83,10 @@ class LongTermMemoryAddMessagesResultTest {
         AddMemResult result = add(defaultMessages(), new AgentMemoryConfig(), true);
 
         assertEquals(1, result.getVariables().size());
-        assertEquals("name", result.getVariables().getFirst().getVariableName());
-        assertEquals("Tom", result.getVariables().getFirst().getVariableMem());
+        assertEquals("name", result.getVariables().get(0).getVariableName());
+        assertEquals("Tom", result.getVariables().get(0).getVariableMem());
         assertEquals(1, result.getUserProfile().size());
-        assertEquals("user is Tom", result.getUserProfile().getFirst().getContent());
+        assertEquals("user is Tom", result.getUserProfile().get(0).getContent());
         assertEquals(1, result.getSummary().size());
     }
 
@@ -98,8 +98,8 @@ class LongTermMemoryAddMessagesResultTest {
         generator.nextMemory = memoryMap(variable("occupation", "engineer"));
         AddMemResult second = add(List.of(user("I am an engineer"), assistant("ok")), new AgentMemoryConfig(), true);
 
-        assertEquals("name", first.getVariables().getFirst().getVariableName());
-        assertEquals("occupation", second.getVariables().getFirst().getVariableName());
+        assertEquals("name", first.getVariables().get(0).getVariableName());
+        assertEquals("occupation", second.getVariables().get(0).getVariableName());
     }
 
     @Test
@@ -208,7 +208,7 @@ class LongTermMemoryAddMessagesResultTest {
     void variableFieldsContent() {
         generator.nextMemory = memoryMap(variable("name", "Tom"));
 
-        VariableUnit variable = add(defaultMessages(), new AgentMemoryConfig(), true).getVariables().getFirst();
+        VariableUnit variable = add(defaultMessages(), new AgentMemoryConfig(), true).getVariables().get(0);
 
         assertEquals("name", variable.getVariableName());
         assertEquals("Tom", variable.getVariableMem());
@@ -219,7 +219,7 @@ class LongTermMemoryAddMessagesResultTest {
     void fragmentMemoryFieldsContent() {
         generator.nextMemory = memoryMap(fragment(MemoryType.USER_PROFILE, "profile-1", "user is Tom", OperationType.ADD));
 
-        FragmentMemoryUnit fragment = add(defaultMessages(), new AgentMemoryConfig(), true).getUserProfile().getFirst();
+        FragmentMemoryUnit fragment = add(defaultMessages(), new AgentMemoryConfig(), true).getUserProfile().get(0);
 
         assertEquals("user is Tom", fragment.getContent());
         assertEquals(MemoryType.USER_PROFILE, fragment.getMemType());
@@ -231,7 +231,7 @@ class LongTermMemoryAddMessagesResultTest {
     void summaryFieldsContent() {
         generator.nextMemory = memoryMap(summary("summary-1", "summary text"));
 
-        SummaryUnit summary = add(defaultMessages(), new AgentMemoryConfig(), true).getSummary().getFirst();
+        SummaryUnit summary = add(defaultMessages(), new AgentMemoryConfig(), true).getSummary().get(0);
 
         assertEquals("summary text", summary.getSummary());
         assertEquals(MemoryType.SUMMARY, summary.getMemType());
@@ -244,8 +244,8 @@ class LongTermMemoryAddMessagesResultTest {
 
         AddMemResult result = add(defaultMessages(), new AgentMemoryConfig(), true);
 
-        assertEquals(OperationType.UPDATE, result.getUserProfile().getFirst().getOperationType());
-        assertTrue(result.getUserProfile().getFirst().getContent().contains("engineer"));
+        assertEquals(OperationType.UPDATE, result.getUserProfile().get(0).getOperationType());
+        assertTrue(result.getUserProfile().get(0).getContent().contains("engineer"));
     }
 
     @Test
@@ -254,7 +254,7 @@ class LongTermMemoryAddMessagesResultTest {
 
         AddMemResult result = add(defaultMessages(), new AgentMemoryConfig(), true);
 
-        assertEquals(OperationType.DELETE, result.getUserProfile().getFirst().getOperationType());
+        assertEquals(OperationType.DELETE, result.getUserProfile().get(0).getOperationType());
     }
 
     @Test
@@ -292,7 +292,7 @@ class LongTermMemoryAddMessagesResultTest {
 
         add(defaultMessages(), config, true);
 
-        assertSame(config, generator.calls.getLast().get("config"));
+        assertSame(config, generator.calls.get(generator.calls.size() - 1).get("config"));
     }
 
     @Test

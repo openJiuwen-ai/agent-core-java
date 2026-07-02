@@ -154,7 +154,7 @@ class TodoToolsPythonParityTest {
         tool.saveForTest(List.of(todo("task_1", "Task 1", TodoStatus.PENDING)), kwargs());
 
         assertEquals(1, store.saveCount);
-        assertEquals("Task 1", store.todos.getFirst().getContent());
+        assertEquals("Task 1", store.todos.get(0).getContent());
     }
 
     private void saveTodosWriteFail() {
@@ -252,8 +252,8 @@ class TodoToolsPythonParityTest {
         List<String> contents = tasks.stream().map(task -> String.valueOf(task.get("content"))).toList();
         assertTrue(contents.contains("In Progress Task"));
         assertTrue(contents.contains("Pending Task"));
-        assertTrue(tasks.getFirst().containsKey("id"));
-        assertTrue(tasks.getFirst().containsKey("depends_on"));
+        assertTrue(tasks.get(0).containsKey("id"));
+        assertTrue(tasks.get(0).containsKey("depends_on"));
     }
 
     private void invokeDeleteSuccess() throws Exception {
@@ -325,7 +325,7 @@ class TodoToolsPythonParityTest {
 
         assertTrue(String.valueOf(result.get("message")).contains("Successfully appended 1 task(s)"));
         assertEquals(4, store.todos.size());
-        assertEquals("task_4", store.todos.getLast().getId());
+        assertEquals("task_4", store.todos.get(store.todos.size() - 1).getId());
     }
 
     private void invokeInsertAfterSuccess() throws Exception {

@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
@@ -90,6 +91,7 @@ public class MilvusGraphStore implements GraphStore {
 
     private static final LoggerProtocol STORE_LOGGER = Loggers.STORE;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("milvus-graph-store-io");
     private static final Set<String> SIMILARITY_METRICS = Set.of("IP", "COSINE");
     private static final List<String> COLLECTIONS = List.of(
             GraphStoreConstants.ENTITY_COLLECTION,
@@ -197,7 +199,7 @@ public class MilvusGraphStore implements GraphStore {
             for (String collection : fieldDef.keySet()) {
                 flushAndCompact(collection, skipCompact);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -215,7 +217,7 @@ public class MilvusGraphStore implements GraphStore {
             if (flush) {
                 client.flush(collection);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -267,7 +269,7 @@ public class MilvusGraphStore implements GraphStore {
                 }
                 throw exception;
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -285,7 +287,7 @@ public class MilvusGraphStore implements GraphStore {
                 throw graphParamInvalid("Either \"ids\" or \"expr\" must be supplied");
             }
             return client.delete(collection, exprString, kwargs);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -312,7 +314,7 @@ public class MilvusGraphStore implements GraphStore {
                 outputFields,
                 queryEmbedding,
                 kwargs == null ? Map.of() : kwargs
-        ));
+        ), IO_EXECUTOR);
     }
 
     @Override
@@ -699,7 +701,7 @@ public class MilvusGraphStore implements GraphStore {
             }
             STORE_LOGGER.debug("Add graph memory [{}] took {}s",
                     collection, (System.nanoTime() - startNanos) / 1_000_000_000.0d);
-        });
+        }, IO_EXECUTOR);
     }
 
     private void embedGraphObjects(List<BaseGraphObject> graphObjects, boolean noEmbed) {
@@ -1260,7 +1262,7 @@ public class MilvusGraphStore implements GraphStore {
             if (response.getSearchResults().isEmpty()) {
                 return List.of();
             }
-            return response.getSearchResults().getFirst().stream()
+            return response.getSearchResults().get(0).stream()
                     .map(result -> {
                         Map<String, Object> row = result.getEntity() == null
                                 ? new LinkedHashMap<>()
@@ -1369,7 +1371,7 @@ public class MilvusGraphStore implements GraphStore {
 
         private static CreateCollectionReq.Function toMilvusRanker(RankerSpec ranker) {
             if ("rrf".equals(ranker.name())) {
-                int k = ranker.args().isEmpty() ? 40 : ((Number) ranker.args().getFirst()).intValue();
+                int k = ranker.args().isEmpty() ? 40 : ((Number) ranker.args().get(0)).intValue();
                 return RRFRanker.builder().k(k).build();
             }
             List<Float> weights = ranker.args().stream()

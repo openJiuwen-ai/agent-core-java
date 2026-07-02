@@ -126,7 +126,7 @@ class SimpleMemoryIndexTest {
 
         assertThat(pageOne).hasSize(2);
         assertThat(pageTwo).hasSize(1);
-        assertThat(pageOne).extracting(MemoryDoc::getId).doesNotContain(pageTwo.getFirst().getId());
+        assertThat(pageOne).extracting(MemoryDoc::getId).doesNotContain(pageTwo.get(0).getId());
     }
 
     @Test
@@ -226,8 +226,8 @@ class SimpleMemoryIndexTest {
         ).join();
 
         assertThat(results).isNotEmpty();
-        assertThat(results.getFirst().document().getText()).contains("Alice");
-        assertThat(results.getFirst().score()).isPositive();
+        assertThat(results.get(0).document().getText()).contains("Alice");
+        assertThat(results.get(0).score()).isPositive();
     }
 
     @Test
@@ -351,7 +351,7 @@ class SimpleMemoryIndexTest {
         List<MemoryDoc> remaining = index.listMemories(USER_ID, SCOPE_ID, 0, 100, null).join();
 
         assertThat(remaining).hasSize(1);
-        assertThat(remaining.getFirst().getText()).isEqualTo("Charlie works on AI");
+        assertThat(remaining.get(0).getText()).isEqualTo("Charlie works on AI");
     }
 
     @Test
@@ -443,7 +443,7 @@ class SimpleMemoryIndexTest {
         List<BaseMemoryIndex.MemorySearchResult> results = index.search(USER_ID, SCOPE_ID, "sensitive", null, 1).join();
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().document().getText()).isEqualTo("sensitive data");
+        assertThat(results.get(0).document().getText()).isEqualTo("sensitive data");
     }
 
     @Test
@@ -559,7 +559,7 @@ class SimpleMemoryIndexTest {
         List<BaseMemoryIndex.MemorySearchResult> results = index.search(USER_ID, SCOPE_ID, "open", null, 1).join();
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().document().getText()).isEqualTo("open data");
+        assertThat(results.get(0).document().getText()).isEqualTo("open data");
     }
 
     @Test

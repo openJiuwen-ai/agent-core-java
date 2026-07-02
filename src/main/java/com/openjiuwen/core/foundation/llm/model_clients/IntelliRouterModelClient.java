@@ -339,7 +339,7 @@ public class IntelliRouterModelClient extends BaseModelClient {
             message = Map.of();
             content = "";
         } else {
-            message = asMap(choices.getFirst().get("message"));
+            message = asMap(choices.get(0).get("message"));
             if (message == null) {
                 message = Map.of();
             }
@@ -372,7 +372,7 @@ public class IntelliRouterModelClient extends BaseModelClient {
         List<Map<String, Object>> choices = asListOfMaps(chunk == null ? null : chunk.get("choices"));
         Object content = "";
         if (choices != null && !choices.isEmpty()) {
-            Map<String, Object> delta = asMap(choices.getFirst().get("delta"));
+            Map<String, Object> delta = asMap(choices.get(0).get("delta"));
             content = delta == null ? "" : orEmpty(delta.get("content"));
         }
         return AssistantMessageChunk.builder().content(content).build();

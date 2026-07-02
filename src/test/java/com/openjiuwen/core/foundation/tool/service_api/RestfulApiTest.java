@@ -522,13 +522,13 @@ class RestfulApiTest {
 
             Map<String, List<Map<String, Object>>> params = RestfulApi.getParametersByLocation(card);
 
-            assertEquals("id", params.get("path").getFirst().get("name"));
-            assertEquals(true, params.get("path").getFirst().get("required"));
-            assertEquals("name", params.get("body").getFirst().get("name"));
-            assertEquals(true, params.get("body").getFirst().get("required"));
-            assertEquals("notify", params.get("query").getFirst().get("name"));
-            assertEquals("api_key", params.get("header").getFirst().get("name"));
-            assertEquals("file", params.get("form").getFirst().get("name"));
+            assertEquals("id", params.get("path").get(0).get("name"));
+            assertEquals(true, params.get("path").get(0).get("required"));
+            assertEquals("name", params.get("body").get(0).get("name"));
+            assertEquals(true, params.get("body").get(0).get("required"));
+            assertEquals("notify", params.get("query").get(0).get("name"));
+            assertEquals("api_key", params.get("header").get(0).get("name"));
+            assertEquals("file", params.get("form").get(0).get("name"));
         }
     }
 
@@ -642,7 +642,7 @@ class RestfulApiTest {
             List<Map<String, Object>> data = (List<Map<String, Object>>) result.get("data");
 
             assertEquals(2, data.size());
-            assertEquals("item1", data.getFirst().get("name"));
+            assertEquals("item1", data.get(0).get("name"));
             assertEquals("item2", data.get(1).get("name"));
         } finally {
             server.stop(0);
@@ -952,7 +952,7 @@ class RestfulApiTest {
             ToolFormData form = api.processFormData(
                     Map.of("custom_data", Map.of("form_handler_type", "custom", "value", "test_value")),
                     Map.of());
-            assertEquals("processed_value", form.values("custom_data").getFirst());
+            assertEquals("processed_value", form.values("custom_data").get(0));
         } else {
             ToolFormData form = api.processFormData(
                     Map.of("username", Map.of("form_handler_type", "default", "value", "test_user"),

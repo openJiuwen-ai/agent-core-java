@@ -28,8 +28,8 @@ class FusionUtilsTest {
         List<RetrievalResult> fused = FusionUtils.rrfFusionRetrieval(List.of(List.of(first, second, third)));
 
         assertThat(fused).containsExactly(first, second, third);
-        assertThat(fused.getFirst().getText()).isEqualTo("Result 1");
-        assertThat(fused.getFirst().getScore()).isGreaterThan(fused.get(1).getScore());
+        assertThat(fused.get(0).getText()).isEqualTo("Result 1");
+        assertThat(fused.get(0).getScore()).isGreaterThan(fused.get(1).getScore());
     }
 
     @Test
@@ -65,7 +65,7 @@ class FusionUtilsTest {
         List<RetrievalResult> fused = FusionUtils.rrfFusionRetrieval(List.of(List.of(only), List.of()));
 
         assertThat(fused).containsExactly(only);
-        assertThat(fused.getFirst().getText()).isEqualTo("Result 1");
+        assertThat(fused.get(0).getText()).isEqualTo("Result 1");
     }
 
     @Test
@@ -73,7 +73,7 @@ class FusionUtilsTest {
         List<RetrievalResult> k30Results1 = List.of(retrieval("Result 1", 0.9), retrieval("Result 2", 0.8));
         List<RetrievalResult> k30Results2 = List.of(retrieval("Result 2", 0.85), retrieval("Result 3", 0.7));
         List<RetrievalResult> fusedK30 = FusionUtils.rrfFusionRetrieval(List.of(k30Results1, k30Results2), 30);
-        double k30FirstScore = fusedK30.getFirst().getScore();
+        double k30FirstScore = fusedK30.get(0).getScore();
 
         List<RetrievalResult> k60Results1 = List.of(retrieval("Result 1", 0.9), retrieval("Result 2", 0.8));
         List<RetrievalResult> k60Results2 = List.of(retrieval("Result 2", 0.85), retrieval("Result 3", 0.7));
@@ -81,7 +81,7 @@ class FusionUtilsTest {
 
         assertThat(fusedK30).hasSize(3);
         assertThat(fusedK60).hasSize(3);
-        assertThat(k30FirstScore).isNotEqualTo(fusedK60.getFirst().getScore());
+        assertThat(k30FirstScore).isNotEqualTo(fusedK60.get(0).getScore());
     }
 
     @Test

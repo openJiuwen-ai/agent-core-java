@@ -50,7 +50,7 @@ class AutoFileParserPythonParityTest {
 
         assertThat(AutoFileParser.getSupportedFormats()).contains(".test").doesNotContain(".TEST");
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).isEqualTo("test content");
+        assertThat(documents.get(0).getText()).isEqualTo("test content");
     }
 
     @Test
@@ -77,7 +77,7 @@ class AutoFileParserPythonParityTest {
         List<Document> documents = parser.parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getMetadata()).containsEntry("file_ext", ".pdf");
+        assertThat(documents.get(0).getMetadata()).containsEntry("file_ext", ".pdf");
     }
 
     @Test
@@ -88,7 +88,7 @@ class AutoFileParserPythonParityTest {
         List<Document> documents = parser.parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getMetadata()).containsEntry("file_ext", ".json");
+        assertThat(documents.get(0).getMetadata()).containsEntry("file_ext", ".json");
     }
 
     @Test
@@ -142,7 +142,7 @@ class AutoFileParserPythonParityTest {
         Path file = Files.writeString(tempDir.resolve("doc.custom"), "ignored");
 
         assertThat(parser.supports(file.toString())).isTrue();
-        assertThat(parser.parse(file.toString(), "doc_1").join().getFirst().getText()).isEqualTo("custom content");
+        assertThat(parser.parse(file.toString(), "doc_1").join().get(0).getText()).isEqualTo("custom content");
     }
 
     @Test

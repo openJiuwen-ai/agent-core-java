@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.retrieval.indexing.indexer;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -37,6 +38,8 @@ import java.util.concurrent.CompletionException;
 public class ChromaIndexer extends Indexer {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ChromaIndexer.class);
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("chroma-indexer-io");
 
     private final String chromaPath;
     private final String textField;
@@ -270,7 +273,7 @@ public class ChromaIndexer extends Indexer {
                 LOGGER.error("Failed to delete index entries: {}", exception.getMessage());
                 return Boolean.FALSE;
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -282,7 +285,7 @@ public class ChromaIndexer extends Indexer {
             } catch (Exception ignored) {
                 return Boolean.FALSE;
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override

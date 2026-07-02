@@ -46,7 +46,7 @@ class PluginConverterTest {
         assertThat(outputs.getProperties().get("data").getProperties()).isEmpty();
         assertThat(outputs.getRequired()).containsExactly("error_code", "error_message", "data");
         assertThat(converter.getEdges()).hasSize(1);
-        assertThat(converter.getEdges().getFirst().getTargetNodeId()).isEqualTo("node_end");
+        assertThat(converter.getEdges().get(0).getTargetNodeId()).isEqualTo("node_end");
     }
 
     @Test

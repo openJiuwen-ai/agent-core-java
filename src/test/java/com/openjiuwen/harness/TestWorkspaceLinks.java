@@ -163,8 +163,8 @@ class TestWorkspaceLinks {
         workspace.linkWorktree("resolved", target.toString());
 
         List<Map.Entry<String, String>> links = workspace.listWorktreeLinks();
-        assertEquals("resolved", links.getFirst().getKey());
-        assertEquals(target.toRealPath().toString(), links.getFirst().getValue());
+        assertEquals("resolved", links.get(0).getKey());
+        assertEquals(target.toRealPath().toString(), links.get(0).getValue());
     }
 
     @Test

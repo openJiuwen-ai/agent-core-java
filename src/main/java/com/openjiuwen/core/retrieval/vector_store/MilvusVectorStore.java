@@ -52,6 +52,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -66,6 +67,7 @@ public class MilvusVectorStore implements VectorStore {
     public static final String PYTHON_MODULE = "openjiuwen/core/retrieval/vector_store/milvus_store.py";
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final java.util.concurrent.Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("milvus-retrieval-vector-store-io");
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
     private static final Gson GSON = new Gson();
@@ -389,7 +391,7 @@ public class MilvusVectorStore implements VectorStore {
             client.flush(getCollectionName());
             LOGGER.info("Writing completed, total " + data.size() + "/" + data.size()
                     + " records to " + getCollectionName());
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -414,7 +416,7 @@ public class MilvusVectorStore implements VectorStore {
                     toFilterExpression(filters)
             );
             return toRetrievalResults(hits, SearchMode.VECTOR);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -444,7 +446,7 @@ public class MilvusVectorStore implements VectorStore {
                 LOGGER.log(Level.WARNING, "BM25 text search failed: " + error.getMessage(), error);
                 return List.of();
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -487,7 +489,7 @@ public class MilvusVectorStore implements VectorStore {
                         error);
                 return hybridFallback(queryText, queryVector, topK);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -506,17 +508,17 @@ public class MilvusVectorStore implements VectorStore {
                 LOGGER.log(Level.SEVERE, "Failed to delete vectors: " + error.getMessage(), error);
                 return Boolean.FALSE;
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
     public CompletableFuture<Boolean> tableExists(String tableName) {
-        return CompletableFuture.supplyAsync(() -> client.hasCollection(tableName));
+        return CompletableFuture.supplyAsync(() -> client.hasCollection(tableName), IO_EXECUTOR);
     }
 
     @Override
     public CompletableFuture<Void> deleteTable(String tableName) {
-        return CompletableFuture.runAsync(() -> client.dropCollection(tableName));
+        return CompletableFuture.runAsync(() -> client.dropCollection(tableName), IO_EXECUTOR);
     }
 
     @Override
@@ -1053,7 +1055,7 @@ public class MilvusVectorStore implements VectorStore {
                     .build());
             DescribeIndexResp.IndexDesc index = response.getIndexDescByFieldName(fieldName);
             if (index == null && !response.getIndexDescriptions().isEmpty()) {
-                index = response.getIndexDescriptions().getFirst();
+                index = response.getIndexDescriptions().get(0);
             }
             if (index == null) {
                 return Map.of();
@@ -1099,11 +1101,11 @@ public class MilvusVectorStore implements VectorStore {
 
         private List<SearchHit> firstSearchHits(SearchResp response) {
             List<List<SearchResp.SearchResult>> searchResults = response == null ? null : response.getSearchResults();
-            if (searchResults == null || searchResults.isEmpty() || searchResults.getFirst() == null) {
+            if (searchResults == null || searchResults.isEmpty() || searchResults.get(0) == null) {
                 return List.of();
             }
-            List<SearchHit> hits = new ArrayList<>(searchResults.getFirst().size());
-            for (SearchResp.SearchResult result : searchResults.getFirst()) {
+            List<SearchHit> hits = new ArrayList<>(searchResults.get(0).size());
+            for (SearchResp.SearchResult result : searchResults.get(0)) {
                 Map<String, Object> entity = result.getEntity() == null
                         ? Map.of()
                         : new LinkedHashMap<>(result.getEntity());

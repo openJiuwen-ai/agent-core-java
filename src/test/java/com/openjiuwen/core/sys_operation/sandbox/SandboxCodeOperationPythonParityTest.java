@@ -270,9 +270,9 @@ class SandboxCodeOperationPythonParityTest {
                 "", BaseCodeOperation.CodeLanguage.PYTHON, 10, null, null, null));
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getCode()).isEqualTo(StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR.getCode());
-        assertThat(results.getFirst().getMessage()).contains("code can not be empty");
-        assertThat(results.getFirst().getData().getExitCode()).isNotZero();
+        assertThat(results.get(0).getCode()).isEqualTo(StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR.getCode());
+        assertThat(results.get(0).getMessage()).contains("code can not be empty");
+        assertThat(results.get(0).getData().getExitCode()).isNotZero();
     }
 
     private void executeCodeStreamUnsupportedLanguage() throws Exception {
@@ -280,9 +280,9 @@ class SandboxCodeOperationPythonParityTest {
                 "print(1)", "java", 10, null, null, null));
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getCode()).isEqualTo(StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR.getCode());
-        assertThat(results.getFirst().getMessage()).contains("java is not supported");
-        assertThat(results.getFirst().getData().getExitCode()).isNotZero();
+        assertThat(results.get(0).getCode()).isEqualTo(StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR.getCode());
+        assertThat(results.get(0).getMessage()).contains("java is not supported");
+        assertThat(results.get(0).getData().getExitCode()).isNotZero();
     }
 
     private void executeCodeStreamPythonNormal() throws Exception {
@@ -296,8 +296,8 @@ class SandboxCodeOperationPythonParityTest {
 
         assertThat(results.size()).isGreaterThanOrEqualTo(2);
         assertThat(combinedText(results, StreamEventType.STDOUT)).contains("hello python", "stream test for python");
-        assertThat(results.getLast().getMessage()).isEqualTo("Code executed successfully");
-        assertThat(results.getLast().getData().getExitCode()).isZero();
+        assertThat(results.get(results.size() - 1).getMessage()).isEqualTo("Code executed successfully");
+        assertThat(results.get(results.size() - 1).getData().getExitCode()).isZero();
     }
 
     private void executeCodeStreamPythonStderr() throws Exception {
@@ -306,8 +306,8 @@ class SandboxCodeOperationPythonParityTest {
 
         assertThat(results).isNotEmpty();
         assertThat(combinedText(results, StreamEventType.STDERR)).contains("NameError");
-        assertThat(results.getLast().getMessage()).isEqualTo("Code executed successfully");
-        assertThat(results.getLast().getData().getExitCode()).isNotZero();
+        assertThat(results.get(results.size() - 1).getMessage()).isEqualTo("Code executed successfully");
+        assertThat(results.get(results.size() - 1).getData().getExitCode()).isNotZero();
     }
 
     private void executeCodeStreamJavascriptNormal() throws Exception {
@@ -322,8 +322,8 @@ class SandboxCodeOperationPythonParityTest {
 
         assertThat(results.size()).isGreaterThanOrEqualTo(2);
         assertThat(combinedText(results, StreamEventType.STDOUT)).contains("hello javascript", "stream test for js");
-        assertThat(results.getLast().getMessage()).isEqualTo("Code executed successfully");
-        assertThat(results.getLast().getData().getExitCode()).isZero();
+        assertThat(results.get(results.size() - 1).getMessage()).isEqualTo("Code executed successfully");
+        assertThat(results.get(results.size() - 1).getData().getExitCode()).isZero();
     }
 
     private void executeCodeStreamCustomOptions() throws Exception {
@@ -332,7 +332,7 @@ class SandboxCodeOperationPythonParityTest {
                 Map.of("chunk_size", 512, "encoding", "utf-8")));
 
         assertThat(stdoutText(results)).contains("chunk-size-option-test");
-        assertThat(results.getLast().getData().getExitCode()).isZero();
+        assertThat(results.get(results.size() - 1).getData().getExitCode()).isZero();
     }
 
     private void executeCodeStreamCustomEnvironment() throws Exception {
@@ -365,8 +365,8 @@ class SandboxCodeOperationPythonParityTest {
 
         assertThat(results.size()).isGreaterThanOrEqualTo(2);
         assertThat(stdoutText(results)).contains("default parameter test success");
-        assertThat(results.getLast().getMessage()).isEqualTo("Code executed successfully");
-        assertThat(results.getLast().getData().getExitCode()).isZero();
+        assertThat(results.get(results.size() - 1).getMessage()).isEqualTo("Code executed successfully");
+        assertThat(results.get(results.size() - 1).getData().getExitCode()).isZero();
     }
 
     private void sandboxDiscovery() throws Exception {

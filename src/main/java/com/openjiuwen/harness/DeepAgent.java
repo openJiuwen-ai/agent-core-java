@@ -382,7 +382,8 @@ public class DeepAgent {
             result.put("input", effectiveInputs);
             Object stateSession = session != null ? session : effectiveInputs.get("session");
             result.put("mode", loadState(stateSession).getPlanMode().getMode());
-            for (DeepAgentRail rail : rails.reversed()) {
+            for (int i = rails.size() - 1; i >= 0; i--) {
+                DeepAgentRail rail = rails.get(i);
                 rail.afterInvoke(context);
             }
             return CompletableFuture.completedFuture(result);

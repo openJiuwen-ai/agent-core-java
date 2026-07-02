@@ -57,7 +57,7 @@ class EventDispatcherTest {
                 .join();
 
         assertEquals(List.of("AgentLifecycleHandler.on_user_input"), dispatcher.getCallbackTrace());
-        assertEquals("user_input", dispatcher.getLifecycle().getHandledEvents().getFirst().eventKey());
+        assertEquals("user_input", dispatcher.getLifecycle().getHandledEvents().get(0).eventKey());
     }
 
     @Test

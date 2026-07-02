@@ -405,7 +405,7 @@ public class Reflector {
                 if (placeholderContent.hasPlaceholder()) {
                     if (placeholderContent.matches().size() > 1) {
                         errors.add(prefix(nodeContent) + "'parameters'中的'inputs'列表中的元素'value'属性值中有多个引用变量");
-                    } else if (!availableNodeOutputs.contains(placeholderContent.matches().getFirst())) {
+                    } else if (!availableNodeOutputs.contains(placeholderContent.matches().get(0))) {
                         errors.add(prefix(nodeContent) + "'parameters'中的'inputs'列表中的元素'value'属性引用了不存在的变量");
                     }
                 }

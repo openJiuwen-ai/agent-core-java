@@ -102,10 +102,10 @@ class BadCasePromptBuilderTest {
 
         assertThat(result).contains("optimized prompt");
         assertThat(client.capturedInvokes()).hasSize(2);
-        assertThat(client.capturedInvokes().get(0).getFirst().getContentAsString())
+        assertThat(client.capturedInvokes().get(0).get(0).getContentAsString())
                 .contains("<bad_cases>")
                 .contains("{'question': 'Q'}");
-        assertThat(client.capturedInvokes().get(1).getFirst().getContentAsString())
+        assertThat(client.capturedInvokes().get(1).get(0).getContentAsString())
                 .contains("<feedback>")
                 .contains("make instructions stricter")
                 .contains("<original_prompt>");
@@ -120,21 +120,21 @@ class BadCasePromptBuilderTest {
         Optional<String> response = builder.build(prompt, List.of(pythonEvaluatedCase(), pythonEvaluatedCase())).join();
 
         String analyzeTemplateContent = PromptZh.PROMPT_BAD_CASE_ANALYZE_TEMPLATE.toMessages()
-                .getFirst()
+                .get(0)
                 .getContentAsString();
         String feedback = firstSummaryFrom(analyzeTemplateContent);
         String expected = PromptZh.PROMPT_BAD_CASE_OPTIMIZE_TEMPLATE.format(Map.of(
                 "original_prompt", prompt,
                 "feedback", feedback
-        )).toMessages().getFirst().getContentAsString();
+        )).toMessages().get(0).getContentAsString();
 
         assertThat(response).contains(expected);
         assertThat(client.capturedInvokes()).hasSize(2);
-        assertThat(client.capturedInvokes().get(0).getFirst().getContentAsString())
+        assertThat(client.capturedInvokes().get(0).get(0).getContentAsString())
                 .contains("<original_prompt>")
                 .contains(prompt)
                 .contains("<bad_cases>");
-        assertThat(client.capturedInvokes().get(1).getFirst().getContentAsString())
+        assertThat(client.capturedInvokes().get(1).get(0).getContentAsString())
                 .isEqualTo(expected);
     }
 
@@ -184,7 +184,7 @@ class BadCasePromptBuilderTest {
         ).join();
 
         assertThat(result).contains("optimized");
-        assertThat(client.capturedInvokes().get(0).getFirst().getContentAsString())
+        assertThat(client.capturedInvokes().get(0).get(0).getContentAsString())
                 .contains("template prompt");
     }
 

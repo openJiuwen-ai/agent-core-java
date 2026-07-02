@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.indexing.indexer;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -61,6 +62,8 @@ public class MilvusIndexer extends Indexer implements AutoCloseable {
     private static final Logger LOGGER = Logger.getLogger(MilvusIndexer.class.getName());
     private static final int DEFAULT_BATCH_SIZE = 128;
     private static final Set<String> VECTOR_INDEX_TYPES = Set.of("vector", "hybrid");
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("milvus-indexer-io");
 
     private final String milvusUri;
     private final String milvusToken;
@@ -798,7 +801,7 @@ public class MilvusIndexer extends Indexer implements AutoCloseable {
             return CompletableFuture.supplyAsync(() -> delegate.hasCollection(HasCollectionReq.builder()
                     .databaseName(databaseName)
                     .collectionName(collectionName)
-                    .build()));
+                    .build()), IO_EXECUTOR);
         }
 
         @Override
@@ -817,7 +820,7 @@ public class MilvusIndexer extends Indexer implements AutoCloseable {
                     .idType(DataType.Int64)
                     .autoID(true)
                     .enableDynamicField(false)
-                    .build()));
+                    .build()), IO_EXECUTOR);
         }
 
         @Override
@@ -838,7 +841,7 @@ public class MilvusIndexer extends Indexer implements AutoCloseable {
                         .map(LinkedHashMap::new)
                         .map(row -> (Map<String, Object>) row)
                         .toList();
-            });
+            }, IO_EXECUTOR);
         }
 
         @Override
@@ -860,7 +863,7 @@ public class MilvusIndexer extends Indexer implements AutoCloseable {
                         .databaseName(databaseName)
                         .collectionNames(List.of(collectionName))
                         .build());
-            });
+            }, IO_EXECUTOR);
         }
 
         @Override
@@ -877,7 +880,7 @@ public class MilvusIndexer extends Indexer implements AutoCloseable {
                         .collectionNames(List.of(collectionName))
                         .build());
                 return count;
-            });
+            }, IO_EXECUTOR);
         }
 
         @Override
@@ -885,7 +888,7 @@ public class MilvusIndexer extends Indexer implements AutoCloseable {
             return CompletableFuture.runAsync(() -> delegate.flush(FlushReq.builder()
                     .databaseName(databaseName)
                     .collectionNames(List.of(collectionName))
-                    .build()));
+                    .build()), IO_EXECUTOR);
         }
 
         @Override
@@ -896,7 +899,7 @@ public class MilvusIndexer extends Indexer implements AutoCloseable {
                         .collectionName(collectionName)
                         .build()).getNumOfEntities();
                 return count == null ? 0L : count;
-            });
+            }, IO_EXECUTOR);
         }
 
         @Override
@@ -904,7 +907,7 @@ public class MilvusIndexer extends Indexer implements AutoCloseable {
             return CompletableFuture.supplyAsync(() -> delegate.describeCollection(DescribeCollectionReq.builder()
                     .databaseName(databaseName)
                     .collectionName(collectionName)
-                    .build()));
+                    .build()), IO_EXECUTOR);
         }
 
         @Override

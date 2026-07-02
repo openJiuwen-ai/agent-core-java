@@ -83,7 +83,7 @@ public final class PromptZh {
         if (content instanceof String text) {
             return text;
         }
-        return template.toMessages().getFirst().getContentAsString();
+        return template.toMessages().get(0).getContentAsString();
     }
 
     private static PromptTemplate messageTemplate(BaseMessage message) {

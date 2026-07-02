@@ -62,7 +62,7 @@ class GatewayServerTest {
 
         assertTrue(result.stream());
         assertEquals("text/event-stream", result.mediaType());
-        assertTrue(result.eventStream().getFirst().contains("chat.completion.chunk"));
+        assertTrue(result.eventStream().get(0).contains("chat.completion.chunk"));
         assertEquals("Bearer llm-secret", forwarder.lastHeaders.get("Authorization"));
         assertEquals(
             "user-1",

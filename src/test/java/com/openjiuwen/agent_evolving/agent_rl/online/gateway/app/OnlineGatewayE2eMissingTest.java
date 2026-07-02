@@ -80,7 +80,7 @@ public class OnlineGatewayE2eMissingTest {
         assertThat(chatResponse.stream()).isTrue();
         assertThat(chatResponse.eventStream()).anyMatch(event -> event.contains("data: [DONE]"));
         assertThat(upstreamClient.forwardCalls).hasSize(1);
-        ForwardCall forwardCall = upstreamClient.forwardCalls.getFirst();
+        ForwardCall forwardCall = upstreamClient.forwardCalls.get(0);
         assertThat(forwardCall.jsonBody()).containsEntry("stream", false);
         assertThat(forwardCall.jsonBody()).containsEntry("model", "st-model");
         assertThat(forwardCall.jsonBody()).containsEntry("logprobs", true);

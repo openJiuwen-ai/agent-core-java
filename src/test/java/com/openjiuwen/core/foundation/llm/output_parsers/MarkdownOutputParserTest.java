@@ -354,7 +354,8 @@ class MarkdownOutputParserTest {
                 "nk](https://test.com)"
         );
 
-        MarkdownContent finalResult = streamParse(chunks).getLast();
+        List<MarkdownContent> parsed = streamParse(chunks);
+        MarkdownContent finalResult = parsed.get(parsed.size() - 1);
 
         assertThat(finalResult.getHeaders()).hasSize(1);
         assertThat(finalResult.getHeaders().get(0)).containsEntry("title", "Section Title");
@@ -372,7 +373,8 @@ class MarkdownOutputParserTest {
                 AssistantMessageChunk.builder().content("- Result 1\n- Result 2\n").build()
         );
 
-        MarkdownContent finalResult = streamParse(chunks).getLast();
+        List<MarkdownContent> parsed = streamParse(chunks);
+        MarkdownContent finalResult = parsed.get(parsed.size() - 1);
 
         assertThat(finalResult.getHeaders()).hasSize(2);
         assertThat(finalResult.getHeaders().get(0)).containsEntry("title", "Report");
@@ -402,7 +404,8 @@ class MarkdownOutputParserTest {
                 "| A    | B    |\n"
         );
 
-        MarkdownContent finalResult = streamParse(chunks).getLast();
+        List<MarkdownContent> parsed = streamParse(chunks);
+        MarkdownContent finalResult = parsed.get(parsed.size() - 1);
 
         assertThat(finalResult.getHeaders()).hasSize(4);
         assertThat(finalResult.getCodeBlocks()).hasSize(1);

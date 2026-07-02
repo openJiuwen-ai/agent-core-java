@@ -42,7 +42,7 @@ class BranchConverterTest {
         Map<String, Object> first = branches.get(0);
         assertThat(first).containsEntry("branchId", "branch_yes");
         assertThat(castList(first.get("conditions"))).hasSize(1);
-        assertThat(castMap(castList(first.get("conditions")).getFirst())).containsEntry("operator", "contains");
+        assertThat(castMap(castList(first.get("conditions")).get(0))).containsEntry("operator", "contains");
 
         Map<String, Object> second = branches.get(1);
         assertThat(second).containsEntry("branchId", "branch_full");

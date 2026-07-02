@@ -65,7 +65,7 @@ public class WorkflowTaskExecutor extends TaskExecutor {
             return List.<ControllerOutputChunk>of().iterator();
         }
 
-        Task task = tasks.getFirst();
+        Task task = tasks.get(0);
         Map<String, Object> extensions = mapValue(task.getExtensions());
         String resumeMode = Objects.toString(extensions.getOrDefault("resume_mode", "new"), "new");
         String workflowId = Objects.toString(extensions.getOrDefault("workflow_id", ""), "");
@@ -296,7 +296,7 @@ public class WorkflowTaskExecutor extends TaskExecutor {
         if (componentIds.isEmpty()) {
             return "";
         }
-        return componentIds.size() == 1 ? componentIds.getFirst() : componentIds;
+        return componentIds.size() == 1 ? componentIds.get(0) : componentIds;
     }
 
     static Object extractInteractionValue(List<Object> interactionData) {

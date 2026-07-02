@@ -66,7 +66,7 @@ class MessageHandlerUtilsTest {
         );
 
         assertThat(messages).hasSize(2);
-        assertThat(messages.getFirst().getContentAsString()).isEqualTo("hello Ada kw");
+        assertThat(messages.get(0).getContentAsString()).isEqualTo("hello Ada kw");
         assertThat(messages.get(1).getContentAsString()).isEqualTo("old");
         assertThat(inputs).doesNotContainKey("extra");
     }
@@ -168,7 +168,7 @@ class MessageHandlerUtilsTest {
 
         MessageHandlerUtils.addToolResult(event, contextEngine, session).toCompletableFuture().join();
 
-        BaseMessage message = context.getMessages(null, true).getFirst();
+        BaseMessage message = context.getMessages(null, true).get(0);
         assertThat(message).isInstanceOf(ToolMessage.class);
         assertThat(message.getContentAsString()).isEqualTo("[\"ok\"]");
         assertThat(((ToolMessage) message).getToolCallId()).isEqualTo("task-1");

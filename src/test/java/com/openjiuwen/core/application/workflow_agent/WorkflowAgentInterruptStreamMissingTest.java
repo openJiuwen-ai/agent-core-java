@@ -48,7 +48,7 @@ class WorkflowAgentInterruptStreamMissingTest {
 
         List<OutputSchema> finalChunks = chunksOfType(second, "workflow_final");
         assertThat(finalChunks).hasSize(1);
-        Map<String, Object> payload = assertMap(finalChunks.getFirst().getPayload());
+        Map<String, Object> payload = assertMap(finalChunks.get(0).getPayload());
         assertThat(payload).containsEntry("response", "shanghai");
     }
 
@@ -64,7 +64,7 @@ class WorkflowAgentInterruptStreamMissingTest {
 
         List<OutputSchema> interactionChunks = chunksOfType(first, "__interaction__");
         assertThat(interactionChunks).isNotEmpty();
-        assertThat(interactionChunks.getFirst().getType()).isEqualTo("__interaction__");
+        assertThat(interactionChunks.get(0).getType()).isEqualTo("__interaction__");
 
         InteractiveInput interactiveInput = new InteractiveInput();
         for (OutputSchema chunk : interactionChunks) {
@@ -79,7 +79,7 @@ class WorkflowAgentInterruptStreamMissingTest {
 
         List<OutputSchema> finalChunks = chunksOfType(second, "workflow_final");
         assertThat(finalChunks).hasSize(1);
-        Map<String, Object> payload = assertMap(finalChunks.getFirst().getPayload());
+        Map<String, Object> payload = assertMap(finalChunks.get(0).getPayload());
         assertThat(payload).containsKey("response");
         assertThat(payload.get("response")).isInstanceOf(Map.class);
     }

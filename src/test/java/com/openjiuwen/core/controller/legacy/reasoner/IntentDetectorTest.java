@@ -45,7 +45,7 @@ class IntentDetectorTest {
         List<Task> tasks = detector.processMessage(event).toCompletableFuture().join();
 
         assertThat(tasks).hasSize(1);
-        Task task = tasks.getFirst();
+        Task task = tasks.get(0);
         assertThat(task.getAgentId()).isEqualTo("agent-1");
         assertThat(task.getTaskId()).matches("session-1_intent_Book travel_[0-9a-f]{8}");
         assertThat(task.getTaskType()).isEqualTo(TaskType.WORKFLOW);
@@ -53,7 +53,7 @@ class IntentDetectorTest {
         assertThat(task.getInput().getTargetName()).isEqualTo("Book travel");
         assertThat(task.getInput().getArguments()).isSameAs(event.getContent());
         assertThat(invoker.capturedInputs).hasSize(2);
-        assertThat(invoker.capturedInputs.getFirst().getContentAsString())
+        assertThat(invoker.capturedInputs.get(0).getContentAsString())
                 .contains("分类0：意图不明")
                 .contains("分类1：Book travel");
     }
@@ -70,7 +70,7 @@ class IntentDetectorTest {
         List<Task> tasks = detector.processMessage(event).toCompletableFuture().join();
 
         assertThat(tasks).hasSize(1);
-        Task task = tasks.getFirst();
+        Task task = tasks.get(0);
         assertThat(task.getInput().getTargetId()).isEqualTo("workflow-1");
         assertThat(task.getInput().getTargetName()).isEqualTo("Travel Workflow");
         assertThat(task.getTaskType()).isEqualTo(TaskType.WORKFLOW);

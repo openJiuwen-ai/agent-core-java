@@ -111,7 +111,7 @@ class McpToolsTest {
         ToolOutput output = invokeList(tool, linkedMap("server_id", "s"));
 
         assertTrue(output.isSuccess());
-        Map<String, Object> resource = ((List<Map<String, Object>>) output.getData()).getFirst();
+        Map<String, Object> resource = ((List<Map<String, Object>>) output.getData()).get(0);
         assertEquals(String.valueOf(plain), resource.get("uri"));
         assertEquals("", resource.get("name"));
         assertEquals(null, resource.get("mimeType"));
@@ -217,7 +217,7 @@ class McpToolsTest {
         ToolOutput output = invokeRead(tool, linkedMap("server_id", "s", "uri", "res://x"));
 
         assertTrue(output.isSuccess());
-        Map<String, Object> content = ((List<Map<String, Object>>) output.getData()).getFirst();
+        Map<String, Object> content = ((List<Map<String, Object>>) output.getData()).get(0);
         assertEquals(String.valueOf(plain), content.get("uri"));
         assertEquals(null, content.get("mimeType"));
         assertEquals(null, content.get("text"));

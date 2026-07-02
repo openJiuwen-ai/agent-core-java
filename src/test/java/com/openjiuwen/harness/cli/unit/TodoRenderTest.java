@@ -87,7 +87,7 @@ class TodoRenderTest {
                 item("activeForm", "Active task", "status", "in_progress")
         ));
 
-        assertTrue(lines.getFirst().contains("Active task"));
+        assertTrue(lines.get(0).contains("Active task"));
     }
 
     @Test
@@ -127,7 +127,7 @@ class TodoRenderTest {
 
         assertNotNull(items);
         assertEquals(1, items.size());
-        assertEquals("task1", items.getFirst().get("content"));
+        assertEquals("task1", items.get(0).get("content"));
     }
 
     @Test
@@ -149,7 +149,7 @@ class TodoRenderTest {
         List<Map<String, Object>> items = TodoRender.parseTodoResult(text);
         assertNotNull(items);
         assertEquals(2, items.size());
-        assertEquals("in_progress", items.getFirst().get("status"));
+        assertEquals("in_progress", items.get(0).get("status"));
         assertEquals("pending", items.get(1).get("status"));
     }
 
@@ -230,7 +230,7 @@ class TodoRenderTest {
         );
 
         assertNotNull(updated);
-        assertEquals("completed", updated.getFirst().get("status"));
+        assertEquals("completed", updated.get(0).get("status"));
         assertEquals("Doing B", updated.get(1).get("content"));
     }
 

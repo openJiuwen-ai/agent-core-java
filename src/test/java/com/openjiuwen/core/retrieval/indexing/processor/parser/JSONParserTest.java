@@ -52,8 +52,8 @@ class JSONParserTest {
         List<Document> documents = new JSONParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getId_()).isEqualTo("doc_1");
-        assertThat(documents.getFirst().getText()).contains("test", "123");
+        assertThat(documents.get(0).getId_()).isEqualTo("doc_1");
+        assertThat(documents.get(0).getText()).contains("test", "123");
     }
 
     @Test
@@ -63,7 +63,7 @@ class JSONParserTest {
         List<Document> documents = new JSONParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).isEqualTo("{}");
+        assertThat(documents.get(0).getText()).isEqualTo("{}");
     }
 
     @Test
@@ -73,7 +73,7 @@ class JSONParserTest {
         List<Document> documents = new JSONParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).contains("1", "test");
+        assertThat(documents.get(0).getText()).contains("1", "test");
     }
 
     @Test
@@ -83,7 +83,7 @@ class JSONParserTest {
         List<Document> documents = new JSONParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).contains("invalid json");
+        assertThat(documents.get(0).getText()).contains("invalid json");
     }
 
     @Test
@@ -112,7 +112,7 @@ class JSONParserTest {
         List<Document> documents = new JSONParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).contains("娴嬭瘯");
+        assertThat(documents.get(0).getText()).contains("娴嬭瘯");
     }
 
     @Test
@@ -123,7 +123,7 @@ class JSONParserTest {
         List<Document> documents = new JSONParser().parse(file.toString(), "doc_1").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getText()).contains("\n").contains("  ");
+        assertThat(documents.get(0).getText()).contains("\n").contains("  ");
     }
 
     @Test
@@ -133,9 +133,9 @@ class JSONParserTest {
         List<Document> documents = new AutoFileParser().parse(file.toString(), "auto-json").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getId_()).isEqualTo("auto-json");
-        assertThat(documents.getFirst().getText()).contains("value");
-        assertThat(documents.getFirst().getMetadata())
+        assertThat(documents.get(0).getId_()).isEqualTo("auto-json");
+        assertThat(documents.get(0).getText()).contains("value");
+        assertThat(documents.get(0).getMetadata())
                 .containsEntry("doc_id", "auto-json")
                 .containsEntry("file_ext", ".json")
                 .containsEntry("file_path", file.toString());

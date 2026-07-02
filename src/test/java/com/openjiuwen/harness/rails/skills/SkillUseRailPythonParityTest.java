@@ -175,7 +175,7 @@ class SkillUseRailPythonParityTest {
         assertThat(data.get("selected_skill_names")).isEqualTo(List.of("xlsx-writer"));
         List<Map<String, Object>> skills = (List<Map<String, Object>>) data.get("skills");
         assertThat(skills).hasSize(1);
-        assertThat(skills.getFirst().get("name")).isEqualTo("xlsx-writer");
+        assertThat(skills.get(0).get("name")).isEqualTo("xlsx-writer");
     }
 
     @SuppressWarnings("unchecked")

@@ -39,9 +39,9 @@ class CodeConverterTest {
                 .containsEntry("defaultStep", "0")
                 .containsEntry("errorStep", "1");
         assertThat(converter.getEdges()).hasSize(1);
-        assertThat(converter.getEdges().getFirst().getSourceNodeId()).isEqualTo("node_code");
-        assertThat(converter.getEdges().getFirst().getTargetNodeId()).isEqualTo("node_end");
-        assertThat(converter.getEdges().getFirst().getSourcePortId()).isEqualTo("0");
+        assertThat(converter.getEdges().get(0).getSourceNodeId()).isEqualTo("node_code");
+        assertThat(converter.getEdges().get(0).getTargetNodeId()).isEqualTo("node_end");
+        assertThat(converter.getEdges().get(0).getSourcePortId()).isEqualTo("0");
     }
 
     @Test

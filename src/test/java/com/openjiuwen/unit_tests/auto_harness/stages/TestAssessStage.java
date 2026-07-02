@@ -222,7 +222,7 @@ class TestAssessStage {
         ));
 
         assertEquals(2, collected.size());
-        OutputSchema first = assertInstanceOf(OutputSchema.class, collected.getFirst());
+        OutputSchema first = assertInstanceOf(OutputSchema.class, collected.get(0));
         Map<?, ?> firstPayload = assertInstanceOf(Map.class, first.getPayload());
         assertEquals("part1", firstPayload.get("content"));
     }

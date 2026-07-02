@@ -39,7 +39,8 @@ class StreamProcessorTest {
         Iterator<Object> left = iterator(generated, "left");
         Iterator<Object> right = iterator(generated, "right");
 
-        Thread runner = Thread.ofVirtual().start(() -> processor.run(ComponentAbility.COLLECT));
+        Thread runner = new Thread(() -> processor.run(ComponentAbility.COLLECT));
+        runner.start();
         processor.receive(new StreamPayload(Map.of("left", Map.of("answer", "L")), ComponentAbility.STREAM));
 
         assertTrue(left.hasNext());
@@ -65,7 +66,8 @@ class StreamProcessorTest {
         Iterator<Object> a = iterator(generated, "a");
         Iterator<Object> c = iterator(generated, "c");
 
-        Thread runner = Thread.ofVirtual().start(() -> processor.run(ComponentAbility.COLLECT));
+        Thread runner = new Thread(() -> processor.run(ComponentAbility.COLLECT));
+        runner.start();
         processor.receive(new StreamPayload(Map.of("a", Map.of("value", "A")), ComponentAbility.STREAM));
         processor.receive(new StreamPayload(Map.of("a", "END_a"), ComponentAbility.STREAM));
         processor.receive(new StreamPayload(Map.of("c", Map.of("value", "C")), ComponentAbility.TRANSFORM));

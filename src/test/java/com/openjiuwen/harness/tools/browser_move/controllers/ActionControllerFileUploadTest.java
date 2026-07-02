@@ -134,7 +134,7 @@ class ActionControllerFileUploadTest {
         controller.runAction("browser_set_input_files", "", "", Map.of("paths", List.of("/tmp/f.txt")));
 
         assertFalse(captured.isEmpty());
-        assertTrue(captured.getFirst().contains("input[type=\"file\"]"));
+        assertTrue(captured.get(0).contains("input[type=\"file\"]"));
     }
 
     @Test

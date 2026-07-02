@@ -45,8 +45,8 @@ class HybridRetrieverTest {
         assertThat(vectorStore.lastHybridTopK).isEqualTo(3);
         assertThat(vectorStore.lastHybridAlpha).isEqualTo(0.75d);
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getDocId()).isEqualTo("doc-1");
-        assertThat(results.getFirst().getChunkId()).isEqualTo("chunk-1");
+        assertThat(results.get(0).getDocId()).isEqualTo("doc-1");
+        assertThat(results.get(0).getChunkId()).isEqualTo("chunk-1");
     }
 
     @Test
@@ -59,7 +59,7 @@ class HybridRetrieverTest {
         List<RetrievalResult> results = retriever.retrieve("test query", 5, null, "vector", Map.of());
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getText()).isEqualTo("Vector result");
+        assertThat(results.get(0).getText()).isEqualTo("Vector result");
         assertThat(embedding.queries).containsExactly("test query");
         assertThat(vectorStore.vectorCalls).isEqualTo(1);
         assertThat(vectorStore.sparseCalls).isZero();
@@ -74,7 +74,7 @@ class HybridRetrieverTest {
         List<RetrievalResult> results = retriever.retrieve("test query", 5, null, "sparse", Map.of());
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getText()).isEqualTo("Sparse result");
+        assertThat(results.get(0).getText()).isEqualTo("Sparse result");
         assertThat(vectorStore.vectorCalls).isZero();
         assertThat(vectorStore.sparseCalls).isEqualTo(1);
     }
@@ -126,9 +126,9 @@ class HybridRetrieverTest {
         List<SearchResult> results = retriever.retrieveSearchResults("query", 2, "sparse", Map.of());
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getId()).isEqualTo("chunk-9");
-        assertThat(results.getFirst().getText()).isEqualTo("raw");
-        assertThat(results.getFirst().getMetadata()).containsEntry("doc_id", "doc-9");
+        assertThat(results.get(0).getId()).isEqualTo("chunk-9");
+        assertThat(results.get(0).getText()).isEqualTo("raw");
+        assertThat(results.get(0).getMetadata()).containsEntry("doc_id", "doc-9");
     }
 
     @Test

@@ -93,7 +93,8 @@ class EventHandlerWithIntentRecognitionPythonParityTest {
         assertThat(task.getTaskId()).isEqualTo("task2");
         assertThat(task.getInputs()).contains(harness.sampleInputEvent);
         assertThat(task.getInputs()).hasSize(2);
-        assertThat(((InputEvent) task.getInputs().get(1)).getInputData().getLast())
+        List<DataFrame> inputData = ((InputEvent) task.getInputs().get(1)).getInputData();
+        assertThat(inputData.get(inputData.size() - 1))
                 .isInstanceOf(DataFrame.JsonDataFrame.class);
     }
 
@@ -253,7 +254,7 @@ class EventHandlerWithIntentRecognitionPythonParityTest {
 
     private static void assertStreamEntry(TestHarness harness, String key, Object value) {
         assertThat(harness.session.streamWrites).hasSize(1);
-        Object write = harness.session.streamWrites.getFirst();
+        Object write = harness.session.streamWrites.get(0);
         assertThat(write).isInstanceOf(Map.class);
         assertThat(((Map<?, ?>) write).get(key)).isEqualTo(value);
     }
@@ -309,7 +310,7 @@ class EventHandlerWithIntentRecognitionPythonParityTest {
         }
 
         private Task findTask(String taskId) {
-            return taskManager.getTask(TaskFilter.byTaskId(taskId)).getFirst();
+            return taskManager.getTask(TaskFilter.byTaskId(taskId)).get(0);
         }
     }
 

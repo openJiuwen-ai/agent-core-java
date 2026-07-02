@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.runner.drunner.server_adapter;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.RunnerTermination;
@@ -49,7 +51,7 @@ public class MqServerAdapter {
     private final String topic;
     private final Function<Map<String, Object>, Object> invokeHandler;
     private final Function<Map<String, Object>, Object> streamHandler;
-    private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final ExecutorService executor = VirtualThreadSupport.newThreadPerTaskExecutor();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final Map<String, MessageTask> runningTasks = new ConcurrentHashMap<>();
 

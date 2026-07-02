@@ -649,7 +649,7 @@ class TripleBeamSearch {
         if (embeddings.size() != texts.size()) {
             throw new IllegalStateException("embedding count does not match input text count");
         }
-        List<Double> queryEmbedding = embeddings.getLast();
+        List<Double> queryEmbedding = embeddings.get(embeddings.size() - 1);
         List<List<Double>> candidateEmbeddings = embeddings.subList(0, embeddings.size() - 1);
 
         double[] scores = cosineScores(queryEmbedding, candidateEmbeddings);
@@ -686,8 +686,8 @@ class TripleBeamSearch {
         }
 
         Set<String> entities = new LinkedHashSet<>();
-        entities.add(triple.getFirst());
-        entities.add(triple.getLast());
+        entities.add(triple.get(0));
+        entities.add(triple.get(triple.size() - 1));
         String query = String.join(" ", entities);
 
         String mode = resolveRetrieverIndexType(retriever);
@@ -717,7 +717,7 @@ class TripleBeamSearch {
             if (nodeTriple.size() < 2) {
                 continue;
             }
-            if (!entities.contains(nodeTriple.getFirst()) && !entities.contains(nodeTriple.getLast())) {
+            if (!entities.contains(nodeTriple.get(0)) && !entities.contains(nodeTriple.get(nodeTriple.size() - 1))) {
                 continue;
             }
             results.add(node);

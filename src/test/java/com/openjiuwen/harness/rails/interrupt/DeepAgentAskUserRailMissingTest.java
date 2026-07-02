@@ -33,7 +33,7 @@ class DeepAgentAskUserRailMissingTest {
                 firstResult.request());
 
         assertThat(request.getQuestions()).hasSize(1);
-        assertThat(request.getQuestions().getFirst())
+        assertThat(request.getQuestions().get(0))
                 .containsEntry("header", "File")
                 .containsEntry("question", "What is the filename?");
         assertThat(request.getPayloadSchema()).containsKey("properties");

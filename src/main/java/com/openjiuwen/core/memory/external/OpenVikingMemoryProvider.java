@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.core.memory.external;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -24,17 +25,13 @@ import java.util.concurrent.Executors;
  * Tools: viking_search, viking_read, viking_browse, viking_remember, viking_add_resource.
  * Session-based: sync_turn records turns, on_session_end commits session.
  * <p>
- * Mirrors Python's {@code OpenVikingMemoryProvider} in
- * {@code openjiuwen/core/memory/external/openviking_memory_provider.py}.
+ * Mirrors Python's {@code OpenVikingMemoryProvider} from
+ * {@code memory/external/openviking_memory_provider.py}.
  */
 public class OpenVikingMemoryProvider extends MemoryProvider {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final Executor IO_EXECUTOR = Executors.newCachedThreadPool(r -> {
-        Thread thread = new Thread(r, "openviking-memory-provider-io");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private static final Executor IO_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("openviking-memory-provider-io");
 
     // Tool schemas
     private static final Map<String, Object> VIKING_SEARCH_SCHEMA = Map.of(
@@ -298,12 +295,23 @@ public class OpenVikingMemoryProvider extends MemoryProvider {
     public CompletableFuture<Void> shutdown() {
         if (httpClient != null) {
             try {
-                httpClient.close();
+                httpClient = null;
             } catch (Exception e) {
                 Loggers.MEMORY.debug("OpenViking client close failed: {}", e.getMessage());
             } finally {
                 httpClient = null;
             }
+        }
+        return CompletableFuture.completedFuture(null);
+    @Override
+    public CompletableFuture<Void> shutdown() {
+        if (httpClient != null) {
+            try {
+                httpClient.close();
+            } catch (Exception e) {
+                Loggers.MEMORY.debug("OpenViking client close failed: {}", e.getMessage());
+            }
+            httpClient = null;
         }
         return CompletableFuture.completedFuture(null);
     }

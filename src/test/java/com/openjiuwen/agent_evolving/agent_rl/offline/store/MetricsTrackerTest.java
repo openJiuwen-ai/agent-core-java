@@ -29,7 +29,7 @@ class MetricsTrackerTest {
         assertThat(tracker.isInitialized()).isTrue();
         assertThat(tracker.isFinished()).isTrue();
         assertThat(tracker.getLoggedSteps()).containsExactly(0);
-        assertThat(tracker.getLoggedMetrics().getFirst()).containsEntry("loss", 0.5d);
+        assertThat(tracker.getLoggedMetrics().get(0)).containsEntry("loss", 0.5d);
     }
 
     @Test

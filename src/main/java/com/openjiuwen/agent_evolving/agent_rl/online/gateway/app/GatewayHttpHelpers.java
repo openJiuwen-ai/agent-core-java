@@ -139,7 +139,7 @@ public final class GatewayHttpHelpers {
         if (!(rawChoices instanceof List<?> choices) || choices.isEmpty()) {
             return Map.of();
         }
-        Object first = choices.getFirst();
+        Object first = choices.get(0);
         return asMap(first);
     }
 

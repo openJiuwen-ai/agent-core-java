@@ -79,7 +79,7 @@ class BasicDesignPromptPythonParityTest {
                 .format(Map.of("user_query", "test query", "tool_list", ""))
                 .toMessages();
 
-        assertThat(messages.getFirst().getContentAsString()).contains("test query");
+        assertThat(messages.get(0).getContentAsString()).contains("test query");
     }
 
     @Test
@@ -88,6 +88,6 @@ class BasicDesignPromptPythonParityTest {
                 .format(Map.of("user_query", "", "tool_list", "test tool"))
                 .toMessages();
 
-        assertThat(messages.getFirst().getContentAsString()).contains("test tool");
+        assertThat(messages.get(0).getContentAsString()).contains("test tool");
     }
 }

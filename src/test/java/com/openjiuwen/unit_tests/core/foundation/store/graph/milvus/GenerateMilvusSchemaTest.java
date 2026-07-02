@@ -37,7 +37,7 @@ class GenerateMilvusSchemaTest {
         assertTrue(result.getFields().containsKey("name_embedding"));
         assertTrue(result.getFields().containsKey("relations"));
         assertTrue(result.getFields().containsKey("episodes"));
-        assertEquals("semantic_embedding_name", result.getIndexes().getFirst().get("index_name"));
+        assertEquals("semantic_embedding_name", result.getIndexes().get(0).get("index_name"));
         assertTrue(result.getIndexes().size() >= 2);
     }
 

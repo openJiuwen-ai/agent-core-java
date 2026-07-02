@@ -7,6 +7,7 @@ package com.openjiuwen.core.retrieval.vector_store;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.store.query.QueryExpr;
@@ -44,6 +45,8 @@ public class ChromaVectorStore implements VectorStore {
     };
     private static final String DEFAULT_DATABASE = "default_database";
     private static final int DEFAULT_BATCH_SIZE = 128;
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("chroma-retrieval-vector-store-io");
 
     private final VectorStoreConfig config;
     private final String collectionName;
@@ -214,7 +217,7 @@ public class ChromaVectorStore implements VectorStore {
                 processed += cache.size();
             }
             LOGGER.info("Writing completed, total {}/{} records to {}", processed, total, collectionName);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -226,7 +229,7 @@ public class ChromaVectorStore implements VectorStore {
             ChromaCollectionAdapter latestCollection = client.getCollection(collectionName);
             Map<String, Object> results = latestCollection.query(queryVector, null, topK, buildQueryArgs(filters));
             return chromaResultToSearchResults(results, "vector");
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -246,7 +249,7 @@ public class ChromaVectorStore implements VectorStore {
                 LOGGER.warn("Text search failed: {}", exception.getMessage());
                 return List.of();
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -315,7 +318,7 @@ public class ChromaVectorStore implements VectorStore {
                 output.add(new RetrievalResult(result.getText(), result.getScore(), metadata, docId, resultId));
             }
             return List.copyOf(output);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -339,18 +342,18 @@ public class ChromaVectorStore implements VectorStore {
                 LOGGER.error("Failed to delete vectors: {}", exception.getMessage());
                 return Boolean.FALSE;
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
     public CompletableFuture<Boolean> tableExists(String tableName) {
         return CompletableFuture.supplyAsync(() -> client.listCollections().stream()
-                .anyMatch(chromaCollection -> Objects.equals(chromaCollection.name(), tableName)));
+                .anyMatch(chromaCollection -> Objects.equals(chromaCollection.name(), tableName)), IO_EXECUTOR);
     }
 
     @Override
     public CompletableFuture<Void> deleteTable(String tableName) {
-        return CompletableFuture.runAsync(() -> client.deleteCollection(tableName));
+        return CompletableFuture.runAsync(() -> client.deleteCollection(tableName), IO_EXECUTOR);
     }
 
     @Override
@@ -603,21 +606,21 @@ public class ChromaVectorStore implements VectorStore {
         if (!(raw instanceof List<?> outer) || outer.isEmpty()) {
             return List.of();
         }
-        return stringList(outer.getFirst());
+        return stringList(outer.get(0));
     }
 
     private List<Map<String, Object>> firstMapList(Object raw) {
         if (!(raw instanceof List<?> outer) || outer.isEmpty()) {
             return List.of();
         }
-        return mapList(outer.getFirst());
+        return mapList(outer.get(0));
     }
 
     private List<Double> firstDoubleList(Object raw) {
         if (!(raw instanceof List<?> outer) || outer.isEmpty()) {
             return List.of();
         }
-        return doubleList(outer.getFirst());
+        return doubleList(outer.get(0));
     }
 
     private List<String> stringList(Object raw) {

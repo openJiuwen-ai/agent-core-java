@@ -263,7 +263,7 @@ public class ConversationSignalDetector {
         if (!feedback) {
             return List.of();
         }
-        String excerpt = stringValue(parsed.getOrDefault("excerpt", userMessages.getLast())).trim();
+        String excerpt = stringValue(parsed.getOrDefault("excerpt", userMessages.get(userMessages.size() - 1))).trim();
         return List.of(makeUserFeedbackSignal(excerpt, skillName));
     }
 

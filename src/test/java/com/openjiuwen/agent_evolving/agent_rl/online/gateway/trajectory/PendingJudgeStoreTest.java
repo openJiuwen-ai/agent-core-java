@@ -26,8 +26,8 @@ class PendingJudgeStoreTest {
         assertFalse(sample.containsKey("_pending_key"));
         List<Map<String, Object>> rows = store.getBySession("session-1");
         assertEquals(1, rows.size());
-        assertEquals("traj-1", rows.getFirst().get("trajectory_id"));
-        assertTrue(String.valueOf(rows.getFirst().get("_pending_key")).contains("pending_judge:session-1:traj-1:3"));
+        assertEquals("traj-1", rows.get(0).get("trajectory_id"));
+        assertTrue(String.valueOf(rows.get(0).get("_pending_key")).contains("pending_judge:session-1:traj-1:3"));
 
         Map<String, Object> popped = store.popOne("session-1", "traj-1", 3);
         assertNotNull(popped);

@@ -301,7 +301,7 @@ class RunnerSpawnAgentPythonParityTest {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> initialAgentConfig(ScriptedProcess process) {
-        String line = process.writtenMessages().getFirst();
+        String line = process.writtenMessages().get(0);
         SpawnMessage message = SpawnMessage.deserializeMessage(line.getBytes(StandardCharsets.UTF_8));
         Map<String, Object> payload = assertInstanceOf(Map.class, message.getPayload());
         return assertInstanceOf(Map.class, payload.get("agent_config"));

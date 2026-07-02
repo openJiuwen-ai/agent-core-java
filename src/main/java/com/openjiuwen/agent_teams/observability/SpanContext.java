@@ -77,9 +77,9 @@ public final class SpanContext {
             return null;
         }
         if (peek) {
-            return stack.getLast();
+            return stack.get(stack.size() - 1);
         }
-        LlmSpanState state = stack.removeLast();
+        LlmSpanState state = stack.remove(stack.size() - 1);
         LLM_SPAN_STACK.set(stack);
         return state;
     }

@@ -6,6 +6,7 @@ package com.openjiuwen.core.memory.external;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -61,6 +62,8 @@ public class OpenJiuwenMemoryProvider extends MemoryProvider {
     static final Map<String, Object> LTM_SEARCH_SUMMARY_SCHEMA = createLtmSearchSummarySchema();
 
     private static final ObjectMapper MAPPER = new ObjectMapper().findAndRegisterModules();
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("openjiuwen-memory-io");
     private static final String DEFAULT_ID = "__default__";
 
     private final Map<String, Object> config;
@@ -161,7 +164,7 @@ public class OpenJiuwenMemoryProvider extends MemoryProvider {
                 longTermMemory.setScopeConfig(scopeId, scopeConfig).join();
             }
             initialized = true;
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -204,7 +207,7 @@ public class OpenJiuwenMemoryProvider extends MemoryProvider {
                         "error", errorMessage(exception),
                         "results", List.of()));
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -245,7 +248,7 @@ public class OpenJiuwenMemoryProvider extends MemoryProvider {
                 Loggers.MEMORY.warning("prefetch search_user_history_summary failed: {}", errorMessage(exception));
             }
             return parts.isEmpty() ? "" : String.join("\n", parts);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -274,7 +277,7 @@ public class OpenJiuwenMemoryProvider extends MemoryProvider {
             } catch (Exception exception) {
                 Loggers.MEMORY.warning("sync_turn add_messages failed: {}", errorMessage(exception));
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override

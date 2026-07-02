@@ -44,7 +44,7 @@ class DLTransformerTest {
                 Map.of("tool_1", "plugin_1"));
 
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst())
+        assertThat(result.get(0))
                 .containsEntry("plugin_id", "plugin_1")
                 .containsEntry("plugin_name", "Test Plugin")
                 .containsEntry("plugin_version", "1.0")
@@ -52,8 +52,8 @@ class DLTransformerTest {
                 .containsEntry("tool_name", "Tool 1")
                 .containsEntry("language", "python")
                 .containsEntry("code", "print('hello')");
-        assertThat(result.getFirst().get("inputs")).asList().hasSize(1);
-        assertThat(result.getFirst().get("outputs")).asList().hasSize(1);
+        assertThat(result.get(0).get("inputs")).asList().hasSize(1);
+        assertThat(result.get(0).get("outputs")).asList().hasSize(1);
     }
 
     @Test
@@ -76,15 +76,15 @@ class DLTransformerTest {
                 Map.of("tool_1", "plugin_1"));
 
         assertThat(result).hasSize(1);
-        assertThat(result.getFirst())
+        assertThat(result.get(0))
                 .containsEntry("plugin_id", "plugin_1")
                 .containsEntry("plugin_name", "Test Plugin")
                 .containsEntry("plugin_version", "1.0")
                 .containsEntry("tool_id", "tool_1")
                 .containsEntry("tool_name", "Tool 1")
                 .doesNotContainKeys("language", "code");
-        assertThat(result.getFirst().get("inputs")).asList().isEmpty();
-        assertThat(result.getFirst().get("outputs")).asList().isEmpty();
+        assertThat(result.get(0).get("inputs")).asList().isEmpty();
+        assertThat(result.get(0).get("outputs")).asList().isEmpty();
     }
 
     @Test
@@ -167,7 +167,7 @@ class DLTransformerTest {
 
         assertThat(resource.get("plugins")).asList().hasSize(1);
         @SuppressWarnings("unchecked")
-        Map<String, Object> pluginInfo = (Map<String, Object>) ((List<?>) resource.get("plugins")).getFirst();
+        Map<String, Object> pluginInfo = (Map<String, Object>) ((List<?>) resource.get("plugins")).get(0);
         assertThat(pluginInfo)
                 .containsEntry("tool_id", "tool-weather")
                 .containsEntry("plugin_id", "plugin-weather");

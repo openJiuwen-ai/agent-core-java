@@ -133,17 +133,17 @@ class HTMLFileParserMissingTest {
                         "<meta property=\"og:title\" content=\"MetaTitle\"/>",
                         "DocTitle"), "id-1", "/tmp/x.html").join();
                 assertThat(documents).hasSize(1);
-                assertThat(documents.getFirst().getId_()).isEqualTo("id-1");
-                assertThat(documents.getFirst().getMetadata())
+                assertThat(documents.get(0).getId_()).isEqualTo("id-1");
+                assertThat(documents.get(0).getMetadata())
                         .containsEntry("title", "MetaTitle")
                         .containsEntry("source_type", "web_page");
-                assertThat(documents.getFirst().getText()).contains(longText(20));
+                assertThat(documents.get(0).getText()).contains(longText(20));
             }
             case "tests/unit_tests/core/retrieval/indexing/processor/parser/test_html_file_parser.py::TestHTMLFileParserParseHtml::test_placeholder_title_when_missing" -> {
                 List<Document> documents = HTMLFileParser.parseHtml(
                         "<html><body><article><p>" + longText(120) + "</p></article></body></html>",
                         "d", "").join();
-                assertThat(documents.getFirst().getMetadata()).containsEntry("title", "(无标题)");
+                assertThat(documents.get(0).getMetadata()).containsEntry("title", "(无标题)");
             }
             case "tests/unit_tests/core/retrieval/indexing/processor/parser/test_html_file_parser.py::TestHTMLFileParserParseHtml::test_raises_when_no_main_content_node" ->
                     assertFetchError(() -> HTMLFileParser.parseHtml("", "", "empty.html").join(), "Could not find main content");
@@ -159,18 +159,18 @@ class HTMLFileParserMissingTest {
                 Path path = Files.writeString(tempDir.resolve("doc.html"),
                         minimalHtml("<article><p>" + longText(120) + "</p></article>"));
                 List<Document> documents = new HTMLFileParser().parse(path.toString(), "my-id", null, Map.of()).join();
-                assertThat(documents.getFirst().getId_()).isEqualTo("my-id");
-                assertThat(documents.getFirst().getMetadata().get("title")).isNotNull();
+                assertThat(documents.get(0).getId_()).isEqualTo("my-id");
+                assertThat(documents.get(0).getMetadata().get("title")).isNotNull();
             }
             case "tests/unit_tests/core/retrieval/indexing/processor/parser/test_html_file_parser.py::TestHTMLFileParserParseFile::test_parse_htm_extension" -> {
                 Path path = Files.writeString(tempDir.resolve("doc.htm"),
                         minimalHtml("<main><p>" + longText(120) + "</p></main>"));
-                assertThat(new HTMLFileParser().parse(path.toString()).join().getFirst().getId_()).isEqualTo(path.toString());
+                assertThat(new HTMLFileParser().parse(path.toString()).join().get(0).getId_()).isEqualTo(path.toString());
             }
             case "tests/unit_tests/core/retrieval/indexing/processor/parser/test_html_file_parser.py::TestHTMLFileParserParseFile::test_parse_doc_id_defaults_to_path" -> {
                 Path path = Files.writeString(tempDir.resolve("doc.HTML"),
                         minimalHtml("<article><p>" + longText(120) + "</p></article>"));
-                assertThat(new HTMLFileParser().parse(path.toString(), "", null, Map.of()).join().getFirst().getId_())
+                assertThat(new HTMLFileParser().parse(path.toString(), "", null, Map.of()).join().get(0).getId_())
                         .isEqualTo(path.toString());
             }
             case "tests/unit_tests/core/retrieval/indexing/processor/parser/test_html_file_parser.py::TestHTMLFileParserParseFile::test_parse_empty_file_raises" -> {
@@ -183,7 +183,7 @@ class HTMLFileParserMissingTest {
             case "tests/unit_tests/core/retrieval/indexing/processor/parser/test_html_file_parser.py::TestHTMLFileParserParseFile::test_parse_utf8_content" -> {
                 Path path = Files.writeString(tempDir.resolve("utf8.html"),
                         minimalHtml("<article><p>日本語 " + longText(120) + "</p></article>"));
-                assertThat(new HTMLFileParser().parse(path.toString()).join().getFirst().getText()).contains("日本語");
+                assertThat(new HTMLFileParser().parse(path.toString()).join().get(0).getText()).contains("日本語");
             }
             case "tests/unit_tests/core/retrieval/indexing/processor/parser/test_html_file_parser.py::TestHTMLFileParserInit::test_init_accepts_kwargs" ->
                     assertThat(new HTMLFileParser()).isNotNull();
@@ -192,10 +192,10 @@ class HTMLFileParserMissingTest {
                         minimalHtml("<article><p>" + longText(120) + "</p></article>"));
                 List<Document> documents = new AutoFileParser().parse(path.toString(), "auto-1", null, Map.of()).join();
                 assertThat(documents).hasSize(1);
-                assertThat(documents.getFirst().getMetadata())
+                assertThat(documents.get(0).getMetadata())
                         .containsEntry("doc_id", "auto-1")
                         .containsEntry("file_ext", ".html");
-                assertThat(documents.getFirst().getText()).contains(longText(40));
+                assertThat(documents.get(0).getText()).contains(longText(40));
             }
             default -> throw new IllegalArgumentException("Unhandled node id: " + nodeId);
         }

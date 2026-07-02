@@ -325,7 +325,7 @@ class SessionSchemaPythonParityTest {
         assertThat(restored.getSessionScopeKey()).isEqualTo("agent:a1:main");
         assertThat(restored.getActiveSession()).isEqualTo("s1");
         assertThat(restored.getSessions()).hasSize(1);
-        assertThat(restored.getSessions().getFirst().getSessionId()).isEqualTo("s1");
+        assertThat(restored.getSessions().get(0).getSessionId()).isEqualTo("s1");
     }
 
     private void scopeSessionsMetaSortSessions() {

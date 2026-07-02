@@ -58,7 +58,7 @@ public class AskUserRail extends BaseInterruptRail {
                 if (questions.isEmpty()) {
                     return interrupt(buildAskRequest(toolCall));
                 }
-                payload = new AskUserPayload(Map.of(questionText(questions.getFirst()), text));
+                payload = new AskUserPayload(Map.of(questionText(questions.get(0)), text));
             } else {
                 return interrupt(buildAskRequest(toolCall));
             }
@@ -81,7 +81,7 @@ public class AskUserRail extends BaseInterruptRail {
         }
         List<Map<String, Object>> questions = questions(toolCall);
         if (questions.size() == 1 && userInput.containsKey("answer")) {
-            return new AskUserPayload(Map.of(questionText(questions.getFirst()), String.valueOf(userInput.get("answer"))));
+            return new AskUserPayload(Map.of(questionText(questions.get(0)), String.valueOf(userInput.get("answer"))));
         }
         return new AskUserPayload();
     }

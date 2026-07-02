@@ -86,7 +86,7 @@ class ExternalTeamClientTest {
         assertThat(claim.ok()).isTrue();
         assertThat(complete.ok()).isTrue();
         assertThat(client.listMembers().toCompletableFuture().join()).hasSize(3);
-        assertThat(client.listTasks().toCompletableFuture().join().getFirst().getStatus()).isEqualTo("completed");
+        assertThat(client.listTasks().toCompletableFuture().join().get(0).getStatus()).isEqualTo("completed");
         client.close();
     }
 

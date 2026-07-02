@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.core.graph;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
@@ -40,7 +41,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -67,7 +67,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     private static final VertexTraceSink PYTHON_NONE_TRACE_SINK = null;
     private static final ErrorRecoveryHandler PYTHON_NONE_ERROR_RECOVERY_HANDLER = null;
     private static final VertexEventSink PYTHON_NONE_EVENT_SINK = null;
-    private static final Executor STREAM_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+    private static final Executor STREAM_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
 
     private final String nodeId;
     private final Executable<Map<String, Object>, Map<String, Object>> executable;

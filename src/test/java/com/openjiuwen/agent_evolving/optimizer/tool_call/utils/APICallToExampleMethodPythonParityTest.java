@@ -50,7 +50,7 @@ class APICallToExampleMethodPythonParityTest {
         );
 
         assertThat(method.models).containsExactly("gpt-gen");
-        assertThat(method.prompts.getFirst()).contains("search");
+        assertThat(method.prompts.get(0)).contains("search");
         assertThat(out).containsEntry("name", "search");
         assertThat(objectMap(out.get("arguments"))).containsEntry("q", "x");
     }
@@ -116,8 +116,8 @@ class APICallToExampleMethodPythonParityTest {
         assertThat(outputs).containsEntry("status_code", 0);
         assertThat((List<?>) outputs.get("scores")).last().isEqualTo(3.0d);
         assertThat(result.score).isCloseTo(3.25d, org.assertj.core.data.Offset.offset(1e-9));
-        List<?> firstExample = (List<?>) eval.examples.getFirst();
-        assertThat(firstExample.getFirst()).isEqualTo("inst-2");
+        List<?> firstExample = (List<?>) eval.examples.get(0);
+        assertThat(firstExample.get(0)).isEqualTo("inst-2");
     }
 
     private static Map<String, Object> config() {

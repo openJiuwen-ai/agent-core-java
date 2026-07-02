@@ -5,6 +5,7 @@
 package com.openjiuwen.core.application.llm_agent;
 
 import com.openjiuwen.core.application.llm.LlmController;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.controller.schema.Event;
@@ -48,6 +49,8 @@ public class LLMAgent extends ControllerAgent {
     private static final String CONVERSATION_ID = "conversation_id";
     private static final String QUERY = "query";
     private static final String USER_ID = "user_id";
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("llm-agent-io");
 
     private final LegacyReActAgentConfig agentConfig;
     private final LlmController llmController;
@@ -274,7 +277,7 @@ public class LLMAgent extends ControllerAgent {
             Object result = runStreamProcess(inputs, ownedSession, true);
             finalResultHolder.set(result);
             return result;
-        });
+        }, IO_EXECUTOR);
         return new OwnedStreamIterator(ownedSession.streamIterator(), task, finalResultHolder);
     }
 
@@ -298,7 +301,9 @@ public class LLMAgent extends ControllerAgent {
                                      Object result,
                                      AgentSessionApi session,
                                      String taskName) {
-        CompletableFuture.runAsync(() -> writeMessagesToMemory(inputs, result, session).toCompletableFuture().join())
+        CompletableFuture.runAsync(
+                        () -> writeMessagesToMemory(inputs, result, session).toCompletableFuture().join(),
+                        IO_EXECUTOR)
                 .whenComplete((ignored, error) -> {
                     if (error == null) {
                         Loggers.AGENT.info("add memory task [{}] completed successfully", taskName);

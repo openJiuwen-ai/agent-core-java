@@ -154,7 +154,7 @@ class AioProvidersTest {
 
         assertEquals(StatusCode.SUCCESS.getCode(), searchResult.getCode());
         assertEquals(1, searchResult.getData().getTotalMatches());
-        assertEquals("main.py", searchResult.getData().getMatchingFiles().getFirst().getName());
+        assertEquals("main.py", searchResult.getData().getMatchingFiles().get(0).getName());
     }
 
     private SandboxEndpoint endpoint() {

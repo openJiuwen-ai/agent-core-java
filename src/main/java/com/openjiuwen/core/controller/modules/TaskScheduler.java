@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.controller.modules;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -558,11 +560,9 @@ public class TaskScheduler {
                         continue;
                     }
 
-                    // Start task on virtual thread
+                    // Start task on a background thread.
                     String taskId = task.getTaskId();
-                    Thread virtualThread = Thread.ofVirtual()
-                            .name("task-" + taskId)
-                            .start(() -> executeTaskWrapper(taskId, session));
+                    Thread virtualThread = VirtualThreadSupport.startThread("task-" + taskId, () -> executeTaskWrapper(taskId, session));
 
                     runningTasks.put(taskId, new RunningTaskEntry(null, virtualThread));
                 } finally {

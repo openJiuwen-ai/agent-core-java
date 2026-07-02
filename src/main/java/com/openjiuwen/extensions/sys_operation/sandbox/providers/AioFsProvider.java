@@ -5,6 +5,7 @@
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sys_operation.protocal.BaseFsProtocal;
@@ -53,6 +54,9 @@ import java.util.concurrent.SubmissionPublisher;
  * {@code openjiuwen/extensions/sys_operation/sandbox/providers/aio.py}.
  */
 public class AioFsProvider extends BaseFsProvider {
+
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("aio-fs-provider-io");
 
     private final AioProviderSupport.AioHttpClient client;
     private final int timeoutSeconds;
@@ -106,7 +110,7 @@ public class AioFsProvider extends BaseFsProvider {
             } catch (Exception exception) {
                 return AioProviderSupport.buildFsErrorResult("read_file", exception.getMessage(), ReadFileResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -308,7 +312,7 @@ public class AioFsProvider extends BaseFsProvider {
             } catch (Exception exception) {
                 return AioProviderSupport.buildFsErrorResult("list_files", exception.getMessage(), ListFilesResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -352,7 +356,7 @@ public class AioFsProvider extends BaseFsProvider {
             } catch (Exception exception) {
                 return AioProviderSupport.buildFsErrorResult("list_directories", exception.getMessage(), ListDirsResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -379,7 +383,7 @@ public class AioFsProvider extends BaseFsProvider {
             } catch (Exception exception) {
                 return AioProviderSupport.buildFsErrorResult("upload_file", exception.getMessage(), UploadFileResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -469,7 +473,7 @@ public class AioFsProvider extends BaseFsProvider {
             } catch (Exception exception) {
                 return AioProviderSupport.buildFsErrorResult("download_file", exception.getMessage(), DownloadFileResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -562,7 +566,7 @@ public class AioFsProvider extends BaseFsProvider {
             } catch (Exception exception) {
                 return AioProviderSupport.buildFsErrorResult("search_files", exception.getMessage(), SearchFilesResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     private ReadFileResult readFileViaLocalSlice(
@@ -645,11 +649,11 @@ public class AioFsProvider extends BaseFsProvider {
             } catch (Exception exception) {
                 return AioProviderSupport.buildFsErrorResult("write_file", exception.getMessage(), WriteFileResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     private CompletableFuture<WriteFileResult> writeBytes(String path, byte[] content, boolean append) {
-        return CompletableFuture.supplyAsync(() -> writeBytesInternal(path, content, append).join());
+        return CompletableFuture.supplyAsync(() -> writeBytesInternal(path, content, append).join(), IO_EXECUTOR);
     }
 
     private CompletableFuture<WriteFileResult> writeBytesInternal(String path, byte[] content, boolean append) {
@@ -676,7 +680,7 @@ public class AioFsProvider extends BaseFsProvider {
             } catch (Exception exception) {
                 return AioProviderSupport.buildFsErrorResult("write_file", exception.getMessage(), WriteFileResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     private Map<String, Object> listPayload(String path, boolean recursive, Integer maxDepth, boolean includeSize) {

@@ -42,7 +42,7 @@ class ExploreAgentPythonParityTest {
         assertNotNull(spec.getSystemPrompt());
         assertFalse(spec.getSystemPrompt().isBlank());
         assertEquals(1, spec.getConfig().getRails().size());
-        SysOperationRail rail = assertInstanceOf(SysOperationRail.class, spec.getConfig().getRails().getFirst());
+        SysOperationRail rail = assertInstanceOf(SysOperationRail.class, spec.getConfig().getRails().get(0));
         assertTrue(rail.isReadOnly());
     }
 

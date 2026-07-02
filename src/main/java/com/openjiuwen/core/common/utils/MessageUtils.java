@@ -32,7 +32,7 @@ public final class MessageUtils {
         if (lastMessages.isEmpty()) {
             return true;
         }
-        BaseMessage lastMessage = lastMessages.getFirst();
+        BaseMessage lastMessage = lastMessages.get(0);
         return !("user".equals(lastMessage.getRole()) && Objects.equals(lastMessage.getContent(), query));
     }
 

@@ -32,8 +32,8 @@ class ParserTest {
         List<Document> documents = parser.parse("test.txt", "doc_1").join();
 
         assertEquals(1, documents.size());
-        assertEquals("doc_1", documents.getFirst().getId_());
-        assertTrue(documents.getFirst().getText().contains("Content from test.txt"));
+        assertEquals("doc_1", documents.get(0).getId_());
+        assertTrue(documents.get(0).getText().contains("Content from test.txt"));
     }
 
     @Test
@@ -52,7 +52,7 @@ class ParserTest {
         List<Document> documents = parser.parse("test.txt", "doc_1", null, Map.of("file_name", "test")).join();
 
         assertEquals(1, documents.size());
-        assertEquals("doc_1", documents.getFirst().getId_());
+        assertEquals("doc_1", documents.get(0).getId_());
     }
 
     @Test
@@ -62,7 +62,7 @@ class ParserTest {
         List<Document> documents = parser.lazyParse("test.txt", "doc_1", Map.of()).join();
 
         assertEquals(1, documents.size());
-        assertEquals("doc_1", documents.getFirst().getId_());
+        assertEquals("doc_1", documents.get(0).getId_());
     }
 
     @Test
@@ -72,7 +72,7 @@ class ParserTest {
         List<Document> documents = parser.process("test.txt", "doc_1").join();
 
         assertEquals(1, documents.size());
-        assertEquals("doc_1", documents.getFirst().getId_());
+        assertEquals("doc_1", documents.get(0).getId_());
     }
 
     @Test

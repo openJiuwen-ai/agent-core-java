@@ -395,9 +395,9 @@ public class SimpleKnowledgeBasePythonParityTest {
                 .join();
 
         assertThat(results).hasSizeLessThanOrEqualTo(5);
-        assertThat(results.getFirst().getText()).isEqualTo("Result 1");
-        assertThat(results.getFirst().getScore()).isEqualTo(0.95d);
-        assertThat(results.getFirst().getKbIds()).containsExactly("kb1", "kb2");
+        assertThat(results.get(0).getText()).isEqualTo("Result 1");
+        assertThat(results.get(0).getScore()).isEqualTo(0.95d);
+        assertThat(results.get(0).getKbIds()).containsExactly("kb1", "kb2");
     }
 
     private static KnowledgeBaseConfig config() {

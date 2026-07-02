@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.core.graph.pregel;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.openjiuwen.core.graph.store.PendingNode;
 
@@ -15,7 +16,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Runs Pregel node tasks and collects success/failure state.
@@ -33,7 +33,7 @@ public class TaskExecutorPool {
 
     public TaskExecutorPool(PregelConfig config) {
         this.config = config;
-        this.executorService = Executors.newVirtualThreadPerTaskExecutor();
+        this.executorService = VirtualThreadSupport.newThreadPerTaskExecutor();
     }
 
     /**

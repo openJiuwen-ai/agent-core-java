@@ -294,7 +294,7 @@ public class OtelCallbackHandler {
             return array[0];
         }
         if (args instanceof List<?> list && !list.isEmpty()) {
-            return list.getFirst();
+            return list.get(0);
         }
         return kwargs.get("inputs");
     }

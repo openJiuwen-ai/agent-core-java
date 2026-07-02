@@ -68,7 +68,7 @@ class ThreadSafePromptManagerTest {
         List<Map<String, String>> messages = ThreadSafePromptManager.loadPrContent("`#user#`\nHello world.");
 
         assertThat(messages).hasSize(1);
-        assertThat(messages.getFirst())
+        assertThat(messages.get(0))
                 .containsEntry("role", "user")
                 .containsEntry("content", "\nHello world.");
     }

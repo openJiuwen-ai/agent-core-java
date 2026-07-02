@@ -165,7 +165,7 @@ public final class TodoTools {
                         .append(modelInfo)
                         .append("\n");
             }
-            String firstTask = todos.isEmpty() ? "" : todos.getFirst().getContent();
+            String firstTask = todos.isEmpty() ? "" : todos.get(0).getContent();
             result.append("\nNext step: Immediately execute task '").append(firstTask).append("'");
             return result.toString().strip();
         }

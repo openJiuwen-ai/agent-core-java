@@ -62,7 +62,7 @@ class LLMAgentWorkflowInterruptMockMissingTest {
 
         List<?> firstResult = assertThatList(first);
         assertThat(firstResult).isNotEmpty();
-        OutputSchema interaction = assertThatOutput(firstResult.getFirst());
+        OutputSchema interaction = assertThatOutput(firstResult.get(0));
         assertThat(interaction.getType()).isEqualTo("__interaction__");
         assertThat(interaction.getPayload()).isInstanceOf(InteractionPayload.class);
         assertThat(((InteractionPayload) interaction.getPayload()).id()).isEqualTo("questioner");

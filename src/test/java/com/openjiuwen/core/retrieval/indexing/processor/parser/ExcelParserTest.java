@@ -213,10 +213,10 @@ class ExcelParserTest {
                             Integer.parseInt(String.valueOf(left.getMetadata().get("row_index"))),
                             Integer.parseInt(String.valueOf(right.getMetadata().get("row_index")))))
                     .toList();
-            assertThat(rowDocuments.getFirst().getMetadata())
+            assertThat(rowDocuments.get(0).getMetadata())
                     .containsEntry("sheet_name", "Sheet1")
                     .containsEntry("row_index", 2);
-            assertThat(rowDocuments.getFirst().getText()).contains("Alice", "Sales");
+            assertThat(rowDocuments.get(0).getText()).contains("Alice", "Sales");
             assertThat(rowDocuments.get(1).getMetadata()).containsEntry("row_index", 3);
             assertThat(rowDocuments.get(1).getText()).contains("Bob", "Tech");
             assertThat(columnDocuments).extracting(document -> String.valueOf(document.getMetadata().get("column_name")))
@@ -323,8 +323,8 @@ class ExcelParserTest {
             List<Document> columnDocuments = bySourceType(documents, "column");
             assertThat(rowDocuments).hasSize(2);
             assertThat(columnDocuments).hasSize(3);
-            assertThat(rowDocuments.getFirst().getMetadata()).containsEntry("sheet_name", path.getFileName().toString());
-            assertThat(rowDocuments.getFirst().getText()).contains("Alice");
+            assertThat(rowDocuments.get(0).getMetadata()).containsEntry("sheet_name", path.getFileName().toString());
+            assertThat(rowDocuments.get(0).getText()).contains("Alice");
             assertThat(columnDocuments).extracting(document -> String.valueOf(document.getMetadata().get("column_name")))
                     .containsExactlyInAnyOrder("Name", "Dept", "Sales");
         }
@@ -385,7 +385,7 @@ class ExcelParserTest {
             List<Document> columnDocuments = bySourceType(documents, "column");
             assertThat(rowDocuments).hasSize(2);
             assertThat(columnDocuments).hasSize(3);
-            assertThat(rowDocuments.getFirst().getText()).contains("Alice");
+            assertThat(rowDocuments.get(0).getText()).contains("Alice");
             assertThat(columnDocuments).extracting(document -> String.valueOf(document.getMetadata().get("column_name")))
                     .containsExactlyInAnyOrder("Name", "Dept", "Sales");
         }
@@ -402,7 +402,7 @@ class ExcelParserTest {
             List<Document> columnDocuments = bySourceType(documents, "column");
 
             assertThat(rowDocuments).hasSize(1);
-            assertThat(rowDocuments.getFirst().getText()).isEqualTo("1, 2");
+            assertThat(rowDocuments.get(0).getText()).isEqualTo("1, 2");
             assertThat(columnDocuments).hasSize(2);
             assertThat(columnDocuments).extracting(Document::getText).containsExactly("1", "2");
         }
@@ -415,7 +415,7 @@ class ExcelParserTest {
     }
 
     private static Document firstBySourceType(List<Document> documents, String sourceType) {
-        return bySourceType(documents, sourceType).getFirst();
+        return bySourceType(documents, sourceType).get(0);
     }
 
     private static void createSampleXlsx(Path path) throws IOException {

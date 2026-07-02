@@ -209,7 +209,7 @@ class CodeAgentExecutionModePythonParityTest {
     }
 
     private static AskUserRail askUserRail(DeepAgent agent) {
-        return (AskUserRail) agent.findRailsByType(AskUserRail.class).getFirst();
+        return (AskUserRail) agent.findRailsByType(AskUserRail.class).get(0);
     }
 
     private static RejectResult resumeAnswer(

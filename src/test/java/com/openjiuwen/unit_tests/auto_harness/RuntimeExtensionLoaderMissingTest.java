@@ -48,7 +48,7 @@ class RuntimeExtensionLoaderMissingTest {
 
         assertThat(rails).containsExactly(DemoRail.class);
         assertThat(tools).containsExactly(DemoTool.class);
-        assertThat(((Tool) tools.getFirst().getDeclaredConstructor().newInstance()).getCard().getDescription())
+        assertThat(((Tool) tools.get(0).getDeclaredConstructor().newInstance()).getCard().getDescription())
                 .isEqualTo("runtime-ok");
     }
 
@@ -96,9 +96,9 @@ class RuntimeExtensionLoaderMissingTest {
         assertThat(loaded).anyMatch(item -> item.startsWith("skill_dir:"));
         SkillUseRail skillRail = firstSkillRail(agent);
         List<String> skillDirs = skillRail.getSkillDirs();
-        assertThat(Path.of(skillDirs.getFirst()).toString()).endsWith(Path.of("demo_ext", "skills").toString());
-        assertThat(skillRail.getSkillsMeta().getFirst().name()).isEqualTo("shared_skill");
-        assertThat(Path.of(skillRail.getSkillsMeta().getFirst().directory()).toString())
+        assertThat(Path.of(skillDirs.get(0)).toString()).endsWith(Path.of("demo_ext", "skills").toString());
+        assertThat(skillRail.getSkillsMeta().get(0).name()).isEqualTo("shared_skill");
+        assertThat(Path.of(skillRail.getSkillsMeta().get(0).directory()).toString())
                 .endsWith(Path.of("demo_ext", "skills", "shared_skill").toString());
     }
 

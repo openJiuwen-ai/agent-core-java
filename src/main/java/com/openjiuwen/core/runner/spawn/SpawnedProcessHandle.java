@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.runner.spawn;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
+
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 
@@ -23,7 +25,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -37,11 +38,7 @@ import java.util.concurrent.TimeoutException;
 public class SpawnedProcessHandle {
 
     private static final LoggerProtocol LOGGER = Loggers.RUNNER;
-    private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool(runnable -> {
-        Thread thread = new Thread(runnable, "spawn-process-manager");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private static final ExecutorService EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor("spawn-process-manager");
 
     private final String processId;
     private final Process process;

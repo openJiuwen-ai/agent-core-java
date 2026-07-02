@@ -43,7 +43,7 @@ public class RolloutEncoder {
         boolean shouldLog = ThreadLocalRandom.current().nextDouble() < 0.05d;
         String groundTruth = "";
         if (!rolloutInfo.isEmpty()) {
-            groundTruth = stringValue(safeMap(rolloutInfo.getFirst().getInputPrompt()).get("ground_truth"));
+            groundTruth = stringValue(safeMap(rolloutInfo.get(0).getInputPrompt()).get("ground_truth"));
         }
 
         double globalReward = resolveReward(rolloutMessage);
@@ -176,12 +176,12 @@ public class RolloutEncoder {
         List<Map<String, Object>> allMessages = toMessageList(safeMap(lastTurn.getInputPrompt()).get("message"));
         allMessages.add(copyMap(safeMap(lastTurn.getOutputResponse())));
         List<Map<String, Object>> toolsInfo = toMessageList(
-                safeMap(rolloutInfo.getFirst().getInputPrompt()).get("tools")
+                safeMap(rolloutInfo.get(0).getInputPrompt()).get("tools")
         );
         Object toolsArg = toolsInfo.isEmpty() ? null : toolsInfo;
 
         List<Map<String, Object>> initialMessages = toMessageList(
-                safeMap(rolloutInfo.getFirst().getInputPrompt()).get("message")
+                safeMap(rolloutInfo.get(0).getInputPrompt()).get("message")
         );
         String promptText = applyChatTemplate(initialMessages, false, true, toolsArg);
         String fullText = applyChatTemplate(allMessages, false, false, toolsArg);
@@ -215,7 +215,7 @@ public class RolloutEncoder {
 
         double reward = resolveReward(rolloutMessage);
         String groundTruth = stringValue(
-                safeMap(safeMap(rolloutInfo.getFirst().getInputPrompt())).get("ground_truth")
+                safeMap(safeMap(rolloutInfo.get(0).getInputPrompt())).get("ground_truth")
         );
         boolean shouldLog = ThreadLocalRandom.current().nextDouble() < 0.05d;
         if (shouldLog) {

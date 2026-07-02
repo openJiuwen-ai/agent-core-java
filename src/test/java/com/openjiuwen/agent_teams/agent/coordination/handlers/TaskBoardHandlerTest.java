@@ -83,7 +83,7 @@ class TaskBoardHandlerTest {
 
         assertEquals(1, poll.resumeCount);
         assertEquals(1, host.delivered.size());
-        assertTrue(host.delivered.getFirst().contains("[T1]"));
+        assertTrue(host.delivered.get(0).contains("[T1]"));
         assertTrue(taskManager.listCalls == 0);
     }
 
@@ -108,9 +108,9 @@ class TaskBoardHandlerTest {
         assertEquals(1, poll.resumeCount);
         assertEquals(1, taskManager.listCalls);
         assertEquals(1, host.delivered.size());
-        assertTrue(host.delivered.getFirst().contains("[T1]"));
-        assertTrue(host.delivered.getFirst().contains("[T2]"));
-        assertFalse(host.delivered.getFirst().contains("[T3]"));
+        assertTrue(host.delivered.get(0).contains("[T1]"));
+        assertTrue(host.delivered.get(0).contains("[T2]"));
+        assertFalse(host.delivered.get(0).contains("[T3]"));
     }
 
     @Test
@@ -135,8 +135,8 @@ class TaskBoardHandlerTest {
 
         assertEquals(1, poll.resumeCount);
         assertEquals(1, host.delivered.size());
-        assertTrue(host.delivered.getFirst().contains("[T1]"));
-        assertTrue(host.delivered.getFirst().contains("Title T1"));
+        assertTrue(host.delivered.get(0).contains("[T1]"));
+        assertTrue(host.delivered.get(0).contains("Title T1"));
         assertEquals(1, taskManager.getCalls);
         assertEquals(0, taskManager.listCalls);
     }
@@ -158,8 +158,8 @@ class TaskBoardHandlerTest {
 
         assertEquals(2, poll.resumeCount);
         assertEquals(1, host.delivered.size());
-        assertTrue(host.delivered.getFirst().contains("[T1]"));
-        assertFalse(host.delivered.getFirst().contains("[T2]"));
+        assertTrue(host.delivered.get(0).contains("[T1]"));
+        assertFalse(host.delivered.get(0).contains("[T2]"));
     }
 
     @Test
@@ -179,7 +179,7 @@ class TaskBoardHandlerTest {
         handler.nudgeIdleAgent("leader", false).toCompletableFuture().join();
 
         assertEquals(2, host.delivered.size());
-        assertTrue(host.delivered.getFirst().contains("[T1]"));
+        assertTrue(host.delivered.get(0).contains("[T1]"));
         assertTrue(host.delivered.get(1).contains("所有任务已完成"));
     }
 

@@ -60,7 +60,7 @@ class WorkflowAgentStreamMissingTest {
                 .filter(chunk -> "workflow_final".equals(chunk.getType()))
                 .toList();
         assertThat(finalChunks).hasSize(1);
-        assertThat(map(finalChunks.getFirst().getPayload())).containsEntry("result", expectedResult);
+        assertThat(map(finalChunks.get(0).getPayload())).containsEntry("result", expectedResult);
     }
 
     private static WorkflowAgent agentWith(DeterministicStreamController controller) {

@@ -68,7 +68,7 @@ class ReActAgentExternalToolPendingTest {
         assertThat(resultMap).containsEntry("result_type", "external_tool_call_required");
         List<Map<String, Object>> calls = externalToolCalls(resultMap);
         assertThat(calls).hasSize(1);
-        assertThat(calls.getFirst())
+        assertThat(calls.get(0))
                 .containsEntry("tool_call_id", "call-external")
                 .containsEntry("tool_name", EXTERNAL_TOOL_NAME)
                 .containsEntry("arguments", "{\"field_id\":\"demo_external_text\"}");

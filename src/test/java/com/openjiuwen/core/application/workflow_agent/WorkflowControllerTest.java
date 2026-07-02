@@ -112,7 +112,7 @@ class WorkflowControllerTest {
         assertThat(intent.getMetadata()).containsEntry("return_interruption", true);
         Object returned = controller.handleResume(event("E1", "hello"), intent, session);
         assertThat((List<?>) returned).hasSize(1);
-        OutputSchema output = (OutputSchema) ((List<?>) returned).getFirst();
+        OutputSchema output = (OutputSchema) ((List<?>) returned).get(0);
         assertThat(output.getType()).isEqualTo(Constant.INTERACTION);
     }
 

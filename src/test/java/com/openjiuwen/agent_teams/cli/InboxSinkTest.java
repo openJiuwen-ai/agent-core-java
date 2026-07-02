@@ -59,7 +59,7 @@ class InboxSinkTest {
                 456L
         )).toCompletableFuture().join();
 
-        assertThat(lines.getFirst())
+        assertThat(lines.get(0))
                 .isEqualTo("[bold yellow][inbox/human][/bold yellow] [dim]broadcast from <leader>[/dim] broadcast");
     }
 }

@@ -119,7 +119,7 @@ class MessageHandlerTest {
                 .join();
 
         assertEquals(1, host.delivered.size());
-        assertTrue(host.useSteerValues.getFirst());
+        assertTrue(host.useSteerValues.get(0));
     }
 
     @Test
@@ -141,9 +141,9 @@ class MessageHandlerTest {
 
         assertEquals(List.of("event-1:user"), messageManager.marked);
         assertEquals(1, backend.inboundEvents.size());
-        assertEquals("user", backend.inboundEvents.getFirst().memberName());
-        assertEquals("dev", backend.inboundEvents.getFirst().sender());
-        assertFalse(backend.inboundEvents.getFirst().broadcast());
+        assertEquals("user", backend.inboundEvents.get(0).memberName());
+        assertEquals("dev", backend.inboundEvents.get(0).sender());
+        assertFalse(backend.inboundEvents.get(0).broadcast());
     }
 
     @Test

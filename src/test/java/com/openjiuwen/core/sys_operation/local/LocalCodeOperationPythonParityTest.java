@@ -306,14 +306,14 @@ class LocalCodeOperationPythonParityTest {
         List<ExecuteCodeStreamResult> empty = collect(operation().executeCodeStream(
                 "", BaseCodeOperation.CodeLanguage.PYTHON, 10, null, null, null));
         assertThat(empty).hasSize(1);
-        assertThat(empty.getFirst().getCode()).isEqualTo(StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR.getCode());
-        assertThat(empty.getFirst().getMessage()).contains("code can not be empty");
-        assertThat(empty.getFirst().getData().getExitCode()).isNotZero();
+        assertThat(empty.get(0).getCode()).isEqualTo(StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR.getCode());
+        assertThat(empty.get(0).getMessage()).contains("code can not be empty");
+        assertThat(empty.get(0).getData().getExitCode()).isNotZero();
 
         List<ExecuteCodeStreamResult> blank = collect(operation().executeCodeStream(
                 "   \n\t", BaseCodeOperation.CodeLanguage.PYTHON, 10, null, null, null));
         assertThat(blank).hasSize(1);
-        assertThat(blank.getFirst().getMessage()).contains("code can not be empty");
+        assertThat(blank.get(0).getMessage()).contains("code can not be empty");
     }
 
     private void executeCodeStreamUnsupportedLanguage() throws Exception {
@@ -321,7 +321,7 @@ class LocalCodeOperationPythonParityTest {
                 "print(1)", "java", 10, null, null, null));
 
         assertThat(results).hasSize(1);
-        ExecuteCodeStreamResult result = results.getFirst();
+        ExecuteCodeStreamResult result = results.get(0);
         assertThat(result.getCode()).isEqualTo(StatusCode.SYS_OPERATION_CODE_EXECUTION_ERROR.getCode());
         assertThat(result.getMessage()).contains("java is not supported");
         assertThat(result.getData().getExitCode()).isNotZero();
@@ -338,8 +338,8 @@ class LocalCodeOperationPythonParityTest {
 
         assertThat(results.size()).isGreaterThanOrEqualTo(2);
         assertThat(combinedText(results, StreamEventType.STDOUT)).contains("hello python", "stream test for python");
-        assertThat(results.getLast().getMessage()).isEqualTo("Code executed successfully");
-        assertThat(results.getLast().getData().getExitCode()).isZero();
+        assertThat(results.get(results.size() - 1).getMessage()).isEqualTo("Code executed successfully");
+        assertThat(results.get(results.size() - 1).getData().getExitCode()).isZero();
     }
 
     private void executeCodeStreamPythonStderr() throws Exception {
@@ -350,8 +350,8 @@ class LocalCodeOperationPythonParityTest {
 
         assertThat(results).isNotEmpty();
         assertThat(combinedText(results, StreamEventType.STDERR)).contains("NameError");
-        assertThat(results.getLast().getMessage()).isEqualTo("Code executed successfully");
-        assertThat(results.getLast().getData().getExitCode()).isNotZero();
+        assertThat(results.get(results.size() - 1).getMessage()).isEqualTo("Code executed successfully");
+        assertThat(results.get(results.size() - 1).getData().getExitCode()).isNotZero();
     }
 
     private void executeCodeStreamJavascriptNormal() throws Exception {
@@ -366,8 +366,8 @@ class LocalCodeOperationPythonParityTest {
 
         assertThat(results.size()).isGreaterThanOrEqualTo(2);
         assertThat(combinedText(results, StreamEventType.STDOUT)).contains("hello javascript", "stream test for js");
-        assertThat(results.getLast().getMessage()).isEqualTo("Code executed successfully");
-        assertThat(results.getLast().getData().getExitCode()).isZero();
+        assertThat(results.get(results.size() - 1).getMessage()).isEqualTo("Code executed successfully");
+        assertThat(results.get(results.size() - 1).getData().getExitCode()).isZero();
     }
 
     private void executeCodeStreamCustomOptions() throws Exception {
@@ -417,8 +417,8 @@ class LocalCodeOperationPythonParityTest {
 
         assertThat(results.size()).isGreaterThanOrEqualTo(2);
         assertThat(stdoutText(results)).contains("default parameter test success");
-        assertThat(results.getLast().getMessage()).isEqualTo("Code executed successfully");
-        assertThat(results.getLast().getData().getExitCode()).isZero();
+        assertThat(results.get(results.size() - 1).getMessage()).isEqualTo("Code executed successfully");
+        assertThat(results.get(results.size() - 1).getData().getExitCode()).isZero();
     }
 
     private ExecuteCodeResult execute(String code) throws Exception {

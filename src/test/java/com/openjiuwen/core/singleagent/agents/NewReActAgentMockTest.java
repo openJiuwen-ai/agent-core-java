@@ -321,7 +321,7 @@ class NewReActAgentMockTest {
                 session, List.of());
 
         assertThat(iterator).toIterable().hasSize(1);
-        OutputSchema output = (OutputSchema) session.stream.getFirst();
+        OutputSchema output = (OutputSchema) session.stream.get(0);
         assertThat(output.getType()).isEqualTo("answer");
         assertThat(stringObjectMap((Map<?, ?>) output.getPayload())).containsEntry("output", "streamed");
     }
@@ -380,12 +380,13 @@ class NewReActAgentMockTest {
     }
 
     @Test
-    void streamProducerRunsOnVirtualThread() throws Exception {
+    void streamProducerRunsOnBackgroundThread() throws Exception {
         CountDownLatch allowSecondChunk = new CountDownLatch(1);
-        CompletableFuture<Boolean> virtualThreadSeen = new CompletableFuture<>();
+        long callerThreadId = Thread.currentThread().getId();
+        CompletableFuture<Long> streamThreadId = new CompletableFuture<>();
         ReActAgent agent = new ReActAgent(agentCard("virtual_stream_agent", "virtual_stream_agent",
-                "Virtual stream agent"));
-        agent.setLlm(new Model(new BlockingStreamModelClient(allowSecondChunk, virtualThreadSeen)));
+                "Background stream agent"));
+        agent.setLlm(new Model(new BlockingStreamModelClient(allowSecondChunk, streamThreadId)));
         AgentSession session = new AgentSession("virtual-stream-session", null, agent.getCard());
 
         Iterator<Object> iterator = agent.stream(
@@ -400,7 +401,7 @@ class NewReActAgentMockTest {
             iterator.next();
         }
 
-        assertThat(virtualThreadSeen.get(1, TimeUnit.SECONDS)).isTrue();
+        assertThat(streamThreadId.get(1, TimeUnit.SECONDS)).isNotEqualTo(callerThreadId);
     }
 
     @Test
@@ -574,7 +575,7 @@ class NewReActAgentMockTest {
         card.setInputParams(querySchema());
         abilityManager.add(card);
 
-        ToolInfo toolInfo = abilityManager.listToolInfo().getFirst();
+        ToolInfo toolInfo = abilityManager.listToolInfo().get(0);
 
         assertThat(toolInfo.getName()).isEqualTo("sub_agent");
         assertThat(toolInfo.getParameters()).containsEntry("type", "object");
@@ -588,7 +589,7 @@ class NewReActAgentMockTest {
         card.setInputParams(AgentInputParams.class);
         abilityManager.add(card);
 
-        ToolInfo toolInfo = abilityManager.listToolInfo().getFirst();
+        ToolInfo toolInfo = abilityManager.listToolInfo().get(0);
 
         assertThat(toolInfo.getParameters()).isEqualTo(defaultObjectSchema());
     }
@@ -600,7 +601,7 @@ class NewReActAgentMockTest {
         card.setInputParams(null);
         abilityManager.add(card);
 
-        ToolInfo toolInfo = abilityManager.listToolInfo().getFirst();
+        ToolInfo toolInfo = abilityManager.listToolInfo().get(0);
 
         assertThat(toolInfo.getParameters()).isEqualTo(defaultObjectSchema());
     }
@@ -638,7 +639,7 @@ class NewReActAgentMockTest {
         );
 
         assertThat(results).hasSize(1);
-        assertThat(String.valueOf(results.getFirst().toolMessage().getContent())).contains("add");
+        assertThat(String.valueOf(results.get(0).toolMessage().getContent())).contains("add");
         assertThat(context.getMessages(null, true)).hasSize(1);
     }
 
@@ -652,8 +653,8 @@ class NewReActAgentMockTest {
         );
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().result()).isInstanceOf(AgentCard.class);
-        assertThat(results.getFirst().toolMessage().getToolCallId()).isEqualTo("call-1");
+        assertThat(results.get(0).result()).isInstanceOf(AgentCard.class);
+        assertThat(results.get(0).toolMessage().getToolCallId()).isEqualTo("call-1");
     }
 
     private static ContextEngineConfig defaultContextConfig() {
@@ -769,7 +770,7 @@ class NewReActAgentMockTest {
 
     private static final class BlockingStreamModelClient implements Model.ModelClient {
         private final CountDownLatch allowSecondChunk;
-        private final CompletableFuture<Boolean> virtualThreadSeen;
+        private final CompletableFuture<Long> streamThreadId;
         private final CompletableFuture<Boolean> iteratorClosed;
 
         private BlockingStreamModelClient(CountDownLatch allowSecondChunk) {
@@ -777,15 +778,15 @@ class NewReActAgentMockTest {
         }
 
         private BlockingStreamModelClient(CountDownLatch allowSecondChunk,
-                                          CompletableFuture<Boolean> virtualThreadSeen) {
-            this(allowSecondChunk, virtualThreadSeen, new CompletableFuture<>());
+                                          CompletableFuture<Long> streamThreadId) {
+            this(allowSecondChunk, streamThreadId, new CompletableFuture<>());
         }
 
         private BlockingStreamModelClient(CountDownLatch allowSecondChunk,
-                                          CompletableFuture<Boolean> virtualThreadSeen,
+                                          CompletableFuture<Long> streamThreadId,
                                           CompletableFuture<Boolean> iteratorClosed) {
             this.allowSecondChunk = allowSecondChunk;
-            this.virtualThreadSeen = virtualThreadSeen;
+            this.streamThreadId = streamThreadId;
             this.iteratorClosed = iteratorClosed;
         }
 
@@ -809,7 +810,7 @@ class NewReActAgentMockTest {
 
             @Override
             public AssistantMessageChunk next() {
-                virtualThreadSeen.complete(Thread.currentThread().isVirtual());
+                streamThreadId.complete(Thread.currentThread().getId());
                 if (index++ == 0) {
                     return AssistantMessageChunk.builder()
                             .content("hel")

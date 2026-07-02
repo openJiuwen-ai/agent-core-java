@@ -101,7 +101,7 @@ public class WorkflowController {
 
         WorkflowSchema detectedWorkflow;
         if (workflows.size() == 1) {
-            detectedWorkflow = workflows.getFirst();
+            detectedWorkflow = workflows.get(0);
         } else {
             detectedWorkflow = detectWorkflowViaLlm(event, activeSession);
             if (detectedWorkflow == null) {
@@ -190,7 +190,7 @@ public class WorkflowController {
         try {
             if (workflowDetector == null) {
                 LOGGER.warning("No intent detection configured, using first workflow");
-                return workflows.getFirst();
+                return workflows.get(0);
             }
             List<Task> detectedTasks = workflowDetector.processMessage(event);
             if (detectedTasks == null || detectedTasks.isEmpty()) {
@@ -198,18 +198,18 @@ public class WorkflowController {
                 if (defaultResponse != null && !isBlank(defaultResponse.getText())) {
                     return null;
                 }
-                return workflows.getFirst();
+                return workflows.get(0);
             }
-            String workflowName = detectedTasks.getFirst().getInput().getTargetName();
+            String workflowName = detectedTasks.get(0).getInput().getTargetName();
             for (WorkflowSchema workflow : workflows) {
                 if (Objects.equals(workflow.getName(), workflowName)) {
                     return workflow;
                 }
             }
-            return workflows.getFirst();
+            return workflows.get(0);
         } catch (RuntimeException e) {
             LOGGER.warning("Intent detection failed: " + e.getMessage() + ", using first workflow");
-            return workflows.getFirst();
+            return workflows.get(0);
         }
     }
 
@@ -382,7 +382,7 @@ public class WorkflowController {
         if (componentIds.isEmpty()) {
             return "questioner";
         }
-        return componentIds.size() == 1 ? componentIds.getFirst() : componentIds;
+        return componentIds.size() == 1 ? componentIds.get(0) : componentIds;
     }
 
     Object extractInteractionValueFromInteractionData(List<?> interactionData) {

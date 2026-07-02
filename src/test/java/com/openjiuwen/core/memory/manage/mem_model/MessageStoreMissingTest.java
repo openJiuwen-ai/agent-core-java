@@ -233,7 +233,7 @@ class MessageStoreMissingTest {
                 BASE_TIME,
                 false,
                 2).join();
-        String messageId = configured.store.messageIds.getFirst();
+        String messageId = configured.store.messageIds.get(0);
 
         Map.Entry<BaseMessage, ZonedDateTime> retrieved = configured.memory.getMessageById(messageId).join();
 

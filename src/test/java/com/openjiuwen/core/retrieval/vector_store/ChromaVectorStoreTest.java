@@ -198,7 +198,7 @@ class ChromaVectorStoreTest {
         ).join();
 
         assertThat(results).hasSize(1);
-        RetrievalResult result = results.getFirst();
+        RetrievalResult result = results.get(0);
         assertThat(result.getText()).isEqualTo("alpha document");
         assertThat(result.getScore()).isEqualTo(1.0d);
         assertThat(result.getDocId()).isEqualTo("doc-1");
@@ -230,8 +230,8 @@ class ChromaVectorStoreTest {
                 Map.of()
         ).join();
         assertThat(sparse).hasSize(2);
-        assertThat(sparse.getFirst().getText()).isEqualTo("alpha document");
-        assertThat(sparse.getFirst().getScore()).isEqualTo(1.0d);
+        assertThat(sparse.get(0).getText()).isEqualTo("alpha document");
+        assertThat(sparse.get(0).getScore()).isEqualTo(1.0d);
 
         List<RetrievalResult> queryFiltered = store.search(
                 List.of(1.0d, 0.0d),
@@ -250,9 +250,9 @@ class ChromaVectorStoreTest {
                 Map.of()
         ).join();
         assertThat(hybrid).hasSize(1);
-        assertThat(hybrid.getFirst().getText()).isEqualTo("alpha document");
-        assertThat(hybrid.getFirst().getChunkId()).isEqualTo("chunk-1");
-        assertThat(hybrid.getFirst().getMetadata()).doesNotContainKey("id");
+        assertThat(hybrid.get(0).getText()).isEqualTo("alpha document");
+        assertThat(hybrid.get(0).getChunkId()).isEqualTo("chunk-1");
+        assertThat(hybrid.get(0).getMetadata()).doesNotContainKey("id");
     }
 
     @Test

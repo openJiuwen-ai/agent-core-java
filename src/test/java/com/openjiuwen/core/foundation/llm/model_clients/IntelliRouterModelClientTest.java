@@ -296,10 +296,10 @@ class IntelliRouterModelClientTest {
         assertThat(result.getReasoningContent()).isEqualTo("think");
         assertThat(result.getFinishReason()).isEqualTo("tool_calls");
         assertThat(result.getToolCalls()).hasSize(1);
-        assertThat(result.getToolCalls().getFirst().getId()).isEqualTo("call-1");
-        assertThat(result.getToolCalls().getFirst().getName()).isEqualTo("lookup");
-        assertThat(result.getToolCalls().getFirst().getArguments()).isEqualTo("{\"q\":\"java\"}");
-        assertThat(result.getToolCalls().getFirst().getIndex()).isZero();
+        assertThat(result.getToolCalls().get(0).getId()).isEqualTo("call-1");
+        assertThat(result.getToolCalls().get(0).getName()).isEqualTo("lookup");
+        assertThat(result.getToolCalls().get(0).getArguments()).isEqualTo("{\"q\":\"java\"}");
+        assertThat(result.getToolCalls().get(0).getIndex()).isZero();
     }
 
     @Test
@@ -545,7 +545,7 @@ class IntelliRouterModelClientTest {
 
         assertThat(params).containsKey("tools");
         List<?> tools = (List<?>) params.get("tools");
-        Map<?, ?> function = (Map<?, ?>) ((Map<?, ?>) tools.getFirst()).get("function");
+        Map<?, ?> function = (Map<?, ?>) ((Map<?, ?>) tools.get(0)).get("function");
         assertThat(function.get("name")).isEqualTo("test_tool");
     }
 

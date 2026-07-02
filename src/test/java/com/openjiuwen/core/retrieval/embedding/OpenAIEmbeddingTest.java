@@ -308,7 +308,7 @@ class OpenAIEmbeddingTest {
             } else {
                 batchSizes.add(1);
             }
-            Object next = responses.removeFirst();
+            Object next = responses.remove(0);
             if (next instanceof IOException ioException) {
                 throw ioException;
             }

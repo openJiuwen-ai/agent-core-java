@@ -145,14 +145,14 @@ class LLMAgentWithInterruptMissingTest {
     private static OutputSchema firstInteraction(Object result) {
         List<Object> items = list(result);
         assertThat(items).isNotEmpty();
-        assertThat(items.getFirst()).isInstanceOf(OutputSchema.class);
-        return (OutputSchema) items.getFirst();
+        assertThat(items.get(0)).isInstanceOf(OutputSchema.class);
+        return (OutputSchema) items.get(0);
     }
 
     private static OutputSchema onlyChunk(List<Object> chunks) {
         assertThat(chunks).hasSize(1);
-        assertThat(chunks.getFirst()).isInstanceOf(OutputSchema.class);
-        return (OutputSchema) chunks.getFirst();
+        assertThat(chunks.get(0)).isInstanceOf(OutputSchema.class);
+        return (OutputSchema) chunks.get(0);
     }
 
     private static List<Object> drain(Iterator<Object> iterator) {

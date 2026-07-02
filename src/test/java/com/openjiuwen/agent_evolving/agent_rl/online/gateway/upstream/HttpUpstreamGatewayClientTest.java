@@ -46,7 +46,7 @@ class HttpUpstreamGatewayClientTest {
 
         assertEquals(200, response.statusCode());
         assertEquals(2, requests.size());
-        assertEquals("/v1/chat/completions", requests.getFirst().uri().getPath());
+        assertEquals("/v1/chat/completions", requests.get(0).uri().getPath());
     }
 
     @Test

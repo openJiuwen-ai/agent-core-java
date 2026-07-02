@@ -232,7 +232,7 @@ class AutoHarnessE2eTest {
         assertEquals("test-task", prepared.task());
         assertNotNull(prepared.tasks());
         assertEquals(1, prepared.tasks().size());
-        assertEquals("test-task", prepared.tasks().getFirst().getTopic());
+        assertEquals("test-task", prepared.tasks().get(0).getTopic());
     }
 
     @Disabled(

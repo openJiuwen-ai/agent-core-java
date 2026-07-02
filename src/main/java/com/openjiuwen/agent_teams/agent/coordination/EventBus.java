@@ -294,7 +294,7 @@ public class EventBus implements PollController, AutoCloseable {
     private static ThreadFactory daemonThreadFactory(String name) {
         return runnable -> {
             Thread thread = new Thread(runnable);
-            thread.setName(name + "-" + thread.threadId());
+            thread.setName(name + "-" + thread.getId());
             thread.setDaemon(true);
             return thread;
         };

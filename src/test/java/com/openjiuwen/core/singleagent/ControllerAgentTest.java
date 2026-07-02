@@ -78,7 +78,7 @@ class ControllerAgentTest {
         assertEquals("invoked", result);
         assertSame(session, controller.session);
         assertInstanceOf(InputEvent.class, controller.inputEvent);
-        DataFrame frame = controller.inputEvent.getInputData().getFirst();
+        DataFrame frame = controller.inputEvent.getInputData().get(0);
         assertInstanceOf(DataFrame.TextDataFrame.class, frame);
         assertEquals("hello", ((DataFrame.TextDataFrame) frame).text());
     }
@@ -95,7 +95,7 @@ class ControllerAgentTest {
         assertEquals("chunk-1", iterator.next());
         assertSame(session, controller.session);
         assertEquals(List.of(StreamMode.OUTPUT), controller.streamModes);
-        DataFrame frame = controller.inputEvent.getInputData().getFirst();
+        DataFrame frame = controller.inputEvent.getInputData().get(0);
         assertInstanceOf(DataFrame.JsonDataFrame.class, frame);
         assertEquals("hello", ((DataFrame.JsonDataFrame) frame).data().get("query"));
     }

@@ -48,7 +48,7 @@ class FileRolloutStoreTest {
         assertThat(file).exists();
         List<String> lines = Files.readAllLines(file);
         assertThat(lines).hasSize(1);
-        Map<String, Object> doc = MAPPER.readValue(lines.getFirst(), MAP_TYPE);
+        Map<String, Object> doc = MAPPER.readValue(lines.get(0), MAP_TYPE);
         assertThat(doc).containsEntry("task_id", "t1").containsEntry("global_reward", 1.0d);
     }
 
@@ -140,7 +140,7 @@ class FileRolloutStoreTest {
 
         List<Map<String, Object>> filtered = store.queryRollouts(Map.of("task_id", "t1"), 10);
         assertThat(filtered).hasSize(1);
-        assertThat(filtered.getFirst()).containsEntry("task_id", "t1");
+        assertThat(filtered.get(0)).containsEntry("task_id", "t1");
     }
 
     @Test

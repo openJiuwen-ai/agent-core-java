@@ -126,7 +126,7 @@ class TrajectoryStoreTest {
         List<Trajectory> results = store.query(null, Map.of("case_id", "case1"));
 
         assertEquals(1, results.size());
-        assertEquals("case1", results.getFirst().getCaseId());
+        assertEquals("case1", results.get(0).getCaseId());
     }
 
     @Test
@@ -138,7 +138,7 @@ class TrajectoryStoreTest {
         List<Trajectory> results = store.query(null, Map.of("source", "online"));
 
         assertEquals(1, results.size());
-        assertEquals("online", results.getFirst().getSource());
+        assertEquals("online", results.get(0).getSource());
     }
 
     @Test
@@ -205,7 +205,7 @@ class TrajectoryStoreTest {
         List<Trajectory> results = store.query(null, Map.of("case_id", "case1"));
 
         assertEquals(1, results.size());
-        assertEquals("case1", results.getFirst().getCaseId());
+        assertEquals("case1", results.get(0).getCaseId());
     }
 
     @Test
@@ -226,7 +226,7 @@ class TrajectoryStoreTest {
         store.save(makeTrajectory("exec1", "case1"), null);
 
         List<String> lines = Files.readAllLines(tempDir.resolve("trajectories_default.jsonl"));
-        Map<String, Object> data = JSON.readValue(lines.getFirst(), new TypeReference<>() {
+        Map<String, Object> data = JSON.readValue(lines.get(0), new TypeReference<>() {
         });
 
         assertEquals(1, lines.size());
@@ -283,7 +283,7 @@ class TrajectoryStoreTest {
         List<Trajectory> results = store.query(null, Map.of());
 
         assertEquals(1, results.size());
-        assertEquals("exec1", results.getFirst().getExecutionId());
+        assertEquals("exec1", results.get(0).getExecutionId());
     }
 
     @Test
@@ -304,7 +304,7 @@ class TrajectoryStoreTest {
         Trajectory loaded = store.load("exec1", null);
 
         assertNotNull(loaded);
-        TrajectoryStep loadedStep = loaded.getSteps().getFirst();
+        TrajectoryStep loadedStep = loaded.getSteps().get(0);
         assertEquals("llm", loadedStep.getKind());
         LLMCallDetail detail = assertInstanceOf(LLMCallDetail.class, loadedStep.getDetail());
         assertEquals("gpt-4", detail.getModel());
@@ -321,7 +321,7 @@ class TrajectoryStoreTest {
         Trajectory loaded = store.load("exec1", null);
 
         assertNotNull(loaded);
-        ToolCallDetail detail = assertInstanceOf(ToolCallDetail.class, loaded.getSteps().getFirst().getDetail());
+        ToolCallDetail detail = assertInstanceOf(ToolCallDetail.class, loaded.getSteps().get(0).getDetail());
         assertEquals("test_tool", detail.getToolName());
         assertEquals(Map.of("arg", "value"), detail.getCallArgs());
         assertEquals(Map.of("result", "success"), detail.getCallResult());
@@ -346,7 +346,7 @@ class TrajectoryStoreTest {
         Trajectory loaded = store.load("exec-payload", null);
 
         assertNotNull(loaded);
-        TrajectoryStep loadedStep = loaded.getSteps().getFirst();
+        TrajectoryStep loadedStep = loaded.getSteps().get(0);
         ToolCallDetail detail = assertInstanceOf(ToolCallDetail.class, loadedStep.getDetail());
         assertEquals(Map.of("value", "arg"), detail.getCallArgs());
         assertEquals(Map.of("value", "result"), detail.getCallResult());

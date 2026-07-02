@@ -91,7 +91,7 @@ class TestLearningsStage {
 
         List<Object> events = collect(stage.stream(ctx));
 
-        assertThat(events.getFirst()).isInstanceOf(OutputSchema.class);
+        assertThat(events.get(0)).isInstanceOf(OutputSchema.class);
         StageResult stageResult = (StageResult) events.get(1);
         SessionResultsArtifact artifact = (SessionResultsArtifact) stageResult.getArtifacts().get("session_results");
         assertThat(artifact.getResults()).containsExactly(result);
@@ -101,7 +101,7 @@ class TestLearningsStage {
         assertThat(store.listRecent(10).join())
                 .extracting(Experience::getTopic)
                 .contains("lint");
-        Experience recorded = store.search("focused", 5).join().getFirst();
+        Experience recorded = store.search("focused", 5).join().get(0);
         assertThat(recorded.getType()).isEqualTo(ExperienceType.INSIGHT);
         assertThat(recorded.getSummary()).isEqualTo("run focused checks");
         assertThat(recorded.getDetails()).isEqualTo("keep scope small");

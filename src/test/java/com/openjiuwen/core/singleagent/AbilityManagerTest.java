@@ -159,8 +159,8 @@ class AbilityManagerTest {
         List<AbilityManager.ExecutionResult> results = manager.execute(call);
 
         assertEquals(1, results.size());
-        assertEquals("call-1", results.getFirst().toolMessage().getToolCallId());
-        assertTrue(String.valueOf(results.getFirst().toolMessage().getContent())
+        assertEquals("call-1", results.get(0).toolMessage().getToolCallId());
+        assertTrue(String.valueOf(results.get(0).toolMessage().getContent())
                 .contains("Invalid tool arguments JSON:"));
     }
 
@@ -178,10 +178,10 @@ class AbilityManagerTest {
 
         assertEquals(1, results.size());
         assertEquals("hello", tool.invokedText);
-        assertEquals(Map.of("echo", "hello"), results.getFirst().result());
-        assertEquals("call-1", results.getFirst().toolMessage().getToolCallId());
-        assertEquals("echoTool", results.getFirst().toolMessage().getName());
-        assertEquals("{\"echo\":\"hello\"}", results.getFirst().toolMessage().getContent());
+        assertEquals(Map.of("echo", "hello"), results.get(0).result());
+        assertEquals("call-1", results.get(0).toolMessage().getToolCallId());
+        assertEquals("echoTool", results.get(0).toolMessage().getName());
+        assertEquals("{\"echo\":\"hello\"}", results.get(0).toolMessage().getContent());
     }
 
     @Test
@@ -202,8 +202,8 @@ class AbilityManagerTest {
 
             assertEquals(1, results.size());
             assertEquals("hello", tool.invokedText);
-            assertEquals(Map.of("echo", "hello"), results.getFirst().result());
-            assertEquals("{\"echo\":\"hello\"}", results.getFirst().toolMessage().getContent());
+            assertEquals(Map.of("echo", "hello"), results.get(0).result());
+            assertEquals("{\"echo\":\"hello\"}", results.get(0).toolMessage().getContent());
         } finally {
             Runner.resourceMgr().removeTool(tool.getCard().getId());
         }
@@ -228,8 +228,8 @@ class AbilityManagerTest {
         List<AbilityManager.ExecutionResult> results = manager.executeResolvedTool(explodingTool, call);
 
         assertEquals(1, results.size());
-        assertEquals("call-1", results.getFirst().toolMessage().getToolCallId());
-        assertTrue(String.valueOf(results.getFirst().toolMessage().getContent())
+        assertEquals("call-1", results.get(0).toolMessage().getToolCallId());
+        assertTrue(String.valueOf(results.get(0).toolMessage().getContent())
                 .contains("Ability execution error: boom"));
     }
 

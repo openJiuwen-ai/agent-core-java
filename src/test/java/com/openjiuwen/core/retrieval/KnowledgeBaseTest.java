@@ -136,8 +136,8 @@ class KnowledgeBaseTest {
         List<Document> documents = kb.parseUrls(List.of("file://local", "https://example.test/doc")).join();
 
         assertEquals(1, documents.size());
-        assertEquals("https://example.test/doc", documents.getFirst().getText());
-        assertFalse(documents.getFirst().getId_().isBlank());
+        assertEquals("https://example.test/doc", documents.get(0).getText());
+        assertFalse(documents.get(0).getId_().isBlank());
     }
 
     @Test

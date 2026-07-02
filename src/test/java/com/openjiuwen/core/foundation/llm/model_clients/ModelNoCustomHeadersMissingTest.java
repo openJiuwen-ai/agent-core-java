@@ -200,7 +200,7 @@ class ModelNoCustomHeadersMissingTest {
             lastHeaders = new LinkedHashMap<>();
             exchange.getRequestHeaders().forEach((name, values) -> {
                 if (!values.isEmpty()) {
-                    lastHeaders.put(name, values.getFirst());
+                    lastHeaders.put(name, values.get(0));
                 }
             });
             byte[] bytes = responseBody.getBytes(StandardCharsets.UTF_8);

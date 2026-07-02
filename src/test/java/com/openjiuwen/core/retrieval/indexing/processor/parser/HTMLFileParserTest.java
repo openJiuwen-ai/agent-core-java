@@ -125,12 +125,12 @@ class HTMLFileParserTest {
         List<Document> untitled = HTMLFileParser.parseHtml(withoutTitle, "id-2", "src").join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getId_()).isEqualTo("id-1");
-        assertThat(documents.getFirst().getText()).contains("Hello");
-        assertThat(documents.getFirst().getMetadata())
+        assertThat(documents.get(0).getId_()).isEqualTo("id-1");
+        assertThat(documents.get(0).getText()).contains("Hello");
+        assertThat(documents.get(0).getMetadata())
                 .containsEntry("title", "MetaTitle")
                 .containsEntry("source_type", "web_page");
-        assertThat(untitled.getFirst().getMetadata()).containsEntry("title", "(无标题)");
+        assertThat(untitled.get(0).getMetadata()).containsEntry("title", "(无标题)");
     }
 
     @Test
@@ -157,8 +157,8 @@ class HTMLFileParserTest {
         List<Document> documents = new HTMLFileParser().parse(html.toString(), "", null, Map.of()).join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getId_()).isEqualTo(html.toString());
-        assertThat(documents.getFirst().getText()).contains("日本語");
+        assertThat(documents.get(0).getId_()).isEqualTo(html.toString());
+        assertThat(documents.get(0).getText()).contains("日本語");
     }
 
     @Test
@@ -195,7 +195,7 @@ class HTMLFileParserTest {
                 .join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getMetadata())
+        assertThat(documents.get(0).getMetadata())
                 .containsEntry("doc_id", "auto-1")
                 .containsEntry("title", "Named")
                 .containsEntry("file_path", html.toString())

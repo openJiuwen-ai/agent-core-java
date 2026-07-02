@@ -51,7 +51,7 @@ class ReplyTopicSubscriptionTest {
         assertNull(subscription.isActive());
         subscription.activate();
 
-        assertEquals("reply-topic", queue.subscribedTopics.getFirst());
+        assertEquals("reply-topic", queue.subscribedTopics.get(0));
         assertTrue(queue.lastSubscription.isActive());
         assertEquals(Boolean.TRUE, subscription.isActive());
     }

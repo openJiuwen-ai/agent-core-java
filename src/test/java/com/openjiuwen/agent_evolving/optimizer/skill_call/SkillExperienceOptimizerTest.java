@@ -105,7 +105,7 @@ class SkillExperienceOptimizerTest {
         assertEquals("sum A", records.get(0).getSummary());
         assertEquals("B", records.get(1).getChange().getContent());
         assertEquals(EvolutionTarget.SCRIPT, records.get(2).getChange().getTarget());
-        assertEquals(12.0f, invoker.options().getFirst().getTimeout());
+        assertEquals(12.0f, invoker.options().get(0).getTimeout());
     }
 
     @Test
@@ -134,9 +134,9 @@ class SkillExperienceOptimizerTest {
                 optimizer.retryParse("not json", "original prompt", 1, "Expecting value");
 
         assertNotNull(result.patches());
-        assertEquals("fixed", result.patches().getFirst().getContent());
-        assertTrue(invoker.prompts().getFirst().contains("Expecting value"));
-        assertEquals(20.0f, invoker.options().getFirst().getTimeout());
+        assertEquals("fixed", result.patches().get(0).getContent());
+        assertTrue(invoker.prompts().get(0).contains("Expecting value"));
+        assertEquals(20.0f, invoker.options().get(0).getTimeout());
     }
 
     @Test
@@ -161,7 +161,7 @@ class SkillExperienceOptimizerTest {
                 """);
         assertNotNull(patches);
         assertEquals(1, patches.size());
-        assertNull(patches.getFirst().getMergeTarget());
+        assertNull(patches.get(0).getMergeTarget());
 
         assertEquals(List.of(1, 2), SkillExperienceOptimizer.extractJson("prefix [1, 2] suffix"));
         assertNull(SkillExperienceOptimizer.extractJson("no json"));
@@ -487,7 +487,7 @@ class SkillExperienceOptimizerTest {
         assertEquals("When tool calls time out, retry with a shorter prompt.", records.get(0).getSummary());
         assertEquals("B", records.get(1).getChange().getContent());
         assertEquals("Clarify selection wording when users ask for audits.", records.get(1).getSummary());
-        assertEquals(150.0f, invoker.options().getFirst().getTimeout());
+        assertEquals(150.0f, invoker.options().get(0).getTimeout());
     }
 
     private static void assertGenerateUsesCustomLlmPolicy() {
@@ -504,7 +504,7 @@ class SkillExperienceOptimizerTest {
         List<EvolutionRecord> records = optimizer.generateRecords(defaultContext(List.of(makeSignal("s1", "execution_failure"))));
 
         assertEquals(1, records.size());
-        assertEquals(12.0f, invoker.options().getFirst().getTimeout());
+        assertEquals(12.0f, invoker.options().get(0).getTimeout());
     }
 
     private static void assertGenerateAcceptsUserIntentSignal() {
@@ -524,8 +524,8 @@ class SkillExperienceOptimizerTest {
         List<EvolutionRecord> records = optimizer.generateRecords(defaultContext(List.of(signal)));
 
         assertEquals(1, records.size());
-        assertEquals("user_intent", records.getFirst().getSource());
-        assertEquals("Instructions", records.getFirst().getChange().getSection());
+        assertEquals("user_intent", records.get(0).getSource());
+        assertEquals("Instructions", records.get(0).getChange().getSection());
     }
 
     private static void assertNormalizeSummary() {
@@ -575,7 +575,7 @@ class SkillExperienceOptimizerTest {
         assertEquals("", codeblock.lastError());
         assertNotNull(codeblock.drafts());
         assertEquals(1, codeblock.drafts().size());
-        assertNull(codeblock.drafts().getFirst().getPatch().getMergeTarget());
+        assertNull(codeblock.drafts().get(0).getPatch().getMergeTarget());
 
         ExperienceDraftParser.DraftsWithError mixed = ExperienceDraftParser.parseExperienceDraftsWithError(
                 "prefix text {\"action\":\"append\",\"target\":\"invalid\",\"section\":\"NotExist\",\"content\":\"X\"} suffix",
@@ -583,8 +583,8 @@ class SkillExperienceOptimizerTest {
         );
         assertEquals("", mixed.lastError());
         assertNotNull(mixed.drafts());
-        assertEquals("Troubleshooting", mixed.drafts().getFirst().getPatch().getSection());
-        assertEquals(EvolutionTarget.BODY, mixed.drafts().getFirst().getPatch().getTarget());
+        assertEquals("Troubleshooting", mixed.drafts().get(0).getPatch().getSection());
+        assertEquals(EvolutionTarget.BODY, mixed.drafts().get(0).getPatch().getTarget());
     }
 
     private static void assertParseExperienceDraftsInvalidReturnsNone() {
@@ -796,10 +796,10 @@ class SkillExperienceOptimizerTest {
 
         assertNotNull(result.patches());
         assertEquals(1, result.patches().size());
-        assertEquals("fixed", result.patches().getFirst().getContent());
-        assertTrue(invoker.prompts().getFirst().contains("修复")
-                || invoker.prompts().getFirst().contains("invalid json"));
-        assertEquals(20.0f, invoker.options().getFirst().getTimeout());
+        assertEquals("fixed", result.patches().get(0).getContent());
+        assertTrue(invoker.prompts().get(0).contains("修复")
+                || invoker.prompts().get(0).contains("invalid json"));
+        assertEquals(20.0f, invoker.options().get(0).getTimeout());
     }
 
     private static void assertRetryOnTruncatedUsesOriginalPrompt() {
@@ -815,7 +815,7 @@ class SkillExperienceOptimizerTest {
 
         assertNotNull(result.patches());
         assertEquals(1, result.patches().size());
-        assertEquals("THE ORIGINAL PROMPT", invoker.prompts().getFirst());
+        assertEquals("THE ORIGINAL PROMPT", invoker.prompts().get(0));
     }
 
     private static void assertRetryReturnsEmptyOnDoubleFailure() {
@@ -846,7 +846,7 @@ class SkillExperienceOptimizerTest {
 
         optimizer.retryParse("not json at all", "orig", 1, "Expecting value: line 1 column 1");
 
-        assertTrue(invoker.prompts().getFirst().contains("Expecting value: line 1 column 1"));
+        assertTrue(invoker.prompts().get(0).contains("Expecting value: line 1 column 1"));
     }
 
     private static void assertRetryTruncatedAttemptThreeGivesUp() {
@@ -907,7 +907,7 @@ class SkillExperienceOptimizerTest {
 
         assertEquals(3, invoker.prompts().size());
         assertEquals(1, records.size());
-        assertEquals("final", records.getFirst().getChange().getContent());
+        assertEquals("final", records.get(0).getChange().getContent());
         assertTrue(invoker.prompts().get(2).contains("严格要求"));
         assertTrue(invoker.prompts().get(2).contains("broken2"));
     }
@@ -1195,7 +1195,7 @@ class SkillExperienceOptimizerTest {
         }
 
         private static String extractPrompt(List<BaseMessage> messages) {
-            if (messages != null && !messages.isEmpty() && messages.getFirst() instanceof UserMessage message) {
+            if (messages != null && !messages.isEmpty() && messages.get(0) instanceof UserMessage message) {
                 Object content = message.getContent();
                 return content == null ? "" : String.valueOf(content);
             }

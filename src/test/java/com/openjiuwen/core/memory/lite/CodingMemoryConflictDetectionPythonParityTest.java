@@ -350,7 +350,7 @@ class CodingMemoryConflictDetectionPythonParityTest {
 
         List<ReentrantLock> locks = futures.stream().map(CompletableFuture::join).toList();
 
-        assertTrue(locks.stream().allMatch(lock -> lock == locks.getFirst()));
+        assertTrue(locks.stream().allMatch(lock -> lock == locks.get(0)));
     }
 
     private void lockEntryRetainedAfterAsyncWith() throws ReflectiveOperationException {

@@ -39,8 +39,8 @@ class SparseRetrieverTest {
         assertThat(vectorStore.queries).containsExactly("query");
         assertThat(vectorStore.topKs).containsExactly(4);
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getDocId()).isEqualTo("doc-1");
-        assertThat(results.getFirst().getChunkId()).isEqualTo("chunk-1");
+        assertThat(results.get(0).getDocId()).isEqualTo("doc-1");
+        assertThat(results.get(0).getChunkId()).isEqualTo("chunk-1");
     }
 
     @Test
@@ -73,8 +73,8 @@ class SparseRetrieverTest {
 
         assertThat(vectorStore.queries).containsExactly("a", "b");
         assertThat(results).hasSize(2);
-        assertThat(results.get(0).getFirst().getText()).isEqualTo("a-result");
-        assertThat(results.get(1).getFirst().getText()).isEqualTo("b-result");
+        assertThat(results.get(0).get(0).getText()).isEqualTo("a-result");
+        assertThat(results.get(1).get(0).getText()).isEqualTo("b-result");
     }
 
     @Test
@@ -86,8 +86,8 @@ class SparseRetrieverTest {
         List<SearchResult> results = retriever.retrieveSearchResults("query", 2, "sparse", Map.of());
 
         assertThat(results).hasSize(1);
-        assertThat(results.getFirst().getId()).isEqualTo("chunk-9");
-        assertThat(results.getFirst().getMetadata()).containsEntry("doc_id", "doc-9");
+        assertThat(results.get(0).getId()).isEqualTo("chunk-9");
+        assertThat(results.get(0).getMetadata()).containsEntry("doc_id", "doc-9");
     }
 
     private static RetrievalResult result(String chunkId, String text, double score, Map<String, Object> metadata) {

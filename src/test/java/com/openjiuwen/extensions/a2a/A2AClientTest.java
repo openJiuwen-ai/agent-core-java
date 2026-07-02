@@ -74,7 +74,7 @@ class A2AClientTest {
 
         assertThat(result.getTaskId()).isEqualTo("task-1");
         assertThat(result.getSessionId()).isEqualTo("local-session");
-        assertThat(result.getArtifacts().getFirst().getParts().getFirst().getText()).isEqualTo("first");
+        assertThat(result.getArtifacts().get(0).getParts().get(0).getText()).isEqualTo("first");
         assertThat(transport.lastRequest.getMessage().getContextId()).isEqualTo("local-session");
         assertThat(transport.lastStream.closed).isTrue();
         assertThat(transport.lastStream.nextCount).isEqualTo(1);
@@ -129,7 +129,7 @@ class A2AClientTest {
         assertThat(results).hasSize(2);
         assertThat(results).extracting(AgentResult::getSessionId)
                 .containsExactly("stream-session", "stream-session");
-        assertThat(results.get(1).getArtifacts().getFirst().getParts().getFirst().getText()).isEqualTo("second");
+        assertThat(results.get(1).getArtifacts().get(0).getParts().get(0).getText()).isEqualTo("second");
         assertThat(transport.lastStream.closed).isTrue();
     }
 

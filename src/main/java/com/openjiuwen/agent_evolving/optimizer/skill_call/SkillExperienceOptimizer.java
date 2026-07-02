@@ -347,7 +347,7 @@ public class SkillExperienceOptimizer extends BaseOptimizer {
         }
 
         List<String> parts = new ArrayList<>();
-        parts.add(sections.getFirst());
+        parts.add(sections.get(0));
         if (sections.size() > 1) {
             parts.add("\n[以下章节仅保留标题与开头摘要，完整内容已省略]\n");
             for (int i = 1; i < sections.size(); i++) {
@@ -548,7 +548,7 @@ public class SkillExperienceOptimizer extends BaseOptimizer {
     }
 
     private List<EvolutionRecord> recordsFromDrafts(EvolutionContext ctx, List<ParsedExperienceDraft> drafts) {
-        String source = ctx.getSignals().getFirst().getSignalType();
+        String source = ctx.getSignals().get(0).getSignalType();
         String mergedContext = buildContext(ctx.getSignals(), CONTEXT_MAX_CHARS);
         List<EvolutionRecord> textRecords = new ArrayList<>();
         List<EvolutionRecord> scriptRecords = new ArrayList<>();

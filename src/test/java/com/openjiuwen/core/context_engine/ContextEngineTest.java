@@ -155,7 +155,7 @@ class ContextEngineTest {
         engine.createContext("ctx", new RecordingSession("session-openrouter"));
 
         assertThat(provider.timeouts).isNotEmpty();
-        assertThat(provider.timeouts.getFirst()).isEqualTo(0.25d);
+        assertThat(provider.timeouts.get(0)).isEqualTo(0.25d);
     }
 
     @Test

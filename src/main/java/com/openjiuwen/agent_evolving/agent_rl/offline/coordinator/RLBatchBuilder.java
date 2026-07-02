@@ -340,7 +340,7 @@ public class RLBatchBuilder {
 
     private static long[][] toLongMatrix(List<List<Integer>> values) {
         int rows = values.size();
-        int cols = rows == 0 ? 0 : values.getFirst().size();
+        int cols = rows == 0 ? 0 : values.get(0).size();
         long[][] matrix = new long[rows][cols];
         for (int rowIndex = 0; rowIndex < rows; rowIndex++) {
             List<Integer> row = values.get(rowIndex);

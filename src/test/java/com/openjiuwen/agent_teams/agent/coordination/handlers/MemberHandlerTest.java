@@ -112,8 +112,8 @@ class MemberHandlerTest {
         assertEquals("dev", taskManager.targetId);
         assertEquals(TaskStatus.CLAIMED.value(), taskManager.status);
         assertEquals(1, messageManager.sent.size());
-        assertTrue(messageManager.sent.getFirst().contains("[T1] Old: finish old"));
-        assertFalse(messageManager.sent.getFirst().contains("[T2]"));
+        assertTrue(messageManager.sent.get(0).contains("[T1] Old: finish old"));
+        assertFalse(messageManager.sent.get(0).contains("[T2]"));
         assertTrue(throttle.containsKey("T1"));
     }
 

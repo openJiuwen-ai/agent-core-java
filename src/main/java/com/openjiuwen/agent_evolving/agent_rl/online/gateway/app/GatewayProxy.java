@@ -3,6 +3,7 @@
  */
 
 package com.openjiuwen.agent_evolving.agent_rl.online.gateway.app;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,7 +20,6 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.Executors;
 
 /**
  * Gateway CLI and embedded server entrypoints.
@@ -109,7 +109,7 @@ public final class GatewayProxy {
             this.server.createContext("/v1/gateway/upload/batch", this::handleUploadBatch);
             this.server.createContext("/v1/chat/completions", this::handleChatCompletions);
             this.server.createContext("/", this::handleProxyOther);
-            this.server.setExecutor(Executors.newCachedThreadPool());
+            this.server.setExecutor(VirtualThreadSupport.newThreadPerTaskExecutor());
         }
 
         void start() {
@@ -232,7 +232,7 @@ public final class GatewayProxy {
         Map<String, String> flattened = new LinkedHashMap<>();
         headers.forEach((name, values) -> {
             if (values != null && !values.isEmpty()) {
-                flattened.put(name, values.getFirst());
+                flattened.put(name, values.get(0));
             }
         });
         return flattened;

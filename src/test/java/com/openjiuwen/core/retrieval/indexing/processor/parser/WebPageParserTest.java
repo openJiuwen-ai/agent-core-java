@@ -79,12 +79,12 @@ class WebPageParserTest {
         List<Document> documents = parser.parse(url, "doc_1", null, Map.of()).join();
 
         assertThat(documents).hasSize(1);
-        assertThat(documents.getFirst().getId_()).isEqualTo("doc_1");
-        assertThat(documents.getFirst().getMetadata())
+        assertThat(documents.get(0).getId_()).isEqualTo("doc_1");
+        assertThat(documents.get(0).getMetadata())
                 .containsEntry("source_url", url)
                 .containsEntry("title", "Test Page Title")
                 .containsEntry("source_type", "web_page");
-        assertThat(documents.getFirst().getText()).contains("main article content");
+        assertThat(documents.get(0).getText()).contains("main article content");
     }
 
     @Test
@@ -95,7 +95,7 @@ class WebPageParserTest {
         List<Document> documents = parser.parse(url, "", null,
                 Map.of("timeout", 5.5d, "user_agent", "CustomAgent")).join();
 
-        assertThat(documents.getFirst().getId_()).isEqualTo(url);
+        assertThat(documents.get(0).getId_()).isEqualTo(url);
         assertThat(((StubWebPageParser) parser).lastTimeout).isEqualTo(5.5d);
         assertThat(((StubWebPageParser) parser).lastUserAgent).isEqualTo("CustomAgent");
     }

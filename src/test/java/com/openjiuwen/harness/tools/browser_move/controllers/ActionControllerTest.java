@@ -181,7 +181,7 @@ class ActionControllerTest {
         assertEquals(Map.of("x", 18, "y", 22), result.get("source"));
         assertEquals(Map.of("x", 30, "y", 44), result.get("target"));
         assertEquals(1, captured.size());
-        String script = captured.getFirst();
+        String script = captured.get(0);
         assertTrue(script.contains("\"element_source\":\"Learn more\""));
         assertTrue(script.contains("\"element_target\":\"#dropzone\""));
         assertTrue(script.contains("\"element_source_offset\":{\"x\":5,\"y\":6}"));
@@ -222,7 +222,7 @@ class ActionControllerTest {
         assertTrue(Boolean.TRUE.equals(result.get("ok")));
         assertEquals("Dragged from (10, 20) to (30, 40)", result.get("message"));
         assertEquals(1, captured.size());
-        String script = captured.getFirst();
+        String script = captured.get(0);
         assertTrue(script.contains("\"coord_source_x\":10"));
         assertTrue(script.contains("\"coord_source_y\":20"));
         assertTrue(script.contains("\"coord_target_x\":30"));

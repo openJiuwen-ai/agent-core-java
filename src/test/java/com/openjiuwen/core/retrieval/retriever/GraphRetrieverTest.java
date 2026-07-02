@@ -87,7 +87,7 @@ class GraphRetrieverTest {
 
         assertThat(results).extracting(RetrievalResult::getText).containsExactly("fallback chunk");
         assertThat(chunkRetriever.calls).hasSize(1);
-        assertThat(chunkRetriever.calls.getFirst().mode()).isEqualTo("sparse");
+        assertThat(chunkRetriever.calls.get(0).mode()).isEqualTo("sparse");
     }
 
     @Test
@@ -178,7 +178,7 @@ class GraphRetrieverTest {
 
         assertThat(results).extracting(RetrievalResult::getText).contains("expanded chunk", "seed chunk");
         assertThat(chunkRetriever.calls).hasSize(1);
-        assertThat(chunkRetriever.calls.getFirst().options()).containsKey("chunk_ids");
+        assertThat(chunkRetriever.calls.get(0).options()).containsKey("chunk_ids");
     }
 
     @Test
@@ -213,7 +213,7 @@ class GraphRetrieverTest {
 
         assertThat(beams).hasSize(2);
         assertThat(beams).allMatch(beam -> beam.size() == 1);
-        assertThat(beams.getFirst().get(0).getText()).isEqualTo("entity1 relation entity2");
+        assertThat(beams.get(0).get(0).getText()).isEqualTo("entity1 relation entity2");
     }
 
     @Test
@@ -231,9 +231,9 @@ class GraphRetrieverTest {
         search.searchCandidates(beam);
 
         assertThat(retriever.calls).hasSize(1);
-        assertThat(retriever.calls.getFirst().mode()).isEqualTo("sparse");
-        assertThat(retriever.calls.getFirst().topK()).isEqualTo(50);
-        assertThat(retriever.calls.getFirst().query()).contains("entity1").contains("entity2");
+        assertThat(retriever.calls.get(0).mode()).isEqualTo("sparse");
+        assertThat(retriever.calls.get(0).topK()).isEqualTo(50);
+        assertThat(retriever.calls.get(0).query()).contains("entity1").contains("entity2");
     }
 
     @Test
@@ -249,8 +249,8 @@ class GraphRetrieverTest {
 
         search.searchCandidates(beam);
 
-        assertThat(retriever.calls.getFirst().mode()).isEqualTo("vector");
-        assertThat(retriever.calls.getFirst().topK()).isEqualTo(7);
+        assertThat(retriever.calls.get(0).mode()).isEqualTo("vector");
+        assertThat(retriever.calls.get(0).topK()).isEqualTo(7);
     }
 
     @Test
@@ -267,7 +267,7 @@ class GraphRetrieverTest {
 
         search.searchCandidates(beam);
 
-        assertThat(retriever.calls.getFirst().mode()).isEqualTo("hybrid");
+        assertThat(retriever.calls.get(0).mode()).isEqualTo("hybrid");
     }
 
     @Test
@@ -283,8 +283,8 @@ class GraphRetrieverTest {
 
         search.searchCandidates(beam);
 
-        assertThat(retriever.calls.getFirst().mode()).isEqualTo("hybrid");
-        assertThat(retriever.calls.getFirst().topK()).isEqualTo(5);
+        assertThat(retriever.calls.get(0).mode()).isEqualTo("hybrid");
+        assertThat(retriever.calls.get(0).topK()).isEqualTo(5);
     }
 
     @Test
@@ -301,7 +301,7 @@ class GraphRetrieverTest {
 
         search.searchCandidates(beam);
 
-        assertThat(retriever.calls.getFirst().mode()).isEqualTo("vector");
+        assertThat(retriever.calls.get(0).mode()).isEqualTo("vector");
     }
 
     private static RetrievalResult result(String chunkId, String text, double score, Map<String, Object> metadata) {

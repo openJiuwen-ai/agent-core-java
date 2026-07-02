@@ -32,7 +32,7 @@ class GraphDatabaseTest {
 
         assertThat(cycle).isNotNull();
         assertThat(cycle).hasSize(4);
-        assertThat(cycle.getFirst()).isEqualTo(cycle.getLast());
+        assertThat(cycle.get(0)).isEqualTo(cycle.get(cycle.size() - 1));
         assertThat(cycle.subList(0, cycle.size() - 1))
                 .containsExactlyInAnyOrder("task-a", "task-b", "task-c");
     }

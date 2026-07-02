@@ -303,7 +303,7 @@ class TripleExtractorTest {
 
         @Override
         public CompletableFuture<? extends BaseMessage> invoke(List<BaseMessage> messages, Map<String, Object> options) {
-            String prompt = messages.getFirst().getContentAsString();
+            String prompt = messages.get(0).getContentAsString();
             if (prompt.contains("Passage:\nfirst")) {
                 return CompletableFuture.failedFuture(firstChunkError);
             }

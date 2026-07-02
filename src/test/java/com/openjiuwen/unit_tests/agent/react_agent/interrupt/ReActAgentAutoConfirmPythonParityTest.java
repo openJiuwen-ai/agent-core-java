@@ -52,7 +52,7 @@ class ReActAgentAutoConfirmPythonParityTest {
                 "query", "Please read /tmp/test1.txt",
                 "conversation_id", "497"
         ));
-        String toolCallId = interruptIds(result1).getFirst();
+        String toolCallId = interruptIds(result1).get(0);
 
         Map<String, Object> result2 = invokeMap(agent, session, Map.of(
                 "query", confirmInterrupt(toolCallId, true),
@@ -89,7 +89,7 @@ class ReActAgentAutoConfirmPythonParityTest {
 
         int confirmedCount = 0;
         while ("interrupt".equals(current.get("result_type"))) {
-            String currentId = interruptIds(current).getFirst();
+            String currentId = interruptIds(current).get(0);
             confirmedCount++;
             current = invokeMap(agent, session, Map.of(
                     "query", confirmInterrupt(currentId, false),

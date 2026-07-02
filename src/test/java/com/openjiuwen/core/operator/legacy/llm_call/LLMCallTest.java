@@ -71,14 +71,14 @@ class LLMCallTest {
                 List.of(toolInfo)).toCompletableFuture().join();
 
         assertEquals("ok", response.getContentAsString());
-        assertEquals("model-a", client.invokeOptions.getFirst().getModel());
-        assertEquals(List.of(toolInfo), client.invokeOptions.getFirst().getTools());
-        assertEquals(List.of("system", "assistant", "user"), client.invokeMessages.getFirst()
+        assertEquals("model-a", client.invokeOptions.get(0).getModel());
+        assertEquals(List.of(toolInfo), client.invokeOptions.get(0).getTools());
+        assertEquals(List.of("system", "assistant", "user"), client.invokeMessages.get(0)
                 .stream()
                 .map(BaseMessage::getRole)
                 .toList());
-        assertEquals("system hello", client.invokeMessages.getFirst().get(0).getContentAsString());
-        assertEquals("user hello", client.invokeMessages.getFirst().get(2).getContentAsString());
+        assertEquals("system hello", client.invokeMessages.get(0).get(0).getContentAsString());
+        assertEquals("user hello", client.invokeMessages.get(0).get(2).getContentAsString());
         assertEquals("legacy", callbackPayload.get(0));
         assertEquals("hello", callbackPayload.get(1));
         assertSame(response, callbackPayload.get(2));
@@ -106,7 +106,7 @@ class LLMCallTest {
         }
 
         assertEquals(List.of("a", "b"), chunks);
-        assertEquals("model-b", client.streamOptions.getFirst().getModel());
+        assertEquals("model-b", client.streamOptions.get(0).getModel());
         assertEquals(List.of("stream-id", "ab"), callbackPayload);
     }
 
@@ -125,7 +125,7 @@ class LLMCallTest {
 
         call.invoke(Map.of(), null).toCompletableFuture().join();
 
-        List<BaseMessage> messages = client.invokeMessages.getFirst();
+        List<BaseMessage> messages = client.invokeMessages.get(0);
         assertEquals("system", messages.get(0).getRole());
         assertEquals("policy", messages.get(0).getContentAsString());
         assertEquals("assistant", messages.get(1).getRole());

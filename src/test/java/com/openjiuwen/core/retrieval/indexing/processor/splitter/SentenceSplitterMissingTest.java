@@ -73,9 +73,9 @@ class SentenceSplitterMissingTest {
         List<Splitter.SplitChunk> chunks = splitter.split(sentence);
 
         assertEquals(1, chunks.size());
-        assertEquals(sentence, chunks.getFirst().text());
-        assertEquals(0, chunks.getFirst().startIdx());
-        assertEquals(sentence.length(), chunks.getFirst().endIdx());
+        assertEquals(sentence, chunks.get(0).text());
+        assertEquals(0, chunks.get(0).startIdx());
+        assertEquals(sentence.length(), chunks.get(0).endIdx());
     }
 
     @Test
@@ -119,9 +119,9 @@ class SentenceSplitterMissingTest {
 
         assertTrue(chunks.size() >= 1);
         if (chunks.size() == 1) {
-            assertTrue(chunks.getFirst().text().contains("Short sentence 1"));
-            assertTrue(chunks.getFirst().text().contains("Short sentence 2"));
-            assertTrue(chunks.getFirst().text().contains("Short sentence 3"));
+            assertTrue(chunks.get(0).text().contains("Short sentence 1"));
+            assertTrue(chunks.get(0).text().contains("Short sentence 2"));
+            assertTrue(chunks.get(0).text().contains("Short sentence 3"));
         }
     }
 
@@ -181,7 +181,7 @@ class SentenceSplitterMissingTest {
         List<Splitter.SplitChunk> chunks = splitter.split(longSentence);
 
         assertEquals(1, chunks.size());
-        assertEquals(longSentence, chunks.getFirst().text());
+        assertEquals(longSentence, chunks.get(0).text());
     }
 
     @Test

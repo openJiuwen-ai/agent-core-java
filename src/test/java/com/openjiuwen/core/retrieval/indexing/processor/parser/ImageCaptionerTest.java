@@ -71,11 +71,11 @@ class ImageCaptionerTest {
 
         assertThat(caption).isEqualTo("caption text");
         assertThat(client.messages).hasSize(1);
-        Object content = client.messages.getFirst().getContent();
+        Object content = client.messages.get(0).getContent();
         assertThat(content).isInstanceOf(List.class);
         List<?> contentItems = (List<?>) content;
         assertThat(contentItems).hasSize(2);
-        assertThat(contentItems.getFirst())
+        assertThat(contentItems.get(0))
                 .isInstanceOf(Map.class)
                 .asString()
                 .contains("semantic retrieval");

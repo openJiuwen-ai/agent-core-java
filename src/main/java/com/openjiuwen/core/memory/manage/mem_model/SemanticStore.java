@@ -95,7 +95,7 @@ public class SemanticStore {
 
             CompletableFuture<Void> ensureCollection = embeddings.isEmpty()
                     ? CompletableFuture.completedFuture(null)
-                    : createCollectionIfNotExists(tableName, embeddings.getFirst().size());
+                    : createCollectionIfNotExists(tableName, embeddings.get(0).size());
 
             return ensureCollection.thenCompose(ignored -> {
                 List<Map<String, Object>> data = new ArrayList<>(memoryIds.size());
@@ -168,7 +168,7 @@ public class SemanticStore {
                 return CompletableFuture.completedFuture(List.<Map.Entry<String, Double>>of());
             }
 
-            List<Double> queryEmbedding = queryEmbeddings.getFirst();
+            List<Double> queryEmbedding = queryEmbeddings.get(0);
             return vectorStore.collectionExists(tableName, Map.of()).thenCompose(exists -> {
                 if (!exists) {
                     return CompletableFuture.completedFuture(List.<Map.Entry<String, Double>>of());

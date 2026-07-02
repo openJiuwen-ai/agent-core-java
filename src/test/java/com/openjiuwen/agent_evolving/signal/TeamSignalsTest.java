@@ -127,8 +127,8 @@ class TeamSignalsTest {
 
         assertTrue(intent.isImprovement());
         assertEquals("improve role handoff", intent.intent());
-        assertTrue(String.valueOf(captured.get().getFirst().getContent()).contains("please improve delegation"));
-        assertTrue(String.valueOf(captured.get().getFirst().getContent()).contains("- planner"));
+        assertTrue(String.valueOf(captured.get().get(0).getContent()).contains("please improve delegation"));
+        assertTrue(String.valueOf(captured.get().get(0).getContent()).contains("- planner"));
     }
 
     @Test
@@ -179,8 +179,8 @@ class TeamSignalsTest {
                 .join();
 
         assertEquals(1, signals.size());
-        assertEquals("trajectory_issue", signals.getFirst().getSignalType());
-        assertEquals("passive_trajectory", signals.getFirst().getContext().get("source"));
-        assertEquals("skill body", TeamSignals.getTeamSignalSkillContent(signals.getFirst()));
+        assertEquals("trajectory_issue", signals.get(0).getSignalType());
+        assertEquals("passive_trajectory", signals.get(0).getContext().get("source"));
+        assertEquals("skill body", TeamSignals.getTeamSignalSkillContent(signals.get(0)));
     }
 }
