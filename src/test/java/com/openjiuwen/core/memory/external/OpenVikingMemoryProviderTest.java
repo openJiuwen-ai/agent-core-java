@@ -37,7 +37,9 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.withSettings;
 
 /**
  * Unit tests for OpenVikingMemoryProvider.
@@ -709,7 +711,7 @@ class OpenVikingMemoryProviderTest {
     class TestShutdown {
         @Test
         void testShutdownReleasesClient() throws Exception {
-            HttpClient client = mock(HttpClient.class);
+            HttpClient client = mock(HttpClient.class, withSettings().extraInterfaces(AutoCloseable.class));
             stubSend(client, response(200, "{}"));
             OpenVikingMemoryProvider provider = new OpenVikingMemoryProvider(
                     "http://localhost:8080", "", "", "", "", Map.of(), () -> client);
@@ -717,6 +719,7 @@ class OpenVikingMemoryProviderTest {
 
             await(provider.shutdown());
 
+            verify((AutoCloseable) client).close();
             assertEquals(null, field(provider, "httpClient"));
             assertFalse(provider.isInitialized());
         }
