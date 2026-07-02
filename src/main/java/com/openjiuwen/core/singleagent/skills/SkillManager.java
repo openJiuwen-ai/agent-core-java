@@ -173,25 +173,43 @@ public class SkillManager {
                 if (!skillMd.exists()) {
                     continue;
                 }
-
                 String key = subdir.toPath().toAbsolutePath().normalize().toString();
+
+                long maxSkillFileSize = 10 * 1024 * 1024; // 10MB
+                if (skillMd.length() > maxSkillFileSize) {
+                    Loggers.AGENT.warning("SKILL.md file size exceeds 10MB, skipping: " + key
+                            + " (size: " + skillMd.length() + " bytes)");
+                    continue;
+                }
                 long mtime = skillMd.lastModified();
 
                 discoveredKeys.add(key);
                 orderedKeys.add(key);
 
-                Long cachedMtime = updateAtCache.get(key);
-                if (cachedMtime == null || cachedMtime != mtime) {
-                    Skill skill = createSkillFromPath(skillMd.toPath());
-                    if (skill != null) {
-                        skill.setUpdateAt(mtime);
-                        registry.put(skill.getName(), skill);
-                        updateAtCache.put(key, mtime);
-                    }
-                }
+                getCachedMtime(skillMd, key, mtime);
             }
         }
+        getStaleKeys(discoveredKeys);
+        skillOrder.clear();
+        skillOrder.addAll(orderedKeys);
 
+        long elapsed = System.currentTimeMillis() - startTime;
+        Loggers.AGENT.debug("refreshIncrementally completed in {} ms, skills count: {}", elapsed, registry.size());
+    }
+
+    private void getCachedMtime(File skillMd, String key, long mtime) {
+        Long cachedMtime = updateAtCache.get(key);
+        if (cachedMtime == null || cachedMtime != mtime) {
+            Skill skill = createSkillFromPath(skillMd.toPath());
+            if (skill != null) {
+                skill.setUpdateAt(mtime);
+                registry.put(skill.getName(), skill);
+                updateAtCache.put(key, mtime);
+            }
+        }
+    }
+
+    private void getStaleKeys(Set<String> discoveredKeys) {
         Set<String> staleKeys = new LinkedHashSet<>(updateAtCache.keySet());
         staleKeys.removeAll(discoveredKeys);
         for (String key : staleKeys) {
@@ -201,12 +219,6 @@ public class SkillManager {
             }
             updateAtCache.remove(key);
         }
-
-        skillOrder.clear();
-        skillOrder.addAll(orderedKeys);
-
-        long elapsed = System.currentTimeMillis() - startTime;
-        Loggers.AGENT.debug("refreshIncrementally completed in {} ms, skills count: {}", elapsed, registry.size());
     }
 
     /**

@@ -18,6 +18,8 @@ import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.config.SandboxIsolationConfig;
+import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCmdBackgroundResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCodeResult;
@@ -30,6 +32,7 @@ import com.openjiuwen.core.sysop.result.ListDirsResult;
 import com.openjiuwen.core.sysop.result.SearchFilesResult;
 import com.openjiuwen.core.sysop.sandbox.SandboxGatewayClient;
 import com.openjiuwen.core.sysop.sandbox.SandboxOperationSupport;
+import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
 import com.openjiuwen.extensions.sys_operation.sandbox.JiuwenBoxSandboxProfile;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
@@ -134,8 +137,8 @@ public final class SandboxExample {
         // System.out.println("\n--- Scenario 5: Delete sandbox on completion ---");
         // scenario5_deleteSandbox();
 
-        // System.out.println("\n--- Scenario 5b: Agent reads file with lineRange in sandbox ---");
-        // scenario5b_agentFsReadRange(skillsDir, maxIterations, agentType);
+        System.out.println("\n--- Scenario 5b: Agent reads file with lineRange in sandbox ---");
+        scenario5b_agentFsReadRange(skillsDir, maxIterations, agentType);
 
         System.out.println("\n--- Scenario 6: FS readFile / writeFile ---");
         scenario6_fsReadAndWrite();
@@ -151,6 +154,15 @@ public final class SandboxExample {
 
         System.out.println("\n--- Scenario 10: Code executeCode (python/javascript) / executeCodeStream ---");
         scenario10_codeExecution();
+
+        System.out.println("\n--- Scenario 11: Command failure / exception / timeout (FS-001 TC_001) ---");
+        scenario11_cmdFailureAndTimeout();
+
+        System.out.println("\n--- Scenario 12: Local whitelist command priority (FS-003 TC_007) ---");
+        scenario12_localWhitelistPriority();
+
+        System.out.println("\n--- Scenario 13: Sandbox unavailable - exception not silent (FS-006 TC_009) ---");
+        scenario13_sandboxUnavailable();
 
         Runner.stop();
         System.out.println("=== Demo Complete ===");
@@ -542,6 +554,242 @@ public final class SandboxExample {
         System.out.println("[Sandbox] executeCodeStream total chunks: " + codeChunks);
 
         removeVerifySysOp();
+    }
+
+    /**
+     * FS-001 TC_001: 验证沙箱中命令执行失败/异常/超时时，能正确返回错误信息而不静默。
+     */
+    private static void scenario11_cmdFailureAndTimeout() {
+        SysOperation sysOp = createVerifySysOp();
+        BaseShellOperation shell = sysOp.shell();
+        BaseCodeOperation code = sysOp.code();
+
+        System.out.println("[Sandbox] Scenario 11: Command failure / exception / timeout verification (FS-001 TC_001)");
+
+        // 11a: 执行不存在的命令
+        ExecuteCmdResult notFoundResult = shell.executeCmd("nonexistent_cmd_xyz", ".", 30, null, null);
+        System.out.println("[Sandbox] 11a - nonexistent command:");
+        System.out.println("[Sandbox]   code=" + notFoundResult.getCode()
+                + " message=" + notFoundResult.getMessage());
+        if (notFoundResult.getData() != null) {
+            System.out.println("[Sandbox]   exitCode=" + notFoundResult.getData().getExitCode()
+                    + " stdout=" + notFoundResult.getData().getStdout()
+                    + " stderr=" + notFoundResult.getData().getStderr());
+        }
+
+        // 11b: 命令返回非零退出码
+        ExecuteCmdResult exitFailResult = shell.executeCmd("sh -c 'exit 1'", ".", 30, null, null);
+        System.out.println("[Sandbox] 11b - non-zero exit code (exit 1):");
+        System.out.println("[Sandbox]   code=" + exitFailResult.getCode()
+                + " message=" + exitFailResult.getMessage());
+        if (exitFailResult.getData() != null) {
+            System.out.println("[Sandbox]   exitCode=" + exitFailResult.getData().getExitCode()
+                    + " stdout=" + exitFailResult.getData().getStdout()
+                    + " stderr=" + exitFailResult.getData().getStderr());
+        }
+
+        // 11c: 命令超时
+        ExecuteCmdResult timeoutResult = shell.executeCmd("sleep 60", ".", 3, null, null);
+        System.out.println("[Sandbox] 11c - command timeout (sleep 60, timeout=3s):");
+        System.out.println("[Sandbox]   code=" + timeoutResult.getCode()
+                + " message=" + timeoutResult.getMessage());
+        if (timeoutResult.getData() != null) {
+            System.out.println("[Sandbox]   exitCode=" + timeoutResult.getData().getExitCode()
+                    + " stdout=" + timeoutResult.getData().getStdout()
+                    + " stderr=" + timeoutResult.getData().getStderr());
+        }
+
+        // 11d: 代码语法错误
+        ExecuteCodeResult syntaxErrorResult = code.executeCode(
+                "print('missing_quote)", "python", 30, null, null);
+        System.out.println("[Sandbox] 11d - Python syntax error:");
+        System.out.println("[Sandbox]   code=" + syntaxErrorResult.getCode()
+                + " message=" + syntaxErrorResult.getMessage());
+        if (syntaxErrorResult.getData() != null) {
+            System.out.println("[Sandbox]   exitCode=" + syntaxErrorResult.getData().getExitCode()
+                    + " stdout=" + syntaxErrorResult.getData().getStdout()
+                    + " stderr=" + syntaxErrorResult.getData().getStderr());
+        }
+
+        removeVerifySysOp();
+    }
+
+    /**
+     * FS-003 TC_007: 验证配置本地白名单命令时，白名单命令优先在本地执行、不路由到沙箱。
+     */
+    private static void scenario12_localWhitelistPriority() {
+        // 创建 SANDBOX SysOperation，配置 excluded_commands 排除 whoami/hostname
+        SandboxGatewayConfig sandboxExcludedConfig = JiuwenBoxSandboxProfile.config(SANDBOX_URL,
+                SandboxOperationSupport.paramsOf(
+                        "excluded_commands", List.of("whoami*", "hostname*")
+                ));
+        SysOperationCard sandboxCard = SysOperationCard.builder()
+                .id("sandbox_excluded_sysop")
+                .mode(OperationMode.SANDBOX)
+                .gatewayConfig(sandboxExcludedConfig)
+                .build();
+        Runner.resourceMgr().addSysOperation(sandboxCard, null);
+
+        // 创建 LOCAL SysOperation，配置 shellAllowlist 包含 whoami/hostname
+        LocalWorkConfig localWorkConfig = LocalWorkConfig.builder()
+                .workDir(null)
+                .shellAllowlist(List.of("echo", "whoami", "hostname", "ls", "cat", "pwd"))
+                .build();
+        SysOperationCard localCard = SysOperationCard.builder()
+                .id("local_whitelist_sysop")
+                .mode(OperationMode.LOCAL)
+                .workConfig(localWorkConfig)
+                .build();
+        Runner.resourceMgr().addSysOperation(localCard, null);
+
+        SysOperation sandboxExcludedSysOp = (SysOperation) Runner.resourceMgr().getSysOperation(
+                "sandbox_excluded_sysop", null, TagMatchStrategy.ALL);
+        SysOperation localSysOp = (SysOperation) Runner.resourceMgr().getSysOperation(
+                "local_whitelist_sysop", null, TagMatchStrategy.ALL);
+
+        System.out.println("[Sandbox] Scenario 12: Local whitelist command priority verification (FS-003 TC_007)");
+
+        // 12a: 在 LOCAL SysOperation 上执行 whoami → 应在本地成功
+        ExecuteCmdResult localWhoami = localSysOp.shell().executeCmd("whoami", ".", 30, null, null);
+        System.out.println("[Sandbox] 12a - whoami via LOCAL SysOperation:");
+        System.out.println("[Sandbox]   code=" + localWhoami.getCode()
+                + " message=" + localWhoami.getMessage());
+        if (localWhoami.getData() != null) {
+            System.out.println("[Sandbox]   stdout=" + localWhoami.getData().getStdout()
+                    + " exitCode=" + localWhoami.getData().getExitCode());
+        }
+
+        // 12b: 在 SANDBOX SysOperation 上执行 whoami → 应被排除/拦截
+        ExecuteCmdResult sandboxWhoami = sandboxExcludedSysOp.shell().executeCmd("whoami", ".", 30, null, null);
+        System.out.println("[Sandbox] 12b - whoami via SANDBOX SysOperation (excluded):");
+        System.out.println("[Sandbox]   code=" + sandboxWhoami.getCode()
+                + " message=" + sandboxWhoami.getMessage());
+        if (sandboxWhoami.getData() != null) {
+            System.out.println("[Sandbox]   exitCode=" + sandboxWhoami.getData().getExitCode()
+                    + " stdout=" + sandboxWhoami.getData().getStdout()
+                    + " stderr=" + sandboxWhoami.getData().getStderr());
+        }
+
+        // 12c: 在 SANDBOX SysOperation 上执行未被排除的命令 → 应在沙箱正常执行
+        ExecuteCmdResult sandboxOk = sandboxExcludedSysOp.shell().executeCmd("echo sandbox_ok", ".", 30, null, null);
+        System.out.println("[Sandbox] 12c - echo sandbox_ok via SANDBOX SysOperation (not excluded):");
+        System.out.println("[Sandbox]   code=" + sandboxOk.getCode()
+                + " message=" + sandboxOk.getMessage());
+        if (sandboxOk.getData() != null) {
+            System.out.println("[Sandbox]   stdout=" + sandboxOk.getData().getStdout()
+                    + " exitCode=" + sandboxOk.getData().getExitCode());
+        }
+
+        Runner.resourceMgr().removeSysOperation("sandbox_excluded_sysop", null, TagMatchStrategy.ALL, true);
+        Runner.resourceMgr().removeSysOperation("local_whitelist_sysop", null, TagMatchStrategy.ALL, true);
+    }
+
+    /**
+     * FS-006 TC_009: 验证沙箱不可用时操作返回异常，不静默失败。
+     * 使用唯一 customId 防止 ContainerManager 复用已有沙箱容器，
+     * 确保新容器的 baseUrl 指向不可达地址，从而触发 HTTP 连接失败。
+     */
+    private static void scenario13_sandboxUnavailable() {
+        System.out.println("[Sandbox] Scenario 13: Sandbox unavailable - exception not silent (FS-006 TC_009)");
+
+        // ---- Part A: 释放已有沙箱后验证不可用 ----
+        SandboxGatewayConfig reachableConfig = JiuwenBoxSandboxProfile.config(SANDBOX_URL);
+        String reachableKey = SandboxOperationSupport.resolveIsolationKey(reachableConfig);
+
+        System.out.println("[Sandbox] 13a - Release existing sandbox then verify unavailable:");
+        SandboxGatewayClient.release(reachableKey, "delete");
+
+        try {
+            SandboxGatewayClient releasedClient = new SandboxGatewayClient(reachableConfig, reachableKey);
+            SandboxEndpoint releasedEp = releasedClient.getEndpoint();
+            System.out.println("[Sandbox]   After release: baseUrl=" + releasedEp.getBaseUrl()
+                    + " sandboxId=" + releasedEp.getSandboxId());
+            if (releasedEp.getSandboxId() == null) {
+                System.out.println("[Sandbox]   Sandbox correctly removed: sandboxId is null (no container)");
+            }
+        } catch (Exception e) {
+            System.out.println("[Sandbox]   Exception caught (expected): " + e.getClass().getSimpleName()
+                    + " - " + e.getMessage());
+        }
+
+        // ---- Part B: 不可达 URL + 唯一 customId → HTTP 连接应失败 ----
+        String unreachableUrl = "http://127.0.0.1:9999";
+        String uniqueCustomId = "unreachable_test_" + System.currentTimeMillis();
+        SandboxIsolationConfig isolationConfig = SandboxIsolationConfig.builder()
+                .customId(uniqueCustomId)
+                .build();
+        SandboxLauncherConfig launcherConfig = SandboxLauncherConfig.builder()
+                .launcherType("pre_deploy")
+                .gatewayUrl(unreachableUrl)
+                .baseUrl(unreachableUrl)
+                .sandboxType("jiuwenbox")
+                .build();
+        SandboxGatewayConfig unreachableConfig = SandboxGatewayConfig.builder()
+                .launcherConfig(launcherConfig)
+                .gatewayUrl(unreachableUrl)
+                .isolation(isolationConfig)
+                .build();
+
+        String unreachableKey = SandboxOperationSupport.resolveIsolationKey(unreachableConfig);
+        System.out.println("[Sandbox] 13b - Unreachable sandbox with unique customId: " + uniqueCustomId);
+
+        // 13b-1: getEndpoint 应返回不可达 URL（因为没有已有容器）
+        try {
+            SandboxGatewayClient unreachableClient = new SandboxGatewayClient(unreachableConfig, unreachableKey);
+            SandboxEndpoint unreachableEp = unreachableClient.getEndpoint();
+            System.out.println("[Sandbox]   getEndpoint: baseUrl=" + unreachableEp.getBaseUrl()
+                    + " sandboxId=" + unreachableEp.getSandboxId());
+            if (unreachableEp.getBaseUrl().equals(unreachableUrl)) {
+                System.out.println("[Sandbox]   Endpoint correctly points to unreachable URL");
+            } else {
+                System.out.println("[Sandbox]   Unexpected: endpoint baseUrl is not the unreachable URL");
+            }
+        } catch (Exception e) {
+            System.out.println("[Sandbox]   Exception caught: " + e.getClass().getSimpleName()
+                    + " - " + e.getMessage());
+        }
+
+        // 13b-2: 通过 SysOperation 执行命令 → HTTP 连接不可达应返回异常
+        SysOperationCard unreachableCard = SysOperationCard.builder()
+                .id("sandbox_unreachable_sysop")
+                .mode(OperationMode.SANDBOX)
+                .gatewayConfig(unreachableConfig)
+                .build();
+        Runner.resourceMgr().addSysOperation(unreachableCard, null);
+
+        SysOperation unreachableSysOp = (SysOperation) Runner.resourceMgr().getSysOperation(
+                "sandbox_unreachable_sysop", null, TagMatchStrategy.ALL);
+
+        System.out.println("[Sandbox]   executeCmd on unreachable sandbox:");
+        try {
+            ExecuteCmdResult cmdResult = unreachableSysOp.shell().executeCmd("echo test", ".", 30, null, null);
+            System.out.println("[Sandbox]     code=" + cmdResult.getCode()
+                    + " message=" + cmdResult.getMessage());
+            if (cmdResult.getData() != null) {
+                System.out.println("[Sandbox]     exitCode=" + cmdResult.getData().getExitCode()
+                        + " stderr=" + cmdResult.getData().getStderr());
+            }
+        } catch (Exception e) {
+            System.out.println("[Sandbox]     Exception caught (expected): " + e.getClass().getSimpleName()
+                    + " - " + e.getMessage());
+        }
+
+        System.out.println("[Sandbox]   executeCode on unreachable sandbox:");
+        try {
+            ExecuteCodeResult codeResult = unreachableSysOp.code().executeCode(
+                    "print('test')", "python", 30, null, null);
+            System.out.println("[Sandbox]     code=" + codeResult.getCode()
+                    + " message=" + codeResult.getMessage());
+            if (codeResult.getData() != null) {
+                System.out.println("[Sandbox]     exitCode=" + codeResult.getData().getExitCode()
+                        + " stderr=" + codeResult.getData().getStderr());
+            }
+        } catch (Exception e) {
+            System.out.println("[Sandbox]     Exception caught (expected): " + e.getClass().getSimpleName()
+                    + " - " + e.getMessage());
+        }
+
+        Runner.resourceMgr().removeSysOperation("sandbox_unreachable_sysop", null, TagMatchStrategy.ALL, true);
     }
 
     private static SandboxAgent createSandboxAgent(Path skillsDir, int maxIterations,

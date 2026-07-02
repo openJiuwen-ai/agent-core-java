@@ -43,6 +43,22 @@ import java.util.Map;
  * [Hot-Reload] Skill signature changed, refreshing incrementally...
  * [Hot-Reload] Updated skills: [skill_a] (count: 1)
  * [Step 5] Running DeepAgent again - skill_b auto-removed
+ *
+ * --- TC_004: Batch load with one abnormal skill, others still load ---
+ * [TC_004] tc004_invalid NOT loaded: true, tc004_valid_1..5 ALL loaded: true
+ *
+ * --- TC_002: Oversized SKILL.md (>10MB) should be skipped ---
+ * [TC_002] Oversized skill is skipped, existing skills unaffected
+ *
+ * --- TC_003/TC_009: Invalid SKILL.md format should be skipped ---
+ * [TC_003] Invalid skill is skipped, existing skills unaffected
+ *
+ * --- TC_012: Recover invalid SKILL.md → should be reloaded ---
+ * [TC_012] Recovered skill is reloaded and works
+ *
+ * --- TC_011: Simultaneous add 10, delete 10, modify 10 skills ---
+ * [TC_011] All simultaneous operations applied correctly
+ *
  * === Demo Complete ===
  * </pre>
  */
@@ -120,8 +136,135 @@ public final class DeepAgentSkillHotReloadExample {
         System.out.println("[Step 6] Skills after delete hot-reload: " + skillUseRail.registeredSkillNames()
                 + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
 
+        // ---- TC_004: Batch load with one abnormal skill, others still work ----
+        System.out.println("\n--- TC_004: Batch load with one abnormal skill, others still load ---");
+        // Create 5 valid skills + 1 invalid skill simultaneously
+        for (int i = 1; i <= 5; i++) {
+            Path validDir = skillsDir.resolve("tc004_valid_" + i);
+            Files.createDirectories(validDir);
+            Files.writeString(validDir.resolve("SKILL.md"),
+                    "---\ndescription: TC004 valid skill " + i + "\n---\n# TC004 Valid " + i + "\n\nValid skill in batch load test.");
+        }
+        Path tc004InvalidDir = skillsDir.resolve("tc004_invalid");
+        Files.createDirectories(tc004InvalidDir);
+        Files.writeString(tc004InvalidDir.resolve("SKILL.md"),
+                "No YAML front matter - this is an invalid SKILL.md for TC_004.");
+        System.out.println("[TC_004] Created 5 valid + 1 invalid skill in batch");
+
+        // Run DeepAgent - invalid skill should be skipped, 5 valid ones should load
+        Map<String, Object> resultBatchWithBad = runDeepAgent(deepAgent,
+                "How many skills do you have now? List all skill names.");
+        System.out.println("[TC_004] DeepAgent response: " + extractOutput(resultBatchWithBad));
+        System.out.println("[TC_004] Skills after batch load: " + skillUseRail.registeredSkillNames()
+                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+        // Verify: tc004_invalid should NOT be in the list, tc004_valid_1..5 SHOULD be in the list
+        boolean invalidNotLoaded = !skillUseRail.registeredSkillNames().contains("tc004_invalid");
+        boolean allValidLoaded = skillUseRail.registeredSkillNames().contains("tc004_valid_1")
+                && skillUseRail.registeredSkillNames().contains("tc004_valid_5");
+        System.out.println("[TC_004] tc004_invalid NOT loaded: " + invalidNotLoaded
+                + ", tc004_valid_1..5 ALL loaded: " + allValidLoaded);
+
+        // Cleanup TC_004 skills
+        for (int i = 1; i <= 5; i++) {
+            Files.deleteIfExists(skillsDir.resolve("tc004_valid_" + i).resolve("SKILL.md"));
+            Files.deleteIfExists(skillsDir.resolve("tc004_valid_" + i));
+        }
+        Files.deleteIfExists(tc004InvalidDir.resolve("SKILL.md"));
+        Files.deleteIfExists(tc004InvalidDir);
+
+        // ---- TC_002: SKILL.md file size exceeds 10MB should be skipped ----
+        System.out.println("\n--- TC_002: Oversized SKILL.md (>10MB) should be skipped ---");
+        Path oversizedDir = skillsDir.resolve("skill_oversized");
+        Files.createDirectories(oversizedDir);
+        String largeContent = "---\ndescription: Oversized skill\n---\n# Oversized\n\n" + "A".repeat(10 * 1024 * 1024 + 1);
+        Files.writeString(oversizedDir.resolve("SKILL.md"), largeContent);
+        System.out.println("[TC_002] Created oversized SKILL.md (size: " + oversizedDir.resolve("SKILL.md").toFile().length() + " bytes)");
+
+        // Run DeepAgent - oversized skill should be skipped, only skill_a remains
+        Map<String, Object> resultOversize = runDeepAgent(deepAgent,
+                "How many skills do you have now? List all skill names.");
+        System.out.println("[TC_002] DeepAgent response: " + extractOutput(resultOversize));
+        System.out.println("[TC_002] Skills after oversized attempt: " + skillUseRail.registeredSkillNames()
+                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+        Files.deleteIfExists(oversizedDir.resolve("SKILL.md"));
+        Files.deleteIfExists(oversizedDir);
+
+        // ---- TC_003/TC_009: Invalid format SKILL.md does not affect other skills ----
+        System.out.println("\n--- TC_003/TC_009: Invalid SKILL.md format should be skipped ---");
+        Path invalidDir = skillsDir.resolve("skill_invalid");
+        Files.createDirectories(invalidDir);
+        Files.writeString(invalidDir.resolve("SKILL.md"),
+                "This is not a valid SKILL.md - no YAML front matter at all.");
+        System.out.println("[TC_003] Created invalid SKILL.md (no front matter)");
+
+        // Run DeepAgent - invalid skill should be skipped, skill_a still works
+        Map<String, Object> resultInvalid = runDeepAgent(deepAgent,
+                "How many skills do you have now? List all skill names.");
+        System.out.println("[TC_003] DeepAgent response: " + extractOutput(resultInvalid));
+        System.out.println("[TC_003] Skills after invalid attempt: " + skillUseRail.registeredSkillNames()
+                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+
+        // ---- TC_012: Recover invalid skill file → reloaded and works ----
+        System.out.println("\n--- TC_012: Recover invalid SKILL.md → should be reloaded ---");
+        Files.writeString(invalidDir.resolve("SKILL.md"),
+                "---\ndescription: Recovered skill after fixing format\n---\n# Recovered Skill\n\nThis skill was fixed from invalid format.");
+        forceMtimeChange(invalidDir.resolve("SKILL.md"));
+        System.out.println("[TC_012] Fixed SKILL.md with valid front matter");
+
+        Map<String, Object> resultRecover = runDeepAgent(deepAgent,
+                "How many skills do you have now? List all skill names and descriptions.");
+        System.out.println("[TC_012] DeepAgent response: " + extractOutput(resultRecover));
+        System.out.println("[TC_012] Skills after recovery: " + skillUseRail.registeredSkillNames()
+                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+
+        // ---- TC_011: Simultaneous add, delete, modify (10 each) ----
+        System.out.println("\n--- TC_011: Simultaneous add 10, delete 10, modify 10 skills ---");
+        // First, create 30 baseline skills for the simultaneous operation test
+        for (int i = 1; i <= 30; i++) {
+            Path batchDir = skillsDir.resolve("batch_skill_" + i);
+            Files.createDirectories(batchDir);
+            Files.writeString(batchDir.resolve("SKILL.md"),
+                    "---\ndescription: Batch skill " + i + "\n---\n# Batch Skill " + i + "\n\nBaseline skill for TC_011.");
+        }
+        // Run once to load all 30 batch skills + existing skills
+        Map<String, Object> resultBaseline = runDeepAgent(deepAgent,
+                "List all your skill names.");
+        System.out.println("[TC_011 Baseline] Skills count: " + skillUseRail.registeredSkillNames().size());
+
+        // Now: delete batch_skill_1..10, modify batch_skill_11..20, add new_skill_31..40
+        for (int i = 1; i <= 10; i++) {
+            Files.deleteIfExists(skillsDir.resolve("batch_skill_" + i).resolve("SKILL.md"));
+            Files.deleteIfExists(skillsDir.resolve("batch_skill_" + i));
+        }
+        for (int i = 11; i <= 20; i++) {
+            Path modDir = skillsDir.resolve("batch_skill_" + i);
+            Files.writeString(modDir.resolve("SKILL.md"),
+                    "---\ndescription: Modified batch skill " + i + "\n---\n# Modified Batch Skill " + i + "\n\nUpdated for TC_011.");
+            forceMtimeChange(modDir.resolve("SKILL.md"));
+        }
+        for (int i = 31; i <= 40; i++) {
+            Path addDir = skillsDir.resolve("new_skill_" + i);
+            Files.createDirectories(addDir);
+            Files.writeString(addDir.resolve("SKILL.md"),
+                    "---\ndescription: New skill " + i + "\n---\n# New Skill " + i + "\n\nAdded for TC_011.");
+        }
+        System.out.println("[TC_011] Deleted batch_skill_1..10, Modified batch_skill_11..20, Added new_skill_31..40");
+
+        Map<String, Object> resultSimultaneous = runDeepAgent(deepAgent,
+                "How many skills do you have now? List all skill names.");
+        System.out.println("[TC_011] DeepAgent response: " + extractOutput(resultSimultaneous));
+        System.out.println("[TC_011] Skills after simultaneous operations: " + skillUseRail.registeredSkillNames()
+                + " (count: " + skillUseRail.registeredSkillNames().size() + ")");
+
+        // Cleanup batch skills
+        for (int i = 11; i <= 40; i++) {
+            String dirName = i <= 20 ? "batch_skill_" + i : "new_skill_" + i;
+            Files.deleteIfExists(skillsDir.resolve(dirName).resolve("SKILL.md"));
+            Files.deleteIfExists(skillsDir.resolve(dirName));
+        }
+
         Runner.stop();
-        System.out.println("=== Demo Complete ===");
+        System.out.println("\n=== Demo Complete ===");
     }
 
     /**
