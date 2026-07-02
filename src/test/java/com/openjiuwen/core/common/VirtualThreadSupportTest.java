@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.lang.reflect.Method;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -17,6 +18,18 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class VirtualThreadSupportTest {
+
+    @Test
+    void exposesRuntimeVirtualThreadSupportFlag() {
+        assertThat(VirtualThreadSupport.isVirtualThreadSupported())
+                .isEqualTo(runtimeSupportsVirtualThreads());
+    }
+
+    @Test
+    void reportsCurrentThreadVirtualStateWithoutDirectJdk21Api() {
+        assertThat(VirtualThreadSupport.isCurrentThreadVirtual()).isFalse();
+        assertThat(VirtualThreadSupport.isVirtual(Thread.currentThread())).isFalse();
+    }
 
     @Test
     void startThreadUsesVirtualThreadWhenRuntimeSupportsIt() throws Exception {
@@ -52,6 +65,17 @@ class VirtualThreadSupportTest {
 
         assertThat(executed.get()).isTrue();
         assertThat(isVirtual(runningThread.get())).isTrue();
+    }
+
+    @Test
+    void namedExecutorKeepsThreadNamePrefixOnEveryRuntime() throws Exception {
+        ExecutorService executor = VirtualThreadSupport.newThreadPerTaskExecutor("virtual-support-executor");
+        try {
+            Future<String> name = executor.submit(() -> Thread.currentThread().getName());
+            assertThat(name.get(5, TimeUnit.SECONDS)).startsWith("virtual-support-executor");
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     private static boolean runtimeSupportsVirtualThreads() {
