@@ -7,10 +7,8 @@ package com.openjiuwen.core.common;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
-import java.lang.reflect.Method;
-import java.util.concurrent.ExecutorService;
+ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -35,17 +33,17 @@ public final class VirtualThreadSupport {
         MethodHandle vteMethod = null;
 
         try {
+            Class<?> virtualBuilderClass = loadClass("java.lang.Thread$Builder$OfVirtual");
             ofVirtual = MethodHandles.publicLookup()
                     .findStatic(Thread.class, "ofVirtual",
-                            MethodType.methodType(loadClass("java.lang.Thread$Builder")));
+                            MethodType.methodType(virtualBuilderClass));
 
-            Class<?> builderClass = loadClass("java.lang.Thread$Builder");
             builderStart = MethodHandles.publicLookup()
-                    .findVirtual(builderClass, "start",
+                    .findVirtual(virtualBuilderClass, "start",
                             MethodType.methodType(Thread.class, Runnable.class));
             builderName = MethodHandles.publicLookup()
-                    .findVirtual(builderClass, "name",
-                            MethodType.methodType(builderClass, String.class));
+                    .findVirtual(virtualBuilderClass, "name",
+                            MethodType.methodType(virtualBuilderClass, String.class));
 
             vteMethod = MethodHandles.publicLookup()
                     .findStatic(Executors.class, "newVirtualThreadPerTaskExecutor",
