@@ -4,30 +4,35 @@
 
 package com.openjiuwen.core.common.security;
 
-import java.net.Authenticator;
+import okhttp3.Credentials;
+import okhttp3.OkHttpClient;
+
 import java.net.InetSocketAddress;
-import java.net.PasswordAuthentication;
-import java.net.ProxySelector;
+import java.net.Proxy;
 import java.net.URI;
 import java.net.URLDecoder;
-import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
- * Applies process proxy environment variables to JDK HttpClient builders.
+ * Applies process proxy environment variables to OkHttp clients.
  */
-public final class JdkHttpClientProxySupport {
-    private JdkHttpClientProxySupport() {
+public final class OkHttpProxySupport {
+    private static final Logger LOG = LoggerFactory.getLogger(OkHttpProxySupport.class);
+
+    private OkHttpProxySupport() {
     }
 
     /**
      * Configure proxy settings from http_proxy/https_proxy for the target URL.
      *
-     * @param builder   JDK HttpClient builder
+     * @param builder   OkHttp client builder
      * @param targetUrl target service URL
      */
-    public static void configureFromEnvironment(HttpClient.Builder builder, String targetUrl) {
+    public static void configureFromEnvironment(OkHttpClient.Builder builder, String targetUrl) {
         URI targetUri = parseUri(targetUrl);
         if (targetUri == null || shouldBypassProxy(targetUri.getHost())) {
             return;
@@ -42,34 +47,24 @@ public final class JdkHttpClientProxySupport {
             return;
         }
 
-        builder.proxy(ProxySelector.of(new InetSocketAddress(proxyUri.getHost(), port)));
+        builder.proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyUri.getHost(), port)));
         String userInfo = proxyUri.getUserInfo();
         if (userInfo != null && !userInfo.isBlank()) {
-            enableBasicProxyAuthentication();
-            builder.authenticator(proxyAuthenticator(userInfo));
+            String[] credentials = decodeCredentials(userInfo);
+            String proxyAuthorization = Credentials.basic(credentials[0], credentials[1]);
+            builder.proxyAuthenticator((route, response) -> response.request().newBuilder()
+                    .header("Proxy-Authorization", proxyAuthorization)
+                    .build());
+            LOG.debug("Proxy authentication configured for OkHttp, proxyHost={}, proxyPort={}, usernamePresent={}",
+                    proxyUri.getHost(), port, !credentials[0].isBlank());
         }
     }
 
-    private static void enableBasicProxyAuthentication() {
-        System.setProperty("jdk.http.auth.tunneling.disabledSchemes", "");
-        System.setProperty("jdk.http.auth.proxying.disabledSchemes", "");
-    }
-
-    private static Authenticator proxyAuthenticator(String userInfo) {
+    private static String[] decodeCredentials(String userInfo) {
         String[] parts = userInfo.split(":", 2);
         String user = URLDecoder.decode(parts[0], StandardCharsets.UTF_8);
-        char[] password = parts.length == 2
-                ? URLDecoder.decode(parts[1], StandardCharsets.UTF_8).toCharArray()
-                : new char[0];
-        return new Authenticator() {
-            @Override
-            protected PasswordAuthentication getPasswordAuthentication() {
-                if (RequestorType.PROXY != getRequestorType()) {
-                    return null;
-                }
-                return new PasswordAuthentication(user, password);
-            }
-        };
+        String password = parts.length == 2 ? URLDecoder.decode(parts[1], StandardCharsets.UTF_8) : "";
+        return new String[]{user, password};
     }
 
     private static URI selectProxyUri(String targetScheme) {

@@ -117,7 +117,7 @@ public abstract class BaseModelClient {
             builder.setHeader("Content-Type", "application/json");
         }
         if (modelClientConfig.getApiKey() != null && !modelClientConfig.getApiKey().isBlank()) {
-            builder.setHeader("Authorization", "Bearer " + modelClientConfig.getApiKey());
+            builder.setHeader("Authorization", "Bearer " + modelClientConfig.getApiKey().strip());
         }
         for (Map.Entry<String, String> entry : modelClientConfig.getHeaders().entrySet()) {
             if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) {

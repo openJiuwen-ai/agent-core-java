@@ -8,8 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.security.JdkHttpClientProxySupport;
-import com.openjiuwen.core.common.security.SslUtils;
+import com.openjiuwen.core.common.security.OkHttpProxySupport;
 import com.openjiuwen.core.retrieval.common.BaseCallback;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
@@ -32,12 +31,20 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
+
 /**
  * Universal HTTP embedding client aligned with the Python APIEmbedding implementation.
  */
 public class APIEmbedding implements Embedding, AutoCloseable {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
     /**
      * Auto-generated for codecheck compliance.
@@ -79,6 +86,10 @@ public class APIEmbedding implements Embedding, AutoCloseable {
      * Auto-generated for codecheck compliance.
      */
     protected final HttpClient httpClient;
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    protected final OkHttpClient okHttpClient;
     /**
      * Auto-generated for codecheck compliance.
      */
@@ -126,19 +137,22 @@ public class APIEmbedding implements Embedding, AutoCloseable {
         this.headers = new LinkedHashMap<>();
         this.headers.put("Content-Type", "application/json");
         if (apiKey != null && !apiKey.isBlank()) {
-            this.headers.put("Authorization", "Bearer " + apiKey);
+            this.headers.put("Authorization", "Bearer " + apiKey.strip());
         }
         if (extraHeaders != null) {
             this.headers.putAll(extraHeaders);
         }
         if (httpClient == null) {
-            HttpClient.Builder builder = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(this.timeout));
-            SslUtils.configureHttpClientSsl(builder, this.apiUrl, config.isVerifySsl(), config.getSslCert());
-            JdkHttpClientProxySupport.configureFromEnvironment(builder, this.apiUrl);
-            this.httpClient = builder.build();
+            this.httpClient = null;
+            OkHttpClient.Builder okHttpBuilder = new OkHttpClient.Builder()
+                    .connectTimeout(Duration.ofSeconds(this.timeout))
+                    .readTimeout(Duration.ofSeconds(this.timeout))
+                    .writeTimeout(Duration.ofSeconds(this.timeout));
+            OkHttpProxySupport.configureFromEnvironment(okHttpBuilder, this.apiUrl);
+            this.okHttpClient = okHttpBuilder.build();
         } else {
             this.httpClient = httpClient;
+            this.okHttpClient = null;
         }
         this.executor = Executors.newFixedThreadPool(
                 this.maxConcurrent,
@@ -291,17 +305,8 @@ public class APIEmbedding implements Embedding, AutoCloseable {
         for (int attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 String body = MAPPER.writeValueAsString(payload);
-                HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                        .uri(URI.create(apiUrl))
-                        .timeout(Duration.ofSeconds(timeout))
-                        .POST(HttpRequest.BodyPublishers.ofString(body));
-                for (Map.Entry<String, String> entry : headers.entrySet()) {
-                    requestBuilder.header(entry.getKey(), entry.getValue());
-                }
-                HttpResponse<String> response = httpClient.send(
-                        requestBuilder.build(),
-                        HttpResponse.BodyHandlers.ofString());
-                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                HttpResult response = sendEmbeddingRequest(body);
+                if (response.statusCode < 200 || response.statusCode >= 300) {
                     if (attempt < maxRetries) {
                         continue;
                     }
@@ -309,7 +314,7 @@ public class APIEmbedding implements Embedding, AutoCloseable {
                             StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
                             "Failed to get embedding after " + maxRetries + " attempts");
                 }
-                List<List<Float>> embeddings = parseEmbeddings(MAPPER.readTree(response.body()));
+                List<List<Float>> embeddings = parseEmbeddings(MAPPER.readTree(response.body));
                 if (dimension == null && !embeddings.isEmpty() && !embeddings.get(0).isEmpty()) {
                     dimension = embeddings.get(0).size();
                 }
@@ -328,6 +333,35 @@ public class APIEmbedding implements Embedding, AutoCloseable {
         throw RetrievalExceptions.error(
                 StatusCode.RETRIEVAL_EMBEDDING_UNREACHABLE_CALL_FAILED,
                 "Unreachable code in APIEmbedding.getEmbeddings");
+    }
+
+    private HttpResult sendEmbeddingRequest(String body) throws IOException, InterruptedException {
+        if (okHttpClient != null) {
+            Request.Builder requestBuilder = new Request.Builder()
+                    .url(apiUrl)
+                    .post(RequestBody.create(body, JSON));
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                requestBuilder.header(entry.getKey(), entry.getValue());
+            }
+            try (Response response = okHttpClient.newCall(requestBuilder.build()).execute()) {
+                ResponseBody responseBody = response.body();
+                return new HttpResult(response.code(), responseBody == null ? "" : responseBody.string());
+            }
+        }
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
+                .uri(URI.create(apiUrl))
+                .timeout(Duration.ofSeconds(timeout))
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+            requestBuilder.header(entry.getKey(), entry.getValue());
+        }
+        HttpResponse<String> response = httpClient.send(
+                requestBuilder.build(),
+                HttpResponse.BodyHandlers.ofString());
+        return new HttpResult(response.statusCode(), response.body());
+    }
+
+    private record HttpResult(int statusCode, String body) {
     }
 
     /**

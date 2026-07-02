@@ -7,6 +7,7 @@ package com.openjiuwen.core.foundation.llm.model_clients;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.security.OkHttpProxySupport;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -26,16 +27,21 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.Call;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 /**
  * Basic OpenAI-compatible HTTP client used by the built-in providers.
@@ -44,15 +50,16 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
 
     private static final Logger LOG = LoggerFactory.getLogger(OpenAiCompatibleModelClient.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
-    private final HttpClient httpClient;
+    private final OkHttpClient httpClient;
 
     /**
      * Auto-generated for codecheck compliance.
      */
     public OpenAiCompatibleModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         super(modelConfig, modelClientConfig);
-        this.httpClient = buildHttpClient(modelClientConfig.getTimeout());
+        this.httpClient = buildOkHttpClient(modelClientConfig.getTimeout());
     }
 
     @Override
@@ -98,14 +105,16 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
                 topP != null ? topP.doubleValue() : null,
                 model, stop, maxTokens, false, kwargs);
 
-        HttpResponse<String> response = httpClient.send(
-                buildRequest(params, timeout),
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        ensureSuccess(response.statusCode(), response.body());
+        Call call = httpClient.newCall(buildRequest(params, timeout));
+        applyCallTimeout(call, timeout);
+        try (Response response = call.execute()) {
+            String responseBody = responseBody(response);
+            ensureSuccess(response.code(), responseBody);
 
-        @SuppressWarnings("unchecked")
-        Map<String, Object> responseMap = MAPPER.readValue(response.body(), Map.class);
-        return parseAssistantMessage(responseMap, resolveModelName(model, responseMap), outputParser);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> responseMap = MAPPER.readValue(responseBody, Map.class);
+            return parseAssistantMessage(responseMap, resolveModelName(model, responseMap), outputParser);
+        }
     }
 
     @Override
@@ -128,12 +137,17 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
                 topP != null ? topP.doubleValue() : null,
                 model, stop, maxTokens, true, kwargs);
 
-        HttpResponse<InputStream> response = httpClient.send(
-                buildRequest(params, timeout),
-                HttpResponse.BodyHandlers.ofInputStream());
-        ensureSuccess(response.statusCode(), null);
+        Call call = httpClient.newCall(buildRequest(params, timeout));
+        applyCallTimeout(call, timeout);
+        Response response = call.execute();
+        ensureSuccess(response.code(), responseBodyOrNull(response));
 
-        return new StreamingChunkIterator(response.body(), resolveModelName(model, null), outputParser);
+        ResponseBody body = response.body();
+        if (body == null) {
+            response.close();
+            throw new RuntimeException("No response body");
+        }
+        return new StreamingChunkIterator(body.byteStream(), resolveModelName(model, null), outputParser);
     }
 
     @Override
@@ -183,18 +197,61 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         throw new UnsupportedOperationException("Video generation is not supported by the built-in HTTP client");
     }
 
-    private HttpRequest buildRequest(Map<String, Object> params, Float timeoutOverride) throws Exception {
+    private Request buildRequest(Map<String, Object> params, Float timeoutOverride) throws Exception {
         String body = MAPPER.writeValueAsString(params);
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(normalizedApiBase() + "/chat/completions"))
-                .timeout(resolveTimeout(timeoutOverride != null ? timeoutOverride : (float) modelClientConfig.getTimeout()));
+        Request.Builder builder = new Request.Builder()
+                .url(normalizedApiBase() + "/chat/completions");
         applyConfiguredHeaders(builder, true);
-        builder.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
+        builder.post(RequestBody.create(body, JSON));
         return builder.build();
     }
 
+    private OkHttpClient buildOkHttpClient(double timeoutSeconds) {
+        Duration timeout = resolveTimeout(timeoutSeconds);
+        OkHttpClient.Builder builder = new OkHttpClient.Builder()
+                .connectTimeout(timeout)
+                .readTimeout(timeout)
+                .writeTimeout(timeout);
+        OkHttpProxySupport.configureFromEnvironment(builder, modelClientConfig.getApiBase());
+        return builder.build();
+    }
+
+    private void applyConfiguredHeaders(Request.Builder builder, boolean includeJsonContentType) {
+        if (includeJsonContentType) {
+            builder.header("Content-Type", "application/json");
+        }
+        if (modelClientConfig.getApiKey() != null && !modelClientConfig.getApiKey().isBlank()) {
+            builder.header("Authorization", "Bearer " + modelClientConfig.getApiKey().strip());
+        }
+        for (Map.Entry<String, String> entry : modelClientConfig.getHeaders().entrySet()) {
+            if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) {
+                continue;
+            }
+            builder.header(entry.getKey(), entry.getValue());
+        }
+    }
+
+    private static String responseBody(Response response) throws IOException {
+        ResponseBody body = response.body();
+        return body == null ? "" : body.string();
+    }
+
+    private static String responseBodyOrNull(Response response) throws IOException {
+        if (response.isSuccessful()) {
+            return null;
+        }
+        return responseBody(response);
+    }
+
+    private static void applyCallTimeout(Call call, Float timeoutOverride) {
+        if (timeoutOverride == null) {
+            return;
+        }
+        call.timeout().timeout(resolveTimeout(timeoutOverride).toMillis(), TimeUnit.MILLISECONDS);
+    }
+
     private String normalizedApiBase() {
-        return modelClientConfig.getApiBase().replaceAll("/+$", "");
+        return modelClientConfig.getApiBase().strip().replaceAll("/+$", "");
     }
 
     private static Duration resolveTimeout(double seconds) {
