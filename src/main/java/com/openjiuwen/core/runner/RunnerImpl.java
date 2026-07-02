@@ -722,6 +722,12 @@ public class RunnerImpl {
             }
         }
         if (bestMethod != null) {
+            // The method may be public on a package-private or non-exported
+            // class (e.g. nested test agents), in which case Method.invoke
+            // throws IllegalAccessException. setAccessible(true) bypasses the
+            // enclosing-class access check the same way getDeclaredMethods
+            // already does below.
+            bestMethod.setAccessible(true);
             return bestMethod;
         }
         for (Method method : targetClass.getDeclaredMethods()) {

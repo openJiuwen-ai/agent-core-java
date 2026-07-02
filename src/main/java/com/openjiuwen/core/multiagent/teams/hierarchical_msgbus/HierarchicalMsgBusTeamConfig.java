@@ -11,6 +11,11 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -23,4 +28,17 @@ import lombok.NoArgsConstructor;
 public class HierarchicalMsgBusTeamConfig extends TeamConfig {
     private AgentCard supervisorAgent;
     private Double timeout = 1800.0;
+    private Map<String, List<String>> hierarchy = new LinkedHashMap<>();
+    private List<String> supervisorDefinitions = new ArrayList<>();
+
+    /**
+     * Create a config with the supervisor agent and timeout.
+     *
+     * @param supervisorAgent the supervisor agent card
+     * @param timeout         message timeout in seconds
+     */
+    public HierarchicalMsgBusTeamConfig(AgentCard supervisorAgent, Double timeout) {
+        this.supervisorAgent = supervisorAgent;
+        this.timeout = timeout;
+    }
 }

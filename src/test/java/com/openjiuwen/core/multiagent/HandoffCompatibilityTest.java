@@ -62,9 +62,11 @@ class HandoffCompatibilityTest {
     }
 
     @Test
-    void handoffToolShouldEmitStructuredDirective() {
+    void handoffToolShouldEmitStructuredDirective() throws Exception {
         HandoffTool tool = new HandoffTool("billing");
-        Map<String, Object> payload = tool.invoke(Map.of("reason", "needs billing", "message", "carry context"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = (Map<String, Object>) tool.invoke(
+                Map.of("reason", "needs billing", "message", "carry context"));
 
         assertThat(payload).containsEntry(HandoffSignal.HANDOFF_TARGET_KEY, "billing");
         assertThat(payload).containsEntry(HandoffSignal.HANDOFF_REASON_KEY, "needs billing");

@@ -109,6 +109,21 @@ public class TeamRuntime {
     }
 
     /**
+     * Resolve a registered agent instance by ID.
+     *
+     * <p>Exposes the same resolution path used by {@link #send} so team
+     * subclasses (e.g. {@link com.openjiuwen.core.multiagent.teams.handoff.HandoffTeam})
+     * can perform pre-invoke setup such as injecting handoff tools into the
+     * agent's {@code AbilityManager}.</p>
+     *
+     * @param agentId ID of the agent to resolve.
+     * @return resolved agent instance.
+     */
+    public BaseAgent getAgentInstance(String agentId) {
+        return resolveAgent(agentId);
+    }
+
+    /**
      * Auto-generated for codecheck compliance.
      */
     public void bindTeamSession(AgentGroupSessionApi session) {
