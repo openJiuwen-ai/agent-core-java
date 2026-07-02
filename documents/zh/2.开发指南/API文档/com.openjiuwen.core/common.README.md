@@ -13,7 +13,13 @@
 | [`schema`](./common/schema.README.md) | `com.openjiuwen.core.common.schema` 定义共享 card、参数与内容数据结构。 |
 | [`constants`](./common/constants.README.md) | `com.openjiuwen.core.common.constants` 定义公共常量与轻量枚举。 |
 
+## 核心类型
+
+| 类型 | 说明 |
+| --- | --- |
+| [`VirtualThreadSupport`](./common/VirtualThreadSupport.md) | Java 17 编译基线下的 JDK21 虚拟线程运行时兼容层。 |
+
 ## 说明
 
 - 本页是 `common` 命名空间的共享导航页。
-- 本轮巡检重点复核 `exception` 子树，其余链接保持现有导航职责。
+- `VirtualThreadSupport` 供 SDK 内部和需要对齐 SDK 运行时行为的业务侧复用；JDK21+ 下使用虚拟线程，JDK17 下回退到平台线程。

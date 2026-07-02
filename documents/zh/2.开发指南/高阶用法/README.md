@@ -18,6 +18,7 @@
 | 页面 | 关注点 | 主要依据 | 说明 |
 | --- | --- | --- | --- |
 | [执行器 Runner](执行器Runner.md) | 全局运行器、资源管理、执行入口 | `com.openjiuwen.core.runner` | 解释 workflow / agent / group 的统一执行门面。 |
+| [Java 版本与虚拟线程兼容](Java版本与虚拟线程兼容.md) | Java 17 编译基线、JDK21 虚拟线程运行时适配 | `VirtualThreadSupport`、Demo 配置 | 解释 SDK 在 JDK17/JDK21+ 下的线程执行差异。 |
 | [人机交互](人机交互.md) | 交互输入、打断、恢复与等待流程 | `session.interaction`、`workflow_agent` 测试 | 以 Java 当前交互语义为准。 |
 | [Checkpointer 检查点机制](Checkpointer检查点机制.md) | 检查点生命周期、恢复、持久化与内存实现 | `session.checkpointer`、`graph` | 与交互恢复配套阅读。 |
 | [WorkflowAgent 支持多工作流跳转](WorkflowAgent支持多工作流跳转.md) | 多工作流路由与继续执行 | `application.workflow`、`workflow_agent` 源码与测试 | 以 Java 当前多 workflow 入口能力为准。 |
@@ -45,6 +46,7 @@
 
 - 先根据问题类型选择分组，再进入具体页面。
 - 如果你需要先理解执行期会话语义，优先从 [执行器 Runner](执行器Runner.md)、[人机交互](人机交互.md)、[Checkpointer 检查点机制](Checkpointer检查点机制.md) 和 [执行期（Session）](Session/README.md) 开始。
+- 如果你需要确认 Java 17 编译基线和 JDK21 虚拟线程运行时差异，先看 [Java 版本与虚拟线程兼容](Java版本与虚拟线程兼容.md)。
 - 涉及技能、系统操作或演化训练的页面，都会显式标出当前 Java 能力状态和实现边界。
 
 ## 参考入口
@@ -52,6 +54,7 @@
 - [API 文档：retrieval](../API文档/com.openjiuwen.core/retrieval.README.md)
 - [API 文档：memory](../API文档/com.openjiuwen.core/memory.README.md)
 - [API 文档：context](../API文档/com.openjiuwen.core/context.README.md)
+- [API 文档：VirtualThreadSupport](../API文档/com.openjiuwen.core/common/VirtualThreadSupport.md)
 - [API 文档：session](../API文档/com.openjiuwen.core/session.README.md)
 - [API 文档：runner](../API文档/com.openjiuwen.core/runner.README.md)
 - [API 文档：singleagent](../API文档/com.openjiuwen.core/singleagent.README.md)
