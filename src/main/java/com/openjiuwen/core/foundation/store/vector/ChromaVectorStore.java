@@ -189,7 +189,7 @@ public class ChromaVectorStore extends BaseVectorStore {
 
     @Override
     public CompletableFuture<List<String>> listCollectionNames() {
-        return CompletableFuture.supplyAsync(client::listCollectionNames);
+        return CompletableFuture.supplyAsync(client::listCollectionNames, IO_EXECUTOR);
     }
 
     @Override

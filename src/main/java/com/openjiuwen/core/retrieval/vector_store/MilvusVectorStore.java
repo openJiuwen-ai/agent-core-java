@@ -489,7 +489,7 @@ public class MilvusVectorStore implements VectorStore {
                         error);
                 return hybridFallback(queryText, queryVector, topK);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override

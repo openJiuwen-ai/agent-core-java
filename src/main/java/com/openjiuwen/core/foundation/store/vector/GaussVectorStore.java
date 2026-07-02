@@ -200,7 +200,7 @@ public class GaussVectorStore extends BaseVectorStore implements AutoCloseable {
             } finally {
                 cursor.close();
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override

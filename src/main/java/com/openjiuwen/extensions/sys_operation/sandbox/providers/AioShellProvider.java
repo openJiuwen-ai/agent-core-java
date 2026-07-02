@@ -5,6 +5,7 @@
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sys_operation.result.ExecuteCmdChunkData;
@@ -27,6 +28,9 @@ import java.util.concurrent.Flow;
  * {@code openjiuwen/extensions/sys_operation/sandbox/providers/aio.py}.
  */
 public class AioShellProvider extends BaseShellProvider {
+
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("aio-shell-provider-io");
 
     private final AioProviderSupport.AioHttpClient client;
     private final int timeoutSeconds;
@@ -88,7 +92,7 @@ public class AioShellProvider extends BaseShellProvider {
                         exception.getMessage(),
                         ExecuteCmdResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agent_evolving.checkpointing.EvolutionPatch;
 import com.openjiuwen.agent_evolving.optimizer.LlmResilience;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
@@ -37,6 +38,8 @@ public class KeywordExtractor {
     private static final Pattern JSON_OBJECT_PATTERN = Pattern.compile("\\{[\\s\\S]*\\}");
     private static final String LANGUAGE_CN = "cn";
     private static final String LANGUAGE_EN = "en";
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("keyword-extractor-io");
     private static final Map<String, String> PROMPTS = Map.of(
             LANGUAGE_CN,
             """
@@ -182,7 +185,7 @@ public class KeywordExtractor {
             Object rawIntent = data.get().get("intent");
             String intent = head(String.valueOf(rawIntent != null ? rawIntent : "").strip(), 80);
             return queryKeywords(keywords.size() > 20 ? keywords.subList(0, 20) : keywords, intent, excerpt);
-        });
+        }, IO_EXECUTOR);
     }
 
     private String resolvedSkillHint(String skillHint) {

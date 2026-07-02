@@ -6,6 +6,7 @@ package com.openjiuwen.core.memory.process.extract;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
@@ -36,6 +37,8 @@ public final class MemoryAnalyzer {
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final int DEFAULT_RETRIES = 3;
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("memory-analyzer-io");
 
     private MemoryAnalyzer() {
     }
@@ -119,7 +122,9 @@ public final class MemoryAnalyzer {
 
         String promptContent = new PromptApplier().apply("memory_analysis_prompt", promptVariables);
         List<BaseMessage> modelInput = List.of(new UserMessage(promptContent));
-        return CompletableFuture.supplyAsync(() -> invokeAndParse(baseChatModel, modelInput, memoryConfig, retries));
+        return CompletableFuture.supplyAsync(
+                () -> invokeAndParse(baseChatModel, modelInput, memoryConfig, retries),
+                IO_EXECUTOR);
     }
 
     private static MemoryAnalyzerResult invokeAndParse(

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers;
 
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sys_operation.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sys_operation.protocal.BaseFsProtocal;
@@ -48,6 +49,9 @@ import java.util.concurrent.Flow;
  * {@code openjiuwen/extensions/sys_operation/sandbox/providers/jiuwenbox.py}.
  */
 public class JiuwenBoxFsProvider extends BaseFsProvider {
+
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("jiuwenbox-fs-provider-io");
 
     private final JiuwenBoxProviderSupport.ProviderState state;
 
@@ -111,7 +115,7 @@ public class JiuwenBoxFsProvider extends BaseFsProvider {
                         exception.getMessage(),
                         ReadFileResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -285,7 +289,7 @@ public class JiuwenBoxFsProvider extends BaseFsProvider {
                         exception.getMessage(),
                         ListFilesResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -327,7 +331,7 @@ public class JiuwenBoxFsProvider extends BaseFsProvider {
                         exception.getMessage(),
                         ListDirsResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -365,7 +369,7 @@ public class JiuwenBoxFsProvider extends BaseFsProvider {
                         exception.getMessage(),
                         UploadFileResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -444,7 +448,7 @@ public class JiuwenBoxFsProvider extends BaseFsProvider {
                         exception.getMessage(),
                         DownloadFileResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -514,7 +518,7 @@ public class JiuwenBoxFsProvider extends BaseFsProvider {
                         exception.getMessage(),
                         SearchFilesResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     private CompletableFuture<WriteFileResult> writeInternal(
@@ -547,7 +551,7 @@ public class JiuwenBoxFsProvider extends BaseFsProvider {
                         exception.getMessage(),
                         WriteFileResult.class);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     private Comparator<FileSystemItem> comparator(String sortBy, boolean sortDescending) {

@@ -5,6 +5,7 @@
 package com.openjiuwen.core.memory.manage.update;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
@@ -32,6 +33,8 @@ import java.util.concurrent.CompletableFuture;
 public class MemUpdateChecker {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("mem-update-checker-io");
     private final PromptApplier promptApplier;
 
     public MemUpdateChecker() {
@@ -91,7 +94,9 @@ public class MemUpdateChecker {
                 Map.of("input_messages", messages.stream().map(BaseMessage::modelDump).toList())
         );
 
-        return CompletableFuture.supplyAsync(() -> doCheck(newMemoryMap, oldMemoryMap, baseChatModel, messages, retries));
+        return CompletableFuture.supplyAsync(
+                () -> doCheck(newMemoryMap, oldMemoryMap, baseChatModel, messages, retries),
+                IO_EXECUTOR);
     }
 
     public static FormatInputResult formatInput(Map<String, String> newMemories, Map<String, String> oldMemories) {

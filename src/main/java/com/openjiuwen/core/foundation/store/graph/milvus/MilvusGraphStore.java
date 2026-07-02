@@ -314,7 +314,7 @@ public class MilvusGraphStore implements GraphStore {
                 outputFields,
                 queryEmbedding,
                 kwargs == null ? Map.of() : kwargs
-        ));
+        ), IO_EXECUTOR);
     }
 
     @Override

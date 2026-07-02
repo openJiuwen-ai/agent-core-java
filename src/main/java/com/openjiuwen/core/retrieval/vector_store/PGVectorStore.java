@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.vector_store;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.store.vector_fields.PGVectorField;
@@ -44,6 +45,8 @@ public class PGVectorStore implements VectorStore {
     private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*$");
     private static final int DEFAULT_BATCH_SIZE = 128;
     private static final int MAX_VECTOR_DIMENSION = 2000;
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("pg-vector-store-io");
 
     private final VectorStoreConfig config;
     private final DataSource dataSource;
@@ -180,7 +183,7 @@ public class PGVectorStore implements VectorStore {
     public CompletableFuture<Void> add(List<Map<String, Object>> data,
                                        Integer batchSize,
                                        Map<String, Object> kwargs) {
-        return CompletableFuture.runAsync(() -> addSync(data, batchSize));
+        return CompletableFuture.runAsync(() -> addSync(data, batchSize), IO_EXECUTOR);
     }
 
     @Override
@@ -188,7 +191,7 @@ public class PGVectorStore implements VectorStore {
                                                            int topK,
                                                            VectorStoreFilter filters,
                                                            Map<String, Object> kwargs) {
-        return CompletableFuture.supplyAsync(() -> searchSync(queryVector, topK, filtersToMap(filters)));
+        return CompletableFuture.supplyAsync(() -> searchSync(queryVector, topK, filtersToMap(filters)), IO_EXECUTOR);
     }
 
     @Override
@@ -196,7 +199,7 @@ public class PGVectorStore implements VectorStore {
                                                                  int topK,
                                                                  VectorStoreFilter filters,
                                                                  Map<String, Object> kwargs) {
-        return CompletableFuture.supplyAsync(() -> sparseSearchSync(queryText, topK, filtersToMap(filters)));
+        return CompletableFuture.supplyAsync(() -> sparseSearchSync(queryText, topK, filtersToMap(filters)), IO_EXECUTOR);
     }
 
     @Override
@@ -229,14 +232,14 @@ public class PGVectorStore implements VectorStore {
                 ));
             }
             return List.copyOf(finalResults);
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
     public CompletableFuture<Boolean> delete(List<String> ids,
                                              DeleteFilter filterExpr,
                                              Map<String, Object> kwargs) {
-        return CompletableFuture.supplyAsync(() -> deleteSync(ids, filterExpr));
+        return CompletableFuture.supplyAsync(() -> deleteSync(ids, filterExpr), IO_EXECUTOR);
     }
 
     @Override
@@ -248,7 +251,7 @@ public class PGVectorStore implements VectorStore {
             } catch (SQLException exception) {
                 throw sqlError("failed to check PGVector table existence", exception);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     @Override
@@ -261,7 +264,7 @@ public class PGVectorStore implements VectorStore {
             } catch (SQLException exception) {
                 throw sqlError("failed to drop PGVector table", exception);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     protected Connection openConnection() throws SQLException {

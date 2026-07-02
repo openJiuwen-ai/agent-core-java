@@ -6,6 +6,7 @@ package com.openjiuwen.agent_evolving.signal;
 
 import com.openjiuwen.agent_evolving.optimizer.LlmResilience;
 import com.openjiuwen.agent_evolving.trajectory.Trajectory;
+import com.openjiuwen.core.common.VirtualThreadSupport;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 
@@ -25,6 +26,9 @@ import java.util.concurrent.CompletionStage;
  * {@code openjiuwen/agent_evolving/signal/team.py}.</p>
  */
 public class TeamSignalDetector {
+
+    private static final java.util.concurrent.Executor IO_EXECUTOR =
+            VirtualThreadSupport.newThreadPerTaskExecutor("team-signal-detector-io");
 
     private static final String USER_REQUEST_PROMPT_EN = """
             Determine if the following user input contains improvement suggestions
@@ -141,7 +145,7 @@ public class TeamSignalDetector {
                 Loggers.AGENT.warning("[TeamSignalDetector] detect_user_intent failed: {}", exc.getMessage());
                 throw new CompletionException(exc);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     public CompletionStage<List<EvolutionSignal>> detectTrajectorySignals(
@@ -188,7 +192,7 @@ public class TeamSignalDetector {
                 Loggers.AGENT.warning("[TeamSignalDetector] detect_trajectory_issues failed: {}", exc.getMessage());
                 throw new CompletionException(exc);
             }
-        });
+        }, IO_EXECUTOR);
     }
 
     private String userPromptTemplate() {
