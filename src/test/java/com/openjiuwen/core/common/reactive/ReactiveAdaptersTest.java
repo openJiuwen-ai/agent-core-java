@@ -42,6 +42,18 @@ class ReactiveAdaptersTest {
         StepVerifier.create(mono).expectNext("hello").verifyComplete();
     }
 
+    /** 同一个 Mono 多次订阅时，每次都应重新执行 callable，不缓存旧结果或抛异常。 */
+    @Test
+    void fromCallableSupportsMultipleSubscriptions() {
+        AtomicInteger calls = new AtomicInteger();
+        Mono<Integer> mono = ReactiveAdapters.fromCallable(calls::incrementAndGet);
+
+        StepVerifier.create(mono).expectNext(1).verifyComplete();
+        StepVerifier.create(mono).expectNext(2).verifyComplete();
+
+        assertEquals(2, calls.get(), "each Mono subscription should invoke callable independently");
+    }
+
     /** callable 抛出的异常对象身份不变（同一引用），不被包装。 */
     @Test
     void fromCallablePropagatesCheckedExceptionUnwrapped() {
@@ -191,6 +203,21 @@ class ReactiveAdaptersTest {
         StepVerifier.create(flux).expectNext("a", "b").verifyComplete();
     }
 
+    /** 延迟创建 iterator 的 Flux 多次订阅时，每次都应创建新 iterator，避免复用已消费状态。 */
+    @Test
+    void fromCallableIteratorSupportsMultipleSubscriptions() {
+        AtomicInteger sourceCalls = new AtomicInteger();
+        Flux<Integer> flux = ReactiveAdapters.fromCallableIterator(() -> {
+            sourceCalls.incrementAndGet();
+            return Arrays.asList(1, 2, 3).iterator();
+        });
+
+        StepVerifier.create(flux).expectNext(1, 2, 3).verifyComplete();
+        StepVerifier.create(flux).expectNext(1, 2, 3).verifyComplete();
+
+        assertEquals(2, sourceCalls.get(), "each Flux subscription should create a fresh iterator");
+    }
+
     // ==================== fromAutoCloseableIterator ====================
 
     /** 自然 complete 时触发 close()。 */
@@ -246,6 +273,28 @@ class ReactiveAdaptersTest {
         StepVerifier.create(ReactiveAdapters.fromAutoCloseableIterator(() -> plain))
                 .expectNext(1, 2, 3)
                 .verifyComplete();
+    }
+
+    /** 同一个 AutoCloseable Flux 连续订阅并取消时，每次都应独立创建并关闭资源。 */
+    @Test
+    void fromAutoCloseableIteratorSupportsRepeatedCancelSubscriptions() throws Exception {
+        AtomicInteger sourceCalls = new AtomicInteger();
+        AtomicInteger closeCalls = new AtomicInteger();
+        Flux<Integer> flux = ReactiveAdapters.fromAutoCloseableIterator(() -> {
+            sourceCalls.incrementAndGet();
+            return new CountingIterator(closeCalls);
+        });
+
+        for (int i = 0; i < 3; i++) {
+            StepVerifier.create(flux, 2)
+                    .expectNext(0, 1)
+                    .thenCancel()
+                    .verify(Duration.ofSeconds(5));
+        }
+
+        assertEquals(3, sourceCalls.get(), "each cancelled subscription should create a fresh iterator");
+        awaitTrue(() -> closeCalls.get() == 3, Duration.ofSeconds(2),
+                "each cancelled subscription should close its own iterator");
     }
 
     /** 轮询条件直到 true 或超时，替代未引入的 awaitility。 */
@@ -317,6 +366,30 @@ class ReactiveAdaptersTest {
         @Override
         public void close() {
             closed.set(true);
+        }
+    }
+
+    private static final class CountingIterator implements Iterator<Integer>, AutoCloseable {
+        private final AtomicInteger closeCalls;
+        private int next;
+
+        private CountingIterator(AtomicInteger closeCalls) {
+            this.closeCalls = closeCalls;
+        }
+
+        @Override
+        public boolean hasNext() {
+            return true;
+        }
+
+        @Override
+        public Integer next() {
+            return next++;
+        }
+
+        @Override
+        public void close() {
+            closeCalls.incrementAndGet();
         }
     }
 }
