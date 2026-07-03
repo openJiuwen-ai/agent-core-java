@@ -33,7 +33,8 @@
         <pgvector.version>0.1.6</pgvector.version>
         <postgresql.version>42.7.7</postgresql.version>
         <sqlite.jdbc.version>3.46.1.3</sqlite.jdbc.version>
-        <testcontainers.version>1.21.3</testcontainers.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
+        <commons-lang3.version>3.14.0</commons-lang3.version>
 
         <junit.version>5.10.2</junit.version>
         <mockito.version>5.11.0</mockito.version>
@@ -60,6 +61,12 @@
             <groupId>org.yaml</groupId>
             <artifactId>snakeyaml</artifactId>
             <version>${snakeyaml.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>${commons-lang3.version}</version>
+            <scope>test</scope>
         </dependency>
 
         <dependency>

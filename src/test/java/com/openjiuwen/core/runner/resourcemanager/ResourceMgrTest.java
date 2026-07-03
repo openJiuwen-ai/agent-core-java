@@ -7,8 +7,10 @@ package com.openjiuwen.core.runner.resourcemanager;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.schema.BaseCard;
+import com.openjiuwen.core.common.clients.ClientRegistry;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.foundation.tool.mcp.McpClient;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpTool;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
@@ -26,6 +28,8 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -510,6 +514,27 @@ class ResourceMgrTest {
     }
 
     @Test
+    void mcpResourceOperationsUseTimeoutAwareClientMethods() {
+        ResourceMgr manager = new ResourceMgr();
+        TimeoutOnlyMcpClient client = new TimeoutOnlyMcpClient();
+        String clientType = "resource-timeout-" + UUID.randomUUID().toString().replace("-", "");
+        ClientRegistry.getClientRegistry().registerClient(clientType, "mcp", kwargs -> client);
+        McpServerConfig config = new McpServerConfig("srv-resource", "resource-server", "stdio", clientType,
+                Map.of("operation_timeout", 2.5D), Map.of(), Map.of());
+
+        Result<?, ?> added = manager.addMcpServer(config).toCompletableFuture().join();
+        Object resources = manager.listMcpResources("srv-resource").toCompletableFuture().join();
+        Object contents = manager.readMcpResource("srv-resource", "file://demo").toCompletableFuture().join();
+
+        assertTrue(added.isOk());
+        assertEquals(List.of(Map.of("uri", "file://demo")), resources);
+        assertEquals(List.of(Map.of("text", "hello")), contents);
+        assertEquals(2.5F, client.lastListResourcesTimeout);
+        assertEquals(2.5F, client.lastReadResourceTimeout);
+        assertEquals("file://demo", client.lastResourceUri);
+    }
+
+    @Test
     void removeAgentTeamReturnsOkWithRemovedCard() {
         ResourceMgr manager = new ResourceMgr();
         TeamCard card = new TeamCard("team-1", "team", "test team");
@@ -573,5 +598,60 @@ class ResourceMgrTest {
      * {@code openjiuwen/core/runner/resources_manager/resource_manager.py}.
      */
     private static final class FakeMcpClient {
+    }
+
+    private static final class TimeoutOnlyMcpClient implements McpClient {
+        private float lastListResourcesTimeout = McpServerConfig.NO_TIMEOUT;
+        private float lastReadResourceTimeout = McpServerConfig.NO_TIMEOUT;
+        private String lastResourceUri;
+
+        @Override
+        public boolean connect(int retryTimes, float timeout) {
+            return true;
+        }
+
+        @Override
+        public boolean disconnect(float timeout) {
+            return true;
+        }
+
+        @Override
+        public List<Object> listTools(float timeout) {
+            return List.of(McpToolCard.builder()
+                    .name("echo")
+                    .description("Echo")
+                    .serverName("resource-server")
+                    .serverId("srv-resource")
+                    .inputParams(Map.of())
+                    .build());
+        }
+
+        @Override
+        public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
+            return Map.of();
+        }
+
+        @Override
+        public Optional<Object> getToolInfo(String toolName, float timeout) {
+            return Optional.empty();
+        }
+
+        @Override
+        public List<Object> listResources(float timeout) {
+            lastListResourcesTimeout = timeout;
+            return List.of(Map.of("uri", "file://demo"));
+        }
+
+        @Override
+        public Object readResource(String uri, float timeout) {
+            lastResourceUri = uri;
+            lastReadResourceTimeout = timeout;
+            return List.of(Map.of("text", "hello"));
+        }
+
+        @Override
+        public String getServerPath() {
+            return "stdio";
+        }
     }
 }

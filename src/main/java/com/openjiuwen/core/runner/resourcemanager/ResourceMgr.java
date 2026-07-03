@@ -578,7 +578,8 @@ public class ResourceMgr {
             throw buildError(StatusCode.RESOURCE_MCP_TOOL_GET_ERROR,
                     "server_id", serverId, "reason", "server not found");
         }
-        return invokeAsync(client, "listResources");
+        return invokeAsync(client, "listResources",
+                ToolManager.operationTimeout(toolManager.getMcpServerConfig(serverId)));
     }
 
     public CompletionStage<Object> readMcpResource(String serverId, String uri) {
@@ -588,7 +589,8 @@ public class ResourceMgr {
             throw buildError(StatusCode.RESOURCE_MCP_TOOL_GET_ERROR,
                     "server_id", serverId, "reason", "server not found");
         }
-        return invokeAsync(client, "readResource", String.class, uri);
+        return invokeAsync(client, "readResource", uri,
+                ToolManager.operationTimeout(toolManager.getMcpServerConfig(serverId)));
     }
 
     public List<BaseCard> getResourceByTag(String tag) {
@@ -1182,6 +1184,31 @@ public class ResourceMgr {
         return invokeAsync(target, methodName, null, null);
     }
 
+    private static CompletionStage<Object> invokeAsync(Object target, String methodName, float timeout) {
+        Method method = findMethod(target.getClass(), methodName, float.class);
+        if (method != null) {
+            return invokeAsyncMethod(target, method, timeout);
+        }
+        method = findMethod(target.getClass(), methodName, double.class);
+        if (method != null) {
+            return invokeAsyncMethod(target, method, (double) timeout);
+        }
+        return invokeAsync(target, methodName);
+    }
+
+    private static CompletionStage<Object> invokeAsync(Object target, String methodName, String argument,
+                                                       float timeout) {
+        Method method = findMethod(target.getClass(), methodName, String.class, float.class);
+        if (method != null) {
+            return invokeAsyncMethod(target, method, argument, timeout);
+        }
+        method = findMethod(target.getClass(), methodName, String.class, double.class);
+        if (method != null) {
+            return invokeAsyncMethod(target, method, argument, (double) timeout);
+        }
+        return invokeAsync(target, methodName, String.class, argument);
+    }
+
     private static CompletionStage<Object> invokeAsync(Object target, String methodName,
                                                        Class<?> parameterType, Object argument) {
         try {
@@ -1198,6 +1225,28 @@ public class ResourceMgr {
             throw new IllegalStateException(cause);
         } catch (ReflectiveOperationException error) {
             throw new IllegalStateException(error);
+        }
+    }
+
+    private static CompletionStage<Object> invokeAsyncMethod(Object target, Method method, Object... args) {
+        try {
+            return CompletableFuture.completedFuture(awaitIfNeeded(method.invoke(target, args)));
+        } catch (InvocationTargetException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException(cause);
+        } catch (ReflectiveOperationException error) {
+            throw new IllegalStateException(error);
+        }
+    }
+
+    private static Method findMethod(Class<?> type, String methodName, Class<?>... parameterTypes) {
+        try {
+            return type.getMethod(methodName, parameterTypes);
+        } catch (NoSuchMethodException ignored) {
+            return null;
         }
     }
 

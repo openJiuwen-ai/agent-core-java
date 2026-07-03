@@ -360,6 +360,7 @@
             - [McpTool](2.开发指南/API文档/com.openjiuwen.core/foundation/tool/mcp/McpTool.md)
             - [McpToolCard](2.开发指南/API文档/com.openjiuwen.core/foundation/tool/mcp/McpToolCard.md)
             - [client](2.开发指南/API文档/com.openjiuwen.core/foundation/tool/mcp/client.README.md)
+              - [McpClients](2.开发指南/API文档/com.openjiuwen.core/foundation/tool/mcp/client/McpClients.md)
               - [OpenApiClient](2.开发指南/API文档/com.openjiuwen.core/foundation/tool/mcp/client/OpenApiClient.md)
               - [PlaywrightClient](2.开发指南/API文档/com.openjiuwen.core/foundation/tool/mcp/client/PlaywrightClient.md)
               - [SseClient](2.开发指南/API文档/com.openjiuwen.core/foundation/tool/mcp/client/SseClient.md)
