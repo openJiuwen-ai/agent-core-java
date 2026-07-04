@@ -431,7 +431,7 @@ class T01177KnowledgeRetrievalComponentTest {
         }
 
         @Override
-        public CompletableFuture<Map<String, Object>> getStatistics() {
+        protected CompletableFuture<Map<String, Object>> getStatisticsAsync() {
             return CompletableFuture.completedFuture(Map.of());
         }
     }
@@ -467,7 +467,7 @@ class T01177KnowledgeRetrievalComponentTest {
         }
 
         @Override
-        public CompletableFuture<Map<String, Object>> getStatistics() {
+        protected CompletableFuture<Map<String, Object>> getStatisticsAsync() {
             return CompletableFuture.completedFuture(Map.of());
         }
     }

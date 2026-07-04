@@ -36,6 +36,10 @@ public class OpenAIEmbedding extends APIEmbedding {
         this(config, 60, 3, null, 8, 50, null, null);
     }
 
+    public OpenAIEmbedding(com.openjiuwen.core.retrieval.common.EmbeddingConfig config) {
+        this((EmbeddingConfig) config);
+    }
+
     public OpenAIEmbedding(EmbeddingConfig config,
                            int timeout,
                            int maxRetries,
@@ -50,6 +54,41 @@ public class OpenAIEmbedding extends APIEmbedding {
         }
         this.apiUrl = stripEmbeddingsSuffix(this.apiUrl);
         this.configuredDimension = dimension;
+    }
+
+    public OpenAIEmbedding(com.openjiuwen.core.retrieval.common.EmbeddingConfig config,
+                           int timeout,
+                           int maxRetries,
+                           Map<String, String> extraHeaders,
+                           int maxBatchSize,
+                           int maxConcurrent,
+                           Integer dimension,
+                           HttpClient httpClient) {
+        this((EmbeddingConfig) config, timeout, maxRetries, extraHeaders, maxBatchSize, maxConcurrent, dimension, httpClient);
+    }
+
+    public OpenAIEmbedding(EmbeddingConfig config,
+                           int timeout,
+                           int maxRetries,
+                           Map<String, String> extraHeaders,
+                           int maxBatchSize,
+                           int maxConcurrent,
+                           Integer dimension,
+                           HttpClient httpClient,
+                           Map<String, String> ignoredExtraBody) {
+        this(config, timeout, maxRetries, extraHeaders, maxBatchSize, maxConcurrent, dimension, httpClient);
+    }
+
+    public OpenAIEmbedding(com.openjiuwen.core.retrieval.common.EmbeddingConfig config,
+                           int timeout,
+                           int maxRetries,
+                           Map<String, String> extraHeaders,
+                           int maxBatchSize,
+                           int maxConcurrent,
+                           Integer dimension,
+                           HttpClient httpClient,
+                           Map<String, String> ignoredExtraBody) {
+        this((EmbeddingConfig) config, timeout, maxRetries, extraHeaders, maxBatchSize, maxConcurrent, dimension, httpClient);
     }
 
     @Override
@@ -115,6 +154,38 @@ public class OpenAIEmbedding extends APIEmbedding {
         return embeddings;
     }
 
+    protected List<List<Float>> parseEmbeddings(JsonNode root) {
+        JsonNode dataNode = root == null ? null : root.get("data");
+        if (dataNode == null || !dataNode.isArray()) {
+            return toFloatMatrix(parseEmbeddingsUnchecked(root == null ? "{}" : root.toString()));
+        }
+
+        List<JsonNode> items = new ArrayList<>();
+        dataNode.forEach(items::add);
+        items.sort(Comparator.comparingInt(item -> item.path("index").asInt(-1)));
+
+        List<List<Float>> embeddings = new ArrayList<>();
+        for (JsonNode item : items) {
+            JsonNode embeddingNode = item.get("embedding");
+            if (embeddingNode == null || embeddingNode.isNull()) {
+                continue;
+            }
+            if (embeddingNode.isTextual()) {
+                embeddings.add(EmbeddingUtils.parseBase64Embedding(embeddingNode.asText()));
+            } else {
+                embeddings.add(toFloatList(parseEmbeddingVector(embeddingNode)));
+            }
+        }
+        if (embeddings.isEmpty()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                    "error_msg",
+                    "No embedding field found in data items: " + dataNode
+            );
+        }
+        return embeddings;
+    }
+
     private Map<String, Object> withDimensions(Map<String, Object> kwargs) {
         if (configuredDimension == null) {
             return kwargs == null ? Map.of() : kwargs;
@@ -131,6 +202,34 @@ public class OpenAIEmbedding extends APIEmbedding {
         List<Double> result = new ArrayList<>(values.size());
         for (Float value : values) {
             result.add(value == null ? null : value.doubleValue());
+        }
+        return result;
+    }
+
+    private List<List<Double>> parseEmbeddingsUnchecked(String body) {
+        try {
+            return parseEmbeddings(body);
+        } catch (IOException exception) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                    "error_msg",
+                    exception.getMessage()
+            );
+        }
+    }
+
+    private static List<List<Float>> toFloatMatrix(List<List<Double>> values) {
+        List<List<Float>> result = new ArrayList<>(values.size());
+        for (List<Double> row : values) {
+            result.add(toFloatList(row));
+        }
+        return result;
+    }
+
+    private static List<Float> toFloatList(List<Double> values) {
+        List<Float> result = new ArrayList<>(values.size());
+        for (Double value : values) {
+            result.add(value == null ? null : value.floatValue());
         }
         return result;
     }

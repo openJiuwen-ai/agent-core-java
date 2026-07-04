@@ -40,11 +40,47 @@ public class VectorStoreConfig {
     @Builder.Default
     private String distanceMetric = "cosine";
 
+    public VectorStoreConfig(Object storeProvider, String collectionName) {
+        this(toStoreType(storeProvider), "", collectionName, "cosine");
+    }
+
+    public VectorStoreConfig(StoreType storeProvider, String collectionName) {
+        this(storeProvider, "", collectionName, "cosine");
+    }
+
+    public VectorStoreConfig(Object storeProvider, String databaseName, String collectionName, String distanceMetric) {
+        this(toStoreType(storeProvider), databaseName, collectionName, distanceMetric);
+    }
+
     public VectorStoreConfig(StoreType storeProvider, String databaseName, String collectionName, String distanceMetric) {
         this.storeProvider = storeProvider;
         setDatabaseName(databaseName == null ? "" : databaseName);
         setCollectionName(collectionName);
         setDistanceMetric(distanceMetric);
+    }
+
+    public void validate() {
+        if (storeProvider == null) {
+            throw new IllegalArgumentException("store_provider is required");
+        }
+        setDatabaseName(databaseName);
+        setCollectionName(collectionName);
+        setDistanceMetric(distanceMetric);
+    }
+
+    public StoreType getStoreType() {
+        return storeProvider;
+    }
+
+    public void setStoreProvider(String storeProvider) {
+        this.storeProvider = StoreType.fromValue(storeProvider);
+    }
+
+    private static StoreType toStoreType(Object storeProvider) {
+        if (storeProvider instanceof StoreType type) {
+            return type;
+        }
+        return StoreType.fromValue(String.valueOf(storeProvider));
     }
 
     public void setDatabaseName(String databaseName) {

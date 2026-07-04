@@ -16,6 +16,7 @@ import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -719,7 +720,8 @@ class WorkflowWithInterruptMissingTest {
         }
 
         private com.openjiuwen.core.session.internal.WorkflowSession workflowSession() {
-            return new com.openjiuwen.core.session.internal.WorkflowSession(workflowId, null, sessionId, null, null);
+            return new com.openjiuwen.core.session.internal.WorkflowSession(
+                    workflowId, null, sessionId, (WorkflowCommitState) null, (Object) null);
         }
     }
 }

@@ -5,9 +5,13 @@
 package com.openjiuwen.core.session.internal;
 
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.callback.CallbackManager;
+import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.config.SessionConfigAccess;
+import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.session.stream.StreamWriter;
+import com.openjiuwen.core.session.stream.StreamWriterManager;
 
 import java.util.Map;
 
@@ -29,8 +33,9 @@ public abstract class WrappedSession extends BaseSession {
         return innerSession.config().getWorkflowConfig(workflowId);
     }
 
-    public Object getAgentConfig() {
-        return innerSession.config().getAgentConfig();
+    @SuppressWarnings("unchecked")
+    public <T> T getAgentConfig() {
+        return (T) innerSession.config().getAgentConfig();
     }
 
     public Object getEnv(String key) {
@@ -61,7 +66,7 @@ public abstract class WrappedSession extends BaseSession {
     }
 
     @Override
-    public Object streamWriterManager() {
+    public StreamWriterManager streamWriterManager() {
         return innerSession.streamWriterManager();
     }
 
@@ -76,7 +81,7 @@ public abstract class WrappedSession extends BaseSession {
     }
 
     @Override
-    public Object callbackManager() {
+    public CallbackManager callbackManager() {
         return innerSession.callbackManager();
     }
 
@@ -114,6 +119,10 @@ public abstract class WrappedSession extends BaseSession {
     public abstract void trace(Map<String, Object> data);
 
     public abstract void traceError(Throwable error);
+
+    public void traceError(Exception error) {
+        traceError((Throwable) error);
+    }
 
     public abstract void interact(Object value);
 

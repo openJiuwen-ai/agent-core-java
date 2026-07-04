@@ -255,7 +255,7 @@ class KnowledgeBaseConfigurationValidationTest {
         }
 
         @Override
-        public CompletableFuture<Map<String, Object>> getStatistics() {
+        protected CompletableFuture<Map<String, Object>> getStatisticsAsync() {
             return CompletableFuture.completedFuture(Map.of("kb_id", getConfig().getKbId()));
         }
     }

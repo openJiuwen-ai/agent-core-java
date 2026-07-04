@@ -12,10 +12,12 @@ import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
+import com.openjiuwen.core.retrieval.indexing.indexer.IndexBackendConfig;
 import com.openjiuwen.core.retrieval.indexing.indexer.Indexer;
 import com.openjiuwen.core.retrieval.indexing.processor.chunker.Chunker;
 import com.openjiuwen.core.retrieval.indexing.processor.extractor.Extractor;
 import com.openjiuwen.core.retrieval.indexing.processor.parser.Parser;
+import com.openjiuwen.core.retrieval.retriever.Retriever;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,7 +36,7 @@ import java.util.concurrent.CompletionException;
  * Mirrors Python's {@code KnowledgeBase} in
  * {@code openjiuwen/core/retrieval/knowledge_base.py}.
  */
-public abstract class KnowledgeBase {
+public abstract class KnowledgeBase implements AutoCloseable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(KnowledgeBase.class);
     private static final List<String> INDEX_ATTRIBUTES = List.of(
@@ -56,9 +58,10 @@ public abstract class KnowledgeBase {
     protected Extractor extractor;
     protected Indexer indexManager;
     protected BaseModelClient llmClient;
+    protected Retriever retriever;
 
     protected KnowledgeBase(KnowledgeBaseConfig config) {
-        this(config, null, null, null, null, null, null, null, true);
+        this(config, null, null, null, null, null, null, null, null, true);
     }
 
     protected KnowledgeBase(
@@ -71,7 +74,21 @@ public abstract class KnowledgeBase {
             Indexer indexManager,
             BaseModelClient llmClient
     ) {
-        this(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient, true);
+        this(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient, null, true);
+    }
+
+    protected KnowledgeBase(
+            KnowledgeBaseConfig config,
+            VectorStore vectorStore,
+            Embedding embedModel,
+            Parser parser,
+            Chunker chunker,
+            Extractor extractor,
+            Indexer indexManager,
+            BaseModelClient llmClient,
+            Retriever retriever
+    ) {
+        this(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient, retriever, true);
     }
 
     protected KnowledgeBase(
@@ -85,6 +102,21 @@ public abstract class KnowledgeBase {
             BaseModelClient llmClient,
             boolean strictValidation
     ) {
+        this(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient, null, strictValidation);
+    }
+
+    protected KnowledgeBase(
+            KnowledgeBaseConfig config,
+            VectorStore vectorStore,
+            Embedding embedModel,
+            Parser parser,
+            Chunker chunker,
+            Extractor extractor,
+            Indexer indexManager,
+            BaseModelClient llmClient,
+            Retriever retriever,
+            boolean strictValidation
+    ) {
         this.strictValidation = strictValidation;
         this.config = config;
         this.vectorStore = vectorStore;
@@ -94,6 +126,7 @@ public abstract class KnowledgeBase {
         this.extractor = extractor;
         this.indexManager = indexManager;
         this.llmClient = llmClient;
+        this.retriever = retriever;
         validateIndexAfterSpecialAttributeSet();
     }
 
@@ -159,6 +192,14 @@ public abstract class KnowledgeBase {
         this.llmClient = llmClient;
     }
 
+    public Retriever getRetriever() {
+        return retriever;
+    }
+
+    public void setRetriever(Retriever retriever) {
+        this.retriever = retriever;
+    }
+
     public boolean isStrictValidation() {
         return strictValidation;
     }
@@ -186,7 +227,11 @@ public abstract class KnowledgeBase {
         }
     }
 
-    public CompletableFuture<Void> deleteCollection(String collection) {
+    public void deleteCollection(String collection) {
+        join(deleteCollectionAsync(collection));
+    }
+
+    public CompletableFuture<Void> deleteCollectionAsync(String collection) {
         if (vectorStore == null) {
             throw ErrorHelper.buildError(
                     StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
@@ -197,11 +242,19 @@ public abstract class KnowledgeBase {
         return vectorStore.deleteTable(collection);
     }
 
-    public CompletableFuture<List<Document>> parseFiles(List<String> filePaths) {
-        return parseFiles(filePaths, Map.of());
+    public List<Document> parseFiles(List<String> filePaths) {
+        return join(parseFilesAsync(filePaths, Map.of()));
     }
 
-    public CompletableFuture<List<Document>> parseFiles(List<String> filePaths, Map<String, Object> options) {
+    public List<Document> parseFiles(List<String> filePaths, Map<String, Object> options) {
+        return join(parseFilesAsync(filePaths, options));
+    }
+
+    public CompletableFuture<List<Document>> parseFilesAsync(List<String> filePaths) {
+        return parseFilesAsync(filePaths, Map.of());
+    }
+
+    public CompletableFuture<List<Document>> parseFilesAsync(List<String> filePaths, Map<String, Object> options) {
         if (parser == null) {
             throw ErrorHelper.buildError(
                     StatusCode.RETRIEVAL_KB_PARSER_NOT_FOUND,
@@ -221,11 +274,19 @@ public abstract class KnowledgeBase {
         return chain.thenApply(ignored -> List.copyOf(documents));
     }
 
-    public CompletableFuture<List<Document>> parseUrls(List<String> urls) {
-        return parseUrls(urls, Map.of());
+    public List<Document> parseUrls(List<String> urls) {
+        return join(parseUrlsAsync(urls, Map.of()));
     }
 
-    public CompletableFuture<List<Document>> parseUrls(List<String> urls, Map<String, Object> options) {
+    public List<Document> parseUrls(List<String> urls, Map<String, Object> options) {
+        return join(parseUrlsAsync(urls, options));
+    }
+
+    public CompletableFuture<List<Document>> parseUrlsAsync(List<String> urls) {
+        return parseUrlsAsync(urls, Map.of());
+    }
+
+    public CompletableFuture<List<Document>> parseUrlsAsync(List<String> urls, Map<String, Object> options) {
         if (parser == null) {
             throw ErrorHelper.buildError(
                     StatusCode.RETRIEVAL_KB_PARSER_NOT_FOUND,
@@ -247,7 +308,11 @@ public abstract class KnowledgeBase {
 
     public abstract CompletableFuture<List<String>> addDocuments(List<Document> documents, Map<String, Object> kwargs);
 
-    public CompletableFuture<List<String>> addDocuments(List<Document> documents) {
+    public List<String> addDocuments(List<Document> documents) {
+        return join(addDocuments(documents, Map.of()));
+    }
+
+    public CompletableFuture<List<String>> addDocumentsAsync(List<Document> documents) {
         return addDocuments(documents, Map.of());
     }
 
@@ -257,26 +322,53 @@ public abstract class KnowledgeBase {
             Map<String, Object> kwargs
     );
 
-    public CompletableFuture<List<RetrievalResult>> retrieve(String query, RetrievalConfig config) {
+    public List<RetrievalResult> retrieve(String query, RetrievalConfig config) {
+        return join(retrieve(query, config, Map.of()));
+    }
+
+    public CompletableFuture<List<RetrievalResult>> retrieveAsync(String query, RetrievalConfig config) {
         return retrieve(query, config, Map.of());
     }
 
     public abstract CompletableFuture<Boolean> deleteDocuments(List<String> docIds, Map<String, Object> kwargs);
 
-    public CompletableFuture<Boolean> deleteDocuments(List<String> docIds) {
+    public boolean deleteDocuments(List<String> docIds) {
+        return Boolean.TRUE.equals(join(deleteDocuments(docIds, Map.of())));
+    }
+
+    public CompletableFuture<Boolean> deleteDocumentsAsync(List<String> docIds) {
         return deleteDocuments(docIds, Map.of());
     }
 
     public abstract CompletableFuture<List<String>> updateDocuments(List<Document> documents, Map<String, Object> kwargs);
 
-    public CompletableFuture<List<String>> updateDocuments(List<Document> documents) {
+    public List<String> updateDocuments(List<Document> documents) {
+        return join(updateDocuments(documents, Map.of()));
+    }
+
+    public CompletableFuture<List<String>> updateDocumentsAsync(List<Document> documents) {
         return updateDocuments(documents, Map.of());
     }
 
-    public abstract CompletableFuture<Map<String, Object>> getStatistics();
+    protected abstract CompletableFuture<Map<String, Object>> getStatisticsAsync();
 
-    public CompletableFuture<Void> close() {
-        return closeMaybe(vectorStore).thenCompose(ignored -> closeMaybe(indexManager));
+    public Map<String, Object> getStatistics() {
+        return join(getStatisticsAsync());
+    }
+
+    public CompletableFuture<Map<String, Object>> getStatisticsFuture() {
+        return getStatisticsAsync();
+    }
+
+    @Override
+    public void close() {
+        join(closeAsync());
+    }
+
+    public CompletableFuture<Void> closeAsync() {
+        return closeMaybe(retriever)
+                .thenCompose(ignored -> closeMaybe(vectorStore))
+                .thenCompose(ignored -> closeMaybe(indexManager));
     }
 
     private CompletableFuture<List<Document>> parseOneFile(String filePath, Map<String, Object> options) {
@@ -339,6 +431,51 @@ public abstract class KnowledgeBase {
         }
         invokeNoArgIfPresent(vectorStore, "_ensure_loaded");
         invokeNoArgIfPresent(vectorStore, "ensureLoaded");
+    }
+
+    protected static void compareConfig(
+            String field,
+            Object left,
+            Object right,
+            IndexBackendConfig leftOwner,
+            IndexBackendConfig rightOwner
+    ) {
+        if (!equalsPythonNoneAware(left, right)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+                    "error_msg",
+                    "incompatible " + field + " configs between "
+                            + simpleName(leftOwner) + "=" + left
+                            + " and " + simpleName(rightOwner) + "=" + right
+            );
+        }
+    }
+
+    protected Indexer resolveIndexManager() {
+        return indexManager;
+    }
+
+    protected Indexer requireIndexManager() {
+        Indexer activeIndexManager = resolveIndexManager();
+        if (activeIndexManager == null) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND,
+                    "error_msg",
+                    "index_manager is required"
+            );
+        }
+        return activeIndexManager;
+    }
+
+    protected static void closeQuietly(AutoCloseable closeable) {
+        if (closeable == null) {
+            return;
+        }
+        try {
+            closeable.close();
+        } catch (Exception ignored) {
+            // Mirrors Python best-effort close cleanup.
+        }
     }
 
     private static boolean isChromaLike(Object value) {
@@ -449,6 +586,13 @@ public abstract class KnowledgeBase {
 
     private static String simpleName(Object value) {
         return value == null ? "None" : value.getClass().getSimpleName();
+    }
+
+    private static <T> T join(CompletableFuture<T> future) {
+        if (future == null) {
+            return null;
+        }
+        return future.toCompletableFuture().join();
     }
 
     private static Throwable unwrap(Throwable throwable) {

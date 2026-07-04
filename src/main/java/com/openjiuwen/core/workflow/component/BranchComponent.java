@@ -9,6 +9,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.graph.Graph;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.workflow.Branch;
 import com.openjiuwen.core.workflow.BranchRouter;
 import com.openjiuwen.core.workflow.WorkflowComponent;
@@ -28,6 +29,19 @@ import java.util.function.BooleanSupplier;
 public class BranchComponent extends WorkflowComponent<Object, Map<String, Object>> {
 
     private final BranchRouter router = new BranchRouter(true);
+
+    public BranchComponent() {
+    }
+
+    public void addBranch(Object condition, Object target) {
+        addBranch(condition, target, null);
+    }
+
+    public void addBranch(Object condition, Object target, String branchId) {
+        validateCondition(condition);
+        validateTargetObject(target);
+        router.addBranch(condition, target, branchId);
+    }
 
     public void addBranch(String condition, String target) {
         addBranch(condition, target, null);
@@ -93,10 +107,22 @@ public class BranchComponent extends WorkflowComponent<Object, Map<String, Objec
         return router;
     }
 
+    public void add_branch(Object condition, Object target) {
+        addBranch(condition, target);
+    }
+
+    public void add_branch(Object condition, Object target, String branchId) {
+        addBranch(condition, target, branchId);
+    }
+
     @Override
     public Map<String, Object> invoke(Object inputs, BaseSession session, ModelContext context) {
         router.setSession(session);
         return new LinkedHashMap<>();
+    }
+
+    public Object invoke(Object inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
+        return invoke(inputs, (BaseSession) session, context == null ? null : context.unwrap());
     }
 
     @Override
@@ -140,6 +166,33 @@ public class BranchComponent extends WorkflowComponent<Object, Map<String, Objec
                         "reason", "empty item at index " + i + " in target list");
             }
         }
+    }
+
+    private void validateTargetObject(Object target) {
+        if (target instanceof String text) {
+            validateTarget(text);
+            return;
+        }
+        if (target instanceof List<?> items) {
+            if (items.isEmpty()) {
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                        "reason", "target is None or empty");
+            }
+            for (int i = 0; i < items.size(); i++) {
+                Object item = items.get(i);
+                if (!(item instanceof String text) || text.isEmpty()) {
+                    throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                            "reason", "empty item at index " + i + " in target list");
+                }
+            }
+            return;
+        }
+        if (target == null) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                    "reason", "target is None or empty");
+        }
+        throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                "reason", "target must be a string or list of strings");
     }
 
     private void registerBranchTargets(Graph graph, String nodeId, Set<String> allTargets) {

@@ -98,7 +98,7 @@ class RedisCheckpointerJsonSystemTest {
                 assertEquals("graph message", graphMessage.getContentAsString());
 
                 WorkflowSession workflow = new WorkflowSession(
-                        "workflow-json", null, "real-redis-session", InMemoryState.create(), null);
+                        "workflow-json", null, "real-redis-session", InMemoryState.create(), (Object) null);
                 checkpointer.preWorkflowExecute(workflow, null);
                 WorkflowCommitState workflowState = (WorkflowCommitState) workflow.state();
                 workflowState.updateGlobal(Map.of("messages", List.of(new UserMessage("workflow state"))));
@@ -126,7 +126,7 @@ class RedisCheckpointerJsonSystemTest {
                 assertTrue(workflowUpdateJson.contains("workflow update"));
 
                 WorkflowSession recoveredWorkflow = new WorkflowSession(
-                        "workflow-json", null, "real-redis-session", InMemoryState.create(), null);
+                        "workflow-json", null, "real-redis-session", InMemoryState.create(), (Object) null);
                 checkpointer.preWorkflowExecute(recoveredWorkflow, new InteractiveInput());
                 WorkflowCommitState recoveredWorkflowState = (WorkflowCommitState) recoveredWorkflow.state();
                 List<?> workflowMessages = assertInstanceOf(

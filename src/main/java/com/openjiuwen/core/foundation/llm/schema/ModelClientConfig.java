@@ -19,6 +19,7 @@ import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -78,8 +79,8 @@ public class ModelClientConfig {
         this.extraFields = extraFields;
     }
 
-    public static ModelClientConfigBuilder builder() {
-        return new ModelClientConfigBuilder();
+    public static Builder builder() {
+        return new Builder();
     }
 
     public static ModelClientConfig of(ProviderType provider, String apiKey, String apiBase) {
@@ -100,6 +101,54 @@ public class ModelClientConfig {
 
     public void setTimeout(double timeout) {
         this.timeout = validatePositiveTimeout(timeout);
+    }
+
+    public String getClientId() {
+        return clientId;
+    }
+
+    public String getClientProvider() {
+        return clientProvider;
+    }
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    public String getApiBase() {
+        return apiBase;
+    }
+
+    public double getTimeout() {
+        return timeout;
+    }
+
+    public int getMaxRetries() {
+        return maxRetries;
+    }
+
+    public boolean isVerifySsl() {
+        return verifySsl;
+    }
+
+    public String getSslCert() {
+        return sslCert;
+    }
+
+    public Map<String, String> getHeaders() {
+        Map<String, String> headers = new LinkedHashMap<>();
+        if (customHeaders != null) {
+            customHeaders.forEach((key, value) -> {
+                if (key != null && value != null) {
+                    headers.put(key, Objects.toString(value));
+                }
+            });
+        }
+        return headers;
+    }
+
+    public void setHeaders(Map<String, String> headers) {
+        this.customHeaders = headers == null ? new LinkedHashMap<>() : new LinkedHashMap<>(headers);
     }
 
     /**
@@ -166,7 +215,7 @@ public class ModelClientConfig {
         extraFields.put(key, value);
     }
 
-    public static final class ModelClientConfigBuilder {
+    public static class ModelClientConfigBuilder {
         private String clientId = UUID.randomUUID().toString();
         private Object clientProvider;
         private String apiKey;
@@ -179,7 +228,7 @@ public class ModelClientConfig {
         private ModelHttpVersion httpVersion;
         private Map<String, Object> extraFields = new LinkedHashMap<>();
 
-        private ModelClientConfigBuilder() {
+        protected ModelClientConfigBuilder() {
         }
 
         public ModelClientConfigBuilder clientId(String clientId) {
@@ -232,6 +281,18 @@ public class ModelClientConfig {
             return this;
         }
 
+        public ModelClientConfigBuilder headers(Map<String, ?> headers) {
+            this.customHeaders = new LinkedHashMap<>();
+            if (headers != null) {
+                headers.forEach((key, value) -> {
+                    if (key != null && value != null) {
+                        this.customHeaders.put(key, value);
+                    }
+                });
+            }
+            return this;
+        }
+
         public ModelClientConfigBuilder httpVersion(ModelHttpVersion httpVersion) {
             this.httpVersion = httpVersion;
             return this;
@@ -259,10 +320,100 @@ public class ModelClientConfig {
         }
     }
 
+    public static final class Builder extends ModelClientConfigBuilder {
+        private Builder() {
+            super();
+        }
+
+        @Override
+        public Builder clientId(String clientId) {
+            super.clientId(clientId);
+            return this;
+        }
+
+        @Override
+        public Builder clientProvider(String clientProvider) {
+            super.clientProvider(clientProvider);
+            return this;
+        }
+
+        @Override
+        public Builder clientProvider(ProviderType clientProvider) {
+            super.clientProvider(clientProvider);
+            return this;
+        }
+
+        @Override
+        public Builder apiKey(String apiKey) {
+            super.apiKey(apiKey);
+            return this;
+        }
+
+        @Override
+        public Builder apiBase(String apiBase) {
+            super.apiBase(apiBase);
+            return this;
+        }
+
+        @Override
+        public Builder timeout(double timeout) {
+            super.timeout(timeout);
+            return this;
+        }
+
+        @Override
+        public Builder maxRetries(int maxRetries) {
+            super.maxRetries(maxRetries);
+            return this;
+        }
+
+        @Override
+        public Builder verifySsl(boolean verifySsl) {
+            super.verifySsl(verifySsl);
+            return this;
+        }
+
+        @Override
+        public Builder sslCert(String sslCert) {
+            super.sslCert(sslCert);
+            return this;
+        }
+
+        @Override
+        public Builder customHeaders(Map<String, Object> customHeaders) {
+            super.customHeaders(customHeaders);
+            return this;
+        }
+
+        @Override
+        public Builder headers(Map<String, ?> headers) {
+            super.headers(headers);
+            return this;
+        }
+
+        @Override
+        public Builder httpVersion(ModelHttpVersion httpVersion) {
+            super.httpVersion(httpVersion);
+            return this;
+        }
+
+        @Override
+        public Builder extraFields(Map<String, Object> extraFields) {
+            super.extraFields(extraFields);
+            return this;
+        }
+    }
+
     private static double validatePositiveTimeout(double timeout) {
         if (Double.isNaN(timeout) || timeout <= 0.0D) {
             throw new IllegalArgumentException("timeout must be greater than 0 (greater_than)");
         }
         return timeout;
+    }
+
+    @Override
+    public String toString() {
+        return "ModelClientConfig{clientId='" + clientId + "', clientProvider='" + clientProvider
+                + "', apiBase='" + apiBase + "'}";
     }
 }

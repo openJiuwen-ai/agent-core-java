@@ -117,6 +117,10 @@ public class MilvusVectorStore extends BaseVectorStore {
         this.closeClientOnClose = true;
     }
 
+    public MilvusVectorStore(com.openjiuwen.core.retrieval.vector_store.VectorStore vectorStore) {
+        this(new RetrievalVectorStoreClientAdapter(vectorStore));
+    }
+
     MilvusVectorStore(MilvusClientAdapter client) {
         this.milvusUri = "";
         this.milvusToken = null;
@@ -916,6 +920,124 @@ public class MilvusVectorStore extends BaseVectorStore {
             Map<String, Object> merged = toMap();
             merged.putAll(values);
             return fromMap(merged);
+        }
+    }
+
+    private static final class RetrievalVectorStoreClientAdapter implements MilvusClientAdapter {
+        private final com.openjiuwen.core.retrieval.vector_store.VectorStore delegate;
+
+        private RetrievalVectorStoreClientAdapter(com.openjiuwen.core.retrieval.vector_store.VectorStore delegate) {
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
+        }
+
+        @Override
+        public boolean hasCollection(String collectionName) {
+            return delegate.tableExists(collectionName).join();
+        }
+
+        @Override
+        public void createCollection(String collectionName, CollectionSchema schema, String distanceMetric,
+                String indexType) {
+            throw new UnsupportedOperationException("Retrieval VectorStore does not expose foundation schema creation");
+        }
+
+        @Override
+        public void dropCollection(String collectionName) {
+            delegate.deleteTable(collectionName).join();
+        }
+
+        @Override
+        public CollectionDescription describeCollection(String collectionName) {
+            throw new UnsupportedOperationException("Retrieval VectorStore does not expose collection schema metadata");
+        }
+
+        @Override
+        public void insert(String collectionName, List<Map<String, Object>> rows) {
+            delegate.add(rows, null, Map.of("collection_name", collectionName)).join();
+        }
+
+        @Override
+        public void flush(String collectionName) {
+        }
+
+        @Override
+        public List<SearchHit> search(String collectionName, List<Double> queryVector, String vectorField, int limit,
+                List<String> outputFields, Map<String, Object> searchParams, String filter) {
+            Map<String, Object> options = new LinkedHashMap<>(searchParams == null ? Map.of() : searchParams);
+            options.put("collection_name", collectionName);
+            options.put("vector_field", vectorField);
+            return delegate.search(
+                            queryVector,
+                            limit,
+                            com.openjiuwen.core.retrieval.vector_store.VectorStore.VectorStoreFilter.ofMap(Map.of()),
+                            options)
+                    .join()
+                    .stream()
+                    .map(result -> {
+                        Map<String, Object> entity = new LinkedHashMap<>(result.getMetadata());
+                        entity.putIfAbsent("text", result.getText());
+                        entity.putIfAbsent("doc_id", result.getDocId());
+                        entity.putIfAbsent("chunk_id", result.getChunkId());
+                        return new SearchHit(result.getDocId(), result.getDocId(), null, result.getScore(), entity);
+                    })
+                    .toList();
+        }
+
+        @Override
+        public Map<String, Object> deleteByIds(String collectionName, List<String> ids) {
+            Boolean deleted = delegate.delete(
+                            ids,
+                            com.openjiuwen.core.retrieval.vector_store.VectorStore.DeleteFilter.none(),
+                            Map.of("collection_name", collectionName))
+                    .join();
+            return Map.of("delete_count", Boolean.TRUE.equals(deleted) ? ids.size() : 0);
+        }
+
+        @Override
+        public Map<String, Object> deleteByFilter(String collectionName, String filter) {
+            Boolean deleted = delegate.delete(
+                            null,
+                            com.openjiuwen.core.retrieval.vector_store.VectorStore.DeleteFilter.ofExpression(filter),
+                            Map.of("collection_name", collectionName))
+                    .join();
+            return Map.of("delete_count", Boolean.TRUE.equals(deleted) ? 1 : 0);
+        }
+
+        @Override
+        public void loadCollection(String collectionName) {
+        }
+
+        @Override
+        public String describeIndexMetric(String collectionName, String vectorField) {
+            return "COSINE";
+        }
+
+        @Override
+        public List<Map<String, Object>> queryAll(String collectionName) {
+            return List.of();
+        }
+
+        @Override
+        public void releaseCollection(String collectionName) {
+        }
+
+        @Override
+        public void renameCollection(String oldName, String newName) {
+            throw new UnsupportedOperationException("Retrieval VectorStore does not expose collection rename");
+        }
+
+        @Override
+        public void alterCollectionProperties(String collectionName, Map<String, String> properties) {
+        }
+
+        @Override
+        public List<String> listCollections() {
+            return List.of();
+        }
+
+        @Override
+        public void close() {
+            delegate.close();
         }
     }
 

@@ -53,8 +53,22 @@ public class CallbackInfo {
 
     private Function<Map<String, Object>, Object> wrapper;
 
+    private String callbackName;
+
     @Builder.Default
     private String callbackType = "";
+
+    /**
+     * Returns the 0.1.12 callback display name for logging and rate-limit keys.
+     *
+     * @return configured callback name, callback class name, or {@code unknown}
+     */
+    public String getCallbackDisplayName() {
+        if (callbackName != null && !callbackName.isEmpty()) {
+            return callbackName;
+        }
+        return callback != null ? callback.getClass().getSimpleName() : "unknown";
+    }
 
     @Override
     public int hashCode() {

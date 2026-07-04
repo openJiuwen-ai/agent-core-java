@@ -232,7 +232,7 @@ public class GraphKnowledgeBase extends KnowledgeBase {
     }
 
     @Override
-    public CompletableFuture<Map<String, Object>> getStatistics() {
+    protected CompletableFuture<Map<String, Object>> getStatisticsAsync() {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("kb_id", config.getKbId());
         stats.put("index_type", config.getIndexType());
@@ -259,7 +259,7 @@ public class GraphKnowledgeBase extends KnowledgeBase {
     }
 
     @Override
-    public CompletableFuture<Void> close() {
+    public CompletableFuture<Void> closeAsync() {
         if (graphRetriever != null) {
             graphRetriever.close();
         }
@@ -269,7 +269,7 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         if (tripleRetriever != null) {
             tripleRetriever.close();
         }
-        return super.close();
+        return super.closeAsync();
     }
 
     public static CompletableFuture<List<String>> retrieveMultiGraphKb(

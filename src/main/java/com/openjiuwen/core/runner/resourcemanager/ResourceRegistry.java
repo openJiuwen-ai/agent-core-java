@@ -4,125 +4,114 @@
 
 package com.openjiuwen.core.runner.resourcemanager;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 /**
- * Central registry holding resource manager buckets.
+ * Central registry holding all sub-managers for different resource types.
  *
  * <p>Mirrors Python's {@code ResourceRegistry} in
  * {@code openjiuwen/core/runner/resources_manager/resource_registry.py}.</p>
  */
 public class ResourceRegistry {
 
-    private final ResourceBucket toolMgr = new ResourceBucket("tool");
-    private final ResourceBucket workflowMgr = new ResourceBucket("workflow");
-    private final ResourceBucket promptMgr = new ResourceBucket("prompt");
-    private final ResourceBucket modelMgr = new ResourceBucket("model");
-    private final ResourceBucket agentMgr = new ResourceBucket("agent");
-    private final ResourceBucket agentTeamMgr = new ResourceBucket("agent_team");
-    private final ResourceBucket sysOperationMgr = new ResourceBucket("sys_operation");
+    private ToolMgr toolMgr = new ToolMgr();
+    private WorkflowMgr workflowMgr = new WorkflowMgr();
+    private PromptMgr promptMgr = new PromptMgr();
+    private ModelMgr modelMgr = new ModelMgr();
+    private AgentMgr<Object> agentMgr = new AgentMgr<>();
+    private AgentGroupMgr<Object> agentGroupMgr = new AgentGroupMgr<>();
+    private SysOperationMgr sysOperationMgr = new SysOperationMgr();
 
     /**
-     * Removes one resource id from the first bucket that contains it.
-     *
-     * <p>The lookup order is the Python order: tool, workflow, agent,
-     * agent-team, prompt, model, sys-operation.</p>
-     *
-     * @param resourceId resource id
+     * Clears all registered resources across all sub-managers.
      */
-    public void removeById(String resourceId) {
-        if (tool().remove(resourceId) != null) {
-            return;
-        }
-        if (workflow().remove(resourceId) != null) {
-            return;
-        }
-        if (agent().remove(resourceId) != null) {
-            return;
-        }
-        if (agentTeam().remove(resourceId) != null) {
-            return;
-        }
-        if (prompt().remove(resourceId) != null) {
-            return;
-        }
-        if (model().remove(resourceId) != null) {
-            return;
-        }
-        sysOperation().remove(resourceId);
+    public void clearAll() {
+        toolMgr = new ToolMgr();
+        workflowMgr = new WorkflowMgr();
+        promptMgr = new PromptMgr();
+        modelMgr = new ModelMgr();
+        agentMgr = new AgentMgr<>();
+        agentGroupMgr = new AgentGroupMgr<>();
+        sysOperationMgr = new SysOperationMgr();
     }
 
-    public ResourceBucket tool() {
+    public void removeById(String resourceId) {
+        if (toolMgr.removeTool(resourceId) != null) {
+            return;
+        }
+        if (workflowMgr.removeWorkflow(resourceId) != null) {
+            return;
+        }
+        if (agentMgr.removeAgent(resourceId) != null) {
+            return;
+        }
+        if (agentGroupMgr.removeAgentGroup(resourceId) != null) {
+            return;
+        }
+        if (promptMgr.removePrompt(resourceId) != null) {
+            return;
+        }
+        if (modelMgr.removeModel(resourceId) != null) {
+            return;
+        }
+        sysOperationMgr.removeSysOperation(resourceId);
+    }
+
+    public ToolMgr tool() {
         return toolMgr;
     }
 
-    public ResourceBucket prompt() {
+    public PromptMgr prompt() {
         return promptMgr;
     }
 
-    public ResourceBucket model() {
+    public ModelMgr model() {
         return modelMgr;
     }
 
-    public ResourceBucket workflow() {
+    public WorkflowMgr workflow() {
         return workflowMgr;
     }
 
-    public ResourceBucket agent() {
+    public AgentMgr<Object> agent() {
         return agentMgr;
     }
 
-    public ResourceBucket agentTeam() {
-        return agentTeamMgr;
+    public AgentGroupMgr<Object> agentGroup() {
+        return agentGroupMgr;
     }
 
-    public ResourceBucket sysOperation() {
+    public SysOperationMgr sysOperation() {
         return sysOperationMgr;
     }
 
-    /**
-     * Minimal bucket used until the dedicated resource manager translations in
-     * this batch replace the generic storage with typed managers.
-     *
-     * <p>Mirrors the manager fields initialized by Python's
-     * {@code ResourceRegistry.__init__} in
-     * {@code openjiuwen/core/runner/resources_manager/resource_registry.py}.</p>
-     */
-    public static final class ResourceBucket {
-        private final String kind;
-        private final Map<String, Object> resources = new LinkedHashMap<>();
+    public AgentGroupMgr<Object> agentTeam() {
+        return agentGroupMgr;
+    }
 
-        public ResourceBucket(String kind) {
-            this.kind = kind;
-        }
+    public ToolManager toolManager() {
+        return toolMgr.asToolManager();
+    }
 
-        public String kind() {
-            return kind;
-        }
+    public WorkflowManager workflowManager() {
+        return workflowMgr;
+    }
 
-        public void put(String resourceId, Object resource) {
-            resources.put(resourceId, resource);
-        }
+    public PromptManager promptManager() {
+        return promptMgr;
+    }
 
-        public Object get(String resourceId) {
-            return resources.get(resourceId);
-        }
+    public ModelManager modelManager() {
+        return modelMgr;
+    }
 
-        public Object remove(String resourceId) {
-            return resources.remove(resourceId);
-        }
+    public AgentManager agentManager() {
+        return agentMgr;
+    }
 
-        public boolean contains(String resourceId) {
-            return resources.containsKey(resourceId);
-        }
+    public AgentTeamManager agentTeamManager() {
+        return agentGroupMgr;
+    }
 
-        public int size() {
-            return resources.size();
-        }
-
-        public Map<String, Object> snapshot() {
-            return new LinkedHashMap<>(resources);
-        }
+    public SysOperationManager sysOperationManager() {
+        return sysOperationMgr;
     }
 }

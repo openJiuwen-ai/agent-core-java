@@ -29,6 +29,15 @@ public enum DatabaseType {
         return value;
     }
 
+    /**
+     * Backward-compatible bean-style getter exposed by 0.1.12.
+     *
+     * @return serialized database type value
+     */
+    public String getValue() {
+        return value();
+    }
+
     @JsonCreator
     public static DatabaseType fromValue(String value) {
         if (value == null) {

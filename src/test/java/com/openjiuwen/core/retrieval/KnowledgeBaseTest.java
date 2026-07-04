@@ -104,7 +104,7 @@ class KnowledgeBaseTest {
         TestKnowledgeBase kb = new TestKnowledgeBase(config());
         kb.setParser(new SelectiveParser());
 
-        List<Document> documents = kb.parseFiles(List.of("first.txt", "bad.txt", "second.txt")).join();
+        List<Document> documents = kb.parseFiles(List.of("first.txt", "bad.txt", "second.txt"));
 
         assertEquals(2, documents.size());
         assertEquals("first.txt", documents.get(0).getText());
@@ -122,7 +122,7 @@ class KnowledgeBaseTest {
                 "dir/nested.txt",
                 "sync-bad.txt",
                 "dir\\windows.txt"
-        )).join();
+        ));
 
         assertEquals(2, documents.size());
         assertEquals(List.of("nested.txt", "dir\\windows.txt"), parser.fileNamesSeen);
@@ -133,7 +133,7 @@ class KnowledgeBaseTest {
         TestKnowledgeBase kb = new TestKnowledgeBase(config());
         kb.setParser(new SelectiveParser());
 
-        List<Document> documents = kb.parseUrls(List.of("file://local", "https://example.test/doc")).join();
+        List<Document> documents = kb.parseUrls(List.of("file://local", "https://example.test/doc"));
 
         assertEquals(1, documents.size());
         assertEquals("https://example.test/doc", documents.get(0).getText());
@@ -189,7 +189,7 @@ class KnowledgeBaseTest {
         FakeVectorStore vectorStore = new FakeVectorStore("db");
         kb.setVectorStore(vectorStore);
 
-        kb.close().join();
+        kb.close();
 
         assertTrue(vectorStore.closed);
     }
@@ -202,7 +202,7 @@ class KnowledgeBaseTest {
         kb.setVectorStore(vectorStore);
         kb.setIndexManager(indexer);
 
-        kb.close().join();
+        kb.close();
 
         assertTrue(vectorStore.closed);
         assertTrue(indexer.closed);
@@ -212,7 +212,7 @@ class KnowledgeBaseTest {
     void closeWithNoComponentsDoesNotThrow() {
         TestKnowledgeBase kb = new TestKnowledgeBase(config());
 
-        assertDoesNotThrow(() -> kb.close().join());
+        assertDoesNotThrow(kb::close);
     }
 
     @Test
@@ -222,7 +222,7 @@ class KnowledgeBaseTest {
         vectorStore.throwOnClose = true;
         kb.setVectorStore(vectorStore);
 
-        assertDoesNotThrow(() -> kb.close().join());
+        assertDoesNotThrow(kb::close);
     }
 
     private static KnowledgeBaseConfig config() {
@@ -276,7 +276,7 @@ class KnowledgeBaseTest {
         }
 
         @Override
-        public CompletableFuture<Map<String, Object>> getStatistics() {
+        protected CompletableFuture<Map<String, Object>> getStatisticsAsync() {
             return CompletableFuture.completedFuture(Map.of());
         }
     }

@@ -26,6 +26,7 @@ public final class CheckpointerFactory {
         register("in_memory", conf -> DEFAULT_IN_MEMORY_CHECKPOINTER);
         register("persistence", PersistenceCheckpointer::createFromConfig);
         register("redis", new RedisCheckpointer.Provider());
+        register("redis_checkpointer_cluster", new RedisCheckpointer.Provider());
     }
 
     private CheckpointerFactory() {
@@ -39,11 +40,15 @@ public final class CheckpointerFactory {
 
     public static Checkpointer create(CheckpointerConfig config) {
         CheckpointerConfig actual = config == null ? new CheckpointerConfig() : config;
-        CheckpointerProvider provider = REGISTRY.get(actual.getType());
+        return create(actual.getType(), actual.getConf());
+    }
+
+    public static Checkpointer create(String type, Map<String, Object> conf) {
+        CheckpointerProvider provider = REGISTRY.get(type);
         if (provider == null) {
-            throw new IllegalArgumentException("Unsupported checkpointer type: " + actual.getType());
+            throw new IllegalArgumentException("Unsupported checkpointer type: " + type);
         }
-        return provider.create(actual.getConf());
+        return provider.create(conf);
     }
 
     public static synchronized void installDefaultCheckpointer(CheckpointerConfig config) {
@@ -64,6 +69,10 @@ public final class CheckpointerFactory {
         Checkpointer checkpointer = defaultCheckpointer;
         defaultCheckpointer = null;
         closeDefaultCheckpointer(checkpointer);
+    }
+
+    public static void setDefaultCheckpointer(Checkpointer checkpointer) {
+        defaultCheckpointer = checkpointer;
     }
 
     private static void closeDefaultCheckpointer(Checkpointer checkpointer) {

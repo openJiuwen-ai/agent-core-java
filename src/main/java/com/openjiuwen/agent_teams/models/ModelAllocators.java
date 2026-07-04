@@ -41,6 +41,13 @@ public final class ModelAllocators {
     }
 
     public static ModelAllocator buildModelAllocator(
+            com.openjiuwen.agent_teams.schema.TeamAgentSpec spec,
+            AgentConfigurator.TeamSpec teamSpec
+    ) {
+        return buildModelAllocator(spec == null ? null : spec.toConfiguratorSpec(), teamSpec);
+    }
+
+    public static ModelAllocator buildModelAllocator(
             AgentConfigurator.TeamAgentSpec spec,
             AgentConfigurator.TeamSpec teamSpec
     ) {

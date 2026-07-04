@@ -15,21 +15,37 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ConstrainConfig {
+    public static final int DEFAULT_RESERVED_MAX_CHAT_ROUNDS = 10;
+
+    public static final int DEFAULT_MAX_ITERATION = 5;
+
+    private static final String GREATER_THAN_ZERO_MESSAGE =
+            "Input should be greater than 0 [type=greater_than, input_value=%d, input_type=int]";
+
     @JsonProperty("reserved_max_chat_rounds")
-    private int reservedMaxChatRounds = 10;
+    private int reservedMaxChatRounds = DEFAULT_RESERVED_MAX_CHAT_ROUNDS;
 
     @JsonProperty("max_iteration")
-    private int maxIteration = 5;
+    private int maxIteration = DEFAULT_MAX_ITERATION;
+
+    public ConstrainConfig() {
+    }
+
+    public ConstrainConfig(Integer reservedMaxChatRounds, Integer maxIteration) {
+        this.reservedMaxChatRounds = reservedMaxChatRounds == null
+                ? DEFAULT_RESERVED_MAX_CHAT_ROUNDS
+                : validatePositive(reservedMaxChatRounds);
+        this.maxIteration = maxIteration == null
+                ? DEFAULT_MAX_ITERATION
+                : validatePositive(maxIteration);
+    }
 
     public int getReservedMaxChatRounds() {
         return reservedMaxChatRounds;
     }
 
     public void setReservedMaxChatRounds(int reservedMaxChatRounds) {
-        if (reservedMaxChatRounds <= 0) {
-            throw new IllegalArgumentException("reservedMaxChatRounds must be greater than 0");
-        }
-        this.reservedMaxChatRounds = reservedMaxChatRounds;
+        this.reservedMaxChatRounds = validatePositive(reservedMaxChatRounds);
     }
 
     public int getMaxIteration() {
@@ -37,9 +53,13 @@ public class ConstrainConfig {
     }
 
     public void setMaxIteration(int maxIteration) {
-        if (maxIteration <= 0) {
-            throw new IllegalArgumentException("maxIteration must be greater than 0");
+        this.maxIteration = validatePositive(maxIteration);
+    }
+
+    private static int validatePositive(int value) {
+        if (value <= 0) {
+            throw new IllegalArgumentException(GREATER_THAN_ZERO_MESSAGE.formatted(value));
         }
-        this.maxIteration = maxIteration;
+        return value;
     }
 }

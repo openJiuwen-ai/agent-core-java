@@ -25,7 +25,7 @@ import java.util.function.Function;
  * Mirrors Python's {@code BranchRouter} in
  * {@code openjiuwen/core/workflow/components/flow/branch_router.py}.
  */
-public class BranchRouter implements Function<BaseSession, List<String>> {
+public class BranchRouter implements Function<Object, Object> {
 
     public static final String WORKFLOW_DRAWABLE = "WORKFLOW_DRAWABLE";
 
@@ -106,6 +106,24 @@ public class BranchRouter implements Function<BaseSession, List<String>> {
         branches.add(new Branch(condition, target, branchId));
     }
 
+    public void addBranch(Object condition, Object target, String branchId) {
+        if (condition == null || target == null) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                    "reason", "condition is None or target is None");
+        }
+        List<String> targetList = normalizeTargets(target);
+        if (condition instanceof String conditionText) {
+            addBranch(conditionText, targetList, branchId);
+        } else if (condition instanceof BooleanSupplier booleanSupplier) {
+            addBranch(booleanSupplier, targetList, branchId);
+        } else if (condition instanceof Branch.BranchCondition branchCondition) {
+            addBranch(branchCondition, targetList, branchId);
+        } else {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                    "reason", "branch condition type does not meet the requirements");
+        }
+    }
+
     public DrawableBranchRouter getDrawableBranchRouter() {
         return drawableBranchRouter;
     }
@@ -149,9 +167,16 @@ public class BranchRouter implements Function<BaseSession, List<String>> {
         return route();
     }
 
-    @Override
     public List<String> apply(BaseSession session) {
         setSession(session);
+        return route(session);
+    }
+
+    @Override
+    public Object apply(Object input) {
+        if (input instanceof BaseSession baseSession) {
+            return apply(baseSession);
+        }
         return route(session);
     }
 
@@ -187,6 +212,24 @@ public class BranchRouter implements Function<BaseSession, List<String>> {
             drawableBranchRouter.getTargets().add(item);
             drawableBranchRouter.getDatas().add(branchData);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<String> normalizeTargets(Object target) {
+        if (target instanceof String targetText) {
+            return List.of(targetText);
+        }
+        if (target instanceof List<?> targetItems) {
+            for (Object item : targetItems) {
+                if (!(item instanceof String)) {
+                    throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                            "reason", "target must be a string or list of strings");
+                }
+            }
+            return (List<String>) targetItems;
+        }
+        throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                "reason", "target must be a string or list of strings");
     }
 
     private Map<String, Object> branchTracePayload(BaseSession routeSession) {

@@ -6,9 +6,11 @@ package com.openjiuwen.core.session;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.session.config.SessionConfigAccess;
+import com.openjiuwen.core.session.callback.CallbackManager;
+import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.interaction.WorkflowInteraction;
-import com.openjiuwen.core.session.state.SessionStateAccess;
+import com.openjiuwen.core.session.internal.NodeSession;
+import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
@@ -40,8 +42,17 @@ public class NodeSessionApi extends BaseSession {
         this.description = "[wf_id=" + getWorkflowId() + ",comp_id=" + getComponentId() + "]";
     }
 
-    public BaseSession getInner() {
-        return inner;
+    public NodeSessionApi(NodeSession session) {
+        this((BaseSession) session, false);
+    }
+
+    public NodeSessionApi(NodeSession session, boolean streamMode) {
+        this((BaseSession) session, streamMode);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T extends BaseSession> T getInner() {
+        return (T) inner;
     }
 
     public String getWorkflowId() {
@@ -74,7 +85,12 @@ public class NodeSessionApi extends BaseSession {
         TracerWorkflowUtils.traceError(inner, error);
     }
 
-    public Object interact(Object value) {
+    public void traceError(Exception error) {
+        traceError((Throwable) error);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> T interact(Object value) {
         if (streamMode) {
             throw ErrorHelper.buildError(
                     StatusCode.COMP_SESSION_INTERACT_ERROR,
@@ -89,14 +105,15 @@ public class NodeSessionApi extends BaseSession {
         if (!skipTrace()) {
             TracerWorkflowUtils.traceComponentInteractiveInputs(inner, result, true);
         }
-        return result;
+        return (T) result;
     }
 
-    public Object userLatestInput(Object value) {
+    @SuppressWarnings("unchecked")
+    public <T> T userLatestInput(Object value) {
         if (interaction == null) {
             interaction = new WorkflowInteraction(inner);
         }
-        return interaction.userLatestInput(value);
+        return (T) interaction.userLatestInput(value);
     }
 
     public String getExecutableId() {
@@ -152,6 +169,14 @@ public class NodeSessionApi extends BaseSession {
         }
     }
 
+    public void writeCustomStream(Map<String, Object> data) {
+        writeCustomStream((Object) data);
+    }
+
+    public Object getCallbackManager() {
+        return callbackManager();
+    }
+
     public Object getEnv(String key) {
         return config() == null ? null : config().getEnv(key);
     }
@@ -191,12 +216,12 @@ public class NodeSessionApi extends BaseSession {
     }
 
     @Override
-    public SessionConfigAccess config() {
+    public Config config() {
         return inner.config();
     }
 
     @Override
-    public SessionStateAccess state() {
+    public State state() {
         return inner.state();
     }
 
@@ -206,7 +231,7 @@ public class NodeSessionApi extends BaseSession {
     }
 
     @Override
-    public Object streamWriterManager() {
+    public StreamWriterManager streamWriterManager() {
         return inner.streamWriterManager();
     }
 
@@ -226,7 +251,7 @@ public class NodeSessionApi extends BaseSession {
     }
 
     @Override
-    public Object callbackManager() {
+    public CallbackManager callbackManager() {
         return inner.callbackManager();
     }
 

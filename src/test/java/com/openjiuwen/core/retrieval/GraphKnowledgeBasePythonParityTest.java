@@ -53,7 +53,7 @@ class GraphKnowledgeBasePythonParityTest {
         RecordingParser parser = new RecordingParser();
         GraphKnowledgeBase kb = new GraphKnowledgeBase(graphConfig(), null, null, parser, null, null, null, null, null, null);
 
-        List<Document> documents = kb.parseFiles(List.of("test1.txt")).join();
+        List<Document> documents = kb.parseFiles(List.of("test1.txt"));
 
         assertThat(documents).hasSize(1);
         assertThat(parser.parseCalls).isEqualTo(1);
@@ -76,7 +76,7 @@ class GraphKnowledgeBasePythonParityTest {
                 null
         );
 
-        List<String> docIds = kb.addDocuments(List.of(new Document("doc_1", "Test document"))).join();
+        List<String> docIds = kb.addDocuments(List.of(new Document("doc_1", "Test document")));
 
         assertThat(docIds).containsExactly("doc_1");
         assertThat(indexer.buildConfigs).extracting(IndexConfig::getIndexName)
@@ -100,7 +100,7 @@ class GraphKnowledgeBasePythonParityTest {
                 null
         );
 
-        List<String> docIds = kb.addDocuments(List.of(new Document("doc_1", "Test document"))).join();
+        List<String> docIds = kb.addDocuments(List.of(new Document("doc_1", "Test document")));
 
         assertThat(docIds).containsExactly("doc_1");
         assertThat(indexer.buildConfigs).extracting(IndexConfig::getIndexName)
@@ -124,7 +124,7 @@ class GraphKnowledgeBasePythonParityTest {
                 tripleRetriever
         );
 
-        List<RetrievalResult> results = kb.retrieve("test query", RetrievalConfig.builder().useGraph(true).topK(5).build()).join();
+        List<RetrievalResult> results = kb.retrieve("test query", RetrievalConfig.builder().useGraph(true).topK(5).build());
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getText()).isEqualTo("Test result");
@@ -150,7 +150,7 @@ class GraphKnowledgeBasePythonParityTest {
         );
 
         RetrievalConfig retrievalConfig = RetrievalConfig.builder().useGraph(true).agentic(true).topK(5).build();
-        List<RetrievalResult> results = kb.retrieve("test query", retrievalConfig).join();
+        List<RetrievalResult> results = kb.retrieve("test query", retrievalConfig);
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getText()).isEqualTo("Agentic result");
@@ -173,7 +173,7 @@ class GraphKnowledgeBasePythonParityTest {
                 null
         );
 
-        List<RetrievalResult> results = kb.retrieve("test query", RetrievalConfig.builder().useGraph(false).topK(5).build()).join();
+        List<RetrievalResult> results = kb.retrieve("test query", RetrievalConfig.builder().useGraph(false).topK(5).build());
 
         assertThat(results).hasSize(1);
         assertThat(results.get(0).getText()).isEqualTo("Simple result");
@@ -185,7 +185,7 @@ class GraphKnowledgeBasePythonParityTest {
         RecordingIndexer indexer = new RecordingIndexer();
         GraphKnowledgeBase kb = new GraphKnowledgeBase(graphConfig(), null, null, null, null, null, indexer, null, null, null);
 
-        Boolean result = kb.deleteDocuments(List.of("doc_1")).join();
+        Boolean result = kb.deleteDocuments(List.of("doc_1"));
 
         assertThat(result).isTrue();
         assertThat(indexer.deletedIndexNames).containsExactly("kb_test_kb_chunks", "kb_test_kb_triples");
@@ -196,7 +196,7 @@ class GraphKnowledgeBasePythonParityTest {
         RecordingIndexer indexer = new RecordingIndexer();
         GraphKnowledgeBase kb = new GraphKnowledgeBase(nonGraphConfig(), null, null, null, null, null, indexer, null, null, null);
 
-        Boolean result = kb.deleteDocuments(List.of("doc_1")).join();
+        Boolean result = kb.deleteDocuments(List.of("doc_1"));
 
         assertThat(result).isTrue();
         assertThat(indexer.deletedIndexNames).containsExactly("kb_test_kb_chunks");
@@ -218,7 +218,7 @@ class GraphKnowledgeBasePythonParityTest {
                 null
         );
 
-        List<String> docIds = kb.updateDocuments(List.of(new Document("doc_1", "Updated document"))).join();
+        List<String> docIds = kb.updateDocuments(List.of(new Document("doc_1", "Updated document")));
 
         assertThat(docIds).containsExactly("doc_1");
         assertThat(indexer.deletedIndexNames).contains("kb_test_kb_chunks");
@@ -231,7 +231,7 @@ class GraphKnowledgeBasePythonParityTest {
         RecordingIndexer indexer = new RecordingIndexer();
         GraphKnowledgeBase kb = new GraphKnowledgeBase(graphConfig(), null, null, null, null, null, indexer, null, null, null);
 
-        Map<String, Object> stats = kb.getStatistics().join();
+        Map<String, Object> stats = kb.getStatistics();
 
         assertThat(stats).containsEntry("kb_id", "test_kb");
         assertThat(stats).containsEntry("use_graph", true);
@@ -243,7 +243,7 @@ class GraphKnowledgeBasePythonParityTest {
     void getStatisticsWithoutIndexManagerReportsNoIndex() {
         GraphKnowledgeBase kb = new GraphKnowledgeBase(graphConfig());
 
-        Map<String, Object> stats = kb.getStatistics().join();
+        Map<String, Object> stats = kb.getStatistics();
 
         assertThat(stats).containsEntry("kb_id", "test_kb");
         assertThat(stats).containsEntry("index_exists", false);
@@ -270,7 +270,7 @@ class GraphKnowledgeBasePythonParityTest {
         graphRetrieverField.setAccessible(true);
         graphRetrieverField.set(kb, graphRetriever);
 
-        kb.close().join();
+        kb.close();
 
         assertThat(graphRetriever.closeCalls).isEqualTo(1);
         assertThat(chunkRetriever.closeCalls).isEqualTo(1);

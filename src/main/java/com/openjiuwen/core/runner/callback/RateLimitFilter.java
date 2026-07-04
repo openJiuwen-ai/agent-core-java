@@ -32,6 +32,15 @@ public class RateLimitFilter extends EventFilter {
         this.timeWindow = timeWindow;
     }
 
+    public synchronized FilterResult filter(
+            String event,
+            CallbackInfo callback,
+            Object[] args,
+            Map<String, Object> kwargs
+    ) {
+        return filterByName(event, callback == null ? "<null-callback>" : callback.getCallbackDisplayName());
+    }
+
     @Override
     public synchronized FilterResult filter(
             String event,
@@ -39,8 +48,12 @@ public class RateLimitFilter extends EventFilter {
             Object[] args,
             Map<String, Object> kwargs
     ) {
+        return filterByName(event, callbackName(callback));
+    }
+
+    private FilterResult filterByName(String event, String callbackDisplayName) {
         double currentTime = System.currentTimeMillis() / 1000.0;
-        String key = event + ":" + callbackName(callback);
+        String key = event + ":" + callbackDisplayName;
         Deque<Double> times = callTimes.computeIfAbsent(key, unused -> new ArrayDeque<>());
 
         while (!times.isEmpty() && currentTime - times.peekFirst() > timeWindow) {

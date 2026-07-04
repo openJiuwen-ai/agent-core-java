@@ -92,6 +92,10 @@ public class WorkflowCommitState extends WorkflowStateCollection {
         workflowState.rollback(nodeId);
     }
 
+    public void commitWorkflow() {
+        workflowState.commit(nodeId);
+    }
+
     @Override
     public Map<String, Object> getState() {
         Map<String, Object> state = new HashMap<>();
@@ -166,6 +170,30 @@ public class WorkflowCommitState extends WorkflowStateCollection {
                 newParentId,
                 newNodeId
         );
+    }
+
+    public WorkflowCommitState createNodeState(String newNodeId) {
+        return createNodeState(newNodeId, parentId);
+    }
+
+    public CommitStateLike getIoState() {
+        return ioState;
+    }
+
+    public CommitStateLike getGlobalState() {
+        return globalState;
+    }
+
+    public CommitStateLike getCompState() {
+        return compState;
+    }
+
+    public CommitStateLike getWorkflowState() {
+        return workflowState;
+    }
+
+    public Map<String, Object> getTraceState() {
+        return traceState;
     }
 
     @SuppressWarnings("unchecked")

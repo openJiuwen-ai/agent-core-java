@@ -62,6 +62,24 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
         return template;
     }
 
+    /**
+     * 0.1.12-compatible varargs facade.
+     *
+     * @param prompt prompt to optimize
+     * @param args feedback, mode, positions, and optional language
+     * @return optimized prompt text
+     */
+    public CompletableFuture<String> build(Object prompt, Object... args) {
+        Object[] safeArgs = args == null ? new Object[0] : args;
+        String feedback = stringArgument(safeArgs.length >= 1 ? safeArgs[0] : null);
+        String mode = stringArgument(safeArgs.length >= 2 ? safeArgs[1] : MODE_GENERAL);
+        Integer startPos = integerArgument(safeArgs.length >= 3 ? safeArgs[2] : null);
+        Integer endPos = integerArgument(safeArgs.length >= 4 ? safeArgs[3] : null);
+        String language = stringArgument(safeArgs.length >= 5 ? safeArgs[4] : "zh-CN");
+        return build(prompt, feedback, mode, startPos, endPos, language == null ? "zh-CN" : language)
+                .thenApply(value -> value.orElse(null));
+    }
+
     public CompletableFuture<Optional<String>> build(Object prompt, String feedback) {
         return build(prompt, feedback, MODE_GENERAL, null, null, "zh-CN");
     }
@@ -111,6 +129,29 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
 
     public Flow.Publisher<String> streamBuild(Object prompt, String feedback) {
         return streamBuild(prompt, feedback, MODE_GENERAL, null, null, "zh-CN");
+    }
+
+    /**
+     * 0.1.12-compatible varargs streaming facade.
+     *
+     * @param prompt prompt to optimize
+     * @param args feedback, mode, positions, and optional language
+     * @return concatenated streamed response text
+     */
+    public CompletableFuture<String> streamBuild(Object prompt, Object... args) {
+        Object[] safeArgs = args == null ? new Object[0] : args;
+        String feedback = stringArgument(safeArgs.length >= 1 ? safeArgs[0] : null);
+        String mode = stringArgument(safeArgs.length >= 2 ? safeArgs[1] : MODE_GENERAL);
+        Integer startPos = integerArgument(safeArgs.length >= 3 ? safeArgs[2] : null);
+        Integer endPos = integerArgument(safeArgs.length >= 4 ? safeArgs[3] : null);
+        String language = stringArgument(safeArgs.length >= 5 ? safeArgs[4] : "zh-CN");
+        return collectPublisher(streamBuild(
+                prompt,
+                feedback,
+                mode,
+                startPos,
+                endPos,
+                language == null ? "zh-CN" : language));
     }
 
     public Flow.Publisher<String> streamBuild(Object prompt, String feedback, String mode, Integer startPos) {
@@ -325,6 +366,33 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
 
     private static Integer integerArgument(Object value) {
         return value instanceof Number number ? number.intValue() : null;
+    }
+
+    private static CompletableFuture<String> collectPublisher(Flow.Publisher<String> publisher) {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        StringBuilder result = new StringBuilder();
+        publisher.subscribe(new Flow.Subscriber<>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                subscription.request(Long.MAX_VALUE);
+            }
+
+            @Override
+            public void onNext(String item) {
+                result.append(item == null ? "" : item);
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                future.completeExceptionally(throwable);
+            }
+
+            @Override
+            public void onComplete() {
+                future.complete(result.toString());
+            }
+        });
+        return future;
     }
 
     record IntentResult(boolean intent, String optimizedFeedback) {

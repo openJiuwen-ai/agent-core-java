@@ -204,14 +204,14 @@ public class HttpClient extends BaseClient {
                     return CompletableFuture.completedFuture(session);
                 }
             }
-            return sessionManager.acquire(config).thenApply(lease -> {
+            return sessionManager.acquireLease(config).thenApply(lease -> {
                 synchronized (this) {
                     session = lease.resource();
                     return session;
                 }
             });
         }
-        return sessionManager.acquire(config).thenApply(lease -> lease.resource());
+        return sessionManager.acquireLease(config).thenApply(lease -> lease.resource());
     }
 
     private CompletableFuture<Void> releaseSession(HttpSession acquired) {

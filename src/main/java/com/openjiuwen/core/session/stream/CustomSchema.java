@@ -35,4 +35,8 @@ public class CustomSchema implements StreamSchema {
     public Map<String, Object> getProperties() {
         return properties;
     }
+
+    public static CustomSchema fromMap(Map<String, Object> data) {
+        return new CustomSchema(data);
+    }
 }

@@ -45,4 +45,17 @@ public class AbstractManager<T> {
     protected Supplier<?> unregisterResourceProvider(String resourceId) {
         return providers.pop(resourceId, null);
     }
+
+    public void put(String resourceId, Object resource) {
+        registerResourceProvider(resourceId, () -> resource);
+    }
+
+    public boolean contains(String resourceId) {
+        return providers.get(resourceId) != null;
+    }
+
+    public int size() {
+        return providers.size();
+    }
+
 }

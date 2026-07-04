@@ -185,6 +185,13 @@ public class AgentConfigurator {
     }
 
     public MemberRuntime configure(
+            com.openjiuwen.agent_teams.schema.TeamAgentSpec spec,
+            TeamRuntimeContext ctx
+    ) {
+        return configure(spec == null ? null : spec.toConfiguratorSpec(), ctx);
+    }
+
+    public MemberRuntime configure(
             TeamAgentSpec spec,
             TeamRuntimeContext ctx
     ) {
@@ -193,10 +200,33 @@ public class AgentConfigurator {
     }
 
     public void setupInfra(
+            com.openjiuwen.agent_teams.schema.TeamAgentSpec spec,
+            TeamRuntimeContext ctx
+    ) {
+        setupInfra(spec == null ? null : spec.toConfiguratorSpec(), ctx);
+    }
+
+    public void setupInfra(
             TeamAgentSpec spec,
             TeamRuntimeContext ctx
     ) {
         setupInfra(spec, ctx, null, null, null);
+    }
+
+    public void setupInfra(
+            com.openjiuwen.agent_teams.schema.TeamAgentSpec spec,
+            TeamRuntimeContext ctx,
+            Object onTeammateCreated,
+            Object onTeamCleaned,
+            Object onTeamBuilt
+    ) {
+        setupInfra(
+                spec == null ? null : spec.toConfiguratorSpec(),
+                ctx,
+                onTeammateCreated,
+                onTeamCleaned,
+                onTeamBuilt
+        );
     }
 
     public void setupInfra(
@@ -272,6 +302,14 @@ public class AgentConfigurator {
             return new WorktreeManager(spec.getWorktree());
         }
         return new WorktreeManager(spec.getWorktree(), null, eventHandler, null);
+    }
+
+    public MemberRuntime setupAgent(
+            com.openjiuwen.agent_teams.schema.TeamAgentSpec spec,
+            TeamRuntimeContext ctx,
+            MemberRuntime memberRuntime
+    ) {
+        return setupAgent(spec == null ? null : spec.toConfiguratorSpec(), ctx, memberRuntime);
     }
 
     public MemberRuntime setupAgent(

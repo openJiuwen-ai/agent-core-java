@@ -46,7 +46,17 @@ public class HttpSessionManager extends BaseRefResourceMgr<HttpSession> {
         return getResourceKey(config instanceof SessionConfig sessionConfig ? sessionConfig : defaultConfig);
     }
 
-    public CompletableFuture<ResourceLease<HttpSession>> acquire(SessionConfig config) {
+    public HttpSession acquire() {
+        return acquire(defaultConfig);
+    }
+
+    public HttpSession acquire(SessionConfig config) {
+        ResourceLease<HttpSession> lease = acquireLease(config).join();
+        lease.resource().setLastLease(lease);
+        return lease.resource();
+    }
+
+    public CompletableFuture<ResourceLease<HttpSession>> acquireLease(SessionConfig config) {
         return super.acquire(normalizeConfig(config));
     }
 
@@ -60,7 +70,7 @@ public class HttpSessionManager extends BaseRefResourceMgr<HttpSession> {
             SessionConfig config,
             Function<HttpSession, CompletableFuture<T>> body) {
         SessionConfig effectiveConfig = normalizeConfig(config);
-        return acquire(effectiveConfig).thenCompose(lease -> {
+        return acquireLease(effectiveConfig).thenCompose(lease -> {
             CompletableFuture<T> result;
             try {
                 result = body.apply(lease.resource());
@@ -72,7 +82,15 @@ public class HttpSessionManager extends BaseRefResourceMgr<HttpSession> {
     }
 
     public CompletableFuture<Void> releaseSession(SessionConfig config) {
-        return release(normalizeConfig(config));
+        return release((Object) normalizeConfig(config));
+    }
+
+    public void release(SessionConfig config) {
+        release((Object) normalizeConfig(config)).join();
+    }
+
+    public void clear() {
+        closeAll().join();
     }
 
     private java.net.http.HttpClient buildClient(SessionConfig config) {

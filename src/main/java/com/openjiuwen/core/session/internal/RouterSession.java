@@ -73,7 +73,7 @@ public class RouterSession extends StateSession {
     }
 
     @Override
-    public Object getAgentConfig() {
+    public <T> T getAgentConfig() {
         return null;
     }
 

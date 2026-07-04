@@ -4,7 +4,12 @@
 
 package com.openjiuwen.core.workflow.component.loop;
 
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.workflow.component.WorkflowComponent;
+
+import java.util.LinkedHashMap;
 
 /**
  * Component that delegates break requests to the active loop controller.
@@ -29,5 +34,16 @@ public class LoopBreakComponent extends WorkflowComponent {
             throw new IllegalStateException("failed to initialize loop controller");
         }
         loopController.breakLoop();
+    }
+
+    public Object invoke(Object inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
+        if (loopController == null) {
+            String componentId = session == null ? null : session.getComponentId();
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_BREAK_EXECUTION_ERROR,
+                    "reason", "failed to initialize loop controller",
+                    "comp", componentId);
+        }
+        loopController.breakLoop();
+        return new LinkedHashMap<String, Object>();
     }
 }

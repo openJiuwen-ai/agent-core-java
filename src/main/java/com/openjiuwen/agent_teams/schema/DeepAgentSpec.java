@@ -8,6 +8,7 @@ import com.openjiuwen.agent_teams.agent.AgentConfigurator;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.AgentCard;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
+import com.openjiuwen.harness.schema.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import java.util.ArrayList;
@@ -23,6 +24,7 @@ import java.util.Map;
  */
 public class DeepAgentSpec extends AgentConfigurator.DeepAgentSpec {
 
+    private DeepAgentConfig config;
     private AgentCard card;
     private List<Object> mcps;
     private List<SubAgentSpec> subagents;
@@ -52,6 +54,68 @@ public class DeepAgentSpec extends AgentConfigurator.DeepAgentSpec {
 
     public void setModel(TeamModelConfig model) {
         super.setModel(model);
+        if (config != null) {
+            config.setModel(model);
+        }
+    }
+
+    @Override
+    public String getLanguage() {
+        return super.getLanguage();
+    }
+
+    @Override
+    public void setLanguage(String language) {
+        super.setLanguage(language);
+        if (config != null) {
+            config.setLanguage(language);
+        }
+    }
+
+    @Override
+    public List<String> getApprovalRequiredTools() {
+        return super.getApprovalRequiredTools();
+    }
+
+    @Override
+    public void setApprovalRequiredTools(List<String> approvalRequiredTools) {
+        super.setApprovalRequiredTools(approvalRequiredTools);
+    }
+
+    public DeepAgentConfig getConfig() {
+        if (config == null) {
+            config = new DeepAgentConfig();
+            config.setModel(super.getModel());
+            config.setLanguage(super.getLanguage());
+            config.setSystemPrompt(getSystemPrompt());
+            config.setEnableTaskLoop(enableTaskLoop);
+            config.setEnableAsyncSubagent(enableAsyncSubagent);
+            config.setAddGeneralPurposeAgent(addGeneralPurposeAgent);
+            config.setMaxIterations(maxIterations);
+            config.setEnableSkillDiscovery(enableSkillDiscovery);
+            config.setPromptMode(promptMode);
+            config.setAutoCreateWorkspace(autoCreateWorkspace);
+            config.setCompletionTimeout(completionTimeout);
+        }
+        return config;
+    }
+
+    public void setConfig(DeepAgentConfig config) {
+        this.config = config;
+        if (config == null) {
+            return;
+        }
+        super.setModel(config.getModel());
+        super.setLanguage(config.getLanguage());
+        super.setSystemPrompt(config.getSystemPrompt());
+        enableTaskLoop = config.isEnableTaskLoop();
+        enableAsyncSubagent = config.isEnableAsyncSubagent();
+        addGeneralPurposeAgent = config.isAddGeneralPurposeAgent();
+        maxIterations = config.getMaxIterations();
+        enableSkillDiscovery = config.isEnableSkillDiscovery();
+        promptMode = config.getPromptMode();
+        autoCreateWorkspace = config.isAutoCreateWorkspace();
+        completionTimeout = config.getCompletionTimeout();
     }
 
     public DeepAgentBuildConfig build() {

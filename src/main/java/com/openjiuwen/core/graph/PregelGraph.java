@@ -81,8 +81,12 @@ public class PregelGraph extends Graph {
     }
 
     @Override
-    public Map<String, Vertex> getNodes() {
-        return new LinkedHashMap<>(nodes);
+    public Map<String, Executable<?, ?>> getNodes() {
+        Map<String, Executable<?, ?>> result = new LinkedHashMap<>();
+        for (Map.Entry<String, Vertex> entry : nodes.entrySet()) {
+            result.put(entry.getKey(), entry.getValue().getExecutable());
+        }
+        return result;
     }
 
     public Vertex getVertex(String nodeId) {
@@ -380,6 +384,20 @@ public class PregelGraph extends Graph {
      * {@code openjiuwen/core/graph/graph.py}.
      */
     public record Edge(Object sourceNodeId, String targetNodeId) {
+    }
+
+    /**
+     * Mirrors Python's conditional branch wrapper in
+     * {@code openjiuwen/core/graph/graph.py}.
+     *
+     * <p>This nested type preserves the 0.1.12 public API after the branch
+     * implementation moved to {@link com.openjiuwen.core.graph.Branch}.</p>
+     */
+    public static class Branch extends com.openjiuwen.core.graph.Branch {
+
+        public Branch(Object condition) {
+            super(condition);
+        }
     }
 
     /**

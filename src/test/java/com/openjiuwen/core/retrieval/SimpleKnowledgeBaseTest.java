@@ -201,7 +201,7 @@ class SimpleKnowledgeBaseTest {
         }
 
         @Override
-        public CompletableFuture<Map<String, Object>> getStatistics() {
+        protected CompletableFuture<Map<String, Object>> getStatisticsAsync() {
             return CompletableFuture.completedFuture(Map.of());
         }
     }

@@ -31,6 +31,10 @@ public class McpTool extends Tool {
     private final Object mcpClient;
     private final float operationTimeout;
 
+    public McpTool(McpClient mcpClient, McpToolCard toolInfo) {
+        this((Object) mcpClient, toolInfo, McpBase.NO_TIMEOUT);
+    }
+
     public McpTool(Object mcpClient, McpToolCard toolInfo) {
         this(mcpClient, toolInfo, McpBase.NO_TIMEOUT);
     }

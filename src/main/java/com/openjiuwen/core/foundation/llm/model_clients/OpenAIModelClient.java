@@ -41,6 +41,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -558,7 +559,7 @@ public class OpenAIModelClient extends BaseModelClient {
             return null;
         }
         try {
-            return parser.parse(content).join();
+            return parser.<CompletableFuture<Object>>parse(content).join();
         } catch (RuntimeException exception) {
             Loggers.LLM.warning("Parser parse error. {}", exception.getMessage());
             return null;
@@ -573,7 +574,7 @@ public class OpenAIModelClient extends BaseModelClient {
         }
         accumulatedContent.append(stringify(content));
         try {
-            Object parsed = parser.parse(accumulatedContent.toString()).join();
+            Object parsed = parser.<CompletableFuture<Object>>parse(accumulatedContent.toString()).join();
             if (parsed != null) {
                 accumulatedContent.setLength(0);
             }

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.common.clients.http;
 
+import com.openjiuwen.core.common.clients.BaseRefResourceMgr;
 import com.openjiuwen.core.common.clients.RefCountedResource;
 import com.openjiuwen.core.common.clients.SessionConfig;
 
@@ -20,10 +21,15 @@ public class HttpSession extends RefCountedResource {
 
     private final java.net.http.HttpClient session;
     private final SessionConfig config;
+    private BaseRefResourceMgr.ResourceLease<HttpSession> lastLease;
 
     public HttpSession(java.net.http.HttpClient session, SessionConfig config) {
         this.session = session;
         this.config = config;
+    }
+
+    public HttpSession(HttpClient session, SessionConfig config) {
+        this(java.net.http.HttpClient.newHttpClient(), config);
     }
 
     public SessionConfig getConfig() {
@@ -34,11 +40,29 @@ public class HttpSession extends RefCountedResource {
         return config;
     }
 
+    public BaseRefResourceMgr.ResourceLease<HttpSession> join() {
+        return lastLease == null ? new BaseRefResourceMgr.ResourceLease<>(this, false) : lastLease;
+    }
+
+    void setLastLease(BaseRefResourceMgr.ResourceLease<HttpSession> lastLease) {
+        this.lastLease = lastLease;
+    }
+
     public java.net.http.HttpClient session() {
         if (isClosed()) {
             throw new IllegalStateException("Session is closed");
         }
         return session;
+    }
+
+    public void acquire() {
+        incrementRef();
+    }
+
+    public void release() {
+        if (decrementRef()) {
+            close().join();
+        }
     }
 
     @Override

@@ -24,6 +24,15 @@ public class AuthFilter extends EventFilter {
         this.requiredRole = requiredRole;
     }
 
+    public FilterResult filter(
+            String event,
+            CallbackInfo callback,
+            Object[] args,
+            Map<String, Object> kwargs
+    ) {
+        return doFilter(event, args, kwargs);
+    }
+
     @Override
     public FilterResult filter(
             String event,
@@ -31,6 +40,10 @@ public class AuthFilter extends EventFilter {
             Object[] args,
             Map<String, Object> kwargs
     ) {
+        return doFilter(event, args, kwargs);
+    }
+
+    private FilterResult doFilter(String event, Object[] args, Map<String, Object> kwargs) {
         String userRole = String.valueOf(safeKwargs(kwargs).getOrDefault("user_role", "guest"));
         if (!requiredRole.equals(userRole)) {
             return FilterResult.skipResult(

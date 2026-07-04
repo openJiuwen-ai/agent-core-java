@@ -99,6 +99,11 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         this.executor = executor != null ? executor : ForkJoinPool.commonPool();
     }
 
+    @SuppressWarnings("unchecked")
+    public Executable<Object, Object> getExecutable() {
+        return (Executable<Object, Object>) (Executable<?, ?>) executable;
+    }
+
     public boolean init(VertexSession session) {
         return init(session, Collections.emptyMap());
     }

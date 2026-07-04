@@ -134,6 +134,20 @@ public class ResourceMgr {
                 TagMatchStrategy.ALL, false));
     }
 
+    public Object removeAgent(Object agentId, Object tag,
+                              com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy,
+                              boolean skipIfTagNotExists) {
+        Collection<String> ids = stringCollection(agentId);
+        if (ids == null) {
+            return removeAgentsByTag(stringCollection(tag), strategy(tagMatchStrategy), skipIfTagNotExists);
+        }
+        if (ids.size() == 1) {
+            return removeAgent(ids.iterator().next());
+        }
+        return innerRemoveResources(new ArrayList<>(ids), ResourceKind.AGENT, null, strategy(tagMatchStrategy),
+                skipIfTagNotExists);
+    }
+
     public List<Result<?, ?>> removeAgentsByTag(Collection<String> tag, TagMatchStrategy tagMatchStrategy,
                                                 boolean skipIfTagNotExists) {
         return innerRemoveResources(null, ResourceKind.AGENT, tag, tagMatchStrategy, skipIfTagNotExists);
@@ -145,6 +159,14 @@ public class ResourceMgr {
             return CompletableFuture.completedFuture(null);
         }
         return dispatchGet(ResourceKind.AGENT, agentId, null);
+    }
+
+    public Object getAgent(String agentId, Object tag,
+                           com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy) {
+        if (agentId != null) {
+            return getAgent(agentId).toCompletableFuture().join();
+        }
+        return getAgentsByTag(stringCollection(tag), strategy(tagMatchStrategy), null).toCompletableFuture().join();
     }
 
     public CompletionStage<List<Object>> getAgentsByTag(Collection<String> tag, TagMatchStrategy tagMatchStrategy,
@@ -180,12 +202,35 @@ public class ResourceMgr {
                 TagMatchStrategy.ALL, false));
     }
 
+    public Object removeWorkflow(Object workflowId, Object tag,
+                                 com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy,
+                                 boolean skipIfTagNotExists) {
+        Collection<String> ids = stringCollection(workflowId);
+        if (ids == null) {
+            return innerRemoveResources(null, ResourceKind.WORKFLOW, stringCollection(tag),
+                    strategy(tagMatchStrategy), skipIfTagNotExists);
+        }
+        if (ids.size() == 1) {
+            return removeWorkflow(ids.iterator().next());
+        }
+        return innerRemoveResources(new ArrayList<>(ids), ResourceKind.WORKFLOW, null, strategy(tagMatchStrategy),
+                skipIfTagNotExists);
+    }
+
     public CompletionStage<Object> getWorkflow(String workflowId, Object session) {
         validateResourceId(workflowId, "workflow");
         if (!tagManager.hasResource(workflowId)) {
             return CompletableFuture.completedFuture(null);
         }
         return dispatchGet(ResourceKind.WORKFLOW, workflowId, session);
+    }
+
+    public Object getWorkflow(String workflowId, Object tag,
+                              com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy) {
+        if (workflowId != null) {
+            return getWorkflow(workflowId, null).toCompletableFuture().join();
+        }
+        return getWorkflowsByTag(stringCollection(tag), strategy(tagMatchStrategy), null).toCompletableFuture().join();
     }
 
     public CompletionStage<List<Object>> getWorkflowsByTag(Collection<String> tag, TagMatchStrategy tagMatchStrategy,
@@ -225,6 +270,14 @@ public class ResourceMgr {
         return typedList(result, Tool.class);
     }
 
+    public Object getTool(String toolId, Object tag,
+                          com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy) {
+        if (toolId != null) {
+            return getTool(toolId);
+        }
+        return getToolsByTag(stringCollection(tag), strategy(tagMatchStrategy), null);
+    }
+
     public Result<?, ?> removeTool(String toolId) {
         return singleResult(innerRemoveResources(List.of(toolId), ResourceKind.TOOL, null,
                 TagMatchStrategy.ALL, false));
@@ -238,6 +291,19 @@ public class ResourceMgr {
     public List<Result<?, ?>> removeToolsByTag(Collection<String> tag, TagMatchStrategy tagMatchStrategy,
                                                boolean skipIfTagNotExists) {
         return innerRemoveResources(null, ResourceKind.TOOL, tag, tagMatchStrategy, skipIfTagNotExists);
+    }
+
+    public Object removeTool(Object toolId, Object tag,
+                             com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy,
+                             boolean skipIfTagNotExists) {
+        Collection<String> ids = stringCollection(toolId);
+        if (ids == null) {
+            return removeToolsByTag(stringCollection(tag), strategy(tagMatchStrategy), skipIfTagNotExists);
+        }
+        if (ids.size() == 1) {
+            return removeTool(ids.iterator().next());
+        }
+        return removeTools(ids);
     }
 
     public Result<?, ?> addModel(String modelId, Supplier<?> model) {
@@ -417,6 +483,12 @@ public class ResourceMgr {
             }
         }
         return results;
+    }
+
+    public List<ToolInfo> getToolInfos(Object toolIds, Object toolTypes, Object tag,
+                                       com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy) {
+        return getToolInfos(stringCollection(toolIds), stringCollection(toolTypes), stringCollection(tag),
+                strategy(tagMatchStrategy));
     }
 
     public CompletionStage<Result<?, ?>> addMcpServer(McpServerConfig serverConfig) {
@@ -1178,6 +1250,26 @@ public class ResourceMgr {
             }
         }
         return results;
+    }
+
+    private static TagMatchStrategy strategy(com.openjiuwen.core.runner.base.TagMatchStrategy strategy) {
+        return strategy == null ? TagMatchStrategy.ALL : strategy.toResourceManagerStrategy();
+    }
+
+    private static Collection<String> stringCollection(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Collection<?> collection) {
+            List<String> values = new ArrayList<>();
+            for (Object item : collection) {
+                if (item != null) {
+                    values.add(String.valueOf(item));
+                }
+            }
+            return values;
+        }
+        return List.of(String.valueOf(value));
     }
 
     private static CompletionStage<Object> invokeAsync(Object target, String methodName) {

@@ -162,7 +162,7 @@ class DefaultEvaluatorTest {
 
         EvaluatedCase result = evaluator.evaluate(caseValue("question"), answer("answer"));
 
-        assertThat(result.getScore()).isCloseTo(expectedScore, within(1.0e-12d));
+        assertThat(result.getScore()).isCloseTo((float) expectedScore, within(1.0e-12f));
         assertThat(result.getReason()).isEqualTo("checked");
     }
 

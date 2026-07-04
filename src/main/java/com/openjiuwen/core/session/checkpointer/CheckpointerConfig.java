@@ -58,6 +58,14 @@ public class CheckpointerConfig {
         return "type='" + type + "' conf=" + redact(conf);
     }
 
+    public String toSimpleString() {
+        return toString();
+    }
+
+    public Object redactUrlsInValue(Object value) {
+        return redact(value);
+    }
+
     @SuppressWarnings("unchecked")
     private Object redact(Object value) {
         return redact(null, value);

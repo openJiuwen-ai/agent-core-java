@@ -46,8 +46,6 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(SimpleKnowledgeBase.class);
 
-    private Retriever retriever;
-
     public SimpleKnowledgeBase(KnowledgeBaseConfig config) {
         this(config, null, null, null, null, null, null, null, null);
     }
@@ -63,16 +61,7 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
             BaseModelClient llmClient,
             Retriever retriever
     ) {
-        super(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient);
-        this.retriever = retriever;
-    }
-
-    public Retriever getRetriever() {
-        return retriever;
-    }
-
-    public void setRetriever(Retriever retriever) {
-        this.retriever = retriever;
+        super(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient, retriever);
     }
 
     @Override
@@ -222,7 +211,7 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
     }
 
     @Override
-    public CompletableFuture<Map<String, Object>> getStatistics() {
+    protected CompletableFuture<Map<String, Object>> getStatisticsAsync() {
         if (indexManager == null) {
             Map<String, Object> stats = new LinkedHashMap<>();
             stats.put("kb_id", config.getKbId());
@@ -254,7 +243,7 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         }
         RetrievalConfig activeConfig = config == null ? new RetrievalConfig() : config;
         List<CompletableFuture<List<RetrievalResult>>> tasks = knowledgeBases.stream()
-                .map(kb -> kb.retrieve(query, activeConfig)
+                .map(kb -> kb.retrieveAsync(query, activeConfig)
                         .exceptionally(exception -> {
                             LOGGER.warn("retrieve_multi_kb: kb_id={} failed: {}",
                                     kb.getConfig().getKbId(),
@@ -290,7 +279,7 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         }
         RetrievalConfig activeConfig = config == null ? new RetrievalConfig() : config;
         List<CompletableFuture<List<RetrievalResult>>> tasks = knowledgeBases.stream()
-                .map(kb -> kb.retrieve(query, activeConfig)
+                .map(kb -> kb.retrieveAsync(query, activeConfig)
                         .exceptionally(exception -> {
                             LOGGER.warn("retrieve_multi_kb_with_source: kb_id={} failed: {}",
                                     kb.getConfig().getKbId(),

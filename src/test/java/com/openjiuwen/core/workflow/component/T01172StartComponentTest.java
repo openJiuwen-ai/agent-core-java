@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.workflow.component;
 
+import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.workflow.components.flow.StartComponent;
 import org.junit.jupiter.api.Test;
 
@@ -25,7 +27,7 @@ class T01172StartComponentTest {
         inputs.put("query", "hello");
         inputs.put("count", 1);
 
-        Object output = start.invoke(inputs, null, null);
+        Object output = start.invoke(inputs, (BaseSession) null, (ModelContext) null);
 
         assertSame(inputs, output);
     }
@@ -35,7 +37,7 @@ class T01172StartComponentTest {
         StartComponent component = new StartComponent();
         Object inputs = "raw-input";
 
-        Object output = component.invoke(inputs, null, null);
+        Object output = component.invoke(inputs, (BaseSession) null, (ModelContext) null);
 
         assertSame(inputs, output);
     }

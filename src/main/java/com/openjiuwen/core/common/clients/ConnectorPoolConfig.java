@@ -127,13 +127,25 @@ public class ConnectorPoolConfig {
         this.keepaliveTimeout = keepaliveTimeout == null ? null
                 : validatePositive(keepaliveTimeout, "keepaliveTimeout");
     }
+
+    public void setKeepaliveTimeout(double keepaliveTimeout) {
+        setKeepaliveTimeout(Double.valueOf(keepaliveTimeout));
+    }
     
     public Integer getTtl() { return ttl; }
     public void setTtl(Integer ttl) { this.ttl = ttl == null ? null : validatePositive(ttl, "ttl"); }
+
+    public void setTtl(int ttl) {
+        setTtl(Integer.valueOf(ttl));
+    }
     
     public Integer getMaxIdleTime() { return maxIdleTime; }
     public void setMaxIdleTime(Integer maxIdleTime) {
         this.maxIdleTime = maxIdleTime == null ? null : validatePositive(maxIdleTime, "maxIdleTime");
+    }
+
+    public void setMaxIdleTime(int maxIdleTime) {
+        setMaxIdleTime(Integer.valueOf(maxIdleTime));
     }
     
     public Map<String, Object> getExtendParams() { return extendParams; }

@@ -40,6 +40,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 
@@ -258,7 +259,8 @@ public class SiliconFlowModelClient extends BaseModelClient {
             Object parserContent = null;
             if (!accumulatedContent.isEmpty()) {
                 try {
-                    Object parsedResult = outputParser.parse(accumulatedContent.toString()).join();
+                    Object parsedResult = outputParser.<CompletableFuture<Object>>parse(
+                            accumulatedContent.toString()).join();
                     if (parsedResult != null) {
                         parserContent = parsedResult;
                         accumulatedContent.setLength(0);
@@ -471,7 +473,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
             return null;
         }
         try {
-            Object parserContent = parser.parse(content).join();
+            Object parserContent = parser.<CompletableFuture<Object>>parse(content).join();
             Loggers.LLM.info("Parser parse success. {}", Map.of("parser_content", parserContent));
             return parserContent;
         } catch (RuntimeException exception) {

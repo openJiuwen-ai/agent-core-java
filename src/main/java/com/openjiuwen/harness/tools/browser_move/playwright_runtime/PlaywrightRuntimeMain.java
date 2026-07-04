@@ -86,11 +86,11 @@ public final class PlaywrightRuntimeMain {
         }
         try {
             List<ToolInfo> toolInfos = Runner.getResourceMgr().getMcpToolInfos(
-                    null,
+                    (List<String>) null,
                     List.of(settings.getMcpConfig().getServerId()),
-                    null,
-                    null,
-                    null,
+                    (List<String>) null,
+                    (List<String>) null,
+                    (com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy) null,
                     true,
                     true
             ).toCompletableFuture().join();

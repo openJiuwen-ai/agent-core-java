@@ -30,7 +30,7 @@ public class MultiKBRetrievalResult {
             double score,
             double rawScore,
             double rawScoreScaled,
-            List<Object> kbIds,
+            List<?> kbIds,
             Map<String, Object> metadata
     ) {
         this.text = text;
@@ -77,7 +77,7 @@ public class MultiKBRetrievalResult {
         return kbIds;
     }
 
-    public void setKbIds(List<Object> kbIds) {
+    public void setKbIds(List<?> kbIds) {
         this.kbIds = kbIds == null ? new ArrayList<>() : new ArrayList<>(kbIds);
     }
 

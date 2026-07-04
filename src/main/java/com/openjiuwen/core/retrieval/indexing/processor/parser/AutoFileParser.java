@@ -103,6 +103,15 @@ public class AutoFileParser extends Parser {
         return doc != null && Files.exists(Path.of(doc)) && PARSER_REGISTRY.containsKey(extensionOf(doc));
     }
 
+    @Override
+    protected CompletableFuture<String> parseContent(
+            String doc,
+            BaseModelClient llmClient,
+            Map<String, Object> options
+    ) {
+        return CompletableFuture.completedFuture(null);
+    }
+
     /**
      * Mirrors Python's {@code register_new_parser} in
      * {@code openjiuwen/core/retrieval/indexing/processor/parser/auto_file_parser.py}.

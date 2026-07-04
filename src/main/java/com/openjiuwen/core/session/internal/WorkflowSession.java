@@ -7,9 +7,11 @@ package com.openjiuwen.core.session.internal;
 import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.graph.stream_actor.ActorManagerSession;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.callback.CallbackManager;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.state.InMemoryState;
+import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -32,7 +34,7 @@ public class WorkflowSession extends BaseSession implements ActorManagerSession 
     private WorkflowCommitState state;
     private StreamWriterManager streamWriterManager;
     private Object tracer;
-    private Object callbackManager;
+    private CallbackManager callbackManager;
     private ActorManager actorManager;
     private String workflowId;
 
@@ -43,22 +45,27 @@ public class WorkflowSession extends BaseSession implements ActorManagerSession 
         this.sessionId = sessionId != null
                 ? sessionId
                 : parent != null ? parent.sessionId() : UUID.randomUUID().toString().replace("-", "");
-        this.config = parent != null && parent.config() instanceof Config parentConfig ? parentConfig : new Config();
+        this.config = parent != null ? parent.config() : new Config();
         this.state = state == null ? InMemoryState.create() : state;
         this.tracer = parent == null ? null : parent.tracer();
-        this.callbackManager = callbackManager;
+        this.callbackManager = callbackManager instanceof CallbackManager typedManager ? typedManager : null;
+    }
+
+    public WorkflowSession(String workflowId, BaseSession parent, String sessionId,
+                           State state, CallbackManager callbackManager) {
+        this(workflowId, parent, sessionId, toWorkflowCommitState(state), (Object) callbackManager);
     }
 
     public WorkflowSession(String workflowId, BaseSession parent) {
-        this(workflowId, parent, null, null, null);
+        this(workflowId, parent, null, (WorkflowCommitState) null, (Object) null);
     }
 
     public WorkflowSession(String workflowId) {
-        this(workflowId, null, null, null, null);
+        this(workflowId, null, null, (WorkflowCommitState) null, (Object) null);
     }
 
     public WorkflowSession() {
-        this(null, null, null, null, null);
+        this(null, null, null, (WorkflowCommitState) null, (Object) null);
     }
 
     public static WorkflowSession create() {
@@ -66,7 +73,14 @@ public class WorkflowSession extends BaseSession implements ActorManagerSession 
     }
 
     public static WorkflowSession create(String sessionId) {
-        return new WorkflowSession(null, null, sessionId, null, null);
+        return new WorkflowSession(null, null, sessionId, (WorkflowCommitState) null, (Object) null);
+    }
+
+    private static WorkflowCommitState toWorkflowCommitState(State state) {
+        if (state instanceof WorkflowCommitState workflowCommitState) {
+            return workflowCommitState;
+        }
+        return state == null ? null : InMemoryState.fromMap(state.getState());
     }
 
     @Override
@@ -135,12 +149,12 @@ public class WorkflowSession extends BaseSession implements ActorManagerSession 
     }
 
     @Override
-    public Object callbackManager() {
+    public CallbackManager callbackManager() {
         return callbackManager;
     }
 
     public void setCallbackManager(Object callbackManager) {
-        this.callbackManager = callbackManager;
+        this.callbackManager = callbackManager instanceof CallbackManager typedManager ? typedManager : null;
     }
 
     @Override

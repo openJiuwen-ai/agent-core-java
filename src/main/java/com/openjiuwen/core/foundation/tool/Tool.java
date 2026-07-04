@@ -29,7 +29,7 @@ public abstract class Tool {
 
     private final ToolCard card;
 
-    protected Tool(ToolCard card) {
+    public Tool(ToolCard card) {
         if (card == null) {
             throw toolCardInvalid(null, "card is None");
         }

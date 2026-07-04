@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.WorkflowComponent;
 import com.openjiuwen.core.workflow.internal.WorkflowRuntimeSession;
@@ -20,7 +21,7 @@ import java.util.LinkedHashMap;
  * Component that sets variables in the loop's parent session scope.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.LoopSetVariableComponent}.
-  * Python file: {@code openjiuwen/core/workflow/components/flow/loop/loop_comp.py}.
+ * Python file: {@code openjiuwen/core/workflow/components/flow/loop/loop_comp.py}.
  */
 public class LoopSetVariableComponent extends WorkflowComponent {
 
@@ -67,12 +68,20 @@ public class LoopSetVariableComponent extends WorkflowComponent {
         return null;
     }
 
+    public Object invoke(Object inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
+        return invoke(inputs, (BaseSession) session, context == null ? null : context.unwrap());
+    }
+
     public static Object generateValue(BaseSession session, Object value) {
         if (value instanceof String && SessionUtils.isRefPath((String) value)) {
             String refStr = SessionUtils.extractOriginKey((String) value);
             return WorkflowSessionSupport.getGlobalState(session, refStr);
         }
         return value;
+    }
+
+    public static Object generateValue(NodeSessionApi session, Object value) {
+        return generateValue((BaseSession) session, value);
     }
 
     public static Object generateOutput(String[] keys, Object value) {

@@ -907,7 +907,9 @@ public final class Runner {
                     TeamRuntimeManager.AgentTeamSessionView session,
                     String teamName) {
                 if (session instanceof SessionManager.AgentTeamSessionView sessionView) {
-                    return new TeamAgentRuntimeAdapter(this, TeamAgent.recoverFromSession(sessionView, teamName, spec));
+                    return new TeamAgentRuntimeAdapter(
+                            this,
+                            TeamAgent.recoverFromSession(sessionView, teamName, spec.toConfiguratorSpec()));
                 }
                 return build();
             }

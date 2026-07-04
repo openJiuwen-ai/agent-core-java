@@ -57,6 +57,20 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
         return template;
     }
 
+    /**
+     * 0.1.12-compatible varargs facade.
+     *
+     * @param prompt prompt to optimize
+     * @param args cases and optional language
+     * @return optimized prompt text
+     */
+    public CompletableFuture<String> build(Object prompt, Object... args) {
+        Object[] safeArgs = args == null ? new Object[0] : args;
+        List<EvaluatedCase> cases = evaluatedCases(safeArgs.length >= 1 ? safeArgs[0] : null);
+        String language = safeArgs.length >= 2 && safeArgs[1] instanceof String text ? text : "zh-CN";
+        return build(prompt, cases, language).thenApply(value -> value.orElse(null));
+    }
+
     public CompletableFuture<Optional<String>> build(Object prompt, List<EvaluatedCase> cases) {
         return build(prompt, cases, "zh-CN");
     }
@@ -79,6 +93,20 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
 
     public Flow.Publisher<String> streamBuild(Object prompt, List<EvaluatedCase> cases) {
         return streamBuild(prompt, cases, "zh-CN");
+    }
+
+    /**
+     * 0.1.12-compatible varargs streaming facade.
+     *
+     * @param prompt prompt to optimize
+     * @param args cases and optional language
+     * @return concatenated streamed response text
+     */
+    public CompletableFuture<String> streamBuild(Object prompt, Object... args) {
+        Object[] safeArgs = args == null ? new Object[0] : args;
+        List<EvaluatedCase> cases = evaluatedCases(safeArgs.length >= 1 ? safeArgs[0] : null);
+        String language = safeArgs.length >= 2 && safeArgs[1] instanceof String text ? text : "zh-CN";
+        return collectPublisher(streamBuild(prompt, cases, language));
     }
 
     public Flow.Publisher<String> streamBuild(Object prompt, List<EvaluatedCase> cases, String language) {
@@ -208,6 +236,33 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
 
     private static List<EvaluatedCase> safeCases(List<EvaluatedCase> cases) {
         return cases == null ? List.of() : cases;
+    }
+
+    private static CompletableFuture<String> collectPublisher(Flow.Publisher<String> publisher) {
+        CompletableFuture<String> future = new CompletableFuture<>();
+        StringBuilder result = new StringBuilder();
+        publisher.subscribe(new Flow.Subscriber<>() {
+            @Override
+            public void onSubscribe(Flow.Subscription subscription) {
+                subscription.request(Long.MAX_VALUE);
+            }
+
+            @Override
+            public void onNext(String item) {
+                result.append(item == null ? "" : item);
+            }
+
+            @Override
+            public void onError(Throwable throwable) {
+                future.completeExceptionally(throwable);
+            }
+
+            @Override
+            public void onComplete() {
+                future.complete(result.toString());
+            }
+        });
+        return future;
     }
 
     private static String pythonString(Object value) {
