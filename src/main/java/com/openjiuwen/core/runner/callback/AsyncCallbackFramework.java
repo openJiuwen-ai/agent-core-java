@@ -1023,7 +1023,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                     ? filterResult.getModifiedArgs() : safeArgs(args);
             Map<String, Object> finalKwargs = filterResult.getModifiedKwargs() != null
                     ? filterResult.getModifiedKwargs() : safeKwargs(kwargs);
-            Object result = invokeCallback(callback, finalArgs, finalKwargs, callbackInfo.getTimeout());
+            Object result = invokeCallbackForParallel(callback, finalArgs, finalKwargs, callbackInfo.getTimeout());
             if (callbackInfo.isOnce()) {
                 callbackInfo.setEnabled(false);
             }
@@ -1067,6 +1067,27 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             }
         }
         return FilterResult.continueResult(currentArgs, currentKwargs);
+    }
+
+    private Object invokeCallbackForParallel(
+            Function<Map<String, Object>, Object> callback,
+            Object[] args,
+            Map<String, Object> kwargs,
+            Double timeout
+    ) throws Exception {
+        if (timeout == null || timeout <= 0) {
+            return invokeCallback(callback, args, kwargs, null);
+        }
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<Object> future = executor.submit(() -> invokeCallback(callback, args, kwargs, null));
+        try {
+            return future.get(Math.round(timeout * 1000L), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException timeoutError) {
+            future.cancel(true);
+            throw timeoutError;
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     private void executeHooks(

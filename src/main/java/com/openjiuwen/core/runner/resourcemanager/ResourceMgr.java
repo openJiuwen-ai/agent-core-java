@@ -603,7 +603,7 @@ public class ResourceMgr {
                 results.add(new Ok<>(mcpServerId));
             } catch (Exception exception) {
                 if (!ignoreException) {
-                    throw exception;
+                    throw unchecked(exception);
                 }
                 results.add(new ErrorResult<>(exception));
             }
@@ -638,7 +638,7 @@ public class ResourceMgr {
                 toolMgr.refreshToolServer(mcpServerId, true, false);
             } catch (Exception exception) {
                 if (!ignoreException) {
-                    throw exception;
+                    throw unchecked(exception);
                 }
             }
             if (names == null || names.isEmpty()) {
@@ -675,7 +675,7 @@ public class ResourceMgr {
                 toolMgr.refreshToolServer(mcpServerId, true, false);
             } catch (Exception exception) {
                 if (!ignoreException) {
-                    throw exception;
+                    throw unchecked(exception);
                 }
             }
             List<String> toolIds = new ArrayList<>();
@@ -1124,6 +1124,12 @@ public class ResourceMgr {
 
     private static Result<?, ?> singleResult(List<Result<?, ?>> results) {
         return results.isEmpty() ? new Ok<>(null) : results.get(0);
+    }
+
+    private static RuntimeException unchecked(Exception exception) {
+        return exception instanceof RuntimeException runtimeException
+                ? runtimeException
+                : new IllegalStateException(exception);
     }
 
     private static List<Result<?, ?>> noOpRemovalResults() {

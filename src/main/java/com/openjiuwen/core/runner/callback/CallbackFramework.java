@@ -184,6 +184,9 @@ public class CallbackFramework extends AsyncCallbackFramework {
             boolean passArgs,
             boolean passResult
     ) {
+        if (passResult) {
+            return emitAfter(event, "result", null, true, "frame", null).apply(wrapped);
+        }
         return emitBefore(event, passArgs, null).apply(wrapped);
     }
 
@@ -259,7 +262,7 @@ public class CallbackFramework extends AsyncCallbackFramework {
             String resultKey,
             boolean passArgs
     ) {
-        return emitAfter(event, resultKey, null, passArgs, "frame", null).apply(wrapped);
+        return emitAfter(event, "result", null, passArgs, "frame", null).apply(wrapped);
     }
 
     private static Function<Map<String, Object>, Object> adaptRollback(Consumer<ChainContext> rollbackHandler) {
