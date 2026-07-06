@@ -126,7 +126,9 @@ public class QuestionerDirectReplyHandler {
         // Get latest human feedback via session interaction
         int totalReads = state.getResponseNum() + 1;
         for (int i = 0; i < totalReads; i++) {
-            this.query = session.interact(state.getQuestion());
+            this.query = (i == 0)
+                    ? session.interact(state.getQuestion())
+                    : session.userLatestInput(state.getQuestion());
         }
         state.incrementResponseNum();
 

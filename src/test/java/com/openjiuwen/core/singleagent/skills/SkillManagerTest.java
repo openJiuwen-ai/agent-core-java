@@ -173,4 +173,116 @@ class SkillManagerTest {
         // Should not throw
         manager.unregister("does_not_exist");
     }
+
+    // ========== Block scalar description parsing ==========
+
+    @Test
+    void testRegisterWithLiteralBlockScalar(@TempDir Path tempDir) throws IOException {
+        Path skillDir = tempDir.resolve("block_literal");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"),
+                "---\n"
+                        + "name: block_literal\n"
+                        + "description: |\n"
+                        + "  8-role debate-pattern investment analysis team.\n"
+                        + "  Use when analyzing a security for investment decision.\n"
+                        + "  Do NOT use for single-perspective analysis.\n"
+                        + "---\n# Skill");
+        manager.register(skillDir.resolve("SKILL.md").toString());
+        Skill skill = manager.get("block_literal");
+        assertThat(skill).isNotNull();
+        assertThat(skill.getDescription())
+                .isEqualTo("8-role debate-pattern investment analysis team.\n"
+                        + "Use when analyzing a security for investment decision.\n"
+                        + "Do NOT use for single-perspective analysis.");
+    }
+
+    @Test
+    void testRegisterWithLiteralBlockScalarStripChomping(@TempDir Path tempDir) throws IOException {
+        Path skillDir = tempDir.resolve("block_strip");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"),
+                "---\n"
+                        + "description: |-\n"
+                        + "  line one\n"
+                        + "  line two\n"
+                        + "---\n");
+        manager.register(skillDir.resolve("SKILL.md").toString());
+        assertThat(manager.get("block_strip").getDescription())
+                .isEqualTo("line one\nline two");
+    }
+
+    @Test
+    void testRegisterWithFoldedBlockScalar(@TempDir Path tempDir) throws IOException {
+        Path skillDir = tempDir.resolve("block_folded");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"),
+                "---\n"
+                        + "description: >\n"
+                        + "  folded paragraph\n"
+                        + "  continues here\n"
+                        + "---\n");
+        manager.register(skillDir.resolve("SKILL.md").toString());
+        assertThat(manager.get("block_folded").getDescription())
+                .isEqualTo("folded paragraph continues here");
+    }
+
+    @Test
+    void testRegisterWithFoldedBlockScalarStripChomping(@TempDir Path tempDir) throws IOException {
+        Path skillDir = tempDir.resolve("block_folded_strip");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"),
+                "---\n"
+                        + "description: >-\n"
+                        + "  alpha\n"
+                        + "  beta\n"
+                        + "---\n");
+        manager.register(skillDir.resolve("SKILL.md").toString());
+        assertThat(manager.get("block_folded_strip").getDescription())
+                .isEqualTo("alpha beta");
+    }
+
+    @Test
+    void testRegisterWithQuotedInlineDescription(@TempDir Path tempDir) throws IOException {
+        Path skillDir = tempDir.resolve("quoted");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"),
+                "---\n"
+                        + "description: \"quoted: with colons and ; semicolons\"\n"
+                        + "---\n");
+        manager.register(skillDir.resolve("SKILL.md").toString());
+        assertThat(manager.get("quoted").getDescription())
+                .isEqualTo("quoted: with colons and ; semicolons");
+    }
+
+    @Test
+    void testRegisterWithInlineDescriptionContainingColons(@TempDir Path tempDir) throws IOException {
+        // Ensures we still handle the original inline case and don't break on
+        // values that themselves contain colons.
+        Path skillDir = tempDir.resolve("inline_colons");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"),
+                "---\n"
+                        + "description: Use this when path/to:thing matters\n"
+                        + "---\n");
+        manager.register(skillDir.resolve("SKILL.md").toString());
+        assertThat(manager.get("inline_colons").getDescription())
+                .isEqualTo("Use this when path/to:thing matters");
+    }
+
+    @Test
+    void testRegisterWithBlockScalarAndBlankLine(@TempDir Path tempDir) throws IOException {
+        Path skillDir = tempDir.resolve("block_with_blank");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"),
+                "---\n"
+                        + "description: |\n"
+                        + "  first paragraph\n"
+                        + "\n"
+                        + "  second paragraph\n"
+                        + "---\n");
+        manager.register(skillDir.resolve("SKILL.md").toString());
+        assertThat(manager.get("block_with_blank").getDescription())
+                .isEqualTo("first paragraph\n\nsecond paragraph");
+    }
 }

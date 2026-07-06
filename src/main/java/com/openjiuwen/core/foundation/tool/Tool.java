@@ -9,7 +9,6 @@ import com.openjiuwen.core.common.exception.StatusCode;
 
 import java.util.Iterator;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Abstract base class for all tools.
@@ -61,8 +60,8 @@ public abstract class Tool {
      * Execute the tool with provided inputs and return the final result.
      * <p>
      * This method performs complete tool execution in a single call.
-     * In Java, async behavior is achieved via Virtual Threads or CompletableFuture
-     * at the caller's discretion.
+     * For asynchronous invocation, wrap with
+     * {@link com.openjiuwen.core.common.reactive.ReactiveAdapters#fromCallable}.
      *
      * @param inputs structured input data conforming to the tool's input schema
      * @param kwargs additional execution parameters
@@ -82,7 +81,8 @@ public abstract class Tool {
      * Execute the tool and stream incremental results.
      * <p>
      * Returns an {@link Iterator} to yield partial results as they become available.
-     * For reactive streaming, callers can wrap this in a Reactor Flux.
+     * For reactive streaming, wrap with
+     * {@link com.openjiuwen.core.common.reactive.ReactiveAdapters#fromAutoCloseableIterator}.
      *
      * @param inputs structured input data conforming to the tool's input schema
      * @param kwargs additional execution parameters

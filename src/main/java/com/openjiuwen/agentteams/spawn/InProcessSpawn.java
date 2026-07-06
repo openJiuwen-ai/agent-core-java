@@ -9,6 +9,7 @@ import com.openjiuwen.agentteams.agent.TeamAgent;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.Objects;
@@ -43,22 +44,56 @@ public final class InProcessSpawn {
 
         TeamMemberSpec memberSpec = resolveMemberSpec(teamAgent, ctx);
         AgentCard card = buildCard(teamAgent, ctx, memberSpec);
+        Loggers.AGENT.info("inprocessSpawn: creating teammate member={} sessionId={}",
+            ctx.getMemberName(), sessionId);
         TeamAgent teammate = new TeamAgent().configure(teamAgent.getSpec(), ctx);
 
         String query = initialMessage != null && !initialMessage.isBlank()
                 ? initialMessage
                 : "Join the team and wait for your first assignment.";
 
+        Loggers.AGENT.info("inprocessSpawn: submitting teammate={} to executor, query={}",
+            ctx.getMemberName(), query);
         Future<?> task = executor.submit(() -> {
+            Loggers.AGENT.info("inprocessSpawn: executor thread started for member={}", ctx.getMemberName());
             SpawnContext.SessionToken token = null;
             if (sessionId != null) {
                 token = SpawnContext.setSessionId(sessionId);
             }
             try {
-                return teammate.dispatchTask(query);
+                // Share only the database so member sees the same tasks.
+                // messageManager/members/taskManager are kept per-member for
+                // correct identity (self-message filter, ownership checks).
+                // Matches Python where each member has independent TeamBackend.
+                teammate.getTeamBackend().shareDb(teamAgent.getTeamBackend());
+                teammate.reregisterTeamTools();
+                Loggers.AGENT.info("inprocessSpawn: shared leader state for member={}", ctx.getMemberName());
+                // Match Python invoke(): process initial input through member's own ReAct stream
+                String initialQuery = query != null ? query
+                    : "Join the team and wait for your first assignment.";
+                // Match Python: invokeForSpawn blocks until the member's coordinator
+                // loop is shut down (by shutdown_member or clean_team from the leader).
+                teammate.invokeForSpawn(initialQuery);
+                Loggers.AGENT.info("inprocessSpawn: member={} completed", ctx.getMemberName());
+                // Keep thread alive so health check doesn't trigger restart
+                while (true) {
+                    try {
+                        Thread.sleep(Long.MAX_VALUE);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+                return null;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                Loggers.AGENT.info("inprocessSpawn: interrupted for member={}", ctx.getMemberName());
+            } catch (Exception e) {
+                Loggers.AGENT.error("inprocessSpawn: error for member={}", ctx.getMemberName(), e);
             } finally {
                 SpawnContext.resetSessionId(token);
             }
+            return null;
         });
 
         String processId = "inproc-" + (ctx.getMemberName() != null

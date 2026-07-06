@@ -78,6 +78,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
     private List<String> sourceId = new ArrayList<>();
     private Map<String, Object> logMessage = new HashMap<>();
     private boolean isFirstInit = true;
+    private final List<ComponentAbility> deferredStreamEndAbilities = new ArrayList<>();
 
     @SuppressWarnings("unchecked")
     /**
@@ -222,6 +223,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
      */
     private Object doCall(Object config) throws Exception {
         throwIfInterrupted();
+        deferredStreamEndAbilities.clear();
         // 1. Check whether the node is initialized
         if (session == null || executable == null) {
             throw ErrorHelper.buildError(StatusCode.GRAPH_VERTEX_EXECUTION_ERROR,
@@ -241,6 +243,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                 currentAbility = ability;
                 runExecutable(ability, isSubgraph, config, null);
             }
+            sendDeferredStreamEndMessages();
 
             if (callAbilities.isEmpty()) {
                 traceComponentBegin();
@@ -533,7 +536,11 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                 sendToSubWorkflowStream(am, StreamEmitter.END_FRAME);
             }
         } else if (actorManager != null) {
-            actorManager.endMessage(nodeId, ability);
+            if (shouldDeferStreamEnd(ability)) {
+                deferredStreamEndAbilities.add(ability);
+            } else {
+                actorManager.endMessage(nodeId, ability);
+            }
         }
 
         LOGGER.debug("Produce 'END_FRAME' chunk of [{}] ability [{}]", nodeId, ability.name());
@@ -596,6 +603,37 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                     "reason", "interrupted while sending sub-workflow stream message",
                     "node_id", nodeId);
         }
+    }
+
+    private boolean shouldDeferStreamEnd(ComponentAbility ability) {
+        if (ability != ComponentAbility.STREAM || componentAbility == null) {
+            return false;
+        }
+        int currentIndex = componentAbility.indexOf(ability);
+        if (currentIndex < 0) {
+            return false;
+        }
+        for (int i = currentIndex + 1; i < componentAbility.size(); i++) {
+            ComponentAbility later = componentAbility.get(i);
+            if (later == ComponentAbility.INVOKE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void sendDeferredStreamEndMessages() {
+        if (deferredStreamEndAbilities.isEmpty()) {
+            return;
+        }
+        ActorManager actorManager = getActorManager();
+        if (actorManager != null) {
+            for (ComponentAbility ability : deferredStreamEndAbilities) {
+                actorManager.endMessage(nodeId, ability);
+                LOGGER.debug("Produce deferred 'END_FRAME' chunk of [{}] ability [{}]", nodeId, ability.name());
+            }
+        }
+        deferredStreamEndAbilities.clear();
     }
 
     private GraphInterrupt unwrapGraphInterrupt(Throwable throwable) {

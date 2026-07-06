@@ -35,6 +35,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * Redis client APIs. All Redis operations are performed through RedisStore.
  *
  * <p>Mirrors Python's {@code openjiuwen.extensions.checkpointer.redis.checkpointer.RedisCheckpointer}.
+ *
+ * @since 0.1.12
  */
 public class RedisCheckpointer extends Checkpointer {
 
@@ -59,16 +61,12 @@ public class RedisCheckpointer extends Checkpointer {
     }
 
     /**
-     * Prepare agent execution by recovering checkpoint.
+     * Prepare agent execution by recovering checkpoint state from Redis.
      *
      * @param session The session for the agent
-     * @param inputs  Input data
-     * @return CompletableFuture for async operation
+     * @param inputs  Input data to update in the session state
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void preAgentExecute(BaseSession session, Object inputs) {
         agentStorage.recover(session, inputs).join();
         if (inputs != null) {
@@ -77,44 +75,33 @@ public class RedisCheckpointer extends Checkpointer {
     }
 
     /**
-     * Handle agent execution interruption by saving checkpoint.
+     * Handle agent execution interruption by saving checkpoint state to Redis.
      *
      * @param session The session for the agent
-     * @return CompletableFuture for async operation
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void interruptAgentExecute(BaseSession session) {
         agentStorage.save(session).join();
     }
 
     /**
-     * Finalize agent execution by saving checkpoint.
+     * Finalize agent execution by saving checkpoint state to Redis.
      *
      * @param session The session for the agent
-     * @return CompletableFuture for async operation
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void postAgentExecute(BaseSession session) {
         agentStorage.save(session).join();
     }
 
     /**
-     * Prepare workflow execution by recovering or clearing workflow state.
+     * Prepare workflow execution by recovering or clearing workflow state from Redis.
      *
      * @param session The session for the workflow
-     * @param inputs  The input for the workflow execution
-     * @return CompletableFuture for async operation
+     * @param inputs  The interactive input for the workflow execution, or null for a fresh start
+     * @throws RuntimeException if workflow state exists but no interactive input is provided and cleanup is disabled
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void preWorkflowExecute(BaseSession session, InteractiveInput inputs) {
         if (inputs != null) {
             workflowStorage.recover(session, inputs).join();
@@ -142,17 +129,17 @@ public class RedisCheckpointer extends Checkpointer {
     }
 
     /**
-     * Finalize workflow execution.
+     * Finalize workflow execution by saving or clearing workflow state in Redis.
+     *
+     * <p>If an exception occurred or the workflow was interrupted, the state is saved.
+     * Otherwise, the workflow state is cleared.
      *
      * @param session   The session for the workflow
      * @param result    The execution result
-     * @param exception Any exception that occurred
-     * @return CompletableFuture for async operation
+     * @param exception Any exception that occurred during execution
+     * @throws RuntimeException if the provided exception is a runtime exception, or wrapped in one
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void postWorkflowExecute(BaseSession session, Object result, Exception exception) {
         if (exception != null) {
             workflowStorage.save(session).join();
@@ -173,15 +160,12 @@ public class RedisCheckpointer extends Checkpointer {
     }
 
     /**
-     * Check if a session exists in Redis.
+     * Check if a session exists in Redis by looking up keys with the session ID prefix.
      *
      * @param sessionId The session ID to check
-     * @return CompletableFuture containing True if session isExists
+     * @return {@code true} if at least one key exists for the session, {@code false} otherwise
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean sessionExists(String sessionId) {
         if (redisStore == null) {
             return false;
@@ -191,11 +175,13 @@ public class RedisCheckpointer extends Checkpointer {
     }
 
     /**
-     * Release resources for a session.
+     * Release resources for a session in Redis.
+     *
+     * <p>If an agent ID is provided, only that agent's data is cleared.
+     * Otherwise, all keys with the session ID prefix are deleted.
      *
      * @param sessionId The session ID to release resources for
-     * @param agentId   Optional agent ID to release resources for a specific agent
-     * @return CompletableFuture for async operation
+     * @param agentId   The agent ID to release resources for a specific agent, or null to release all
      */
     public void release(String sessionId, String agentId) {
         if (redisStore == null) {
@@ -209,10 +195,12 @@ public class RedisCheckpointer extends Checkpointer {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * Release all resources for a session in Redis.
+     *
+     * @param sessionId The session ID to release resources for
      */
+    @Override
     public void release(String sessionId) {
         release(sessionId, null);
     }
@@ -245,16 +233,20 @@ public class RedisCheckpointer extends Checkpointer {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Get the underlying RedisStore instance.
+     *
+     * @return The RedisStore instance
      */
     public RedisStore getRedisStore() {
         return redisStore;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * Get the graph store adapter for graph state operations.
+     *
+     * @return The Store adapter backed by the Redis graph store
      */
+    @Override
     public Store graphStore() {
         return graphStoreAdapter;
     }
@@ -263,11 +255,24 @@ public class RedisCheckpointer extends Checkpointer {
      * Provider for creating Redis checkpointers from the Python-compatible configuration map.
      */
     public static final class Provider implements CheckpointerProvider {
-
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * Return the type name identifier for this provider.
+         *
+         * @return The string "redis"
          */
+        @Override
+        public String typeName() {
+            return "redis";
+        }
+
+        /**
+         * Create a new RedisCheckpointer from the provided configuration map.
+         *
+         * @param conf The configuration map containing connection and TTL settings
+         * @return A new RedisCheckpointer instance
+         * @throws IllegalArgumentException if the configuration is invalid or missing required fields
+         */
+        @Override
         public Checkpointer create(Map<String, Object> conf) {
             RedisCheckpointerConfig config;
             try {
@@ -276,7 +281,8 @@ public class RedisCheckpointer extends Checkpointer {
             } catch (RuntimeException e) {
                 throw new IllegalArgumentException(
                         "Invalid Redis checkpointer configuration: " + e.getMessage()
-                                + ". Configuration must include a 'connection' map with either 'redis_client' or 'url'.",
+                                + ". Configuration must include a 'connection' map"
+                                + " with either 'redis_client' or 'url'.",
                         e);
             }
 
@@ -304,10 +310,14 @@ public class RedisCheckpointer extends Checkpointer {
             this.delegate = delegate;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * Retrieve the graph store state for the given session and namespace.
+         *
+         * @param sessionId The session ID
+         * @param ns        The namespace within the session
+         * @return An Optional containing the GraphStoreState if found, otherwise empty
          */
+        @Override
         public Optional<GraphStoreState> get(String sessionId, String ns) {
             Object state = delegate.get(sessionId, ns).join();
             if (state instanceof GraphStoreState graphState) {
@@ -316,18 +326,25 @@ public class RedisCheckpointer extends Checkpointer {
             return Optional.empty();
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * Save the graph store state for the given session and namespace.
+         *
+         * @param sessionId The session ID
+         * @param ns        The namespace within the session
+         * @param state     The graph store state to save
          */
+        @Override
         public void save(String sessionId, String ns, GraphStoreState state) {
             delegate.save(sessionId, ns, state).join();
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * Delete the graph store state for the given session and namespace.
+         *
+         * @param sessionId The session ID
+         * @param ns        The namespace within the session
          */
+        @Override
         public void delete(String sessionId, String ns) {
             delegate.delete(sessionId, ns).join();
         }
@@ -345,21 +362,28 @@ public class RedisCheckpointer extends Checkpointer {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Get the Redis connection URL.
+         *
+         * @return The connection URL string
          */
         public String getUrl() {
             return url;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Get the connection arguments map.
+         *
+         * @return An unmodifiable copy of the connection arguments
          */
         public Map<String, Object> getConnectionArgs() {
             return Map.copyOf(connectionArgs);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Set a key-value pair without expiration.
+         *
+         * @param key   The key to set
+         * @param value The value to associate with the key
          */
         public void set(String key, Object value) {
             cleanup(key);
@@ -368,7 +392,13 @@ public class RedisCheckpointer extends Checkpointer {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Set a key-value pair with optional NX condition and expiration.
+         *
+         * @param key    The key to set
+         * @param value  The value to associate with the key
+         * @param nx     If true, only set when the key does not already exist
+         * @param expiry Optional expiration time in seconds, or null for no expiration
+         * @return {@code true} if the key was set, {@code false} if NX condition prevented it
          */
         public boolean set(String key, Object value, boolean nx, Integer expiry) {
             cleanup(key);
@@ -385,7 +415,10 @@ public class RedisCheckpointer extends Checkpointer {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Get the value associated with the given key.
+         *
+         * @param key The key to look up
+         * @return The value associated with the key, or null if not found or expired
          */
         public Object get(String key) {
             cleanup(key);
@@ -393,7 +426,10 @@ public class RedisCheckpointer extends Checkpointer {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Check if a key exists and is not expired.
+         *
+         * @param key The key to check
+         * @return 1 if the key exists, 0 otherwise
          */
         public long isExists(String key) {
             cleanup(key);
@@ -401,7 +437,10 @@ public class RedisCheckpointer extends Checkpointer {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Delete one or more keys from the store.
+         *
+         * @param keys The keys to delete
+         * @return The number of keys that were actually removed
          */
         public long delete(String... keys) {
             long deleted = 0L;
@@ -416,7 +455,10 @@ public class RedisCheckpointer extends Checkpointer {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Get multiple values by their keys.
+         *
+         * @param keys The keys to look up
+         * @return A list of values in the same order as the provided keys; null for missing keys
          */
         public List<Object> mget(String... keys) {
             List<Object> results = new ArrayList<>(keys.length);
@@ -427,7 +469,10 @@ public class RedisCheckpointer extends Checkpointer {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Scan keys matching the given pattern (supports trailing wildcard only).
+         *
+         * @param pattern The key pattern, typically ending with "*"
+         * @return A sorted list of matching keys
          */
         public List<String> scanIter(String pattern) {
             String prefix = pattern.endsWith("*") ? pattern.substring(0, pattern.length() - 1) : pattern;
@@ -443,7 +488,11 @@ public class RedisCheckpointer extends Checkpointer {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Set an expiration time on an existing key.
+         *
+         * @param key        The key to set expiration on
+         * @param ttlSeconds The time-to-live in seconds
+         * @return {@code true} if the expiration was set, {@code false} if the key does not exist
          */
         public boolean expire(String key, int ttlSeconds) {
             cleanup(key);
@@ -455,7 +504,9 @@ public class RedisCheckpointer extends Checkpointer {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Create a new pipeline for batching Redis operations.
+         *
+         * @return A new UrlBackedRedisPipeline instance
          */
         public UrlBackedRedisPipeline pipeline() {
             return new UrlBackedRedisPipeline(this);
@@ -485,7 +536,11 @@ public class RedisCheckpointer extends Checkpointer {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Queue an expiration operation in the pipeline.
+         *
+         * @param key        The key to set expiration on
+         * @param ttlSeconds The time-to-live in seconds
+         * @return This pipeline instance for method chaining
          */
         public UrlBackedRedisPipeline expire(String key, int ttlSeconds) {
             operations.add(() -> client.expire(key, ttlSeconds));
@@ -493,7 +548,9 @@ public class RedisCheckpointer extends Checkpointer {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Execute all queued operations in the pipeline and clear the queue.
+         *
+         * @return An empty list (pipeline results are not collected)
          */
         public List<Object> execute() {
             operations.forEach(Runnable::run);

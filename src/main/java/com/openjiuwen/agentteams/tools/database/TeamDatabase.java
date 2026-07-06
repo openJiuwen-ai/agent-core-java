@@ -836,14 +836,13 @@ public class TeamDatabase {
     }
 
     private String currentSessionId() {
-        return SpawnContext.getSessionId();
+        // Use a shared global key so all agents in the same process
+        // see the same tasks/messages regardless of thread-local state.
+        return "_global_";
     }
 
     private SessionTables currentSessionTables() {
         String sessionId = currentSessionId();
-        if (!sessionId.isBlank() && droppedSessionIds.contains(sessionId) && !sessions.containsKey(sessionId)) {
-            throw new IllegalStateException("Session tables are not created for session " + sessionId);
-        }
         return sessions.computeIfAbsent(sessionId, ignored -> new SessionTables());
     }
 

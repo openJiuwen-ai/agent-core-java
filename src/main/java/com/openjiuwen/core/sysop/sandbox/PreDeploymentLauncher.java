@@ -14,17 +14,31 @@ public class PreDeploymentLauncher implements SandboxLauncher {
      * Auto-generated for codecheck compliance.
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public LaunchedSandbox launch(SandboxLauncherConfig config, int timeoutSeconds, String isolationKey) {
         if (config == null) {
             throw new IllegalArgumentException("PreDeploymentLauncher requires SandboxLauncherConfig");
         }
-        String sandboxId = isolationKey != null && !isolationKey.isBlank() ? isolationKey : "pre_deploy";
+
+        String extraSandboxId = config.getExtraParams() != null
+                ? (config.getExtraParams().get("sandbox_id") instanceof String s ? s : null)
+                : null;
+
+        String sandboxType = config.getSandboxType();
+        String sandboxId;
+        if ("jiuwenbox".equals(sandboxType) || "aio".equals(sandboxType)) {
+            sandboxId = extraSandboxId != null && !extraSandboxId.isBlank()
+                    ? extraSandboxId
+                    : null;
+        } else {
+            sandboxId = extraSandboxId != null && !extraSandboxId.isBlank()
+                    ? extraSandboxId
+                    : (isolationKey != null && !isolationKey.isBlank() ? isolationKey : "pre_deploy");
+        }
+
         String baseUrl = config.getBaseUrl() != null && !config.getBaseUrl().isBlank()
                 ? config.getBaseUrl()
                 : config.getGatewayUrl();
+
         return LaunchedSandbox.builder()
                 .sandboxId(sandboxId)
                 .baseUrl(baseUrl != null ? baseUrl : "")

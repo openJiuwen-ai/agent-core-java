@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm.model_clients;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.security.JdkHttpClientProxySupport;
 import com.openjiuwen.core.common.security.SslUtils;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -104,6 +105,7 @@ public abstract class BaseModelClient {
                 modelClientConfig.getApiBase(),
                 modelClientConfig.isVerifySsl(),
                 modelClientConfig.getSslCert());
+        JdkHttpClientProxySupport.configureFromEnvironment(builder, modelClientConfig.getApiBase());
         return builder.build();
     }
 
@@ -115,7 +117,7 @@ public abstract class BaseModelClient {
             builder.setHeader("Content-Type", "application/json");
         }
         if (modelClientConfig.getApiKey() != null && !modelClientConfig.getApiKey().isBlank()) {
-            builder.setHeader("Authorization", "Bearer " + modelClientConfig.getApiKey());
+            builder.setHeader("Authorization", "Bearer " + modelClientConfig.getApiKey().strip());
         }
         for (Map.Entry<String, String> entry : modelClientConfig.getHeaders().entrySet()) {
             if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) {

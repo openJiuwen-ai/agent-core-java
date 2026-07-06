@@ -1,9 +1,9 @@
 package com.openjiuwen.extensions.a2a;
 
 import com.openjiuwen.core.controller.schema.TaskStatus;
-import com.openjiuwen.core.runner.drunner.remote_client.ProtocolEnum;
-import com.openjiuwen.core.runner.drunner.remote_client.RemoteAgent;
-import com.openjiuwen.core.runner.drunner.remote_client.RemoteClientConfig;
+import com.openjiuwen.core.runner.drunner.remoteclient.ProtocolEnum;
+import com.openjiuwen.core.runner.drunner.remoteclient.RemoteAgent;
+import com.openjiuwen.core.runner.drunner.remoteclient.RemoteClientConfig;
 import com.openjiuwen.core.singleagent.schema.AgentResult;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;

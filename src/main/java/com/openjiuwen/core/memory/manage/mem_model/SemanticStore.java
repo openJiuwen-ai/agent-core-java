@@ -124,7 +124,12 @@ public class SemanticStore {
         for (int i = 0; i < docs.size(); i++) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put(ID_FIELD, docs.get(i).getKey());
-            row.put(VECTOR_FIELD, vectors.get(i));
+            String textField = vectorStore.getTextField();
+            if (textField != null && !textField.isBlank()) {
+                row.put(textField, docs.get(i).getValue());
+            }
+            String vectorField = vectorStore.getVectorField();
+            row.put(vectorField == null || vectorField.isBlank() ? VECTOR_FIELD : vectorField, vectors.get(i));
             data.add(row);
         }
         scoped.add(data, null, bootstrapOptions(vectors));

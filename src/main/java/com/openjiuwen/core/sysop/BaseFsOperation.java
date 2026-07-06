@@ -71,9 +71,9 @@ public abstract class BaseFsOperation extends BaseOperation {
      * @param content         data to write (String for text mode, byte[] for bytes mode).
      *                        Mirrors Python's {@code content: str | bytes}.
      * @param mode            writing mode: "text" or "bytes"
-     * @param prependNewline  add newline before content (text mode)
-     * @param appendNewline   add newline after content (text mode)
-     * @param createIfNotExist auto-create the file
+     * @param isPrependNewline  add newline before content (text mode)
+     * @param isAppendNewline   add newline after content (text mode)
+     * @param isCreateIfMissing auto-create the file
      * @param permissions     octal file permissions
      * @param encoding        character encoding
      * @param options         extended configuration
@@ -81,8 +81,8 @@ public abstract class BaseFsOperation extends BaseOperation {
      */
     public abstract WriteFileResult writeFile(
             String path, Object content, String mode,
-            boolean prependNewline, boolean appendNewline,
-            boolean createIfNotExist, String permissions,
+            boolean isPrependNewline, boolean isAppendNewline,
+            boolean isCreateIfMissing, String permissions,
             String encoding, Map<String, Object> options);
 
     /**
@@ -90,8 +90,8 @@ public abstract class BaseFsOperation extends BaseOperation {
      */
     public abstract UploadFileResult uploadFile(
             String localPath, String targetPath,
-            boolean overwrite, boolean createParentDirs,
-            boolean preservePermissions, int chunkSize,
+            boolean isOverwrite, boolean isCreateParentDirs,
+            boolean isPreservePermissions, int chunkSize,
             Map<String, Object> options);
 
     /**
@@ -99,8 +99,8 @@ public abstract class BaseFsOperation extends BaseOperation {
      */
     public abstract Iterator<UploadFileStreamResult> uploadFileStream(
             String localPath, String targetPath,
-            boolean overwrite, boolean createParentDirs,
-            boolean preservePermissions, int chunkSize,
+            boolean isOverwrite, boolean isCreateParentDirs,
+            boolean isPreservePermissions, int chunkSize,
             Map<String, Object> options);
 
     /**
@@ -108,8 +108,8 @@ public abstract class BaseFsOperation extends BaseOperation {
      */
     public abstract DownloadFileResult downloadFile(
             String sourcePath, String localPath,
-            boolean overwrite, boolean createParentDirs,
-            boolean preservePermissions, int chunkSize,
+            boolean isOverwrite, boolean isCreateParentDirs,
+            boolean isPreservePermissions, int chunkSize,
             Map<String, Object> options);
 
     /**
@@ -117,24 +117,24 @@ public abstract class BaseFsOperation extends BaseOperation {
      */
     public abstract Iterator<DownloadFileStreamResult> downloadFileStream(
             String sourcePath, String localPath,
-            boolean overwrite, boolean createParentDirs,
-            boolean preservePermissions, int chunkSize,
+            boolean isOverwrite, boolean isCreateParentDirs,
+            boolean isPreservePermissions, int chunkSize,
             Map<String, Object> options);
 
     /**
      * List files under the specified path.
      */
     public abstract ListFilesResult listFiles(
-            String path, boolean recursive, Integer maxDepth,
-            String sortBy, boolean sortDescending,
+            String path, boolean isRecursive, Integer maxDepth,
+            String sortBy, boolean isSortDescending,
             List<String> fileTypes, Map<String, Object> options);
 
     /**
      * List directories under the specified path.
      */
     public abstract ListDirsResult listDirectories(
-            String path, boolean recursive, Integer maxDepth,
-            String sortBy, boolean sortDescending,
+            String path, boolean isRecursive, Integer maxDepth,
+            String sortBy, boolean isSortDescending,
             Map<String, Object> options);
 
     /**

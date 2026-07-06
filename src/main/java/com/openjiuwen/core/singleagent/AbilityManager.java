@@ -558,16 +558,9 @@ public class AbilityManager implements ToolRegistry {
     private static void logToolResult(Object result) {
         String content = String.valueOf(result);
         Loggers.TOOL.info("Tool result: " + content);
-        Loggers.TOOL.info("{\"role\": \"tool\", \"content\": \"" + escapeJson(content) + "\"}");
         if (result instanceof Map<?, ?> || result instanceof List<?>) {
             Loggers.TOOL.info(toPythonLiteral(result));
         }
-    }
-
-    private static String escapeJson(String text) {
-        return text
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"");
     }
 
     private static String toPythonLiteral(Object value) {

@@ -65,6 +65,8 @@ public class DeepAgentConfig {
     @Builder.Default
     private List<String> skills = new ArrayList<>();
     @Builder.Default
+    private boolean enableSkillDiscovery = false;
+    @Builder.Default
     private Map<String, Object> factoryKwargs = new LinkedHashMap<>();
     @Builder.Default
     private boolean isAsyncSubagentEnabled = false;

@@ -6,6 +6,8 @@ package com.openjiuwen.core.foundation.tool.mcp.client;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.tool.mcp.McpClient;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
@@ -13,21 +15,25 @@ import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.math.BigDecimal;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Stdio transport MCP client using content-length framed JSON-RPC.
+ * Stdio transport MCP client using newline-delimited JSON-RPC (NDJSON),
+ * compatible with the MCP Python SDK's stdio transport protocol.
+ *
+ * @since 2026-07-28
  */
 public class StdioClient implements McpClient {
-
+    private static final LoggerProtocol LOG = Loggers.MCP;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final McpServerConfig config;
@@ -36,9 +42,12 @@ public class StdioClient implements McpClient {
     private Process process;
     private BufferedInputStream stdout;
     private BufferedOutputStream stdin;
+    private Thread stderrDrainer;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * 构造函数.
+     *
+     * @param config MCP服务器配置
      */
     public StdioClient(McpServerConfig config) {
         this.config = config;
@@ -76,14 +85,22 @@ public class StdioClient implements McpClient {
         this.process = processBuilder.start();
         this.stdout = new BufferedInputStream(process.getInputStream());
         this.stdin = new BufferedOutputStream(process.getOutputStream());
+        startStderrDrainer();
+        long deadlineMs = computeDeadlineMs(timeout);
         try {
             request("initialize", Map.of(
                     "protocolVersion", "2024-11-05",
                     "clientInfo", Map.of("name", "agent-core-java", "version", "0.1.7"),
                     "capabilities", Map.of()
-            ), timeout);
-        } catch (Exception ignored) {
-            // Some local MCP servers do not require an explicit initialize response.
+            ), deadlineMs);
+            // Send initialized notification only after successful initialize (per MCP spec 2024-11-05)
+            writeLine(MAPPER.writeValueAsBytes(Map.of(
+                    "jsonrpc", "2.0",
+                    "method", "notifications/initialized",
+                    "params", Map.of()
+            )));
+        } catch (Exception e) {
+            LOG.warn("MCP STDIO initialize request failed: {}", e.getMessage());
         }
         return true;
     }
@@ -93,6 +110,7 @@ public class StdioClient implements McpClient {
      * Auto-generated for codecheck compliance.
      */
     public boolean disconnect(float timeout) throws Exception {
+        stopStderrDrainer();
         if (stdin != null) {
             stdin.close();
         }
@@ -111,7 +129,8 @@ public class StdioClient implements McpClient {
      * Auto-generated for codecheck compliance.
      */
     public List<Object> listTools(float timeout) throws Exception {
-        Map<String, Object> result = request("tools/list", Map.of(), timeout);
+        long deadlineMs = computeDeadlineMs(timeout);
+        Map<String, Object> result = request("tools/list", Map.of(), deadlineMs);
         List<Object> tools = new ArrayList<>();
         Object rawTools = result.get("tools");
         if (rawTools instanceof List<?> list) {
@@ -137,7 +156,8 @@ public class StdioClient implements McpClient {
      * Auto-generated for codecheck compliance.
      */
     public List<Object> listResources(float timeout) throws Exception {
-        Map<String, Object> result = request("resources/list", Map.of(), timeout);
+        long deadlineMs = computeDeadlineMs(timeout);
+        Map<String, Object> result = request("resources/list", Map.of(), deadlineMs);
         List<Object> resources = new ArrayList<>();
         Object rawResources = result.get("resources");
         if (rawResources instanceof List<?> list) {
@@ -151,7 +171,8 @@ public class StdioClient implements McpClient {
      * Auto-generated for codecheck compliance.
      */
     public List<Object> readResource(String uri, float timeout) throws Exception {
-        Map<String, Object> result = request("resources/read", Map.of("uri", uri), timeout);
+        long deadlineMs = computeDeadlineMs(timeout);
+        Map<String, Object> result = request("resources/read", Map.of("uri", uri), deadlineMs);
         List<Object> contents = new ArrayList<>();
         Object rawContents = result.get("contents");
         if (rawContents instanceof List<?> list) {
@@ -165,7 +186,28 @@ public class StdioClient implements McpClient {
      * Auto-generated for codecheck compliance.
      */
     public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
-        return request("tools/call", Map.of("name", toolName, "arguments", arguments == null ? Map.of() : arguments), timeout);
+        long deadlineMs = computeDeadlineMs(timeout);
+        Map<String, Object> result = request("tools/call",
+        Map.of("name", toolName, "arguments", arguments == null ? Map.of() : arguments), deadlineMs);
+        Object content = result.get("content");
+        if (content instanceof List<?> list && !list.isEmpty()) {
+            List<String> textParts = new ArrayList<>();
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> map) {
+                    Object text = map.get("text");
+                    if (text != null) {
+                        textParts.add(String.valueOf(text));
+                    }
+                }
+            }
+            if (textParts.size() == 1) {
+                return textParts.get(0);
+            }
+            if (!textParts.isEmpty()) {
+                return String.join("\n", textParts);
+            }
+        }
+        return result;
     }
 
     @Override
@@ -189,19 +231,22 @@ public class StdioClient implements McpClient {
         return config.getServerPath();
     }
 
-    private synchronized Map<String, Object> request(String method, Map<String, Object> params, float timeout) throws Exception {
+    private synchronized Map<String, Object> request(String method, Map<String, Object> params, long deadlineMs)
+    throws Exception {
         long requestId = requestCounter.incrementAndGet();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("jsonrpc", "2.0");
         body.put("id", requestId);
         body.put("method", method);
         body.put("params", params);
-        writeFrame(MAPPER.writeValueAsBytes(body));
+        writeLine(MAPPER.writeValueAsBytes(body));
 
         while (true) {
-            Map<String, Object> frame = readFrame();
+            checkDeadline(deadlineMs);
+            Map<String, Object> frame = readLine(deadlineMs);
             Object responseId = frame.get("id");
             if (!(responseId instanceof Number number) || number.longValue() != requestId) {
+                // Skip notifications or responses for other requests
                 continue;
             }
             if (frame.containsKey("error")) {
@@ -217,46 +262,95 @@ public class StdioClient implements McpClient {
         }
     }
 
-    private void writeFrame(byte[] jsonBytes) throws Exception {
-        String header = "Content-Length: " + jsonBytes.length + "\r\n\r\n";
-        stdin.write(header.getBytes(StandardCharsets.UTF_8));
+    /**
+     * Write a JSON line (NDJSON: json + '\n').
+     *
+     * @param jsonBytes jsonBytes
+     * @throws Exception 写入异常
+     */
+    private void writeLine(byte[] jsonBytes) throws Exception {
         stdin.write(jsonBytes);
+        stdin.write('\n');
         stdin.flush();
     }
 
-    private Map<String, Object> readFrame() throws Exception {
-        int contentLength = -1;
-        String line;
-        while (!(line = readHeaderLine()).isEmpty()) {
-            String lower = line.toLowerCase(Locale.ROOT);
-            if (lower.startsWith("content-length:")) {
-                contentLength = Integer.parseInt(line.substring("content-length:".length()).trim());
+    private Map<String, Object> readLine(long deadlineMs) throws Exception {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        while (true) {
+            checkDeadline(deadlineMs);
+            checkProcessAlive();
+            int current = stdout.read();
+            if (current == -1) {
+                throw new IOException("MCP STDIO subprocess stream closed unexpectedly");
+            }
+            if (current == '\n') {
+                break;
+            }
+            if (current != '\r') {
+                buffer.write(current);
             }
         }
-        if (contentLength < 0) {
-            throw new IllegalStateException("Missing Content-Length in stdio MCP response");
+        byte[] lineBytes = buffer.toByteArray();
+        if (lineBytes.length == 0) {
+            return readLine(deadlineMs);
         }
-        byte[] body = stdout.readNBytes(contentLength);
-        return MAPPER.readValue(body, new TypeReference<>() {
+        return MAPPER.readValue(lineBytes, new TypeReference<>() {
         });
     }
 
-    private String readHeaderLine() throws Exception {
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        int current;
-        while ((current = stdout.read()) != -1) {
-            if (current == '\r') {
-                int next = stdout.read();
-                if (next == '\n') {
-                    break;
-                }
-                buffer.write(current);
-                buffer.write(next);
-                continue;
-            }
-            buffer.write(current);
+    private static long computeDeadlineMs(float timeout) {
+        if (Float.compare(timeout, McpServerConfig.NO_TIMEOUT) == 0) {
+            // NO_TIMEOUT sentinel: 0 means no deadline enforcement
+            return 0L;
         }
-        return buffer.toString(StandardCharsets.UTF_8);
+        return Float.compare(timeout, 0) > 0
+                ? System.currentTimeMillis() + BigDecimal.valueOf(timeout).multiply(BigDecimal.valueOf(1000L))
+                .longValue()
+                : System.currentTimeMillis() + 30_000L;
+    }
+
+    private void checkDeadline(long deadlineMs) throws SocketTimeoutException {
+        // deadlineMs == 0 means NO_TIMEOUT, skip deadline check entirely
+        if (deadlineMs != 0L && System.currentTimeMillis() > deadlineMs) {
+            throw new SocketTimeoutException("MCP STDIO read timeout");
+        }
+    }
+
+    private void checkProcessAlive() throws IOException {
+        if (process != null && !process.isAlive()) {
+            throw new IOException("MCP STDIO subprocess terminated unexpectedly");
+        }
+    }
+
+    private void startStderrDrainer() {
+        this.stderrDrainer = new Thread(() -> {
+            try {
+                byte[] buf = new byte[4096];
+                while (process.getErrorStream().read(buf) != -1) {
+                    // Drain stderr to prevent buffer overflow blocking the subprocess
+                }
+            } catch (IOException e) {
+                LOG.warn("MCP STDIO stderr drain interrupted: {}", e.getMessage());
+            }
+        }, "mcp-stdio-stderr-drain-" + config.getServerId());
+        this.stderrDrainer.setUncaughtExceptionHandler((t, e) -> {
+            LOG.warn("MCP STDIO stderr drainer thread {} encountered uncaught exception: {}",
+            t.getName(), e.getMessage());
+        });
+        this.stderrDrainer.setDaemon(true);
+        this.stderrDrainer.start();
+    }
+
+    private void stopStderrDrainer() {
+        if (stderrDrainer != null) {
+            stderrDrainer.interrupt();
+            try {
+                stderrDrainer.join(1000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            stderrDrainer = null;
+        }
     }
 
     @SuppressWarnings("unchecked")

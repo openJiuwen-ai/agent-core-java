@@ -61,6 +61,8 @@ public class SubAgentConfig {
     private String skillMode = "all";
     @Builder.Default
     private List<String> skills = new ArrayList<>();
+    @Builder.Default
+    private boolean enableSkillDiscovery = false;
     private Object model;
     private Object backend;
     private String promptMode;
@@ -112,6 +114,7 @@ public class SubAgentConfig {
                 .skillDirectories(new ArrayList<>(skillDirectories))
                 .skillMode(skillMode)
                 .skills(new ArrayList<>(skills))
+                .enableSkillDiscovery(enableSkillDiscovery)
                 .model(model)
                 .backend(backend)
                 .promptMode(promptMode)

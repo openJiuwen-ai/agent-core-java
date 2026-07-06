@@ -11,6 +11,7 @@ import com.openjiuwen.agentteams.teamworkspace.WorkspaceFileLock;
 import com.openjiuwen.agentteams.worktree.WorktreeChangeSummary;
 import com.openjiuwen.agentteams.worktree.WorktreeManager;
 import com.openjiuwen.agentteams.worktree.WorktreeSession;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.JsonUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -348,6 +349,29 @@ public final class TeamTools {
          * Auto-generated for codecheck compliance.
          */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
+            // Guard: don't allow cleanup while there are incomplete tasks.
+            // Also reject if any leader-assigned task was cancelled (should be completed).
+            var tasks = backend.getTaskManager().list();
+            var incomplete = tasks.stream()
+                .filter(t -> !"completed".equals(t.getStatus()) && !"cancelled".equals(t.getStatus()))
+                .toList();
+            if (!incomplete.isEmpty()) {
+                List<String> titles = incomplete.stream()
+                    .map(t -> "[" + t.getTaskId() + "] " + t.getTitle())
+                    .toList();
+                return error("Cannot clean team while " + incomplete.size()
+                    + " task(s) remain incomplete. Complete them first: " + titles);
+            }
+            var cancelled = tasks.stream()
+                .filter(t -> "cancelled".equals(t.getStatus()))
+                .toList();
+            if (!cancelled.isEmpty()) {
+                List<String> titles = cancelled.stream()
+                    .map(t -> "[" + t.getTaskId() + "] " + t.getTitle())
+                    .toList();
+                return error("Cannot clean team while " + cancelled.size()
+                    + " task(s) were cancelled. The leader must complete them: " + titles);
+            }
             boolean success = backend.cleanTeam().join();
             if (!success) {
                 return error("Active members remain. Use shutdown_member to close all members first.");
@@ -379,7 +403,13 @@ public final class TeamTools {
                     "member_name", stringSchema("Member name"),
                     "display_name", stringSchema("Display name"),
                     "desc", stringSchema("Member description"),
-                    "prompt", stringSchema("Startup prompt"),
+                    "prompt", stringSchema(
+                        "First instruction the member receives at startup. "
+                        + "Use it to assign specific tasks, set priorities, "
+                        + "or define constraints. Give clear direction; "
+                        + "each member should receive a different prompt "
+                        + "matching their assigned task. Leave blank to let "
+                        + "the member choose tasks autonomously by domain."),
                     "model_name", stringSchema("Model name")
             ), List.of("member_name", "display_name")));
             this.backend = backend;
@@ -644,8 +674,16 @@ public final class TeamTools {
         private final TeamTaskManager taskManager;
 
         TaskCreateTool(TeamTaskManager taskManager) {
-            super("create_task", "Create team tasks.", objectSchema(Map.of(
-                    "tasks", Map.of("type", "array", "items", Map.of("type", "object"))
+            super("create_task", "Create team tasks. Each task MUST have a title, content, and assignee (member name).", objectSchema(Map.of(
+                    "tasks", Map.of("type", "array",
+                        "items", objectSchema(Map.of(
+                            "title", stringSchema("Task title"),
+                            "content", stringSchema("Task description or instructions"),
+                            "assignee", stringSchema("Member name who should work on this task (e.g. 'fundamental-analyst')"),
+                            "task_id", stringSchema("Optional custom task ID"),
+                            "dependencies", Map.of("type", "array", "items", Map.of("type", "string"),
+                                "description", "List of task IDs this task depends on")
+                        ), List.of("title", "content", "assignee")))
             ), List.of("tasks")));
             this.taskManager = taskManager;
         }
@@ -731,12 +769,19 @@ public final class TeamTools {
                 }
                 return isOk(taskBrief(task));
             }
-            List<TeamTask> tasks = "claimable".equals(action)
-                    ? taskManager.getClaimableTasks()
-                    : taskManager.list().stream()
-                    .filter(task -> safeInputs.get("status") == null
-                            || String.valueOf(safeInputs.get("status")).equals(task.getStatus()))
-                    .toList();
+            List<TeamTask> tasks;
+            if ("claimable".equals(action)) {
+                tasks = taskManager.getClaimableTasks();
+            } else {
+                String statusFilter = safeInputs.get("status") != null
+                        ? String.valueOf(safeInputs.get("status")) : null;
+                tasks = taskManager.list().stream()
+                        .filter(task -> statusFilter == null
+                                || statusFilter.equals(task.getStatus())
+                                || ("claimable".equals(statusFilter) && "pending".equals(task.getStatus())))
+                        .toList();
+            }
+            Loggers.TOOL.info("view_task action={} found {} task(s)", action, tasks.size());
             return isOk(Map.of("tasks", tasks.stream().map(TeamTools::taskBrief).toList(), "count", tasks.size()));
         }
 
@@ -818,11 +863,23 @@ public final class TeamTools {
                 return error("Task not found");
             }
             if ("cancelled".equals(safeInputs.get("status"))) {
+                // Check if task is owned by a human_agent (locked)
+                if (isHumanAgentLocked(task)) {
+                    return error("Cannot cancel or reassign human member's tasks");
+                }
                 TeamTask cancelled = backend.getTaskManager().cancel(taskId).join();
                 if (cancelled == null) {
                     return error("Failed to cancel task");
                 }
+                // If task was claimed by a member, send cancel notification
+                cancelMemberIfClaimed(task);
                 return isOk(Map.of("task_id", taskId, "status", "cancelled"));
+            }
+            // Check human_agent lock before editing
+            if ((safeInputs.containsKey("title") || safeInputs.containsKey("content")
+                    || safeInputs.containsKey("assignee") || safeInputs.containsKey("add_blocked_by"))
+                    && isHumanAgentLocked(task)) {
+                return error("Cannot cancel or reassign human member's tasks");
             }
             List<String> updated = new ArrayList<>();
             if (safeInputs.containsKey("title") || safeInputs.containsKey("content")) {
@@ -859,6 +916,21 @@ public final class TeamTools {
                 return error("No update specified");
             }
             return isOk(Map.of("task_id", taskId, "status", "updated", "updated_fields", updated));
+        }
+
+        private boolean isHumanAgentLocked(TeamTask task) {
+            if (task == null || task.getAssignee() == null) {
+                return false;
+            }
+            var member = backend.getMember(task.getAssignee());
+            return member != null
+                    && member.getRole() == com.openjiuwen.agentteams.schema.team.TeamRole.HUMAN_AGENT;
+        }
+
+        private void cancelMemberIfClaimed(TeamTask task) {
+            if (task.getAssignee() != null) {
+                backend.shutdownMember(task.getAssignee(), false);
+            }
         }
 
         /**
@@ -902,6 +974,9 @@ public final class TeamTools {
             Map<String, Object> safeInputs = safeInputs(inputs);
             String taskId = stringValue(safeInputs.get("task_id"), "");
             String status = stringValue(safeInputs.get("status"), "");
+            com.openjiuwen.core.common.logging.Loggers.TOOL.info(
+                "ClaimTaskTool.invoke: taskId={} status={} cardId={}",
+                taskId, status, getCard() != null ? getCard().getId() : "null");
             TeamTask task = taskManager.get(taskId);
             if (task == null) {
                 return error("Task not found");
@@ -981,13 +1056,29 @@ public final class TeamTools {
             if (!"*".equals(to)
                     && !"user".equals(to)
                     && backend.getDb().member.getMember(to, backend.getTeamName()) == null) {
-                return error("Member '" + to + "' not found");
+                // Try to resolve by display_name
+                String resolved = backend.resolveMemberName(to);
+                if (resolved != null) {
+                    to = resolved;
+                } else {
+                    return error("Member '" + to + "' not found");
+                }
             }
             String messageId = "*".equals(to)
                     ? backend.getMessageManager().broadcastMessage(content).join()
                     : backend.getMessageManager().sendMessage(content, to).join();
             if (messageId == null || messageId.isBlank()) {
                 return error("Failed to send message");
+            }
+            if ("*".equals(to)) {
+                Loggers.TOOL.info("send_message broadcast detected, launching all unstarted members");
+                int launched = backend.launchUnstartedMembers(content);
+                Loggers.TOOL.info("launched {} unstarted member(s) after broadcast", launched);
+            } else {
+                boolean launched = backend.launchMemberIfUnstarted(to, content);
+                if (launched) {
+                    Loggers.TOOL.info("send_message unicast to UNSTARTED member {}, auto-launched with message", to);
+                }
             }
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("type", "*".equals(to) ? "broadcast" : "message");

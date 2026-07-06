@@ -137,6 +137,12 @@
             <artifactId>reactor-core</artifactId>
             <version>3.6.2</version>
         </dependency>
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-test</artifactId>
+            <version>3.6.2</version>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Test Dependencies -->
         <dependency>

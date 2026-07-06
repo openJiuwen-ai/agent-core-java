@@ -3,7 +3,10 @@
  */
 package com.openjiuwen.core.graph.store;
 
+import com.openjiuwen.core.graph.pregel.GraphInterrupt;
+import com.openjiuwen.core.graph.pregel.Interrupt;
 import com.openjiuwen.core.graph.pregel.Message;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -273,6 +276,32 @@ class GraphStoreTest {
     @Nested
     @DisplayName("GraphStoreState")
     class GraphStoreStateTests {
+
+        @Test
+        @DisplayName("Java serializer persists an interrupted graph checkpoint")
+        void testSerializeInterruptedCheckpoint() {
+            InteractionOutput output = new InteractionOutput("interactive", null);
+            GraphInterrupt exception = new GraphInterrupt(new Interrupt(Map.of(
+                    "type", "__interaction__",
+                    "index", 0,
+                    "payload", output)));
+            GraphStoreState state = GraphStoreState.create(
+                    "workflow", 2, Map.of(), List.of(),
+                    Map.of("interactive", new PendingNode(
+                            "interactive", "__interrupt__", List.of(exception))),
+                    Map.of("start", 1));
+
+            Serializer serializer = Serializer.create("java");
+            GraphStoreState restored = (GraphStoreState) serializer.loadsTyped(serializer.dumpsTyped(state));
+
+            Exception restoredException = restored.getPendingNode()
+                    .get("interactive").getExceptions().get(0);
+            assertInstanceOf(GraphInterrupt.class, restoredException);
+            GraphInterrupt restoredInterrupt = (GraphInterrupt) restoredException;
+            @SuppressWarnings("unchecked")
+            Map<String, Object> restoredValue = (Map<String, Object>) restoredInterrupt.getValue().getValue();
+            assertEquals(output, restoredValue.get("payload"));
+        }
 
         @Test
         @DisplayName("create with all fields")

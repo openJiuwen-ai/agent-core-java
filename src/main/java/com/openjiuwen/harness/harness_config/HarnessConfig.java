@@ -315,11 +315,14 @@ public class HarnessConfig {
         private List<String> dirs = new ArrayList<>();
         @Builder.Default
         private String mode = "all";
+        @Builder.Default
+        private boolean enableCache = true;
 
         Map<String, Object> toYamlMap() {
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("dirs", dirs);
             data.put("mode", mode);
+            data.put("enable_cache", enableCache);
             return data;
         }
     }

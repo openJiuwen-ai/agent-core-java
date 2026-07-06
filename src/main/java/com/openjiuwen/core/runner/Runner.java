@@ -16,6 +16,9 @@ import com.openjiuwen.core.runner.spawn.SpawnedProcessHandle;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -270,4 +273,37 @@ public final class Runner {
     public static void release(String sessionId) {
         GLOBAL_RUNNER.release(sessionId);
     }
+
+    /**
+     * Reactive version of {@link #runAgent(Object, Object, Object, ModelContext, Map)}.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param envs environment values, nullable
+     * @return Mono emitting the agent result
+     */
+    public static Mono<Object> runAgentAsync(Object agent, Object inputs, Object session,
+                                            ModelContext context, Map<String, Object> envs) {
+        return GLOBAL_RUNNER.runAgentAsync(agent, inputs, session, context, envs);
+    }
+
+    /**
+     * Reactive version of {@link #runAgentStreaming(Object, Object, Object, ModelContext, List, Map)}.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param streamModes stream output modes
+     * @param envs environment values, nullable
+     * @return Flux emitting stream chunks
+     */
+    public static Flux<Object> runAgentStreamingAsync(Object agent, Object inputs, Object session,
+                                                     ModelContext context, List<StreamMode> streamModes,
+                                                     Map<String, Object> envs) {
+        return GLOBAL_RUNNER.runAgentStreamingAsync(agent, inputs, session, context, streamModes, envs);
+    }
+
 }

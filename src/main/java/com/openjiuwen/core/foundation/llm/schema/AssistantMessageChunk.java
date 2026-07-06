@@ -5,9 +5,12 @@
 package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Streaming assistant message chunk with tool call fragment merging.
@@ -18,6 +21,8 @@ import java.util.List;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class AssistantMessageChunk extends AssistantMessage {
 
+    private static final LoggerProtocol LOG = Loggers.LLM;
+
     /**
      * Auto-generated for codecheck compliance.
      */
@@ -26,6 +31,12 @@ public class AssistantMessageChunk extends AssistantMessage {
 
     /**
      * Merge another chunk into this one, combining content and tool call fragments.
+     * <p>
+     * Tool call fragments are merged by a stable key with priority:
+     * {@code index > id > name > anonymous}. This is more tolerant than the previous
+     * "compare with the last element" approach and works for OpenAI / DeepSeek / GLM
+     * streaming formats, which differ in how they populate id, index, and name on
+     * incremental argument chunks.
      *
      * @param other the chunk to merge
      * @return a new merged chunk
@@ -38,32 +49,47 @@ public class AssistantMessageChunk extends AssistantMessage {
         // Merge content
         Object combinedContent = BaseMessageChunk.mergeContent(this.getContent(), other.getContent());
 
-        // Merge tool_calls by concatenating fragments of the same call
-        List<ToolCall> mergedToolCalls = new ArrayList<>();
+        // Merge tool_calls by bucketing fragments on a stable key per call
+        LinkedHashMap<Object, ToolCall> bucket = new LinkedHashMap<>();
         if (this.getToolCalls() != null) {
-            mergedToolCalls.addAll(this.getToolCalls());
+            for (ToolCall tc : this.getToolCalls()) {
+                bucket.put(keyOf(tc), cloneOf(tc));
+            }
         }
 
         if (other.getToolCalls() != null) {
             for (ToolCall incoming : other.getToolCalls()) {
-                if (!mergedToolCalls.isEmpty()) {
-                    ToolCall last = mergedToolCalls.get(mergedToolCalls.size() - 1);
-                    boolean sameId = (last.getId() != null && incoming.getId() != null
-                            && last.getId().equals(incoming.getId()))
-                            || (last.getId() == null || incoming.getId() == null);
-
-                    if (sameId && "function".equals(last.getType()) && "function".equals(incoming.getType())) {
-                        // Merge fragments into the existing tool call
-                        last.setId(last.getId() != null ? last.getId() : incoming.getId());
-                        last.setType(last.getType() != null ? last.getType() : incoming.getType());
-                        last.setName(orEmpty(last.getName()) + orEmpty(incoming.getName()));
-                        last.setArguments(orEmpty(last.getArguments()) + orEmpty(incoming.getArguments()));
+                Object key = keyOf(incoming);
+                ToolCall exist = bucket.get(key);
+                if (exist != null) {
+                    appendFragment(exist, incoming);
+                    logMerge("hit", key, exist, incoming);
+                    continue;
+                }
+                // Fallback: a pure-arguments fragment (no id / no name / only args) is
+                // an argument continuation of the most recent call regardless of key.
+                if (isPureArgumentsFragment(incoming) && !bucket.isEmpty()) {
+                    ToolCall last = lastValue(bucket);
+                    appendFragment(last, incoming);
+                    logMerge("fallback-args", keyOf(last), last, incoming);
+                    continue;
+                }
+                // Fallback: incoming has a name but no id/index and bucket has exactly one
+                // entry whose name is still empty — treat as the same call (name arrives late).
+                if (hasOwnName(incoming) && bucket.size() == 1) {
+                    ToolCall only = lastValue(bucket);
+                    if (!hasOwnName(only) && only.getArguments() != null) {
+                        appendFragment(only, incoming);
+                        logMerge("fallback-name", keyOf(only), only, incoming);
                         continue;
                     }
                 }
-                mergedToolCalls.add(incoming);
+                bucket.put(key, cloneOf(incoming));
+                logMerge("new", key, null, incoming);
             }
         }
+
+        List<ToolCall> mergedToolCalls = new ArrayList<>(bucket.values());
 
         String mergedFinishReason = !"null".equals(other.getFinishReason())
                 ? other.getFinishReason()
@@ -79,6 +105,106 @@ public class AssistantMessageChunk extends AssistantMessage {
                 .reasoningContent(other.getReasoningContent() != null
                         ? other.getReasoningContent() : this.getReasoningContent())
                 .build();
+    }
+
+    private static Object keyOf(ToolCall tc) {
+        if (tc == null) {
+            return "anon";
+        }
+        if (tc.getIndex() != null) {
+            return "idx:" + tc.getIndex();
+        }
+        if (tc.getId() != null && !tc.getId().isEmpty()) {
+            return "id:" + tc.getId();
+        }
+        if (tc.getName() != null && !tc.getName().isEmpty()) {
+            return "name:" + tc.getName();
+        }
+        return "anon";
+    }
+
+    private static ToolCall cloneOf(ToolCall src) {
+        if (src == null) {
+            return null;
+        }
+        return ToolCall.builder()
+                .id(src.getId())
+                .type(src.getType())
+                .name(src.getName())
+                .arguments(src.getArguments())
+                .index(src.getIndex())
+                .build();
+    }
+
+    private static ToolCall lastValue(Map<Object, ToolCall> bucket) {
+        ToolCall last = null;
+        for (ToolCall v : bucket.values()) {
+            last = v;
+        }
+        return last;
+    }
+
+    private static void appendFragment(ToolCall base, ToolCall inc) {
+        if (base.getId() == null || base.getId().isEmpty()) {
+            base.setId(inc.getId());
+        }
+        if (base.getType() == null || base.getType().isEmpty()) {
+            base.setType(inc.getType() != null ? inc.getType() : "function");
+        }
+        if (base.getName() == null || base.getName().isEmpty()) {
+            base.setName(inc.getName());
+        } else if (inc.getName() != null && !inc.getName().isEmpty()
+                && !base.getName().equals(inc.getName())) {
+            // Some providers repeat the name on every fragment. Only append when it
+            // actually differs to avoid name duplication like "skill_toolskill_tool".
+            // If names disagree across fragments for the same key, keep the first one.
+            LOG.debug("[merge] name conflict on key={}, keeping existing={}, incoming={}",
+                    keyOf(base), base.getName(), inc.getName());
+        }
+        if (base.getIndex() == null && inc.getIndex() != null) {
+            base.setIndex(inc.getIndex());
+        }
+        base.setArguments(orEmpty(base.getArguments()) + orEmpty(inc.getArguments()));
+    }
+
+    private static boolean isPureArgumentsFragment(ToolCall tc) {
+        if (tc == null) {
+            return false;
+        }
+        boolean noId = tc.getId() == null || tc.getId().isEmpty();
+        boolean noName = tc.getName() == null || tc.getName().isEmpty();
+        boolean noIndex = tc.getIndex() == null;
+        boolean hasArgs = tc.getArguments() != null && !tc.getArguments().isEmpty();
+        return noId && noName && noIndex && hasArgs;
+    }
+
+    private static boolean hasOwnName(ToolCall tc) {
+        return tc != null && tc.getName() != null && !tc.getName().isEmpty();
+    }
+
+    private static void logMerge(String action, Object key, ToolCall base, ToolCall incoming) {
+        LoggerProtocol logger = Loggers.LLM;
+        if (logger == null) {
+            return;
+        }
+        logger.debug("[merge] {} key={} base={} incoming={}",
+                action,
+                key,
+                base == null ? "<none>" : formatToolCall(base),
+                formatToolCall(incoming));
+    }
+
+    private static String formatToolCall(ToolCall tc) {
+        if (tc == null) {
+            return "<null>";
+        }
+        return "{id=" + tc.getId()
+                + ", type=" + tc.getType()
+                + ", name=" + tc.getName()
+                + ", index=" + tc.getIndex()
+                + ", argsLen=" + (tc.getArguments() == null ? 0 : tc.getArguments().length())
+                + ", args=" + tc.getArguments()
+                + "}";
     }
 
     private static String orEmpty(String s) {

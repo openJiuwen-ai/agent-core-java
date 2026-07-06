@@ -17,6 +17,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * User-facing agent session providing high-level API for agent lifecycle management.
@@ -28,11 +29,16 @@ import java.util.UUID;
  */
 public class AgentSessionApi implements Session {
 
+    private static final int PRE_DONE = 0x1;
+    private static final int POST_DONE = 0x2;
+
     private final String sessionId;
     private final AgentSession inner;
     private final Object card;
-    private boolean preRunDone;
-    private boolean postRunDone;
+
+    // preRunDone（bit0）/ postRunDone（bit1）合并成一个 AtomicInteger 位掩码，
+    // resetRunState() 才能用一次 CAS 把两个标志一起清零，避免两次 set(false) 之间的中间状态。
+    private final AtomicInteger runState = new AtomicInteger(0);
     private SimpleAgentInteraction interaction;
 
     /**
@@ -67,8 +73,6 @@ public class AgentSessionApi implements Session {
 
         this.inner = new AgentSession(sessionId, config, null, card, streamModes);
         this.card = card;
-        this.preRunDone = false;
-        this.postRunDone = false;
     }
 
     /**
@@ -234,29 +238,37 @@ public class AgentSessionApi implements Session {
 
     /**
      * Pre-run hook: execute checkpointer pre-agent logic.
+     * CAS 保证多线程同时调用时只有一个真正执行，其余直接返回。
      *
      * @param inputs the inputs map
      */
     public void preRun(Object inputs) {
-        if (preRunDone) {
+        if ((runState.getAndUpdate(s -> s | PRE_DONE) & PRE_DONE) != 0) {
             return;
         }
         CheckpointerFactory.getCheckpointer().preAgentExecute(inner, inputs);
-        preRunDone = true;
     }
 
     /**
      * Post-run hook: close stream and execute checkpointer post-agent logic.
+     * CAS 幂等保护同 preRun()——runAgentStreamingAsync 的 doFinally 清理钩子
+     * 可能跟迭代线程在不同线程上触发，靠这个保证只执行一次。
      */
     public void postRun() {
-        if (postRunDone) {
+        if ((runState.getAndUpdate(s -> s | POST_DONE) & POST_DONE) != 0) {
             return;
         }
         inner.streamWriterManager().getStreamEmitter().close();
         if (inner.checkpointerTyped() != null) {
             inner.checkpointerTyped().postAgentExecute(inner);
         }
-        postRunDone = true;
+    }
+
+    /**
+     * Reset pre-run and post-run guards so the same session can be reused for another run.
+     */
+    public void resetRunState() {
+        runState.set(0);
     }
 
     /**

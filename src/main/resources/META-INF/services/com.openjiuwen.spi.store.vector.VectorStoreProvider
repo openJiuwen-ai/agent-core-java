@@ -1,0 +1,5 @@
+com.openjiuwen.spi.store.vector.provider.InMemoryVectorStoreProvider
+com.openjiuwen.spi.store.vector.provider.ChromaVectorStoreProvider
+com.openjiuwen.spi.store.vector.provider.MilvusVectorStoreProvider
+com.openjiuwen.spi.store.vector.provider.PGVectorStoreProvider
+com.openjiuwen.spi.store.vector.provider.ElasticsearchVectorStoreProvider

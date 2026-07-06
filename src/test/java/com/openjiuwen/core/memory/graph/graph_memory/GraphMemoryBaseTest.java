@@ -10,6 +10,7 @@ import com.openjiuwen.core.foundation.store.graph.Episode;
 import com.openjiuwen.core.foundation.store.graph.GraphConfig;
 import com.openjiuwen.core.foundation.store.graph.GraphConstants;
 import com.openjiuwen.core.foundation.store.graph.GraphStore;
+import com.openjiuwen.core.foundation.store.graph.Relation;
 import com.openjiuwen.core.memory.config.graph.SearchConfig;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,19 +41,52 @@ class GraphMemoryBaseTest {
         GraphStore store = (GraphStore) backendField.get(memory);
         Entity entity = new Entity();
         entity.setUuid("e1");
+        entity.setUserId("user-1");
         entity.setName("Alice");
         entity.setContent("Alice knows Bob");
+        entity.setAttributes(Map.of("age", 20));
+        entity.setEpisodes(List.of("episode-1"));
         store.addEntity(List.of(entity), false, false, true);
+
+        Relation relation = new Relation();
+        relation.setName("knows");
+        relation.setUserId("user-1");
+        relation.setLhs("e1");
+        relation.setRhs("e2");
+        relation.setValidSince(123);
+        store.addRelation(List.of(relation), false, false, true);
+
+        Episode episode = new Episode();
+        episode.setUuid("episode-1");
+        episode.setUserId("user-1");
+        episode.setContent("Alice met Bob");
+        episode.setEntities(List.of("e1", "e2"));
+        store.addEpisode(List.of(episode), false, false, true);
 
         SearchConfig entityConfig = new SearchConfig();
         entityConfig.setTopK(5);
         memory.registerSearchStrategy("custom", entityConfig, new SearchConfig(), new SearchConfig(), true);
 
-        Map<String, List<GraphMemory.SearchHit>> result = memory.search("Alice", "user-1", "custom", true, false, false, null);
+        Map<String, List<GraphMemory.SearchHit>> result = memory.search(
+                "Alice", "user-1", "custom", true, true, true, null);
 
         assertThat(result).containsKey(GraphConstants.ENTITY_COLLECTION);
         assertThat(result.get(GraphConstants.ENTITY_COLLECTION)).hasSize(1);
-        assertThat(((Entity) result.get(GraphConstants.ENTITY_COLLECTION).get(0).object()).getName()).isEqualTo("Alice");
+        Entity restoredEntity = (Entity) result.get(GraphConstants.ENTITY_COLLECTION).get(0).object();
+        assertThat(restoredEntity.getName()).isEqualTo("Alice");
+        assertThat(restoredEntity.getAttributes()).containsEntry("age", 20);
+        assertThat(restoredEntity.getEpisodes()).containsExactly("episode-1");
+        restoredEntity.getEpisodes().add("episode-2");
+        assertThat(restoredEntity.getEpisodes()).containsExactly("episode-1", "episode-2");
+
+        Relation restoredRelation = (Relation) result.get(GraphConstants.RELATION_COLLECTION).get(0).object();
+        assertThat(restoredRelation.getLhs()).isEqualTo("e1");
+        assertThat(restoredRelation.getRhs()).isEqualTo("e2");
+        assertThat(restoredRelation.getValidSince()).isEqualTo(123);
+
+        Episode restoredEpisode = (Episode) result.get(GraphConstants.EPISODE_COLLECTION).get(0).object();
+        assertThat(restoredEpisode.getContent()).isEqualTo("Alice met Bob");
+        assertThat(restoredEpisode.getEntities()).containsExactly("e1", "e2");
     }
 
     @Test

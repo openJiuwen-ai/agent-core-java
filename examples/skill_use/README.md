@@ -39,20 +39,20 @@
 ```powershell
 mvn -DskipTests compile
 mvn dependency:build-classpath "-Dmdep.outputFile=target/skill_examples.classpath"
-javac -cp "target/classes;$(Get-Content target/skill_examples.classpath -Raw)" examples/SharedExampleApiConfigLoader.java examples/skill_use/SkillUseExample.java
-& java '-Dfile.encoding=UTF-8' -cp "target/classes;examples;examples/skill_use;$(Get-Content target/skill_examples.classpath -Raw)" SkillUseExample
+javac -cp "target/classes;$(Get-Content target/skill_examples.classpath -Raw)" examples/utils/SharedExampleApiConfigLoader.java examples/skill_use/SkillUseExample.java
+java '-Dfile.encoding=UTF-8' -cp "target/classes;.;$(Get-Content target/skill_examples.classpath -Raw)" examples.skill_use.SkillUseExample
 ```
 
 也可以在最后一条命令后直接追加查询内容，例如：
 
 ```powershell
-& java '-Dfile.encoding=UTF-8' -cp "target/classes;examples;examples/skill_use;$(Get-Content target/skill_examples.classpath -Raw)" SkillUseExample Downscale the provided image inside the examples/skill_use/data directory by 2x.
+& java '-Dfile.encoding=UTF-8' -cp "target/classes;.;$(Get-Content target/skill_examples.classpath -Raw)" examples.skill_use.SkillUseExample Downscale the provided image inside the examples/skill_use/data directory by 2x.
 ```
 
 如果需要显式指定配置文件，也可以这样运行：
 
 ```powershell
-& java '-Dfile.encoding=UTF-8' '-Dopenjiuwen.example.config=examples/apiconfig.json' -cp "target/classes;examples;examples/skill_use;$(Get-Content target/skill_examples.classpath -Raw)" SkillUseExample
+& java '-Dfile.encoding=UTF-8' '-Dopenjiuwen.example.config=examples/apiconfig.json' -cp "target/classes;.;$(Get-Content target/skill_examples.classpath -Raw)" examples.skill_use.SkillUseExample
 ```
 
 ## 已验证的默认示例

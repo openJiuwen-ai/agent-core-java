@@ -19,6 +19,7 @@ import com.openjiuwen.agentteams.spawn.SpawnHandle;
 import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.agentteams.tools.TeamMember;
 import com.openjiuwen.agentteams.tools.database.MemberRecord;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.spawn.SpawnConfig;
 import java.util.LinkedHashMap;
@@ -27,11 +28,9 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 /**
@@ -66,8 +65,7 @@ public class SpawnManager {
         teamBackend,
         recoveryManager,
         sessionIdGetter,
-        new ThreadPoolExecutor(
-            0, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS, new LinkedBlockingQueue<>()));
+        Executors.newCachedThreadPool());
   }
 
   /** Auto-generated for codecheck compliance. */
@@ -106,6 +104,9 @@ public class SpawnManager {
     if (ctx == null || ctx.getMemberName() == null || ctx.getMemberName().isBlank()) {
       throw new IllegalArgumentException("teammate context with memberName is required");
     }
+    Loggers.AGENT.info("spawnTeammate: spawning member={} mode={} initialMessage={}",
+        ctx.getMemberName(), teamAgent.getSpec().getSpawnMode(),
+        initialMessage != null ? initialMessage.substring(0, Math.min(80, initialMessage.length())) : "null");
     SpawnConfig effectiveConfig =
         spawnConfig != null
             ? spawnConfig
@@ -170,9 +171,11 @@ public class SpawnManager {
 
   /** Auto-generated for codecheck compliance. */
   public boolean restartTeammate(String memberName, int maxRetries) {
+    Loggers.AGENT.info("restartTeammate: member={} maxRetries={}", memberName, maxRetries);
     cleanupTeammate(memberName);
     TeamRuntimeContext ctx = buildContextFromBackend(memberName);
     if (ctx == null) {
+      Loggers.AGENT.warn("restartTeammate: buildContextFromBackend returned null for member={}", memberName);
       return false;
     }
     TeamMember teammate = teamBackend.getMember(memberName);

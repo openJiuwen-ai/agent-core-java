@@ -4,14 +4,20 @@
 
 package com.openjiuwen.extensions.a2a;
 
-import com.openjiuwen.core.runner.drunner.remote_client.RemoteClient;
-import com.openjiuwen.core.runner.drunner.remote_client.RemoteClientConfig;
+import com.openjiuwen.core.runner.drunner.remoteclient.RemoteClient;
+import com.openjiuwen.core.runner.drunner.remoteclient.RemoteClientConfig;
 
 import java.util.Iterator;
 import java.util.Map;
 
 /**
  * A2A-backed remote client implementation using the JSON-RPC transport.
+ * <p>
+ * Implements the {@link RemoteClient} interface to communicate with remote agents
+ * via the Agent-to-Agent (A2A) protocol. Supports both synchronous invocation
+ * and streaming response modes.
+ *
+ * @since 0.1.12
  */
 public class A2ARemoteClient implements RemoteClient {
     private final RemoteClientConfig config;
@@ -19,7 +25,10 @@ public class A2ARemoteClient implements RemoteClient {
     private boolean isStarted;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Construct an A2ARemoteClient with the given configuration.
+     *
+     * @param config The remote client configuration containing the A2A server URL
+     * @throws IllegalArgumentException if the URL in the configuration is null or blank
      */
     public A2ARemoteClient(RemoteClientConfig config) {
         this.config = config;
@@ -30,57 +39,54 @@ public class A2ARemoteClient implements RemoteClient {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Start the remote client, marking it as active.
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void start() {
         this.isStarted = true;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Stop the remote client, marking it as inactive.
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void stop() {
         this.isStarted = false;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Check whether the remote client has been started.
+     *
+     * @return {@code true} if the client is started, {@code false} otherwise
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean isStarted() {
         return isStarted;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Invoke the A2A remote agent synchronously with the given inputs.
+     *
+     * @param inputs         The input map to send to the remote agent
+     * @param timeoutSeconds Optional timeout in seconds for the invocation
+     * @return The result of the remote invocation
+     * @throws Exception if the invocation fails or the client is not started
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object invoke(Map<String, Object> inputs, Double timeoutSeconds) throws Exception {
         ensureStarted();
         return client.invoke(inputs, timeoutSeconds);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Stream responses from the A2A remote agent with the given inputs.
+     *
+     * @param inputs         The input map to send to the remote agent
+     * @param timeoutSeconds Optional timeout in seconds for the streaming operation
+     * @return An iterator over the streamed response objects
+     * @throws Exception if the streaming operation fails or the client is not started
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Iterator<Object> stream(Map<String, Object> inputs, Double timeoutSeconds) throws Exception {
         ensureStarted();
         return client.stream(inputs, timeoutSeconds);

@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.foundation.llm.model_clients.DefaultModelClientFactories;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
@@ -17,6 +18,9 @@ import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -217,4 +221,65 @@ public class Model {
         return client.generateVideo(messages, imgUrl, audioUrl, model, size, resolution,
                 duration, promptExtend, watermark, negativePrompt, seed, kwargs);
     }
+
+    /**
+     * Reactive version of {@link #invoke(Object, Object, Float, Float, String, Integer, String, BaseOutputParser,
+     * Float, Map)}.
+     *
+     * @param messages input messages
+     * @param tools available tools
+     * @param temperature sampling temperature
+     * @param topP nucleus sampling value
+     * @param model model override
+     * @param maxTokens maximum output tokens
+     * @param stop stop sequence
+     * @param outputParser output parser
+     * @param timeout request timeout
+     * @param kwargs extra provider arguments
+     * @return Mono emitting the assistant message
+     */
+    public Mono<AssistantMessage> invokeAsync(Object messages,
+                                             Object tools,
+                                             Float temperature,
+                                             Float topP,
+                                             String model,
+                                             Integer maxTokens,
+                                             String stop,
+                                             BaseOutputParser outputParser,
+                                             Float timeout,
+                                             Map<String, Object> kwargs) {
+        return ReactiveAdapters.fromCallable(() -> invoke(messages, tools, temperature, topP, model,
+                maxTokens, stop, outputParser, timeout, kwargs));
+    }
+
+    /**
+     * Reactive version of {@link #stream(Object, Object, Float, Float, String, Integer, String, BaseOutputParser,
+     * Float, Map)}.
+     *
+     * @param messages input messages
+     * @param tools available tools
+     * @param temperature sampling temperature
+     * @param topP nucleus sampling value
+     * @param model model override
+     * @param maxTokens maximum output tokens
+     * @param stop stop sequence
+     * @param outputParser output parser
+     * @param timeout request timeout
+     * @param kwargs extra provider arguments
+     * @return Flux emitting assistant message chunks
+     */
+    public Flux<AssistantMessageChunk> streamAsync(Object messages,
+                                                  Object tools,
+                                                  Float temperature,
+                                                  Float topP,
+                                                  String model,
+                                                  Integer maxTokens,
+                                                  String stop,
+                                                  BaseOutputParser outputParser,
+                                                  Float timeout,
+                                                  Map<String, Object> kwargs) {
+        return ReactiveAdapters.fromAutoCloseableIterator(() -> stream(messages, tools, temperature, topP, model,
+                maxTokens, stop, outputParser, timeout, kwargs));
+    }
+
 }

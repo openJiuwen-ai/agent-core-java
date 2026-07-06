@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.session.interaction;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.util.Objects;
 
 /**
@@ -11,7 +13,10 @@ import java.util.Objects;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.interaction.interaction.InteractionOutput}.
  */
-public class InteractionOutput {
+public class InteractionOutput implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 
     private String id;
     private Object value;

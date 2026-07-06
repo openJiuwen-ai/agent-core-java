@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.memory.graph.graph_memory;
 
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.store.graph.Entity;
 import com.openjiuwen.core.foundation.store.graph.Episode;
 import com.openjiuwen.core.foundation.store.graph.GraphConstants;
@@ -195,9 +196,14 @@ public final class PostprocessGraphObjects {
         for (RelationTask relationTask : dedupeRelationTasks) {
             try {
                 Object result = relationTask.future().join();
-                String content = result instanceof Map<?, ?> map
-                        ? String.valueOf(map.get("content"))
-                        : String.valueOf(result);
+                String content;
+                if (result instanceof AssistantMessage message) {
+                    content = message.getContentAsString();
+                } else if (result instanceof Map<?, ?> map) {
+                    content = String.valueOf(map.get("content"));
+                } else {
+                    content = String.valueOf(result);
+                }
                 Object dedupeRelation = ParseResponse.parseJson(content, state.getPrompting().getSchemaRelationMerge());
                 if (!(dedupeRelation instanceof Map<?, ?>)) {
                     dedupeRelation = ParseResponse.rawDecodeJson(content, null);
@@ -218,11 +224,13 @@ public final class PostprocessGraphObjects {
                         }
                     }
                 }
-                state.getToRemove().addAll(ParseLlmResponse.parseRelationMerging(
+                java.util.Set<String> relationsToRemove = ParseLlmResponse.parseRelationMerging(
                         typed,
                         relationTask.relation(),
                         relationTask.currentRelations()
-                ));
+                );
+                state.getToRemove().addAll(relationsToRemove);
+                state.getMemUpdate().getRemovedRelation().addAll(relationsToRemove);
             } catch (CompletionException | IllegalArgumentException ignored) {
                 // Failed dedupe parsing keeps the candidate relation set unchanged.
             }

@@ -108,7 +108,7 @@ public final class HarnessFactory {
         if (source.isEnableTaskLoop()) {
             addDefaultRailIfAbsent(rails, TaskCompletionRail.class, TaskCompletionRail::new);
         }
-        if (hasConfiguredSkills(source)) {
+        if (hasConfiguredSkills(source) || source.isEnableSkillDiscovery()) {
             addSkillUseRailIfAbsent(rails, source);
         }
         if (!subagents.isEmpty()) {
@@ -167,6 +167,7 @@ public final class HarnessFactory {
                 .backend(source.getBackend())
                 .promptMode(source.getPromptMode())
                 .skills(new ArrayList<>(source.getSkills() != null ? source.getSkills() : List.of()))
+                .enableSkillDiscovery(source.isEnableSkillDiscovery())
                 .factoryKwargs(new java.util.LinkedHashMap<>(
                         source.getFactoryKwargs() != null ? source.getFactoryKwargs() : Map.of()))
                 .isAsyncSubagentEnabled(source.isEnableAsyncSubagent())
@@ -264,6 +265,7 @@ public final class HarnessFactory {
                 .skillDirectories(new ArrayList<>(
                         source.getSkillDirectories() != null ? source.getSkillDirectories() : List.of()))
                 .skills(new ArrayList<>(source.getSkills() != null ? source.getSkills() : List.of()))
+                .enableSkillDiscovery(source.isEnableSkillDiscovery())
                 .model(source.getModel())
                 .backend(source.getBackend())
                 .promptMode(source.getPromptMode())

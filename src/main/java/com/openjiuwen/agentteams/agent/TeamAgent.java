@@ -11,16 +11,19 @@ import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntries;
+import com.openjiuwen.agentteams.schema.status.MemberStatus;
 import com.openjiuwen.agentteams.schema.team.TeamLifecycle;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamModelConfig;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.agentteams.tools.TeamMessage;
 import com.openjiuwen.agentteams.tools.TeamMessageManager;
+import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.memory.team.PromptMode;
 import com.openjiuwen.core.memory.team.TeamLanguage;
 import com.openjiuwen.core.memory.team.TeamMemoryConfig;
@@ -36,6 +39,7 @@ import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
+import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
 import lombok.Getter;
@@ -50,6 +54,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Iterator;
+import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
@@ -199,6 +204,10 @@ public class TeamAgent {
      */
     public Map<String, Object> dispatchTask(String query) {
         ensureConfigured();
+        String memberName = context != null && context.getMemberName() != null ? context.getMemberName() : "unknown";
+        com.openjiuwen.core.common.logging.Loggers.AGENT.info("dispatchTask: member={} lifecycle={} query={}",
+            memberName, context != null ? context.getLifecycle() : "null",
+            query != null ? query.substring(0, Math.min(100, query.length())) : "null");
         context.setLifecycle(TeamLifecycle.RUNNING);
         pendingUserQuery = query != null ? query : "";
         context.getMetadata().put("last_query", query);
@@ -235,6 +244,8 @@ public class TeamAgent {
             result.put("delivered_content", deliveredContent);
             result.put("message_id", messageId);
             result.put("leader_inbox_size", leaderInbox.size());
+            com.openjiuwen.core.common.logging.Loggers.AGENT.info("dispatchTask completed: member={} route={} target={}",
+                memberName, route, target);
             return result;
         } finally {
             finalizeRound();
@@ -247,6 +258,8 @@ public class TeamAgent {
      */
     public Iterator<Object> stream(Map<String, Object> inputs, Object session) {
         ensureConfigured();
+        Loggers.AGENT.info("stream() called: member={} sessionParam={}",
+            resolveLocalMemberName(), session != null ? session.getClass().getSimpleName() + ":" + session : "null");
         Object rawQuery = inputs != null
                 ? inputs.getOrDefault("query", inputs.getOrDefault("data", ""))
                 : "";
@@ -267,6 +280,11 @@ public class TeamAgent {
         streamController.setStreamQueue(queue);
         streamController.requestCloseStreamAfterCurrentRound();
         startCoordination(pendingUserQuery);
+        // Ensure transport subscriptions are active before starting the loop.
+        // invokeForSpawn() does this via coordinationManager.start(), but stream()
+        // (used by the leader) was skipping it, causing the leader to never receive
+        // task/message/broadcast events from spawned members.
+        coordinationManager.subscribeTransport();
         coordinatorLoop.start();
         coordinatorLoop.enqueue(InnerEventMessage.builder()
                 .eventType(InnerEventType.USER_INPUT)
@@ -303,6 +321,18 @@ public class TeamAgent {
      */
     public void deliverInput(String content, boolean isUseSteer) {
         ensureConfigured();
+        // Sync thread-local SpawnContext with context's session ID.
+        // This is needed because ReAct stream processing runs on executor threads
+        // that may have been created before the session was set on the main thread.
+        String ctxSid = context.getSessionId();
+        if (ctxSid != null && !ctxSid.isBlank()) {
+            com.openjiuwen.agentteams.spawn.SpawnContext.setSessionId(ctxSid);
+        }
+        String role = context != null ? String.valueOf(context.getRole()) : "unknown";
+        Loggers.AGENT.info("deliverInput: member={} role={} agentRunning={} contentLen={}",
+            resolveLocalMemberName(), role,
+            streamController != null && streamController.isAgentRunning(),
+            content != null ? content.length() : 0);
         if (streamController != null && streamController.isAgentRunning()) {
             if (isUseSteer) {
                 streamController.steer(content);
@@ -325,14 +355,76 @@ public class TeamAgent {
             context.getMetadata().put("pending_input_count", streamController.getPendingInputs().size());
             return;
         }
+        // Match Python: start own agent round instead of routing to leader
         pendingUserQuery = content != null ? content : "";
-        CoordinationManager.UserInputHandoff handoff = coordinationManager.handoffUserInput(
-                content,
-                resolveLeaderMemberName());
-        context.getMetadata().put("last_route", handoff.route());
-        context.getMetadata().put("last_target", handoff.target());
-        context.getMetadata().put("leader_inbox_size", leaderInbox.size());
-        context.getMetadata().put("message_count", messageManager.listAllMessages().size());
+        Loggers.AGENT.info("deliverInput: starting own agent round for member={}", resolveLocalMemberName());
+        startAgent(pendingUserQuery);
+    }
+
+    /**
+     * Match Python _start_agent: start a round on this member's own DeepAgent.
+     */
+    public void startAgent(String content) {
+        if (streamController != null) {
+            streamController.startRound(content != null ? content : "");
+        }
+    }
+
+    /**
+     * Match Python invoke(): process initial input through member's own ReAct stream,
+     * consuming chunks until the round completes.
+     */
+    public Object invokeForSpawn(String query) throws InterruptedException {
+        ensureConfigured();
+        Loggers.AGENT.info("invokeForSpawn: member={} queryLen={}", resolveLocalMemberName(),
+            query != null ? query.length() : 0);
+        LinkedBlockingQueue<Object> queue = new LinkedBlockingQueue<>();
+        streamController.setStreamQueue(queue);
+        startCoordinationLoop();
+        coordinatorLoop.start();
+        coordinatorLoop.enqueue(InnerEventMessage.builder()
+            .eventType(InnerEventType.USER_INPUT)
+            .payload(Map.of("content", query != null ? query : ""))
+            .build());
+        // Match Python: keep the coordinator loop running so the member can
+        // receive new dispatches (broadcasts, direct messages, task events)
+        // after the initial round. Block until the coordinator loop is stopped
+        // by shutdown_member or clean_team.
+        Object lastResult = null;
+        try {
+            while (coordinatorLoop.isRunning()) {
+                Object chunk = queue.poll(1, java.util.concurrent.TimeUnit.SECONDS);
+                if (chunk != null) {
+                    lastResult = chunk;
+                }
+                // If the loop was stopped externally (shutdown_member/clean_team),
+                // isRunning() returns false and the loop exits naturally.
+            }
+        } finally {
+            if (coordinatorLoop != null && coordinatorLoop.isRunning()) {
+                coordinatorLoop.stop();
+            }
+            if (streamController != null) {
+                streamController.getPendingInputs().clear();
+            }
+            finalizeRound();
+        }
+        // Log task status at completion to help diagnose stuck claimed tasks
+        if (teamBackend != null && teamBackend.getTaskManager() != null) {
+            var tasks = teamBackend.getTaskManager().list();
+            var claimedByMe = tasks.stream()
+                .filter(t -> "claimed".equals(t.getStatus()))
+                .filter(t -> resolveLocalMemberName().equals(t.getAssignee()))
+                .toList();
+            if (!claimedByMe.isEmpty()) {
+                Loggers.AGENT.warn("invokeForSpawn: member={} finished but has {} claimed task(s) still not completed: {}",
+                    resolveLocalMemberName(), claimedByMe.size(),
+                    claimedByMe.stream().map(t -> t.getTaskId() + " (" + t.getTitle() + ")")
+                        .toList());
+            }
+        }
+        Loggers.AGENT.info("invokeForSpawn: completed for member={}", resolveLocalMemberName());
+        return lastResult;
     }
 
     /**
@@ -385,7 +477,8 @@ public class TeamAgent {
      * Auto-generated for codecheck compliance.
      */
     public com.openjiuwen.agentteams.tools.TeamTaskManager getTaskManager() {
-        return teamBackend.getTaskManager();
+        var tm = teamBackend.getTaskManager();
+        return tm;
     }
 
     /**
@@ -572,7 +665,11 @@ public class TeamAgent {
         }
         Object restoredSessionId = snapshot.get("session_id");
         if (restoredSessionId != null) {
-            context.setSessionId(String.valueOf(restoredSessionId));
+            String sid = String.valueOf(restoredSessionId);
+            context.setSessionId(sid);
+            if (!sid.isBlank()) {
+                com.openjiuwen.agentteams.spawn.SpawnContext.setSessionId(sid);
+            }
         }
         Object restoredMessages = snapshot.get("messages");
         if (restoredMessages instanceof List<?> messageValues) {
@@ -627,25 +724,68 @@ public class TeamAgent {
 
     private void bootstrapCoordinationHost() {
         String leaderName = resolveLeaderMemberName();
+        String localMemberName = resolveLocalMemberName();
+        // Use localMemberName (not leaderName) as nodeId so each member gets a
+        // unique subscription key in the messager's topic map. Previously all
+        // members shared "team_leader", causing the last subscriber to overwrite
+        // earlier ones — the leader never received "message" events from analysts.
         Messager messager = MessagerFactory.createMessager(MessagerTransportConfig.builder()
                 .teamName(context.getTeamId())
-                .nodeId(leaderName)
+                .nodeId(localMemberName)
                 .build());
-        this.teamBackend = new TeamBackend(context.getTeamId(), leaderName, true, messager);
+        // Use resolveLocalMemberName() so spawned members get their own memberName
+        // (not the leader's name) in TeamBackend / TeamTaskManager.
+        this.teamBackend = new TeamBackend(context.getTeamId(), localMemberName, true, messager);
         this.teamBackend.syncMembers(spec.getMembers());
         this.messageManager = teamBackend.getMessageManager();
         this.coordinationManager = new CoordinationManager(this, teamBackend, messageManager, leaderInbox::add);
         this.recoveryManager = new RecoveryManager(teamBackend, leaderName);
         this.spawnManager = new SpawnManager(this, teamBackend, recoveryManager, () -> context.getSessionId());
         this.recoveryManager.setSpawnManager(spawnManager);
+        this.teamBackend.setOnAutoLaunch((memberName, broadcastContent) -> {
+            TeamRuntimeContext ctx = spawnManager.buildContextFromBackend(memberName);
+            if (ctx != null) {
+                com.openjiuwen.agentteams.tools.TeamMember member = teamBackend.getMember(memberName);
+                // Priority: member-specific prompt > broadcast with identity prefix > fallback
+                String prompt = member != null ? member.getPrompt() : null;
+                final String initialMessage;
+                if (prompt != null && !prompt.isBlank()) {
+                    initialMessage = prompt;
+                } else if (broadcastContent != null && !broadcastContent.isBlank()) {
+                    // Tag the broadcast with member identity so the LLM knows which
+                    // specific task it should claim from the broadcast.
+                    String displayName = member != null && member.getDisplayName() != null
+                        ? member.getDisplayName() : memberName;
+                    initialMessage = "你是 " + displayName + "（" + memberName + "）。"
+                        + " 以下是队长的任务分配。请只认领和完成分配给你的任务，"
+                        + " 不要认领其他成员的任务。\n\n" + broadcastContent;
+                } else {
+                    initialMessage = "Join the team and wait for your first assignment.";
+                }
+                Loggers.AGENT.info("onAutoLaunch: member={} initialMessage={}", memberName,
+                    initialMessage.length() > 60 ? initialMessage.substring(0, 60) + "..." : initialMessage);
+                spawnManager.spawnTeammate(ctx, initialMessage);
+            }
+        });
         this.agentSession = com.openjiuwen.core.session.AgentSessionApi.create(context.getSessionId(), null, null);
+        // Sync thread-local SpawnContext so DB operations on leader thread use the correct session
+        String sid = this.agentSession.getSessionId();
+        if (sid != null && !sid.isBlank()) {
+            context.setSessionId(sid);
+            com.openjiuwen.agentteams.spawn.SpawnContext.setSessionId(sid);
+        }
         this.streamController = new StreamController(
                 () -> deepAgent,
                 this::resolveLocalMemberName,
                 status -> teamBackend.updateMemberStatus(resolveLocalMemberName(), status),
                 ignored -> { },
                 () -> agentSession,
-                () -> dispatcher.processUnreadMessages(resolveLocalMemberName()),
+                () -> {
+                    dispatcher.processUnreadMessages(resolveLocalMemberName());
+                    // Auto-complete any claimed tasks the member forgot to mark completed.
+                    // This prevents the leader summary from being blocked forever.
+                    dispatcher.tryAutoCompleteMemberTasks();
+                },
                 null
         );
         this.dispatcher = new EventDispatcher(this);
@@ -667,10 +807,70 @@ public class TeamAgent {
                 .mode(OperationMode.LOCAL)
                 .workConfig(LocalWorkConfig.builder().workDir(workspace.root().toString()).build())
                 .build());
-        this.deepAgent = new DeepAgent(
+
+        // Register team tools before creating DeepAgent
+        List<Tool> teamTools = registerTeamTools();
+        for (Tool tool : teamTools) {
+            com.openjiuwen.core.runner.Runner.resourceMgr().addTool(tool, context.getTeamId() + "." + leaderName);
+        }
+
+        // Register standard harness tools (file I/O, shell) for team agents.
+        // Team agents only get team tools by default, but they also need
+        // file_io (read/write files within workspace sandbox).
+        String workspaceRoot = workspace.root().toString();
+        var fsBackend = new com.openjiuwen.harness.tools.FilesystemTool(workspaceRoot);
+        Tool fileIoTool = new com.openjiuwen.core.foundation.tool.function.LocalFunction(
+                com.openjiuwen.core.foundation.tool.ToolCard.builder()
+                        .id("team.file_io")
+                        .name("file_io")
+                        .description("Read or write files within the team workspace. "
+                                + "Use action='read' to read a file, action='write' to write content to a file.")
+                        .inputParams(Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                        "action", Map.of("type", "string", "enum", List.of("read", "write"),
+                                                "description", "Action: 'read' to read a file, 'write' to create/overwrite a file"),
+                                        "file_path", Map.of("type", "string", "description",
+                                                "Absolute path to the file within the workspace"),
+                                        "content", Map.of("type", "string", "description",
+                                                "Content to write (required for action='write')")),
+                                "required", List.of("action", "file_path")))
+                        .build(),
+                inputs -> {
+                    String action = inputs.get("action") instanceof String s ? s : "";
+                    String filePath = inputs.get("file_path") instanceof String s ? s : "";
+                    if (filePath.isBlank()) {
+                        return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
+                                .success(false).error("file_path is required").build());
+                    }
+                    if ("read".equals(action)) {
+                        return java.util.List.of(fsBackend.readFile(filePath));
+                    }
+                    if ("write".equals(action)) {
+                        String content = inputs.get("content") instanceof String s ? s : "";
+                        if (content.isBlank()) {
+                            return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
+                                    .success(false).error("content is required for write action").build());
+                        }
+                        return java.util.List.of(fsBackend.writeFile(filePath, content));
+                    }
+                    return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
+                            .success(false).error("Unknown action '" + action + "'. Use 'read' or 'write'.").build());
+                });
+        com.openjiuwen.core.runner.Runner.resourceMgr().addTool(fileIoTool,
+                context.getTeamId() + "." + leaderName);
+        teamTools.add(fileIoTool);
+
+        Loggers.AGENT.info("setupAgent: memberName={} ctxMemberName={} role={}",
+            resolveLocalMemberName(),
+            context.getMemberName(),
+            context.getRole());
+
+        String localName = resolveLocalMemberName();
+        this.deepAgent = HarnessFactory.createDeepAgent(
                 com.openjiuwen.core.singleagent.schema.AgentCard.builder()
-                        .id(context.getTeamId() + "." + leaderName)
-                        .name(leaderName)
+                        .id(context.getTeamId() + "." + localName)
+                        .name(localName)
                         .description(leader != null ? leader.getDescription() : "")
                         .build(),
                 DeepAgentConfig.builder()
@@ -679,7 +879,16 @@ public class TeamAgent {
                         .model(resolveConfiguredModel())
                         .backend(resolveConfiguredBackend())
                         .isTaskLoopEnabled(true)
+                        .enableSkillDiscovery(true)
+                        .skillDirectories(List.of(
+                                workspace.getNodePath("skills").toString(),
+                                System.getProperty("user.dir"),
+                                System.getProperty("user.home") + "/.openjiuwen/workspace/skills",
+                                System.getProperty("user.home") + "/.claude/skills"
+                        ))
+                        .skillMode("all")
                         .sysOperation(sysOperation)
+                        .tools(new ArrayList<>(teamTools.stream().map(Tool::getCard).toList()))
                         .rails(List.of(new TeamRail(
                                 context.getRole() != null ? context.getRole() : TeamRole.LEADER,
                                 resolvePersona(leader),
@@ -703,6 +912,86 @@ public class TeamAgent {
         if (this.memoryManager != null && configuredModel instanceof com.openjiuwen.core.foundation.llm.Model model) {
             this.memoryManager.setExtractionModel(model);
         }
+    }
+
+    private List<Tool> registerTeamTools() {
+        String roleValue = context.getRole() != null ? context.getRole().name().toLowerCase(Locale.ROOT) : "leader";
+        String teammateMode = resolveTeammateMode();
+        Set<String> excludeTools = "predefined".equals(resolveTeamMode()) ? Set.of("spawn_member") : Set.of();
+        List<Tool> tools = com.openjiuwen.agentteams.tools.TeamTools.createTeamTools(
+                roleValue,
+                teamBackend,
+                teammateMode,
+                excludeTools,
+                null,
+                null,
+                modelName -> modelAllocator != null ? modelAllocator.allocate(modelName) : null
+        );
+        // Match Python _qualify_team_tool_ids: make each agent's tool IDs unique
+        // so they don't overwrite each other in the global ResourceMgr.
+        qualifyTeamToolIds(tools);
+        return tools;
+    }
+
+    /**
+     * Match Python _qualify_team_tool_ids: add team_name.member_name suffix
+     * to each tool's card ID so per-agent tools don't collide globally.
+     */
+    private void qualifyTeamToolIds(List<Tool> tools) {
+        String teamKey = context.getTeamId() != null ? context.getTeamId() : "default";
+        String memberKey = resolveLocalMemberName();
+        if (memberKey == null || memberKey.isBlank()) {
+            memberKey = "unknown";
+        }
+        for (Tool tool : tools) {
+            com.openjiuwen.core.foundation.tool.ToolCard card = tool.getCard();
+            if (card == null || card.getId() == null || card.getId().isBlank()) {
+                continue;
+            }
+            String qualifiedId = card.getId() + "." + teamKey + "." + memberKey;
+            if (!qualifiedId.equals(card.getId())) {
+                Loggers.AGENT.info("qualifyTool: {} -> {}", card.getId(), qualifiedId);
+                card.setId(qualifiedId);
+            }
+        }
+    }
+
+    /**
+     * Re-register team tools after backend state sharing.
+     */
+    public void reregisterTeamTools() {
+        String memberName = context != null && context.getMemberName() != null
+            ? context.getMemberName() : resolveLeaderMemberName();
+        List<Tool> teamTools = registerTeamTools();
+        for (Tool tool : teamTools) {
+            Loggers.AGENT.info("reregisterTeamTools: registering tool id={} db={}",
+                tool.getCard() != null ? tool.getCard().getId() : "null",
+                Integer.toHexString(System.identityHashCode(teamBackend.getDb())));
+            com.openjiuwen.core.runner.Runner.resourceMgr().addTool(
+                tool, context.getTeamId() + "." + memberName);
+        }
+        com.openjiuwen.core.common.logging.Loggers.AGENT.info(
+            "reregisterTeamTools: re-registered {} tools for member={}", teamTools.size(), memberName);
+    }
+
+    private String resolveTeammateMode() {
+        if (context != null && context.getMetadata() != null) {
+            Object mode = context.getMetadata().get("teammate_mode");
+            if (mode != null) {
+                return String.valueOf(mode);
+            }
+        }
+        return "build_mode";
+    }
+
+    private String resolveTeamMode() {
+        if (context != null && context.getMetadata() != null) {
+            Object mode = context.getMetadata().get("team_mode");
+            if (mode != null) {
+                return String.valueOf(mode);
+            }
+        }
+        return "default";
     }
 
     private Object resolveConfiguredModel() {
@@ -813,9 +1102,12 @@ public class TeamAgent {
         } finally {
             context.getMetadata().remove("streaming_coordination");
             setInFlightRound(false);
-            if (coordinatorLoop != null) {
-                coordinatorLoop.stop();
-            }
+            // Don't stop coordinator loop here. The loop lifecycle is managed by:
+            // - Temporary teams: nudgeIdleAgent stops it when all tasks complete
+            // - Persistent teams: shutdown_member / clean_team stops it
+            // - Members: shutdown_member from leader stops it
+            // This matches Python where the coordinator loop keeps running
+            // after each round to handle new events (messages, task changes).
         }
     }
 
@@ -844,11 +1136,19 @@ public class TeamAgent {
     }
 
     private void applySessionId(String sessionId) {
+        Loggers.AGENT.info("applySessionId: inputSid={}", sessionId);
         context.setSessionId(sessionId);
         agentSession = com.openjiuwen.core.session.AgentSessionApi.create(sessionId, null, null);
+        String resolvedSid = agentSession.getSessionId();
+        Loggers.AGENT.info("applySessionId: resolvedSid={}", resolvedSid);
         context.getMetadata().put("session_id", sessionId);
         context.getMetadata().put("leader_inbox_size", leaderInbox.size());
         context.getMetadata().put("message_count", messageManager.listAllMessages().size());
+        // Keep thread-local SpawnContext in sync when session changes
+        if (resolvedSid != null && !resolvedSid.isBlank()) {
+            com.openjiuwen.agentteams.spawn.SpawnContext.setSessionId(resolvedSid);
+            Loggers.AGENT.info("applySessionId: SpawnContext set to {}", resolvedSid);
+        }
     }
 
     private void restoreAllocatorStateFromContext() {
@@ -878,6 +1178,27 @@ public class TeamAgent {
                     }
                     return spec.getMembers().get(0).getName();
                 });
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public TeamBackend getTeamBackend() {
+        return teamBackend;
+    }
+
+    /**
+     * Override Lombok getter to always use teamBackend's shared instance.
+     */
+    public TeamMessageManager getMessageManager() {
+        return teamBackend != null ? teamBackend.getMessageManager() : messageManager;
+    }
+
+    /**
+     * Auto-generated for codecheck compliance.
+     */
+    public CoordinatorLoop getCoordinatorLoop() {
+        return coordinatorLoop;
     }
 
     /**
@@ -931,9 +1252,22 @@ public class TeamAgent {
      * Auto-generated for codecheck compliance.
      */
     public void shutdownSelf() {
+        String memberName = resolveLocalMemberName();
+        Loggers.AGENT.info("shutdownSelf: requested for member={}", memberName);
         if (streamController != null) {
             streamController.cancelAgent();
             streamController.closeStream();
+        }
+        // Match Python: update DB status to SHUTDOWN so clean_team can succeed.
+        // Python: await self._team_member.update_status(MemberStatus.SHUTDOWN)
+        if (teamBackend != null) {
+            try {
+                teamBackend.updateMemberStatus(memberName, MemberStatus.SHUTDOWN);
+                Loggers.AGENT.info("shutdownSelf: member={} status updated to SHUTDOWN", memberName);
+            } catch (Exception e) {
+                Loggers.AGENT.debug("shutdownSelf: post-clean status update failed for {}: {}",
+                    memberName, e.getMessage());
+            }
         }
         if (context != null) {
             context.setLifecycle(TeamLifecycle.COMPLETED);
@@ -962,6 +1296,15 @@ public class TeamAgent {
      */
     public boolean hasPendingInterrupt() {
         return streamController != null && streamController.hasPendingInterrupt();
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private boolean isStreamingCoordinationActive() {

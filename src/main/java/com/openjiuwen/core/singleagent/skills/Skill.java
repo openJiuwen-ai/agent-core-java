@@ -21,6 +21,8 @@ public class Skill {
     private String name;
     private String description;
     private String directory;
+    @Builder.Default
+    private long updateAt = 0L;
 
     @Override
     /**

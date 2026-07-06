@@ -86,8 +86,10 @@ public final class ParseLlmResponse {
             }
         }
         try {
-            int sourceId = Integer.parseInt(String.valueOf(relationResponse.get("source_id"))) - 1;
-            int targetId = Integer.parseInt(String.valueOf(relationResponse.get("target_id"))) - 1;
+            int sourceId = Integer.parseInt(String.valueOf(
+                    firstPresent(relationResponse, List.of("source_id", "sourceId")))) - 1;
+            int targetId = Integer.parseInt(String.valueOf(
+                    firstPresent(relationResponse, List.of("target_id", "targetId")))) - 1;
             if (sourceId < 0 || targetId < 0) {
                 throw new IllegalArgumentException(
                         "relation source_id and target_id must be valid 1-based entity indices");
@@ -99,8 +101,8 @@ public final class ParseLlmResponse {
             relation.setObjType(relType);
             relation.setName(String.valueOf(relationResponse.getOrDefault("name", "RELATION")));
             relation.setContent(String.valueOf(relationResponse.getOrDefault("fact", relation.getName())));
-            int[] since = parseIso(String.valueOf(relationResponse.getOrDefault("valid_since", "")));
-            int[] until = parseIso(String.valueOf(relationResponse.getOrDefault("valid_until", "")));
+            int[] since = parseIso(stringValue(relationResponse, List.of("valid_since", "validSince")));
+            int[] until = parseIso(stringValue(relationResponse, List.of("valid_until", "validUntil")));
             relation.setValidSince(since[0]);
             relation.setOffsetSince(since[1]);
             relation.setValidUntil(until[0]);
@@ -364,7 +366,7 @@ public final class ParseLlmResponse {
                                            Entity targetEntity,
                                            int numEntities,
                                            int numExisting) {
-        Object duplicateIdsObj = dup.get("duplicate_ids");
+        Object duplicateIdsObj = firstPresent(dup, List.of("duplicate_ids", "duplicateIds"));
         if (!(duplicateIdsObj instanceof List<?> duplicateIds)) {
             return;
         }

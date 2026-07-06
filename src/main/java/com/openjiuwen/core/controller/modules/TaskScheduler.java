@@ -230,30 +230,30 @@ public class TaskScheduler {
         while (chunks.hasNext()) {
             ControllerOutputChunk chunk = chunks.next();
 
+            // Write to session stream
+            session.writeStream(chunk);
+
             // Check output type
             if (chunk.getControllerPayload() != null && chunk.getControllerPayload().getType() != null) {
                 String payloadType = chunk.getControllerPayload().getType();
 
                 if (EventType.TASK_COMPLETION.getValue().equals(payloadType)) {
-                    session.writeStream(chunk);
                     Loggers.CONTROLLER.info("Task {} completed", taskId);
                     taskManager.updateTaskStatus(taskId, TaskStatus.COMPLETED);
                     publishTaskEvent(taskId, session, chunk);
                     break;
                 } else if (EventType.TASK_INTERACTION.getValue().equals(payloadType)) {
-                    session.writeStream(chunk);
                     Loggers.CONTROLLER.info("Task {} requires interaction", taskId);
                     taskManager.updateTaskStatus(taskId, TaskStatus.INPUT_REQUIRED);
                     publishTaskEvent(taskId, session, chunk);
                     break;
                 } else if (EventType.TASK_FAILED.getValue().equals(payloadType)) {
-                    session.writeStream(chunk);
                     Loggers.CONTROLLER.error("Task {} failed", taskId);
                     taskManager.updateTaskStatus(taskId, TaskStatus.FAILED);
                     publishTaskEvent(taskId, session, chunk);
                     break;
                 }
-                // "processing" -> continue, skip writeStream
+                // "processing" -> continue
             }
         }
     }

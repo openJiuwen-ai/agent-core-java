@@ -8,14 +8,10 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpClient;
+import com.openjiuwen.core.foundation.tool.mcp.McpClientFactory;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpTool;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
-import com.openjiuwen.core.foundation.tool.mcp.client.OpenApiClient;
-import com.openjiuwen.core.foundation.tool.mcp.client.PlaywrightClient;
-import com.openjiuwen.core.foundation.tool.mcp.client.SseClient;
-import com.openjiuwen.core.foundation.tool.mcp.client.StdioClient;
-import com.openjiuwen.core.foundation.tool.mcp.client.StreamableHttpClient;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,14 +20,18 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manager for Tool instances, MCP servers, and SysOperation-related tools.
  * <p>
+ * Provides registration, lookup, and lifecycle management for tools and MCP servers.
+ * MCP client creation is delegated to {@link McpClientFactory} for SPI-based transport selection.
+ * <p>
  * Mirrors Python's {@code ToolMgr} in {@code resources_manager/tool_manager.py}.
+ *
+ * @since 0.1.12
  */
 public class ToolMgr {
 
@@ -43,7 +43,11 @@ public class ToolMgr {
     private final Map<String, SysOpToolResource> sysOpResources = new HashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Registers a tool with the given identifier.
+     *
+     * @param toolId the unique identifier for the tool
+     * @param tool the tool instance to register
+     * @throws IllegalArgumentException if a tool with the same identifier already exists
      */
     public void addTool(String toolId, Tool tool) {
         if (tools.containsKey(toolId)) {
@@ -53,14 +57,21 @@ public class ToolMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Retrieves a tool by its identifier.
+     *
+     * @param toolId the unique identifier of the tool
+     * @return the tool instance, or {@code null} if not found
      */
     public Tool getTool(String toolId) {
         return tools.get(toolId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Retrieves an MCP tool by name and server identifier.
+     *
+     * @param toolName the name of the MCP tool
+     * @param serverId the identifier of the MCP server
+     * @return the tool instance, or {@code null} if the server or tool is not found
      */
     public Tool getMcpTool(String toolName, String serverId) {
         McpServerResource resource = mcpServerResources.get(serverId);
@@ -72,7 +83,10 @@ public class ToolMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Retrieves all tools belonging to the specified MCP server.
+     *
+     * @param serverId the identifier of the MCP server
+     * @return a list of tools for the server, or {@code null} if the server is not found
      */
     public List<Tool> getMcpTools(String serverId) {
         McpServerResource resource = mcpServerResources.get(serverId);
@@ -90,7 +104,12 @@ public class ToolMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Lists resources exposed by the specified MCP server.
+     *
+     * @param serverId the identifier of the MCP server
+     * @return a list of resources from the server
+     * @throws IllegalArgumentException if the server is not found
+     * @throws Exception if listing resources from the server fails
      */
     public List<Object> listMcpResources(String serverId) throws Exception {
         McpServerResource resource = mcpServerResources.get(serverId);
@@ -101,7 +120,13 @@ public class ToolMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Reads a resource from the specified MCP server by URI.
+     *
+     * @param serverId the identifier of the MCP server
+     * @param uri the URI of the resource to read
+     * @return a list of resource contents
+     * @throws IllegalArgumentException if the server is not found
+     * @throws Exception if reading the resource from the server fails
      */
     public List<Object> readMcpResource(String serverId, String uri) throws Exception {
         McpServerResource resource = mcpServerResources.get(serverId);
@@ -112,7 +137,13 @@ public class ToolMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Retrieves the MCP tool identifier for a given server and tool name.
+     * If {@code toolName} is {@code null}, returns all tool identifiers for the server.
+     *
+     * @param serverId the identifier of the MCP server
+     * @param toolName the name of the tool, or {@code null} to retrieve all tool identifiers
+     * @return the generated tool identifier, a list of all tool identifiers,
+     *         or {@code null} if the server is not found
      */
     public Object getMcpToolId(String serverId, String toolName) {
         McpServerResource resource = mcpServerResources.get(serverId);
@@ -126,21 +157,35 @@ public class ToolMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Removes and returns the tool associated with the given identifier.
+     *
+     * @param toolId the unique identifier of the tool to remove
+     * @return the removed tool instance, or {@code null} if no tool was found
      */
     public Tool removeTool(String toolId) {
         return tools.remove(toolId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Generates a composite identifier for an MCP tool based on server and tool information.
+     *
+     * @param serverId the identifier of the MCP server
+     * @param serverName the name of the MCP server
+     * @param toolName the name of the tool
+     * @return the generated composite tool identifier
      */
     public static String generateMcpToolId(String serverId, String serverName, String toolName) {
         return serverId + "." + serverName + "." + toolName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Adds an MCP tool server and connects to it, registering all discovered tools.
+     *
+     * @param serverConfig the configuration for the MCP server
+     * @param expiryTime the time in seconds after which the tool list should be refreshed,
+     *                   or {@code null} for no expiry
+     * @return a list of tool cards discovered from the server
+     * @throws Exception if the server already exists, connection fails, or tool discovery fails
      */
     public List<McpToolCard> addToolServer(McpServerConfig serverConfig, Double expiryTime) throws Exception {
         if (mcpServerResources.containsKey(serverConfig.getServerId())) {
@@ -167,26 +212,26 @@ public class ToolMgr {
     }
 
     private McpClient createClient(McpServerConfig config) {
-        String clientType = config.getClientType() == null ? "sse" : config.getClientType().toLowerCase(Locale.ROOT);
-        return switch (clientType) {
-            case "sse" -> new SseClient(config);
-            case "stdio" -> new StdioClient(config);
-            case "openapi" -> new OpenApiClient(config);
-            case "streamable_http", "streamable-http" -> new StreamableHttpClient(config);
-            case "playwright" -> new PlaywrightClient(config);
-            default -> throw new UnsupportedOperationException("Unsupported MCP client type: " + config.getClientType());
-        };
+        return McpClientFactory.create(config);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Retrieves all server identifiers associated with the given server name.
+     *
+     * @param serverName the name of the MCP server
+     * @return a list of server identifiers, or an empty list if none are found
      */
     public List<String> getMcpServerIds(String serverName) {
         return mcpServerNameToIds.getOrDefault(serverName, Collections.emptyList());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Removes an MCP tool server and disconnects its client, cleaning up all associated tools.
+     *
+     * @param serverId the identifier of the MCP server to remove
+     * @param ignoreNotExist whether to silently ignore a non-existent server
+     * @return a list of tool identifiers that were removed
+     * @throws Exception if the server does not exist and {@code ignoreNotExist} is {@code false}
      */
     public List<String> removeToolServer(String serverId, boolean ignoreNotExist) throws Exception {
         McpServerResource resource = mcpServerResources.remove(serverId);
@@ -215,14 +260,21 @@ public class ToolMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Removes an MCP tool server, silently ignoring if it does not exist.
+     *
+     * @param serverId the identifier of the MCP server to remove
+     * @return a list of tool identifiers that were removed
+     * @throws Exception if disconnecting from the server fails
      */
     public List<String> removeToolServer(String serverId) throws Exception {
         return removeToolServer(serverId, true);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Associates a list of tool identifiers with a system operation.
+     *
+     * @param sysOpId the identifier of the system operation
+     * @param toolIds the list of tool identifiers to associate
      */
     public void addSysOperationTools(String sysOpId, List<String> toolIds) {
         if (toolIds == null || toolIds.isEmpty()) {
@@ -233,7 +285,10 @@ public class ToolMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Removes the system operation and returns its associated tool identifiers.
+     *
+     * @param sysOpId the identifier of the system operation to remove
+     * @return a list of tool identifiers that were associated, or an empty list if not found
      */
     public List<String> removeSysOperationTools(String sysOpId) {
         SysOpToolResource resource = sysOpResources.remove(sysOpId);
@@ -241,7 +296,10 @@ public class ToolMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Retrieves the tool identifiers associated with the given system operation.
+     *
+     * @param sysOpId the identifier of the system operation
+     * @return a list of tool identifiers, or an empty list if the operation is not found
      */
     public List<String> getSysOperationToolIds(String sysOpId) {
         SysOpToolResource resource = sysOpResources.get(sysOpId);
@@ -249,7 +307,13 @@ public class ToolMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Refreshes the tool list for the specified MCP server if expired or forced.
+     *
+     * @param serverId the identifier of the MCP server to refresh
+     * @param skipNotExist whether to silently skip if the server does not exist
+     * @param force whether to force a refresh regardless of expiry
+     * @return a list of refreshed tool cards, or an empty list if no refresh was needed
+     * @throws Exception if the server does not exist and {@code skipNotExist} is {@code false}, or if refresh fails
      */
     public List<McpToolCard> refreshToolServer(String serverId, boolean skipNotExist, boolean force)
             throws Exception {
@@ -274,7 +338,7 @@ public class ToolMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Releases all resources by disconnecting MCP servers and clearing all managed collections.
      */
     public void release() {
         for (McpServerResource resource : mcpServerResources.values()) {
@@ -329,11 +393,11 @@ public class ToolMgr {
     // ========== Inner record types ==========
 
     /**
- * Public record McpServerResource used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record McpServerResource(
+     * Public record McpServerResource used by the Java parity implementation.
+     *
+     * @since 1.0
+     */
+    public record McpServerResource(
             McpServerConfig config,
             McpClient client,
             List<String> toolIds,
@@ -343,11 +407,11 @@ public record McpServerResource(
     }
 
     /**
- * Public record SysOpToolResource used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record SysOpToolResource(
+     * Public record SysOpToolResource used by the Java parity implementation.
+     *
+     * @since 1.0
+     */
+    public record SysOpToolResource(
             String sysOpId,
             List<String> toolIds,
             long lastUpdateTime

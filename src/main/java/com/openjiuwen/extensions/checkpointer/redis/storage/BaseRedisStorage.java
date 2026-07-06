@@ -74,7 +74,7 @@ public abstract class BaseRedisStorage {
         try {
             return serializer.dumpsTyped(state);
         } catch (RuntimeException e) {
-            log.warn("Failed to serialize Redis state: {}", e.getMessage());
+            log.warn("Failed to serialize Redis state: {}", rootCauseMessage(e));
             log.warn("Redis state diagnostic: {}", describeState(state));
             return null;
         }
@@ -173,6 +173,14 @@ public abstract class BaseRedisStorage {
             return runtimeException;
         }
         return new RuntimeException(throwable);
+    }
+
+    private String rootCauseMessage(Throwable throwable) {
+        Throwable rootCause = throwable;
+        while (rootCause.getCause() != null && rootCause.getCause() != rootCause) {
+            rootCause = rootCause.getCause();
+        }
+        return rootCause.getClass().getSimpleName() + ": " + rootCause.getMessage();
     }
 
     /**

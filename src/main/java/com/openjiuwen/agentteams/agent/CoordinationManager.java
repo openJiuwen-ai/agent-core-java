@@ -14,6 +14,7 @@ import com.openjiuwen.agentteams.schema.status.MemberStatus;
 import com.openjiuwen.agentteams.schema.team.TeamLifecycle;
 import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.agentteams.tools.TeamMessageManager;
+import com.openjiuwen.core.common.logging.Loggers;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -59,6 +60,9 @@ public class CoordinationManager {
 
   /** Auto-generated for codecheck compliance. */
   public void start() {
+    String who = host != null ? host.resolveLocalMemberName() : "null";
+    Loggers.AGENT.info("CoordinationManager.start() called for member={} role={}",
+        who, host != null && host.getContext() != null ? host.getContext().getRole() : "?");
     if (host == null) {
       return;
     }
@@ -123,12 +127,24 @@ public class CoordinationManager {
 
   /** Auto-generated for codecheck compliance. */
   public void subscribeTransport() {
-    if (host == null
-        || host.getCoordinatorLoop() == null
-        || teamBackend.getMessager() == null
-        || !subscribedTopics.isEmpty()) {
+    String who = host != null ? host.resolveLocalMemberName() : "null";
+    if (host == null) {
+      Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP host=null for {}", who);
       return;
     }
+    if (host.getCoordinatorLoop() == null) {
+      Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP coordinatorLoop=null for {}", who);
+      return;
+    }
+    if (teamBackend.getMessager() == null) {
+      Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP messager=null for {}", who);
+      return;
+    }
+    if (!subscribedTopics.isEmpty()) {
+      Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP already subscribed for {}", who);
+      return;
+    }
+    Loggers.AGENT.info("CoordinationManager.subscribeTransport: subscribing for member={}", who);
     Messager messager = teamBackend.getMessager();
     messager
         .registerDirectMessageHandler(
@@ -221,10 +237,20 @@ public class CoordinationManager {
     }
     notifyEventListeners(event);
     String localMember = host != null ? host.resolveLocalMemberName() : null;
+    String eventType = event.getEventType();
+    // Skip events published by this member (echo suppression).
+    // Since each member now has a unique nodeId (= memberName), this correctly
+    // filters only the member's own events while letting everything else through.
     if (localMember != null && localMember.equals(event.getSenderId())) {
       return CompletableFuture.completedFuture(null);
     }
     if (host != null && host.getCoordinatorLoop() != null) {
+      // Log all transport events for visibility — previously only logged task_* and
+      // broadcast, but "message" events (from send_message) are critical for leader
+      // to receive analyst reports.
+      Loggers.AGENT.info(
+          "CoordinationManager: enqueuing event type={} senderId={} for member={}",
+          eventType, event.getSenderId(), localMember);
       host.getCoordinatorLoop().enqueue(event);
     }
     return CompletableFuture.completedFuture(null);

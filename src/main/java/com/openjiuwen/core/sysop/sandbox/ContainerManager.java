@@ -204,11 +204,10 @@ public class ContainerManager {
   }
 
   private String containerConfigHash(SandboxLauncherConfig config) {
-    return Integer.toHexString(
-        java.util.Objects.hash(
-            config.getBaseUrl(),
-            config.getGatewayUrl(),
-            config.getSandboxType(),
-            config.getExtraParams()));
+    return com.openjiuwen.core.common.utils.HashUtil.generateKey(
+        String.valueOf(config.getBaseUrl()),
+        String.valueOf(config.getGatewayUrl()),
+        String.valueOf(config.getSandboxType()),
+        String.valueOf(config.getExtraParams()));
   }
 }

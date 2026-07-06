@@ -7,6 +7,7 @@ package com.openjiuwen.core.runner;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
@@ -30,6 +31,10 @@ import com.openjiuwen.core.workflow.Workflow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
+
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Iterator;
@@ -37,7 +42,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
-import java.util.UUID;
 
 /**
  * Runner implementation class.
@@ -586,6 +590,8 @@ public class RunnerImpl {
         AgentGroupSessionApi groupSession;
         if (session instanceof AgentGroupSessionApi existingGroupSession) {
             groupSession = existingGroupSession;
+            // 复用 session 时重置 preRun/postRun CAS 守卫，否则第二轮静默跳过 checkpointer 钩子。
+            groupSession.resetRunState();
         } else if (session instanceof AgentSessionApi existingSession) {
             groupSession = AgentGroupSessionApi.create(existingSession.getSessionId(), null);
         } else {
@@ -606,6 +612,8 @@ public class RunnerImpl {
         AgentSessionApi agentSession;
         if (session instanceof AgentSessionApi existingSession) {
             agentSession = existingSession;
+            // 复用 session 时重置 preRun/postRun CAS 守卫，否则第二轮静默跳过 checkpointer 钩子。
+            agentSession.resetRunState();
         } else {
             String sessionId = resolveAgentSessionId(inputs, session);
             agentSession = AgentSessionApi.create(
@@ -713,6 +721,12 @@ public class RunnerImpl {
             }
         }
         if (bestMethod != null) {
+            // The method may be public on a package-private or non-exported
+            // class (e.g. nested test agents), in which case Method.invoke
+            // throws IllegalAccessException. setAccessible(true) bypasses the
+            // enclosing-class access check the same way getDeclaredMethods
+            // already does below.
+            bestMethod.setAccessible(true);
             return bestMethod;
         }
         for (Method method : targetClass.getDeclaredMethods()) {
@@ -794,7 +808,7 @@ public class RunnerImpl {
     }
 
     private Iterator<Object> wrapStreamingIterator(Iterator<Object> delegate, AgentSessionApi agentSession) {
-        return new Iterator<>() {
+        class CloseableStreamingIterator implements Iterator<Object>, AutoCloseable {
             private boolean postRunDone;
 
             /**
@@ -838,6 +852,79 @@ public class RunnerImpl {
                     postRunDone = true;
                 }
             }
-        };
+
+            @Override
+            public void close() throws Exception {
+                try {
+                    if (delegate instanceof AutoCloseable closeable) {
+                        closeable.close();
+                    }
+                } finally {
+                    completePostRun();
+                }
+            }
+        }
+        return new CloseableStreamingIterator();
     }
+
+    /**
+     * Reactive version of {@link #runAgent(Object, Object, Object, ModelContext, Map)}.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param envs environment values, nullable
+     * @return Mono emitting the agent result
+     */
+    public Mono<Object> runAgentAsync(Object agent, Object inputs, Object session,
+                                     ModelContext context, Map<String, Object> envs) {
+        return ReactiveAdapters.fromCallable(() -> runAgent(agent, inputs, session, context, envs));
+    }
+
+    /**
+     * Reactive version of {@link #runAgentStreaming(Object, Object, Object, ModelContext, List, Map)}.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param streamModes stream output modes
+     * @param envs environment values, nullable
+     * @return Flux emitting stream chunks
+     */
+    public Flux<Object> runAgentStreamingAsync(Object agent, Object inputs, Object session,
+                                              ModelContext context, List<StreamMode> streamModes,
+                                              Map<String, Object> envs) {
+        return deferWithSessionCleanup(
+                sessRef -> {
+                    Object agentInstance = prepareAgent(agent);
+                    AgentSessionApi sess = prepareAgentSession(agentInstance, inputs, session, streamModes);
+                    sessRef.set(sess);
+                    return ReactiveAdapters.fromAutoCloseableIterator(
+                            () -> streamAgent(agentInstance, inputs, sess, context, streamModes));
+                },
+                AgentSessionApi::postRun);
+    }
+
+    /**
+     * 流式响应式方法公共脚手架：阻塞的 setup 在 boundedElastic 线程执行；
+     * doFinally 保证 COMPLETE / ERROR / CANCEL 三种终态都触发 cleaner；
+     * AtomicReference 填补 setup 完成到内层 Flux 首次订阅之间的取消空窗。
+     */
+    private <T, S> Flux<T> deferWithSessionCleanup(
+            java.util.function.Function<java.util.concurrent.atomic.AtomicReference<S>, Flux<T>> body,
+            java.util.function.Consumer<S> cleaner) {
+        java.util.concurrent.atomic.AtomicReference<S> sessRef =
+                new java.util.concurrent.atomic.AtomicReference<>();
+        return Flux.defer(() -> body.apply(sessRef))
+                .doFinally(signal -> {
+                    S s = sessRef.getAndSet(null);
+                    if (s != null) {
+                        cleaner.accept(s);
+                    }
+                })
+                .subscribeOn(Schedulers.boundedElastic());
+    }
+
 }
