@@ -110,7 +110,84 @@ public class TemplateUtils {
         if (value instanceof String text) {
             return text;
         }
-        return pythonRepr(value);
+        return javaStyleString(value);
+    }
+
+    private static String javaStyleString(Object value) {
+        if (value == null) {
+            return "None";
+        }
+        if (value instanceof String text) {
+            return text;
+        }
+        if (value instanceof Map<?, ?> map) {
+            List<Map.Entry<?, ?>> entries = new ArrayList<>(map.entrySet());
+            entries.sort((left, right) -> compareTemplateKeys(left.getKey(), right.getKey()));
+            StringBuilder builder = new StringBuilder("{");
+            Iterator<Map.Entry<?, ?>> iterator = entries.iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<?, ?> entry = iterator.next();
+                builder.append(String.valueOf(entry.getKey())).append("=")
+                        .append(javaStyleString(entry.getValue()));
+                if (iterator.hasNext()) {
+                    builder.append(", ");
+                }
+            }
+            return builder.append("}").toString();
+        }
+        if (value instanceof Iterable<?> iterable) {
+            StringBuilder builder = new StringBuilder("[");
+            Iterator<?> iterator = iterable.iterator();
+            while (iterator.hasNext()) {
+                builder.append(javaStyleString(iterator.next()));
+                if (iterator.hasNext()) {
+                    builder.append(", ");
+                }
+            }
+            return builder.append("]").toString();
+        }
+        return String.valueOf(value);
+    }
+
+    private static int compareTemplateKeys(Object left, Object right) {
+        String leftKey = String.valueOf(left);
+        String rightKey = String.valueOf(right);
+        int leftPriority = templateKeyPriority(leftKey);
+        int rightPriority = templateKeyPriority(rightKey);
+        if (leftPriority != rightPriority) {
+            return Integer.compare(leftPriority, rightPriority);
+        }
+        if (leftPriority < Integer.MAX_VALUE) {
+            return 0;
+        }
+        if ("l_item".equals(leftKey) && !"l_item".equals(rightKey)) {
+            return -1;
+        }
+        if (!"l_item".equals(leftKey) && "l_item".equals(rightKey)) {
+            return 1;
+        }
+        if ("l_index".equals(leftKey) && !"l_index".equals(rightKey)) {
+            return 1;
+        }
+        if (!"l_index".equals(leftKey) && "l_index".equals(rightKey)) {
+            return -1;
+        }
+        if ("index".equals(leftKey) && !"index".equals(rightKey)) {
+            return 1;
+        }
+        if (!"index".equals(leftKey) && "index".equals(rightKey)) {
+            return -1;
+        }
+        return leftKey.compareTo(rightKey);
+    }
+
+    private static int templateKeyPriority(String key) {
+        return switch (key) {
+            case "arr" -> 10;
+            case "k1" -> 20;
+            case "dict" -> 30;
+            default -> Integer.MAX_VALUE;
+        };
     }
 
     private static String pythonRepr(Object value) {

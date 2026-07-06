@@ -41,6 +41,10 @@ public class AgentSession extends BaseSession {
     private final TraceAgentSpan agentSpan;
     private final CallbackManager callbackManager = new CallbackManager();
 
+    public AgentSession(String sessionId) {
+        this(sessionId, null, null, null, null);
+    }
+
     public AgentSession(String sessionId, Config config, Object card, StreamWriterManager streamWriterManager) {
         this(sessionId, config, null, card, streamWriterManager);
     }

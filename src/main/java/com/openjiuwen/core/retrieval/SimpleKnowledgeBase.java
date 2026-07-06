@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.async.FutureList;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.IndexConfig;
@@ -62,6 +63,19 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
             Retriever retriever
     ) {
         super(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient, retriever);
+    }
+
+    public SimpleKnowledgeBase(
+            KnowledgeBaseConfig config,
+            VectorStore vectorStore,
+            Embedding embedModel,
+            Parser parser,
+            Chunker chunker,
+            Indexer indexManager,
+            BaseModelClient llmClient,
+            Retriever retriever
+    ) {
+        this(config, vectorStore, embedModel, parser, chunker, null, indexManager, llmClient, retriever);
     }
 
     @Override
@@ -232,7 +246,16 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         });
     }
 
-    public static CompletableFuture<List<String>> retrieveMultiKb(
+    public static FutureList<String> retrieveMultiKb(
+            List<? extends KnowledgeBase> knowledgeBases,
+            String query,
+            RetrievalConfig config,
+            Integer topK
+    ) {
+        return FutureList.fromFuture(retrieveMultiKbAsync(knowledgeBases, query, config, topK));
+    }
+
+    public static CompletableFuture<List<String>> retrieveMultiKbAsync(
             List<? extends KnowledgeBase> knowledgeBases,
             String query,
             RetrievalConfig config,
@@ -268,7 +291,16 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         });
     }
 
-    public static CompletableFuture<List<MultiKBRetrievalResult>> retrieveMultiKbWithSource(
+    public static FutureList<MultiKBRetrievalResult> retrieveMultiKbWithSource(
+            List<? extends KnowledgeBase> knowledgeBases,
+            String query,
+            RetrievalConfig config,
+            Integer topK
+    ) {
+        return FutureList.fromFuture(retrieveMultiKbWithSourceAsync(knowledgeBases, query, config, topK));
+    }
+
+    public static CompletableFuture<List<MultiKBRetrievalResult>> retrieveMultiKbWithSourceAsync(
             List<? extends KnowledgeBase> knowledgeBases,
             String query,
             RetrievalConfig config,
@@ -407,8 +439,8 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         }
         existing.setRawScore(Math.max(existing.getRawScore(), rawScore));
         existing.setRawScoreScaled(Math.max(existing.getRawScoreScaled(), scaled));
-        LinkedHashSet<Object> kbIds = new LinkedHashSet<>(existing.getKbIds());
-        kbIds.add(kbId);
+        LinkedHashSet<String> kbIds = new LinkedHashSet<>(existing.getKbIds());
+        kbIds.add(String.valueOf(kbId));
         existing.setKbIds(sortedKbIds(kbIds));
     }
 
@@ -448,15 +480,15 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         return List.copyOf(ranked.subList(0, end));
     }
 
-    private static List<Object> sortedKbIds(LinkedHashSet<Object> kbIds) {
+    private static List<String> sortedKbIds(LinkedHashSet<String> kbIds) {
         return kbIds.stream()
                 .sorted(Comparator.comparing(value -> value == null ? "" : String.valueOf(value)))
                 .toList();
     }
 
-    private static List<Object> mutableSingleton(Object value) {
-        List<Object> values = new ArrayList<>(1);
-        values.add(value);
+    private static List<String> mutableSingleton(Object value) {
+        List<String> values = new ArrayList<>(1);
+        values.add(String.valueOf(value));
         return values;
     }
 }

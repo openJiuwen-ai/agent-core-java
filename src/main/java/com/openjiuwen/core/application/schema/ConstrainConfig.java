@@ -33,23 +33,24 @@ public class ConstrainConfig extends com.openjiuwen.core.singleagent.legacy.conf
     /**
      * Builder compatible with the 0.1.12 Lombok builder surface.
      */
-    public static final class Builder {
-        private Integer reservedMaxChatRounds;
-        private Integer maxIteration;
+    public static final class Builder extends com.openjiuwen.core.singleagent.legacy.config.ConstrainConfig.Builder {
 
         private Builder() {
         }
 
+        @Override
         public Builder reservedMaxChatRounds(Integer reservedMaxChatRounds) {
             this.reservedMaxChatRounds = reservedMaxChatRounds;
             return this;
         }
 
+        @Override
         public Builder maxIteration(Integer maxIteration) {
             this.maxIteration = maxIteration;
             return this;
         }
 
+        @Override
         public ConstrainConfig build() {
             return new ConstrainConfig(reservedMaxChatRounds, maxIteration);
         }

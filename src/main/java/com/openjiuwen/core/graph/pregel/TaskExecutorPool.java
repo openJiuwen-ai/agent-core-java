@@ -91,6 +91,8 @@ public class TaskExecutorPool {
                     commitFailure(node, graphInterrupt);
                     if (interrupt == null) {
                         interrupt = graphInterrupt;
+                    } else {
+                        interrupt = mergeInterrupts(interrupt, graphInterrupt);
                     }
                 } else {
                     @SuppressWarnings("unchecked")
@@ -172,6 +174,21 @@ public class TaskExecutorPool {
                 return new TaskOutcome(null, exception);
             }
             return new TaskOutcome(null, new RuntimeException(cause));
+        }
+    }
+
+    private GraphInterrupt mergeInterrupts(GraphInterrupt left, GraphInterrupt right) {
+        List<Object> merged = new ArrayList<>();
+        appendInterruptValue(merged, left.getValue());
+        appendInterruptValue(merged, right.getValue());
+        return new GraphInterrupt(merged);
+    }
+
+    private void appendInterruptValue(List<Object> target, Object value) {
+        if (value instanceof List<?> list) {
+            target.addAll(list);
+        } else if (value != null) {
+            target.add(value);
         }
     }
 

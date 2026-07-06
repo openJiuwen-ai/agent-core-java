@@ -4,7 +4,13 @@
 
 package com.openjiuwen.core.retrieval.vector_store;
 
+import com.openjiuwen.core.common.async.CompletableList;
+import com.openjiuwen.core.common.async.CompletableMap;
+import com.openjiuwen.core.foundation.store.BaseVectorStore;
 import com.openjiuwen.core.foundation.store.CollectionSchema;
+import com.openjiuwen.core.foundation.store.VectorSearchResult;
+import com.openjiuwen.core.memory.migration.operation.BaseOperation;
+import com.openjiuwen.core.retrieval.common.RetrievalResult;
 import com.openjiuwen.core.retrieval.common.SearchResult;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 
@@ -21,6 +27,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
@@ -30,7 +37,7 @@ import java.util.regex.Pattern;
  * <p>Mirrors Python's in-memory fallback behavior used by
  * {@code openjiuwen/core/retrieval/vector_store/chroma_store.py}.</p>
  */
-public class InMemoryVectorStore implements AutoCloseable {
+public class InMemoryVectorStore extends BaseVectorStore implements VectorStore {
 
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^\\p{IsAlphabetic}\\p{IsDigit}_]+");
     private static final double BM25_K1 = 1.5d;
@@ -114,7 +121,32 @@ public class InMemoryVectorStore implements AutoCloseable {
         backend.collectionMetadata.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
     }
 
-    public void add(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> options) {
+    @Override
+    public CompletableFuture<Void> createCollection(String collectionName, Object schema, Map<String, Object> kwargs) {
+        ensureCollection(collectionName, indexType, null, kwargs);
+        if (schema instanceof CollectionSchema collectionSchema) {
+            updateCollectionMetadata(collectionName, Map.of("schema", collectionSchema.toDict()));
+        }
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteCollection(String collectionName, Map<String, Object> kwargs) {
+        return deleteTable(collectionName);
+    }
+
+    @Override
+    public CompletableFuture<Boolean> collectionExists(String collectionName, Map<String, Object> kwargs) {
+        return tableExists(collectionName);
+    }
+
+    @Override
+    public CompletableFuture<Void> add(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> options) {
+        addSync(data, batchSize, options);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    private void addSync(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> options) {
         if (data == null || data.isEmpty()) {
             return;
         }
@@ -133,10 +165,7 @@ public class InMemoryVectorStore implements AutoCloseable {
         }
     }
 
-    public List<SearchResult> search(List<Float> queryVector,
-                                     int topK,
-                                     Map<String, Object> filters,
-                                     Map<String, Object> options) {
+    public List<SearchResult> search(List<Float> queryVector, int topK, Map<String, Object> filters, Map<String, Object> options) {
         if (queryVector == null || queryVector.isEmpty()) {
             return List.of();
         }
@@ -150,6 +179,18 @@ public class InMemoryVectorStore implements AutoCloseable {
         return toSearchResults(scored, topK);
     }
 
+    @Override
+    public CompletableFuture<List<RetrievalResult>> search(List<Double> queryVector,
+                                                           int topK,
+                                                           VectorStoreFilter filters,
+                                                           Map<String, Object> kwargs) {
+        return CompletableFuture.completedFuture(toRetrievalResults(search(
+                toFloatList(queryVector),
+                topK,
+                filterMap(filters),
+                kwargs)));
+    }
+
     public List<SearchResult> sparseSearch(String queryText,
                                            int topK,
                                            Map<String, Object> filters,
@@ -160,6 +201,18 @@ public class InMemoryVectorStore implements AutoCloseable {
             scored.add(new ScoredRecord(record, sparseScore(queryText, record.text, corpus)));
         }
         return toSearchResults(scored, topK);
+    }
+
+    @Override
+    public CompletableFuture<List<RetrievalResult>> sparseSearch(String queryText,
+                                                                 int topK,
+                                                                 VectorStoreFilter filters,
+                                                                 Map<String, Object> kwargs) {
+        return CompletableFuture.completedFuture(toRetrievalResults(sparseSearch(
+                queryText,
+                topK,
+                filterMap(filters),
+                kwargs)));
     }
 
     public List<SearchResult> hybridSearch(String queryText,
@@ -178,6 +231,22 @@ public class InMemoryVectorStore implements AutoCloseable {
             scored.add(new ScoredRecord(record, alpha * vector + (1.0d - alpha) * sparse));
         }
         return toSearchResults(scored, topK);
+    }
+
+    @Override
+    public CompletableFuture<List<RetrievalResult>> hybridSearch(String queryText,
+                                                                 List<Double> queryVector,
+                                                                 int topK,
+                                                                 double alpha,
+                                                                 VectorStoreFilter filters,
+                                                                 Map<String, Object> kwargs) {
+        return CompletableFuture.completedFuture(toRetrievalResults(hybridSearch(
+                queryText,
+                toFloatList(queryVector),
+                topK,
+                alpha,
+                filterMap(filters),
+                kwargs)));
     }
 
     public boolean delete(List<String> ids, Map<String, Object> filterExpr, Map<String, Object> options) {
@@ -202,13 +271,21 @@ public class InMemoryVectorStore implements AutoCloseable {
         return changed;
     }
 
-    public boolean tableExists(String tableName) {
-        return backend.collections.containsKey(tableName);
+    @Override
+    public CompletableFuture<Boolean> delete(List<String> ids, DeleteFilter filterExpr, Map<String, Object> kwargs) {
+        return CompletableFuture.completedFuture(delete(ids, deleteFilterMap(filterExpr), kwargs));
     }
 
-    public void deleteTable(String tableName) {
+    @Override
+    public CompletableFuture<Boolean> tableExists(String tableName) {
+        return CompletableFuture.completedFuture(backend.collections.containsKey(tableName));
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteTable(String tableName) {
         backend.collections.remove(tableName);
         backend.collectionMetadata.remove(tableName);
+        return CompletableFuture.completedFuture(null);
     }
 
     public List<SearchResult> queryByFilters(Map<String, Object> filters, int limit) {
@@ -226,26 +303,31 @@ public class InMemoryVectorStore implements AutoCloseable {
         return backend.collections.getOrDefault(tableName, Map.of()).size();
     }
 
-    public List<String> listCollectionNames() {
-        return new ArrayList<>(backend.collections.keySet());
+    @Override
+    public CompletableList<String> listCollectionNames() {
+        return CompletableList.completed(new ArrayList<>(backend.collections.keySet()));
     }
 
-    public Map<String, Object> getCollectionMetadata(String collectionName) {
-        return new LinkedHashMap<>(backend.collectionMetadata.getOrDefault(collectionName, Map.of()));
+    @Override
+    public CompletableMap<String, Object> getCollectionMetadata(String collectionName) {
+        return CompletableMap.completed(new LinkedHashMap<>(backend.collectionMetadata.getOrDefault(collectionName, Map.of())));
     }
 
-    public void updateCollectionMetadata(String collectionName, Map<String, Object> metadata) {
+    @Override
+    public CompletableFuture<Void> updateCollectionMetadata(String collectionName, Map<String, Object> metadata) {
         if (metadata == null || metadata.isEmpty()) {
-            return;
+            return CompletableFuture.completedFuture(null);
         }
         backend.collectionMetadata
                 .computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>())
                 .putAll(metadata);
+        return CompletableFuture.completedFuture(null);
     }
 
-    public void updateSchema(String collectionName, List<?> operations) {
+    @Override
+    public CompletableFuture<Void> updateSchema(String collectionName, List<BaseOperation> operations) {
         if (operations == null || operations.isEmpty()) {
-            return;
+            return CompletableFuture.completedFuture(null);
         }
         Map<String, StoredRecord> collection = backend.collections
                 .computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
@@ -256,10 +338,60 @@ public class InMemoryVectorStore implements AutoCloseable {
             }
             collection.put(entry.getKey(), updated);
         }
+        return CompletableFuture.completedFuture(null);
     }
 
     public CollectionSchema getSchema(String collectionName) {
         return new CollectionSchema();
+    }
+
+    @Override
+    public CompletableFuture<CollectionSchema> getSchema(String collectionName, Map<String, Object> kwargs) {
+        return CompletableFuture.completedFuture(getSchema(collectionName));
+    }
+
+    @Override
+    public CompletableFuture<Void> addDocs(String collectionName,
+                                           List<Map<String, Object>> docs,
+                                           Map<String, Object> kwargs) {
+        InMemoryVectorStore target = withCollection(collectionName);
+        target.addSync(docs, batchSize(kwargs), kwargs);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletableFuture<List<VectorSearchResult>> search(String collectionName,
+                                                              List<Double> queryVector,
+                                                              String vectorField,
+                                                              int topK,
+                                                              Map<String, Object> filters,
+                                                              Map<String, Object> kwargs) {
+        InMemoryVectorStore target = withCollection(collectionName);
+        List<SearchResult> searchResults = target.search(toFloatList(queryVector), topK, filters, kwargs);
+        List<VectorSearchResult> results = new ArrayList<>(searchResults.size());
+        for (SearchResult result : searchResults) {
+            Map<String, Object> fields = new LinkedHashMap<>(result.getMetadata());
+            fields.putIfAbsent("id", result.getId());
+            fields.putIfAbsent("text", result.getText());
+            results.add(new VectorSearchResult(result.getScore(), fields));
+        }
+        return CompletableFuture.completedFuture(results);
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteDocsByIds(String collectionName, List<String> ids, Map<String, Object> kwargs) {
+        InMemoryVectorStore target = withCollection(collectionName);
+        target.delete(ids, Map.of(), kwargs);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteDocsByFilters(String collectionName,
+                                                       Map<String, Object> filters,
+                                                       Map<String, Object> kwargs) {
+        InMemoryVectorStore target = withCollection(collectionName);
+        target.delete(List.of(), filters, kwargs);
+        return CompletableFuture.completedFuture(null);
     }
 
     public String getDatabaseName() {
@@ -336,6 +468,47 @@ public class InMemoryVectorStore implements AutoCloseable {
             results.add(new SearchResult(item.record.id, item.record.text, item.score, item.record.metadata));
         }
         return results;
+    }
+
+    private static List<RetrievalResult> toRetrievalResults(List<SearchResult> results) {
+        if (results == null || results.isEmpty()) {
+            return List.of();
+        }
+        List<RetrievalResult> output = new ArrayList<>(results.size());
+        for (SearchResult result : results) {
+            output.add(new RetrievalResult(
+                    result.getText(),
+                    result.getScore(),
+                    result.getMetadata(),
+                    null,
+                    result.getId()));
+        }
+        return output;
+    }
+
+    private static Map<String, Object> filterMap(VectorStoreFilter filters) {
+        if (filters == null || filters.mapping() == null) {
+            return Map.of();
+        }
+        return filters.mapping();
+    }
+
+    private static Map<String, Object> deleteFilterMap(DeleteFilter filters) {
+        if (filters == null || filters.expression() == null || filters.expression().isBlank()) {
+            return Map.of();
+        }
+        return Map.of();
+    }
+
+    private static List<Float> toFloatList(List<Double> values) {
+        if (values == null) {
+            return List.of();
+        }
+        List<Float> result = new ArrayList<>(values.size());
+        for (Double value : values) {
+            result.add(value == null ? 0.0f : value.floatValue());
+        }
+        return result;
     }
 
     private double vectorScore(List<Float> queryVector, List<Float> vector) {
@@ -554,6 +727,11 @@ public class InMemoryVectorStore implements AutoCloseable {
     private static int readInt(Object target, String methodName) {
         Object value = readValue(target, methodName);
         return value instanceof Number number ? number.intValue() : 0;
+    }
+
+    private static int batchSize(Map<String, Object> kwargs) {
+        Object value = kwargs == null ? null : kwargs.get("batch_size");
+        return value instanceof Number number && number.intValue() > 0 ? number.intValue() : 128;
     }
 
     private static Object readValue(Object target, String methodName) {

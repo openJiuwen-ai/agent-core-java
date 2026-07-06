@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.async.FutureList;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
@@ -272,7 +273,7 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         return super.closeAsync();
     }
 
-    public static CompletableFuture<List<String>> retrieveMultiGraphKb(
+    public static FutureList<String> retrieveMultiGraphKb(
             List<? extends KnowledgeBase> knowledgeBases,
             String query,
             RetrievalConfig config,
@@ -281,13 +282,31 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         return SimpleKnowledgeBase.retrieveMultiKb(knowledgeBases, query, config, topK);
     }
 
-    public static CompletableFuture<List<MultiKBRetrievalResult>> retrieveMultiGraphKbWithSource(
+    public static CompletableFuture<List<String>> retrieveMultiGraphKbAsync(
+            List<? extends KnowledgeBase> knowledgeBases,
+            String query,
+            RetrievalConfig config,
+            Integer topK
+    ) {
+        return SimpleKnowledgeBase.retrieveMultiKbAsync(knowledgeBases, query, config, topK);
+    }
+
+    public static FutureList<MultiKBRetrievalResult> retrieveMultiGraphKbWithSource(
             List<? extends KnowledgeBase> knowledgeBases,
             String query,
             RetrievalConfig config,
             Integer topK
     ) {
         return SimpleKnowledgeBase.retrieveMultiKbWithSource(knowledgeBases, query, config, topK);
+    }
+
+    public static CompletableFuture<List<MultiKBRetrievalResult>> retrieveMultiGraphKbWithSourceAsync(
+            List<? extends KnowledgeBase> knowledgeBases,
+            String query,
+            RetrievalConfig config,
+            Integer topK
+    ) {
+        return SimpleKnowledgeBase.retrieveMultiKbWithSourceAsync(knowledgeBases, query, config, topK);
     }
 
     private CompletableFuture<Void> buildTripleIndex(List<Triple> triples, Map<String, Object> buildOptions) {

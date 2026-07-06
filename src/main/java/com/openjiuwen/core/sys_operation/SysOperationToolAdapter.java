@@ -33,7 +33,7 @@ public final class SysOperationToolAdapter {
 
     public static List<ToolBinding> extractTools(SysOperationCard card, SysOperation instance) {
         List<ToolBinding> tools = new ArrayList<>();
-        for (String opType : OperationRegistry.getSupportedOperations(card.getMode())) {
+        for (String opType : OperationRegistry.getToolExtractionOperationNames(card.getMode())) {
             BaseOperation subOperation = instance.getOperation(opType);
             if (subOperation == null) {
                 continue;

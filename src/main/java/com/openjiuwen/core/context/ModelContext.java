@@ -17,11 +17,22 @@ import java.util.concurrent.CompletionStage;
  * <p>Mirrors Python's {@code ModelContext} in
  * {@code openjiuwen/core/context_engine/base.py}.</p>
  */
-public class ModelContext {
+public class ModelContext implements com.openjiuwen.core.context_engine.ModelContext {
     private final com.openjiuwen.core.context_engine.ModelContext delegate;
 
-    ModelContext(com.openjiuwen.core.context_engine.ModelContext delegate) {
+    protected ModelContext(com.openjiuwen.core.context_engine.ModelContext delegate) {
         this.delegate = delegate;
+    }
+
+    public static ModelContext wrap(com.openjiuwen.core.context_engine.ModelContext context) {
+        if (context instanceof ModelContext modelContext) {
+            return modelContext;
+        }
+        return context == null ? null : new ModelContext(context);
+    }
+
+    public static com.openjiuwen.core.context_engine.ModelContext unwrap(ModelContext context) {
+        return context == null ? null : context.unwrap();
     }
 
     public com.openjiuwen.core.context_engine.ModelContext unwrap() {
@@ -32,10 +43,12 @@ public class ModelContext {
         return delegate.length();
     }
 
+    @Override
     public int length() {
         return delegate.length();
     }
 
+    @Override
     public List<BaseMessage> getMessages(Integer size, boolean withHistory) {
         return delegate.getMessages(size, withHistory);
     }
@@ -44,6 +57,7 @@ public class ModelContext {
         return getMessages(null, true);
     }
 
+    @Override
     public void setMessages(List<BaseMessage> messages, boolean withHistory) {
         delegate.setMessages(messages, withHistory);
     }
@@ -52,6 +66,7 @@ public class ModelContext {
         setMessages(messages, true);
     }
 
+    @Override
     public List<BaseMessage> popMessages(int size, boolean withHistory) {
         return delegate.popMessages(size, withHistory);
     }
@@ -60,20 +75,29 @@ public class ModelContext {
         return popMessages(1, true);
     }
 
-    public void clearMessages(boolean withHistory) {
-        await(delegate.clearMessages(withHistory));
+    @Override
+    public CompletionStage<Void> clearMessages(boolean withHistory) {
+        CompletionStage<Void> stage = delegate.clearMessages(withHistory);
+        await(stage);
+        return stage;
     }
 
-    public void clearMessages() {
-        clearMessages(true);
+    public CompletionStage<Void> clearMessages() {
+        return clearMessages(true);
     }
 
-    public List<BaseMessage> addMessages(List<BaseMessage> messages) {
-        return await(delegate.addMessages(messages));
+    @Override
+    public CompletionStage<List<BaseMessage>> addMessages(List<BaseMessage> messages) {
+        CompletionStage<List<BaseMessage>> stage = delegate.addMessages(messages);
+        await(stage);
+        return stage;
     }
 
-    public List<BaseMessage> addMessages(BaseMessage message) {
-        return await(delegate.addMessages(message));
+    @Override
+    public CompletionStage<List<BaseMessage>> addMessages(BaseMessage message) {
+        CompletionStage<List<BaseMessage>> stage = delegate.addMessages(message);
+        await(stage);
+        return stage;
     }
 
     public String compressContext(List<String> processorTypes, Map<String, Object> kwargs) {
@@ -88,6 +112,7 @@ public class ModelContext {
         return compressContext(null, Map.of());
     }
 
+    @Override
     public ContextWindow getContextWindow(List<BaseMessage> systemMessages, List<ToolInfo> tools, Integer windowSize,
                                           Integer dialogueRound, Map<String, Object> kwargs) {
         return ContextWindow.from(await(delegate.getContextWindow(systemMessages, tools, windowSize, dialogueRound,
@@ -103,14 +128,17 @@ public class ModelContext {
         return getContextWindow(null, null, null, null, Map.of());
     }
 
+    @Override
     public com.openjiuwen.core.context_engine.ContextStats statistic() {
         return delegate.statistic();
     }
 
+    @Override
     public String sessionId() {
         return delegate.sessionId();
     }
 
+    @Override
     public String contextId() {
         return delegate.contextId();
     }
@@ -126,11 +154,13 @@ public class ModelContext {
         return null;
     }
 
-    public Object tokenCounter() {
+    @Override
+    public com.openjiuwen.core.context_engine.ModelContext.TokenCounterPort tokenCounter() {
         return delegate.tokenCounter();
     }
 
-    public Object reloaderTool() {
+    @Override
+    public com.openjiuwen.core.context_engine.ModelContext.ToolPort reloaderTool() {
         return delegate.reloaderTool();
     }
 

@@ -46,6 +46,11 @@ public class BaseMessage implements Serializable {
         this.metadata = new LinkedHashMap<>();
     }
 
+    public BaseMessage(String role, String content, String name) {
+        this(role, (Object) content);
+        this.name = name;
+    }
+
     public Map<String, Object> modelDump() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("role", getRole());

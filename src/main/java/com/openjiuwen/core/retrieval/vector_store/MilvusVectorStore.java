@@ -86,6 +86,7 @@ public class MilvusVectorStore implements VectorStore {
     private final String docIdField;
     private final String databaseName;
     private final String distanceMetric;
+    private final String indexType;
     private final Map<String, Object> constructConfig;
     private final Map<String, Object> searchConfig;
     private final String milvusAlias;
@@ -108,6 +109,36 @@ public class MilvusVectorStore implements VectorStore {
                 "document_id",
                 null,
                 Map.of()
+        );
+    }
+
+    public MilvusVectorStore(VectorStoreConfig config, String milvusUri, String milvusToken, String textField) {
+        this(
+                config,
+                milvusUri,
+                milvusToken,
+                resolveLegacyTextField(textField),
+                "embedding",
+                "sparse_vector",
+                "metadata",
+                "document_id",
+                null,
+                Map.of()
+        );
+    }
+
+    public MilvusVectorStore(MilvusClientV2 client, VectorStoreConfig config, String indexType) {
+        this(
+                config,
+                "mock://milvus",
+                null,
+                indexType,
+                "embedding",
+                "sparse_vector",
+                "metadata",
+                "document_id",
+                null,
+                new DefaultMilvusClientFacade(config == null ? "" : config.getDatabaseName(), client)
         );
     }
 
@@ -216,6 +247,7 @@ public class MilvusVectorStore implements VectorStore {
         this.docIdField = defaultIfBlank(docIdField, "document_id");
         this.databaseName = config.getDatabaseName() == null ? "" : config.getDatabaseName();
         this.distanceMetric = normalizeDistanceMetric(config.getDistanceMetric());
+        this.indexType = resolveLegacyIndexType(textField, this.vectorField);
         this.constructConfig = buildConstructConfig(this.vectorField, distanceMetric);
         this.searchConfig = new LinkedHashMap<>(this.vectorField.toDict(VectorField.STAGE_SEARCH));
         this.milvusAlias = CommonUtils.createMilvusAlias(milvusAlias, milvusUri, "", milvusToken);
@@ -307,6 +339,10 @@ public class MilvusVectorStore implements VectorStore {
 
     public String getDistanceMetric() {
         return distanceMetric;
+    }
+
+    public String getIndexType() {
+        return indexType;
     }
 
     public Map<String, Object> getConstructConfig() {
@@ -703,6 +739,18 @@ public class MilvusVectorStore implements VectorStore {
                 .toUpperCase(Locale.ROOT);
     }
 
+    private static String resolveLegacyTextField(String value) {
+        return isLegacyIndexType(value) ? "content" : value;
+    }
+
+    private static String resolveLegacyIndexType(String textField, MilvusVectorField vectorField) {
+        return isLegacyIndexType(textField) ? textField : vectorField.getIndexType();
+    }
+
+    private static boolean isLegacyIndexType(String value) {
+        return "hybrid".equals(value);
+    }
+
     private static String formatMilvusLiteral(Object value) {
         if (value instanceof String string) {
             return QueryExpr.sanitizeStr(string);
@@ -913,6 +961,11 @@ public class MilvusVectorStore implements VectorStore {
         ) {
             this.databaseName = databaseName == null || databaseName.isBlank() ? "default" : databaseName;
             this.delegate = createClient(this.databaseName, milvusUri, milvusToken, kwargs);
+        }
+
+        private DefaultMilvusClientFacade(String databaseName, MilvusClientV2 delegate) {
+            this.databaseName = databaseName == null || databaseName.isBlank() ? "default" : databaseName;
+            this.delegate = Objects.requireNonNull(delegate, "delegate");
         }
 
         @Override

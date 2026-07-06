@@ -83,7 +83,8 @@ public class LocalCodeOperation extends BaseCodeOperation {
 
             CommandSpec commandSpec = null;
             try {
-                commandSpec = buildSubprocessCommand(code, effectiveLanguage, options);
+                Map<String, String> mergedEnvironment = createExecutionEnvironment(effectiveLanguage, environment);
+                commandSpec = buildSubprocessCommand(code, effectiveLanguage, options, mergedEnvironment);
                 if (commandSpec == null || commandSpec.command() == null) {
                     return codeError("execute_code", "subprocess cmd can not be none", ExecuteCodeResult.class,
                             ExecuteCodeData.builder()
@@ -92,7 +93,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
                                     .build());
                 }
 
-                Process process = createProcess(commandSpec.command(), effectiveLanguage, environment, cwd);
+                Process process = createProcess(commandSpec.command(), mergedEnvironment, cwd);
                 String encoding = stringOption(options, "encoding", DEFAULT_ENCODING);
                 InvokeData invokeData = OperationUtils.createHandler(process, encoding, timeout).invoke().join();
                 Exception invokeException = invokeData.getException();
@@ -168,7 +169,8 @@ public class LocalCodeOperation extends BaseCodeOperation {
 
         CommandSpec commandSpec = null;
         try {
-            commandSpec = buildSubprocessCommand(code, effectiveLanguage, options);
+            Map<String, String> mergedEnvironment = createExecutionEnvironment(effectiveLanguage, environment);
+            commandSpec = buildSubprocessCommand(code, effectiveLanguage, options, mergedEnvironment);
             if (commandSpec == null || commandSpec.command() == null) {
                 publisher.submit(codeStreamError("subprocess cmd can not be none", ExecuteCodeChunkData.builder()
                         .chunkIndex(chunkIndex)
@@ -179,7 +181,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
 
             int chunkSize = intOption(options, "chunk_size", DEFAULT_STREAM_CHUNK_SIZE);
             String encoding = stringOption(options, "encoding", DEFAULT_ENCODING);
-            Process process = createProcess(commandSpec.command(), effectiveLanguage, environment, cwd);
+            Process process = createProcess(commandSpec.command(), mergedEnvironment, cwd);
             BlockingQueue<StreamEvent> queue = OperationUtils.createHandler(process, chunkSize, encoding, timeout)
                     .stream();
             while (true) {
@@ -215,9 +217,10 @@ public class LocalCodeOperation extends BaseCodeOperation {
         }
     }
 
-    private CommandSpec buildSubprocessCommand(String code, String effectiveLanguage, Map<String, Object> options) {
+    private CommandSpec buildSubprocessCommand(String code, String effectiveLanguage, Map<String, Object> options,
+                                               Map<String, String> executionEnvironment) {
         boolean forceFile = booleanOption(options, "force_file", false);
-        LanguageConfig config = languageConfig(effectiveLanguage);
+        LanguageConfig config = languageConfig(effectiveLanguage, executionEnvironment);
         if (config == null) {
             return null;
         }
@@ -231,16 +234,8 @@ public class LocalCodeOperation extends BaseCodeOperation {
         return new CommandSpec(config.fileCommand(tempPath), tempPath);
     }
 
-    private Process createProcess(List<String> command, String language, Map<String, String> environment, String cwd)
+    private Process createProcess(List<String> command, Map<String, String> mergedEnvironment, String cwd)
             throws IOException {
-        Map<String, String> mergedEnvironment = OperationUtils.prepareEnvironment(environment);
-        if (CodeLanguage.JAVASCRIPT.value().equals(language)) {
-            mergedEnvironment.put("NODE_DISABLE_COLORS", "1");
-        } else if (CodeLanguage.PYTHON.value().equals(language)) {
-            mergedEnvironment.put("PYTHONIOENCODING", "utf-8");
-            mergedEnvironment.put("PYTHONUTF8", "1");
-        }
-
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.environment().clear();
         builder.environment().putAll(mergedEnvironment);
@@ -248,6 +243,17 @@ public class LocalCodeOperation extends BaseCodeOperation {
             builder.directory(new File(cwd));
         }
         return builder.start();
+    }
+
+    private Map<String, String> createExecutionEnvironment(String language, Map<String, String> environment) {
+        Map<String, String> mergedEnvironment = OperationUtils.prepareEnvironment(environment);
+        if (CodeLanguage.JAVASCRIPT.value().equals(language)) {
+            mergedEnvironment.put("NODE_DISABLE_COLORS", "1");
+        } else if (CodeLanguage.PYTHON.value().equals(language)) {
+            mergedEnvironment.put("PYTHONIOENCODING", "utf-8");
+            mergedEnvironment.put("PYTHONUTF8", "1");
+        }
+        return mergedEnvironment;
     }
 
     private ExecuteCodeStreamResult toStreamResult(StreamEvent event, int chunkIndex) {
@@ -279,8 +285,12 @@ public class LocalCodeOperation extends BaseCodeOperation {
     }
 
     private LanguageConfig languageConfig(String language) {
+        return languageConfig(language, OperationUtils.prepareEnvironment(null));
+    }
+
+    private LanguageConfig languageConfig(String language, Map<String, String> executionEnvironment) {
         if (CodeLanguage.PYTHON.value().equals(language)) {
-            String executable = System.getenv().getOrDefault(PYTHON_EXECUTABLE_ENV, "python");
+            String executable = resolvePythonExecutable(executionEnvironment);
             return new LanguageConfig(
                     ".py",
                     code -> List.of(executable, "-u", "-c", code),
@@ -293,6 +303,41 @@ public class LocalCodeOperation extends BaseCodeOperation {
                     path -> List.of("node", path));
         }
         return null;
+    }
+
+    private String resolvePythonExecutable(Map<String, String> executionEnvironment) {
+        String override = executionEnvironment == null ? null : executionEnvironment.get(PYTHON_EXECUTABLE_ENV);
+        if (override != null && !override.isBlank()) {
+            return override;
+        }
+        for (String candidate : List.of("python3", "python")) {
+            if (canStart(candidate, executionEnvironment)) {
+                return candidate;
+            }
+        }
+        return "python";
+    }
+
+    private boolean canStart(String executable, Map<String, String> executionEnvironment) {
+        try {
+            ProcessBuilder builder = new ProcessBuilder(executable, "--version");
+            if (executionEnvironment != null) {
+                builder.environment().clear();
+                builder.environment().putAll(executionEnvironment);
+            }
+            Process process = builder.start();
+            boolean exited = process.waitFor(5, TimeUnit.SECONDS);
+            if (!exited) {
+                process.destroyForcibly();
+                return false;
+            }
+            return process.exitValue() == 0;
+        } catch (IOException exception) {
+            return false;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     private int getDefaultCommandLimit() {

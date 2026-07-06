@@ -128,6 +128,15 @@ public class ClientRegistry {
         clientClasses.remove(fullName);
     }
 
+    public boolean isRegistered(String name, String clientType) {
+        String fullName = fullName(name, clientType);
+        return factories.containsKey(fullName) || clientClasses.containsKey(fullName);
+    }
+
+    public boolean isRegistered(String name) {
+        return isRegistered(name, "common");
+    }
+
     public List<String> listClients() {
         return new ArrayList<>(factories.keySet());
     }

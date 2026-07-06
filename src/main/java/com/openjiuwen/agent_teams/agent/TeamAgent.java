@@ -446,6 +446,10 @@ public class TeamAgent implements CoordinationKernel.KernelHost {
         return gateway.humanAgentSay(content, to, sender);
     }
 
+    public CompletionStage<DeliverResult> directFromUser(String to, String content) {
+        return humanAgentSay(content, to, "user");
+    }
+
     public CompletionStage<List<Object>> stream(
             Object inputs,
             Object session,

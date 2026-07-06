@@ -8,10 +8,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.async.FutureList;
+import com.openjiuwen.core.common.async.FutureMap;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -27,6 +30,7 @@ import com.openjiuwen.core.foundation.store.index.SimpleMemoryIndex;
 import com.openjiuwen.core.memory.codec.AesStorageCodec;
 import com.openjiuwen.core.memory.common.DistributedLock;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
+import com.openjiuwen.core.memory.config.FutureMemoryScopeConfig;
 import com.openjiuwen.core.memory.config.MemoryEngineConfig;
 import com.openjiuwen.core.memory.config.MemoryScopeConfig;
 import com.openjiuwen.core.memory.manage.index.BaseMemoryManager;
@@ -55,6 +59,7 @@ import com.openjiuwen.core.runner.callback.MemoryEvents;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
+import java.time.OffsetDateTime;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -106,7 +111,7 @@ public class LongTermMemory {
     private Generator generator;
     private List<String> fragmentType;
 
-    private Model baseLlm;
+    private Object baseLlm;
     private Embedding baseEmbed;
     private final ConcurrentHashMap<String, Embedding> scopeEmbedding = new ConcurrentHashMap<>();
 
@@ -351,7 +356,7 @@ public class LongTermMemory {
         return CompletableFuture.completedFuture(true);
     }
 
-    public CompletableFuture<MemoryScopeConfig> getScopeConfig(String scopeId) {
+    public FutureMemoryScopeConfig getScopeConfig(String scopeId) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             MEMORY_LOGGER.error("Invalid scope_id format. event_type={}, scope_id={}",
                     LogEventType.MEMORY_RETRIEVE.getValue(), scopeId);
@@ -366,15 +371,15 @@ public class LongTermMemory {
         Object rawConfig = join(kvStore.get(configKey));
         String configJson = readStoreValue(rawConfig);
         if (configJson == null || configJson.isEmpty()) {
-            return CompletableFuture.completedFuture(null);
+            return null;
         }
 
         MemoryScopeConfig encryptedConfig = readConfig(configJson);
         decodeApiKeys(encryptedConfig);
-        return CompletableFuture.completedFuture(encryptedConfig);
+        return new FutureMemoryScopeConfig(encryptedConfig);
     }
 
-    public CompletableFuture<Boolean> deleteScopeConfig(String scopeId) {
+    public boolean deleteScopeConfig(String scopeId) {
         if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
             MEMORY_LOGGER.error("Invalid scope_id format. event_type={}, scope_id={}",
                     LogEventType.MEMORY_DELETE.getValue(), scopeId);
@@ -390,7 +395,7 @@ public class LongTermMemory {
             scopeEmbedding.remove(scopeId);
             MEMORY_LOGGER.debug("Successfully deleted configuration. event_type={}, scope_id={}",
                     LogEventType.MEMORY_DELETE.getValue(), scopeId);
-            return CompletableFuture.completedFuture(true);
+            return true;
         } catch (RuntimeException exception) {
             MEMORY_LOGGER.error("Failed to delete configuration. event_type={}, exception={}, scope_id={}",
                     LogEventType.MEMORY_DELETE.getValue(), exception.getMessage(), scopeId);
@@ -557,14 +562,26 @@ public class LongTermMemory {
                                                        AgentMemoryConfig agentConfig,
                                                        String userId,
                                                        String scopeId,
-                                                       String sessionId) {
-        return addMessages(messages, agentConfig, userId, scopeId, sessionId, null, true, 2);
+                                                       String sessionId,
+                                                       OffsetDateTime timestamp,
+                                                       boolean genMem,
+                                                       int genMemWithHistoryMsgNum) {
+        ZonedDateTime zonedTimestamp = timestamp == null ? null : timestamp.toZonedDateTime();
+        return addMessages(messages, agentConfig, userId, scopeId, sessionId, zonedTimestamp, genMem, genMemWithHistoryMsgNum);
     }
 
-    public CompletableFuture<List<BaseMessage>> getRecentMessages(String userId,
-                                                                  String scopeId,
-                                                                  String sessionId,
-                                                                  int num) {
+    public CompletableFuture<AddMemResult> addMessages(List<BaseMessage> messages,
+                                                       AgentMemoryConfig agentConfig,
+                                                       String userId,
+                                                       String scopeId,
+                                                       String sessionId) {
+        return addMessages(messages, agentConfig, userId, scopeId, sessionId, (ZonedDateTime) null, true, 2);
+    }
+
+    public FutureList<BaseMessage> getRecentMessages(String userId,
+                                                     String scopeId,
+                                                     String sessionId,
+                                                     int num) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             MEMORY_LOGGER.error("Invalid scope_id format. event_type={}, user_id={}, scope_id={}",
                     LogEventType.MEMORY_RETRIEVE.getValue(), userId, scopeId);
@@ -579,7 +596,7 @@ public class LongTermMemory {
         for (Map.Entry<BaseMessage, ZonedDateTime> row : rows) {
             recentMessages.add(row.getKey());
         }
-        return CompletableFuture.completedFuture(recentMessages);
+        return FutureList.completed(recentMessages);
     }
 
     public CompletableFuture<Map.Entry<BaseMessage, ZonedDateTime>> getMessageById(String msgId) {
@@ -682,7 +699,7 @@ public class LongTermMemory {
         return CompletableFuture.completedFuture(null);
     }
 
-    public CompletableFuture<Map<String, String>> getVariables(Object names, String userId, String scopeId) {
+    public FutureMap<String, String> getVariables(Object names, String userId, String scopeId) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             MEMORY_LOGGER.error("Invalid scope_id format. event_type={}, user_id={}, scope_id={}",
                     LogEventType.MEMORY_RETRIEVE.getValue(), userId, scopeId);
@@ -701,18 +718,18 @@ public class LongTermMemory {
         }
         Map<String, String> ret = new LinkedHashMap<>();
         if (names == null) {
-            return searchManager.getAllUserVariable(userId, scopeId).toCompletableFuture();
+            return FutureMap.fromFuture(searchManager.getAllUserVariable(userId, scopeId).toCompletableFuture());
         }
         if (names instanceof String name) {
             ret.put(name, join(searchManager.getUserVariable(userId, scopeId, name)));
-            return CompletableFuture.completedFuture(ret);
+            return FutureMap.completed(ret);
         }
         if (names instanceof List<?> nameList) {
             for (Object nameObj : nameList) {
                 String name = String.valueOf(nameObj);
                 ret.put(name, join(searchManager.getUserVariable(userId, scopeId, name)));
             }
-            return CompletableFuture.completedFuture(ret);
+            return FutureMap.completed(ret);
         }
         throw ErrorHelper.buildError(
                 StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
@@ -721,11 +738,11 @@ public class LongTermMemory {
         );
     }
 
-    public CompletableFuture<List<MemResult>> searchUserMem(String query,
-                                                            int num,
-                                                            String userId,
-                                                            String scopeId,
-                                                            double threshold) {
+    public FutureList<MemResult> searchUserMem(String query,
+                                               int num,
+                                               String userId,
+                                               String scopeId,
+                                               double threshold) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             MEMORY_LOGGER.error("Invalid scope_id format. event_type={}, query={}, user_id={}, scope_id={}",
                     LogEventType.MEMORY_RETRIEVE.getValue(), query, userId, scopeId);
@@ -756,7 +773,7 @@ public class LongTermMemory {
             List<Map<String, Object>> sorted = sortedByScore(searchData, num);
             List<MemResult> results = toMemResults(sorted, null);
             emitSearchFinished(scopeId, userId, query, results.size(), "user_mem");
-            return CompletableFuture.completedFuture(results);
+            return FutureList.completed(results);
         } catch (RuntimeException exception) {
             MEMORY_LOGGER.warning("Search user mem has exception. event_type={}, user_id={}, scope_id={}, query={}, exception={}",
                     LogEventType.MEMORY_RETRIEVE.getValue(), userId, scopeId, query, exception.getMessage());
@@ -769,11 +786,11 @@ public class LongTermMemory {
         }
     }
 
-    public CompletableFuture<List<MemResult>> searchUserHistorySummary(String query,
-                                                                       int num,
-                                                                       String userId,
-                                                                       String scopeId,
-                                                                       double threshold) {
+    public FutureList<MemResult> searchUserHistorySummary(String query,
+                                                          int num,
+                                                          String userId,
+                                                          String scopeId,
+                                                          double threshold) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             MEMORY_LOGGER.error("Invalid scope_id format. event_type={}, query={}, user_id={}, scope_id={}",
                     LogEventType.MEMORY_RETRIEVE.getValue(), query, userId, scopeId);
@@ -803,7 +820,7 @@ public class LongTermMemory {
             List<Map<String, Object>> searchData = join(searchManager.search(params));
             List<MemResult> results = toMemResults(searchData, MemoryType.SUMMARY);
             emitSearchFinished(scopeId, userId, query, results.size(), "history_summary");
-            return CompletableFuture.completedFuture(results);
+            return FutureList.completed(results);
         } catch (RuntimeException exception) {
             MEMORY_LOGGER.warning("Search user history summary has exception. event_type={}, user_id={}, scope_id={}, query={}, exception={}",
                     LogEventType.MEMORY_RETRIEVE.getValue(), userId, scopeId, query, exception.getMessage());
@@ -816,7 +833,7 @@ public class LongTermMemory {
         }
     }
 
-    public CompletableFuture<Integer> userMemTotalNum(String userId, String scopeId) {
+    public Integer userMemTotalNum(String userId, String scopeId) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             MEMORY_LOGGER.error("Invalid scope_id format. event_type={}, user_id={}, scope_id={}",
                     LogEventType.MEMORY_RETRIEVE.getValue(), userId, scopeId);
@@ -827,14 +844,14 @@ public class LongTermMemory {
             );
         }
         List<Map<String, Object>> searchData = join(searchManager.listUserProfile(userId, scopeId));
-        return CompletableFuture.completedFuture(searchData == null ? 0 : searchData.size());
+        return searchData == null ? 0 : searchData.size();
     }
 
-    public CompletableFuture<List<MemInfo>> getUserMemByPage(String userId,
-                                                             String scopeId,
-                                                             int pageSize,
-                                                             int pageIdx,
-                                                             MemoryType memoryType) {
+    public FutureList<MemInfo> getUserMemByPage(String userId,
+                                                String scopeId,
+                                                int pageSize,
+                                                int pageIdx,
+                                                MemoryType memoryType) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             MEMORY_LOGGER.error("Invalid scope_id format. event_type={}, user_id={}, scope_id={}",
                     LogEventType.MEMORY_RETRIEVE.getValue(), userId, scopeId);
@@ -859,7 +876,7 @@ public class LongTermMemory {
                 searchManager.listUserMem(userId, scopeId, pageSize, pageIdx, searchMemoryType)
         );
         if (searchData == null || searchData.isEmpty()) {
-            return CompletableFuture.completedFuture(List.of());
+            return FutureList.completed(List.of());
         }
         List<MemInfo> results = new ArrayList<>();
         for (Map<String, Object> item : searchData) {
@@ -870,7 +887,7 @@ public class LongTermMemory {
                     timestampFrom(item.get("timestamp"))
             ));
         }
-        return CompletableFuture.completedFuture(results);
+        return FutureList.completed(results);
     }
 
     public CompletableFuture<Void> updateVariables(Map<String, String> variables, String userId, String scopeId) {
@@ -899,7 +916,7 @@ public class LongTermMemory {
         return CompletableFuture.completedFuture(null);
     }
 
-    public CompletableFuture<Boolean> deleteVariables(List<String> names, String userId, String scopeId) {
+    public boolean deleteVariables(List<String> names, String userId, String scopeId) {
         if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
             MEMORY_LOGGER.error("Invalid scope_id format. event_type={}, user_id={}, scope_id={}",
                     LogEventType.MEMORY_DELETE.getValue(), userId, scopeId);
@@ -922,7 +939,7 @@ public class LongTermMemory {
             }
             return null;
         });
-        return CompletableFuture.completedFuture(true);
+        return true;
     }
 
     public static Model getLlmFromConfig(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
@@ -936,7 +953,8 @@ public class LongTermMemory {
             decodeApiKeys(decryptedConfig);
             return decryptedConfig;
         }
-        return join(getScopeConfig(scopeId));
+        FutureMemoryScopeConfig config = getScopeConfig(scopeId);
+        return config == null ? null : config.join();
     }
 
     private void applyScopeEmbedding(String scopeId) {
@@ -981,7 +999,7 @@ public class LongTermMemory {
                 return getLlmFromConfig(config.getModelCfg(), config.getModelClientCfg());
             }
             if (sysMemConfig == null) {
-                return baseLlm;
+                return normalizeLlm(baseLlm);
             }
             if (sysMemConfig.getDefaultModelClientCfg() == null) {
                 MEMORY_LOGGER.debug("Default model client config is missing, cannot instantiate LLM. event_type={}, scope_id={}",
@@ -992,12 +1010,58 @@ public class LongTermMemory {
             } else {
                 return getLlmFromConfig(sysMemConfig.getDefaultModelCfg(), sysMemConfig.getDefaultModelClientCfg());
             }
-            return baseLlm;
+            return normalizeLlm(baseLlm);
         } catch (RuntimeException exception) {
             MEMORY_LOGGER.error("Failed to get scope LLM. event_type={}, scope_id={}, exception={}",
                     LogEventType.MEMORY_RETRIEVE.getValue(), scopeId, exception.getMessage());
-            return baseLlm;
+            return normalizeLlm(baseLlm);
         }
+    }
+
+    private static Model normalizeLlm(Object llmCandidate) {
+        if (llmCandidate instanceof Model model) {
+            return model;
+        }
+        if (llmCandidate instanceof Map.Entry<?, ?> entry && entry.getValue() instanceof Model model) {
+            return tupleBackedModel(entry.getKey(), model);
+        }
+        if (llmCandidate == null) {
+            return null;
+        }
+        throw ErrorHelper.buildError(
+                StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR,
+                "config_type", "model",
+                "error_msg", "base llm must be Model or tuple-like (name, Model)"
+        );
+    }
+
+    private static Model tupleBackedModel(Object modelName, Model delegate) {
+        return new Model((messages, modelConfig, modelClientConfig, options) -> {
+            try {
+                AssistantMessage response = delegate.invoke(
+                        messages,
+                        options == null ? null : options.getTools(),
+                        options == null ? null : options.getTemperature(),
+                        options == null ? null : options.getTopP(),
+                        options == null ? null : options.getMaxTokens(),
+                        options == null ? null : options.getStop(),
+                        modelName(options, modelName),
+                        options == null ? null : options.getOutputParser(),
+                        options == null ? null : options.getTimeout(),
+                        options == null ? Map.of() : options.getExtraFields()
+                );
+                return CompletableFuture.completedFuture(response);
+            } catch (RuntimeException exception) {
+                return CompletableFuture.failedFuture(exception);
+            }
+        });
+    }
+
+    private static String modelName(com.openjiuwen.core.foundation.llm.ModelInvokeOptions options, Object modelName) {
+        if (options != null && options.getModel() != null) {
+            return options.getModel();
+        }
+        return modelName == null ? null : String.valueOf(modelName);
     }
 
     private CheckMessagesResult checkMessages(List<BaseMessage> messages) {

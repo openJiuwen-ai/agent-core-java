@@ -6,11 +6,13 @@ package com.openjiuwen.core.common.clients;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Configuration model for HTTP sessions.
@@ -18,7 +20,7 @@ import java.util.Map;
  * <p>Mirrors Python's {@code SessionConfig} in
  * {@code openjiuwen/core/common/clients/http_client.py}.</p>
  */
-public class SessionConfig {
+public class SessionConfig extends AbstractMap<String, Object> {
 
     private ConnectorPoolConfig connectorPoolConfig = new ConnectorPoolConfig();
     private Map<String, String> headers;
@@ -98,6 +100,11 @@ public class SessionConfig {
         values.put("trust_env", trustEnv);
         values.put("extend_args", extendArgs);
         return values;
+    }
+
+    @Override
+    public Set<Entry<String, Object>> entrySet() {
+        return modelDump().entrySet();
     }
 
     private static String formatValue(Object value) {

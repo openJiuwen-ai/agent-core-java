@@ -22,7 +22,7 @@ import java.util.function.Function;
  * <p>Mirrors Python's {@code ContextEngine} in
  * {@code openjiuwen/core/context_engine/context_engine.py}.</p>
  */
-public class ContextEngine {
+public class ContextEngine extends com.openjiuwen.core.context_engine.ContextEngine {
     public static final String DEFAULT_CONTEXT_ID =
             com.openjiuwen.core.context_engine.ContextEngine.DEFAULT_CONTEXT_ID;
     public static final String DEFAULT_SESSION_ID =
@@ -31,7 +31,6 @@ public class ContextEngine {
     private static final Map<String, Class<?>> PROCESSOR_CLASS_MAP = new ConcurrentHashMap<>();
     private static final Map<String, Function<Object, ?>> PROCESSOR_FACTORY_MAP = new ConcurrentHashMap<>();
 
-    private final com.openjiuwen.core.context_engine.ContextEngine delegate;
     private final Map<com.openjiuwen.core.context_engine.ModelContext, ModelContext> wrappers = new LinkedHashMap<>();
 
     public ContextEngine() {
@@ -43,32 +42,37 @@ public class ContextEngine {
     }
 
     public ContextEngine(ContextEngineConfig config, Object workspace, Object sysOperation) {
-        this.delegate = new com.openjiuwen.core.context_engine.ContextEngine(
+        super(
                 config,
                 adaptWorkspace(workspace),
                 adaptSysOperation(sysOperation));
     }
 
+    @Override
     public ModelContext createContext() {
-        return wrap(delegate.createContext());
+        return wrap(super.createContext());
     }
 
     public ModelContext createContext(String contextId, Session session) {
         return createContext(contextId, (Object) session);
     }
 
+    @Override
     public ModelContext createContext(String contextId, Object session) {
-        return createContext(contextId, session, null, null, null);
+        return wrap(super.createContext(contextId, session));
     }
 
-    public ModelContext createContext(String contextId, Session session, List<ProcessorSpec> processors,
-                                      List<BaseMessage> historyMessages, Object tokenCounter) {
-        return createContext(contextId, (Object) session, processors, historyMessages, tokenCounter);
+    @Override
+    public ModelContext createContext(String contextId, Object session,
+                                      List<com.openjiuwen.core.context_engine.ContextEngine.ProcessorSpec> processors,
+                                      List<BaseMessage> historyMessages,
+                                      com.openjiuwen.core.context_engine.ModelContext.TokenCounterPort tokenCounter) {
+        return wrap(super.createContext(contextId, session, processors, historyMessages, tokenCounter));
     }
 
-    public ModelContext createContext(String contextId, Object session, List<ProcessorSpec> processors,
+    public ModelContext createContext(String contextId, Object session, List<?> processors,
                                       List<BaseMessage> historyMessages, Object tokenCounter) {
-        return wrap(delegate.createContext(contextId, session, adaptProcessorSpecs(processors), historyMessages,
+        return wrap(super.createContext(contextId, session, adaptProcessorSpecs(processors), historyMessages,
                 adaptTokenCounter(tokenCounter)));
     }
 
@@ -82,42 +86,50 @@ public class ContextEngine {
 
     public ModelContext createContextWithHistory(String contextId, Session session,
                                                  List<BaseMessage> historyMessages) {
-        return createContext(contextId, session, null, historyMessages, null);
+        return createContext(contextId, session, (List<ProcessorSpec>) null, historyMessages, (Object) null);
     }
 
     public ModelContext createContextWithHistory(String contextId, Object session,
                                                  List<BaseMessage> historyMessages) {
-        return createContext(contextId, session, null, historyMessages, null);
+        return createContext(contextId, session, (List<ProcessorSpec>) null, historyMessages, (Object) null);
     }
 
+    @Override
     public ModelContext getContext() {
-        return wrap(delegate.getContext());
+        return wrap(super.getContext());
     }
 
+    @Override
     public ModelContext getContext(String contextId) {
-        return wrap(delegate.getContext(contextId));
+        return wrap(super.getContext(contextId));
     }
 
+    @Override
     public ModelContext getContext(String contextId, String sessionId) {
-        return wrap(delegate.getContext(contextId, sessionId));
+        return wrap(super.getContext(contextId, sessionId));
     }
 
+    @Override
     public Object compressContext(String contextId, Object session) {
-        return delegate.compressContext(contextId, session);
+        return super.compressContext(contextId, session);
     }
 
+    @Override
     public Object compressContext(String contextId, Object session, String sessionId, List<String> processorTypes,
                                   Map<String, Object> kwargs) {
-        return delegate.compressContext(contextId, session, sessionId, processorTypes, kwargs);
+        return super.compressContext(contextId, session, sessionId, processorTypes, kwargs);
     }
 
+    @Override
     public void clearContext() {
-        delegate.clearContext();
+        super.clearContext();
         wrappers.clear();
     }
 
+    @Override
     public void clearContext(String contextId, String sessionId) {
-        delegate.clearContext(contextId, sessionId);
+        super.clearContext(contextId, sessionId);
+        wrappers.clear();
     }
 
     public void clearContextBySession(String sessionId) {
@@ -128,8 +140,9 @@ public class ContextEngine {
         return saveContexts((Object) session, contextIds);
     }
 
+    @Override
     public Map<String, Object> saveContexts(Object session, List<String> contextIds) {
-        return delegate.saveContexts(session, contextIds);
+        return super.saveContexts(session, contextIds);
     }
 
     public static void registerProcessor(String processorType, Class<?> processorClass,
@@ -140,7 +153,9 @@ public class ContextEngine {
                 config -> adaptProcessor(factory.apply(config)));
     }
 
-    public static void registerProcessor(String processorType, Class<?> processorClass) {
+    public static void registerProcessor(String processorType,
+            Class<? extends com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort>
+                    processorClass) {
         PROCESSOR_CLASS_MAP.put(processorType, processorClass);
         com.openjiuwen.core.context_engine.ContextEngine.registerProcessor(processorType,
                 config -> instantiateProcessor(processorType, processorClass, config));
@@ -162,18 +177,35 @@ public class ContextEngine {
         if (context == null) {
             return null;
         }
-        return wrappers.computeIfAbsent(context, ModelContext::new);
+        return wrappers.computeIfAbsent(context, this::wrapContext);
+    }
+
+    private ModelContext wrapContext(com.openjiuwen.core.context_engine.ModelContext context) {
+        if (context instanceof com.openjiuwen.core.context_engine.context.SessionModelContext sessionModelContext) {
+            return new com.openjiuwen.core.context.context.SessionModelContext(sessionModelContext);
+        }
+        return new ModelContext(context);
     }
 
     private static List<com.openjiuwen.core.context_engine.ContextEngine.ProcessorSpec> adaptProcessorSpecs(
-            List<ProcessorSpec> processors) {
+            List<?> processors) {
         if (processors == null) {
             return null;
         }
         return processors.stream()
-                .map(spec -> new com.openjiuwen.core.context_engine.ContextEngine.ProcessorSpec(
-                        spec.processorType(), spec.config()))
+                .map(ContextEngine::adaptProcessorSpec)
                 .toList();
+    }
+
+    private static com.openjiuwen.core.context_engine.ContextEngine.ProcessorSpec adaptProcessorSpec(Object spec) {
+        if (spec instanceof com.openjiuwen.core.context_engine.ContextEngine.ProcessorSpec engineSpec) {
+            return engineSpec;
+        }
+        if (spec instanceof ProcessorSpec rootSpec) {
+            return new com.openjiuwen.core.context_engine.ContextEngine.ProcessorSpec(
+                    rootSpec.processorType(), rootSpec.config());
+        }
+        throw new IllegalArgumentException("Unsupported processor spec: " + spec);
     }
 
     private static com.openjiuwen.core.context_engine.ModelContext.TokenCounterPort adaptTokenCounter(

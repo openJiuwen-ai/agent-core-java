@@ -29,7 +29,7 @@ public class ImageParser extends Parser {
             List.of(".png", ".jpg", ".jpeg", ".webp", ".gif", ".jfif");
 
     @Override
-    public CompletableFuture<List<Document>> parse(
+    public CompletableFuture<List<Document>> parseAsync(
             String doc,
             String docId,
             BaseModelClient llmClient,

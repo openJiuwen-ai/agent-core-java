@@ -33,6 +33,23 @@ public class CheckpointerConfig {
         }
     }
 
+    public static CheckpointerConfig fromMap(Map<String, ?> config) {
+        if (config == null) {
+            return null;
+        }
+        String type = config.containsKey("type") && config.get("type") != null
+                ? String.valueOf(config.get("type"))
+                : "in_memory";
+        Object rawConf = config.get("conf");
+        Map<String, Object> conf = new LinkedHashMap<>();
+        if (rawConf instanceof Map<?, ?> confMap) {
+            for (Map.Entry<?, ?> entry : confMap.entrySet()) {
+                conf.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return new CheckpointerConfig(type, conf);
+    }
+
     public String getType() {
         return type;
     }

@@ -10,6 +10,7 @@ import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Backward-compatible context window for the pre-0.1.14 root context package.
@@ -17,7 +18,7 @@ import java.util.Objects;
  * <p>Mirrors Python's {@code ContextWindow} in
  * {@code openjiuwen/core/context_engine/base.py}.</p>
  */
-public class ContextWindow {
+public class ContextWindow extends CompletableFuture<com.openjiuwen.core.context_engine.ContextWindow> {
     private List<BaseMessage> systemMessages = new ArrayList<>();
     private List<BaseMessage> contextMessages = new ArrayList<>();
     private List<ToolInfo> tools = new ArrayList<>();
@@ -25,6 +26,7 @@ public class ContextWindow {
             new com.openjiuwen.core.context_engine.ContextStats();
 
     public ContextWindow() {
+        complete(toContextEngineWindow());
     }
 
     public ContextWindow(List<BaseMessage> systemMessages, List<BaseMessage> contextMessages, List<ToolInfo> tools,
@@ -33,6 +35,7 @@ public class ContextWindow {
         setContextMessages(contextMessages);
         setTools(tools);
         setStatistic(statistic);
+        complete(toContextEngineWindow());
     }
 
     public static ContextWindow from(com.openjiuwen.core.context_engine.ContextWindow source) {

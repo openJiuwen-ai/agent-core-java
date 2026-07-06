@@ -43,6 +43,10 @@ public class ModelRequestConfig {
     @JsonProperty("max_tokens")
     private Integer maxTokens;
 
+    private String user;
+
+    private Integer seed;
+
     private String stop;
 
     @Builder.Default

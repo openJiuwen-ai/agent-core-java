@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
+import com.openjiuwen.core.common.async.FutureList;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.indexing.processor.Processor;
@@ -18,15 +19,24 @@ import java.util.concurrent.CompletableFuture;
  */
 public abstract class Parser implements Processor<List<Document>> {
 
-    public CompletableFuture<List<Document>> parse(String doc) {
+    public FutureList<Document> parse(String doc) {
         return parse(doc, "", null, Map.of());
     }
 
-    public CompletableFuture<List<Document>> parse(String doc, String docId) {
+    public FutureList<Document> parse(String doc, String docId) {
         return parse(doc, docId, null, Map.of());
     }
 
-    public CompletableFuture<List<Document>> parse(
+    public FutureList<Document> parse(
+            String doc,
+            String docId,
+            BaseModelClient llmClient,
+            Map<String, Object> options
+    ) {
+        return FutureList.fromFuture(parseAsync(doc, docId, llmClient, options));
+    }
+
+    public CompletableFuture<List<Document>> parseAsync(
             String doc,
             String docId,
             BaseModelClient llmClient,
@@ -54,7 +64,7 @@ public abstract class Parser implements Processor<List<Document>> {
     }
 
     public CompletableFuture<List<Document>> lazyParse(String doc, String docId, Map<String, Object> options) {
-        return parse(doc, docId, null, options);
+        return parseAsync(doc, docId, null, options);
     }
 
     @Override
@@ -67,7 +77,7 @@ public abstract class Parser implements Processor<List<Document>> {
         Map<String, Object> options = args != null && args.length > 3 && args[3] instanceof Map<?, ?> map
                 ? copyStringMap(map)
                 : Map.of();
-        return parse(doc, docId, llmClient, options);
+        return parseAsync(doc, docId, llmClient, options);
     }
 
     public boolean supports(String doc) {

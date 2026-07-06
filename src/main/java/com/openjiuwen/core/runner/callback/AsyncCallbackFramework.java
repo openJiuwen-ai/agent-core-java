@@ -930,7 +930,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             List<Map<String, Object>> entries = new ArrayList<>();
             for (CallbackInfo callbackInfo : snapshot(entry.getValue())) {
                 Map<String, Object> info = new LinkedHashMap<>();
-                info.put("name", callbackName(callbackInfo.getCallback()));
+                info.put("name", callbackInfo.getCallbackDisplayName());
                 info.put("priority", callbackInfo.getPriority());
                 info.put("namespace", callbackInfo.getNamespace());
                 info.put("tags", new ArrayList<>(callbackInfo.getTags()));
@@ -965,7 +965,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
         List<Map<String, Object>> result = new ArrayList<>();
         for (CallbackInfo callbackInfo : snapshot(callbacks.get(event))) {
             Map<String, Object> info = new LinkedHashMap<>();
-            info.put("name", callbackName(callbackInfo.getCallback()));
+            info.put("name", callbackInfo.getCallbackDisplayName());
             info.put("priority", callbackInfo.getPriority());
             info.put("enabled", callbackInfo.isEnabled());
             info.put("namespace", callbackInfo.getNamespace());

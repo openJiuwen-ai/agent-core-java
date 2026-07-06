@@ -306,7 +306,9 @@ public abstract class KnowledgeBase implements AutoCloseable {
         return chain.thenApply(ignored -> List.copyOf(documents));
     }
 
-    public abstract CompletableFuture<List<String>> addDocuments(List<Document> documents, Map<String, Object> kwargs);
+    public CompletableFuture<List<String>> addDocuments(List<Document> documents, Map<String, Object> kwargs) {
+        return CompletableFuture.completedFuture(addDocuments(documents));
+    }
 
     public List<String> addDocuments(List<Document> documents) {
         return join(addDocuments(documents, Map.of()));
@@ -316,11 +318,13 @@ public abstract class KnowledgeBase implements AutoCloseable {
         return addDocuments(documents, Map.of());
     }
 
-    public abstract CompletableFuture<List<RetrievalResult>> retrieve(
+    public CompletableFuture<List<RetrievalResult>> retrieve(
             String query,
             RetrievalConfig config,
             Map<String, Object> kwargs
-    );
+    ) {
+        return CompletableFuture.completedFuture(retrieve(query, config));
+    }
 
     public List<RetrievalResult> retrieve(String query, RetrievalConfig config) {
         return join(retrieve(query, config, Map.of()));
@@ -330,7 +334,9 @@ public abstract class KnowledgeBase implements AutoCloseable {
         return retrieve(query, config, Map.of());
     }
 
-    public abstract CompletableFuture<Boolean> deleteDocuments(List<String> docIds, Map<String, Object> kwargs);
+    public CompletableFuture<Boolean> deleteDocuments(List<String> docIds, Map<String, Object> kwargs) {
+        return CompletableFuture.completedFuture(deleteDocuments(docIds));
+    }
 
     public boolean deleteDocuments(List<String> docIds) {
         return Boolean.TRUE.equals(join(deleteDocuments(docIds, Map.of())));
@@ -340,7 +346,9 @@ public abstract class KnowledgeBase implements AutoCloseable {
         return deleteDocuments(docIds, Map.of());
     }
 
-    public abstract CompletableFuture<List<String>> updateDocuments(List<Document> documents, Map<String, Object> kwargs);
+    public CompletableFuture<List<String>> updateDocuments(List<Document> documents, Map<String, Object> kwargs) {
+        return CompletableFuture.completedFuture(updateDocuments(documents));
+    }
 
     public List<String> updateDocuments(List<Document> documents) {
         return join(updateDocuments(documents, Map.of()));
@@ -350,7 +358,9 @@ public abstract class KnowledgeBase implements AutoCloseable {
         return updateDocuments(documents, Map.of());
     }
 
-    protected abstract CompletableFuture<Map<String, Object>> getStatisticsAsync();
+    protected CompletableFuture<Map<String, Object>> getStatisticsAsync() {
+        return CompletableFuture.completedFuture(getStatistics());
+    }
 
     public Map<String, Object> getStatistics() {
         return join(getStatisticsAsync());
@@ -380,7 +390,7 @@ public abstract class KnowledgeBase implements AutoCloseable {
             }
             parseOptions.putIfAbsent("file_name", fileName);
             String fileId = UUID.randomUUID().toString();
-            CompletableFuture<List<Document>> parsed = parser.parse(filePath, fileId, llmClient, parseOptions);
+            CompletableFuture<List<Document>> parsed = parser.parseAsync(filePath, fileId, llmClient, parseOptions);
             if (parsed == null) {
                 throw new IllegalStateException("parser returned null");
             }
@@ -401,7 +411,7 @@ public abstract class KnowledgeBase implements AutoCloseable {
                 return CompletableFuture.completedFuture(List.of());
             }
             String docId = UUID.randomUUID().toString();
-            CompletableFuture<List<Document>> parsed = parser.parse(url, docId, llmClient, options == null ? Map.of() : options);
+            CompletableFuture<List<Document>> parsed = parser.parseAsync(url, docId, llmClient, options == null ? Map.of() : options);
             if (parsed == null) {
                 throw new IllegalStateException("parser returned null");
             }

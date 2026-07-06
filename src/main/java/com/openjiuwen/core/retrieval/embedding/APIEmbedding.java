@@ -113,6 +113,7 @@ public class APIEmbedding extends Embedding implements AutoCloseable {
 
     @Override
     public CompletableFuture<List<Double>> embedQuery(String text, Map<String, Object> kwargs) {
+        validateEmbedQueryText(text);
         return CompletableFuture.supplyAsync(() -> embedQuerySync(text, kwargs), executor);
     }
 
@@ -121,13 +122,7 @@ public class APIEmbedding extends Embedding implements AutoCloseable {
     }
 
     public List<Double> embedQuerySync(String text, Map<String, Object> kwargs) {
-        if (text == null || text.isBlank()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
-                    "error_msg",
-                    "Empty text provided for embedding"
-            );
-        }
+        validateEmbedQueryText(text);
         List<List<Double>> embeddings = getEmbeddingsSync(text, kwargs);
         return embeddings.get(0);
     }
@@ -348,6 +343,16 @@ public class APIEmbedding extends Embedding implements AutoCloseable {
             );
         }
         return nonEmpty;
+    }
+
+    private static void validateEmbedQueryText(String text) {
+        if (text == null || text.isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+                    "error_msg",
+                    "Empty text provided for embedding"
+            );
+        }
     }
 
     protected static BaseCallback resolveCallback(Map<String, Object> kwargs, Collection<?> sequence) {

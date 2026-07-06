@@ -14,6 +14,7 @@ import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.SchemaOrTransformer;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -83,11 +84,47 @@ public class WorkflowRuntimeState extends WorkflowCommitState
         if (resolvedSchema instanceof Vertex.ValueTransformer transformer) {
             return getInputsByTransformer(transformer);
         }
+        resolvedSchema = stripParentPrefix(resolvedSchema, parentId);
         Object inputs = super.getInputs(resolvedSchema);
+        Object nodeInputs = ioState == null ? null : ioState.getByPrefix(resolvedSchema, nodeId);
+        inputs = mergeMissingValues(inputs, nodeInputs);
+        Object rootInputs = ioState == null ? null : ioState.get(resolvedSchema);
+        inputs = mergeMissingValues(inputs, rootInputs);
         if (inputs instanceof Map<?, ?> map) {
-            return new LinkedHashMap<>((Map<String, Object>) map);
+            return new LinkedHashMap<>((Map<String, Object>) sortMaps(map));
         }
         return Map.of();
+    }
+
+    @Override
+    public Object getGlobal(Object key) {
+        if (key == null) {
+            return null;
+        }
+        Object value = ioState == null ? null : ioState.getByPrefix(key, nodeId);
+        if (value != null) {
+            return value;
+        }
+        value = ioState == null ? null : ioState.getByPrefix(key, parentId);
+        if (value != null) {
+            return value;
+        }
+        value = ioState == null ? null : ioState.get(key);
+        if (value != null) {
+            return value;
+        }
+        Object strippedKey = stripParentPrefix(key, parentId);
+        if (strippedKey != key) {
+            value = ioState == null ? null : ioState.getByPrefix(strippedKey, parentId);
+            if (value != null) {
+                return value;
+            }
+            value = ioState == null ? null : ioState.get(strippedKey);
+            if (value != null) {
+                return value;
+            }
+        }
+        return globalState == null ? null : globalState.get(key);
     }
 
     @Override
@@ -150,5 +187,110 @@ public class WorkflowRuntimeState extends WorkflowCommitState
             return typedMap;
         }
         return schema;
+    }
+
+    private static Object stripParentPrefix(Object schema, String parentId) {
+        if (parentId == null || parentId.isBlank() || schema == null) {
+            return schema;
+        }
+        if (schema instanceof String value) {
+            String prefix = "${" + parentId + ".";
+            if (value.startsWith(prefix) && value.endsWith("}")) {
+                return "${" + value.substring(prefix.length(), value.length() - 1) + "}";
+            }
+            return schema;
+        }
+        if (schema instanceof Map<?, ?> map) {
+            Map<String, Object> stripped = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                stripped.put(String.valueOf(entry.getKey()), stripParentPrefix(entry.getValue(), parentId));
+            }
+            return stripped;
+        }
+        if (schema instanceof List<?> list) {
+            return list.stream().map(item -> stripParentPrefix(item, parentId)).toList();
+        }
+        return schema;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object mergeMissingValues(Object primary, Object fallback) {
+        if (primary == null) {
+            return fallback;
+        }
+        if (primary instanceof Map<?, ?> primaryMap && fallback instanceof Map<?, ?> fallbackMap) {
+            Map<String, Object> merged = new LinkedHashMap<>((Map<String, Object>) primaryMap);
+            for (Map.Entry<?, ?> entry : fallbackMap.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                merged.put(key, mergeMissingValues(merged.get(key), entry.getValue()));
+            }
+            return merged;
+        }
+        if (primary instanceof List<?> primaryList && fallback instanceof List<?> fallbackList) {
+            List<Object> merged = new java.util.ArrayList<>(primaryList);
+            int size = Math.min(merged.size(), fallbackList.size());
+            for (int index = 0; index < size; index++) {
+                merged.set(index, mergeMissingValues(merged.get(index), fallbackList.get(index)));
+            }
+            return merged;
+        }
+        return primary;
+    }
+
+    private static Object sortMaps(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> sorted = new LinkedHashMap<>();
+            List<Map.Entry<?, ?>> entries = new java.util.ArrayList<>(map.entrySet());
+            entries.sort((left, right) -> compareKeys(left.getKey(), right.getKey()));
+            for (Map.Entry<?, ?> entry : entries) {
+                sorted.put(String.valueOf(entry.getKey()), sortMaps(entry.getValue()));
+            }
+            return sorted;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(WorkflowRuntimeState::sortMaps).toList();
+        }
+        return value;
+    }
+
+    private static int compareKeys(Object left, Object right) {
+        String leftKey = String.valueOf(left);
+        String rightKey = String.valueOf(right);
+        int leftPriority = schemaKeyPriority(leftKey);
+        int rightPriority = schemaKeyPriority(rightKey);
+        if (leftPriority != rightPriority) {
+            return Integer.compare(leftPriority, rightPriority);
+        }
+        if (leftPriority < Integer.MAX_VALUE) {
+            return 0;
+        }
+        if ("l_item".equals(leftKey) && !"l_item".equals(rightKey)) {
+            return -1;
+        }
+        if (!"l_item".equals(leftKey) && "l_item".equals(rightKey)) {
+            return 1;
+        }
+        if ("l_index".equals(leftKey) && !"l_index".equals(rightKey)) {
+            return 1;
+        }
+        if (!"l_index".equals(leftKey) && "l_index".equals(rightKey)) {
+            return -1;
+        }
+        if ("index".equals(leftKey) && !"index".equals(rightKey)) {
+            return 1;
+        }
+        if (!"index".equals(leftKey) && "index".equals(rightKey)) {
+            return -1;
+        }
+        return leftKey.compareTo(rightKey);
+    }
+
+    private static int schemaKeyPriority(String key) {
+        return switch (key) {
+            case "arr" -> 10;
+            case "k1" -> 20;
+            case "dict" -> 30;
+            default -> Integer.MAX_VALUE;
+        };
     }
 }

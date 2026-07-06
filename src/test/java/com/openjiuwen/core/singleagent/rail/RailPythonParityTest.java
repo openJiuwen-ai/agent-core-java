@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.singleagent.rail;
 
+import com.openjiuwen.core.common.async.FutureList;
+import com.openjiuwen.core.common.async.FutureMap;
 import com.openjiuwen.core.application.llm_agent.rails.MemoryRail;
 import com.openjiuwen.core.context_engine.ContextStats;
 import com.openjiuwen.core.context_engine.ContextWindow;
@@ -948,17 +950,17 @@ class RailPythonParityTest {
 
     private static final class FakeLongTermMemory extends LongTermMemory {
         @Override
-        public CompletableFuture<List<MemResult>> searchUserMem(String query, int num, String userId, String scopeId,
+        public FutureList<MemResult> searchUserMem(String query, int num, String userId, String scopeId,
                 double threshold) {
-            return CompletableFuture.completedFuture(List.of(new MemResult(
+            return FutureList.completed(List.of(new MemResult(
                     new MemInfo("mem-1", "preference: math", MemoryType.USER_PROFILE, ZonedDateTime.now()),
                     0.99d
             )));
         }
 
         @Override
-        public CompletableFuture<Map<String, String>> getVariables(Object names, String userId, String scopeId) {
-            return CompletableFuture.completedFuture(Map.of());
+        public FutureMap<String, String> getVariables(Object names, String userId, String scopeId) {
+            return FutureMap.completed(Map.of());
         }
 
         @Override

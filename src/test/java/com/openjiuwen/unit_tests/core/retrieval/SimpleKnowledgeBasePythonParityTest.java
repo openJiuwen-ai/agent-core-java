@@ -437,7 +437,7 @@ public class SimpleKnowledgeBasePythonParityTest {
         private boolean fail;
 
         @Override
-        public CompletableFuture<List<Document>> parse(
+        public CompletableFuture<List<Document>> parseAsync(
                 String doc,
                 String docId,
                 BaseModelClient llmClient,

@@ -9,6 +9,8 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.state.CommitStateLike;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.WorkflowComponent;
 import com.openjiuwen.core.workflow.internal.WorkflowRuntimeSession;
@@ -38,10 +40,13 @@ public class LoopSetVariableComponent extends WorkflowComponent {
     @Override
     @SuppressWarnings("unchecked")
     public Object invoke(Object inputs, BaseSession session, ModelContext context) {
-        BaseSession rootSession = WorkflowSessionSupport.parentOrSelf(session);
+        BaseSession rootSession = WorkflowSessionSupport.parentOrSelf(unwrapSession(session));
         for (Map.Entry<String, Object> entry : variableMapping.entrySet()) {
             String left = entry.getKey();
             Object right = entry.getValue();
+            if (!SessionUtils.isRefPath(left)) {
+                continue;
+            }
 
             String leftRefStr = SessionUtils.extractOriginKey(left);
             String[] keys = leftRefStr.split("\\.", -1);
@@ -53,16 +58,17 @@ public class LoopSetVariableComponent extends WorkflowComponent {
             }
 
             String nodeId = keys[0];
-            WorkflowRuntimeSession nodeSession = WorkflowRuntimeSession.nodeSession(rootSession, nodeId);
             String[] remainingKeys = new String[keys.length - 1];
             System.arraycopy(keys, 1, remainingKeys, 0, remainingKeys.length);
 
             Object value = generateValue(session, right);
             Object output = generateOutput(remainingKeys, value);
             if (output instanceof Map<?, ?> map) {
-                nodeSession.state().setOutputs((Map<String, Object>) map);
+                setTargetOutputs(rootSession, nodeId, (Map<String, Object>) map);
             } else {
-                nodeSession.state().setOutputs(Map.of(nodeId, output));
+                Map<String, Object> wrapped = new LinkedHashMap<>();
+                wrapped.put(nodeId, output);
+                setTargetOutputs(rootSession, nodeId, wrapped);
             }
         }
         return null;
@@ -82,6 +88,62 @@ public class LoopSetVariableComponent extends WorkflowComponent {
 
     public static Object generateValue(NodeSessionApi session, Object value) {
         return generateValue((BaseSession) session, value);
+    }
+
+    private static void setTargetOutputs(BaseSession rootSession, String nodeId, Map<String, Object> output) {
+        WorkflowCommitState state = WorkflowSessionSupport.workflowState(rootSession);
+        if (state != null && rootSession instanceof WorkflowRuntimeSession runtimeSession) {
+            CommitStateLike ioState = state.getIoState();
+            if (ioState != null) {
+                String targetExecutableId = targetExecutableId(runtimeSession, nodeId);
+                Map<String, Object> wrapped = new LinkedHashMap<>();
+                wrapped.put(targetExecutableId, output);
+                ioState.updateById(targetExecutableId, wrapped);
+                state.commit();
+                return;
+            }
+        }
+        BaseSession nodeSession = resolveTargetSession(rootSession, nodeId);
+        WorkflowSessionSupport.setOutputs(nodeSession, output);
+        commit(nodeSession);
+    }
+
+    private static String targetExecutableId(WorkflowRuntimeSession rootSession, String nodeId) {
+        String executableId = rootSession.executableId();
+        String componentId = WorkflowSessionSupport.componentId(rootSession);
+        if (nodeId != null
+                && (nodeId.equals(componentId)
+                || nodeId.equals(executableId)
+                || (executableId != null && executableId.endsWith("." + nodeId)))) {
+            return executableId == null || executableId.isBlank() ? nodeId : executableId;
+        }
+        if (executableId == null || executableId.isBlank()) {
+            return nodeId;
+        }
+        return executableId + "." + nodeId;
+    }
+
+    private static BaseSession resolveTargetSession(BaseSession rootSession, String nodeId) {
+        if (rootSession instanceof WorkflowRuntimeSession runtimeSession
+                && nodeId != null
+                && nodeId.equals(WorkflowSessionSupport.componentId(runtimeSession))) {
+            return runtimeSession;
+        }
+        return WorkflowRuntimeSession.nodeSession(rootSession, nodeId);
+    }
+
+    private static BaseSession unwrapSession(BaseSession session) {
+        if (session instanceof NodeSessionApi nodeSessionApi) {
+            return nodeSessionApi.getInner();
+        }
+        return session;
+    }
+
+    private static void commit(BaseSession session) {
+        WorkflowCommitState state = WorkflowSessionSupport.workflowState(session);
+        if (state != null) {
+            state.commit();
+        }
     }
 
     public static Object generateOutput(String[] keys, Object value) {

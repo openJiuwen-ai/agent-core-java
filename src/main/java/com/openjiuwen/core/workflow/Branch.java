@@ -7,6 +7,7 @@ package com.openjiuwen.core.workflow;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.utils.SessionUtils;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
@@ -203,6 +204,16 @@ final class BranchExpressionEvaluator {
 
     private static Object resolveValue(String rawToken, BaseSession session) {
         String token = stripOuterParens(rawToken.trim());
+        String[] modulo = splitArithmetic(token, "%");
+        if (modulo != null) {
+            Object left = resolveValue(modulo[0], session);
+            Object right = resolveValue(modulo[1], session);
+            if (left instanceof Number leftNumber && right instanceof Number rightNumber) {
+                return leftNumber.doubleValue() % rightNumber.doubleValue();
+            }
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                    "error_msg", "unsupported operand type for %");
+        }
         if (startsWithFunction(token, "length") || startsWithFunction(token, "len")) {
             return collectionLength(resolveValue(functionArgument(token), session));
         }
@@ -236,7 +247,7 @@ final class BranchExpressionEvaluator {
         }
     }
 
-    private static Object applySubscripts(Object value, String suffix) {
+    static Object applySubscripts(Object value, String suffix) {
         String rest = suffix == null ? "" : suffix.trim();
         Object current = value;
         while (!rest.isEmpty()) {
@@ -518,6 +529,17 @@ final class BranchExpressionEvaluator {
         return -1;
     }
 
+    private static String[] splitArithmetic(String expression, String operator) {
+        int index = indexOfTopLevel(expression, operator);
+        if (index < 0) {
+            return null;
+        }
+        return new String[] {
+                expression.substring(0, index).trim(),
+                expression.substring(index + operator.length()).trim()
+        };
+    }
+
     private static List<String> placeholderPaths(String expression) {
         List<String> result = new ArrayList<>();
         if (expression == null) {
@@ -559,9 +581,16 @@ final class SessionValueResolver {
         }
         Optional<Object> state = invokeNoArg(session, "state");
         if (state.isPresent()) {
-            return invokeAccessor(state.get(), path);
+            Optional<Object> stateValue = invokeAccessor(state.get(), path);
+            if (stateValue.isPresent()) {
+                return stateValue;
+            }
+            Optional<Object> dumpedValue = resolveFromStateDump(state.get(), path);
+            if (dumpedValue.isPresent()) {
+                return dumpedValue;
+            }
         }
-        return Optional.empty();
+        return resolveWithSubscripts(session, path);
     }
 
     private static Optional<Object> invokeAccessor(Object target, String path) {
@@ -585,5 +614,46 @@ final class SessionValueResolver {
         } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException ignored) {
             return Optional.empty();
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Optional<Object> resolveFromStateDump(Object state, String path) {
+        Optional<Object> stateMap = invokeNoArg(state, "getState");
+        if (stateMap.isEmpty()) {
+            stateMap = invokeNoArg(state, "dump");
+        }
+        if (stateMap.isEmpty() || !(stateMap.get() instanceof Map<?, ?> map)) {
+            return Optional.empty();
+        }
+        for (String partition : List.of("io_state", "global_state", "comp_state", "workflow_state")) {
+            Object value = map.get(partition);
+            if (value instanceof Map<?, ?> partitionMap) {
+                Object resolved = SessionUtils.getValueByNestedPath(path, (Map<String, Object>) partitionMap);
+                if (resolved != null) {
+                    return Optional.of(resolved);
+                }
+            }
+        }
+        Object resolved = SessionUtils.getValueByNestedPath(path, (Map<String, Object>) map);
+        return Optional.ofNullable(resolved);
+    }
+
+    private static Optional<Object> resolveWithSubscripts(BaseSession session, String path) {
+        int bracket = path.indexOf('[');
+        if (bracket < 0) {
+            return Optional.empty();
+        }
+        String prefix = path.substring(0, bracket);
+        Optional<Object> value = invokeAccessor(session, prefix);
+        if (value.isEmpty()) {
+            Optional<Object> state = invokeNoArg(session, "state");
+            if (state.isPresent()) {
+                value = invokeAccessor(state.get(), prefix);
+            }
+        }
+        if (value.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(BranchExpressionEvaluator.applySubscripts(value.get(), path.substring(bracket)));
     }
 }

@@ -103,7 +103,7 @@ public final class ShellProcessRegistry {
                 destroyProcessTree(proc, false);
             }
         } catch (RuntimeException exception) {
-            return false;
+            proc.destroy();
         }
         if (waitFor(proc, TERMINATE_TIMEOUT)) {
             return true;
@@ -116,6 +116,7 @@ public final class ShellProcessRegistry {
                 destroyProcessTree(proc, true);
             }
         } catch (RuntimeException exception) {
+            proc.destroyForcibly();
             Loggers.SYS_OPERATION.warning(
                     "Failed to kill shell process " + safePid(proc) + ": " + exception.getMessage()
             );

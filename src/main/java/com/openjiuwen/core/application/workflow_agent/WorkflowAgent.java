@@ -29,6 +29,11 @@ public class WorkflowAgent extends ControllerAgent {
     }
 
     @Override
+    protected com.openjiuwen.core.context_engine.ContextEngine createContextEngine() {
+        return new com.openjiuwen.core.context.ContextEngine();
+    }
+
+    @Override
     public CompletionStage<Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
         return super.invoke(inputs, session);
     }

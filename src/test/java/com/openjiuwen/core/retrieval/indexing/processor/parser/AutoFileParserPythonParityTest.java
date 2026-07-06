@@ -172,7 +172,7 @@ class AutoFileParserPythonParityTest {
      */
     private static final class TestParser extends Parser {
         @Override
-        public CompletableFuture<List<Document>> parse(
+        public CompletableFuture<List<Document>> parseAsync(
                 String doc,
                 String docId,
                 BaseModelClient llmClient,
@@ -193,7 +193,7 @@ class AutoFileParserPythonParityTest {
      */
     private static final class CustomParser extends Parser {
         @Override
-        public CompletableFuture<List<Document>> parse(
+        public CompletableFuture<List<Document>> parseAsync(
                 String doc,
                 String docId,
                 BaseModelClient llmClient,
@@ -214,7 +214,7 @@ class AutoFileParserPythonParityTest {
      */
     private static final class EmptyParser extends Parser {
         @Override
-        public CompletableFuture<List<Document>> parse(
+        public CompletableFuture<List<Document>> parseAsync(
                 String doc,
                 String docId,
                 BaseModelClient llmClient,
@@ -236,7 +236,7 @@ class AutoFileParserPythonParityTest {
         }
 
         @Override
-        public CompletableFuture<List<Document>> parse(
+        public CompletableFuture<List<Document>> parseAsync(
                 String doc,
                 String docId,
                 BaseModelClient llmClient,

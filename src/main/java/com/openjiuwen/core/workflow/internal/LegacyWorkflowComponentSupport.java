@@ -6,6 +6,7 @@ package com.openjiuwen.core.workflow.internal;
 
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.workflow.ComponentComposable;
 import com.openjiuwen.core.workflow.WorkflowComponent;
 
@@ -88,17 +89,28 @@ public final class LegacyWorkflowComponentSupport {
         }
 
         private Method findMethod(String methodName) {
+            Method fallback = null;
             for (Method method : delegate.getClass().getMethods()) {
                 if (method.getName().equals(methodName) && method.getParameterCount() == 3) {
-                    return method;
+                    Class<?>[] parameterTypes = method.getParameterTypes();
+                    if (NodeSessionApi.class.isAssignableFrom(parameterTypes[1])
+                            && com.openjiuwen.core.context.ModelContext.class.isAssignableFrom(parameterTypes[2])) {
+                        return method;
+                    }
+                    if (BaseSession.class.isAssignableFrom(parameterTypes[1])
+                            && ModelContext.class.isAssignableFrom(parameterTypes[2])) {
+                        fallback = method;
+                    } else if (fallback == null) {
+                        fallback = method;
+                    }
                 }
             }
-            return null;
+            return fallback;
         }
 
         private Object invokeMethod(Method method, Object inputs, BaseSession session, ModelContext context) {
             try {
-                return method.invoke(delegate, inputs, session, context);
+                return method.invoke(delegate, inputs, adaptSession(method, session), adaptContext(method, context));
             } catch (InvocationTargetException e) {
                 Throwable target = e.getTargetException();
                 if (target instanceof RuntimeException runtimeException) {
@@ -114,6 +126,22 @@ public final class LegacyWorkflowComponentSupport {
                                 + delegate.getClass().getSimpleName(),
                         e);
             }
+        }
+
+        private static Object adaptSession(Method method, BaseSession session) {
+            Class<?> sessionType = method.getParameterTypes()[1];
+            if (NodeSessionApi.class.isAssignableFrom(sessionType)) {
+                return session instanceof NodeSessionApi nodeSessionApi ? nodeSessionApi : new NodeSessionApi(session);
+            }
+            return session;
+        }
+
+        private static Object adaptContext(Method method, ModelContext context) {
+            Class<?> contextType = method.getParameterTypes()[2];
+            if (com.openjiuwen.core.context.ModelContext.class.isAssignableFrom(contextType)) {
+                return com.openjiuwen.core.context.ModelContext.wrap(context);
+            }
+            return context;
         }
 
         private static Object unwrap(Object result) {

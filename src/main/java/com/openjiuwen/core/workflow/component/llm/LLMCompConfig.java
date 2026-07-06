@@ -38,4 +38,22 @@ public class LLMCompConfig extends ComponentConfig {
     private Map<String, Object> outputConfig = new LinkedHashMap<>();
     private boolean enableHistory = false;
     private boolean cacheStream = false;
+
+    public void setTemplateContent(List<? extends Map<String, ?>> templateContent) {
+        this.templateContent = copyTemplateContent(templateContent);
+    }
+
+    private static List<Map<String, Object>> copyTemplateContent(List<? extends Map<String, ?>> source) {
+        List<Map<String, Object>> copy = new ArrayList<>();
+        if (source != null) {
+            for (Map<String, ?> item : source) {
+                Map<String, Object> prompt = new LinkedHashMap<>();
+                if (item != null) {
+                    prompt.putAll(item);
+                }
+                copy.add(prompt);
+            }
+        }
+        return copy;
+    }
 }

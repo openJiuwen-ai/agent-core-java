@@ -10,6 +10,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -19,9 +20,13 @@ import java.util.Optional;
  * {@code openjiuwen/core/context_engine/context/context.py}.</p>
  */
 public class SessionModelContext
-        extends com.openjiuwen.core.context_engine.context.SessionModelContext {
+        extends com.openjiuwen.core.context.ModelContext {
+    public SessionModelContext(com.openjiuwen.core.context_engine.context.SessionModelContext delegate) {
+        super(delegate);
+    }
+
     public SessionModelContext(String contextId, String sessionId, ContextEngineConfig config) {
-        super(contextId, sessionId, config);
+        this(new com.openjiuwen.core.context_engine.context.SessionModelContext(contextId, sessionId, config));
     }
 
     public SessionModelContext(String contextId, String sessionId, ContextEngineConfig config,
@@ -32,18 +37,37 @@ public class SessionModelContext
     public SessionModelContext(String contextId, String sessionId, ContextEngineConfig config,
                                List<BaseMessage> historyMessages, List<?> processors, Object tokenCounter,
                                Object sessionRef, Object workspace, Object sysOperation) {
-        super(contextId, sessionId, config, historyMessages, adaptProcessors(processors),
-                adaptTokenCounter(tokenCounter), sessionRef, adaptWorkspace(workspace),
-                adaptSysOperation(sysOperation), null, null);
+        this(new com.openjiuwen.core.context_engine.context.SessionModelContext(contextId, sessionId, config,
+                historyMessages, adaptProcessors(processors), adaptTokenCounter(tokenCounter), sessionRef,
+                adaptWorkspace(workspace), adaptSysOperation(sysOperation), null, null));
     }
 
-    private static List<ContextProcessorPort> adaptProcessors(List<?> processors) {
+    public Map<String, Object> saveState() {
+        return delegate().saveState();
+    }
+
+    public void loadState(Map<String, Object> state) {
+        delegate().loadState(state);
+    }
+
+    public List<Map<String, Object>> compressionHistory() {
+        return delegate().compressionHistory();
+    }
+
+    private com.openjiuwen.core.context_engine.context.SessionModelContext delegate() {
+        return (com.openjiuwen.core.context_engine.context.SessionModelContext) unwrap();
+    }
+
+    private static List<com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort>
+            adaptProcessors(List<?> processors) {
         if (processors == null) {
             return List.of();
         }
-        List<ContextProcessorPort> result = new ArrayList<>();
+        List<com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort> result =
+                new ArrayList<>();
         for (Object processor : processors) {
-            if (processor instanceof ContextProcessorPort port) {
+            if (processor instanceof
+                    com.openjiuwen.core.context_engine.context.SessionModelContext.ContextProcessorPort port) {
                 result.add(port);
             } else if (processor != null) {
                 throw new IllegalArgumentException("Unsupported context processor: " + processor.getClass());
@@ -63,11 +87,12 @@ public class SessionModelContext
         return messages -> invokeInt(tokenCounter, messages);
     }
 
-    private static WorkspacePort adaptWorkspace(Object workspace) {
+    private static com.openjiuwen.core.context_engine.context.SessionModelContext.WorkspacePort adaptWorkspace(
+            Object workspace) {
         if (workspace == null) {
             return null;
         }
-        if (workspace instanceof WorkspacePort port) {
+        if (workspace instanceof com.openjiuwen.core.context_engine.context.SessionModelContext.WorkspacePort port) {
             return port;
         }
         return () -> invokeString(workspace, "rootPath")
@@ -75,11 +100,13 @@ public class SessionModelContext
                 .orElse("");
     }
 
-    private static SysOperationPort adaptSysOperation(Object sysOperation) {
+    private static com.openjiuwen.core.context_engine.context.SessionModelContext.SysOperationPort adaptSysOperation(
+            Object sysOperation) {
         if (sysOperation == null) {
             return null;
         }
-        if (sysOperation instanceof SysOperationPort port) {
+        if (sysOperation instanceof
+                com.openjiuwen.core.context_engine.context.SessionModelContext.SysOperationPort port) {
             return port;
         }
         return path -> Optional.empty();

@@ -15,7 +15,9 @@ import com.openjiuwen.dev_tools.tune.TuneConstant;
 import com.openjiuwen.dev_tools.tune.TuneUtils;
 import com.openjiuwen.dev_tools.tune.dataset.CaseLoader;
 import com.openjiuwen.dev_tools.tune.evaluator.BaseEvaluator;
+import com.openjiuwen.dev_tools.tune.evaluator.DefaultEvaluator;
 import com.openjiuwen.dev_tools.tune.optimizer.BaseOptimizer;
+import com.openjiuwen.dev_tools.tune.optimizer.JointOptimizer;
 import com.openjiuwen.dev_tools.tune.optimizer.TextualParameter;
 
 import java.lang.reflect.InvocationTargetException;
@@ -64,6 +66,10 @@ public class Trainer {
         );
         this.earlyStopScore = doubleOption(options, "early_stop_score", TuneConstant.DEFAULT_EARLY_STOP_SCORE);
         TuneUtils.validateDigitalParameter(earlyStopScore, "early_stop_score", 0.0d, 1.0d);
+    }
+
+    public Trainer(DefaultEvaluator evaluator, JointOptimizer optimizer, int numParallel, double earlyStopScore) {
+        this(optimizer, evaluator, Map.of("num_parallel", numParallel, "early_stop_score", earlyStopScore));
     }
 
     public LegacyBaseAgent train(LegacyBaseAgent agent, CaseLoader trainCases) {
@@ -208,6 +214,14 @@ public class Trainer {
 
     public double getEarlyStopScore() {
         return earlyStopScore;
+    }
+
+    public DefaultEvaluator getEvaluator() {
+        return (DefaultEvaluator) evaluator;
+    }
+
+    public BaseOptimizer getOptimizer() {
+        return optimizer;
     }
 
     private Progress preTrain(LegacyBaseAgent agent, Map<String, Object> kwargs) {

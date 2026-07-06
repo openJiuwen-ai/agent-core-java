@@ -72,6 +72,11 @@ public class CurrentRoundCompressorConfig
             return this;
         }
 
+        public Builder largeMessageThreshold(int largeMessageThreshold) {
+            this.tokensThreshold = largeMessageThreshold;
+            return this;
+        }
+
         public Builder messagesToKeep(int messagesToKeep) {
             this.messagesToKeep = messagesToKeep;
             return this;

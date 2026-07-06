@@ -102,14 +102,14 @@ public class OutputCallback extends LoopCallback {
             if (pathParts.length > 0) {
                 String nodeId = WorkflowSessionSupport.componentId(session);
                 if (pathParts[0].equals(nodeId)) {
-                    return valueFromLatestRound(results, root);
+                    return WorkflowSessionSupport.getGlobalState(session, refStr);
                 }
             }
         }
 
         List<Object> output = new ArrayList<>();
         for (Object result : results) {
-            output.add(valueFromPath(result, root));
+            output.add(normalizeRoundValue(valueFromPath(result, root), outputFormat));
         }
         return output;
     }
@@ -128,5 +128,17 @@ public class OutputCallback extends LoopCallback {
             data = ((Map<String, Object>) data).get(key);
         }
         return data;
+    }
+
+    private Object normalizeRoundValue(Object value, Object outputFormat) {
+        if (!(outputFormat instanceof String refPath) || !SessionUtils.isRefPath(refPath)
+                || !(value instanceof Map<?, ?> map) || map.size() != 1) {
+            return value;
+        }
+        String refStr = SessionUtils.extractOriginKey(refPath);
+        if (!refStr.contains(".") && map.containsKey(refStr)) {
+            return map.get(refStr);
+        }
+        return value;
     }
 }

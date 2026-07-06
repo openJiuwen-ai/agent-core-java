@@ -183,6 +183,7 @@ public class StreamProcessor {
     private void closeQueuesForSourceKey(String sourceId, String sourceKey, Map<String, Set<String>> sourcePathMap) {
         Set<String> handledPaths = sourcePathMap.get(sourceKey);
         if (handledPaths == null || handledPaths.isEmpty()) {
+            closeQueuesForSource(sourceId);
             return;
         }
         for (String path : handledPaths) {

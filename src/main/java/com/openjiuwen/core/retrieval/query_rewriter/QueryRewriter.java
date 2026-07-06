@@ -15,6 +15,7 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.JsonOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -61,6 +62,10 @@ public class QueryRewriter {
 
     public QueryRewriter(ModelConfig cfg, ModelContext ctx, int compressRange, String promptLang) {
         this(cfg, ctx, compressRange, promptLang, createModel(cfg));
+    }
+
+    public QueryRewriter(BaseModelClient llm, ModelContext ctx, int compressRange, String promptLang) {
+        this(null, ctx, compressRange, promptLang, adaptModelClient(llm));
     }
 
     QueryRewriter(Model llm, ModelContext ctx, int compressRange, String promptLang) {
@@ -351,6 +356,28 @@ public class QueryRewriter {
                 .topP(modelInfo.getTopP())
                 .build();
         return new Model(clientConfig, requestConfig);
+    }
+
+    private static Model adaptModelClient(BaseModelClient client) {
+        Objects.requireNonNull(client, "client");
+        return new Model((messages, modelConfig, modelClientConfig, options) -> {
+            try {
+                AssistantMessage response = client.invoke(
+                        messages,
+                        options.getTools(),
+                        options.getTemperature(),
+                        options.getTopP(),
+                        options.getModel(),
+                        options.getMaxTokens(),
+                        options.getStop(),
+                        options.getOutputParser(),
+                        options.getTimeout(),
+                        options.getExtraFields());
+                return java.util.concurrent.CompletableFuture.completedFuture(response);
+            } catch (Exception exception) {
+                return java.util.concurrent.CompletableFuture.failedFuture(exception);
+            }
+        });
     }
 
     private AssistantMessage invokeLlm(List<BaseMessage> messages) {

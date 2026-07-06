@@ -406,7 +406,7 @@ class KnowledgeBaseTest {
         private final List<String> fileNamesSeen = new ArrayList<>();
 
         @Override
-        public CompletableFuture<List<Document>> parse(
+        public CompletableFuture<List<Document>> parseAsync(
                 String doc,
                 String docId,
                 com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient llmClient,

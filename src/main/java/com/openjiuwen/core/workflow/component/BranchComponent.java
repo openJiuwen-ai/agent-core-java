@@ -121,7 +121,8 @@ public class BranchComponent extends WorkflowComponent<Object, Map<String, Objec
         return new LinkedHashMap<>();
     }
 
-    public Object invoke(Object inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
+    @Override
+    public Map<String, Object> invoke(Object inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
         return invoke(inputs, (BaseSession) session, context == null ? null : context.unwrap());
     }
 

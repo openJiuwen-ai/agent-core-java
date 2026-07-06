@@ -300,7 +300,8 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         }
     }
 
-    public static boolean supportsKvCacheRelease() {
+    @Override
+    public boolean supportsKvCacheRelease() {
         return true;
     }
 

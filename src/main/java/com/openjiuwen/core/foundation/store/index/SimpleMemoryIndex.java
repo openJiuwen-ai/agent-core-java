@@ -61,6 +61,8 @@ public class SimpleMemoryIndex extends BaseMemoryIndex {
 
     private static final String IDS_SUFFIX = "ids";
 
+    private static final String TEXT_FIELD = "text";
+
     private static final int BYTE_NUM_PER_ID = 24;
 
     private static final DateTimeFormatter TIMESTAMP_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH-mm-ss");
@@ -404,7 +406,12 @@ public class SimpleMemoryIndex extends BaseMemoryIndex {
             return ensureCollectionFuture.thenCompose(ignored -> {
                 List<Map<String, Object>> vectorDocs = new ArrayList<>();
                 for (int index = 0; index < docs.size(); index++) {
-                    vectorDocs.add(Map.of("id", docs.get(index).getId(), "embedding", embeddings.get(index)));
+                    MemoryDoc doc = docs.get(index);
+                    Map<String, Object> vectorDoc = new LinkedHashMap<>();
+                    vectorDoc.put("id", doc.getId());
+                    vectorDoc.put(TEXT_FIELD, doc.getText() == null ? "" : doc.getText());
+                    vectorDoc.put("embedding", embeddings.get(index));
+                    vectorDocs.add(vectorDoc);
                 }
                 return vectorStore.addDocs(collectionName, vectorDocs, Map.of());
             }).thenCompose(ignored -> {
@@ -495,6 +502,7 @@ public class SimpleMemoryIndex extends BaseMemoryIndex {
 
             CollectionSchema schema = new CollectionSchema(List.of(), "Semantic memory collection", false);
             schema.addField(new FieldSchema("id", VectorDataType.VARCHAR, true, false, 256, null, null, null, null, null));
+            schema.addField(new FieldSchema(TEXT_FIELD, VectorDataType.VARCHAR, false, false, 65535, null, null, null, null, null));
             schema.addField(new FieldSchema("embedding", VectorDataType.FLOAT_VECTOR, false, false, null, dim, null, null, null, null));
             return vectorStore.createCollection(collectionName, schema, Map.of())
                     .thenRun(() -> createdCollections.add(collectionName));

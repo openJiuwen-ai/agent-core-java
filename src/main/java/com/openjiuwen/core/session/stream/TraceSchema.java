@@ -5,6 +5,7 @@
 package com.openjiuwen.core.session.stream;
 
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Mirrors Python's {@code TraceSchema} in
@@ -47,5 +48,21 @@ public class TraceSchema implements StreamSchema {
         schema.setType((String) data.get("type"));
         schema.setPayload(data.get("payload"));
         return schema;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof TraceSchema that)) {
+            return false;
+        }
+        return Objects.equals(type, that.type) && Objects.equals(payload, that.payload);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(type, payload);
     }
 }

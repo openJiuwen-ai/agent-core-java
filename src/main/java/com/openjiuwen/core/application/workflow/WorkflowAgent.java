@@ -9,8 +9,10 @@ import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
 import com.openjiuwen.core.application.schema.WorkflowSchema;
 import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.controller.schema.EventType;
-import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.singleagent.AbilityManager;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -26,10 +28,14 @@ import java.util.Map;
 public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agent.WorkflowAgent {
 
     private final WorkflowAgentConfig agentConfig;
+    private final AbilityManager abilityManager = new AbilityManager();
+    private final AgentCard card;
 
     public WorkflowAgent(WorkflowAgentConfig agentConfig) {
         super(toLegacyConfig(agentConfig));
         this.agentConfig = agentConfig == null ? WorkflowAgentConfig.builder().build() : agentConfig;
+        this.card = toAgentCard(this.agentConfig);
+        this.abilityManager.setContextEngine(getContextEngine());
     }
 
     @Override
@@ -37,16 +43,33 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
         return agentConfig;
     }
 
-    public ControllerOutput invoke(Object inputs, Session session) {
-        Object result = super.invoke(toInputMap(inputs), null).toCompletableFuture().join();
+    public AbilityManager getAbilityManager() {
+        return abilityManager;
+    }
+
+    @Override
+    public com.openjiuwen.core.context.ContextEngine getContextEngine() {
+        return (com.openjiuwen.core.context.ContextEngine) super.getContextEngine();
+    }
+
+    public AbilityManager get_ability_manager() {
+        return abilityManager;
+    }
+
+    public AgentCard getCard() {
+        return card;
+    }
+
+    public ControllerOutput invoke(Object inputs, AgentSessionApi session) {
+        Object result = super.invoke(toInputMap(inputs), session).toCompletableFuture().join();
         return toControllerOutput(result);
     }
 
-    public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
-        return super.stream(toInputMap(inputs), null, streamModes == null ? List.of(StreamMode.OUTPUT) : streamModes);
+    public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
+        return super.stream(toInputMap(inputs), session, streamModes == null ? List.of(StreamMode.OUTPUT) : streamModes);
     }
 
-    public Iterator<Object> stream(Object inputs, Session session) {
+    public Iterator<Object> stream(Object inputs, AgentSessionApi session) {
         return stream(inputs, session, List.of(StreamMode.OUTPUT));
     }
 
@@ -127,6 +150,15 @@ public class WorkflowAgent extends com.openjiuwen.core.application.workflow_agen
             return typed;
         }
         return Map.of("input", inputs);
+    }
+
+    private static AgentCard toAgentCard(WorkflowAgentConfig source) {
+        return new AgentCard(valueOrEmpty(source.getId()), valueOrEmpty(source.getId()),
+                valueOrEmpty(source.getDescription()));
+    }
+
+    private static String valueOrEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private static ControllerOutput toControllerOutput(Object result) {

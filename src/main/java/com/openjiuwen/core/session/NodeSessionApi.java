@@ -16,6 +16,8 @@ import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.session.tracer.TracerWorkflowUtils;
 import com.openjiuwen.core.workflow.internal.WorkflowSessionSupport;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.Map;
 
 /**
@@ -156,21 +158,61 @@ public class NodeSessionApi extends BaseSession {
     }
 
     public void writeStream(Object data) {
-        Object manager = inner.streamWriterManager();
+        Object manager = findStreamWriterManager();
         if (manager instanceof StreamWriterManager streamWriterManager) {
             streamWriterManager.getOutputWriter().write(normalizeOutput(data));
+            return;
         }
+        writeWithReflectedWriter(manager, "getOutputWriter", normalizeOutput(data));
     }
 
     public void writeCustomStream(Object data) {
-        Object manager = inner.streamWriterManager();
+        Object manager = findStreamWriterManager();
         if (manager instanceof StreamWriterManager streamWriterManager) {
             streamWriterManager.getCustomWriter().write(data);
+            return;
         }
+        writeWithReflectedWriter(manager, "getCustomWriter", data);
     }
 
     public void writeCustomStream(Map<String, Object> data) {
         writeCustomStream((Object) data);
+    }
+
+    private Object findStreamWriterManager() {
+        BaseSession current = inner;
+        for (int depth = 0; current != null && depth < 8; depth++) {
+            Object manager = current.streamWriterManager();
+            if (manager != null) {
+                return manager;
+            }
+            current = current.parent();
+        }
+        return null;
+    }
+
+    private static void writeWithReflectedWriter(Object manager, String accessor, Object data) {
+        if (manager == null) {
+            return;
+        }
+        try {
+            Method accessorMethod = manager.getClass().getMethod(accessor);
+            accessorMethod.setAccessible(true);
+            Object writer = accessorMethod.invoke(manager);
+            if (writer != null) {
+                Method writeMethod = writer.getClass().getMethod("write", Object.class);
+                writeMethod.setAccessible(true);
+                writeMethod.invoke(writer, data);
+            }
+        } catch (NoSuchMethodException | IllegalAccessException ignored) {
+            // Some session adapters do not expose the requested stream writer.
+        } catch (InvocationTargetException exception) {
+            Throwable target = exception.getTargetException();
+            if (target instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException(target);
+        }
     }
 
     public Object getCallbackManager() {

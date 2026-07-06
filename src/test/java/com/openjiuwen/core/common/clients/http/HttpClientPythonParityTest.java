@@ -492,7 +492,7 @@ class HttpClientPythonParityTest {
         try (LocalHttpServer server = LocalHttpServer.start()) {
             HttpClient client = new HttpClient(new SessionConfig(), true);
             List<CompletableFuture<Map<String, Object>>> futures = IntStream.range(0, 5)
-                    .mapToObj(index -> client.get(server.url("/success")))
+                    .<CompletableFuture<Map<String, Object>>>mapToObj(index -> client.get(server.url("/success")))
                     .toList();
 
             CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new)).join();

@@ -52,6 +52,11 @@ public class WorkflowSession extends BaseSession implements ActorManagerSession 
     }
 
     public WorkflowSession(String workflowId, BaseSession parent, String sessionId,
+                           WorkflowCommitState state, CallbackManager callbackManager) {
+        this(workflowId, parent, sessionId, state, (Object) callbackManager);
+    }
+
+    public WorkflowSession(String workflowId, BaseSession parent, String sessionId,
                            State state, CallbackManager callbackManager) {
         this(workflowId, parent, sessionId, toWorkflowCommitState(state), (Object) callbackManager);
     }

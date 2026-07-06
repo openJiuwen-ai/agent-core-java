@@ -6,6 +6,7 @@ package com.openjiuwen.core.session.interaction;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Interaction output payload.
@@ -49,5 +50,32 @@ public class InteractionOutput {
 
     public Map<String, Object> getMetadata() {
         return metadata;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof InteractionOutput that)) {
+            return false;
+        }
+        return Objects.equals(id, that.id)
+                && Objects.equals(value, that.value)
+                && Objects.equals(metadata, that.metadata);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, value, metadata);
+    }
+
+    @Override
+    public String toString() {
+        return "InteractionOutput{"
+                + "id='" + id + '\''
+                + ", value=" + value
+                + ", metadata=" + metadata
+                + '}';
     }
 }

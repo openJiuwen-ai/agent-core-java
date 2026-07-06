@@ -5,8 +5,10 @@
 package com.openjiuwen.core.workflow;
 
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.session.stream.TraceSchema;
 
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Top-level workflow chunk alias for streamed workflow outputs.
@@ -14,13 +16,16 @@ import java.util.Map;
  * <p>Mirrors Python's {@code WorkflowChunk = Union[OutputSchema, CustomSchema, TraceSchema]} in
  * {@code openjiuwen/core/workflow/workflow.py}.</p>
  */
-public class WorkflowChunk extends OutputSchema {
+public class WorkflowChunk extends TraceSchema {
+
+    private int index;
 
     public WorkflowChunk() {
     }
 
     public WorkflowChunk(String type, int index, Object payload) {
-        super(type, index, payload);
+        super(type, payload);
+        this.index = index;
     }
 
     public static WorkflowChunk from(Object value) {
@@ -28,15 +33,44 @@ public class WorkflowChunk extends OutputSchema {
             return workflowChunk;
         }
         if (value instanceof OutputSchema outputSchema) {
-            return new WorkflowChunk(outputSchema.getType(), outputSchema.getIndex(), outputSchema.getPayload());
+            return outputSchema;
+        }
+        if (value instanceof TraceSchema traceSchema) {
+            return new WorkflowChunk(traceSchema.getType(), 0, traceSchema.getPayload());
         }
         if (value instanceof Map<?, ?> map && isOutputSchemaMap(map)) {
-            return new WorkflowChunk(
+            return new OutputSchema(
                     stringValue(map.get("type")),
                     intValue(map.get("index")),
                     map.get("payload"));
         }
-        return new WorkflowChunk("output", 0, value);
+        return new OutputSchema("output", 0, value);
+    }
+
+    public int getIndex() {
+        return index;
+    }
+
+    public void setIndex(int index) {
+        this.index = index;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof WorkflowChunk that)) {
+            return false;
+        }
+        return index == that.index
+                && Objects.equals(getType(), that.getType())
+                && Objects.equals(getPayload(), that.getPayload());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getType(), index, getPayload());
     }
 
     private static boolean isOutputSchemaMap(Map<?, ?> map) {

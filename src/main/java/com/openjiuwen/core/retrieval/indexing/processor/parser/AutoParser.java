@@ -44,7 +44,7 @@ public class AutoParser extends Parser {
     }
 
     @Override
-    public CompletableFuture<List<Document>> parse(
+    public CompletableFuture<List<Document>> parseAsync(
             String doc,
             String docId,
             BaseModelClient llmClient,
@@ -53,11 +53,11 @@ public class AutoParser extends Parser {
         Map<String, Object> safeOptions = options == null ? Map.of() : options;
         if (isLikelyUrl(doc) && linkParser.supports(doc)) {
             LOGGER.debug("AutoParser delegating to link parser");
-            return linkParser.parse(doc, docId, llmClient, safeOptions);
+            return linkParser.parseAsync(doc, docId, llmClient, safeOptions);
         }
         if (fileParser.supports(doc)) {
             LOGGER.debug("AutoParser delegating to file parser");
-            return fileParser.parse(doc, docId, llmClient, safeOptions);
+            return fileParser.parseAsync(doc, docId, llmClient, safeOptions);
         }
         return CompletableFuture.completedFuture(List.of());
     }

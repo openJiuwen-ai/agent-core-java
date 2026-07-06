@@ -38,6 +38,10 @@ public class AgentCard extends BaseCard {
         super(id, name, description);
     }
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
     public Object getInputParams() {
         return inputParams;
     }
@@ -78,5 +82,57 @@ public class AgentCard extends BaseCard {
         Map<String, Object> normalized = new LinkedHashMap<>();
         rawMap.forEach((key, mapValue) -> normalized.put(String.valueOf(key), mapValue));
         return normalized;
+    }
+
+    public static class Builder {
+        private String id;
+        private String name = "";
+        private String description = "";
+        private Object inputParams;
+        private Object outputParams;
+        private String interfaceUrl;
+
+        protected Builder() {
+        }
+
+        public Builder id(String id) {
+            this.id = id;
+            return this;
+        }
+
+        public Builder name(String name) {
+            this.name = name != null ? name : "";
+            return this;
+        }
+
+        public Builder description(String description) {
+            this.description = description != null ? description : "";
+            return this;
+        }
+
+        public Builder inputParams(Object inputParams) {
+            this.inputParams = inputParams;
+            return this;
+        }
+
+        public Builder outputParams(Object outputParams) {
+            this.outputParams = outputParams;
+            return this;
+        }
+
+        public Builder interfaceUrl(String interfaceUrl) {
+            this.interfaceUrl = interfaceUrl;
+            return this;
+        }
+
+        public AgentCard build() {
+            AgentCard card = id == null ? new AgentCard() : new AgentCard(id, name, description);
+            card.setName(name);
+            card.setDescription(description);
+            card.setInputParams(inputParams);
+            card.setOutputParams(outputParams);
+            card.setInterfaceUrl(interfaceUrl);
+            return card;
+        }
     }
 }

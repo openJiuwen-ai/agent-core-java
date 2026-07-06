@@ -34,7 +34,7 @@ public final class PromptBuilderUtils {
     }
 
     public static Map<String, PromptTemplate> selectTemplate(String language) {
-        return TEMPLATE_MAP.getOrDefault(language, PromptZh.templates());
+        return language == null ? PromptZh.templates() : TEMPLATE_MAP.getOrDefault(language, PromptZh.templates());
     }
 
     public static String getStringPrompt(Object prompt) {

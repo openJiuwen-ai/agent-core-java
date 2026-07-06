@@ -56,8 +56,8 @@ public class CallbackFramework extends AsyncCallbackFramework {
             String namespace,
             Set<String> tags,
             List<EventFilter> eventFilters,
-            Consumer<ChainContext> rollbackHandler,
-            Function<Object, Object> errorHandler,
+            Function<Map<String, Object>, Object> rollbackHandler,
+            Function<Map<String, Object>, Object> errorHandler,
             int maxRetries,
             double retryDelay,
             Double timeout,
@@ -75,15 +75,15 @@ public class CallbackFramework extends AsyncCallbackFramework {
             String namespace,
             Set<String> tags,
             List<EventFilter> eventFilters,
-            Consumer<ChainContext> rollbackHandler,
-            Function<Object, Object> errorHandler,
+            Function<Map<String, Object>, Object> rollbackHandler,
+            Function<Map<String, Object>, Object> errorHandler,
             int maxRetries,
             double retryDelay,
             Double timeout,
             String callbackName,
             String callbackType
     ) {
-        CallbackInfo info = super.register(
+        CallbackInfo info = super.registerSync(
                 event,
                 callback,
                 priority,
@@ -91,13 +91,14 @@ public class CallbackFramework extends AsyncCallbackFramework {
                 namespace,
                 tags,
                 eventFilters,
-                adaptRollback(rollbackHandler),
-                adaptError(errorHandler),
+                rollbackHandler,
+                errorHandler,
                 maxRetries,
                 retryDelay,
                 timeout,
                 callbackType
         );
+        info.setCallbackName(callbackName);
         return info;
     }
 
@@ -109,8 +110,8 @@ public class CallbackFramework extends AsyncCallbackFramework {
             String namespace,
             Set<String> tags,
             List<EventFilter> eventFilters,
-            Consumer<ChainContext> rollbackHandler,
-            Function<Object, Object> errorHandler,
+            Function<Map<String, Object>, Object> rollbackHandler,
+            Function<Map<String, Object>, Object> errorHandler,
             int maxRetries,
             double retryDelay,
             Double timeout,
@@ -140,7 +141,8 @@ public class CallbackFramework extends AsyncCallbackFramework {
             String callbackName
     ) {
         return register(event, callback, priority, once, namespace, tags, eventFilters,
-                rollbackHandler, errorHandler, maxRetries, retryDelay, timeout, callbackName, "");
+                adaptRollback(rollbackHandler), adaptError(errorHandler), maxRetries, retryDelay, timeout,
+                callbackName, "");
     }
 
     public List<Object> trigger(String event) {
@@ -163,6 +165,53 @@ public class CallbackFramework extends AsyncCallbackFramework {
     public Iterator<Object> triggerStream(String event, Iterator<?> inputStream, Object[] args,
                                           Map<String, Object> kwargs) {
         return super.triggerStream(event, inputStream, args, kwargs);
+    }
+
+    public Function<Map<String, Object>, Object> emitAround(
+            String beforeEvent,
+            String afterEvent,
+            Function<Map<String, Object>, Object> wrapped,
+            boolean passArgs,
+            boolean passResult,
+            String onErrorEvent
+    ) {
+        return super.emitAround(beforeEvent, afterEvent, passArgs, passResult, onErrorEvent).apply(wrapped);
+    }
+
+    public Function<Map<String, Object>, Object> triggerOnCall(
+            String event,
+            Function<Map<String, Object>, Object> wrapped,
+            boolean passArgs,
+            boolean passResult
+    ) {
+        return emitBefore(event, passArgs, null).apply(wrapped);
+    }
+
+    public CallbackInfo onTransform(
+            String event,
+            Function<Map<String, Object>, Object> callback,
+            int priority,
+            String callbackName
+    ) {
+        return register(event, callback, priority, false, "default", null, null,
+                null, null, 0, 0.0, null, callbackName, CALLBACK_TYPE_TRANSFORM);
+    }
+
+    public Function<Map<String, Object>, Object> transformIoByEvents(
+            Function<Map<String, Object>, Object> wrapped,
+            String inputEvent,
+            String outputEvent,
+            String resultKey
+    ) {
+        return transformIoByEvents(inputEvent, outputEvent, resultKey).apply(wrapped);
+    }
+
+    public Function<Map<String, Object>, Object> transformIo(
+            Function<Map<String, Object>, Object> wrapped,
+            Function<Map<String, Object>, Map<String, Object>> inputTransform,
+            Function<Object, Object> outputTransform
+    ) {
+        return transformIo(inputTransform, outputTransform).apply(wrapped);
     }
 
     public Function<Map<String, Object>, Object> transform_io(

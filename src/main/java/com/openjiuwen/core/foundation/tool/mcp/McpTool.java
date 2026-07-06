@@ -115,6 +115,7 @@ public class McpTool extends Tool {
         args[1] = arguments;
         System.arraycopy(extraArguments, 0, args, 2, extraArguments.length);
         try {
+            method.setAccessible(true);
             return method.invoke(mcpClient, args);
         } catch (InvocationTargetException error) {
             Throwable cause = error.getCause();

@@ -13,7 +13,7 @@ package com.openjiuwen.core.runner.resourcemanager;
  * @param <T> success value type
  * @param <E> error value type
  */
-public sealed interface Result<T, E> permits Ok, ErrorResult {
+public sealed interface Result<T, E> extends com.openjiuwen.core.runner.base.Result<T> permits Ok, ErrorResult {
 
     boolean isOk();
 

@@ -40,6 +40,10 @@ public class ConstrainConfig {
                 : validatePositive(maxIteration);
     }
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
     public int getReservedMaxChatRounds() {
         return reservedMaxChatRounds;
     }
@@ -61,5 +65,31 @@ public class ConstrainConfig {
             throw new IllegalArgumentException(GREATER_THAN_ZERO_MESSAGE.formatted(value));
         }
         return value;
+    }
+
+    /**
+     * Builder compatible with Python's pydantic defaulted fields in
+     * {@code openjiuwen/core/single_agent/legacy/config.py}.
+     */
+    public static class Builder {
+        protected Integer reservedMaxChatRounds;
+        protected Integer maxIteration;
+
+        protected Builder() {
+        }
+
+        public Builder reservedMaxChatRounds(Integer reservedMaxChatRounds) {
+            this.reservedMaxChatRounds = reservedMaxChatRounds;
+            return this;
+        }
+
+        public Builder maxIteration(Integer maxIteration) {
+            this.maxIteration = maxIteration;
+            return this;
+        }
+
+        public ConstrainConfig build() {
+            return new ConstrainConfig(reservedMaxChatRounds, maxIteration);
+        }
     }
 }

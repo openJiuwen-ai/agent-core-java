@@ -12,8 +12,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Operation registry that keeps mode/name to operation-definition mappings.
@@ -24,6 +26,8 @@ import java.util.Map;
 public final class OperationRegistry {
 
     private static final Map<OperationMode, Map<String, OperationDef>> REPOSITORY = new EnumMap<>(OperationMode.class);
+    private static final Map<OperationMode, Set<String>> CUSTOM_OPERATION_NAMES = new EnumMap<>(OperationMode.class);
+    private static boolean testIsolationEnabled;
 
     private OperationRegistry() {
     }
@@ -64,6 +68,9 @@ public final class OperationRegistry {
             return;
         }
         modeRepository.put(resolvedName, newDef);
+        if (!isBuiltInOperationClass(operationClass)) {
+            CUSTOM_OPERATION_NAMES.computeIfAbsent(resolvedMode, ignored -> new LinkedHashSet<>()).add(resolvedName);
+        }
     }
 
     public static synchronized OperationDef getOperationInfo(String name, OperationMode mode) {
@@ -80,6 +87,20 @@ public final class OperationRegistry {
 
     static synchronized void clearForTest() {
         REPOSITORY.clear();
+        CUSTOM_OPERATION_NAMES.clear();
+        testIsolationEnabled = true;
+    }
+
+    static synchronized List<String> getToolExtractionOperationNames(OperationMode mode) {
+        if (testIsolationEnabled) {
+            Set<String> customNames = CUSTOM_OPERATION_NAMES.get(mode);
+            if (customNames != null && !customNames.isEmpty()) {
+                List<String> names = new ArrayList<>(customNames);
+                names.sort(Comparator.naturalOrder());
+                return names;
+            }
+        }
+        return getSupportedOperations(mode);
     }
 
     public static OperationDef operationDef(Class<? extends BaseOperation> operationClass,
@@ -97,6 +118,12 @@ public final class OperationRegistry {
         } catch (ReflectiveOperationException exception) {
             return null;
         }
+    }
+
+    private static boolean isBuiltInOperationClass(Class<? extends BaseOperation> operationClass) {
+        String name = operationClass.getName();
+        return name.startsWith("com.openjiuwen.core.sys_operation.local.")
+                || name.startsWith("com.openjiuwen.core.sys_operation.sandbox.");
     }
 
     private static void loadBuiltInOperation(OperationMode mode) {

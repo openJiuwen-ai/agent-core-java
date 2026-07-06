@@ -68,14 +68,21 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
         Object[] safeArgs = args == null ? new Object[0] : args;
         List<EvaluatedCase> cases = evaluatedCases(safeArgs.length >= 1 ? safeArgs[0] : null);
         String language = safeArgs.length >= 2 && safeArgs[1] instanceof String text ? text : "zh-CN";
-        return build(prompt, cases, language).thenApply(value -> value.orElse(null));
+        return build(prompt, cases, language);
     }
 
-    public CompletableFuture<Optional<String>> build(Object prompt, List<EvaluatedCase> cases) {
+    public CompletableFuture<String> build(Object prompt, List<EvaluatedCase> cases) {
         return build(prompt, cases, "zh-CN");
     }
 
-    public CompletableFuture<Optional<String>> build(Object prompt, List<EvaluatedCase> cases, String language) {
+    public CompletableFuture<String> build(Object prompt, List<EvaluatedCase> cases, String language) {
+        return optionalToString(buildOptional(prompt, cases, language));
+    }
+
+    private CompletableFuture<Optional<String>> buildOptional(
+            Object prompt,
+            List<EvaluatedCase> cases,
+            String language) {
         template = PromptBuilderUtils.selectTemplate(language);
         String promptText = PromptBuilderUtils.getStringPrompt(prompt);
         return formatBadCaseTemplate(promptText, cases)
@@ -88,10 +95,10 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
         Object prompt = argument(args, kwargs, 0, "prompt", null);
         List<EvaluatedCase> cases = evaluatedCases(argument(args, kwargs, 1, "cases", List.of()));
         String language = String.valueOf(argument(args, kwargs, 2, "language", "zh-CN"));
-        return build(prompt, cases, language);
+        return buildOptional(prompt, cases, language);
     }
 
-    public Flow.Publisher<String> streamBuild(Object prompt, List<EvaluatedCase> cases) {
+    public BasePromptBuilder.PromptBuilderStreamResult streamBuild(Object prompt, List<EvaluatedCase> cases) {
         return streamBuild(prompt, cases, "zh-CN");
     }
 
@@ -102,14 +109,21 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
      * @param args cases and optional language
      * @return concatenated streamed response text
      */
-    public CompletableFuture<String> streamBuild(Object prompt, Object... args) {
+    public BasePromptBuilder.PromptBuilderStreamResult streamBuild(Object prompt, Object... args) {
         Object[] safeArgs = args == null ? new Object[0] : args;
         List<EvaluatedCase> cases = evaluatedCases(safeArgs.length >= 1 ? safeArgs[0] : null);
         String language = safeArgs.length >= 2 && safeArgs[1] instanceof String text ? text : "zh-CN";
-        return collectPublisher(streamBuild(prompt, cases, language));
+        return streamBuild(prompt, cases, language);
     }
 
-    public Flow.Publisher<String> streamBuild(Object prompt, List<EvaluatedCase> cases, String language) {
+    public BasePromptBuilder.PromptBuilderStreamResult streamBuild(
+            Object prompt,
+            List<EvaluatedCase> cases,
+            String language) {
+        return collectPublisher(streamBuildPublisher(prompt, cases, language));
+    }
+
+    private Flow.Publisher<String> streamBuildPublisher(Object prompt, List<EvaluatedCase> cases, String language) {
         template = PromptBuilderUtils.selectTemplate(language);
         String promptText = PromptBuilderUtils.getStringPrompt(prompt);
         return new StreamBuildPublisher(promptText, cases);
@@ -120,7 +134,7 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
         Object prompt = argument(args, kwargs, 0, "prompt", null);
         List<EvaluatedCase> cases = evaluatedCases(argument(args, kwargs, 1, "cases", List.of()));
         String language = String.valueOf(argument(args, kwargs, 2, "language", "zh-CN"));
-        return streamBuild(prompt, cases, language);
+        return streamBuildPublisher(prompt, cases, language);
     }
 
     CompletableFuture<List<BaseMessage>> formatBadCaseTemplate(String prompt, List<EvaluatedCase> cases) {
@@ -238,31 +252,12 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
         return cases == null ? List.of() : cases;
     }
 
-    private static CompletableFuture<String> collectPublisher(Flow.Publisher<String> publisher) {
-        CompletableFuture<String> future = new CompletableFuture<>();
-        StringBuilder result = new StringBuilder();
-        publisher.subscribe(new Flow.Subscriber<>() {
-            @Override
-            public void onSubscribe(Flow.Subscription subscription) {
-                subscription.request(Long.MAX_VALUE);
-            }
+    private static BasePromptBuilder.PromptBuilderStreamResult collectPublisher(Flow.Publisher<String> publisher) {
+        return new BasePromptBuilder.PromptBuilderStreamResult(publisher);
+    }
 
-            @Override
-            public void onNext(String item) {
-                result.append(item == null ? "" : item);
-            }
-
-            @Override
-            public void onError(Throwable throwable) {
-                future.completeExceptionally(throwable);
-            }
-
-            @Override
-            public void onComplete() {
-                future.complete(result.toString());
-            }
-        });
-        return future;
+    private static CompletableFuture<String> optionalToString(CompletableFuture<Optional<String>> future) {
+        return future.thenApply(value -> value.orElse(null));
     }
 
     private static String pythonString(Object value) {

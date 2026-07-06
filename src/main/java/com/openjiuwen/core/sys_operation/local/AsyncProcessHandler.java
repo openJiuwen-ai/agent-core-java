@@ -74,7 +74,7 @@ public final class AsyncProcessHandler {
                     return new InvokeData(
                             decode(stdoutBuffer),
                             decode(stderrBuffer),
-                            process.exitValue(),
+                            exitCodeOrDefault(-1),
                             timeout
                     );
                 }
@@ -132,6 +132,9 @@ public final class AsyncProcessHandler {
                 try {
                     reader.join();
                 } catch (Exception exception) {
+                    if (suppressReaderErrors.get()) {
+                        continue;
+                    }
                     Throwable cause = exception.getCause() != null ? exception.getCause() : exception;
                     offerEvent(new StreamEvent(StreamEventType.ERROR, "reader task error: " + cause.getMessage()));
                 }
@@ -254,6 +257,20 @@ public final class AsyncProcessHandler {
         }
     }
 
+    private int exitCodeOrDefault(int defaultValue) {
+        try {
+            if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                return defaultValue;
+            }
+            return process.exitValue();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return defaultValue;
+        } catch (IllegalThreadStateException exception) {
+            return defaultValue;
+        }
+    }
+
     private boolean hasRunningReader(List<CompletableFuture<Void>> readers) {
         for (CompletableFuture<Void> reader : readers) {
             if (!reader.isDone()) {
@@ -283,13 +300,32 @@ public final class AsyncProcessHandler {
             } catch (Exception exception) {
                 LOGGER.warning("Failed to taskkill process tree: {}", exception.getMessage());
             }
+        } else {
+            killUnixChildren(handle.pid(), "TERM");
+            killUnixChildren(handle.pid(), "KILL");
         }
-        List<ProcessHandle> descendants = new ArrayList<>(handle.descendants().toList());
-        for (int i = descendants.size() - 1; i >= 0; i--) {
-            ProcessHandle descendant = descendants.get(i);
-            descendant.destroyForcibly();
+        try {
+            List<ProcessHandle> descendants = new ArrayList<>(handle.descendants().toList());
+            for (int i = descendants.size() - 1; i >= 0; i--) {
+                ProcessHandle descendant = descendants.get(i);
+                descendant.destroyForcibly();
+            }
+        } catch (RuntimeException exception) {
+            LOGGER.warning("Failed to enumerate subprocess descendants: {}", exception.getMessage());
         }
         handle.destroyForcibly();
+    }
+
+    private void killUnixChildren(long pid, String signal) {
+        try {
+            new ProcessBuilder("pkill", "-" + signal, "-P", String.valueOf(pid))
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start()
+                    .waitFor(2, TimeUnit.SECONDS);
+        } catch (Exception exception) {
+            LOGGER.warning("Failed to pkill child processes for {}: {}", pid, exception.getMessage());
+        }
     }
 
     private boolean isWindows() {

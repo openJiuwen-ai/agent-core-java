@@ -74,15 +74,15 @@ public class MetaTemplateBuilder extends BasePromptBuilder {
         metaTemplateManager.put(templateName, templateToRegister);
     }
 
-    public CompletableFuture<Optional<String>> build(Object prompt) {
+    public CompletableFuture<String> build(Object prompt) {
         return buildInternal(prompt, null, TEMPLATE_TYPE_GENERAL, null, "zh-CN");
     }
 
-    public CompletableFuture<Optional<String>> build(Object prompt, List<ToolInfo> tools) {
+    public CompletableFuture<String> build(Object prompt, List<ToolInfo> tools) {
         return buildInternal(prompt, tools, TEMPLATE_TYPE_GENERAL, null, "zh-CN");
     }
 
-    public CompletableFuture<Optional<String>> build(
+    public CompletableFuture<String> build(
             Object prompt,
             List<ToolInfo> tools,
             String templateType,
@@ -91,9 +91,27 @@ public class MetaTemplateBuilder extends BasePromptBuilder {
         return buildInternal(prompt, tools, templateType, customTemplateName, language);
     }
 
-    private CompletableFuture<Optional<String>> buildInternal(
+    public CompletableFuture<String> build(
             Object prompt,
-            List<?> tools,
+            Object tools,
+            String templateType,
+            String customTemplateName,
+            String language) {
+        return buildInternal(prompt, toolInfoList(tools), templateType, customTemplateName, language);
+    }
+
+    private CompletableFuture<String> buildInternal(
+            Object prompt,
+            List<ToolInfo> tools,
+            String templateType,
+            String customTemplateName,
+            String language) {
+        return optionalToString(buildOptional(prompt, tools, templateType, customTemplateName, language));
+    }
+
+    private CompletableFuture<Optional<String>> buildOptional(
+            Object prompt,
+            List<ToolInfo> tools,
             String templateType,
             String customTemplateName,
             String language) {
@@ -113,14 +131,42 @@ public class MetaTemplateBuilder extends BasePromptBuilder {
         String templateType = stringArgument(argument(args, kwargs, 2, "template_type", TEMPLATE_TYPE_GENERAL));
         String customTemplateName = stringArgument(argument(args, kwargs, 3, "custom_template_name", null));
         String language = stringArgument(argument(args, kwargs, 4, "language", "zh-CN"));
-        return buildInternal(prompt, tools, templateType, customTemplateName, language == null ? "zh-CN" : language);
+        return buildOptional(
+                prompt,
+                toolInfoList(tools),
+                templateType,
+                customTemplateName,
+                language == null ? "zh-CN" : language);
     }
 
-    public Flow.Publisher<String> streamBuild(Object prompt, List<ToolInfo> tools) {
+    public BasePromptBuilder.PromptBuilderStreamResult streamBuild(Object prompt, List<ToolInfo> tools) {
         return streamBuild(prompt, tools, TEMPLATE_TYPE_GENERAL, null, "zh-CN");
     }
 
-    public Flow.Publisher<String> streamBuild(
+    public BasePromptBuilder.PromptBuilderStreamResult streamBuild(
+            Object prompt,
+            List<ToolInfo> tools,
+            String templateType,
+            String customTemplateName,
+            String language) {
+        return collectPublisher(streamBuildPublisher(prompt, tools, templateType, customTemplateName, language));
+    }
+
+    public BasePromptBuilder.PromptBuilderStreamResult streamBuild(
+            Object prompt,
+            Object tools,
+            String templateType,
+            String customTemplateName,
+            String language) {
+        return collectPublisher(streamBuildPublisher(
+                prompt,
+                toolInfoList(tools),
+                templateType,
+                customTemplateName,
+                language));
+    }
+
+    private Flow.Publisher<String> streamBuildPublisher(
             Object prompt,
             List<ToolInfo> tools,
             String templateType,
@@ -141,8 +187,9 @@ public class MetaTemplateBuilder extends BasePromptBuilder {
         String language = stringArgument(argument(args, kwargs, 4, "language", "zh-CN"));
         template = PromptBuilderUtils.selectTemplate(language == null ? "zh-CN" : language);
         String promptText = PromptBuilderUtils.getStringPrompt(prompt);
-        isValidPrompt(promptText, tools);
-        return new StreamBuildPublisher(promptText, tools, templateType, customTemplateName);
+        List<ToolInfo> typedTools = toolInfoList(tools);
+        isValidPrompt(promptText, typedTools);
+        return new StreamBuildPublisher(promptText, typedTools, templateType, customTemplateName);
     }
 
     List<BaseMessage> formatMetaTemplate(
@@ -244,17 +291,46 @@ public class MetaTemplateBuilder extends BasePromptBuilder {
         return List.of(value);
     }
 
+    @SuppressWarnings("unchecked")
+    private static List<ToolInfo> toolInfoList(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof List<?> list) {
+            if (!list.stream().allMatch(ToolInfo.class::isInstance)) {
+                throw buildMetaError("each tool must be an instance of ToolInfo");
+            }
+            return (List<ToolInfo>) list;
+        }
+        if (value instanceof ToolInfo toolInfo) {
+            return List.of(toolInfo);
+        }
+        throw buildMetaError("each tool must be an instance of ToolInfo");
+    }
+
+    private static CompletableFuture<String> optionalToString(CompletableFuture<Optional<String>> future) {
+        return future.thenApply(value -> value.orElse(null));
+    }
+
+    private static BasePromptBuilder.PromptBuilderStreamResult collectPublisher(Flow.Publisher<String> publisher) {
+        return new BasePromptBuilder.PromptBuilderStreamResult(publisher);
+    }
+
     private static String pythonString(List<?> tools) {
         return tools == null ? "None" : tools.toString();
     }
 
     private final class StreamBuildPublisher implements Flow.Publisher<String> {
         private final String prompt;
-        private final List<?> tools;
+        private final List<ToolInfo> tools;
         private final String templateType;
         private final String customTemplateName;
 
-        private StreamBuildPublisher(String prompt, List<?> tools, String templateType, String customTemplateName) {
+        private StreamBuildPublisher(
+                String prompt,
+                List<ToolInfo> tools,
+                String templateType,
+                String customTemplateName) {
             this.prompt = prompt;
             this.tools = tools;
             this.templateType = templateType;

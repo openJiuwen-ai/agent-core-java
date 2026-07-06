@@ -5,6 +5,7 @@
 package com.openjiuwen.core.memory.config;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -35,6 +36,7 @@ public class MemoryScopeConfig {
     private ModelClientConfig modelClientCfg;
 
     @JsonProperty("embedding_cfg")
+    @JsonIgnoreProperties({"verify_ssl", "verifySsl", "ssl_cert", "sslCert"})
     private EmbeddingConfig embeddingCfg;
 
     @JsonProperty("user_profile_definition")

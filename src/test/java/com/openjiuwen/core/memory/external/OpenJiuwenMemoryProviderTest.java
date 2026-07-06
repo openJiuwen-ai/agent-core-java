@@ -5,6 +5,7 @@
 package com.openjiuwen.core.memory.external;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.async.FutureList;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.store.BaseDbStore;
 import com.openjiuwen.core.foundation.store.BaseKVStore;
@@ -808,7 +809,7 @@ class OpenJiuwenMemoryProviderTest {
         }
 
         @Override
-        public CompletableFuture<List<MemResult>> searchUserMem(
+        public FutureList<MemResult> searchUserMem(
                 String query,
                 int num,
                 String userId,
@@ -816,18 +817,18 @@ class OpenJiuwenMemoryProviderTest {
                 double threshold) {
             RuntimeException actualError = userSearchError == null ? searchError : userSearchError;
             if (actualError != null) {
-                return CompletableFuture.failedFuture(actualError);
+                return FutureList.fromFuture(CompletableFuture.failedFuture(actualError));
             }
             searchUserMemQuery = query;
             searchUserMemNum = num;
             searchUserMemThreshold = threshold;
             searchUserMemUserId = userId;
             searchUserMemScopeId = scopeId;
-            return CompletableFuture.completedFuture(userResults);
+            return FutureList.completed(userResults);
         }
 
         @Override
-        public CompletableFuture<List<MemResult>> searchUserHistorySummary(
+        public FutureList<MemResult> searchUserHistorySummary(
                 String query,
                 int num,
                 String userId,
@@ -835,14 +836,14 @@ class OpenJiuwenMemoryProviderTest {
                 double threshold) {
             RuntimeException actualError = summarySearchError == null ? searchError : summarySearchError;
             if (actualError != null) {
-                return CompletableFuture.failedFuture(actualError);
+                return FutureList.fromFuture(CompletableFuture.failedFuture(actualError));
             }
             searchSummaryQuery = query;
             searchSummaryNum = num;
             searchSummaryUserId = userId;
             searchSummaryScopeId = scopeId;
             searchSummaryThreshold = threshold;
-            return CompletableFuture.completedFuture(summaryResults);
+            return FutureList.completed(summaryResults);
         }
 
         @Override
