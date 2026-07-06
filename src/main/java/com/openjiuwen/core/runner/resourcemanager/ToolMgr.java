@@ -127,6 +127,21 @@ public class ToolMgr {
         return ids == null ? delegate.getMcpServerIds(serverName) : List.copyOf(ids);
     }
 
+    public McpServerConfig getMcpServerConfig(String serverId) {
+        McpServerResource resource = mcpServerResources.get(serverId);
+        return resource == null ? delegate.getMcpServerConfig(serverId) : resource.config();
+    }
+
+    public List<String> getMcpToolIds(String serverId) {
+        McpServerResource resource = mcpServerResources.get(serverId);
+        return resource == null ? delegate.getMcpToolIds(serverId) : List.copyOf(resource.toolIds());
+    }
+
+    public Object getMcpClient(String serverId) {
+        McpServerResource resource = mcpServerResources.get(serverId);
+        return resource == null ? delegate.getMcpClient(serverId) : resource.client();
+    }
+
     public List<String> removeToolServer(String serverId, boolean ignoreNotExist) throws Exception {
         McpServerResource resource = mcpServerResources.remove(serverId);
         if (resource != null) {

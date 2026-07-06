@@ -48,10 +48,13 @@ public class ResourceMgr {
     private AgentTeamManager agentTeamManager;
     private AgentManager agentManager;
     private WorkflowManager workflowManager;
+    private ResourceRegistry resourceRegistry;
+    private ToolMgr toolMgr;
     private ToolManager toolManager;
     private ModelManager modelManager;
     private PromptManager promptManager;
     private SysOperationManager sysOperationManager;
+    private TagMgr tagMgr;
     private TagManager tagManager;
     private Map<String, BaseCard> idToCard;
 
@@ -593,7 +596,7 @@ public class ResourceMgr {
         for (String mcpServerId : lookup.ids()) {
             try {
                 tagManager.removeResource(mcpServerId);
-                List<String> toolIds = toolManager.removeToolServer(mcpServerId, true).toCompletableFuture().join();
+                List<String> toolIds = toolMgr.removeToolServer(mcpServerId, true);
                 if (!toolIds.isEmpty()) {
                     innerRemoveResources(toolIds, ResourceKind.TOOL, tag, TagMatchStrategy.ALL, skipIfTagNotExists);
                 }
@@ -632,21 +635,23 @@ public class ResourceMgr {
         List<Tool> results = new ArrayList<>();
         for (String mcpServerId : lookup.ids()) {
             try {
-                toolManager.refreshToolServer(mcpServerId, true, false).toCompletableFuture().join();
+                toolMgr.refreshToolServer(mcpServerId, true, false);
             } catch (Exception exception) {
                 if (!ignoreException) {
                     throw exception;
                 }
             }
             if (names == null || names.isEmpty()) {
-                List<Tool> tools = toolManager.getMcpTools(mcpServerId, session);
+                List<Tool> tools = session == null ? toolMgr.getMcpTools(mcpServerId)
+                        : toolManager.getMcpTools(mcpServerId, session);
                 if (tools != null) {
                     results.addAll(tools);
                 }
                 continue;
             }
             for (String name : names) {
-                Tool tool = toolManager.getMcpTool(name, mcpServerId, session);
+                Tool tool = session == null ? toolMgr.getMcpTool(name, mcpServerId)
+                        : toolManager.getMcpTool(name, mcpServerId, session);
                 if (lookup.exactMatch() || tool != null) {
                     results.add(tool);
                 }
@@ -667,7 +672,7 @@ public class ResourceMgr {
         List<ToolInfo> results = new ArrayList<>();
         for (String mcpServerId : lookup.ids()) {
             try {
-                toolManager.refreshToolServer(mcpServerId, true, false).toCompletableFuture().join();
+                toolMgr.refreshToolServer(mcpServerId, true, false);
             } catch (Exception exception) {
                 if (!ignoreException) {
                     throw exception;
@@ -675,12 +680,12 @@ public class ResourceMgr {
             }
             List<String> toolIds = new ArrayList<>();
             if (names == null || names.isEmpty()) {
-                toolIds.addAll(toolManager.getMcpToolIds(mcpServerId));
+                toolIds.addAll(toolMgr.getMcpToolIds(mcpServerId));
             } else {
                 for (String name : names) {
-                    String toolId = toolManager.getMcpToolId(mcpServerId, name);
+                    Object toolId = toolMgr.getMcpToolId(mcpServerId, name);
                     if (toolId != null) {
-                        toolIds.add(toolId);
+                        toolIds.add(String.valueOf(toolId));
                     }
                 }
             }
@@ -710,39 +715,39 @@ public class ResourceMgr {
 
     public McpServerConfig getMcpServerConfig(String serverId) {
         validateResourceId(serverId, "mcp server");
-        return toolManager.getMcpServerConfig(serverId);
+        return toolMgr.getMcpServerConfig(serverId);
     }
 
     public List<String> getMcpToolIds(String serverId) {
         validateResourceId(serverId, "mcp server");
-        return toolManager.getMcpToolIds(serverId);
+        return toolMgr.getMcpToolIds(serverId);
     }
 
     public Object getMcpClient(String serverId) {
         validateResourceId(serverId, "mcp server");
-        return toolManager.getMcpClient(serverId);
+        return toolMgr.getMcpClient(serverId);
     }
 
     public CompletionStage<Object> listMcpResources(String serverId) {
         validateResourceId(serverId, "mcp server");
-        Object client = toolManager.getMcpClient(serverId);
+        Object client = toolMgr.getMcpClient(serverId);
         if (client == null) {
             throw buildError(StatusCode.RESOURCE_MCP_TOOL_GET_ERROR,
                     "server_id", serverId, "reason", "server not found");
         }
         return invokeAsync(client, "listResources",
-                ToolManager.operationTimeout(toolManager.getMcpServerConfig(serverId)));
+                ToolManager.operationTimeout(toolMgr.getMcpServerConfig(serverId)));
     }
 
     public CompletionStage<Object> readMcpResource(String serverId, String uri) {
         validateResourceId(serverId, "mcp server");
-        Object client = toolManager.getMcpClient(serverId);
+        Object client = toolMgr.getMcpClient(serverId);
         if (client == null) {
             throw buildError(StatusCode.RESOURCE_MCP_TOOL_GET_ERROR,
                     "server_id", serverId, "reason", "server not found");
         }
         return invokeAsync(client, "readResource", uri,
-                ToolManager.operationTimeout(toolManager.getMcpServerConfig(serverId)));
+                ToolManager.operationTimeout(toolMgr.getMcpServerConfig(serverId)));
     }
 
     public List<BaseCard> getResourceByTag(String tag) {
@@ -854,7 +859,7 @@ public class ResourceMgr {
 
     private Result<?, ?> addOneMcpServer(McpServerConfig config, Collection<String> tag, Double expiryTime) {
         try {
-            List<McpToolCard> cards = toolManager.addToolServer(config, expiryTime).toCompletableFuture().join();
+            List<McpToolCard> cards = toolMgr.addToolServer(config, expiryTime);
             Collection<String> effectiveTags = effectiveTags(tag);
             for (McpToolCard card : cards) {
                 idToCard.put(card.getId(), card);
@@ -1014,7 +1019,7 @@ public class ResourceMgr {
                 throw buildError(errorCode, "server_id", null, "reason", "server_name is empty");
             }
             for (String serverName : serverNames) {
-                ids.addAll(toolManager.getMcpServerIds(serverName));
+                ids.addAll(toolMgr.getMcpServerIds(serverName));
             }
         }
         return new ServerIdLookup(ids, false);
@@ -1484,14 +1489,17 @@ public class ResourceMgr {
     }
 
     private void resetManagers() {
-        agentTeamManager = new AgentTeamManager();
-        agentManager = new AgentManager();
-        workflowManager = new WorkflowManager();
-        toolManager = new ToolManager();
-        modelManager = new ModelManager();
-        promptManager = new PromptManager();
-        sysOperationManager = new SysOperationManager();
-        tagManager = new TagManager();
+        resourceRegistry = new ResourceRegistry();
+        agentTeamManager = resourceRegistry.agentTeamManager();
+        agentManager = resourceRegistry.agentManager();
+        workflowManager = resourceRegistry.workflowManager();
+        toolMgr = resourceRegistry.tool();
+        toolManager = resourceRegistry.toolManager();
+        modelManager = resourceRegistry.modelManager();
+        promptManager = resourceRegistry.promptManager();
+        sysOperationManager = resourceRegistry.sysOperationManager();
+        tagMgr = new TagMgr();
+        tagManager = tagMgr;
         idToCard = new LinkedHashMap<>();
     }
 
