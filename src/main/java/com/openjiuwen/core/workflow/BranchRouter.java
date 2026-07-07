@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.graph.visualization.DrawableBranchRouter;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.workflow.condition.Condition;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -106,6 +107,27 @@ public class BranchRouter implements Function<Object, Object> {
         branches.add(new Branch(condition, target, branchId));
     }
 
+    public void addBranch(Condition condition, String target) {
+        addBranch(condition, target, null);
+    }
+
+    public void addBranch(Condition condition, String target, String branchId) {
+        addBranch(condition, List.of(target), branchId);
+    }
+
+    public void addBranch(Condition condition, List<String> target) {
+        addBranch(condition, target, null);
+    }
+
+    public void addBranch(Condition condition, List<String> target, String branchId) {
+        if (condition == null || target == null) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                    "reason", "condition is None or target is None");
+        }
+        recordDrawable(branchId, target, branchId);
+        branches.add(new Branch(condition, target, branchId));
+    }
+
     public void addBranch(Object condition, Object target, String branchId) {
         if (condition == null || target == null) {
             throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
@@ -118,6 +140,8 @@ public class BranchRouter implements Function<Object, Object> {
             addBranch(booleanSupplier, targetList, branchId);
         } else if (condition instanceof Branch.BranchCondition branchCondition) {
             addBranch(branchCondition, targetList, branchId);
+        } else if (condition instanceof Condition sdkCondition) {
+            addBranch(sdkCondition, targetList, branchId);
         } else {
             throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
                     "reason", "branch condition type does not meet the requirements");

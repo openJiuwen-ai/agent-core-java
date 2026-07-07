@@ -47,6 +47,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -56,6 +57,7 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -517,7 +519,7 @@ public class Workflow {
                                 WorkflowExecutionState.INPUT_REQUIRED);
                     }
                     Object result = isStreaming
-                            ? null
+                            ? stableCompletedOutputChunks(outputChunks)
                             : WorkflowSessionSupport.getOutputs(workflowSession, endCompId);
                     return new WorkflowOutput(result, WorkflowExecutionState.COMPLETED);
                 } catch (Exception e) {
@@ -1129,12 +1131,30 @@ public class Workflow {
     }
 
     private RuntimeException wrapWorkflowException(Exception e) {
-        if (e instanceof RuntimeException runtimeException) {
-            return runtimeException;
+        Throwable cause = unwrapWorkflowException(e);
+        if (cause instanceof BaseError baseError) {
+            return baseError;
         }
+        String reason = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
         return ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTION_ERROR,
-                "reason", e.getMessage(),
+                "reason", reason,
                 "workflow", workflowCardString());
+    }
+
+    private static Throwable unwrapWorkflowException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current instanceof CompletionException
+                || current instanceof ExecutionException
+                || current instanceof InvocationTargetException) {
+            Throwable cause = current instanceof InvocationTargetException invocationTargetException
+                    ? invocationTargetException.getTargetException()
+                    : current.getCause();
+            if (cause == null) {
+                break;
+            }
+            current = cause;
+        }
+        return current;
     }
 
     private WorkflowRuntimeSession createWorkflowSession(Object session, List<StreamMode> streamModes) {
@@ -1378,6 +1398,28 @@ public class Workflow {
         return workflowSession.runtimeStreamWriterManager().collectStreamOutput();
     }
 
+    private static List<Object> stableCompletedOutputChunks(List<Object> outputChunks) {
+        if (outputChunks == null || outputChunks.isEmpty()) {
+            return List.of();
+        }
+        List<Object> sorted = new ArrayList<>(outputChunks);
+        sorted.sort(Comparator
+                .comparingInt(Workflow::outputChunkIndex)
+                .thenComparing(Workflow::outputChunkPayloadKey));
+        return sorted;
+    }
+
+    private static int outputChunkIndex(Object chunk) {
+        return chunk instanceof OutputSchema outputSchema ? outputSchema.getIndex() : 0;
+    }
+
+    private static String outputChunkPayloadKey(Object chunk) {
+        if (chunk instanceof OutputSchema outputSchema) {
+            return String.valueOf(outputSchema.getPayload());
+        }
+        return String.valueOf(chunk);
+    }
+
     private Double resolveTimeoutSeconds(WorkflowRuntimeSession workflowSession, String configKey) {
         if (workflowSession == null || workflowSession.config() == null || configKey == null) {
             return null;
@@ -1500,7 +1542,7 @@ public class Workflow {
         if (!interruptChunks.isEmpty()) {
             return restoreInteractionOutputValues(workflowSession, interruptChunks);
         }
-        return outputChunks;
+        return outputChunks != null ? outputChunks : List.of();
     }
 
     @SuppressWarnings("unchecked")

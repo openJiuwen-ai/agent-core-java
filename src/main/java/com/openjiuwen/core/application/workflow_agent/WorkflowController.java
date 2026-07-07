@@ -754,6 +754,10 @@ public class WorkflowController {
                 && result.getState() == com.openjiuwen.core.workflow.WorkflowExecutionState.INPUT_REQUIRED;
     }
 
+    boolean isWorkflowInterrupted(WorkflowOutput result) {
+        return result != null && result.getState() == WorkflowExecutionState.INPUT_REQUIRED;
+    }
+
     private List<WorkflowSchema> workflows() {
         return agentConfig == null || agentConfig.getWorkflows() == null ? List.of() : agentConfig.getWorkflows();
     }

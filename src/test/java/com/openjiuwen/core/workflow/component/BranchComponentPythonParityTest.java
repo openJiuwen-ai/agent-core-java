@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.state.SessionStateAccess;
+import com.openjiuwen.core.workflow.condition.Condition;
 import com.openjiuwen.core.workflow.BranchRouter;
 import org.junit.jupiter.api.Test;
 
@@ -104,6 +105,39 @@ public class BranchComponentPythonParityTest {
         assertThat(routeWithInput("length(${start.input}) == 0", List.of())).containsExactly("print_inputs");
         assertThat(routeWithInput("length(${start.input}) == 0", "")).containsExactly("print_inputs");
         assertThat(routeWithInput("length(${start.input}) == 0", new Object[0])).containsExactly("print_inputs");
+    }
+
+    @Test
+    void expressionArithmeticAndNestedPathMatchesPythonCases() {
+        TestSession session = new TestSession();
+        session.state.values.put("start.input1", "test");
+        session.state.values.put("start.input2", true);
+        session.state.values.put("start.input3", List.of(11, "arr", Map.of("k", "v"), List.of(1, 2, 3)));
+        session.state.values.put("start.input4", Map.of("k1", 12.2D, "k3", Map.of("k", "v")));
+
+        BranchComponent branch = new BranchComponent();
+        branch.addBranch("( length(${start.input1}) < ${start.input4.k1} ) && "
+                + "( ${start.input3[0]} % 2 == 1 ) && "
+                + "( ${start.input3[2].k} == ${start.input4.k3.k} ) && "
+                + "( ${start.input2} && len(${start.input3[3]}) > 2 )", List.of("print_inputs", "add_ten"));
+        branch.invoke(Map.of(), session, null);
+
+        assertThat(branch.router().route()).containsExactly("print_inputs", "add_ten");
+    }
+
+    @Test
+    void sdkConditionSubclassIsAcceptedLikePythonCondition() {
+        TestSession session = new TestSession();
+        BranchComponent branch = new BranchComponent();
+        branch.addBranch(new Condition() {
+            @Override
+            public Object doInvoke(Object inputs, BaseSession session) {
+                return true;
+            }
+        }, List.of("next"));
+        branch.invoke(Map.of(), session, null);
+
+        assertThat(branch.router().route()).containsExactly("next");
     }
 
     private static List<String> routeWithInput(String expression, Object value) {

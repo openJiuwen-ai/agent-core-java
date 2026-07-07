@@ -13,6 +13,7 @@ import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.workflow.Branch;
 import com.openjiuwen.core.workflow.BranchRouter;
 import com.openjiuwen.core.workflow.WorkflowComponent;
+import com.openjiuwen.core.workflow.condition.Condition;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -98,6 +99,26 @@ public class BranchComponent extends WorkflowComponent<Object, Map<String, Objec
     }
 
     public void addBranch(Branch.BranchCondition condition, List<String> target, String branchId) {
+        validateCondition(condition);
+        validateTarget(target);
+        router.addBranch(condition, target, branchId);
+    }
+
+    public void addBranch(Condition condition, String target) {
+        addBranch(condition, target, null);
+    }
+
+    public void addBranch(Condition condition, String target, String branchId) {
+        validateCondition(condition);
+        validateTarget(target);
+        router.addBranch(condition, target, branchId);
+    }
+
+    public void addBranch(Condition condition, List<String> target) {
+        addBranch(condition, target, null);
+    }
+
+    public void addBranch(Condition condition, List<String> target, String branchId) {
         validateCondition(condition);
         validateTarget(target);
         router.addBranch(condition, target, branchId);

@@ -77,7 +77,7 @@ class ToolTest {
                 .satisfies(error -> {
                     BaseError baseError = (BaseError) error;
                     assertThat(baseError.getStatus()).isEqualTo(StatusCode.TOOL_CARD_INVALID);
-                    assertThat(baseError.getParams()).containsEntry("reason", "card is is None or empty");
+                    assertThat(baseError.getParams()).containsEntry("reason", "card id is None or empty");
                 });
     }
 
