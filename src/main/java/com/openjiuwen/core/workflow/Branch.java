@@ -250,6 +250,10 @@ final class BranchExpressionEvaluator {
 
     private static Object resolveValue(String rawToken, BaseSession session) {
         String token = stripOuterParens(rawToken.trim());
+        Object placeholderValue = resolvePlainPlaceholder(token, session);
+        if (placeholderValue != UnresolvedValue.INSTANCE) {
+            return placeholderValue;
+        }
         String[] lowPrecedence = splitArithmetic(token, List.of("+", "-"));
         if (lowPrecedence != null) {
             return arithmetic(resolveValue(lowPrecedence[0], session), resolveValue(lowPrecedence[2], session),
@@ -297,6 +301,22 @@ final class BranchExpressionEvaluator {
             throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
                     "error_msg", "name '" + token + "' is not defined");
         }
+    }
+
+    private static Object resolvePlainPlaceholder(String token, BaseSession session) {
+        if (!token.startsWith("${")) {
+            return UnresolvedValue.INSTANCE;
+        }
+        int close = token.indexOf('}');
+        if (close <= 1) {
+            return UnresolvedValue.INSTANCE;
+        }
+        String suffix = token.substring(close + 1).trim();
+        if (!suffix.isEmpty() && !suffix.startsWith("[") && !suffix.startsWith(".")) {
+            return UnresolvedValue.INSTANCE;
+        }
+        Object value = SessionValueResolver.resolve(session, token.substring(2, close)).orElse(null);
+        return applySubscripts(value, suffix);
     }
 
     private static Object arithmetic(Object left, Object right, String operator) {
@@ -393,16 +413,23 @@ final class BranchExpressionEvaluator {
             return map.get(key);
         }
         if (value instanceof List<?> list && key instanceof Number number) {
-            return list.get(number.intValue());
+            int index = normalizeIndex(number.intValue(), list.size());
+            return list.get(index);
         }
         if (value.getClass().isArray() && key instanceof Number number) {
-            return Array.get(value, number.intValue());
+            int index = normalizeIndex(number.intValue(), Array.getLength(value));
+            return Array.get(value, index);
         }
         if (value instanceof CharSequence text && key instanceof Number number) {
-            return String.valueOf(text.charAt(number.intValue()));
+            int index = normalizeIndex(number.intValue(), text.length());
+            return String.valueOf(text.charAt(index));
         }
         throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
                 "error_msg", "object is not subscriptable");
+    }
+
+    private static int normalizeIndex(int index, int size) {
+        return index < 0 ? size + index : index;
     }
 
     private static String[] findComparison(String expression) {
@@ -518,7 +545,7 @@ final class BranchExpressionEvaluator {
     private static int collectionLength(Object value) {
         if (value == null || value instanceof Number || value instanceof Boolean) {
             throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                    "error_msg", "object has no len()");
+                    "error_msg", "object of type '" + pythonTypeName(value) + "' has no len()");
         }
         if (value instanceof CharSequence text) {
             return text.length();
@@ -533,7 +560,23 @@ final class BranchExpressionEvaluator {
             return Array.getLength(value);
         }
         throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                "error_msg", "object has no len()");
+                "error_msg", "object of type '" + pythonTypeName(value) + "' has no len()");
+    }
+
+    private static String pythonTypeName(Object value) {
+        if (value == null) {
+            return "NoneType";
+        }
+        if (value instanceof Boolean) {
+            return "Boolean";
+        }
+        if (value instanceof Integer || value instanceof Long || value instanceof Short || value instanceof Byte) {
+            return value.getClass().getSimpleName();
+        }
+        if (value instanceof Float || value instanceof Double) {
+            return value.getClass().getSimpleName();
+        }
+        return value.getClass().getSimpleName();
     }
 
     private static boolean startsWithFunction(String expression, String functionName) {
@@ -712,6 +755,10 @@ final class BranchExpressionEvaluator {
     }
 
     private record ArithmeticSplit(int index, String operator) {
+    }
+
+    private enum UnresolvedValue {
+        INSTANCE
     }
 
     private static List<String> placeholderPaths(String expression) {

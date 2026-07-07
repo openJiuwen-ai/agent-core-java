@@ -17,6 +17,7 @@ import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.graph.ExecutableGraph;
 import com.openjiuwen.core.graph.PregelGraph;
+import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.graph.pregel.Interrupt;
 import com.openjiuwen.core.graph.stream_actor.ActorManager;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
@@ -31,6 +32,7 @@ import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.AsyncStreamQueue;
+import com.openjiuwen.core.session.stream.CustomSchema;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.state.InMemoryState;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
@@ -694,7 +696,7 @@ public class Workflow {
                     return null;
                 }
                 Loggers.SESSION.debug("Stream data received, dataType={}", data.getClass().getSimpleName());
-                return WorkflowChunk.from(data);
+                return streamDataToWorkflowChunk(data);
             }
 
             private Object receiveNextChunk() {
@@ -806,6 +808,14 @@ public class Workflow {
 
     public Iterator<WorkflowChunk> stream(Object inputs, Object session, ModelContext context) {
         return stream(inputs, session, context, List.of(StreamMode.OUTPUT), false, false);
+    }
+
+    private static WorkflowChunk streamDataToWorkflowChunk(Object data) {
+        if (data instanceof CustomSchema customSchema) {
+            return new OutputSchema(StreamMode.CUSTOM.name().toLowerCase(Locale.ROOT), 0,
+                    customSchema.getProperties());
+        }
+        return WorkflowChunk.from(data);
     }
 
     /**
@@ -1132,6 +1142,10 @@ public class Workflow {
 
     private RuntimeException wrapWorkflowException(Exception e) {
         Throwable cause = unwrapWorkflowException(e);
+        GraphInterrupt interrupt = findGraphInterrupt(cause);
+        if (interrupt != null) {
+            return new CompletionException(interrupt);
+        }
         if (cause instanceof BaseError baseError) {
             return baseError;
         }
@@ -1155,6 +1169,17 @@ public class Workflow {
             current = cause;
         }
         return current;
+    }
+
+    private static GraphInterrupt findGraphInterrupt(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof GraphInterrupt interrupt) {
+                return interrupt;
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 
     private WorkflowRuntimeSession createWorkflowSession(Object session, List<StreamMode> streamModes) {

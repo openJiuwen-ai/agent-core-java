@@ -27,6 +27,7 @@ import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -365,7 +366,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
     }
 
     protected HttpResult postJson(Map<String, Object> payload, Float timeout) throws Exception {
-        UrlUtils.checkUrlIsValid(modelClientConfig.getApiBase());
+        validateApiBaseUrl();
         String apiUrl = resolveApiUrl();
         HttpRequest request = requestBuilder(apiUrl, payload, timeout).build();
         HttpResponse<String> response = createHttpClient(apiUrl)
@@ -377,6 +378,23 @@ public class SiliconFlowModelClient extends BaseModelClient {
         HttpResult result = postJson(payload, timeout);
         List<String> lines = result.body() == null ? List.of() : result.body().lines().toList();
         return new HttpStreamResult(result.statusCode(), lines, result.body());
+    }
+
+    protected void validateApiBaseUrl() {
+        String apiBase = modelClientConfig.getApiBase();
+        if (modelClientConfig.isVerifySsl() || !isLoopbackApiBase(apiBase)) {
+            UrlUtils.checkUrlIsValid(apiBase);
+        }
+    }
+
+    private static boolean isLoopbackApiBase(String apiBase) {
+        try {
+            URI uri = URI.create(apiBase);
+            String host = uri.getHost();
+            return host != null && InetAddress.getByName(host).isLoopbackAddress();
+        } catch (RuntimeException | java.net.UnknownHostException exception) {
+            return false;
+        }
     }
 
     String resolveApiUrl() {

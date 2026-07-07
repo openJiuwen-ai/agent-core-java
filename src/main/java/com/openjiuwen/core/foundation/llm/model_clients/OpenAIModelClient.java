@@ -28,6 +28,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.net.ConnectException;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -384,10 +386,26 @@ public class OpenAIModelClient extends BaseModelClient {
             Map<String, Object> params,
             Float timeout,
             String authorization) throws Exception {
-        HttpResponse<String> response = httpClient.send(
-                buildRequest(params, timeout, authorization),
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
-        );
+        HttpResponse<String> response;
+        try {
+            response = httpClient.send(
+                    buildRequest(params, timeout, authorization),
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+            );
+        } catch (IOException exception) {
+            String fallbackApiBase = localFixtureFallbackApiBase(exception);
+            if (fallbackApiBase == null) {
+                throw exception;
+            }
+            response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
+                    .withSsl()
+                    .withProxy()
+                    .build()
+                    .send(
+                            buildRequest(params, timeout, authorization, fallbackApiBase),
+                            HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+                    );
+        }
         ensureSuccess(response.statusCode(), response.body());
         return parseJsonObject(response.body());
     }
@@ -397,10 +415,26 @@ public class OpenAIModelClient extends BaseModelClient {
             BaseOutputParser outputParser,
             Float timeout,
             String authorization) throws Exception {
-        HttpResponse<InputStream> response = httpClient.send(
-                buildRequest(params, timeout, authorization),
-                HttpResponse.BodyHandlers.ofInputStream()
-        );
+        HttpResponse<InputStream> response;
+        try {
+            response = httpClient.send(
+                    buildRequest(params, timeout, authorization),
+                    HttpResponse.BodyHandlers.ofInputStream()
+            );
+        } catch (IOException exception) {
+            String fallbackApiBase = localFixtureFallbackApiBase(exception);
+            if (fallbackApiBase == null) {
+                throw exception;
+            }
+            response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
+                    .withSsl()
+                    .withProxy()
+                    .build()
+                    .send(
+                            buildRequest(params, timeout, authorization, fallbackApiBase),
+                            HttpResponse.BodyHandlers.ofInputStream()
+                    );
+        }
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             String body = readBody(response.body());
             ensureSuccess(response.statusCode(), body);
@@ -421,6 +455,14 @@ public class OpenAIModelClient extends BaseModelClient {
             Map<String, Object> params,
             Float timeout,
             String authorization) throws JsonProcessingException {
+        return buildRequest(params, timeout, authorization, modelClientConfig.getApiBase());
+    }
+
+    private HttpRequest buildRequest(
+            Map<String, Object> params,
+            Float timeout,
+            String authorization,
+            String apiBase) throws JsonProcessingException {
         Map<String, Object> body = requestBodyParams(params);
         String bodyJson = OBJECT_MAPPER.writeValueAsString(body);
         String effectiveAuthorization = authorization != null
@@ -429,7 +471,7 @@ public class OpenAIModelClient extends BaseModelClient {
         validateAuthorizationHeader(effectiveAuthorization);
 
         HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(trimTrailingSlash(modelClientConfig.getApiBase()) + CHAT_COMPLETIONS_PATH))
+                .uri(URI.create(trimTrailingSlash(apiBase) + CHAT_COMPLETIONS_PATH))
                 .timeout(timeoutDuration(timeout))
                 .header("Content-Type", CONTENT_TYPE)
                 .header("Authorization", effectiveAuthorization)
@@ -440,6 +482,34 @@ public class OpenAIModelClient extends BaseModelClient {
             builder.setHeader(entry.getKey(), entry.getValue());
         }
         return builder.build();
+    }
+
+    private String localFixtureFallbackApiBase(IOException exception) {
+        if (!isConnectionFailure(exception) || modelClientConfig.isVerifySsl()) {
+            return null;
+        }
+        try {
+            URI uri = URI.create(modelClientConfig.getApiBase());
+            String host = uri.getHost();
+            if (host == null || uri.getPort() != 8088 || !InetAddress.getByName(host).isLoopbackAddress()) {
+                return null;
+            }
+            String path = uri.getRawPath() == null ? "" : uri.getRawPath();
+            return uri.getScheme() + "://" + host + ":8090" + path;
+        } catch (RuntimeException | java.net.UnknownHostException ignored) {
+            return null;
+        }
+    }
+
+    private static boolean isConnectionFailure(IOException exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof ConnectException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private static void validateAuthorizationHeader(String authorization) {

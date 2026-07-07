@@ -5,6 +5,8 @@
 package com.openjiuwen.core.application.llm;
 
 import com.openjiuwen.core.application.llm_agent.LLMAgent;
+import com.openjiuwen.core.common.async.FutureList;
+import com.openjiuwen.core.common.async.FutureMap;
 import com.openjiuwen.core.application.schema.LlmAgentConfig;
 import com.openjiuwen.core.application.schema.WorkflowSchema;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
@@ -73,7 +75,14 @@ public class LlmAgent extends LLMAgent {
 
     @Override
     public CompletionStage<Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
-        return super.invoke(inputs, session).thenApply(LlmAgent::toControllerOutput);
+        try {
+            Object result = super.invoke(inputs, session).toCompletableFuture().join();
+            return toDirectInvokeStage(toControllerOutput(result));
+        } catch (RuntimeException error) {
+            java.util.concurrent.CompletableFuture<Object> failed = new java.util.concurrent.CompletableFuture<>();
+            failed.completeExceptionally(error);
+            return failed;
+        }
     }
 
     @Override
@@ -366,5 +375,58 @@ public class LlmAgent extends LLMAgent {
                     List.of(new OutputSchema("answer", 0, new LinkedHashMap<>(map))));
         }
         return new ControllerOutput(EventType.TASK_COMPLETION.getValue(), result);
+    }
+
+    private static CompletionStage<Object> toDirectInvokeStage(ControllerOutput output) {
+        List<Object> chunks = outputChunks(output);
+        if (chunks != null && !chunks.isEmpty()) {
+            return completedListStage(chunks);
+        }
+        Map<String, Object> map = outputMap(output);
+        if (map != null) {
+            return completedMapStage(map);
+        }
+        return java.util.concurrent.CompletableFuture.completedFuture(output);
+    }
+
+    private static List<Object> outputChunks(ControllerOutput output) {
+        if (output.getDataAsChunks() != null) {
+            return new ArrayList<>(output.getDataAsChunks());
+        }
+        Object data = output.getData();
+        if (data instanceof Iterable<?> iterable && !(data instanceof Map<?, ?>)) {
+            List<Object> chunks = new ArrayList<>();
+            iterable.forEach(chunks::add);
+            return chunks;
+        }
+        if (data instanceof OutputSchema outputSchema) {
+            return List.of(outputSchema);
+        }
+        return null;
+    }
+
+    private static Map<String, Object> outputMap(ControllerOutput output) {
+        if (output.getDataAsMap() != null) {
+            return new LinkedHashMap<>(output.getDataAsMap());
+        }
+        Object data = output.getData();
+        if (data instanceof Map<?, ?> rawMap) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            return result;
+        }
+        return null;
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static CompletionStage<Object> completedListStage(List<Object> chunks) {
+        return (CompletionStage<Object>) (CompletionStage) FutureList.completed(chunks);
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static CompletionStage<Object> completedMapStage(Map<String, Object> map) {
+        return (CompletionStage<Object>) (CompletionStage) FutureMap.completed(map);
     }
 }

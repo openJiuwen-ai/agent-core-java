@@ -362,5 +362,9 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
         public Vertex.VertexStreamWriter getOutputWriter() {
             return data -> delegate.getOutputWriter().write(data);
         }
+
+        public Vertex.VertexStreamWriter getCustomWriter() {
+            return data -> delegate.getCustomWriter().write(data);
+        }
     }
 }

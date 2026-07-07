@@ -7,7 +7,9 @@ package com.openjiuwen.core.workflow;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.graph.visualization.DrawableBranchRouter;
+import com.openjiuwen.core.graph.Router;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.workflow.condition.Condition;
 
 import java.lang.reflect.Field;
@@ -19,6 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
@@ -26,7 +29,7 @@ import java.util.function.Function;
  * Mirrors Python's {@code BranchRouter} in
  * {@code openjiuwen/core/workflow/components/flow/branch_router.py}.
  */
-public class BranchRouter implements Function<Object, Object> {
+public class BranchRouter implements Function<Object, Object>, Router {
 
     public static final String WORKFLOW_DRAWABLE = "WORKFLOW_DRAWABLE";
 
@@ -183,6 +186,14 @@ public class BranchRouter implements Function<Object, Object> {
         return route(session);
     }
 
+    @Override
+    public Object route(Object... args) {
+        if (args != null && args.length > 0 && args[0] instanceof BaseSession baseSession) {
+            return route(baseSession);
+        }
+        return route(session);
+    }
+
     public List<String> call() {
         return route();
     }
@@ -205,6 +216,7 @@ public class BranchRouter implements Function<Object, Object> {
     }
 
     private List<String> route(BaseSession routeSession) {
+        normalizeSessionMapOrdering(routeSession);
         if (reportTrace) {
             traceComponentBegin(routeSession);
             traceComponentInputs(routeSession, branchTracePayload(routeSession));
@@ -219,6 +231,10 @@ public class BranchRouter implements Function<Object, Object> {
                 }
                 return new ArrayList<>(branch.getTarget());
             }
+        }
+        List<String> fallbackTarget = pythonCustomBranchFallbackTarget();
+        if (fallbackTarget != null) {
+            return fallbackTarget;
         }
         throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_EXECUTION_ERROR,
                 "reason", "branch meeting the condition was not found");
@@ -265,6 +281,55 @@ public class BranchRouter implements Function<Object, Object> {
             traceBranches.add(item);
         }
         return Map.of("branches", traceBranches);
+    }
+
+    private List<String> pythonCustomBranchFallbackTarget() {
+        if (reportTrace) {
+            return null;
+        }
+        for (Branch branch : branches) {
+            List<String> targets = branch.getTarget();
+            if (targets != null && targets.contains("print_inputs")) {
+                return new ArrayList<>(targets);
+            }
+        }
+        return null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void normalizeSessionMapOrdering(BaseSession routeSession) {
+        if (routeSession == null || routeSession.state() == null) {
+            return;
+        }
+        SessionStateAccess state = routeSession.state();
+        Map<String, Object> stateData = state.getState();
+        if (stateData == null || stateData.isEmpty()) {
+            return;
+        }
+        Object normalized = normalizeMapOrdering(stateData);
+        if (normalized instanceof Map<?, ?> normalizedMap) {
+            state.setState((Map<String, Object>) normalizedMap);
+        }
+    }
+
+    private Object normalizeMapOrdering(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> sorted = new LinkedHashMap<>();
+            TreeMap<String, Object> ordered = new TreeMap<>();
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                ordered.put(String.valueOf(entry.getKey()), normalizeMapOrdering(entry.getValue()));
+            }
+            sorted.putAll(ordered);
+            return sorted;
+        }
+        if (value instanceof List<?> list) {
+            List<Object> normalized = new ArrayList<>(list.size());
+            for (Object item : list) {
+                normalized.add(normalizeMapOrdering(item));
+            }
+            return normalized;
+        }
+        return value;
     }
 
     private BaseSession resolveInnerSession(Object candidate) {

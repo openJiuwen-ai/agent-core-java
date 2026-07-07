@@ -36,6 +36,7 @@ import com.openjiuwen.core.memory.MemResult;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
@@ -53,6 +54,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * LLM Controller - ReAct style event handler based on EventHandler.
@@ -73,6 +77,10 @@ public class LlmEventHandler extends EventHandler {
     private static final String INTERACTION = "__interaction__";
     private static final String LLM_OUTPUT = "llm_output";
     private static final String STATE_KEY = "llm_controller";
+    private static final Pattern INTERACTION_INTERRUPT_PATTERN = Pattern.compile(
+            "OutputSchema\\{type='__interaction__', index=(\\d+), "
+                    + "payload=InteractionOutput\\{id='([^']*)', value=(.*?), metadata=\\{.*?}}}",
+            Pattern.DOTALL);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final MapType STRING_OBJECT_MAP_TYPE =
             OBJECT_MAPPER.getTypeFactory().constructMapType(LinkedHashMap.class, String.class, Object.class);
@@ -353,9 +361,17 @@ public class LlmEventHandler extends EventHandler {
             if (e.getCode() == StatusCode.AGENT_TOOL_NOT_FOUND.getCode()) {
                 throw e;
             }
+            Optional<TaskExecutionResult> recovered = recoverInteractionInterrupt(e, task);
+            if (recovered.isPresent()) {
+                return recovered.get();
+            }
             Loggers.CONTROLLER.error("Error executing task {}: {}", task.getTaskId(), e.getMessage());
             return new TaskExecutionResult(TaskStatus.FAILED, null, e.getMessage(), null);
         } catch (Exception e) {
+            Optional<TaskExecutionResult> recovered = recoverInteractionInterrupt(e, task);
+            if (recovered.isPresent()) {
+                return recovered.get();
+            }
             Loggers.CONTROLLER.error("Error executing task {}: {}", task.getTaskId(), e.getMessage());
             return new TaskExecutionResult(TaskStatus.FAILED, null, e.getMessage(), null);
         }
@@ -525,6 +541,66 @@ public class LlmEventHandler extends EventHandler {
         context.addMessages(errorToolMsg);
 
         sendErrorStream(errorMsg, session);
+    }
+
+    private Optional<TaskExecutionResult> recoverInteractionInterrupt(Throwable error, Task task) {
+        String text = throwableText(error);
+        if (!text.contains("GraphInterrupt") || !text.contains("OutputSchema{type='__interaction__'")) {
+            return Optional.empty();
+        }
+        List<Object> chunks = parseInteractionInterruptChunks(text);
+        if (chunks.isEmpty()) {
+            return Optional.empty();
+        }
+        Map<String, Object> metadata = new HashMap<>();
+        getWorkflowIdFromTask(task).ifPresent(workflowId -> metadata.put("workflow_id", workflowId));
+        Loggers.CONTROLLER.info("Recovered {} interaction chunk(s) from workflow GraphInterrupt", chunks.size());
+        return Optional.of(new TaskExecutionResult(TaskStatus.INPUT_REQUIRED, chunks, null, metadata));
+    }
+
+    private List<Object> parseInteractionInterruptChunks(String text) {
+        Matcher matcher = INTERACTION_INTERRUPT_PATTERN.matcher(text);
+        List<Object> chunks = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        while (matcher.find()) {
+            int index = parseIndex(matcher.group(1));
+            String id = matcher.group(2);
+            Object value = parseInteractionValue(matcher.group(3));
+            String key = index + "\u0000" + id + "\u0000" + value;
+            if (seen.add(key)) {
+                chunks.add(new OutputSchema(INTERACTION, index, new InteractionOutput(id, value)));
+            }
+        }
+        return chunks;
+    }
+
+    private static int parseIndex(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private static Object parseInteractionValue(String value) {
+        if (value == null || "null".equals(value)) {
+            return null;
+        }
+        return value;
+    }
+
+    private static String throwableText(Throwable throwable) {
+        StringBuilder builder = new StringBuilder();
+        Throwable current = throwable;
+        Set<Throwable> seen = new java.util.HashSet<>();
+        while (current != null && seen.add(current)) {
+            builder.append(current).append('\n');
+            if (current.getMessage() != null) {
+                builder.append(current.getMessage()).append('\n');
+            }
+            current = current.getCause();
+        }
+        return builder.toString();
     }
 
     private void postTaskCompletion(Task task, TaskExecutionResult result,
