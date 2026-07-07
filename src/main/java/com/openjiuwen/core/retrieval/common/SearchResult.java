@@ -19,6 +19,7 @@ public class SearchResult {
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
     public SearchResult() {
+        throw new IllegalArgumentException("id, text, and score are required");
     }
 
     public SearchResult(String id) {

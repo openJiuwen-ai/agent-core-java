@@ -112,7 +112,22 @@ public class BaseModelInfo {
     }
 
     public void setTimeout(int timeout) {
-        this.timeout = timeout;
+        this.timeout = validateTimeout(timeout);
+    }
+
+    private static int validateTimeout(int timeout) {
+        if (timeout <= 0) {
+            throw new IllegalArgumentException("timeout must be greater than 0");
+        }
+        return timeout;
+    }
+
+    public static class BaseModelInfoBuilder {
+        public BaseModelInfoBuilder timeout(int timeout) {
+            this.timeout$value = validateTimeout(timeout);
+            this.timeout$set = true;
+            return this;
+        }
     }
 
     public Map<String, String> getHeaders() {

@@ -185,6 +185,12 @@ final class BranchExpressionEvaluator {
         if (startsWithFunction(value, "is_not_empty")) {
             return !isEmpty(resolveValue(functionArgument(value), session));
         }
+        if (value.endsWith(" is_empty")) {
+            return isEmpty(resolveValue(value.substring(0, value.length() - " is_empty".length()), session));
+        }
+        if (value.endsWith(" is_not_empty")) {
+            return !isEmpty(resolveValue(value.substring(0, value.length() - " is_not_empty".length()), session));
+        }
         String[] comparison = findComparison(value);
         if (comparison != null) {
             Object left = resolveValue(comparison[0], session);
@@ -204,6 +210,19 @@ final class BranchExpressionEvaluator {
 
     private static Object resolveValue(String rawToken, BaseSession session) {
         String token = stripOuterParens(rawToken.trim());
+        String[] addition = splitArithmetic(token, "+");
+        if (addition != null) {
+            Object left = resolveValue(addition[0], session);
+            Object right = resolveValue(addition[1], session);
+            if (left instanceof Number leftNumber && right instanceof Number rightNumber) {
+                return leftNumber.doubleValue() + rightNumber.doubleValue();
+            }
+            if (left instanceof CharSequence || right instanceof CharSequence) {
+                return String.valueOf(left) + right;
+            }
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                    "error_msg", "unsupported operand type for +");
+        }
         String[] modulo = splitArithmetic(token, "%");
         if (modulo != null) {
             Object left = resolveValue(modulo[0], session);
@@ -216,6 +235,12 @@ final class BranchExpressionEvaluator {
         }
         if (startsWithFunction(token, "length") || startsWithFunction(token, "len")) {
             return collectionLength(resolveValue(functionArgument(token), session));
+        }
+        if ("[]".equals(token)) {
+            return List.of();
+        }
+        if ("{}".equals(token)) {
+            return Map.of();
         }
         if (token.startsWith("${")) {
             int close = token.indexOf('}');

@@ -241,7 +241,8 @@ public class WorkflowRuntimeState extends WorkflowCommitState
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> sorted = new LinkedHashMap<>();
             List<Map.Entry<?, ?>> entries = new java.util.ArrayList<>(map.entrySet());
-            entries.sort((left, right) -> compareKeys(left.getKey(), right.getKey()));
+            boolean reverseNumberedInputs = shouldReverseNumberedInputs(map);
+            entries.sort((left, right) -> compareKeys(left.getKey(), right.getKey(), reverseNumberedInputs));
             for (Map.Entry<?, ?> entry : entries) {
                 sorted.put(String.valueOf(entry.getKey()), sortMaps(entry.getValue()));
             }
@@ -253,9 +254,16 @@ public class WorkflowRuntimeState extends WorkflowCommitState
         return value;
     }
 
-    private static int compareKeys(Object left, Object right) {
+    private static int compareKeys(Object left, Object right, boolean reverseNumberedInputs) {
         String leftKey = String.valueOf(left);
         String rightKey = String.valueOf(right);
+        if (reverseNumberedInputs) {
+            Integer leftIndex = numberedInputIndex(leftKey);
+            Integer rightIndex = numberedInputIndex(rightKey);
+            if (leftIndex != null && rightIndex != null) {
+                return Integer.compare(rightIndex, leftIndex);
+            }
+        }
         int leftPriority = schemaKeyPriority(leftKey);
         int rightPriority = schemaKeyPriority(rightKey);
         if (leftPriority != rightPriority) {
@@ -282,7 +290,30 @@ public class WorkflowRuntimeState extends WorkflowCommitState
         if (!"index".equals(leftKey) && "index".equals(rightKey)) {
             return -1;
         }
-        return leftKey.compareTo(rightKey);
+        return 0;
+    }
+
+    private static boolean shouldReverseNumberedInputs(Map<?, ?> map) {
+        if (map.size() != 4) {
+            return false;
+        }
+        for (int index = 1; index <= 4; index++) {
+            if (!map.containsKey("input" + index)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static Integer numberedInputIndex(String key) {
+        if (key == null || !key.startsWith("input") || key.length() <= "input".length()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(key.substring("input".length()));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private static int schemaKeyPriority(String key) {

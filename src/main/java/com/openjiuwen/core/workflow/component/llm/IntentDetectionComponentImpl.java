@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.workflow.component.llm;
 
+import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.workflow.component.IntentDetectionComponent;
 
 /**
@@ -26,5 +27,10 @@ public class IntentDetectionComponentImpl extends IntentDetectionComponent {
 
     public IntentDetectionCompConfig getConfig() {
         return config;
+    }
+
+    @Override
+    public Executable<?, ?> toExecutable() {
+        return new IntentDetectionExecutable(config).setRouter(router());
     }
 }

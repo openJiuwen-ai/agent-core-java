@@ -9,12 +9,14 @@ import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.workflow.HasDrawable;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -95,7 +97,7 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
                 }
             }
             Object result = subWorkflow.invokeSubWorkflow(
-                    workflowInputs(inputs), session, extractContext(kwargs), workflowConfig(inputs));
+                    subWorkflowInputs(inputs, session), session, extractContext(kwargs), workflowConfig(inputs));
             return normalizeMapOutput(result);
         }
 
@@ -105,7 +107,7 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
                 BaseSession session,
                 Object... kwargs) {
             Iterator<WorkflowChunk> chunks = subWorkflow.streamSubWorkflow(
-                    workflowInputs(inputs), session, extractContext(kwargs), workflowConfig(inputs));
+                    subWorkflowInputs(inputs, session), session, extractContext(kwargs), workflowConfig(inputs));
             return new Iterator<>() {
                 @Override
                 public boolean hasNext() {
@@ -153,6 +155,47 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
 
     private static Object workflowInputs(Map<String, Object> inputs) {
         return inputs == null ? null : inputs.get(Constant.INPUTS_KEY);
+    }
+
+    private static Object subWorkflowInputs(Map<String, Object> inputs, BaseSession session) {
+        InteractiveInput nestedInputs = nestedInteractiveInput(session);
+        return nestedInputs != null ? nestedInputs : workflowInputs(inputs);
+    }
+
+    private static InteractiveInput nestedInteractiveInput(BaseSession session) {
+        if (session == null || session.state() == null) {
+            return null;
+        }
+        Object value = session.state().get(Constant.INTERACTIVE_INPUT);
+        InteractiveInput direct = findInteractiveInput(value);
+        if (direct != null) {
+            return direct;
+        }
+        return findInteractiveInput(session.state().get(null));
+    }
+
+    private static InteractiveInput findInteractiveInput(Object value) {
+        if (value instanceof InteractiveInput interactiveInput) {
+            return interactiveInput;
+        }
+        if (value instanceof List<?> list) {
+            for (int index = list.size() - 1; index >= 0; index--) {
+                Object item = list.get(index);
+                InteractiveInput interactiveInput = findInteractiveInput(item);
+                if (interactiveInput != null) {
+                    return interactiveInput;
+                }
+            }
+        }
+        if (value instanceof Map<?, ?> map) {
+            for (Object item : map.values()) {
+                InteractiveInput interactiveInput = findInteractiveInput(item);
+                if (interactiveInput != null) {
+                    return interactiveInput;
+                }
+            }
+        }
+        return null;
     }
 
     private static Object workflowConfig(Map<String, Object> inputs) {

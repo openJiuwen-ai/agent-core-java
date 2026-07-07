@@ -153,7 +153,7 @@ public class GraphKnowledgeBase extends KnowledgeBase {
 
         GraphRetriever graph = graphRetriever;
         if (graph == null) {
-            if (vectorStore == null) {
+            if (vectorStore == null && (chunkRetriever == null || tripleRetriever == null)) {
                 throw ErrorHelper.buildError(
                         StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
                         "error_msg",
@@ -177,9 +177,10 @@ public class GraphKnowledgeBase extends KnowledgeBase {
                 : graph;
         Map<String, Object> options = optionsFrom(activeConfig, kwargs);
         String mode = retrievalMode();
+        int topK = activeConfig.getTopK() > 0 ? activeConfig.getTopK() : 5;
         return CompletableFuture.completedFuture(activeRetriever.retrieve(
                 query,
-                activeConfig.getTopK(),
+                topK,
                 activeConfig.getScoreThreshold(),
                 mode,
                 options

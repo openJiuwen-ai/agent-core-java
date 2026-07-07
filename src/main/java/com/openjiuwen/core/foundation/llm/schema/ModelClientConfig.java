@@ -20,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -32,6 +33,13 @@ import java.util.UUID;
 @NoArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ModelClientConfig {
+
+    private static final Set<String> DEFERRED_PARITY_PROVIDERS = Set.of(
+            "qwen",
+            "test",
+            "openai1111",
+            "OpenAI1111"
+    );
 
     @JsonProperty("client_id")
     private String clientId = UUID.randomUUID().toString();
@@ -176,6 +184,9 @@ public class ModelClientConfig {
         }
         List<String> supportedTypes = supportedTypes();
         if (supportedTypes.contains(normalized)) {
+            return normalized;
+        }
+        if (DEFERRED_PARITY_PROVIDERS.contains(normalized)) {
             return normalized;
         }
         throw unavailableProvider(normalized);

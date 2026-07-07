@@ -58,11 +58,10 @@ public final class PromptBuilderUtils {
                         .collect(Collectors.joining("\n"));
             }
         }
-        String typeName = prompt == null ? "null" : prompt.getClass().toString();
         throw ErrorHelper.buildError(
                 StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR,
                 "error_msg",
-                "Prompt type " + typeName + " is not supported"
+                "Prompt type " + toPythonTypeString(prompt) + " is not supported"
         );
     }
 
@@ -73,5 +72,27 @@ public final class PromptBuilderUtils {
                     .collect(Collectors.joining("\n"));
         }
         return String.valueOf(item);
+    }
+
+    private static String toPythonTypeString(Object value) {
+        if (value == null) {
+            return "<class 'NoneType'>";
+        }
+        if (value instanceof Integer || value instanceof Long || value instanceof Short || value instanceof Byte) {
+            return "<class 'int'>";
+        }
+        if (value instanceof Float || value instanceof Double) {
+            return "<class 'float'>";
+        }
+        if (value instanceof Boolean) {
+            return "<class 'bool'>";
+        }
+        if (value instanceof List<?>) {
+            return "<class 'list'>";
+        }
+        if (value instanceof Map<?, ?>) {
+            return "<class 'dict'>";
+        }
+        return "<class '" + value.getClass().getSimpleName() + "'>";
     }
 }

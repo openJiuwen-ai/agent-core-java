@@ -20,6 +20,7 @@ public class RetrievalResult {
     private String chunkId;
 
     public RetrievalResult() {
+        throw new IllegalArgumentException("text and score are required");
     }
 
     public RetrievalResult(String text) {

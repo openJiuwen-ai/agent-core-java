@@ -130,7 +130,7 @@ public class LLMAgent extends ControllerAgent {
 
         syncToolsToExternalSession();
         Object result = runStreamProcess(safeInputs, session, false);
-        return iteratorForResult(result);
+        return new SessionStreamIterator(session.streamIterator(), result);
     }
 
     public Iterator<Object> stream(Map<String, Object> inputs) {
@@ -339,12 +339,35 @@ public class LLMAgent extends ControllerAgent {
             Iterator<Object> typed = (Iterator<Object>) iterator;
             return typed;
         }
+        if (interactionChunks(result) instanceof List<?> chunks) {
+            @SuppressWarnings("unchecked")
+            Iterator<Object> typed = (Iterator<Object>) chunks.iterator();
+            return typed;
+        }
+        if (isAnswerResult(result)) {
+            return Collections.singletonList((Object) new OutputSchema("answer", 0, result)).iterator();
+        }
         if (result instanceof Iterable<?> iterable && !(result instanceof Map<?, ?>)) {
             @SuppressWarnings("unchecked")
             Iterator<Object> typed = (Iterator<Object>) iterable.iterator();
             return typed;
         }
         return Collections.singletonList(result).iterator();
+    }
+
+    private static Object interactionChunks(Object result) {
+        if (result instanceof Map<?, ?> map) {
+            return map.get("interaction");
+        }
+        return null;
+    }
+
+    private static boolean isAnswerResult(Object result) {
+        return result instanceof Map<?, ?> map && "answer".equals(map.get("result_type"));
+    }
+
+    private static boolean isInterruptResult(Object result) {
+        return result instanceof Map<?, ?> map && "interrupt".equals(map.get("result_type"));
     }
 
     private static AgentSession requireAgentSession(AgentSessionApi session) {
@@ -402,6 +425,8 @@ public class LLMAgent extends ControllerAgent {
         private final CompletableFuture<Object> task;
         private final AtomicReference<Object> finalResultHolder;
         private boolean taskAwaited;
+        private boolean sawAnswerFrame;
+        private boolean fallbackEmitted;
 
         private OwnedStreamIterator(Iterator<Object> delegate,
                                     CompletableFuture<Object> task,
@@ -417,6 +442,7 @@ public class LLMAgent extends ControllerAgent {
                 boolean hasNext = delegate.hasNext();
                 if (!hasNext) {
                     awaitTask();
+                    return shouldEmitFallback();
                 }
                 return hasNext;
             } catch (RuntimeException error) {
@@ -428,8 +454,16 @@ public class LLMAgent extends ControllerAgent {
 
         @Override
         public Object next() {
+            if (shouldEmitFallback()) {
+                fallbackEmitted = true;
+                return new OutputSchema("answer", 0, finalResultHolder.get());
+            }
             try {
-                return delegate.next();
+                Object item = delegate.next();
+                if (item instanceof OutputSchema outputSchema && "answer".equals(outputSchema.getType())) {
+                    sawAnswerFrame = true;
+                }
+                return item;
             } catch (RuntimeException error) {
                 drainAfterIteratorFailure();
                 awaitTask();
@@ -455,6 +489,55 @@ public class LLMAgent extends ControllerAgent {
             taskAwaited = true;
             task.join();
             finalResultHolder.get();
+        }
+
+        private boolean shouldEmitFallback() {
+            Object finalResult = finalResultHolder.get();
+            return taskAwaited && !sawAnswerFrame && !fallbackEmitted
+                    && finalResult != null && !isInterruptResult(finalResult);
+        }
+    }
+
+    /**
+     * Mirrors Python's external-session streaming behavior: values written to
+     * the session stream are the public stream, with result fallback only when
+     * the controller did not emit stream chunks.
+     */
+    private static final class SessionStreamIterator implements Iterator<Object> {
+        private final Iterator<Object> delegate;
+        private final Object finalResult;
+        private Iterator<Object> fallback;
+        private boolean sawStreamItem;
+
+        private SessionStreamIterator(Iterator<Object> delegate, Object finalResult) {
+            this.delegate = delegate;
+            this.finalResult = finalResult;
+        }
+
+        @Override
+        public boolean hasNext() {
+            if (delegate.hasNext()) {
+                return true;
+            }
+            if (sawStreamItem) {
+                return false;
+            }
+            if (fallback == null) {
+                fallback = iteratorForResult(finalResult);
+            }
+            return fallback.hasNext();
+        }
+
+        @Override
+        public Object next() {
+            if (delegate.hasNext()) {
+                sawStreamItem = true;
+                return delegate.next();
+            }
+            if (hasNext()) {
+                return fallback.next();
+            }
+            throw new java.util.NoSuchElementException();
         }
     }
 }

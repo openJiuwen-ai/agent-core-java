@@ -131,7 +131,7 @@ public class CallbackChain {
                     Map<String, Object> kwargs = buildInvocationKwargs(context);
                     Object resolvedResult = invokeCallback(callback, kwargs, callbackInfo.getTimeout());
 
-                    ProcessOutcome outcome = processResult(resolvedResult, callback, executedCallbacks, context);
+                    ProcessOutcome outcome = processResult(resolvedResult, callbackInfo, executedCallbacks, context);
                     if (outcome.retryCurrent()) {
                         continue;
                     }
@@ -227,7 +227,7 @@ public class CallbackChain {
 
     private ProcessOutcome processResult(
             Object resolvedResult,
-            Function<Map<String, Object>, Object> callback,
+            CallbackInfo callbackInfo,
             List<Function<Map<String, Object>, Object>> executedCallbacks,
             ChainContext context
     ) {
@@ -248,18 +248,30 @@ public class CallbackChain {
             return new ProcessOutcome(true, null);
         }
         if (chainResult.getAction() == ChainAction.ROLLBACK) {
+            Function<Map<String, Object>, Object> callback = callbackInfo.getCallback();
             rollback(executedCallbacks, context);
             return new ProcessOutcome(false, ChainResult.builder()
                     .action(ChainAction.ROLLBACK)
                     .context(context)
                     .error(chainResult.getError())
-                    .build());
+                .build());
         }
 
-        if (hasRollbackHandler(callback) || hasErrorHandler(callback)) {
+        Function<Map<String, Object>, Object> callback = callbackInfo.getCallback();
+        if (shouldRecordChainResult(callbackInfo, callback)) {
             context.getResults().add(chainResult.getResult());
         }
         return new ProcessOutcome(false, null);
+    }
+
+    private boolean shouldRecordChainResult(
+            CallbackInfo callbackInfo,
+            Function<Map<String, Object>, Object> callback
+    ) {
+        if (callbackInfo.getCallbackName() == null || callbackInfo.getCallbackName().isEmpty()) {
+            return true;
+        }
+        return hasRollbackHandler(callback) || hasErrorHandler(callback);
     }
 
     private void rollback(List<Function<Map<String, Object>, Object>> executedCallbacks, ChainContext context) {

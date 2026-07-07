@@ -12,6 +12,7 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
+import com.openjiuwen.core.session.tracer.Tracer;
 import com.openjiuwen.core.workflow.CompIOConfig;
 import com.openjiuwen.core.workflow.NodeSpec;
 import com.openjiuwen.core.workflow.SchemaOrTransformer;
@@ -45,7 +46,7 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
     private StreamWriterManager streamWriterManager;
     private ActorManager actorManager;
     private CompiledGraph.GraphCheckpointer checkpointer;
-    private final Vertex.VertexTraceSink tracer = new Vertex.VertexTraceSink() {
+    private Vertex.VertexTraceSink tracer = new Vertex.VertexTraceSink() {
     };
 
     public WorkflowRuntimeSession(String workflowId, BaseSession parent, String sessionId,
@@ -73,7 +74,9 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
         this.callbackManager = callbackManager;
         this.parentId = parentId != null ? parentId : "";
         this.executableId = executableId != null ? executableId : "";
-        String stateNodeId = this.executableId.isBlank() ? WorkflowRuntimeState.DEFAULT_NODE_ID : this.executableId;
+        String stateNodeId = this.parentId.isBlank()
+                ? WorkflowRuntimeState.DEFAULT_NODE_ID
+                : this.executableId.isBlank() ? WorkflowRuntimeState.DEFAULT_NODE_ID : this.executableId;
         this.state = WorkflowRuntimeState.from(state, this.parentId, stateNodeId);
         this.subGraph = subGraph;
         this.nodeId = nodeId != null ? nodeId : "";
@@ -170,6 +173,11 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
         return nodeType;
     }
 
+    @Override
+    public void setNodeType(String nodeType) {
+        this.nodeType = nodeType != null ? nodeType : "";
+    }
+
     public String mainWorkflowId() {
         return mainWorkflowId;
     }
@@ -235,10 +243,18 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
 
     public void setStreamWriterManager(StreamWriterManager streamWriterManager) {
         this.streamWriterManager = streamWriterManager;
+        if (!(parent instanceof WorkflowRuntimeSession) && streamWriterManager != null) {
+            Tracer runtimeTracer = new Tracer();
+            runtimeTracer.init(streamWriterManager);
+            this.tracer = runtimeTracer;
+        }
     }
 
     @Override
     public Vertex.VertexTraceSink tracer() {
+        if (parent instanceof WorkflowRuntimeSession runtimeSession) {
+            return runtimeSession.tracer();
+        }
         return tracer;
     }
 

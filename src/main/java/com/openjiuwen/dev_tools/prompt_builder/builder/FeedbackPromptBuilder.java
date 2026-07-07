@@ -118,6 +118,7 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
             Integer endPos,
             String language) {
         template = PromptBuilderUtils.selectTemplate(language);
+        isValidRawPromptAndFeedback(prompt, feedback);
         String promptText = PromptBuilderUtils.getStringPrompt(prompt);
         isValidPrompt(promptText, feedback);
         return formatFeedbackTemplate(promptText, feedback, mode, startPos, endPos)
@@ -189,6 +190,7 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
             Integer endPos,
             String language) {
         template = PromptBuilderUtils.selectTemplate(language);
+        isValidRawPromptAndFeedback(prompt, feedback);
         String promptText = PromptBuilderUtils.getStringPrompt(prompt);
         isValidPrompt(promptText, feedback);
         return new StreamBuildPublisher(promptText, feedback, mode, startPos, endPos);
@@ -329,6 +331,12 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
         }
     }
 
+    void isValidRawPromptAndFeedback(Object prompt, String feedback) {
+        if (prompt == null || feedback == null) {
+            throw buildFeedbackError("prompt or feedback cannot be None");
+        }
+    }
+
     IntentResult extractIntentFromResponses(String inputJson) {
         Matcher matcher = INTENT_JSON_PATTERN.matcher(inputJson == null ? "" : inputJson);
         if (!matcher.find()) {
@@ -384,7 +392,7 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
     }
 
     private static String stringArgument(Object value) {
-        return value == null ? null : String.valueOf(value);
+        return value instanceof String text ? text : null;
     }
 
     private static Integer integerArgument(Object value) {

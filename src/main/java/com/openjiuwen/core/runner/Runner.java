@@ -414,25 +414,25 @@ public final class Runner {
         }
 
         private CompletionStage<Boolean> stop() {
-            return CompletableFuture.supplyAsync(() -> {
-                try {
-                    if (RunnerConfig.getRunnerConfig().isDistributedMode()) {
-                        if (systemReplySub != null) {
-                            systemReplySub.deactivate();
-                            systemReplySub = null;
-                        }
-                        if (distributedMessageQueue != null) {
-                            distributedMessageQueue.stop();
-                            distributedMessageQueue = null;
-                        }
+            try {
+                boolean stopped;
+                if (RunnerConfig.getRunnerConfig().isDistributedMode()) {
+                    if (systemReplySub != null) {
+                        systemReplySub.deactivate();
+                        systemReplySub = null;
                     }
-                    return messageQueue.stop();
-                } finally {
-                    resourceManager.release().toCompletableFuture().join();
-                    releaseConfiguredCheckpointer();
-                    rootTaskGroup = null;
+                    if (distributedMessageQueue != null) {
+                        distributedMessageQueue.stop();
+                        distributedMessageQueue = null;
+                    }
                 }
-            });
+                stopped = messageQueue.stop();
+                return CompletableFuture.completedFuture(stopped);
+            } finally {
+                resourceManager.release().toCompletableFuture().join();
+                releaseConfiguredCheckpointer();
+                rootTaskGroup = null;
+            }
         }
 
         private CompletionStage<Object> runWorkflow(Object workflow, Object inputs, Object session,

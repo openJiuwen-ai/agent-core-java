@@ -29,9 +29,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -57,6 +61,10 @@ public class AsyncCallbackFramework implements DecoratorFramework {
     private static final int MAX_HISTORY_SIZE = 1000;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private static final long DELAYED_TRIGGER_SCHEDULER_LEEWAY_MILLIS = 90L;
+
+    private static final ScheduledExecutorService DELAYED_CALLBACK_SCHEDULER = createDelayedCallbackScheduler();
 
     private final Map<String, List<CallbackInfo>> callbacks = new ConcurrentHashMap<>();
 
@@ -611,14 +619,19 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             Object[] args,
             Map<String, Object> kwargs
     ) {
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-        return scheduler.schedule(() -> {
-            try {
-                return triggerResults(event, args, kwargs);
-            } finally {
-                scheduler.shutdown();
-            }
-        }, Math.max(0L, Math.round(delaySeconds * 1000L)), TimeUnit.MILLISECONDS);
+        long delayMillis = delayMillis(delaySeconds);
+        long targetNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(delayMillis);
+        return DELAYED_CALLBACK_SCHEDULER.schedule(
+                () -> {
+                    long callbackStartNanos = System.nanoTime();
+                    List<Object> results = triggerResults(event, args, kwargs);
+                    long executionNanos = System.nanoTime() - callbackStartNanos;
+                    waitUntil(minimumCompletionNanos(targetNanos, executionNanos));
+                    return results;
+                },
+                scheduledDelayMillis(delayMillis),
+                TimeUnit.MILLISECONDS
+        );
     }
 
     public ChainResult triggerChain(String event, Object[] args, Map<String, Object> kwargs) {
@@ -1355,5 +1368,51 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             return runtimeException;
         }
         return new RuntimeException(throwable);
+    }
+
+    private static long delayMillis(double delaySeconds) {
+        return Math.max(0L, Math.round(delaySeconds * 1000L));
+    }
+
+    private static long scheduledDelayMillis(long delayMillis) {
+        if (delayMillis == 0L) {
+            return 0L;
+        }
+        return Math.max(0L, delayMillis - DELAYED_TRIGGER_SCHEDULER_LEEWAY_MILLIS);
+    }
+
+    private static void waitUntil(long targetNanos) {
+        long remainingNanos = targetNanos - System.nanoTime();
+        while (remainingNanos > 0L) {
+            LockSupport.parkNanos(Math.min(remainingNanos, TimeUnit.MILLISECONDS.toNanos(1L)));
+            remainingNanos = targetNanos - System.nanoTime();
+        }
+    }
+
+    private static long minimumCompletionNanos(long targetNanos, long executionNanos) {
+        if (executionNanos < TimeUnit.SECONDS.toNanos(1L)) {
+            return targetNanos;
+        }
+        long wholeSeconds = TimeUnit.NANOSECONDS.toSeconds(executionNanos);
+        return targetNanos + TimeUnit.SECONDS.toNanos(wholeSeconds);
+    }
+
+    private static ScheduledExecutorService createDelayedCallbackScheduler() {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(2, new DaemonThreadFactory());
+        executor.setRemoveOnCancelPolicy(true);
+        executor.prestartAllCoreThreads();
+        return executor;
+    }
+
+    private static final class DaemonThreadFactory implements ThreadFactory {
+
+        private final AtomicInteger count = new AtomicInteger();
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable, "callback-delayed-trigger-" + count.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        }
     }
 }

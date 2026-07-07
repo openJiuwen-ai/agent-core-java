@@ -37,6 +37,10 @@ public class DatabaseConfig {
     private boolean dbEnableWal = true;
 
     public DatabaseConfig() {
+        this.dbType = DatabaseType.SQLITE;
+        this.connectionString = "";
+        this.dbTimeout = 30;
+        this.dbEnableWal = true;
     }
 
     public DatabaseConfig(DatabaseType dbType, String connectionString, int dbTimeout, boolean dbEnableWal) {
@@ -80,7 +84,7 @@ public class DatabaseConfig {
     }
 
     public DatabaseType getDbType() {
-        return dbType;
+        return dbType == null ? DatabaseType.SQLITE : dbType;
     }
 
     public void setDbType(DatabaseType dbType) {

@@ -173,6 +173,7 @@ public class TeamAgentSpec {
         spec.setEnableHitt(enableHitt);
         spec.setEnableBridge(enableBridge);
         spec.setExposeHumanAgentsToTeammates(exposeHumanAgentsToTeammates);
+        spec.setEnableTeamPlan(enableTeamPlan);
         return spec;
     }
 

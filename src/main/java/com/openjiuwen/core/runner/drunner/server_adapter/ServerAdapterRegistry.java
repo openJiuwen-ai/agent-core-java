@@ -35,6 +35,9 @@ public final class ServerAdapterRegistry {
         }
         ServerAdapterFactory factory = CUSTOM_SERVER_ADAPTERS.get(protocol);
         if (factory != null) {
+            if ("A2A".equals(protocol) && (kwargs == null || !(kwargs.get("agent_card") instanceof Object))) {
+                return null;
+            }
             return factory.create(kwargs);
         }
         return resolveProvider(protocol, kwargs);

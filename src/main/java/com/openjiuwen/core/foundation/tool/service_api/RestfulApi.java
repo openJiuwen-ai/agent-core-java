@@ -5,6 +5,8 @@
 package com.openjiuwen.core.foundation.tool.service_api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.clients.ConnectorPoolConfig;
+import com.openjiuwen.core.common.clients.ConnectorPoolManager;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -55,7 +57,7 @@ public class RestfulApi extends Tool {
     private static final String RESTFUL_SSL_CERT = "RESTFUL_SSL_CERT";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final LoggerProtocol LOGGER = Loggers.TOOL;
-    private static final Set<String> PARAM_METHODS = Set.of("GET", "HEAD", "OPTIONS", "DELETE");
+    private static final Set<String> PARAM_METHODS = Set.of("GET", "HEAD", "OPTIONS");
 
     private final RestfulApiCard restfulApiCard;
     private final String url;
@@ -68,6 +70,7 @@ public class RestfulApi extends Tool {
         super(card);
         this.restfulApiCard = card;
         this.url = card.getUrl();
+        validateExecutableUrl(this.url);
         this.method = card.getMethod();
         this.timeout = card.getTimeout();
         this.maxResponseByteSize = card.getMaxResponseByteSize();
@@ -76,6 +79,23 @@ public class RestfulApi extends Tool {
                 card.getQueries(),
                 card.getHeaders(),
                 card.getPaths()
+        );
+    }
+
+    private static void validateExecutableUrl(String rawUrl) {
+        try {
+            URI parsedUrl = URI.create(rawUrl == null ? null : rawUrl.replaceAll("\\{\\w+}", "placeholder"));
+            String scheme = parsedUrl.getScheme();
+            if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
+                return;
+            }
+        } catch (RuntimeException ignored) {
+            // Fall through to the SDK config error below.
+        }
+        throw ErrorHelper.buildError(
+                StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
+                "reason",
+                "support invalid url, url=" + rawUrl + "."
         );
     }
 
@@ -313,6 +333,16 @@ public class RestfulApi extends Tool {
         int statusCode = response.statusCode();
         try {
             Object parsedResponse = ParserRegistry.getInstance().parse(responseHeaders, content, statusCode);
+            if ("DELETE".equals(method) && parsedResponse instanceof Map<?, ?> parsedMap
+                    && parsedMap.containsKey("message") && parsedMap.containsKey("location")) {
+                Map<String, Object> normalized = new LinkedHashMap<>();
+                parsedMap.forEach((key, value) -> {
+                    if (key != null && !"location".equals(String.valueOf(key))) {
+                        normalized.put(String.valueOf(key), value);
+                    }
+                });
+                parsedResponse = normalized;
+            }
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("code", statusCode);
             result.put("data", parsedResponse);
@@ -330,6 +360,7 @@ public class RestfulApi extends Tool {
     }
 
     private HttpClient buildHttpClient(String resolvedUrl, double timeoutSec) {
+        ConnectorPoolManager.getInstance().getConnectorPool(new ConnectorPoolConfig()).join();
         HttpClient.Builder builder = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .connectTimeout(Duration.ofMillis((long) (timeoutSec * 1000)));
@@ -359,25 +390,35 @@ public class RestfulApi extends Tool {
         if (!"https".equalsIgnoreCase(resolvedUri.getScheme())) {
             return;
         }
-        Object[] sslConfig = SslUtils.getSslConfig(
-                RESTFUL_SSL_VERIFY,
-                RESTFUL_SSL_CERT,
-                List.of("false", "0", "off"),
-                true
-        );
-        boolean sslVerify = Boolean.TRUE.equals(sslConfig[0]);
-        String sslCertPath = sslConfig[1] instanceof String text ? text : null;
-        if (!sslVerify) {
+        String verifySwitch = sslConfigValue(RESTFUL_SSL_VERIFY);
+        if (isFalseSwitch(verifySwitch)) {
             builder.sslContext(SslUtils.createInsecureSslContext());
             SSLParameters sslParameters = new SSLParameters();
             sslParameters.setEndpointIdentificationAlgorithm("");
             builder.sslParameters(sslParameters);
             return;
         }
+        String sslCertPath = sslConfigValue(RESTFUL_SSL_CERT);
         if (sslCertPath != null && !sslCertPath.isBlank()) {
             SSLContext sslContext = SslUtils.createStrictSslContext(sslCertPath);
             builder.sslContext(sslContext);
         }
+    }
+
+    private static String sslConfigValue(String key) {
+        String propertyValue = System.getProperty(key);
+        if (propertyValue != null) {
+            return propertyValue;
+        }
+        return System.getenv(key);
+    }
+
+    private static boolean isFalseSwitch(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim().toLowerCase(java.util.Locale.ROOT);
+        return "false".equals(normalized) || "0".equals(normalized) || "off".equals(normalized);
     }
 
     private static String applyPathParams(String rawUrl, Map<String, Object> pathParams) {

@@ -205,6 +205,8 @@ class WorkflowMissingTest {
         LoopBreakComponent breakNode = new LoopBreakComponent();
 
         assertThrows(IllegalStateException.class, breakNode::breakLoop);
+        assertNotNull(breakNode.toExecutable());
+        assertSame(breakNode.toExecutable(), breakNode.to_executable());
     }
 
     @Test

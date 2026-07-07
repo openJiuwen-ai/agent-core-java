@@ -167,7 +167,15 @@ public class Tracer implements Vertex.VertexTraceSink {
     @Override
     public void trace(Vertex.VertexSession session, Map<String, Object> data) {
         TraceWorkflowSpan span = workflowSpan(session);
-        span.setOnInvokeData(java.util.List.of(data == null ? Map.of() : data));
+        Map<String, Object> safeData = data == null ? Map.of() : data;
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        copyIfPresent(safeData, metadata, "workflow_id", "workflowId");
+        copyIfPresent(safeData, metadata, "workflow_name", "workflowName");
+        copyIfPresent(safeData, metadata, "workflow_version", "workflowVersion");
+        if (!metadata.isEmpty()) {
+            updateSpan(span, metadata);
+        }
+        span.setOnInvokeData(java.util.List.of(safeData));
         emitWorkflow(span);
     }
 
@@ -310,6 +318,13 @@ public class Tracer implements Vertex.VertexTraceSink {
     private TraceWorkflowSpan workflowSpan(Vertex.VertexSession session) {
         String parentNodeId = session == null ? "" : session.parentId();
         String invokeId = session == null ? "" : session.executableId();
+        if ((parentNodeId == null || parentNodeId.isEmpty())
+                && (invokeId == null || invokeId.isEmpty())
+                && session != null
+                && session.workflowId() != null
+                && !session.workflowId().isEmpty()) {
+            invokeId = session.workflowId();
+        }
         return workflowSpan(invokeId, parentNodeId);
     }
 
@@ -328,8 +343,12 @@ public class Tracer implements Vertex.VertexTraceSink {
 
     private Map<String, Object> componentMetadata(Vertex.VertexSession session) {
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("componentId", session == null ? "" : session.executableId());
-        metadata.put("componentName", session == null ? "" : session.executableId());
+        String nodeId = session == null ? "" : readString(session, "nodeId");
+        String componentId = nodeId == null || nodeId.isBlank()
+                ? session == null ? "" : session.executableId()
+                : nodeId;
+        metadata.put("componentId", componentId);
+        metadata.put("componentName", componentId);
         metadata.put("componentType", session == null ? "" : readString(session, "nodeType"));
         metadata.put("workflowId", session == null ? "" : session.workflowId());
         return metadata;
@@ -422,6 +441,13 @@ public class Tracer implements Vertex.VertexTraceSink {
             result.put(String.valueOf(entry.getKey()), entry.getValue());
         }
         return result;
+    }
+
+    private static void copyIfPresent(Map<String, Object> source, Map<String, Object> target,
+                                      String sourceKey, String targetKey) {
+        if (source.containsKey(sourceKey)) {
+            target.put(targetKey, source.get(sourceKey));
+        }
     }
 
     private static String readString(Object target, String methodName) {

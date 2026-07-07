@@ -50,6 +50,7 @@ public abstract class BaseModelClient implements Model.ModelClient {
     public static final String CLIENT_TYPE = __client_type__;
 
     private static final Set<String> INTERNAL_REQUEST_PARAMS = Set.of("parser", "output_parser");
+    private static final Set<String> DECIMAL_REQUEST_PARAMS = Set.of("temperature", "top_p");
 
     protected final ModelRequestConfig modelConfig;
     protected final ModelClientConfig modelClientConfig;
@@ -294,19 +295,26 @@ public abstract class BaseModelClient implements Model.ModelClient {
         params.put("messages", messagesDict);
         params.put("stream", stream);
 
-        Number finalTemperature = temperature != null ? temperature : modelConfig.getTemperature();
+        Number finalTemperature = normalizeDecimalNumber(temperature != null ? temperature : modelConfig.getTemperature());
         if (finalTemperature != null) {
-            params.put("temperature", finalTemperature.doubleValue());
+            params.put("temperature", finalTemperature);
         }
 
-        Number finalTopP = topP != null ? topP : modelConfig.getTopP();
+        Number finalTopP = normalizeDecimalNumber(topP != null ? topP : modelConfig.getTopP());
         if (finalTopP != null) {
-            params.put("top_p", finalTopP.doubleValue());
+            params.put("top_p", finalTopP);
         }
 
         Integer finalMaxTokens = maxTokens != null ? maxTokens : modelConfig.getMaxTokens();
         if (finalMaxTokens != null) {
             params.put("max_tokens", finalMaxTokens);
+        }
+
+        if (modelConfig.getUser() != null) {
+            params.put("user", modelConfig.getUser());
+        }
+        if (modelConfig.getSeed() != null) {
+            params.put("seed", modelConfig.getSeed());
         }
 
         String finalStop = stop != null ? stop : modelConfig.getStop();
@@ -323,7 +331,7 @@ public abstract class BaseModelClient implements Model.ModelClient {
         if (modelConfig.getExtraFields() != null) {
             for (Map.Entry<String, Object> entry : modelConfig.getExtraFields().entrySet()) {
                 if (entry.getValue() != null) {
-                    params.put(entry.getKey(), entry.getValue());
+                    params.put(entry.getKey(), normalizeDecimalRequestParam(entry.getKey(), entry.getValue()));
                 }
             }
         }
@@ -331,7 +339,7 @@ public abstract class BaseModelClient implements Model.ModelClient {
         if (kwargs != null) {
             for (Map.Entry<String, Object> entry : kwargs.entrySet()) {
                 if (!INTERNAL_REQUEST_PARAMS.contains(entry.getKey())) {
-                    params.put(entry.getKey(), entry.getValue());
+                    params.put(entry.getKey(), normalizeDecimalRequestParam(entry.getKey(), entry.getValue()));
                 }
             }
         }
@@ -710,6 +718,26 @@ public abstract class BaseModelClient implements Model.ModelClient {
             return number.doubleValue();
         }
         return Double.parseDouble(String.valueOf(resolved));
+    }
+
+    private static Object normalizeDecimalRequestParam(String key, Object value) {
+        if (!DECIMAL_REQUEST_PARAMS.contains(key) || !(value instanceof Number number)) {
+            return value;
+        }
+        return normalizeDecimalNumber(number);
+    }
+
+    private static Number normalizeDecimalNumber(Number value) {
+        if (value instanceof Float floatValue) {
+            return Double.valueOf(Float.toString(floatValue));
+        }
+        if (value instanceof Double doubleValue) {
+            float narrowed = doubleValue.floatValue();
+            if (Double.compare((double) narrowed, doubleValue) == 0) {
+                return Double.valueOf(Float.toString(narrowed));
+            }
+        }
+        return value;
     }
 
     /**

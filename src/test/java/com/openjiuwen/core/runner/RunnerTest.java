@@ -18,6 +18,7 @@ import com.openjiuwen.core.multi_agent.TeamConfig;
 import com.openjiuwen.core.multi_agent.schema.TeamCard;
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
+import com.openjiuwen.core.runner.resourcemanager.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentTeamSession;
@@ -103,6 +104,28 @@ class RunnerTest {
         assertFalse(Runner.getConfig().isDistributedMode());
         assertNull(Runner.getDistPubsub());
         assertTrue(Runner.stop().toCompletableFuture().join());
+    }
+
+    @Test
+    void stopCompletesResourceResetBeforeReturningFuture() {
+        WorkflowCard card = new WorkflowCard("runner-reset-workflow", "runner-reset-workflow", "", "1.0", null);
+        DirectWorkflow workflow = new DirectWorkflow(card);
+        Runner.getResourceMgr().addWorkflow(card, () -> workflow, List.of("runner-reset-tag"));
+
+        Runner.stop();
+
+        assertNull(Runner.getResourceMgr().getWorkflow("runner-reset-workflow", null).toCompletableFuture().join());
+
+        WorkflowCard nextCard = new WorkflowCard("runner-reset-workflow", "runner-reset-workflow", "", "1.0", null);
+        DirectWorkflow nextWorkflow = new DirectWorkflow(nextCard);
+        Runner.getResourceMgr().addWorkflow(nextCard, () -> nextWorkflow, List.of("runner-reset-tag"));
+
+        List<Object> workflows = Runner.getResourceMgr()
+                .getWorkflowsByTag(List.of("runner-reset-tag"), TagMatchStrategy.ALL, null)
+                .toCompletableFuture()
+                .join();
+        assertEquals(1, workflows.size());
+        assertSame(nextWorkflow, workflows.get(0));
     }
 
     @Test

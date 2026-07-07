@@ -53,12 +53,12 @@ public class MetaTemplateBuilder extends BasePromptBuilder {
         return template;
     }
 
-    public Optional<PromptTemplate> getMetaTemplate(String templateName) {
-        return Optional.ofNullable(metaTemplateManager.get(templateName));
+    public PromptTemplate getMetaTemplate(String templateName) {
+        return metaTemplateManager.get(templateName);
     }
 
-    public Optional<PromptTemplate> popMetaTemplate(String templateName) {
-        return Optional.ofNullable(metaTemplateManager.remove(templateName));
+    public PromptTemplate popMetaTemplate(String templateName) {
+        return metaTemplateManager.remove(templateName);
     }
 
     public void registerMetaTemplate(String name, Object metaTemplate) {
@@ -80,6 +80,23 @@ public class MetaTemplateBuilder extends BasePromptBuilder {
 
     public CompletableFuture<String> build(Object prompt, List<ToolInfo> tools) {
         return buildInternal(prompt, tools, TEMPLATE_TYPE_GENERAL, null, "zh-CN");
+    }
+
+    public CompletableFuture<String> build(Object prompt, Object... args) {
+        try {
+            Object tools = varArg(args, 0, null);
+            String templateType = stringArgument(varArg(args, 1, TEMPLATE_TYPE_GENERAL));
+            String customTemplateName = customTemplateNameArgument(varArg(args, 2, null));
+            String language = stringArgument(varArg(args, 3, "zh-CN"));
+            return buildInternal(
+                    prompt,
+                    toolInfoList(tools),
+                    templateType == null ? TEMPLATE_TYPE_GENERAL : templateType,
+                    customTemplateName,
+                    language == null ? "zh-CN" : language);
+        } catch (RuntimeException exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
     }
 
     public CompletableFuture<String> build(
@@ -277,8 +294,22 @@ public class MetaTemplateBuilder extends BasePromptBuilder {
         return defaultValue;
     }
 
+    private static Object varArg(Object[] args, int index, Object defaultValue) {
+        if (args == null || index >= args.length) {
+            return defaultValue;
+        }
+        return args[index];
+    }
+
     private static String stringArgument(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private static String customTemplateNameArgument(Object value) {
+        if (value instanceof List<?> list && list.isEmpty()) {
+            return null;
+        }
+        return stringArgument(value);
     }
 
     private static List<?> listArgument(Object value) {

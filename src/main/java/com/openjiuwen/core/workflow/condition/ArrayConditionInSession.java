@@ -56,6 +56,9 @@ public class ArrayConditionInSession extends Condition {
     }
 
     private static int checkArrays(Map<String, Object> arrays) {
+        if (arrays == null || arrays.isEmpty()) {
+            return 0;
+        }
         int min = DEFAULT_MAX_LOOP_NUMBER;
         for (Map.Entry<String, Object> entry : arrays.entrySet()) {
             Object arrayInfo = entry.getValue();

@@ -8,7 +8,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Set;
 import java.util.regex.Pattern;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -17,7 +16,6 @@ import lombok.NoArgsConstructor;
  * {@code openjiuwen/core/retrieval/common/config.py}.
  */
 @Data
-@Builder
 @NoArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class VectorStoreConfig {
@@ -30,15 +28,17 @@ public class VectorStoreConfig {
     private StoreType storeProvider;
 
     @JsonProperty("database_name")
-    @Builder.Default
     private String databaseName = "";
 
     @JsonProperty("collection_name")
     private String collectionName;
 
     @JsonProperty("distance_metric")
-    @Builder.Default
     private String distanceMetric = "cosine";
+
+    public static VectorStoreConfigBuilder builder() {
+        return new VectorStoreConfigBuilder();
+    }
 
     public VectorStoreConfig(Object storeProvider, String collectionName) {
         this(toStoreType(storeProvider), "", collectionName, "cosine");
@@ -104,5 +104,48 @@ public class VectorStoreConfig {
             throw new IllegalArgumentException("distance_metric must be one of cosine, euclidean, dot");
         }
         this.distanceMetric = value;
+    }
+
+    public static final class VectorStoreConfigBuilder {
+        private StoreType storeProvider;
+        private String databaseName = "";
+        private String collectionName;
+        private String distanceMetric = "cosine";
+
+        private VectorStoreConfigBuilder() {
+        }
+
+        public VectorStoreConfigBuilder storeProvider(StoreType storeProvider) {
+            this.storeProvider = storeProvider;
+            return this;
+        }
+
+        public VectorStoreConfigBuilder storeProvider(String storeProvider) {
+            this.storeProvider = StoreType.fromValue(storeProvider);
+            return this;
+        }
+
+        public VectorStoreConfigBuilder databaseName(String databaseName) {
+            this.databaseName = databaseName;
+            return this;
+        }
+
+        public VectorStoreConfigBuilder collectionName(String collectionName) {
+            this.collectionName = collectionName;
+            return this;
+        }
+
+        public VectorStoreConfigBuilder distanceMetric(String distanceMetric) {
+            this.distanceMetric = distanceMetric;
+            return this;
+        }
+
+        public VectorStoreConfig build() {
+            String activeCollectionName = collectionName;
+            if (activeCollectionName == null && storeProvider == StoreType.CHROMA) {
+                activeCollectionName = "";
+            }
+            return new VectorStoreConfig(storeProvider, databaseName, activeCollectionName, distanceMetric);
+        }
     }
 }

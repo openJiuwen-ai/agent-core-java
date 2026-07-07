@@ -66,7 +66,7 @@ public class ApiParamMapper {
         Map<ApiParamLocation, Map<String, Object>> result = emptyBuckets();
         Map<String, Object> normalizedInputs = inputs == null ? Map.of() : inputs;
 
-        if (schema == null) {
+        if (schema == null || schema.isEmpty()) {
             result.get(defaultLocation).putAll(normalizedInputs);
         } else {
             Object propertiesObject = schema.getOrDefault("properties", Map.of());

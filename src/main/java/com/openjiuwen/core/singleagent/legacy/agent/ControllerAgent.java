@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent.legacy.agent;
 
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
@@ -97,6 +98,9 @@ public class ControllerAgent extends BaseAgent {
             Iterator<Object> typed = (Iterator<Object>) iterable.iterator();
             return typed;
         }
+        if (isAnswerResult(result)) {
+            return List.of((Object) new OutputSchema("answer", 0, result)).iterator();
+        }
         return List.of(result).iterator();
     }
 
@@ -151,5 +155,9 @@ public class ControllerAgent extends BaseAgent {
             return stage.thenApply(value -> value);
         }
         return CompletableFuture.completedFuture(result);
+    }
+
+    private static boolean isAnswerResult(Object result) {
+        return result instanceof Map<?, ?> map && "answer".equals(map.get("result_type"));
     }
 }

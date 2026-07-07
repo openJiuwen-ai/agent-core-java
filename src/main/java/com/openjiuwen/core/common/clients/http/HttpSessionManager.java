@@ -63,7 +63,7 @@ public class HttpSessionManager extends BaseRefResourceMgr<HttpSession> {
     @Override
     protected CompletableFuture<HttpSession> createResource(Object config) {
         SessionConfig sessionConfig = normalizeConfig(config instanceof SessionConfig candidate ? candidate : defaultConfig);
-        return CompletableFuture.completedFuture(new HttpSession(buildClient(sessionConfig), sessionConfig));
+        return CompletableFuture.completedFuture(new HttpSession(buildClient(sessionConfig), sessionConfig, true));
     }
 
     public <T> CompletableFuture<T> withSession(

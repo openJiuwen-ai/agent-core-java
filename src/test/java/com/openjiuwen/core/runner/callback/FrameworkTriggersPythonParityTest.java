@@ -46,6 +46,7 @@ class FrameworkTriggersPythonParityTest {
             "test_trigger_applies_filters",
             "test_trigger_callback_exception_continues",
             "test_trigger_delayed_waits",
+            "test_trigger_delayed_waits_before_executing_callbacks",
             "test_trigger_chain_basic",
             "test_trigger_chain_data_flows",
             "test_trigger_parallel_concurrent",
@@ -104,6 +105,7 @@ class FrameworkTriggersPythonParityTest {
             case "test_trigger_applies_filters" -> triggerAppliesFilters();
             case "test_trigger_callback_exception_continues" -> triggerCallbackExceptionContinues();
             case "test_trigger_delayed_waits" -> triggerDelayedWaits();
+            case "test_trigger_delayed_waits_before_executing_callbacks" -> triggerDelayedWaitsBeforeExecutingCallbacks();
             case "test_trigger_chain_basic" -> triggerChainBasic();
             case "test_trigger_chain_data_flows" -> triggerChainDataFlows();
             case "test_trigger_parallel_concurrent" -> triggerParallelConcurrent();
@@ -254,6 +256,27 @@ class FrameworkTriggersPythonParityTest {
 
         assertTrue(elapsedMillis >= 90L);
         assertEquals(List.of("done"), results);
+    }
+
+    void triggerDelayedWaitsBeforeExecutingCallbacks() throws Exception {
+        AsyncCallbackFramework framework = framework();
+        long start = System.nanoTime();
+        register(framework, "event", "callback", kwargs -> {
+            try {
+                Thread.sleep(1_050L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(interrupted);
+            }
+            return "done";
+        });
+
+        ScheduledFuture<List<Object>> future = framework.triggerDelayed("event", 0.1, new Object[0], Map.of());
+        List<Object> results = future.get(2, TimeUnit.SECONDS);
+        long totalElapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+
+        assertEquals(List.of("done"), results);
+        assertTrue(totalElapsedMillis >= 1_095L);
     }
 
     private void triggerChainBasic() {

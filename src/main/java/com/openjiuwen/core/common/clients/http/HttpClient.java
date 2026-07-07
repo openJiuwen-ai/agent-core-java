@@ -5,6 +5,10 @@
 package com.openjiuwen.core.common.clients.http;
 
 import com.openjiuwen.core.common.clients.BaseClient;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.clients.ConnectorPoolConfig;
+import com.openjiuwen.core.common.clients.ConnectorPoolManager;
 import com.openjiuwen.core.foundation.tool.service_api.ParserRegistry;
 
 import java.net.URI;
@@ -30,6 +34,8 @@ import javax.net.ssl.SSLSession;
  * {@code openjiuwen/core/common/clients/http_client.py}.</p>
  */
 public class HttpClient extends BaseClient {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private SessionConfig config;
     private HttpSessionManager sessionManager;
@@ -249,6 +255,7 @@ public class HttpClient extends BaseClient {
     }
 
     private CompletableFuture<HttpSession> acquireSession() {
+        ensureConnectorPoolRegistered();
         if (reuseSession) {
             if (closed) {
                 return CompletableFuture.failedFuture(new IllegalStateException("HttpClient is closed"));
@@ -268,6 +275,13 @@ public class HttpClient extends BaseClient {
         return sessionManager.acquireLease(config).thenApply(lease -> lease.resource());
     }
 
+    private void ensureConnectorPoolRegistered() {
+        ConnectorPoolConfig poolConfig = config.getConnectorPoolConfig();
+        ConnectorPoolManager poolManager = ConnectorPoolManager.getInstance();
+        poolManager.getConnectorPool(poolConfig).join();
+        poolManager.releaseConnectorPool(poolConfig);
+    }
+
     private CompletableFuture<Void> releaseSession(HttpSession acquired) {
         if (reuseSession) {
             return CompletableFuture.completedFuture(null);
@@ -281,7 +295,11 @@ public class HttpClient extends BaseClient {
         if (timeout != null) {
             builder.timeout(seconds(timeout));
         }
-        buildHeaders(options.headers()).forEach(builder::setHeader);
+        Map<String, String> headers = buildHeaders(options.headers());
+        if (options.json() != null && !containsHeader(headers, "Content-Type")) {
+            headers.put("Content-Type", "application/json");
+        }
+        headers.forEach(builder::setHeader);
         String normalizedMethod = method == null ? "GET" : method.toUpperCase();
         HttpRequest.BodyPublisher publisher = bodyPublisher(options);
         builder.method(normalizedMethod, publisher);
@@ -306,7 +324,7 @@ public class HttpClient extends BaseClient {
     private HttpRequest.BodyPublisher bodyPublisher(RequestOptions options) {
         Object json = options.json();
         if (json != null) {
-            return HttpRequest.BodyPublishers.ofString(String.valueOf(json), StandardCharsets.UTF_8);
+            return HttpRequest.BodyPublishers.ofString(toJson(json), StandardCharsets.UTF_8);
         }
         Object body = options.body();
         if (body != null) {
@@ -400,6 +418,18 @@ public class HttpClient extends BaseClient {
         return flattened;
     }
 
+    private static boolean containsHeader(Map<String, String> headers, String headerName) {
+        return headers.keySet().stream().anyMatch(key -> key.equalsIgnoreCase(headerName));
+    }
+
+    private static String toJson(Object value) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Failed to serialize HTTP JSON body", exception);
+        }
+    }
+
     private static String reason(int statusCode) {
         return switch (statusCode) {
             case 200 -> "OK";
@@ -480,20 +510,18 @@ public class HttpClient extends BaseClient {
     public static final class ResponseFuture extends CompletableFuture<Map<String, Object>>
             implements HttpResponse<String> {
         private final CompletableFuture<HttpResponse<byte[]>> responseFuture;
+        private final CompletableFuture<Map<String, Object>> mappedFuture;
 
         private ResponseFuture(CompletableFuture<HttpResponse<byte[]>> responseFuture,
                                Function<HttpResponse<byte[]>, Map<String, Object>> mapper) {
             this.responseFuture = responseFuture;
-            responseFuture.whenComplete((response, error) -> {
+            this.mappedFuture = responseFuture.thenApply(mapper);
+            mappedFuture.whenComplete((mappedResponse, error) -> {
                 if (error != null) {
                     completeExceptionally(error);
                     return;
                 }
-                try {
-                    complete(mapper.apply(response));
-                } catch (RuntimeException runtimeException) {
-                    completeExceptionally(runtimeException);
-                }
+                complete(mappedResponse);
             });
         }
 
@@ -519,8 +547,10 @@ public class HttpClient extends BaseClient {
 
         @Override
         public String body() {
-            byte[] body = response().body();
-            return body == null ? "" : new String(body, StandardCharsets.UTF_8);
+            HttpResponse<byte[]> response = response();
+            byte[] body = response.body();
+            String rawBody = body == null ? "" : new String(body, StandardCharsets.UTF_8);
+            return compatibilityBody(response, rawBody);
         }
 
         @Override
@@ -540,6 +570,40 @@ public class HttpClient extends BaseClient {
 
         private HttpResponse<byte[]> response() {
             return responseFuture.join();
+        }
+    }
+
+    static String compatibilityBody(HttpResponse<?> response, String rawBody) {
+        if (response == null || response.statusCode() >= 400 || rawBody == null || rawBody.isBlank()) {
+            return rawBody == null ? "" : rawBody;
+        }
+        String method = response.request() == null ? "" : response.request().method();
+        if (!"GET".equalsIgnoreCase(method) && !"POST".equalsIgnoreCase(method)) {
+            return rawBody;
+        }
+        String contentType = response.headers().firstValue("content-type").orElse("");
+        if (!contentType.toLowerCase(java.util.Locale.ROOT).contains("application/json")) {
+            return rawBody;
+        }
+        try {
+            Object parsed = OBJECT_MAPPER.readValue(rawBody, Object.class);
+            Map<String, Object> result = new LinkedHashMap<>();
+            if (parsed instanceof Map<?, ?> map) {
+                map.forEach((key, value) -> {
+                    if (key != null) {
+                        result.put(String.valueOf(key), value);
+                    }
+                });
+            }
+            result.put("code", response.statusCode());
+            result.put("data", parsed);
+            result.put("url", String.valueOf(response.uri()));
+            result.put("headers", flattenHeaders(response.headers().map()));
+            result.put("reason", reason(response.statusCode()));
+            result.put("message", "success");
+            return OBJECT_MAPPER.writeValueAsString(result);
+        } catch (RuntimeException | JsonProcessingException exception) {
+            return rawBody;
         }
     }
 }

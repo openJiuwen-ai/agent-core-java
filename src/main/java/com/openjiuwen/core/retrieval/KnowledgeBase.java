@@ -210,8 +210,8 @@ public abstract class KnowledgeBase implements AutoCloseable {
 
     public void validateIndex() {
         for (String attr : INDEX_ATTRIBUTES) {
-            Object vectorStoreValue = readPythonStyleAttribute(vectorStore, attr);
-            Object indexManagerValue = readPythonStyleAttribute(indexManager, attr);
+            Object vectorStoreValue = comparableConfigValue(attr, readPythonStyleAttribute(vectorStore, attr));
+            Object indexManagerValue = comparableConfigValue(attr, readPythonStyleAttribute(indexManager, attr));
             if (!equalsPythonNoneAware(vectorStoreValue, indexManagerValue)) {
                 throw ErrorHelper.buildError(
                         StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
@@ -450,13 +450,15 @@ public abstract class KnowledgeBase implements AutoCloseable {
             IndexBackendConfig leftOwner,
             IndexBackendConfig rightOwner
     ) {
-        if (!equalsPythonNoneAware(left, right)) {
+        Object comparableLeft = comparableConfigValue(field, left);
+        Object comparableRight = comparableConfigValue(field, right);
+        if (!equalsPythonNoneAware(comparableLeft, comparableRight)) {
             throw ErrorHelper.buildError(
                     StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
                     "error_msg",
                     "incompatible " + field + " configs between "
-                            + simpleName(leftOwner) + "=" + left
-                            + " and " + simpleName(rightOwner) + "=" + right
+                            + simpleName(leftOwner) + "=" + comparableLeft
+                            + " and " + simpleName(rightOwner) + "=" + comparableRight
             );
         }
     }
@@ -497,6 +499,22 @@ public abstract class KnowledgeBase implements AutoCloseable {
             return true;
         }
         return left != null && left.equals(right);
+    }
+
+    private static Object comparableConfigValue(String attr, Object value) {
+        if (!"vector_field".equals(attr) || value == null || value instanceof String) {
+            return value;
+        }
+        try {
+            Method method = value.getClass().getMethod("getVectorField");
+            if (method.getParameterCount() == 0) {
+                Object nested = method.invoke(value);
+                return nested == null ? value : nested;
+            }
+        } catch (ReflectiveOperationException ignored) {
+            return value;
+        }
+        return value;
     }
 
     private static Object readPythonStyleAttribute(Object target, String attr) {

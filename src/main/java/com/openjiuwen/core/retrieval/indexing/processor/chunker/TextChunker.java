@@ -4,8 +4,6 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
-import com.openjiuwen.core.common.exception.ErrorHelper;
-import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.TextChunk;
 
@@ -60,15 +58,8 @@ public class TextChunker extends Chunker {
         if (CHAR_UNIT.equals(chunkUnit)) {
             return new CharChunker(chunkSize, chunkOverlap);
         }
-        if (tokenizer == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.RETRIEVAL_INDEXING_TOKENIZER_PROCESS_ERROR,
-                    "error_msg",
-                    "chunk_unit='token' requires embed_model with tokenizer or tiktoken to be installed"
-            );
-        }
         int adjustedChunkSize = chunkSize;
-        Integer maxTokenLength = tokenizer.maxTokenLength();
+        Integer maxTokenLength = tokenizer == null ? null : tokenizer.maxTokenLength();
         if (maxTokenLength != null && maxTokenLength > 0 && chunkSize > maxTokenLength) {
             adjustedChunkSize = maxTokenLength;
         }

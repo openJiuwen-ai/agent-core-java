@@ -891,6 +891,7 @@ public class AgentConfigurator {
         private boolean enableHitt;
         private boolean enableBridge;
         private boolean exposeHumanAgentsToTeammates;
+        private boolean enableTeamPlan;
         private AgentCustomizer agentCustomizer;
 
         public Map<String, DeepAgentSpec> getAgents() {
@@ -1011,6 +1012,14 @@ public class AgentConfigurator {
 
         public void setExposeHumanAgentsToTeammates(boolean exposeHumanAgentsToTeammates) {
             this.exposeHumanAgentsToTeammates = exposeHumanAgentsToTeammates;
+        }
+
+        public boolean isEnableTeamPlan() {
+            return enableTeamPlan;
+        }
+
+        public void setEnableTeamPlan(boolean enableTeamPlan) {
+            this.enableTeamPlan = enableTeamPlan;
         }
 
         public AgentCustomizer getAgentCustomizer() {

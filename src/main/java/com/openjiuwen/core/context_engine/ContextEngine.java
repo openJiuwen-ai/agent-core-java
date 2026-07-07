@@ -9,6 +9,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context_engine.context.ContextUtils;
 import com.openjiuwen.core.context_engine.context.KVCacheManager;
 import com.openjiuwen.core.context_engine.context.SessionModelContext;
+import com.openjiuwen.core.context_engine.processor.compressor.DialogueCompressor;
 import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 
@@ -34,6 +35,10 @@ public class ContextEngine {
     public static final String DEFAULT_SESSION_ID = "default_session_id";
 
     private static final Map<String, ProcessorFactory> PROCESSOR_FACTORY_MAP = new ConcurrentHashMap<>();
+
+    static {
+        registerProcessor("DialogueCompressor", DialogueCompressor.class);
+    }
 
     private final ContextEngineConfig config;
     private final SessionModelContext.WorkspacePort workspace;

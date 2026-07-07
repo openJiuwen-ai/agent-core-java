@@ -191,6 +191,28 @@ class BaseModelClientTest {
     }
 
     @Test
+    void buildRequestParamsPreservesPythonDecimalShapeForFloatModelParams() {
+        TestModelClient client = new TestModelClient(requestConfig(), validClientConfig());
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("temperature", (double) 0.2f);
+        kwargs.put("top_p", 0.4f);
+
+        Map<String, Object> params = client.requestParams(
+                "hello",
+                null,
+                0.2f,
+                0.4f,
+                null,
+                null,
+                null,
+                false,
+                kwargs);
+
+        assertEquals(0.2D, params.get("temperature"));
+        assertEquals(0.4D, params.get("top_p"));
+    }
+
+    @Test
     void extractCostInfoSupportsNumericObjectsUsageCostAndDetails() {
         BaseModelClient.CostInfo numeric = BaseModelClient.extractCostInfo(Map.of("cost", 1.25D));
         assertEquals(0.0D, numeric.inputCost());

@@ -45,16 +45,16 @@ class MetaTemplateBuilderTest {
         MetaTemplateBuilder builder = builderWith(new RecordingClient(List.of(), List.of()));
 
         builder.registerMetaTemplate("custom_general", "this is a string meta template");
-        Optional<PromptTemplate> stringTemplate = builder.getMetaTemplate("META_TEMPLATE_custom_general");
-        assertThat(stringTemplate).isPresent();
-        assertThat(stringTemplate.orElseThrow().getContent()).isEqualTo("this is a string meta template");
-        assertThat(builder.popMetaTemplate("META_TEMPLATE_custom_general")).isPresent();
+        PromptTemplate stringTemplate = builder.getMetaTemplate("META_TEMPLATE_custom_general");
+        assertThat(stringTemplate).isNotNull();
+        assertThat(stringTemplate.getContent()).isEqualTo("this is a string meta template");
+        assertThat(builder.popMetaTemplate("META_TEMPLATE_custom_general")).isNotNull();
 
         PromptTemplate promptTemplate = PromptTemplate.builder().content("this is a prompt template").build();
         builder.registerMetaTemplate("custom_general", promptTemplate);
-        Optional<PromptTemplate> copiedTemplate = builder.getMetaTemplate("META_TEMPLATE_custom_general");
-        assertThat(copiedTemplate).isPresent();
-        assertThat(copiedTemplate.orElseThrow().getContent()).isEqualTo(promptTemplate.getContent());
+        PromptTemplate copiedTemplate = builder.getMetaTemplate("META_TEMPLATE_custom_general");
+        assertThat(copiedTemplate).isNotNull();
+        assertThat(copiedTemplate.getContent()).isEqualTo(promptTemplate.getContent());
 
         assertThatThrownBy(() -> builder.registerMetaTemplate("custom_general", List.of("invalid")))
                 .isInstanceOf(BaseError.class)

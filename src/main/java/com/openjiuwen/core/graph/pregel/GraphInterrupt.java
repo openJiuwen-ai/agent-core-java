@@ -40,7 +40,7 @@ public class GraphInterrupt extends Exception {
         boolean changed = false;
         for (Object item : list) {
             if (item instanceof Interrupt interrupt && isWorkflowOutputSchema(interrupt.getValue())) {
-                normalized.add(normalizeWorkflowOutputSchema(interrupt.getValue()));
+                normalized.add(new Interrupt(normalizeWorkflowOutputSchema(interrupt.getValue())));
                 changed = true;
             } else {
                 normalized.add(item);

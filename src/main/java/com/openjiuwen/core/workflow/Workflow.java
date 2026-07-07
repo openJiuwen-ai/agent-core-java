@@ -517,7 +517,7 @@ public class Workflow {
                                 WorkflowExecutionState.INPUT_REQUIRED);
                     }
                     Object result = isStreaming
-                            ? outputChunks
+                            ? null
                             : WorkflowSessionSupport.getOutputs(workflowSession, endCompId);
                     return new WorkflowOutput(result, WorkflowExecutionState.COMPLETED);
                 } catch (Exception e) {
@@ -1256,7 +1256,7 @@ public class Workflow {
                 card.getId(),
                 innerSession,
                 innerSession instanceof WorkflowRuntimeSession runtime ? runtime.sessionId() : null,
-                InMemoryState.create(),
+                innerSession instanceof WorkflowRuntimeSession runtime ? runtime.state() : InMemoryState.create(),
                 innerSession instanceof WorkflowRuntimeSession runtime ? runtime.callbackManager() : null,
                 subParentId,
                 subExecutableId,
@@ -1271,6 +1271,7 @@ public class Workflow {
         } else {
             subSession.setMainWorkflowId(card.getId());
         }
+        subSession.setCheckpointer(resolveGraphCheckpointer(session, innerSession));
         subSession.setActorManager(buildActorManager(subSession, true));
         subSession.config().addWorkflowConfig(card.getId(), internal.getConfig());
         return subSession;
@@ -1524,9 +1525,10 @@ public class Workflow {
         if (interrupt instanceof List<?> interruptList) {
             List<Object> recovered = new ArrayList<>(interruptList.size());
             for (Object item : interruptList) {
-                if (item instanceof OutputSchema outputSchema) {
+                Object value = item instanceof Interrupt itemInterrupt ? itemInterrupt.getValue() : item;
+                if (value instanceof OutputSchema outputSchema) {
                     recovered.add(outputSchema);
-                } else if (item instanceof Map<?, ?> itemMap
+                } else if (value instanceof Map<?, ?> itemMap
                         && itemMap.containsKey("type")
                         && itemMap.containsKey("payload")) {
                     recovered.add(outputSchemaFromMap((Map<String, Object>) itemMap));
@@ -1671,6 +1673,8 @@ public class Workflow {
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("workflow_id", card.getId());
+        data.put("workflow_name", card.getName());
+        data.put("workflow_version", card.getVersion());
         data.put("inputs", inputs);
         workflowSession.tracer().trace(workflowSession, data);
     }
@@ -1683,6 +1687,8 @@ public class Workflow {
         Object outputs = WorkflowSessionSupport.getOutputs(workflowSession, endCompId);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("workflow_id", card.getId());
+        data.put("workflow_name", card.getName());
+        data.put("workflow_version", card.getVersion());
         data.put("outputs", outputs);
         workflowSession.tracer().trace(workflowSession, data);
     }

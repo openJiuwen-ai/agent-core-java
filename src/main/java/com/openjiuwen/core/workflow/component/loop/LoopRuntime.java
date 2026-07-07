@@ -8,6 +8,7 @@ import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
@@ -20,7 +21,7 @@ import java.util.Map;
 
 final class LoopRuntime {
 
-    private static final String BROKEN = "_broken";
+    static final String BROKEN = "_broken";
 
     private LoopRuntime() {
     }
@@ -74,7 +75,10 @@ final class LoopRuntime {
             state.update(Map.of(Constant.INDEX, loopTimes));
             WorkflowSessionSupport.setOutputs(session, Map.of(Constant.INDEX, loopTimes));
             commit(session);
-            if (loopTimes >= maxLoopTimes) {
+            if (isBreakRequested(session)) {
+                break;
+            }
+            if (loopTimes > maxLoopTimes) {
                 throw new IllegalStateException("Recursion limit of 10000 reached at step 10001");
             }
         }
@@ -178,6 +182,27 @@ final class LoopRuntime {
             return Math.max(0, number.intValue());
         }
         return SessionConstants.LOOP_NUMBER_MAX_LIMIT_DEFAULT;
+    }
+
+    static boolean requestBreak(BaseSession session) {
+        BaseSession target = loopOwnerSession(session);
+        WorkflowStateCollection state = WorkflowSessionSupport.stateCollection(target);
+        if (state == null) {
+            return false;
+        }
+        state.update(Map.of(BROKEN, true));
+        commit(target);
+        return true;
+    }
+
+    private static boolean isBreakRequested(BaseSession session) {
+        WorkflowStateCollection state = WorkflowSessionSupport.stateCollection(session);
+        return state != null && Boolean.TRUE.equals(state.get(BROKEN));
+    }
+
+    private static BaseSession loopOwnerSession(BaseSession session) {
+        BaseSession current = session instanceof NodeSessionApi nodeSessionApi ? nodeSessionApi.getInner() : session;
+        return WorkflowSessionSupport.parentOrSelf(current);
     }
 
     private static void commit(BaseSession session) {

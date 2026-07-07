@@ -8,12 +8,16 @@ import com.openjiuwen.core.application.llm_agent.LLMAgent;
 import com.openjiuwen.core.application.schema.LlmAgentConfig;
 import com.openjiuwen.core.application.schema.WorkflowSchema;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
+import com.openjiuwen.core.controller.schema.ControllerOutput;
+import com.openjiuwen.core.controller.schema.EventType;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 import com.openjiuwen.core.singleagent.legacy.config.AgentConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.workflow.Workflow;
 
 import java.util.ArrayList;
@@ -21,6 +25,7 @@ import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Backward-compatible facade for the 0.1.12 LLM agent class.
@@ -38,6 +43,7 @@ public class LlmAgent extends LLMAgent {
         this.applicationAgentConfig = toApplicationConfig(agentConfig);
         this.card = toAgentCard(agentConfig);
         this.abilityManager.setContextEngine(getContextEngine());
+        syncAbilityManagerToController();
     }
 
     public LlmAgent(LlmAgentConfig agentConfig) {
@@ -45,6 +51,7 @@ public class LlmAgent extends LLMAgent {
         this.applicationAgentConfig = Objects.requireNonNull(agentConfig, "agentConfig");
         this.card = toAgentCard(agentConfig);
         this.abilityManager.setContextEngine(getContextEngine());
+        syncAbilityManagerToController();
     }
 
     @Override
@@ -65,6 +72,11 @@ public class LlmAgent extends LLMAgent {
     }
 
     @Override
+    public CompletionStage<Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
+        return super.invoke(inputs, session).thenApply(LlmAgent::toControllerOutput);
+    }
+
+    @Override
     public com.openjiuwen.core.context.ContextEngine getContextEngine() {
         return (com.openjiuwen.core.context.ContextEngine) super.getContextEngine();
     }
@@ -82,6 +94,44 @@ public class LlmAgent extends LLMAgent {
         List<Map<String, Object>> objectPrompt = copyPromptTemplateObjects(promptTemplate);
         super.addPrompt(objectPrompt);
         applicationAgentConfig.getPromptTemplate().addAll(copyPromptTemplateStrings(promptTemplate));
+    }
+
+    @Override
+    public void addTools(List<?> incomingTools) {
+        super.addTools(incomingTools);
+        if (incomingTools == null) {
+            return;
+        }
+        for (Object tool : incomingTools) {
+            if (tool instanceof Tool typedTool) {
+                abilityManager.add(typedTool.getCard());
+            } else {
+                Object card = readProperty(tool, "getCard");
+                if (card != null) {
+                    abilityManager.add(card);
+                }
+            }
+        }
+        syncAbilityManagerToController();
+    }
+
+    @Override
+    public void addWorkflows(List<?> incomingWorkflows) {
+        super.addWorkflows(incomingWorkflows);
+        if (incomingWorkflows == null) {
+            return;
+        }
+        for (Object workflow : incomingWorkflows) {
+            Object card = readProperty(workflow, "getCard");
+            if (card != null) {
+                abilityManager.add(card);
+            }
+        }
+        syncAbilityManagerToController();
+    }
+
+    private void syncAbilityManagerToController() {
+        getLlmController().getEventHandler().setAbilityManager(abilityManager);
     }
 
     public static LlmAgentConfig createLlmAgentConfig(String agentId,
@@ -146,7 +196,7 @@ public class LlmAgent extends LLMAgent {
         return createLlmAgent(toLegacyConfig(agentConfig), workflows, tools);
     }
 
-    private static LegacyReActAgentConfig toLegacyConfig(LlmAgentConfig source) {
+    public static LegacyReActAgentConfig toLegacyConfig(LlmAgentConfig source) {
         Objects.requireNonNull(source, "agentConfig");
         LegacyReActAgentConfig config = new LegacyReActAgentConfig();
         config.setId(source.getId());
@@ -291,5 +341,30 @@ public class LlmAgent extends LLMAgent {
             }
         }
         return copy;
+    }
+
+    private static ControllerOutput toControllerOutput(Object result) {
+        if (result instanceof ControllerOutput controllerOutput) {
+            return controllerOutput;
+        }
+        if (result instanceof Iterable<?> iterable && !(result instanceof Map<?, ?>)) {
+            List<Object> chunks = new ArrayList<>();
+            iterable.forEach(chunks::add);
+            return new ControllerOutput(EventType.TASK_COMPLETION.getValue(), chunks);
+        }
+        if (result instanceof OutputSchema) {
+            return new ControllerOutput(EventType.TASK_COMPLETION.getValue(), List.of(result));
+        }
+        if (result instanceof Map<?, ?> map && map.get("interaction") instanceof List<?> interaction) {
+            List<Object> chunks = new ArrayList<>(interaction);
+            return new ControllerOutput(EventType.TASK_COMPLETION.getValue(), chunks);
+        }
+        if (result instanceof Map<?, ?> map
+                && "answer".equals(map.get("result_type"))
+                && map.get("output") != null) {
+            return new ControllerOutput(EventType.TASK_COMPLETION.getValue(),
+                    List.of(new OutputSchema("answer", 0, new LinkedHashMap<>(map))));
+        }
+        return new ControllerOutput(EventType.TASK_COMPLETION.getValue(), result);
     }
 }

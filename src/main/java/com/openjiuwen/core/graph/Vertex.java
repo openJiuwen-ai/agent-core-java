@@ -18,6 +18,7 @@ import com.openjiuwen.core.runner.callback.WorkflowEvents;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.state.CommitStateLike;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
@@ -113,6 +114,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     public boolean init(VertexSession session, Map<String, Object> kwargs) {
         VertexSession graphSession = Objects.requireNonNull(session, "session must not be null");
         this.session = graphSession.nodeSession(nodeId);
+        this.session.setNodeType(componentTypeName());
         this.context = kwargs == null ? null : kwargs.get("context");
         this.streamCallTimeoutSeconds = this.session.streamCallTimeoutSeconds();
         this.nodeConfig = this.session.nodeConfig() != null ? this.session.nodeConfig() : new VertexNodeConfig();
@@ -721,7 +723,9 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                               ComponentAbility ability) throws Exception {
         VertexActorManager actorManager = session.actorManager();
         if (endNodeFlag && !subGraph) {
-            Object streamData = message instanceof StreamSchemaMessage
+            Object streamData = message instanceof OutputSchema
+                    ? message
+                    : message instanceof StreamSchemaMessage
                     ? message
                     : endNodeStreamData(endStreamIndex, message);
             traceComponentStreamOutput(streamData);
@@ -1051,6 +1055,16 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         return session == null || session.tracer() == null || executable == null || executable.skipTrace();
     }
 
+    private String componentTypeName() {
+        if (executable == null) {
+            return "";
+        }
+        String componentType = executable.componentType();
+        return componentType == null || componentType.isBlank()
+                ? executable.getClass().getSimpleName()
+                : componentType;
+    }
+
     private void emitEvent(String event, Map<String, Object> payload) {
         VertexEventSink eventSink = session != null ? session.eventSink() : null;
         if (eventSink != null) {
@@ -1201,6 +1215,9 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
 
         public String executableId() {
             return "";
+        }
+
+        public void setNodeType(String nodeType) {
         }
 
         public int streamCallTimeoutSeconds() {
