@@ -128,6 +128,20 @@ public interface GraphStore {
                                                                      List<Double> queryEmbedding,
                                                                      Map<String, Object> kwargs);
 
+    default Map<String, List<Map<String, Object>>> search(String query,
+                                                          int k,
+                                                          String collection,
+                                                          BaseRankConfig rankerConfig,
+                                                          int bfsDepth,
+                                                          int bfsK,
+                                                          QueryExpr filterExpr,
+                                                          List<String> outputFields,
+                                                          List<Double> queryEmbedding,
+                                                          Map<String, Object> kwargs) {
+        return search(query, k, collection, rankerConfig, null, bfsDepth, bfsK, filterExpr, outputFields,
+                queryEmbedding, kwargs == null ? Map.of() : kwargs).join();
+    }
+
     void attachEmbedder(Embedding embedder);
 
     void close();

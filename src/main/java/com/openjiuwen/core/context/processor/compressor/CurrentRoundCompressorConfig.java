@@ -82,6 +82,11 @@ public class CurrentRoundCompressorConfig
             return this;
         }
 
+        public Builder messagesThreshold(int messagesThreshold) {
+            this.messagesToKeep = messagesThreshold;
+            return this;
+        }
+
         public Builder model(ModelRequestConfig model) {
             this.model = model;
             return this;

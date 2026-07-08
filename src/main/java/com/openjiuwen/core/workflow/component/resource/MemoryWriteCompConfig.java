@@ -56,6 +56,12 @@ public class MemoryWriteCompConfig extends ComponentConfig {
         this.genMemWithHistoryMsgNum = genMemWithHistoryMsgNum;
     }
 
+    public MemoryWriteCompConfig(LongTermMemory memory, String scopeId, String userId, String sessionId,
+                                 AgentMemoryConfig agentConfig, boolean genMem, Integer genMemWithHistoryMsgNum) {
+        this(memory, scopeId, userId, sessionId, agentConfig, genMem,
+                genMemWithHistoryMsgNum == null ? 2 : genMemWithHistoryMsgNum);
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -116,6 +122,10 @@ public class MemoryWriteCompConfig extends ComponentConfig {
         this.genMemWithHistoryMsgNum = genMemWithHistoryMsgNum;
     }
 
+    public void setGenMemWithHistoryMsgNum(Integer genMemWithHistoryMsgNum) {
+        this.genMemWithHistoryMsgNum = genMemWithHistoryMsgNum == null ? 2 : genMemWithHistoryMsgNum;
+    }
+
     /**
      * Builder mirroring Python keyword-only construction.
      */
@@ -163,6 +173,11 @@ public class MemoryWriteCompConfig extends ComponentConfig {
 
         public Builder genMemWithHistoryMsgNum(int genMemWithHistoryMsgNum) {
             this.genMemWithHistoryMsgNum = genMemWithHistoryMsgNum;
+            return this;
+        }
+
+        public Builder genMemWithHistoryMsgNum(Integer genMemWithHistoryMsgNum) {
+            this.genMemWithHistoryMsgNum = genMemWithHistoryMsgNum == null ? 2 : genMemWithHistoryMsgNum;
             return this;
         }
 
