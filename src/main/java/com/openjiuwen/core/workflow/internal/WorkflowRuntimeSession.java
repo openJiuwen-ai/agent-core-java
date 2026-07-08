@@ -234,7 +234,10 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
 
     @Override
     public Vertex.VertexStreamWriterManager streamWriterManager() {
-        return streamWriterManager == null ? null : new StreamWriterManagerAdapter(streamWriterManager);
+        return streamWriterManager == null ? null : new StreamWriterManagerAdapter(
+                streamWriterManager,
+                parentStreamWriterManager(),
+                isInvokeStreamBridgeEnabled());
     }
 
     public StreamWriterManager runtimeStreamWriterManager() {
@@ -248,6 +251,24 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
             runtimeTracer.init(streamWriterManager);
             this.tracer = runtimeTracer;
         }
+    }
+
+    private boolean isInvokeStreamBridgeEnabled() {
+        return streamWriterManager != null
+                && streamWriterManager.getEnabledModes().size() == 1
+                && streamWriterManager.getEnabledModes().contains(
+                com.openjiuwen.core.session.stream.StreamMode.OUTPUT);
+    }
+
+    private StreamWriterManager parentStreamWriterManager() {
+        BaseSession current = parent;
+        while (current instanceof WorkflowRuntimeSession runtimeSession) {
+            current = runtimeSession.parent();
+        }
+        if (current == null) {
+            return null;
+        }
+        return current.streamWriterManager();
     }
 
     @Override
@@ -353,18 +374,60 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
 
     private static final class StreamWriterManagerAdapter implements Vertex.VertexStreamWriterManager {
         private final StreamWriterManager delegate;
+        private final StreamWriterManager parentDelegate;
+        private final boolean bridgeToParent;
 
-        private StreamWriterManagerAdapter(StreamWriterManager delegate) {
+        private StreamWriterManagerAdapter(StreamWriterManager delegate,
+                                           StreamWriterManager parentDelegate,
+                                           boolean bridgeToParent) {
             this.delegate = delegate;
+            this.parentDelegate = parentDelegate;
+            this.bridgeToParent = bridgeToParent && parentDelegate != null;
         }
 
         @Override
         public Vertex.VertexStreamWriter getOutputWriter() {
-            return data -> delegate.getOutputWriter().write(data);
+            return data -> {
+                com.openjiuwen.core.session.stream.StreamWriter<?> writer = delegate.getOutputWriter();
+                if (writer != null) {
+                    writeStreamData(writer, data);
+                }
+                if (bridgeToParent && parentDelegate.getOutputWriter() != null) {
+                    writeStreamData(parentDelegate.getOutputWriter(), data);
+                }
+            };
         }
 
         public Vertex.VertexStreamWriter getCustomWriter() {
-            return data -> delegate.getCustomWriter().write(data);
+            return data -> {
+                com.openjiuwen.core.session.stream.StreamWriter<?> writer = delegate.getCustomWriter();
+                if (writer != null) {
+                    writeStreamData(writer, data);
+                    return;
+                }
+                if (!delegate.getStreamEmitter().isClosed()) {
+                    delegate.getStreamEmitter().emit(toCustomSchema(data));
+                }
+                if (bridgeToParent && parentDelegate.getCustomWriter() != null) {
+                    writeStreamData(parentDelegate.getCustomWriter(), data);
+                }
+            };
+        }
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        private static void writeStreamData(com.openjiuwen.core.session.stream.StreamWriter writer, Object data) {
+            writer.write(data);
+        }
+
+        @SuppressWarnings("unchecked")
+        private static com.openjiuwen.core.session.stream.CustomSchema toCustomSchema(Object data) {
+            if (data instanceof com.openjiuwen.core.session.stream.CustomSchema customSchema) {
+                return customSchema;
+            }
+            if (data instanceof Map<?, ?> map) {
+                return new com.openjiuwen.core.session.stream.CustomSchema((Map<String, Object>) map);
+            }
+            return new com.openjiuwen.core.session.stream.CustomSchema(Map.of("value", data));
         }
     }
 }

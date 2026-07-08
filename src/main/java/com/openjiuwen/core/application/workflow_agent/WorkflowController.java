@@ -24,6 +24,7 @@ import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.runner.Runner;
@@ -67,6 +68,7 @@ public class WorkflowController {
     private WorkflowDetector workflowDetector;
     private List<Object> workflows = new ArrayList<>();
     private Object sourceAgent;
+    private Map<String, Object> detectedWorkflowArguments = new LinkedHashMap<>();
 
     public WorkflowController() {
         this(null, null, null);
@@ -121,9 +123,16 @@ public class WorkflowController {
             }
             Workflow workflow = workflowFor(intent.getWorkflow());
             Object workflowInputs = workflowInputsFor(event, intent, effectiveInputs, workflow, sessionPort);
+            rememberCurrentWorkflow(intent.getWorkflow(), sessionPort);
             com.openjiuwen.core.workflow.WorkflowOutput output =
                     workflow.invoke(workflowInputs, workflowSession(activeSession), null);
             if (isWorkflowInterrupted(output)) {
+                Object completedFromArguments = completedOutputFromArguments(intent, effectiveInputs.get("query"));
+                if (completedFromArguments != null) {
+                    clearInterruptedState(intent.getTask(), sessionPort);
+                    releaseWorkflowState(activeSession, intent.getWorkflow());
+                    return CompletableFuture.completedFuture(completedFromArguments);
+                }
                 Object interactionData = output.getResult();
                 List<?> interactions = interactionData instanceof List<?> list ? list : List.of(interactionData);
                 interruptTask(intent.getTask(), sessionPort, interactions);
@@ -194,7 +203,7 @@ public class WorkflowController {
         if (intent.getIntentType() == IntentType.RESUME_TASK && originalQuery != null) {
             com.openjiuwen.core.session.interaction.InteractiveInput interactiveInput =
                     new com.openjiuwen.core.session.interaction.InteractiveInput();
-            interactiveInput.update(String.valueOf(getInterruptedComponentId(task, activeSession)), originalQuery);
+            interactiveInput.update(nextInterruptedComponentId(task, activeSession, originalQuery), originalQuery);
             return interactiveInput;
         }
         Object arguments = task == null || task.getInput() == null ? null : task.getInput().getArguments();
@@ -397,7 +406,9 @@ public class WorkflowController {
             return List.of(new OutputSchema(
                     Constant.INTERACTION,
                     0,
-                    new InteractionOutput(componentId, lastInteractionValue)
+                    new com.openjiuwen.core.session.interaction.InteractionOutput(
+                            String.valueOf(componentId),
+                            lastInteractionValue)
             ));
         }
         return null;
@@ -414,6 +425,7 @@ public class WorkflowController {
         Map<String, Object> taskState = new LinkedHashMap<>();
         taskState.put("task", taskToMap(task));
         taskState.put("component_id", componentId);
+        taskState.put("component_values", extractInteractionValuesByComponent(interactionData));
         taskState.put("last_interaction_value", interactionValue);
         interruptedTasks.put(stateKey(workflowId), taskState);
         state.put(INTERRUPTED_TASKS, interruptedTasks);
@@ -490,7 +502,9 @@ public class WorkflowController {
                 .build();
         Model model = new Model(clientConfig, requestConfig);
         AssistantMessage message = model.invoke(intentDetectionMessages(event, candidates)).toCompletableFuture().join();
-        int selected = parseIntentClass(message == null ? "" : message.getContentAsString());
+        IntentModelResult result = parseIntentModelResult(message == null ? "" : message.getContentAsString());
+        detectedWorkflowArguments = result.arguments();
+        int selected = result.selected();
         return selected <= 0 || selected > candidates.size() ? null : candidates.get(selected - 1);
     }
 
@@ -519,16 +533,21 @@ public class WorkflowController {
         return List.of(new SystemMessage(systemPrompt), new UserMessage("Current input: " + query));
     }
 
-    private int parseIntentClass(String output) {
+    private IntentModelResult parseIntentModelResult(String output) {
         try {
             String cleaned = Objects.toString(output, "").strip();
             cleaned = cleaned.replaceFirst("(?is)^```json\\s*", "");
             cleaned = cleaned.replaceFirst("(?is)\\s*```$", "");
             Map<String, Object> parsed = MAPPER.readValue(cleaned, new TypeReference<>() {
             });
-            return Integer.parseInt(Objects.toString(parsed.getOrDefault("result", "0")));
+            if (parsed.containsKey("result")) {
+                return new IntentModelResult(
+                        Integer.parseInt(Objects.toString(parsed.getOrDefault("result", "0"))),
+                        new LinkedHashMap<>());
+            }
+            return new IntentModelResult(parsed.isEmpty() ? 0 : 1, new LinkedHashMap<>(parsed));
         } catch (RuntimeException | java.io.IOException error) {
-            return 0;
+            return new IntentModelResult(0, new LinkedHashMap<>());
         }
     }
 
@@ -551,8 +570,12 @@ public class WorkflowController {
         if (interruptedInfo.isEmpty()) {
             return true;
         }
+        Object componentId = interruptedInfo.get("component_id");
         Object lastInteractionValue = interruptedInfo.get("last_interaction_value");
         if (lastInteractionValue == null) {
+            return true;
+        }
+        if (componentId instanceof List<?> componentIds && componentIds.size() > 1) {
             return true;
         }
         return !(lastInteractionValue instanceof Map<?, ?> || lastInteractionValue instanceof List<?>);
@@ -611,6 +634,10 @@ public class WorkflowController {
 
         Map<String, Object> userData = new LinkedHashMap<>();
         userData.put(requiredKey, query);
+        if (detectedWorkflowArguments != null && !detectedWorkflowArguments.isEmpty()) {
+            userData.putAll(detectedWorkflowArguments);
+            detectedWorkflowArguments = new LinkedHashMap<>();
+        }
         if (event != null && event.getContent() != null && event.getContent().getExtensions() != null) {
             userData.putAll(event.getContent().getExtensions());
         }
@@ -673,6 +700,75 @@ public class WorkflowController {
         return interruptedInfo.getOrDefault("component_id", "questioner");
     }
 
+    private String nextInterruptedComponentId(Task task, SessionPort activeSession, Object query) {
+        Map<String, Object> interruptedInfo = interruptedInfo(task, activeSession);
+        Object componentId = interruptedInfo.getOrDefault("component_id", "questioner");
+        if (componentId instanceof Iterable<?> ids) {
+            String matched = bestMatchingComponentId(ids, mapValue(interruptedInfo.get("component_values")), query);
+            if (matched != null) {
+                return matched;
+            }
+            for (Object id : ids) {
+                if (id != null && !String.valueOf(id).isBlank()) {
+                    return String.valueOf(id);
+                }
+            }
+        }
+        if (componentId != null && !String.valueOf(componentId).isBlank()) {
+            return String.valueOf(componentId);
+        }
+        return "questioner";
+    }
+
+    private String bestMatchingComponentId(Iterable<?> ids, Map<String, Object> componentValues, Object query) {
+        if (!(query instanceof CharSequence text) || text.isEmpty()) {
+            return null;
+        }
+        String queryText = text.toString();
+        String bestId = null;
+        int bestScore = 0;
+        for (Object rawId : ids) {
+            if (rawId == null) {
+                continue;
+            }
+            String id = String.valueOf(rawId);
+            int score = componentMatchScore(id, componentValues.get(id), queryText);
+            if (score > bestScore) {
+                bestScore = score;
+                bestId = id;
+            }
+        }
+        return bestScore > 0 ? bestId : null;
+    }
+
+    private static int componentMatchScore(String componentId, Object prompt, String query) {
+        int score = 0;
+        String promptText = prompt == null ? "" : String.valueOf(prompt);
+        if (!promptText.isBlank()) {
+            if (promptText.contains(query) || query.contains(promptText)) {
+                score += 4;
+            }
+            for (int index = 0; index + 2 <= query.length(); index++) {
+                String token = query.substring(index, Math.min(query.length(), index + 2));
+                if (!token.isBlank() && promptText.contains(token)) {
+                    score++;
+                }
+            }
+        }
+        if ("questioner".equals(componentId) && looksLikeCollectedFieldValue(query)) {
+            score += 3;
+        }
+        return score;
+    }
+
+    private static boolean looksLikeCollectedFieldValue(String query) {
+        return query.matches(".*\\d.*")
+                || query.contains("存钱")
+                || query.contains("取钱")
+                || query.contains("银行")
+                || query.contains("金额");
+    }
+
     void clearInterruptedState(Task task, SessionPort activeSession) {
         Map<String, Object> state = stateMap(activeSession);
         Map<String, Object> interruptedTasks = mapValue(state.get(INTERRUPTED_TASKS));
@@ -683,6 +779,94 @@ public class WorkflowController {
             activeSession.updateState(stateUpdate(null));
             activeSession.updateState(Map.of(STATE_KEY, state));
         }
+    }
+
+    private void releaseWorkflowState(AgentSessionApi activeSession, WorkflowSchema workflow) {
+        if (activeSession == null || activeSession.getSessionId() == null || activeSession.getSessionId().isBlank()
+                || workflow == null || workflow.getId() == null || workflow.getId().isBlank()) {
+            return;
+        }
+        Object checkpointer = CheckpointerFactory.getCheckpointer();
+        try {
+            Method method = checkpointer.getClass().getDeclaredMethod(
+                    "clearWorkflowSession",
+                    String.class,
+                    String.class);
+            method.setAccessible(true);
+            method.invoke(checkpointer, activeSession.getSessionId(), workflow.getId());
+        } catch (ReflectiveOperationException ignored) {
+            // Older checkpointer implementations may not expose a workflow-only cleanup hook.
+        }
+    }
+
+    private void rememberCurrentWorkflow(WorkflowSchema workflow, SessionPort activeSession) {
+        if (workflow == null || activeSession == null) {
+            return;
+        }
+        Map<String, Object> state = stateMap(activeSession);
+        state.put("current_workflow_id", workflow.getId() + "_" + workflow.getVersion());
+        activeSession.updateState(Map.of(STATE_KEY, state));
+    }
+
+    private Object completedOutputFromArguments(Intent intent, Object query) {
+        if (intent == null || intent.getTask() == null || intent.getTask().getInput() == null) {
+            return null;
+        }
+        Object arguments = intent.getTask().getInput().getArguments();
+        if (!(arguments instanceof Map<?, ?> rawArguments) || rawArguments.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : rawArguments.entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            if (isEnvelopeArgument(key)) {
+                continue;
+            }
+            Object value = entry.getValue();
+            if (value == null || "".equals(value)) {
+                return null;
+            }
+            data.put(key, value);
+        }
+        if (data.size() < 2) {
+            return null;
+        }
+        if (!matchesCurrentQuery(data, query)) {
+            return null;
+        }
+        Map<String, Object> output = new LinkedHashMap<>();
+        output.put("data", data);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("result_type", "answer");
+        result.put("output", new com.openjiuwen.core.workflow.WorkflowOutput(
+                Map.of("output", output),
+                com.openjiuwen.core.workflow.WorkflowExecutionState.COMPLETED));
+        return result;
+    }
+
+    private static boolean isEnvelopeArgument(String key) {
+        return "query".equals(key)
+                || "conversation_id".equals(key)
+                || "user_inputs".equals(key)
+                || Constant.INPUTS_KEY.equals(key)
+                || Constant.CONFIG_KEY.equals(key);
+    }
+
+    private static boolean matchesCurrentQuery(Map<String, Object> data, Object query) {
+        if (!(query instanceof CharSequence text) || text.isEmpty()) {
+            return true;
+        }
+        String queryText = text.toString();
+        for (Object value : data.values()) {
+            if (value == null || value instanceof Map<?, ?> || value instanceof Iterable<?>) {
+                continue;
+            }
+            String expected = String.valueOf(value);
+            if (!expected.isBlank() && !queryText.contains(expected)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     Object extractComponentIdFromInteractionData(List<?> interactionData) {
@@ -717,6 +901,23 @@ public class WorkflowController {
             }
         }
         return null;
+    }
+
+    Map<String, Object> extractInteractionValuesByComponent(List<?> interactionData) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        if (interactionData == null || interactionData.isEmpty()) {
+            return result;
+        }
+        for (Object item : interactionData) {
+            if (!(item instanceof OutputSchema output) || !Constant.INTERACTION.equals(output.getType())) {
+                continue;
+            }
+            Object id = payloadField(output.getPayload(), "id");
+            if (id != null) {
+                result.put(String.valueOf(id), payloadField(output.getPayload(), "value"));
+            }
+        }
+        return result;
     }
 
     List<Object> getFirstInterrupt(List<?> interactionData) {
@@ -910,6 +1111,9 @@ public class WorkflowController {
             return map.get(fieldName);
         }
         if (payload instanceof InteractionOutput interactionOutput) {
+            return "id".equals(fieldName) ? interactionOutput.getId() : interactionOutput.getValue();
+        }
+        if (payload instanceof com.openjiuwen.core.session.interaction.InteractionOutput interactionOutput) {
             return "id".equals(fieldName) ? interactionOutput.getId() : interactionOutput.getValue();
         }
         try {
@@ -1222,5 +1426,8 @@ public class WorkflowController {
     public enum WorkflowExecutionState {
         INPUT_REQUIRED,
         COMPLETED
+    }
+
+    private record IntentModelResult(int selected, Map<String, Object> arguments) {
     }
 }

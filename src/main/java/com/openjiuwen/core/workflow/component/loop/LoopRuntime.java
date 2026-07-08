@@ -87,9 +87,9 @@ final class LoopRuntime {
         }
         state.update(nullableMap(BROKEN, false, Constant.INDEX, null));
         commit(session);
+        Object rawBeforeCleanup = WorkflowSessionSupport.getOutputs(session, WorkflowSessionSupport.componentId(session));
         clearLoopBodyOutputs(session, loopGroup);
-        Object normalizedOutputs = normalizeLoopOutputs(
-                WorkflowSessionSupport.getOutputs(session, WorkflowSessionSupport.componentId(session)));
+        Object normalizedOutputs = buildLoopOutputs(rawBeforeCleanup, loopTimes);
         resetLoopOutputs(session, normalizedOutputs);
         return normalizedOutputs;
     }
@@ -145,6 +145,27 @@ final class LoopRuntime {
         if (index != null || outputMap.containsKey(Constant.INDEX)) {
             normalized.put(Constant.INDEX, index);
         }
+        return normalized;
+    }
+
+    private static Object buildLoopOutputs(Object outputs, int loopTimes) {
+        if (!(outputs instanceof Map<?, ?> outputMap)) {
+            return outputs;
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : outputMap.entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            if (BROKEN.equals(key) || "round".equals(key) || "start".equals(key)) {
+                continue;
+            }
+            normalized.put(key, entry.getValue());
+        }
+        normalized.put(Constant.INDEX, loopTimes);
+        Map<String, Object> loopState = new LinkedHashMap<>();
+        loopState.put(Constant.INDEX, loopTimes);
+        Map<String, Object> loopEnvelope = new LinkedHashMap<>();
+        loopEnvelope.put("loop", loopState);
+        normalized.put("loop", loopEnvelope);
         return normalized;
     }
 

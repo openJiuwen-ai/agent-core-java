@@ -698,11 +698,11 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                         ? actorManager.streamTransform().getByDefaultTransformer(chunk, outputSchema)
                         : chunk)
                         : actorManager.streamTransform().getByDefinedTransformer(chunk, outputTransformer);
-                processChunk(message, endNode, endStreamIndex, subGraph, ability);
+                processChunk(message, endNode || isEndComponent(), endStreamIndex, subGraph, ability);
                 endStreamIndex += 1;
             }
         }
-        if (endNode && subGraph) {
+        if ((endNode || isEndComponent()) && subGraph) {
             actorManager.subWorkflowStream().emit(StreamEmitter.END_FRAME);
         } else {
             actorManager.endMessage(nodeId, ability);
@@ -727,7 +727,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                     ? message
                     : message instanceof StreamSchemaMessage
                     ? message
-                    : endNodeStreamData(endStreamIndex, message);
+                    : new OutputSchema(END_NODE_STREAM, endStreamIndex, message);
             traceComponentStreamOutput(streamData);
             VertexStreamWriterManager writerManager = session.streamWriterManager();
             if (writerManager != null && writerManager.getOutputWriter() != null) {
@@ -1065,6 +1065,10 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                 : componentType;
     }
 
+    private boolean isEndComponent() {
+        return executable instanceof com.openjiuwen.core.workflow.component.End;
+    }
+
     private void emitEvent(String event, Map<String, Object> payload) {
         VertexEventSink eventSink = session != null ? session.eventSink() : null;
         if (eventSink != null) {
@@ -1139,6 +1143,15 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
 
     private void setOutput(Object output) {
         if (output instanceof Map<?, ?> map) {
+            if (session.state() instanceof WorkflowCommitState commitState) {
+                CommitStateLike ioState = commitState.getIoState();
+                if (ioState != null) {
+                    String outputNodeId = effectiveOutputNodeId();
+                    ioState.updateById(outputNodeId, Map.of(outputNodeId, castMap(map)));
+                    ioState.commit(outputNodeId);
+                    return;
+                }
+            }
             session.state().setOutputs(castMap(map));
             return;
         }
@@ -1150,6 +1163,11 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             }
         }
         session.state().setOutputs(outputAsMap(output));
+    }
+
+    private String effectiveOutputNodeId() {
+        String executableId = session != null ? session.executableId() : null;
+        return executableId == null || executableId.isBlank() ? nodeId : executableId;
     }
 
     private static Map<String, Object> outputAsMap(Object value) {

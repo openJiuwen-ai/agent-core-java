@@ -1101,10 +1101,13 @@ public class Workflow {
             if (isStreaming) {
                 List<Object> messages = drainSubWorkflowStream(subSession, countEndStreamAbilities());
                 if (!messages.isEmpty()) {
+                    clearSubWorkflowCheckpoint(subSession, config);
                     return Map.of("stream", messages);
                 }
             }
-            return WorkflowSessionSupport.getOutputs(subSession, endCompId);
+            Object outputs = WorkflowSessionSupport.getOutputs(subSession, endCompId);
+            clearSubWorkflowCheckpoint(subSession, config);
+            return outputs;
         } catch (Exception e) {
             throw wrapWorkflowException(e);
         } finally {
@@ -1128,6 +1131,28 @@ public class Workflow {
         return Collections.emptyIterator();
     }
 
+    private static void clearSubWorkflowCheckpoint(WorkflowRuntimeSession session, Object config) {
+        String namespace = graphNamespace(config);
+        if (session == null || namespace == null || namespace.isBlank() || session.checkpointer() == null) {
+            return;
+        }
+        var graphStore = session.checkpointer().graphStore();
+        if (graphStore != null) {
+            graphStore.delete(session.sessionId(), namespace).toCompletableFuture().join();
+        }
+    }
+
+    private static String graphNamespace(Object config) {
+        if (config instanceof com.openjiuwen.core.graph.pregel.PregelConfig pregelConfig) {
+            return pregelConfig.getNs();
+        }
+        if (config instanceof Map<?, ?> map) {
+            Object namespace = map.get(PregelConstants.NS);
+            return namespace == null ? null : String.valueOf(namespace);
+        }
+        return null;
+    }
+
     @SuppressWarnings("unchecked")
     private Object executeCompiledGraph(Object inputs, WorkflowRuntimeSession session, ModelContext context, Object config) {
         internal.autoCompleteAbilities();
@@ -1146,7 +1171,8 @@ public class Workflow {
         if (interrupt != null) {
             return new CompletionException(interrupt);
         }
-        if (cause instanceof BaseError baseError) {
+        BaseError baseError = findBaseError(cause);
+        if (baseError != null) {
             return baseError;
         }
         String reason = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
@@ -1176,6 +1202,17 @@ public class Workflow {
         while (current != null) {
             if (current instanceof GraphInterrupt interrupt) {
                 return interrupt;
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    private static BaseError findBaseError(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof BaseError baseError) {
+                return baseError;
             }
             current = current.getCause();
         }

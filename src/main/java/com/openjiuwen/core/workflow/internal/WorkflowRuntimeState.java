@@ -134,7 +134,11 @@ public class WorkflowRuntimeState extends WorkflowCommitState
 
     @Override
     public Object getOutputs(String targetNodeId) {
-        return super.getOutputs(targetNodeId);
+        Object outputs = super.getOutputs(targetNodeId);
+        if (outputs != null || targetNodeId == null || nodeId == null || nodeId.isBlank()) {
+            return outputs;
+        }
+        return ioState == null ? null : ioState.getByPrefix(targetNodeId, nodeId);
     }
 
     @Override
@@ -198,6 +202,11 @@ public class WorkflowRuntimeState extends WorkflowCommitState
             if (value.startsWith(prefix) && value.endsWith("}")) {
                 return "${" + value.substring(prefix.length(), value.length() - 1) + "}";
             }
+            String localParent = localParentId(parentId);
+            String localPrefix = "${" + localParent + ".";
+            if (!localParent.isBlank() && value.startsWith(localPrefix) && value.endsWith("}")) {
+                return "${" + value.substring(localPrefix.length(), value.length() - 1) + "}";
+            }
             return schema;
         }
         if (schema instanceof Map<?, ?> map) {
@@ -211,6 +220,14 @@ public class WorkflowRuntimeState extends WorkflowCommitState
             return list.stream().map(item -> stripParentPrefix(item, parentId)).toList();
         }
         return schema;
+    }
+
+    private static String localParentId(String parentId) {
+        int splitIndex = parentId == null ? -1 : parentId.lastIndexOf('.');
+        if (splitIndex < 0 || splitIndex + 1 >= parentId.length()) {
+            return parentId == null ? "" : parentId;
+        }
+        return parentId.substring(splitIndex + 1);
     }
 
     @SuppressWarnings("unchecked")
@@ -290,7 +307,7 @@ public class WorkflowRuntimeState extends WorkflowCommitState
         if (!"index".equals(leftKey) && "index".equals(rightKey)) {
             return -1;
         }
-        return 0;
+        return leftKey.compareTo(rightKey);
     }
 
     private static boolean shouldReverseNumberedInputs(Map<?, ?> map) {

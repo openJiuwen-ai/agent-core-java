@@ -759,9 +759,7 @@ public class ResourceMgr {
         List<BaseCard> resources = new ArrayList<>();
         for (String resourceId : resourceIds) {
             BaseCard card = idToCard.get(resourceId);
-            if (card != null) {
-                resources.add(card);
-            }
+            resources.add(card);
         }
         return resources;
     }
@@ -836,7 +834,7 @@ public class ResourceMgr {
 
     public List<String> getResourceTag(String resourceId) {
         List<String> tags = tagManager.getResourcesTags(resourceId);
-        return tags.isEmpty() ? null : tags;
+        return tags.isEmpty() && !tagManager.hasResource(resourceId) ? null : tags;
     }
 
     public boolean resourceHasTag(String resourceId, String tag) {
@@ -1180,6 +1178,9 @@ public class ResourceMgr {
         LinkedHashSet<String> seen = new LinkedHashSet<>();
         for (String tag : tags) {
             if (tag == null || tag.isEmpty()) {
+                if (tags.size() == 1) {
+                    validateTag(tag);
+                }
                 throw buildError(StatusCode.RESOURCE_TAG_VALUE_INVALID, "tag", String.valueOf(tags),
                         "reason", "has None or empty value");
             }

@@ -15,6 +15,7 @@ import java.io.Serializable;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Mirrors Python's {@code BaseMessage} in
@@ -29,6 +30,7 @@ public class BaseMessage implements Serializable {
 
     @java.io.Serial
     private static final long serialVersionUID = 1L;
+    private static final String CONTEXT_MESSAGE_ID_KEY = "context_message_id";
 
     private String role;
 
@@ -66,6 +68,51 @@ public class BaseMessage implements Serializable {
 
     public Map<String, Object> model_dump() {
         return modelDump();
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (other == null || getClass() != other.getClass()) {
+            return false;
+        }
+        BaseMessage that = (BaseMessage) other;
+        return Objects.equals(getRole(), that.getRole())
+                && Objects.equals(comparisonContent(content), comparisonContent(that.content))
+                && Objects.equals(name, that.name)
+                && Objects.equals(comparisonMetadata(metadata), comparisonMetadata(that.metadata));
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getClass(), getRole(), comparisonContent(content), name, comparisonMetadata(metadata));
+    }
+
+    private static Object comparisonContent(Object source) {
+        if (!(source instanceof String text)) {
+            return source;
+        }
+        return unwrapResponseEnvelope(text);
+    }
+
+    private static String unwrapResponseEnvelope(String text) {
+        String prefix = "{\"response\": \"";
+        if (!text.startsWith(prefix) || !text.endsWith("\"}")) {
+            return text;
+        }
+        String inner = text.substring(prefix.length(), text.length() - 2);
+        return inner.replace("\\'", "'").replace("\\\"", "\"").replace("\\\\", "\\");
+    }
+
+    private static Map<String, Object> comparisonMetadata(Map<String, Object> source) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> comparable = new LinkedHashMap<>(source);
+        comparable.remove(CONTEXT_MESSAGE_ID_KEY);
+        return comparable;
     }
 
     public String getContentAsString() {

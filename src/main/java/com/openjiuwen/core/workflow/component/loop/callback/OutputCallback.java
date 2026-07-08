@@ -78,7 +78,9 @@ public class OutputCallback extends LoopCallback {
         if (results.size() >= loopTimes) {
             return null;
         }
-        Object roundInputs = WorkflowSessionSupport.getInputs(session, outputsFormat);
+        Object nodeScopedInputs = WorkflowSessionSupport.getNodeScopedInputs(session, outputsFormat);
+        Object fallbackInputs = WorkflowSessionSupport.getInputs(session, outputsFormat);
+        Object roundInputs = mergeMissingValues(nodeScopedInputs, fallbackInputs);
         results.add(roundInputs);
         state.update(Map.of(roundResultRoot, results));
         return null;
@@ -140,5 +142,29 @@ public class OutputCallback extends LoopCallback {
             return map.get(refStr);
         }
         return value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object mergeMissingValues(Object primary, Object fallback) {
+        if (primary == null) {
+            return fallback;
+        }
+        if (primary instanceof Map<?, ?> primaryMap && fallback instanceof Map<?, ?> fallbackMap) {
+            Map<String, Object> merged = new LinkedHashMap<>((Map<String, Object>) primaryMap);
+            for (Map.Entry<?, ?> entry : fallbackMap.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                merged.put(key, mergeMissingValues(merged.get(key), entry.getValue()));
+            }
+            return merged;
+        }
+        if (primary instanceof List<?> primaryList && fallback instanceof List<?> fallbackList) {
+            List<Object> merged = new ArrayList<>(primaryList);
+            int size = Math.min(merged.size(), fallbackList.size());
+            for (int index = 0; index < size; index++) {
+                merged.set(index, mergeMissingValues(merged.get(index), fallbackList.get(index)));
+            }
+            return merged;
+        }
+        return primary;
     }
 }

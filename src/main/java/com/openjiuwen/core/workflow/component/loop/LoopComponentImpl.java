@@ -12,6 +12,7 @@ import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.workflow.HasDrawable;
+import com.openjiuwen.core.workflow.component.ComponentAbility;
 import com.openjiuwen.core.workflow.component.LoopComponent;
 import com.openjiuwen.core.workflow.component.WorkflowComponent;
 import com.openjiuwen.core.workflow.component.loop.callback.IntermediateLoopVarCallback;
@@ -178,6 +179,15 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
         @Override
         public Object onInvoke(Object inputs, BaseSession session, Object... kwargs) {
             return owner.invokeInternal(inputs, session, extractContext(kwargs));
+        }
+
+        @Override
+        public java.util.Iterator<Object> onStream(Object inputs, BaseSession session, Object... kwargs) {
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_EXECUTION_ERROR,
+                    "ability", ComponentAbility.STREAM.name(),
+                    "comp", WorkflowSessionSupport.componentId(session),
+                    "reason", "Component 'LoopExecutable' does not implement the on_stream method.",
+                    "workflow", session == null ? "" : session.workflowId());
         }
 
         @Override

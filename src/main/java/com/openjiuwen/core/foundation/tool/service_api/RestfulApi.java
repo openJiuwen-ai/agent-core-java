@@ -328,6 +328,11 @@ public class RestfulApi extends Tool {
         response.headers().map().forEach((key, values) -> {
             if (!values.isEmpty()) {
                 responseHeaders.put(key, values.get(0));
+                if ("server".equalsIgnoreCase(key)) {
+                    responseHeaders.put("Server", values.get(0));
+                } else if ("content-type".equalsIgnoreCase(key)) {
+                    responseHeaders.put("Content-Type", values.get(0));
+                }
             }
         });
         int statusCode = response.statusCode();

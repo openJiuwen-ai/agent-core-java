@@ -23,11 +23,20 @@ import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.workflow.Workflow;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Spliterator;
 import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
+import java.util.stream.Stream;
 
 /**
  * Backward-compatible facade for the 0.1.12 LLM agent class.
@@ -380,11 +389,7 @@ public class LlmAgent extends LLMAgent {
     private static CompletionStage<Object> toDirectInvokeStage(ControllerOutput output) {
         List<Object> chunks = outputChunks(output);
         if (chunks != null && !chunks.isEmpty()) {
-            return completedListStage(chunks);
-        }
-        Map<String, Object> map = outputMap(output);
-        if (map != null) {
-            return completedMapStage(map);
+            return new ControllerOutputListStage(output, chunks);
         }
         return java.util.concurrent.CompletableFuture.completedFuture(output);
     }
@@ -428,5 +433,166 @@ public class LlmAgent extends LLMAgent {
     @SuppressWarnings({"rawtypes", "unchecked"})
     private static CompletionStage<Object> completedMapStage(Map<String, Object> map) {
         return (CompletionStage<Object>) (CompletionStage) FutureMap.completed(map);
+    }
+
+    private static final class ControllerOutputListStage
+            extends java.util.concurrent.CompletableFuture<Object>
+            implements List<Object> {
+        private final List<Object> delegate;
+
+        private ControllerOutputListStage(ControllerOutput output, List<Object> chunks) {
+            this.delegate = new ArrayList<>(chunks);
+            complete(output);
+        }
+
+        @Override
+        public int size() {
+            return delegate.size();
+        }
+
+        @Override
+        public boolean isEmpty() {
+            return delegate.isEmpty();
+        }
+
+        @Override
+        public boolean contains(Object item) {
+            return delegate.contains(item);
+        }
+
+        @Override
+        public Iterator<Object> iterator() {
+            return delegate.iterator();
+        }
+
+        @Override
+        public Object[] toArray() {
+            return delegate.toArray();
+        }
+
+        @Override
+        public <T> T[] toArray(T[] array) {
+            return delegate.toArray(array);
+        }
+
+        @Override
+        public boolean add(Object item) {
+            return delegate.add(item);
+        }
+
+        @Override
+        public boolean remove(Object item) {
+            return delegate.remove(item);
+        }
+
+        @Override
+        public boolean containsAll(Collection<?> collection) {
+            return delegate.containsAll(collection);
+        }
+
+        @Override
+        public boolean addAll(Collection<?> collection) {
+            return delegate.addAll(collection);
+        }
+
+        @Override
+        public boolean addAll(int index, Collection<?> collection) {
+            return delegate.addAll(index, collection);
+        }
+
+        @Override
+        public boolean removeAll(Collection<?> collection) {
+            return delegate.removeAll(collection);
+        }
+
+        @Override
+        public boolean retainAll(Collection<?> collection) {
+            return delegate.retainAll(collection);
+        }
+
+        @Override
+        public void replaceAll(UnaryOperator<Object> operator) {
+            delegate.replaceAll(operator);
+        }
+
+        @Override
+        public void sort(Comparator<? super Object> comparator) {
+            delegate.sort(comparator);
+        }
+
+        @Override
+        public void clear() {
+            delegate.clear();
+        }
+
+        @Override
+        public Object get(int index) {
+            return delegate.get(index);
+        }
+
+        @Override
+        public Object set(int index, Object element) {
+            return delegate.set(index, element);
+        }
+
+        @Override
+        public void add(int index, Object element) {
+            delegate.add(index, element);
+        }
+
+        @Override
+        public Object remove(int index) {
+            return delegate.remove(index);
+        }
+
+        @Override
+        public int indexOf(Object item) {
+            return delegate.indexOf(item);
+        }
+
+        @Override
+        public int lastIndexOf(Object item) {
+            return delegate.lastIndexOf(item);
+        }
+
+        @Override
+        public ListIterator<Object> listIterator() {
+            return delegate.listIterator();
+        }
+
+        @Override
+        public ListIterator<Object> listIterator(int index) {
+            return delegate.listIterator(index);
+        }
+
+        @Override
+        public List<Object> subList(int fromIndex, int toIndex) {
+            return delegate.subList(fromIndex, toIndex);
+        }
+
+        @Override
+        public Spliterator<Object> spliterator() {
+            return delegate.spliterator();
+        }
+
+        @Override
+        public boolean removeIf(Predicate<? super Object> filter) {
+            return delegate.removeIf(filter);
+        }
+
+        @Override
+        public Stream<Object> stream() {
+            return delegate.stream();
+        }
+
+        @Override
+        public Stream<Object> parallelStream() {
+            return delegate.parallelStream();
+        }
+
+        @Override
+        public void forEach(Consumer<? super Object> action) {
+            delegate.forEach(action);
+        }
     }
 }

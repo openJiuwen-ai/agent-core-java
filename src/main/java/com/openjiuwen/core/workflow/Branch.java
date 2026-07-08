@@ -815,14 +815,26 @@ final class SessionValueResolver {
     }
 
     private static Optional<Object> invokeAccessor(Object target, String path) {
-        for (String methodName : List.of("get_global", "getGlobal", "get")) {
+        for (String methodName : List.of("get_global", "getGlobal", "getGlobalState", "get")) {
+            Optional<Method> method = findPathAccessor(target, methodName);
+            if (method.isEmpty()) {
+                continue;
+            }
             try {
-                Method method = target.getClass().getMethod(methodName, String.class);
-                return Optional.ofNullable(method.invoke(target, path));
-            } catch (NoSuchMethodException ignored) {
-                // Try the next Python/Java naming convention.
+                return Optional.ofNullable(method.get().invoke(target, path));
             } catch (IllegalAccessException | InvocationTargetException ignored) {
                 return Optional.empty();
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<Method> findPathAccessor(Object target, String methodName) {
+        for (Class<?> parameterType : List.of(String.class, Object.class)) {
+            try {
+                return Optional.of(target.getClass().getMethod(methodName, parameterType));
+            } catch (NoSuchMethodException ignored) {
+                // Try the next common path parameter type.
             }
         }
         return Optional.empty();

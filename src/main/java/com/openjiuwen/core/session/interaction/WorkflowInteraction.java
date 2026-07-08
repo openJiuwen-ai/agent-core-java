@@ -10,6 +10,7 @@ import com.openjiuwen.core.graph.pregel.Interrupt;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
+import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.workflow.internal.WorkflowSessionSupport;
 
@@ -24,6 +25,8 @@ import java.util.Map;
  * {@code openjiuwen/core/session/interaction/interaction.py}.</p>
  */
 public class WorkflowInteraction extends BaseInteraction {
+
+    private static final String RECENT_OUTPUTS_KEY = "__workflow_interaction_outputs__";
 
     private final String nodeId;
 
@@ -57,8 +60,7 @@ public class WorkflowInteraction extends BaseInteraction {
         }
         OutputSchema writtenOutput = new OutputSchema(Constant.INTERACTION, index, tuplePayload(nodeId, value));
         writeOutput(writtenOutput);
-        OutputSchema interruptOutput = new OutputSchema(Constant.INTERACTION, index, tuplePayload(nodeId, null));
-        throwGraphInterrupt(interruptOutput);
+        throwGraphInterrupt(writtenOutput);
         return null;
     }
 
@@ -74,6 +76,7 @@ public class WorkflowInteraction extends BaseInteraction {
     }
 
     private void writeOutput(OutputSchema output) {
+        rememberOutput(output);
         Object writerManager = session == null ? null : session.streamWriterManager();
         if (writerManager == null) {
             return;
@@ -90,6 +93,43 @@ public class WorkflowInteraction extends BaseInteraction {
             }
             throw new IllegalStateException(target);
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void rememberOutput(OutputSchema output) {
+        if (output == null || session == null) {
+            return;
+        }
+        BaseSession current = session;
+        while (current != null) {
+            try {
+                rememberStateOutput(current, output);
+                current = current.parent();
+            } catch (RuntimeException ignored) {
+                return;
+            }
+        }
+    }
+
+    private static void rememberStateOutput(BaseSession targetSession, OutputSchema output) {
+        synchronized (targetSession) {
+            SessionStateAccess state = targetSession.state();
+            if (state != null) {
+                ArrayList<Object> globalOutputs = appendOutput(state.getGlobal(RECENT_OUTPUTS_KEY), output);
+                state.updateGlobal(Map.of(RECENT_OUTPUTS_KEY, globalOutputs));
+            }
+        }
+    }
+
+    private static ArrayList<Object> appendOutput(Object existing, OutputSchema output) {
+        ArrayList<Object> outputs = new ArrayList<>();
+        if (existing instanceof Iterable<?> iterable) {
+            for (Object item : iterable) {
+                outputs.add(item);
+            }
+        }
+        outputs.add(output);
+        return outputs;
     }
 
     private static String executableId(BaseSession session) {

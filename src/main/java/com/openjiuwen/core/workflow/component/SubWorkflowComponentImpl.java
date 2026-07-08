@@ -10,6 +10,7 @@ import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.workflow.HasDrawable;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowChunk;
@@ -98,7 +99,7 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
             }
             Object result = subWorkflow.invokeSubWorkflow(
                     subWorkflowInputs(inputs, session), session, extractContext(kwargs), workflowConfig(inputs));
-            return normalizeMapOutput(result);
+            return normalizeComponentOutput(result);
         }
 
         @Override
@@ -159,19 +160,19 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
 
     private static Object subWorkflowInputs(Map<String, Object> inputs, BaseSession session) {
         InteractiveInput nestedInputs = nestedInteractiveInput(session);
-        return nestedInputs != null ? nestedInputs : workflowInputs(inputs);
+        Object workflowInputs = workflowInputs(inputs);
+        return workflowInputs != null ? workflowInputs : nestedInputs;
     }
 
     private static InteractiveInput nestedInteractiveInput(BaseSession session) {
         if (session == null || session.state() == null) {
             return null;
         }
-        Object value = session.state().get(Constant.INTERACTIVE_INPUT);
-        InteractiveInput direct = findInteractiveInput(value);
-        if (direct != null) {
-            return direct;
+        if (session.state() instanceof WorkflowCommitState workflowState) {
+            return findInteractiveInput(workflowState.getWorkflowState(Constant.INTERACTIVE_INPUT));
         }
-        return findInteractiveInput(session.state().get(null));
+        Object value = session.state().get(Constant.INTERACTIVE_INPUT);
+        return findInteractiveInput(value);
     }
 
     private static InteractiveInput findInteractiveInput(Object value) {
@@ -218,6 +219,17 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
             return null;
         }
         return Map.of("output", value);
+    }
+
+    private static Map<String, Object> normalizeComponentOutput(Object value) {
+        Map<String, Object> normalized = normalizeMapOutput(value);
+        if (normalized == null) {
+            return null;
+        }
+        if (normalized.containsKey("output")) {
+            return normalized;
+        }
+        return Map.of("output", normalized);
     }
 
     private static Map<String, Object> toStringObjectMap(Map<?, ?> source) {

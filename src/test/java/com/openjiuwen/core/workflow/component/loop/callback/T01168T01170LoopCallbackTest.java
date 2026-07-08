@@ -37,6 +37,7 @@ class T01168T01170LoopCallbackTest {
         test.intermediateLoopVarWrapsInputsAndToleratesNullLoopTimes();
         test.intermediateLoopVarKeepsRootedNullWhenInputIsMissing();
         test.outputCallbackAccumulatesRoundsAndUsesLatestSelfReference();
+        test.outputCallbackPrefersCurrentNodeScopedRoundOutput();
         System.out.println("T01168T01170LoopCallbackTest passed");
     }
 
@@ -101,6 +102,24 @@ class T01168T01170LoopCallbackTest {
         assertEquals(expected, session.state().getOutputs(NODE_ID));
     }
 
+    @Test
+    void outputCallbackPrefersCurrentNodeScopedRoundOutput() {
+        Map<String, Object> outputsFormat = new LinkedHashMap<>();
+        outputsFormat.put("l_out1", "${loop_1.result}");
+        outputsFormat.put("history", "${external.value}");
+        OutputCallback callback = new OutputCallback(outputsFormat);
+        WorkflowRuntimeSession session = nestedLoopSession();
+
+        callback.call(LoopCallback.FIRST_LOOP, session);
+        callback.call(LoopCallback.END_ROUND, session, 1);
+        callback.call(LoopCallback.OUT_LOOP, session);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> outputs = (Map<String, Object>) session.state().getOutputs("loop1");
+        assertEquals(List.of(13), outputs.get("l_out1"));
+        assertEquals(List.of("common"), outputs.get("history"));
+    }
+
     private static WorkflowRuntimeSession newSession(Map<String, Object> ioState) {
         WorkflowRuntimeState state = WorkflowRuntimeState.from(
                 InMemoryState.create(ioState, null, null, null, null)
@@ -108,6 +127,19 @@ class T01168T01170LoopCallbackTest {
         return new WorkflowRuntimeSession("workflow", null, "session",
                 state,
                 null, "", "", NODE_ID, NODE_ID, 0);
+    }
+
+    private static WorkflowRuntimeSession nestedLoopSession() {
+        Map<String, Object> parentState = new LinkedHashMap<>();
+        parentState.put("loop_1", Map.of("result", 12));
+        parentState.put("loop1", Map.of("loop_1", Map.of("result", 13)));
+        parentState.put("external", Map.of("value", "common"));
+        WorkflowRuntimeState state = WorkflowRuntimeState.from(
+                InMemoryState.create(Map.of("parent", parentState), null, null, null, null)
+        ).createNodeState("parent.loop1", "parent");
+        return new WorkflowRuntimeSession("workflow", null, "session",
+                state,
+                null, "parent", "parent.loop1", "loop1", "loop1", 0);
     }
 
     private static void putNodeOutput(WorkflowRuntimeSession session, Map<String, Object> output) {

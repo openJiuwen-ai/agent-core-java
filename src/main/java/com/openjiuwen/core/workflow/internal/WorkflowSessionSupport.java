@@ -6,6 +6,7 @@ package com.openjiuwen.core.workflow.internal;
 
 import com.openjiuwen.core.graph.GraphSession;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.state.CommitStateLike;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
 
@@ -49,6 +50,22 @@ public final class WorkflowSessionSupport {
         }
         Object reflected = invokeOptional(stateCollection, "getInputs", schema);
         return reflected == InvokeResult.NOT_FOUND ? null : reflected;
+    }
+
+    public static Object getNodeScopedInputs(BaseSession session, Object schema) {
+        WorkflowCommitState state = workflowState(session);
+        if (state == null) {
+            return null;
+        }
+        CommitStateLike ioState = state.getIoState();
+        if (ioState == null) {
+            return null;
+        }
+        String scopedNodeId = effectiveStateNodeId(session);
+        if (scopedNodeId == null || scopedNodeId.isBlank()) {
+            return null;
+        }
+        return ioState.getByPrefix(schema, scopedNodeId);
     }
 
     public static Object getOutputs(BaseSession session, String nodeId) {
@@ -140,6 +157,16 @@ public final class WorkflowSessionSupport {
         }
         value = invokeOptional(session, "nodeId");
         return value != InvokeResult.NOT_FOUND && value != null ? String.valueOf(value) : "";
+    }
+
+    private static String effectiveStateNodeId(BaseSession session) {
+        if (session instanceof WorkflowRuntimeSession runtimeSession) {
+            String executableId = runtimeSession.executableId();
+            if (executableId != null && !executableId.isBlank()) {
+                return executableId;
+            }
+        }
+        return componentId(session);
     }
 
     public static String interact(BaseSession session, Object question) {
