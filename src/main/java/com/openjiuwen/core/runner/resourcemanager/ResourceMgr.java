@@ -76,9 +76,20 @@ public class ResourceMgr {
                 card.getId(), ResourceKind.TEAM, agentTeam, card, tag, null));
     }
 
+    public Object addAgentGroup(TeamCard card, Supplier<?> agentTeam, Object tag) {
+        return addAgentTeam(card, agentTeam, stringCollection(tag)).toCompletableFuture().join();
+    }
+
     public Result<?, ?> removeAgentTeam(String teamId) {
         return singleResult(innerRemoveResources(List.of(teamId), ResourceKind.TEAM, null,
                 TagMatchStrategy.ALL, false));
+    }
+
+    public Object removeAgentGroup(Object tag, Object ignored,
+                                   com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy,
+                                   boolean skipIfTagNotExists) {
+        return innerRemoveResources(null, ResourceKind.TEAM, stringCollection(tag),
+                strategy(tagMatchStrategy), skipIfTagNotExists);
     }
 
     public CompletionStage<Object> getAgentTeam(String teamId) {

@@ -8,6 +8,7 @@ import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -197,9 +198,21 @@ public abstract class BaseAgent {
         return executeCallbacks(event, inputs, session, context);
     }
 
-    public abstract CompletionStage<Object> invoke(Object inputs, AgentSessionApi session);
+    public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        return CompletableFuture.completedFuture(invoke(inputs, (Session) null));
+    }
 
-    public abstract Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes);
+    public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
+        return stream(inputs, (Session) null, streamModes);
+    }
+
+    public Object invoke(Object inputs, Session session) {
+        throw new UnsupportedOperationException(getClass().getName() + " does not implement invoke(Object, Session)");
+    }
+
+    public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+        return List.<Object>of(invoke(inputs, session)).iterator();
+    }
 
     public BaseAgent activateSkill(String skillName, AgentSessionApi session) {
         String normalizedSkillName = normalizeSkillName(skillName);

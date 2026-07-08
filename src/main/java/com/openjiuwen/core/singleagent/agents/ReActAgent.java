@@ -24,6 +24,7 @@ import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentSessionLifecycle;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -1096,6 +1097,11 @@ public class ReActAgent extends BaseAgent {
         return invoke(inputs, session, Map.of());
     }
 
+    @Override
+    public Object invoke(Object inputs, Session session) {
+        return invoke(inputs, (AgentSessionApi) session).toCompletableFuture().join();
+    }
+
     public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session, Map<String, Object> kwargs) {
         if (!(inputs instanceof Map<?, ?>) && !(inputs instanceof String)) {
             CompletableFuture<Object> failed = new CompletableFuture<>();
@@ -1545,6 +1551,11 @@ public class ReActAgent extends BaseAgent {
             }
         }
         return finalSession.streamIterator();
+    }
+
+    @Override
+    public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+        return stream(inputs, (AgentSessionApi) session, streamModes);
     }
 
     private void runStreamingInvoke(Object inputs, AgentSessionApi finalSession,

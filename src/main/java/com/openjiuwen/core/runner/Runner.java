@@ -225,6 +225,10 @@ public final class Runner {
         return runAgentTeam(agentTeam, inputs, false, false, null, null, null);
     }
 
+    public static Object runAgentTeam(String agentTeam, Object inputs, Object session) {
+        return joinOrThrow(runAgentTeam(agentTeam, inputs, true, false, session, null, null));
+    }
+
     public static CompletionStage<Object> runAgentTeam(Object agentTeam, Object inputs, Object session,
                                                        ModelContext context, Map<String, Object> envs) {
         return runAgentTeam(agentTeam, inputs, false, false, session, context, envs);
@@ -241,6 +245,10 @@ public final class Runner {
 
     public static CompletionStage<Iterator<Object>> runAgentTeamStreaming(Object agentTeam, Object inputs) {
         return runAgentTeamStreaming(agentTeam, inputs, false, false, null, null, null, null, null);
+    }
+
+    public static Iterator<Object> runAgentTeamStreaming(String agentTeam, Object inputs, Object session) {
+        return joinOrThrow(runAgentTeamStreaming(agentTeam, inputs, true, false, session, null, null, null, null));
     }
 
     public static Iterator<Object> runAgentTeamStreaming(TeamAgentSpec agentTeam, Map<String, String> inputs,
