@@ -58,7 +58,7 @@ public class WorkflowInteraction extends BaseInteraction {
             latestInteractiveInputs = null;
             return result;
         }
-        OutputSchema writtenOutput = new OutputSchema(Constant.INTERACTION, index, tuplePayload(nodeId, value));
+        OutputSchema writtenOutput = new OutputSchema(Constant.INTERACTION, index, new InteractionOutput(nodeId, value));
         writeOutput(writtenOutput);
         throwGraphInterrupt(writtenOutput);
         return null;
@@ -159,13 +159,6 @@ public class WorkflowInteraction extends BaseInteraction {
         Map<String, Object> result = new java.util.LinkedHashMap<>();
         result.put(key, value);
         return result;
-    }
-
-    private static ArrayList<Object> tuplePayload(String id, Object value) {
-        ArrayList<Object> payload = new ArrayList<>(2);
-        payload.add(id);
-        payload.add(value);
-        return payload;
     }
 
     private static void throwGraphInterrupt(OutputSchema output) {

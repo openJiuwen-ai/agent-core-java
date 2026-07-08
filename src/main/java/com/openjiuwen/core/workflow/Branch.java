@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.workflow;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.session.BaseSession;
@@ -177,9 +178,22 @@ final class BranchExpressionEvaluator {
     static Map<String, Object> inputs(String expression, BaseSession session) {
         java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
         for (String path : placeholderPaths(expression)) {
-            result.put("${" + path + "}", SessionValueResolver.resolve(session, path).orElse(null));
+            result.put("${" + path + "}", traceInputValue(session, path));
         }
         return result;
+    }
+
+    private static Object traceInputValue(BaseSession session, String path) {
+        try {
+            return SessionValueResolver.resolve(session, path).orElse(null);
+        } catch (BaseError error) {
+            if (error.getStatus() == StatusCode.EXPRESSION_EVAL_ERROR) {
+                return null;
+            }
+            throw error;
+        } catch (IndexOutOfBoundsException error) {
+            return null;
+        }
     }
 
     private static boolean evaluateOr(String expression, BaseSession session) {

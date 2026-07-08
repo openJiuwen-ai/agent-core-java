@@ -126,6 +126,25 @@ public class BranchComponentPythonParityTest {
     }
 
     @Test
+    void tracedBranchRoutingDoesNotEvaluateLaterMissingSubscriptsBeforeFirstMatch() {
+        TestSession session = sessionWith("start.input3", List.of(Map.of("k", "v")));
+        BranchRouter router = new BranchRouter(true);
+        router.addBranch("len(${start.input3}) == 1", List.of("end"));
+        router.addBranch("( length(${start.input1}) < ${start.input4.k1} ) && "
+                + "( ${start.input3[0]} % 2 == 1 ) && "
+                + "( ${start.input3[2].k} == ${start.input4.k3.k} ) && "
+                + "( ${start.input2} )", List.of("print_inputs"));
+        router.setSession(session);
+
+        assertThat(router.route()).containsExactly("end");
+
+        BranchRouter secondOnly = new BranchRouter();
+        secondOnly.addBranch("length(${start.input1}) == 1", List.of("print_inputs"));
+        secondOnly.setSession(session);
+        assertBaseError(StatusCode.EXPRESSION_EVAL_ERROR, secondOnly::route);
+    }
+
+    @Test
     void sdkConditionSubclassIsAcceptedLikePythonCondition() {
         TestSession session = new TestSession();
         BranchComponent branch = new BranchComponent();

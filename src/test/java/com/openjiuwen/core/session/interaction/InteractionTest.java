@@ -18,7 +18,6 @@ import com.openjiuwen.core.session.stream.OutputSchema;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -84,7 +83,9 @@ class InteractionTest {
 
         OutputSchema schema = interruptSchema(interrupt);
         assertEquals(Constant.INTERACTION, schema.getType());
-        assertEquals(Arrays.asList("node-a", null), schema.getPayload());
+        InteractionOutput payload = assertInstanceOf(InteractionOutput.class, schema.getPayload());
+        assertEquals("node-a", payload.getId());
+        assertEquals("question", payload.getValue());
     }
 
     @Test
