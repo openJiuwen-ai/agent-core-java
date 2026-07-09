@@ -69,6 +69,15 @@ public class Tracer {
         Map<String, com.openjiuwen.core.session.callback.BaseHandler> workflowMap = new HashMap<>();
         workflowMap.put(TracerHandlerName.TRACER_WORKFLOW.getValue(), workflowHandler);
         callbackManager.register(workflowMap);
+
+        // Inject traceId into externally registered extension handlers so they can
+        // bridge OTel traces with the tracer UUID.
+        for (TraceExtAgentHandler ext : TracerHandlerRegistry.getAgentHandlers().values()) {
+            ext.setTraceId(traceId);
+        }
+        for (TraceExtWorkflowHandler ext : TracerHandlerRegistry.getWorkflowHandlers().values()) {
+            ext.setTraceId(traceId);
+        }
     }
 
     /**

@@ -8,6 +8,9 @@ import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.session.callback.TriggerEvent;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,6 +25,8 @@ import java.util.Map;
  * @since 0.1.7
  */
 public class TraceWorkflowHandler extends TraceBaseHandler {
+    private static final Logger LOG = LoggerFactory.getLogger(TraceWorkflowHandler.class);
+
     /**
      * TraceWorkflowHandler.
      * 
@@ -82,7 +87,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
 
     /**
      * onCallStart.
-     * 
+     *
      * @param invokeId invokeId
      * @param metadata metadata
      * @param inputs inputs
@@ -108,6 +113,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         if (needSend) {
             sendData(span);
         }
+        dispatchExt(h -> h.onCallStart(invokeId, metadata, inputs, needSend, sourceIds));
     }
 
     /**
@@ -131,6 +137,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         if (needSend) {
             sendData(span);
         }
+        dispatchExt(h -> h.onPreInvoke(invokeId, inputs, componentMetadata, needSend));
     }
 
     /**
@@ -151,6 +158,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         if (needSend) {
             sendData(span);
         }
+        dispatchExt(h -> h.onPreStream(invokeId, chunk, needSend));
     }
 
     /**
@@ -197,6 +205,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         }
 
         sendData(span);
+        dispatchExt(h -> h.onInvoke(invokeId, onInvokeData, exception));
     }
 
     /**
@@ -220,6 +229,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         if (needSend) {
             sendData(span);
         }
+        dispatchExt(h -> h.onInteract(invokeId, inputs, componentMetadata, needSend));
     }
 
     /**
@@ -233,6 +243,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
     public void onPostStream(String invokeId, Object chunk) {
         TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
         span.appendStreamOutput(chunk);
+        dispatchExt(h -> h.onPostStream(invokeId, chunk));
     }
 
     /**
@@ -249,6 +260,7 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         Map<String, Object> data = new HashMap<>();
         data.put("outputs", outputs);
         spanManager.updateSpan(span, data);
+        dispatchExt(h -> h.onPostInvoke(invokeId, outputs, inputs));
     }
 
     /**
@@ -273,5 +285,23 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         }
         spanManager.updateSpan(span, data);
         sendData(span);
+        dispatchExt(h -> h.onCallDone(invokeId, outputs));
+    }
+
+    /**
+     * Dispatch an event to all externally registered workflow handlers via {@link TracerHandlerRegistry}.
+     * Each handler is invoked in isolation; handler failures are logged and skipped to protect the trace.
+     *
+     * @param action the action to invoke on each registered extension handler
+     */
+    private void dispatchExt(java.util.function.Consumer<TraceExtWorkflowHandler> action) {
+        for (TraceExtWorkflowHandler ext : TracerHandlerRegistry.getWorkflowHandlers().values()) {
+            try {
+                action.accept(ext);
+            } catch (NullPointerException | ClassCastException | IllegalArgumentException
+                    | IllegalStateException e) {
+                LOG.warn("Extension workflow handler failed, skipping.", e);
+            }
+        }
     }
 }
