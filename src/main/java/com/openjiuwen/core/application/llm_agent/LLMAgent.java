@@ -18,6 +18,7 @@ import com.openjiuwen.core.memory.config.AgentMemoryConfig;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.AgentSessionLifecycle;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.legacy.agent.ControllerAgent;
@@ -130,6 +131,7 @@ public class LLMAgent extends ControllerAgent {
 
         syncToolsToExternalSession();
         Object result = runStreamProcess(safeInputs, session, false);
+        closeStream(session);
         return new SessionStreamIterator(session.streamIterator(), result);
     }
 
@@ -375,6 +377,19 @@ public class LLMAgent extends ControllerAgent {
             return agentSession;
         }
         throw new IllegalArgumentException("ownStream requires AgentSession");
+    }
+
+    private static void closeStream(AgentSessionApi session) {
+        if (session instanceof AgentSessionLifecycle lifecycle) {
+            lifecycle.closeStream();
+            return;
+        }
+        try {
+            Method method = session.getClass().getMethod("closeStream");
+            method.invoke(session);
+        } catch (ReflectiveOperationException ignored) {
+            Loggers.AGENT.debug("Session does not expose closeStream; stream iterator may rely on caller cleanup");
+        }
     }
 
     private static Map<String, Object> copyInputs(Map<String, Object> inputs) {

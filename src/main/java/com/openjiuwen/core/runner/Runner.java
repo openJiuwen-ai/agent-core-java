@@ -40,7 +40,9 @@ import com.openjiuwen.core.runner.spawn.SpawnedProcessHandle;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -49,6 +51,7 @@ import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 
 import java.util.Iterator;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -684,18 +687,19 @@ public final class Runner {
             return CompletableFuture.supplyAsync(() -> {
                 BaseTeam team = await(prepareBaseTeam(baseTeam));
                 AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, team.getTeamId());
+                AgentSessionApi executionSession = baseTeamExecutionSession(team, session, teamSession);
                 TeamRuntime runtime = team.getRuntime();
                 teamSession.preRun(inputs instanceof Map<?, ?> values ? copyStringMap(values) : null)
                         .toCompletableFuture()
                         .join();
                 if (runtime != null) {
-                    runtime.bindTeamSession(teamSession);
+                    runtime.bindTeamSession(executionSession);
                 }
                 try {
-                    return await(team.invoke(inputs, teamSession));
+                    return await(team.invoke(inputs, executionSession));
                 } finally {
                     if (runtime != null) {
-                        runtime.unbindTeamSession(teamSession.getSessionId());
+                        runtime.unbindTeamSession(executionSession.getSessionId());
                     }
                     teamSession.postRun();
                 }
@@ -709,23 +713,89 @@ public final class Runner {
             return CompletableFuture.supplyAsync(() -> {
                 BaseTeam team = await(prepareBaseTeam(baseTeam));
                 AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, team.getTeamId());
+                AgentSessionApi executionSession = baseTeamExecutionSession(team, session, teamSession);
                 TeamRuntime runtime = team.getRuntime();
                 teamSession.preRun(inputs instanceof Map<?, ?> values ? copyStringMap(values) : null)
                         .toCompletableFuture()
                         .join();
                 if (runtime != null) {
-                    runtime.bindTeamSession(teamSession);
+                    runtime.bindTeamSession(executionSession);
                 }
                 try {
-                    Stream<Object> stream = team.stream(inputs, teamSession);
-                    return stream == null ? List.<Object>of().iterator() : stream.toList().iterator();
+                    Stream<Object> stream = team.stream(inputs, executionSession);
+                    List<Object> chunks = new ArrayList<>();
+                    boolean legacyTeamSession = executionSession instanceof Session;
+                    if (stream != null) {
+                        if (legacyTeamSession) {
+                            stream.forEach(item -> chunks.add(normalizeLegacyTeamStreamChunk(item)));
+                        } else {
+                            stream.forEach(chunks::add);
+                        }
+                    }
+                    if (legacyTeamSession) {
+                        Session legacySession = (Session) executionSession;
+                        List<Object> legacyChunks = drainLegacySessionStream(legacySession);
+                        legacyChunks.addAll(chunks);
+                        return legacyChunks.iterator();
+                    }
+                    return chunks.iterator();
                 } finally {
                     if (runtime != null) {
-                        runtime.unbindTeamSession(teamSession.getSessionId());
+                        runtime.unbindTeamSession(executionSession.getSessionId());
                     }
                     teamSession.postRun();
                 }
             });
+        }
+
+        private static AgentSessionApi baseTeamExecutionSession(
+                BaseTeam team,
+                Object requestedSession,
+                AgentTeamSessionAdapter teamSession) {
+            if (team instanceof com.openjiuwen.core.multiagent.BaseTeam) {
+                return requestedSession instanceof Session legacySession ? legacySession : new Session();
+            }
+            return teamSession;
+        }
+
+        private static List<Object> drainLegacySessionStream(Session session) {
+            List<Object> chunks = new ArrayList<>();
+            Iterator<Object> iterator = session.streamIterator();
+            while (iterator.hasNext()) {
+                chunks.add(normalizeLegacyTeamStreamChunk(iterator.next()));
+            }
+            return chunks;
+        }
+
+        private static Object normalizeLegacyTeamStreamChunk(Object data) {
+            if (data instanceof OutputSchema) {
+                return data;
+            }
+            if (data instanceof Map<?, ?> map) {
+                if (map.keySet().containsAll(Set.of("type", "index", "payload"))) {
+                    return new OutputSchema(
+                            dataToString(map.get("type")),
+                            dataToInt(map.get("index")),
+                            map.get("payload")
+                    );
+                }
+                return new OutputSchema("message", 0, copyStringMap(map));
+            }
+            return new OutputSchema("message", 0, data);
+        }
+
+        private static String dataToString(Object data) {
+            return data == null ? null : String.valueOf(data);
+        }
+
+        private static int dataToInt(Object data) {
+            if (data instanceof Number number) {
+                return number.intValue();
+            }
+            if (data != null) {
+                return Integer.parseInt(String.valueOf(data));
+            }
+            return 0;
         }
 
         private CompletionStage<DeliverResult> interactAgentTeam(Object payload, String teamName, String sessionId) {

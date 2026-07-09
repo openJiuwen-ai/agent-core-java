@@ -188,7 +188,7 @@ public class TeamRuntime implements AutoCloseable {
 
     public Object getTeamSession(String sessionId) {
         if (sessionId == null) {
-            return null;
+            return activeTeamSessions.size() == 1 ? activeTeamSessions.values().iterator().next() : null;
         }
         return activeTeamSessions.get(sessionId);
     }

@@ -77,6 +77,9 @@ public class ResourceMgr {
     }
 
     public Object addAgentGroup(TeamCard card, Supplier<?> agentTeam, Object tag) {
+        if (card != null && card.getId() != null && tagManager.hasResource(card.getId())) {
+            removeAgentTeam(card.getId());
+        }
         return addAgentTeam(card, agentTeam, stringCollection(tag)).toCompletableFuture().join();
     }
 

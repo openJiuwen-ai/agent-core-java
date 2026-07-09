@@ -110,7 +110,7 @@ public class MessageRouter {
     }
 
     private Object buildAgentSession(String sessionId, String agentId) {
-        if (runtime == null || sessionId == null) {
+        if (runtime == null) {
             return null;
         }
         Object teamSession = runtime.getTeamSession(sessionId);

@@ -51,7 +51,7 @@ public abstract class BaseTeam extends com.openjiuwen.core.multi_agent.BaseTeam 
 
     @Override
     public final CompletionStage<Object> invoke(Object message, AgentSessionApi session) {
-        return invoke(message, (Session) null);
+        return invoke(message, session instanceof Session legacySession ? legacySession : null);
     }
 
     public CompletionStage<Object> invoke(Object message) {
@@ -62,7 +62,7 @@ public abstract class BaseTeam extends com.openjiuwen.core.multi_agent.BaseTeam 
 
     @Override
     public final Stream<Object> stream(Object message, AgentSessionApi session) {
-        return stream(message, (Session) null);
+        return stream(message, session instanceof Session legacySession ? legacySession : null);
     }
 
     public Stream<Object> stream(Object message) {
