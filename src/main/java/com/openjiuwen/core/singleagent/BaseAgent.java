@@ -206,6 +206,14 @@ public abstract class BaseAgent {
         return stream(inputs, (Session) null, streamModes);
     }
 
+    public CompletionStage<Object> invoke(Map<?, ?> inputs, Session session) {
+        return invoke((Object) inputs, (AgentSessionApi) session);
+    }
+
+    public CompletionStage<Object> invoke(String inputs, Session session) {
+        return invoke((Object) inputs, (AgentSessionApi) session);
+    }
+
     public Object invoke(Object inputs, Session session) {
         throw new UnsupportedOperationException(getClass().getName() + " does not implement invoke(Object, Session)");
     }

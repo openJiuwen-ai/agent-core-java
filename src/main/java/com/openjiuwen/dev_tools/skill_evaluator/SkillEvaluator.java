@@ -8,6 +8,7 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.ToolDecorator;
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
@@ -200,7 +201,7 @@ public class SkillEvaluator {
         if (Files.exists(resolvedDir)) {
             await(subAgent.registerSkill(resolvedDir.toString()));
         }
-        Object result = await(subAgent.invoke(userPrompt, null));
+        Object result = await(subAgent.invoke(userPrompt, (AgentSessionApi) null));
         return result == null ? null : String.valueOf(result);
     }
 

@@ -372,10 +372,18 @@ public class ReActAgentConfig {
         return new Builder();
     }
 
-    public static final class Builder {
-        private final ReActAgentConfig config = new ReActAgentConfig();
+    public static class Builder {
+        protected final ReActAgentConfig config;
 
-        private Builder() {
+        protected Builder() {
+            this(new ReActAgentConfig());
+        }
+
+        protected Builder(ReActAgentConfig config) {
+            if (config == null) {
+                throw new IllegalArgumentException("config must not be null");
+            }
+            this.config = config;
         }
 
         public Builder memScopeId(String memScopeId) {
