@@ -465,15 +465,6 @@ public class LongTermMemory {
         applyScopeEmbedding(scopeId);
 
         AddMemResult result = withUserLock(userId, () -> {
-            if (llm == null) {
-                MEMORY_LOGGER.error("LLM is not initialized. event_type={}, user_id={}, scope_id={}",
-                        LogEventType.MEMORY_STORE.getValue(), userId, scopeId);
-                throw ErrorHelper.buildError(
-                        StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                        "memory_type", "all",
-                        "error_msg", "LLM is not initialized"
-                );
-            }
             if (messageManager == null) {
                 throw ErrorHelper.buildError(
                         StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
@@ -514,6 +505,20 @@ public class LongTermMemory {
 
             if (!genMem) {
                 return new AddMemResult();
+            }
+            if (llm == null) {
+                if (canPersistMessagesWithoutGeneration()) {
+                    MEMORY_LOGGER.warning("LLM is not initialized; long-term memory generation is skipped. event_type={}, user_id={}, scope_id={}",
+                            LogEventType.MEMORY_STORE.getValue(), userId, scopeId);
+                    return new AddMemResult();
+                }
+                MEMORY_LOGGER.error("LLM is not initialized. event_type={}, user_id={}, scope_id={}",
+                        LogEventType.MEMORY_STORE.getValue(), userId, scopeId);
+                throw ErrorHelper.buildError(
+                        StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
+                        "memory_type", "all",
+                        "error_msg", "LLM is not initialized"
+                );
             }
 
             CheckMessagesResult checkResult = checkMessages(safeMessages);
@@ -743,6 +748,9 @@ public class LongTermMemory {
                                                String userId,
                                                String scopeId,
                                                double threshold) {
+        if (num <= 0) {
+            return FutureList.completed(List.of());
+        }
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             MEMORY_LOGGER.error("Invalid scope_id format. event_type={}, query={}, user_id={}, scope_id={}",
                     LogEventType.MEMORY_RETRIEVE.getValue(), query, userId, scopeId);
@@ -791,6 +799,9 @@ public class LongTermMemory {
                                                           String userId,
                                                           String scopeId,
                                                           double threshold) {
+        if (num <= 0) {
+            return FutureList.completed(List.of());
+        }
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             MEMORY_LOGGER.error("Invalid scope_id format. event_type={}, query={}, user_id={}, scope_id={}",
                     LogEventType.MEMORY_RETRIEVE.getValue(), query, userId, scopeId);
@@ -1282,13 +1293,17 @@ public class LongTermMemory {
     }
 
     private static List<Map<String, Object>> sortedByScore(List<Map<String, Object>> data, int limit) {
-        if (data == null || data.isEmpty()) {
+        if (limit <= 0 || data == null || data.isEmpty()) {
             return List.of();
         }
         List<Map<String, Object>> sorted = new ArrayList<>(data);
         sorted.sort(Comparator.comparingDouble((Map<String, Object> item) -> numberValue(item.get("score"), 0.0d))
                 .reversed());
         return sorted.size() <= limit ? sorted : new ArrayList<>(sorted.subList(0, limit));
+    }
+
+    private boolean canPersistMessagesWithoutGeneration() {
+        return memoryIndex != null && messageManager != null && scopeUserMappingManager != null;
     }
 
     private static List<MemResult> toMemResults(List<Map<String, Object>> searchData, MemoryType defaultType) {

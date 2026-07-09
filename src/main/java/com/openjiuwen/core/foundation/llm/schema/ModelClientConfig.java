@@ -174,6 +174,9 @@ public class ModelClientConfig {
             return providerType.getValue();
         }
         String normalized = String.valueOf(provider).strip();
+        if (normalized.isEmpty()) {
+            return normalized;
+        }
         ProviderType member = ProviderType.fromPythonMemberName(normalized);
         if (member != null) {
             return normalized;

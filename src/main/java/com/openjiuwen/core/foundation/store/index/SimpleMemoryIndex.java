@@ -529,6 +529,9 @@ public class SimpleMemoryIndex extends BaseMemoryIndex {
             List<String> memTypes,
             int topK
     ) {
+        if (topK <= 0) {
+            return CompletableFuture.completedFuture(List.of());
+        }
         List<MemorySearchResult> results = new ArrayList<>();
         CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
         for (String memType : memTypes) {
@@ -552,6 +555,9 @@ public class SimpleMemoryIndex extends BaseMemoryIndex {
             String memType,
             int topK
     ) {
+        if (topK <= 0) {
+            return CompletableFuture.completedFuture(List.of());
+        }
         String collectionName = getCollectionName(userId, scopeId, memType);
         return vectorStore.collectionExists(collectionName, Map.of()).thenCompose(exists -> {
             if (!exists) {

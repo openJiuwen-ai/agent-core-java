@@ -29,6 +29,10 @@ public final class GraphStoreFactory {
             "com.openjiuwen.core.foundation.store.graph.milvus.MilvusGraphStorePackage";
     private static String milvusSupportClass = DEFAULT_MILVUS_SUPPORT_CLASS;
 
+    static {
+        CLASS_MAP.put("in_memory", InMemoryGraphStore.class);
+    }
+
     private GraphStoreFactory() {
         throw ErrorHelper.buildError(
                 StatusCode.STORE_GRAPH_FACTORY_NOT_INSTANTIABLE,
@@ -99,6 +103,9 @@ public final class GraphStoreFactory {
                 if (CLASS_MAP.containsKey(name)) {
                     return createBackend(name, CLASS_MAP.get(name), config, kwargs == null ? Map.of() : kwargs);
                 }
+            } else if ("in_memory".equals(name)) {
+                CLASS_MAP.put(name, InMemoryGraphStore.class);
+                return createBackend(name, InMemoryGraphStore.class, config, kwargs == null ? Map.of() : kwargs);
             }
             throw ErrorHelper.buildError(StatusCode.STORE_GRAPH_BACKEND_NOT_FOUND, "name", name);
         } finally {
@@ -128,6 +135,7 @@ public final class GraphStoreFactory {
         THREAD_LOCK.lock();
         try {
             CLASS_MAP.clear();
+            CLASS_MAP.put("in_memory", InMemoryGraphStore.class);
             milvusSupportClass = DEFAULT_MILVUS_SUPPORT_CLASS;
         } finally {
             THREAD_LOCK.unlock();

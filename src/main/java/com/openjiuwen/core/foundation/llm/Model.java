@@ -422,11 +422,18 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
 
     private static ModelClient createModelClient(ModelClientConfig clientConfig, ModelRequestConfig modelConfig) {
         String provider = clientConfig.getClientProvider();
-        if (provider == null || provider.isBlank()) {
+        if (provider == null) {
             throw ErrorHelper.buildError(
                     StatusCode.MODEL_SERVICE_CONFIG_ERROR,
                     "error_msg",
                     "model client config client_provider is none"
+            );
+        }
+        if (provider.isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MODEL_PROVIDER_INVALID,
+                    "error_msg",
+                    "unavailable model provider: " + provider + ",and available providers are: " + availableProviders()
             );
         }
         ModelClientFactory factory = resolveFactory(provider);

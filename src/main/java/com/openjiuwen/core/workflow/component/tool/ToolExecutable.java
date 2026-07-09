@@ -91,9 +91,7 @@ public class ToolExecutable extends ComponentExecutable {
 
         if (tool instanceof RestfulApi) {
             Map<String, Object> trMap = (toolResult instanceof Map) ? (Map<String, Object>) toolResult : Map.of();
-            result.put(ToolComponentOutput.RESTFUL_DATA, isFormattedRestfulResponse(trMap)
-                    ? trMap
-                    : trMap.getOrDefault("data", ""));
+            result.put(ToolComponentOutput.RESTFUL_DATA, trMap.getOrDefault("data", ""));
             int code = parseErrorCode(trMap.getOrDefault("code", DEFAULT_EXCEPTION_ERROR_CODE));
             result.put(ToolComponentOutput.ERR_CODE,
                     (200 <= code && code < 300) ? StatusCode.SUCCESS.getCode()
@@ -115,12 +113,6 @@ public class ToolExecutable extends ComponentExecutable {
             result.put(ToolComponentOutput.RESTFUL_DATA, toolResult);
         }
         return result;
-    }
-
-    private static boolean isFormattedRestfulResponse(Map<String, Object> response) {
-        return response.containsKey("url")
-                && response.containsKey("headers")
-                && response.containsKey("reason");
     }
 
     private static int parseErrorCode(Object rawCode) {

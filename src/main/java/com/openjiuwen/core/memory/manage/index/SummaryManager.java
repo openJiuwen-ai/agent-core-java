@@ -145,6 +145,9 @@ public class SummaryManager extends BaseMemoryManager {
     ) {
         validateRequiredParams(userId, scopeId, memoryIndex, StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, memType);
 
+        if (topK <= 0) {
+            return completed(List.of());
+        }
         return callIndex(() -> memoryIndex.search(userId, scopeId, query, List.of(memType), topK)
                 .thenApply(searchResults -> {
                     List<Map<String, Object>> result = new ArrayList<>();

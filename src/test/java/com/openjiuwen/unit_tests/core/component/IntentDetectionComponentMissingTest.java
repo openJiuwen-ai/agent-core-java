@@ -91,6 +91,29 @@ class IntentDetectionComponentMissingTest {
 
     @Test
     @SuppressWarnings("unchecked")
+    void testLocalJiuwenFixtureFallbackUsesCategoryKeyword() {
+        IntentDetectionCompConfig config = config(List.of("查询某地的景点", "查询某地天气"), "zh", false);
+        config.setModelClientConfig(ModelClientConfig.builder()
+                .clientProvider("SiliconFlow")
+                .apiKey("sk-fake")
+                .apiBase("http://127.0.0.1:8088/v1")
+                .timeout(1)
+                .verifySsl(false)
+                .build());
+        IntentDetectionExecutable executable = executable(config);
+
+        Map<String, Object> output = (Map<String, Object>) executable.invoke(
+                Map.of("query", "查询今天杭州天气意图"),
+                new TestSession(),
+                null
+        );
+
+        assertThat(output).containsEntry("classification_id", 2);
+        assertThat(output).containsEntry("category_name", "查询某地天气");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
     void testInvokeUsesCompletedHistoryBeforeWritingCurrentTurn() {
         AtomicReference<List<BaseMessage>> llmMessages = new AtomicReference<>(List.of());
         registerModelResponse("{\"class\": \"Category2\", \"reason\": \"travel intent\"}", llmMessages);
