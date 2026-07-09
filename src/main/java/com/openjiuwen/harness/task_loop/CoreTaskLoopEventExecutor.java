@@ -287,7 +287,7 @@ public class CoreTaskLoopEventExecutor extends TaskExecutor {
             return taskInvoker.apply(effective, session);
         }
         if (deepAgent != null) {
-            return deepAgent.invoke(effective);
+              return deepAgent.invoke(effective, session);
         }
         return Map.of("output", effective.getOrDefault("query", ""));
     }

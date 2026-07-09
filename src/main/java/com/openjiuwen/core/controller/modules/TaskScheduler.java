@@ -280,10 +280,7 @@ public class TaskScheduler {
         Iterator<ControllerOutputChunk> chunks = executor.executeAbility(taskId, session);
         while (chunks.hasNext()) {
             ControllerOutputChunk chunk = chunks.next();
-
-            // Write to session stream
-            session.writeStream(chunk);
-
+            // 注意： ControllerOutputChunk中包含完整的流信息，谨慎打印和写入会话
             // Check output type
             if (chunk.getControllerPayload() != null && chunk.getControllerPayload().getType() != null) {
                 String payloadType = chunk.getControllerPayload().getType();
@@ -294,17 +291,19 @@ public class TaskScheduler {
                     publishTaskEvent(taskId, session, chunk);
                     break;
                 } else if (EventType.TASK_INTERACTION.getValue().equals(payloadType)) {
+                    session.writeStream(chunk);
                     Loggers.CONTROLLER.info("Task {} requires interaction", taskId);
                     taskManager.updateTaskStatus(taskId, TaskStatus.INPUT_REQUIRED);
                     publishTaskEvent(taskId, session, chunk);
                     break;
                 } else if (EventType.TASK_FAILED.getValue().equals(payloadType)) {
+                    session.writeStream(chunk);
                     Loggers.CONTROLLER.error("Task {} failed", taskId);
                     taskManager.updateTaskStatus(taskId, TaskStatus.FAILED);
                     publishTaskEvent(taskId, session, chunk);
                     break;
                 }
-                // "processing" -> continue
+                // "processing" -> continue, skip writeStream
             }
         }
     }

@@ -1359,7 +1359,7 @@ public class ReActAgent extends BaseAgent {
             reasoningPayload.put("result_type", "answer");
             agentSession.writeStream(new OutputSchema("llm_reasoning", index, reasoningPayload));
         }
-        if (chunk.getContent() != null) {
+        if (chunk.getContent() != null && !(chunk.getContent() instanceof String str && str.isBlank())) {
             Map<String, Object> contentPayload = new HashMap<String, Object>();
             contentPayload.put("content", chunk.getContent());
             contentPayload.put("result_type", "answer");

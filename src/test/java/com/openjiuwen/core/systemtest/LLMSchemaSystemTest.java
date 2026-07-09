@@ -147,7 +147,7 @@ class LLMSchemaSystemTest {
         }
 
         @Test
-        @DisplayName("Merge chunks with tool call deltas")
+        @DisplayName("Merge chunks with tool call deltas (no index, empty-string id/name)")
         void testMergeToolCallDeltas() {
             ToolCall tc1 = ToolCall.builder().id("call_001").name("get_weather").arguments("{\"ci").build();
 
@@ -160,7 +160,131 @@ class LLMSchemaSystemTest {
             AssistantMessageChunk merged = chunk1.merge(chunk2);
             assertNotNull(merged);
             assertNotNull(merged.getToolCalls());
-            assertFalse(merged.getToolCalls().isEmpty());
+            assertEquals(1, merged.getToolCalls().size());
+            assertEquals("call_001", merged.getToolCalls().get(0).getId());
+            assertEquals("get_weather", merged.getToolCalls().get(0).getName());
+            assertEquals("{\"city\":\"BJ\"}", merged.getToolCalls().get(0).getArguments());
+        }
+
+        @Test
+        @DisplayName("Merge GLM-style streaming tool call deltas with index and empty-string id")
+        void testMergeGlmStreamingToolCallDeltas() {
+
+            AssistantMessageChunk frame1 = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("call_xxx")
+                            .type("function")
+                            .name("trip-planning-agent")
+                            .arguments("{")
+                            .index(0)
+                            .build()))
+                    .build();
+
+            AssistantMessageChunk frame2 = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("")
+                            .type("function")
+                            .name("")
+                            .arguments("\"remoteInput\":")
+                            .index(0)
+                            .build()))
+                    .build();
+
+            AssistantMessageChunk frame3 = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("")
+                            .type("function")
+                            .name("")
+                            .arguments("\"明天从上海到北京出差3天，住宿2晚\"")
+                            .index(0)
+                            .build()))
+                    .build();
+
+            AssistantMessageChunk frame4 = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("")
+                            .type("function")
+                            .name("")
+                            .arguments("}")
+                            .index(0)
+                            .build()))
+                    .finishReason("tool_calls")
+                    .build();
+
+            AssistantMessageChunk merged = frame1.merge(frame2).merge(frame3).merge(frame4);
+            assertNotNull(merged);
+            assertNotNull(merged.getToolCalls());
+            assertEquals(1, merged.getToolCalls().size());
+            assertEquals("call_xxx", merged.getToolCalls().get(0).getId());
+            assertEquals("trip-planning-agent", merged.getToolCalls().get(0).getName());
+            assertEquals("function", merged.getToolCalls().get(0).getType());
+            assertEquals(0, merged.getToolCalls().get(0).getIndex());
+            assertEquals("{\"remoteInput\":\"明天从上海到北京出差3天，住宿2晚\"}",
+                    merged.getToolCalls().get(0).getArguments());
+            assertEquals("tool_calls", merged.getFinishReason());
+        }
+
+        @Test
+        @DisplayName("Merge multiple parallel tool call deltas distinguished by index")
+        void testMergeMultipleParallelToolCallsByIndex() {
+            ToolCall tc1f1 = ToolCall.builder()
+                    .index(0)
+                    .id("call_a")
+                    .name("tool_a")
+                    .arguments("{\"a")
+                    .build();
+
+            ToolCall tc2f1 = ToolCall.builder()
+                    .index(1)
+                    .id("call_b")
+                    .name("tool_b")
+                    .arguments("{\"b")
+                    .build();
+
+            ToolCall tc1f2 = ToolCall.builder()
+                    .index(0)
+                    .id("")
+                    .name("")
+                    .arguments("\":1}")
+                    .build();
+
+            ToolCall tc2f2 = ToolCall.builder()
+                    .index(1)
+                    .id("")
+                    .name("")
+                    .arguments("\":2}")
+                    .build();
+
+            AssistantMessageChunk frame1 = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(tc1f1, tc2f1))
+                    .build();
+
+            AssistantMessageChunk frame2 = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(tc1f2, tc2f2))
+                    .build();
+
+            AssistantMessageChunk merged = frame1.merge(frame2);
+            assertNotNull(merged);
+            assertNotNull(merged.getToolCalls());
+            assertEquals(2, merged.getToolCalls().size());
+
+            ToolCall first = merged.getToolCalls().get(0);
+            assertEquals("call_a", first.getId());
+            assertEquals("tool_a", first.getName());
+            assertEquals("{\"a\":1}", first.getArguments());
+            assertEquals(0, first.getIndex());
+
+            ToolCall second = merged.getToolCalls().get(1);
+            assertEquals("call_b", second.getId());
+            assertEquals("tool_b", second.getName());
+            assertEquals("{\"b\":2}", second.getArguments());
+            assertEquals(1, second.getIndex());
         }
 
         @Test

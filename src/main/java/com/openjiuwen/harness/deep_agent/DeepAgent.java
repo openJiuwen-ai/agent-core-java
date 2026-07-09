@@ -63,6 +63,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 /**
@@ -99,7 +100,7 @@ public class DeepAgent {
      */
     private final List<McpServerConfig> registeredMcps = new CopyOnWriteArrayList<>();
     private SessionToolkit sessionToolkit;
-    private LoopCoordinator loopCoordinator;
+    private final AtomicLong requestSeq = new AtomicLong(0);
 
     /**
      * ConcurrentHashMap<>.
@@ -574,14 +575,40 @@ public class DeepAgent {
      * @since 0.1.7
      */
     public Map<String, Object> invoke(Map<String, Object> inputs) {
+        return invoke(inputs, null);
+    }
+
+    /**
+     * 执行 DeepAgent，传入外部 session 以支持中断恢复。
+     * <p>
+     * 外部 session 的状态（如中断信息）会被传播到内部 session，
+     * 执行完毕后内部 session 的状态也会反向传播回外部 session。
+     *
+     * @param inputs  输入参数（必须包含 query 和 conversation_id）
+     * @param session 外部 session，可为 null（此时自动创建新 session）
+     * @return 执行结果
+     */
+    public Map<String, Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
         ensureInitialized();
         Map<String, Object> normalized = new LinkedHashMap<>(inputs);
         normalized.putIfAbsent("conversation_id", card.getName() + "_session");
         normalized.putIfAbsent("query", "");
         if (config.isEnableTaskLoop()) {
-            AgentSessionApi session =
-                new AgentSessionApi(String.valueOf(normalized.get("conversation_id")), null, card);
-            return runTaskLoop(normalized, session);
+            String requestLevelSessionId = String.valueOf(normalized.get("conversation_id"))
+                    + "_" + requestSeq.incrementAndGet();
+            AgentSessionApi effectiveSession = session != null
+                    ? new AgentSessionApi(requestLevelSessionId, session.getEnvs(), card)
+                    : new AgentSessionApi(requestLevelSessionId, null, card);
+            // 将外部 session 的状态传播到 effectiveSession（关键：中断恢复依赖此步骤）
+            if (session != null) {
+                copySessionState(session, effectiveSession);
+            }
+            Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
+            // 将 effectiveSession 的状态反向传播到外部 session（关键：中断状态保存依赖此步骤）
+            if (session != null) {
+                copySessionState(effectiveSession, session);
+            }
+            return result;
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("agent_name", card.getName());
@@ -611,9 +638,15 @@ public class DeepAgent {
      * @since 0.1.7
      */
     public java.util.Iterator<Object> stream(Map<String, Object> inputs, List<StreamMode> streamModes) {
+        String requestLevelSessionId = String.valueOf(inputs.getOrDefault("conversation_id",
+        card.getName() + "_session"))
+                + "_" + requestSeq.incrementAndGet();
         AgentSessionApi session = new AgentSessionApi(
-                String.valueOf(inputs.getOrDefault("conversation_id", card.getName() + "_session")), null, card,
-                streamModes == null || streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes);
+                requestLevelSessionId,
+                null,
+                card,
+                streamModes == null || streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes
+        );
         return stream(inputs, session, streamModes);
     }
 
@@ -635,22 +668,37 @@ public class DeepAgent {
         if (config.isEnableTaskLoop()) {
             normalized.put("_collect_inner_stream", true);
         }
+        String baseConversationId = String.valueOf(normalized.get("conversation_id"));
+        String requestLevelSessionId = baseConversationId + "_" + requestSeq.incrementAndGet();
         AgentSessionApi effectiveSession = session != null
-                ? session
-                : new AgentSessionApi(String.valueOf(normalized.get("conversation_id")), null, card,
-                        streamModes == null || streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes);
+                ? new AgentSessionApi(requestLevelSessionId, session.getEnvs(), this.card,
+                        session.getInner().streamWriterManager().getEnabledModes())
+                : new AgentSessionApi(
+                requestLevelSessionId,
+                null,
+                this.card,
+                streamModes == null || streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes
+        );
         effectiveSession.preRun(normalized);
+        // 将输入 session 的状态传播到 effectiveSession（关键：中断恢复依赖此步骤）
+        // 在 preRun 之后执行，遵循 invokeInnerRoundStreaming 的既定模式
+        if (session != null) {
+            copySessionState(session, effectiveSession);
+        }
         if (config.isEnableTaskLoop()) {
             Thread streamThread = new Thread(() -> {
                 try {
-                    Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
-                    writeTopLevelStreamResult(effectiveSession, 0, result);
+                    runTaskLoop(normalized, effectiveSession);
                 } catch (RuntimeException ex) {
                     effectiveSession.writeStream(new OutputSchema("error", 0,
                             Map.of("output", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
                                     "result_type", "error")));
                 } finally {
                     effectiveSession.postRun();
+                    // 将 effectiveSession 的状态反向传播到输入 session（关键：中断状态保存依赖此步骤）
+                    if (session != null) {
+                        copySessionState(effectiveSession, session);
+                    }
                 }
             }, "deep-agent-stream-" + effectiveSession.getSessionId());
             streamThread.setDaemon(true);
@@ -672,6 +720,10 @@ public class DeepAgent {
                             "result_type", "error")));
         } finally {
             effectiveSession.postRun();
+            // 将 effectiveSession 的状态反向传播到输入 session
+            if (session != null) {
+                copySessionState(effectiveSession, session);
+            }
         }
         java.util.Iterator<Object> iterator = effectiveSession.streamIterator();
         while (iterator.hasNext()) {
@@ -686,8 +738,20 @@ public class DeepAgent {
      * @since 0.1.7
      */
     public void requestAbort() {
-        if (loopCoordinator != null) {
-            loopCoordinator.requestAbort();
+        for (LoopCoordinator coordinator : sessionLoopCoordinators.values()) {
+            coordinator.requestAbort();
+        }
+    }
+
+    /**
+     * 请求中止指定会话的任务循环。
+     *
+     * @param sessionId 会话ID
+     */
+    public void requestAbort(String sessionId) {
+        LoopCoordinator coordinator = sessionLoopCoordinators.get(sessionId);
+        if (coordinator != null) {
+            coordinator.requestAbort();
         }
     }
 
@@ -982,9 +1046,6 @@ public class DeepAgent {
      * @since 0.1.7
      */
     private void ensureTaskLoopRuntime() {
-        if (loopCoordinator == null) {
-            loopCoordinator = new LoopCoordinator(buildStopEvaluators());
-        }
         if (loopController == null) {
             loopController = new TaskLoopController();
         }
@@ -1051,7 +1112,6 @@ public class DeepAgent {
         ensureTaskLoopRuntime();
         LoopCoordinator coordinator = coordinatorForSession(session);
         coordinator.reset();
-        loopCoordinator = coordinator;
         String sessionId = session != null
                 ? session.getSessionId()
                 : String.valueOf(normalized.getOrDefault("conversation_id", card.getName() + "_session"));
@@ -1075,6 +1135,13 @@ public class DeepAgent {
                 }
                 roundResult.put("mode", currentMode.name().toLowerCase(Locale.ROOT));
                 rounds.add(roundResult);
+                Object roundError = roundResult.get("error");
+                if (roundError != null) {
+                    session.writeStream(new OutputSchema("error", rounds.size(), Map.of(
+                            "output", String.valueOf(roundError),
+                            "result_type", "error"
+                    )));
+                }
 
                 coordinator.incrementIteration();
                 coordinator.addTokenUsage(resolveTokenUsage(roundResult));
@@ -1105,7 +1172,6 @@ public class DeepAgent {
             }
         } finally {
             stopTaskLoopRuntime(session);
-            loopCoordinator = null;
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -1217,7 +1283,7 @@ public class DeepAgent {
                 ? InputEvent.fromUserInput(query)
                 : InputEvent.fromUserInput(Map.of("query", query, "query_payload", query));
         int handlerRound = eventHandler.prepareRound(session.getSessionId(), isFollowUp);
-        String taskId = "deep_agent_task_" + handlerRound;
+        String taskId = "deep_agent_task_" + session.getSessionId() + "_" + handlerRound;
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("_handler_round_id", handlerRound);
         metadata.put("task_id", taskId);
@@ -1318,7 +1384,13 @@ public class DeepAgent {
         innerSession.preRun(effectiveInputs);
         copySessionState(session, innerSession);
         List<Object> streamItems = new ArrayList<>();
-        agent.stream(effectiveInputs, innerSession, List.of(StreamMode.OUTPUT)).forEachRemaining(streamItems::add);
+        agent.stream(effectiveInputs, innerSession, List.of(StreamMode.OUTPUT))
+                .forEachRemaining(chunk -> {
+                    streamItems.add(chunk);
+                    if (chunk instanceof OutputSchema outputSchema) {
+                        session.writeStream(outputSchema);
+                    }
+                });
         copySessionState(innerSession, session);
         Map<String, Object> result = extractFinalStreamResult(streamItems);
         List<Object> normalizedChunks = normalizeStreamChunks(streamItems);
