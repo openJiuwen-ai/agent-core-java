@@ -510,7 +510,7 @@ public final class Runner {
                 if (prepared.agent() instanceof BaseAgent baseAgent) {
                     Iterator<Object> iterator = baseAgent.stream(inputs, prepared.agentSession(), effectiveModes);
                     if (prepared.agentSessionFacade() != null) {
-                        prepared.agentSessionFacade().postRun();
+                        iterator = postRunAfterIterator(iterator, prepared.agentSessionFacade());
                     }
                     return iterator;
                 }
@@ -518,12 +518,48 @@ public final class Runner {
                     Iterator<Object> iterator = legacyAgent.stream(
                             asStringObjectMap(inputs), prepared.agentSession(), effectiveModes);
                     if (prepared.agentSessionFacade() != null) {
-                        prepared.agentSessionFacade().postRun();
+                        iterator = postRunAfterIterator(iterator, prepared.agentSessionFacade());
                     }
                     return iterator;
                 }
                 throw unsupportedAgent(prepared.agent());
             });
+        }
+
+        private static Iterator<Object> postRunAfterIterator(Iterator<Object> delegate, AgentSession session) {
+            return new Iterator<>() {
+                private boolean closed;
+
+                @Override
+                public boolean hasNext() {
+                    boolean hasNext;
+                    try {
+                        hasNext = delegate != null && delegate.hasNext();
+                    } catch (RuntimeException error) {
+                        close();
+                        throw error;
+                    }
+                    if (!hasNext) {
+                        close();
+                    }
+                    return hasNext;
+                }
+
+                @Override
+                public Object next() {
+                    if (!hasNext()) {
+                        throw new NoSuchElementException();
+                    }
+                    return delegate.next();
+                }
+
+                private void close() {
+                    if (!closed) {
+                        session.postRun();
+                        closed = true;
+                    }
+                }
+            };
         }
 
         private CompletionStage<SpawnedProcessHandle> spawnAgent(

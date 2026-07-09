@@ -89,7 +89,7 @@ final class LoopRuntime {
         commit(session);
         Object rawBeforeCleanup = WorkflowSessionSupport.getOutputs(session, WorkflowSessionSupport.componentId(session));
         clearLoopBodyOutputs(session, loopGroup);
-        Object normalizedOutputs = buildLoopOutputs(rawBeforeCleanup, loopTimes);
+        Object normalizedOutputs = buildLoopOutputs(rawBeforeCleanup, loopGroup);
         resetLoopOutputs(session, normalizedOutputs);
         return normalizedOutputs;
     }
@@ -148,25 +148,31 @@ final class LoopRuntime {
         return normalized;
     }
 
-    private static Object buildLoopOutputs(Object outputs, int loopTimes) {
+    private static Object buildLoopOutputs(Object outputs, LoopGroup loopGroup) {
         if (!(outputs instanceof Map<?, ?> outputMap)) {
             return outputs;
         }
         Map<String, Object> normalized = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : outputMap.entrySet()) {
             String key = String.valueOf(entry.getKey());
-            if (BROKEN.equals(key) || "round".equals(key) || "start".equals(key)) {
+            if (BROKEN.equals(key) || "round".equals(key) || "start".equals(key) || "loop".equals(key)
+                    || isLoopBodyNode(key, loopGroup)) {
                 continue;
             }
-            normalized.put(key, entry.getValue());
+            if (Constant.INDEX.equals(key)) {
+                normalized.put(Constant.INDEX, 0);
+            } else {
+                normalized.put(key, entry.getValue());
+            }
         }
-        normalized.put(Constant.INDEX, loopTimes);
-        Map<String, Object> loopState = new LinkedHashMap<>();
-        loopState.put(Constant.INDEX, loopTimes);
-        Map<String, Object> loopEnvelope = new LinkedHashMap<>();
-        loopEnvelope.put("loop", loopState);
-        normalized.put("loop", loopEnvelope);
+        if (outputMap.containsKey(Constant.INDEX) && !normalized.containsKey(Constant.INDEX)) {
+            normalized.put(Constant.INDEX, 0);
+        }
         return normalized;
+    }
+
+    private static boolean isLoopBodyNode(String key, LoopGroup loopGroup) {
+        return loopGroup != null && loopGroup.getNodeIds().contains(key);
     }
 
     private static void resetLoopOutputs(BaseSession session, Object normalizedOutputs) {

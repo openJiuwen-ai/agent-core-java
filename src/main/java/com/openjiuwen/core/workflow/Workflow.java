@@ -52,9 +52,11 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
@@ -80,6 +82,7 @@ public class Workflow {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final ExecutorService STREAM_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
     private static final long SUB_WORKFLOW_STREAM_DRAIN_TIMEOUT_MS = 1000L;
+    private static final String WORKFLOW_INTERACTION_OUTPUTS_KEY = "__workflow_interaction_outputs__";
     private static DecoratorFramework callbackFramework;
 
     private final WorkflowCard card;
@@ -621,6 +624,7 @@ public class Workflow {
                 traceWorkflowStart(workflowSession, executionInputs);
                 Object graphResult = executeCompiledGraph(executionInputs, workflowSession, executionContext, null);
                 finishStreamActorsAfterGraph(workflowSession, graphResult);
+                writeInterruptedOutputChunks(workflowSession, graphResult);
                 finalPayload.set(resolveFinalStreamPayload(workflowSession));
             } catch (Exception e) {
                 executionError.set(wrapWorkflowException(e));
@@ -640,6 +644,9 @@ public class Workflow {
             private boolean done = false;
             private boolean streamClosed = false;
             private WorkflowChunk nextChunk;
+            private final Set<String> seenInteractionIds = new LinkedHashSet<>();
+            private List<WorkflowChunk> rememberedInteractionChunks;
+            private int rememberedInteractionIndex = 0;
 
             @Override
             public boolean hasNext() {
@@ -670,6 +677,10 @@ public class Workflow {
             private WorkflowChunk fetchNextChunk() {
                 if (streamQueue == null) {
                     waitForExecution();
+                    WorkflowChunk rememberedChunk = nextRememberedInteractionChunk();
+                    if (rememberedChunk != null) {
+                        return rememberedChunk;
+                    }
                     if (!finalChunkEmitted && finalPayload.get() != null) {
                         finalChunkEmitted = true;
                         return new OutputSchema("workflow_final", 0, finalPayload.get());
@@ -678,6 +689,10 @@ public class Workflow {
                 }
                 if (streamClosed) {
                     waitForExecution();
+                    WorkflowChunk rememberedChunk = nextRememberedInteractionChunk();
+                    if (rememberedChunk != null) {
+                        return rememberedChunk;
+                    }
                     if (!finalChunkEmitted && finalPayload.get() != null) {
                         finalChunkEmitted = true;
                         return new OutputSchema("workflow_final", 0, finalPayload.get());
@@ -689,6 +704,10 @@ public class Workflow {
                 if (StreamEmitter.END_FRAME.equals(data)) {
                     closeStreamQueue();
                     waitForExecution();
+                    WorkflowChunk rememberedChunk = nextRememberedInteractionChunk();
+                    if (rememberedChunk != null) {
+                        return rememberedChunk;
+                    }
                     if (!finalChunkEmitted && finalPayload.get() != null) {
                         finalChunkEmitted = true;
                         return new OutputSchema("workflow_final", 0, finalPayload.get());
@@ -696,7 +715,28 @@ public class Workflow {
                     return null;
                 }
                 Loggers.SESSION.debug("Stream data received, dataType={}", data.getClass().getSimpleName());
-                return streamDataToWorkflowChunk(data);
+                WorkflowChunk chunk = streamDataToWorkflowChunk(data);
+                rememberInteractionId(chunk);
+                return chunk;
+            }
+
+            private WorkflowChunk nextRememberedInteractionChunk() {
+                if (rememberedInteractionChunks == null) {
+                    rememberedInteractionChunks = rememberedInteractionOutputChunks(workflowSession, seenInteractionIds);
+                }
+                if (rememberedInteractionIndex >= rememberedInteractionChunks.size()) {
+                    return null;
+                }
+                WorkflowChunk chunk = rememberedInteractionChunks.get(rememberedInteractionIndex++);
+                rememberInteractionId(chunk);
+                return chunk;
+            }
+
+            private void rememberInteractionId(Object chunk) {
+                String id = interactionOutputId(chunk);
+                if (id != null) {
+                    seenInteractionIds.add(id);
+                }
             }
 
             private Object receiveNextChunk() {
@@ -804,6 +844,21 @@ public class Workflow {
             }
         };
         return finishWorkflowStream(framework, iterator);
+    }
+
+    private void writeInterruptedOutputChunks(WorkflowRuntimeSession workflowSession, Object graphResult) {
+        if (!isInterrupted(graphResult, List.of())) {
+            return;
+        }
+        StreamWriterManager writerManager = workflowSession.runtimeStreamWriterManager();
+        if (writerManager == null || writerManager.getOutputWriter() == null) {
+            return;
+        }
+        for (Object chunk : resolveInterruptedOutputChunks(workflowSession, graphResult, List.of())) {
+            if (chunk instanceof OutputSchema outputSchema) {
+                writerManager.getOutputWriter().write(outputSchema);
+            }
+        }
     }
 
     public Iterator<WorkflowChunk> stream(Object inputs, Object session, ModelContext context) {
@@ -1591,7 +1646,8 @@ public class Workflow {
         List<Object> interruptChunks = extractInterruptOutputChunks(executionResult);
         if (outputChunks != null && !outputChunks.isEmpty()) {
             if (interruptChunks.isEmpty()) {
-                return restoreInteractionOutputValues(workflowSession, outputChunks);
+                return restoreInteractionOutputValues(workflowSession,
+                        appendRememberedInteractionOutputs(workflowSession, outputChunks));
             }
             List<Object> merged = new ArrayList<>(outputChunks);
             for (Object interruptChunk : interruptChunks) {
@@ -1599,12 +1655,103 @@ public class Workflow {
                     merged.add(interruptChunk);
                 }
             }
-            return restoreInteractionOutputValues(workflowSession, merged);
+            return restoreInteractionOutputValues(workflowSession,
+                    appendRememberedInteractionOutputs(workflowSession, merged));
         }
         if (!interruptChunks.isEmpty()) {
-            return restoreInteractionOutputValues(workflowSession, interruptChunks);
+            return restoreInteractionOutputValues(workflowSession,
+                    appendRememberedInteractionOutputs(workflowSession, interruptChunks));
         }
-        return outputChunks != null ? outputChunks : List.of();
+        return appendRememberedInteractionOutputs(workflowSession, outputChunks != null ? outputChunks : List.of());
+    }
+
+    private List<Object> appendRememberedInteractionOutputs(
+            WorkflowRuntimeSession workflowSession,
+            List<Object> outputChunks) {
+        if (workflowSession == null || workflowSession.state() == null) {
+            return outputChunks;
+        }
+        Object remembered = rememberedInteractionOutputs(workflowSession);
+        if (!(remembered instanceof Iterable<?> iterable)) {
+            return outputChunks;
+        }
+        List<Object> merged = new ArrayList<>(outputChunks);
+        Set<String> seenIds = new LinkedHashSet<>();
+        for (Object chunk : outputChunks) {
+            String id = interactionOutputId(chunk);
+            if (id != null) {
+                seenIds.add(id);
+            }
+        }
+        for (Object item : iterable) {
+            String id = interactionOutputId(item);
+            if (id == null || seenIds.contains(id)) {
+                continue;
+            }
+            seenIds.add(id);
+            merged.add(item);
+        }
+        return merged;
+    }
+
+    private List<WorkflowChunk> rememberedInteractionOutputChunks(
+            WorkflowRuntimeSession workflowSession,
+            Set<String> seenIds) {
+        if (workflowSession == null || workflowSession.state() == null) {
+            return List.of();
+        }
+        Object remembered = rememberedInteractionOutputs(workflowSession);
+        if (!(remembered instanceof Iterable<?> iterable)) {
+            return List.of();
+        }
+        List<WorkflowChunk> chunks = new ArrayList<>();
+        for (Object item : iterable) {
+            String id = interactionOutputId(item);
+            if (id == null || seenIds.contains(id) || !(item instanceof WorkflowChunk workflowChunk)) {
+                continue;
+            }
+            seenIds.add(id);
+            chunks.add(workflowChunk);
+        }
+        return chunks;
+    }
+
+    private Object rememberedInteractionOutputs(WorkflowRuntimeSession workflowSession) {
+        if (workflowSession == null || workflowSession.state() == null) {
+            return null;
+        }
+        Object direct = workflowSession.state().getGlobal(WORKFLOW_INTERACTION_OUTPUTS_KEY);
+        if (direct instanceof Iterable<?>) {
+            return direct;
+        }
+        return findRememberedInteractionOutputs(workflowSession.state().dump());
+    }
+
+    private Object findRememberedInteractionOutputs(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Object direct = map.get(WORKFLOW_INTERACTION_OUTPUTS_KEY);
+        if (direct != null) {
+            return direct;
+        }
+        for (Object child : map.values()) {
+            Object nested = findRememberedInteractionOutputs(child);
+            if (nested != null) {
+                return nested;
+            }
+        }
+        return null;
+    }
+
+    private static String interactionOutputId(Object chunk) {
+        if (!(chunk instanceof OutputSchema outputSchema)
+                || !Constant.INTERACTION.equals(outputSchema.getType())
+                || !(outputSchema.getPayload() instanceof InteractionOutput interactionOutput)
+                || interactionOutput.getId() == null) {
+            return null;
+        }
+        return interactionOutput.getId();
     }
 
     @SuppressWarnings("unchecked")
