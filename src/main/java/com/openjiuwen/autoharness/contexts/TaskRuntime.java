@@ -5,6 +5,7 @@
 package com.openjiuwen.autoharness.contexts;
 
 import com.openjiuwen.autoharness.schema.Experience;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,22 +14,32 @@ import lombok.NoArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Public class TaskRuntime used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class TaskRuntime used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class TaskRuntime {
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Experience> related = new ArrayList<>();
     @Builder.Default
     private String wtPath = "";
     private Object editSafetyRail;
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> preexistingDirtyFiles = new ArrayList<>();
     private Object taskAgent;
     private Object commitAgent;

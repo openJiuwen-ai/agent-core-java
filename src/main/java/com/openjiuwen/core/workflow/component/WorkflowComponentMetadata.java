@@ -10,8 +10,11 @@ import lombok.NoArgsConstructor;
 
 /**
  * Public workflow component metadata model.
- *
- * <p>Mirrors Python's {@code WorkflowComponentMetadata}.</p>
+ * <p>
+ * Mirrors Python's {@code WorkflowComponentMetadata}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor

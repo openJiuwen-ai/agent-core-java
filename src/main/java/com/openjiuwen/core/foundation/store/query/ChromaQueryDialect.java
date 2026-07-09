@@ -28,35 +28,34 @@ import java.util.Map;
  * Query expression support for ChromaDB.
  * <p>
  * Returns {@code Map<String, Map>} with "where" and "where_document" keys.
+ * 
+ * @since 0.1.7
  */
 public final class ChromaQueryDialect {
+    private static final Map<String, String> OPERATOR_MAP =
+        Map.of("==", "$eq", "!=", "$nin", ">", "$gt", ">=", "$gte", "<", "$lt", "<=", "$lte");
 
-    private static final Map<String, String> OPERATOR_MAP = Map.of(
-            "==", "$eq",
-            "!=", "$nin",
-            ">", "$gt",
-            ">=", "$gte",
-            "<", "$lt",
-            "<=", "$lte"
-    );
-
+    /**
+     * ChromaQueryDialect.
+     * 
+     * @since 0.1.7
+     */
     private ChromaQueryDialect() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * definition.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static QueryLanguageDefinition definition() {
-        return QueryLanguageDefinition.builder()
-                .comparison(expr -> comparisonFilter((ComparisonExpr) expr))
+        return QueryLanguageDefinition.builder().comparison(expr -> comparisonFilter((ComparisonExpr) expr))
                 .range(expr -> rangeFilter((RangeExpr) expr))
                 .arithmetic(expr -> arithmeticFilter((ArithmeticExpr) expr))
-                .nullCheck(expr -> nullFilter((NullExpr) expr))
-                .jsonFilter(expr -> jsonFilter((JSONExpr) expr))
-                .array(expr -> arrayFilter((ArrayExpr) expr))
-                .logical(expr -> logicalFilter((LogicalExpr) expr))
-                .textMatch(expr -> textMatchFilter((MatchExpr) expr))
-                .build();
+                .nullCheck(expr -> nullFilter((NullExpr) expr)).jsonFilter(expr -> jsonFilter((JSONExpr) expr))
+                .array(expr -> arrayFilter((ArrayExpr) expr)).logical(expr -> logicalFilter((LogicalExpr) expr))
+                .textMatch(expr -> textMatchFilter((MatchExpr) expr)).build();
     }
 
     @SuppressWarnings("unchecked")
@@ -104,30 +103,26 @@ public final class ChromaQueryDialect {
     }
 
     static Map<String, Map<String, Object>> arithmeticFilter(ArithmeticExpr self) {
-        raiseQueryError(
-                "Chroma does not support arithmetic operations in metadata filters. "
-                        + "Consider pre-computing the arithmetic result and storing it as a metadata field.");
+        raiseQueryError("Chroma does not support arithmetic operations in metadata filters. "
+                + "Consider pre-computing the arithmetic result and storing it as a metadata field.");
         return null; // unreachable
     }
 
     static Map<String, Map<String, Object>> nullFilter(NullExpr self) {
-        raiseQueryError(
-                "Chroma does not support null checks in metadata. "
-                        + "Chroma only supports flat metadata (str, int, float, bool, None).");
+        raiseQueryError("Chroma does not support null checks in metadata. "
+                + "Chroma only supports flat metadata (str, int, float, bool, None).");
         return null; // unreachable
     }
 
     static Map<String, Map<String, Object>> jsonFilter(JSONExpr self) {
-        raiseQueryError(
-                "Chroma does not support nested JSON fields in metadata. "
-                        + "Consider flattening your metadata structure (e.g., 'user.name' -> 'user_name').");
+        raiseQueryError("Chroma does not support nested JSON fields in metadata. "
+                + "Consider flattening your metadata structure (e.g., 'user.name' -> 'user_name').");
         return null; // unreachable
     }
 
     static Map<String, Map<String, Object>> arrayFilter(ArrayExpr self) {
-        raiseQueryError(
-                "Chroma does not support array indexing in metadata. "
-                        + "Consider flattening your array structure (e.g., 'tags[0]' -> 'tag_0').");
+        raiseQueryError("Chroma does not support array indexing in metadata. "
+                + "Consider flattening your array structure (e.g., 'tags[0]' -> 'tag_0').");
         return null; // unreachable
     }
 
@@ -136,15 +131,17 @@ public final class ChromaQueryDialect {
         Map<String, Object> whereFilter = new HashMap<>();
         Map<String, Object> whereDocumentFilter = new HashMap<>();
 
-        Map<String, Map<String, Object>> leftResult = (Map<String, Map<String, Object>>) self.getLeft().toExpr("chroma");
-        Map<String, Map<String, Object>> rightResult = self.getRight() != null
-                ? (Map<String, Map<String, Object>>) self.getRight().toExpr("chroma")
-                : null;
+        Map<String, Map<String, Object>> leftResult =
+            (Map<String, Map<String, Object>>) self.getLeft().toExpr("chroma");
+        Map<String, Map<String, Object>> rightResult =
+            self.getRight() != null ? (Map<String, Map<String, Object>>) self.getRight().toExpr("chroma") : null;
 
         Map<String, Object> leftWhere = leftResult.getOrDefault("where", new HashMap<>());
         Map<String, Object> leftWhereDoc = leftResult.getOrDefault("where_document", new HashMap<>());
-        Map<String, Object> rightWhere = rightResult != null ? rightResult.getOrDefault("where", new HashMap<>()) : new HashMap<>();
-        Map<String, Object> rightWhereDoc = rightResult != null ? rightResult.getOrDefault("where_document", new HashMap<>()) : new HashMap<>();
+        Map<String, Object> rightWhere =
+            rightResult != null ? rightResult.getOrDefault("where", new HashMap<>()) : new HashMap<>();
+        Map<String, Object> rightWhereDoc =
+            rightResult != null ? rightResult.getOrDefault("where_document", new HashMap<>()) : new HashMap<>();
 
         String op = self.getOperator().toLowerCase(Locale.ROOT);
         switch (op) {
@@ -194,6 +191,15 @@ public final class ChromaQueryDialect {
         return Map.of("where", whereFilter, "where_document", whereDocumentFilter);
     }
 
+    /**
+     * combineFilters.
+     * 
+     * @param op op
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> combineFilters(String op, Map<String, Object> left, Map<String, Object> right) {
         if (!left.isEmpty() && !right.isEmpty()) {
             return Map.of(op, List.of(left, right));
@@ -205,8 +211,13 @@ public final class ChromaQueryDialect {
         return new HashMap<>();
     }
 
+    /**
+     * raiseQueryError.
+     * 
+     * @param reason reason
+     * @since 0.1.7
+     */
     private static void raiseQueryError(String reason) {
-        throw ErrorHelper.buildError(StatusCode.RETRIEVAL_VECTOR_STORE_QUERY_INVALID,
-                "reason", reason);
+        throw ErrorHelper.buildError(StatusCode.RETRIEVAL_VECTOR_STORE_QUERY_INVALID, "reason", reason);
     }
 }

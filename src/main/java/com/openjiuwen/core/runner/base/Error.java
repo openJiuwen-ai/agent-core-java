@@ -8,56 +8,73 @@ package com.openjiuwen.core.runner.base;
  * Represents a failed operation result following the Result pattern.
  * <p>
  * Mirrors Python's {@code Error} class.
- *
- * @param <T> the expected success value type
+ * 
+ * @since 0.1.7
  */
 public final class Error<T> implements Result<T> {
-
     private final Exception error;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Error.
+     * 
+     * @param error error
+     * @since 0.1.7
      */
     public Error(Exception error) {
         this.error = error;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * isOk.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean isOk() {
         return false;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * isError.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean isError() {
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public T getValue() {
         throw new UnsupportedOperationException("Error does not contain a value");
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getError.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Exception getError() {
         return error;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String toString() {
         return "Error(" + error + ")";
     }

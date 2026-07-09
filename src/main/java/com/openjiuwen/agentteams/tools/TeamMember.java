@@ -6,19 +6,20 @@ package com.openjiuwen.agentteams.tools;
 
 import com.openjiuwen.agentteams.schema.status.MemberStatus;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Public class TeamMember used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class TeamMember used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class TeamMember {
     private String memberName;

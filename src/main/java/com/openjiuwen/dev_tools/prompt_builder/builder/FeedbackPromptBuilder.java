@@ -4,6 +4,7 @@
 
 package com.openjiuwen.dev_tools.prompt_builder.builder;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -12,6 +13,7 @@ import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.dev_tools.prompt_builder.BasePromptBuilder;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,10 +27,17 @@ import java.util.regex.Pattern;
 
 /**
  * Mirrors Python's {@code openjiuwen.dev_tools.prompt_builder.builder.feedback_prompt_builder.FeedbackPromptBuilder}.
+ * 
+ * @since 0.1.7
  */
 public class FeedbackPromptBuilder extends BasePromptBuilder {
-
     private static final Logger log = LoggerFactory.getLogger(FeedbackPromptBuilder.class);
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private static final String INSERT_STR = "[鐢ㄦ埛瑕佹彃鍏ョ殑浣嶇疆]";
@@ -40,17 +49,26 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
     private Object template;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * FeedbackPromptBuilder.
+     * 
+     * @param modelConfig modelConfig
+     * @param modelClientConfig modelClientConfig
+     * @since 0.1.7
      */
     public FeedbackPromptBuilder(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         super(modelConfig, modelClientConfig);
         this.template = PromptTemplateUtils.selectTemplate("zh-CN");
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * build.
+     * 
+     * @param prompt prompt
+     * @param args args
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public CompletableFuture<String> build(Object prompt, Object... args) {
         return UnwrappedCompletableFuture.supplyAsync(() -> {
             try {
@@ -61,14 +79,11 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
                 }
                 String promptStr = PromptTemplateUtils.getStringPrompt(prompt);
                 isValidPrompt(promptStr, params.feedback);
-                List<Object> messages = formatFeedbackTemplate(
-                        promptStr,
-                        params.feedback,
-                        params.mode,
-                        params.startPos,
-                        params.endPos
-                ).get();
-                AssistantMessage response = model.invoke(messages, null, null, null, null, null, null, null, null, null);
+                List<Object> messages =
+                    formatFeedbackTemplate(promptStr, params.feedback, params.mode, params.startPos, params.endPos)
+                            .get();
+                AssistantMessage response =
+                    model.invoke(messages, null, null, null, null, null, null, null, null, null);
                 return response != null ? response.getContentAsString() : null;
             } catch (Exception exception) {
                 log.error("Error building feedback template", exception);
@@ -77,10 +92,15 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
         });
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * streamBuild.
+     * 
+     * @param prompt prompt
+     * @param args args
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public CompletableFuture<String> streamBuild(Object prompt, Object... args) {
         return UnwrappedCompletableFuture.supplyAsync(() -> {
             try {
@@ -91,13 +111,9 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
                 }
                 String promptStr = PromptTemplateUtils.getStringPrompt(prompt);
                 isValidPrompt(promptStr, params.feedback);
-                List<Object> messages = formatFeedbackTemplate(
-                        promptStr,
-                        params.feedback,
-                        params.mode,
-                        params.startPos,
-                        params.endPos
-                ).get();
+                List<Object> messages =
+                    formatFeedbackTemplate(promptStr, params.feedback, params.mode, params.startPos, params.endPos)
+                            .get();
 
                 StringBuilder result = new StringBuilder();
                 var iterator = model.stream(messages, null, null, null, null, null, null, null, null, null);
@@ -113,6 +129,13 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
         });
     }
 
+    /**
+     * parseBuildParams.
+     * 
+     * @param args args
+     * @return the result
+     * @since 0.1.7
+     */
     private BuildParams parseBuildParams(Object... args) {
         BuildParams params = new BuildParams();
         if (args.length >= 1 && args[0] instanceof String) {
@@ -133,13 +156,19 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
         return params;
     }
 
-    private CompletableFuture<List<Object>> formatFeedbackTemplate(
-            String prompt,
-            String feedback,
-            String mode,
-            Integer startPos,
-            Integer endPos
-    ) {
+    /**
+     * formatFeedbackTemplate.
+     * 
+     * @param prompt prompt
+     * @param feedback feedback
+     * @param mode mode
+     * @param startPos startPos
+     * @param endPos endPos
+     * @return the result
+     * @since 0.1.7
+     */
+    private CompletableFuture<List<Object>> formatFeedbackTemplate(String prompt, String feedback, String mode,
+            Integer startPos, Integer endPos) {
         if (MODE_INSERT.equals(mode)) {
             return formatFeedbackTemplateInsert(prompt, feedback, startPos);
         } else if (MODE_SELECT.equals(mode)) {
@@ -152,25 +181,41 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
         }
     }
 
+    /**
+     * formatFeedbackTemplateGeneral.
+     * 
+     * @param prompt prompt
+     * @param feedback feedback
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> formatFeedbackTemplateGeneral(String prompt, String feedback) {
-        PromptTemplate feedbackGeneralTemplate = PromptTemplateUtils.getTemplate(
-                template,
-                "PROMPT_FEEDBACK_GENERAL_TEMPLATE");
+        PromptTemplate feedbackGeneralTemplate =
+            PromptTemplateUtils.getTemplate(template, "PROMPT_FEEDBACK_GENERAL_TEMPLATE");
         Map<String, Object> formatParams = new HashMap<>();
         formatParams.put("original_prompt", prompt);
         formatParams.put("suggestion", feedback);
         return new ArrayList<>(feedbackGeneralTemplate.format(formatParams).toMessages());
     }
 
-    private CompletableFuture<List<Object>> formatFeedbackTemplateInsert(String prompt, String feedback, Integer startPos) {
+    /**
+     * formatFeedbackTemplateInsert.
+     * 
+     * @param prompt prompt
+     * @param feedback feedback
+     * @param startPos startPos
+     * @return the result
+     * @since 0.1.7
+     */
+    private CompletableFuture<List<Object>> formatFeedbackTemplateInsert(String prompt, String feedback,
+            Integer startPos) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 isIndexWithinBounds(prompt, MODE_INSERT, startPos, null);
                 String optimizedFeedback = isFeedbackValid(prompt, feedback).get();
                 String taggedPrompt = insertString(prompt, startPos);
-                PromptTemplate feedbackInsertTemplate = PromptTemplateUtils.getTemplate(
-                        template,
-                        "PROMPT_FEEDBACK_INSERT_TEMPLATE");
+                PromptTemplate feedbackInsertTemplate =
+                    PromptTemplateUtils.getTemplate(template, "PROMPT_FEEDBACK_INSERT_TEMPLATE");
                 Map<String, Object> formatParams = new HashMap<>();
                 formatParams.put("original_prompt", taggedPrompt);
                 formatParams.put("suggestion", optimizedFeedback);
@@ -181,20 +226,25 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
         });
     }
 
-    private CompletableFuture<List<Object>> formatFeedbackTemplateSelect(
-            String prompt,
-            String feedback,
-            Integer startPos,
-            Integer endPos
-    ) {
+    /**
+     * formatFeedbackTemplateSelect.
+     * 
+     * @param prompt prompt
+     * @param feedback feedback
+     * @param startPos startPos
+     * @param endPos endPos
+     * @return the result
+     * @since 0.1.7
+     */
+    private CompletableFuture<List<Object>> formatFeedbackTemplateSelect(String prompt, String feedback,
+            Integer startPos, Integer endPos) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 isIndexWithinBounds(prompt, MODE_SELECT, startPos, endPos);
                 String optimizedFeedback = isFeedbackValid(prompt, feedback).get();
                 String promptToModify = prompt.substring(startPos, endPos);
-                PromptTemplate feedbackSelectTemplate = PromptTemplateUtils.getTemplate(
-                        template,
-                        "PROMPT_FEEDBACK_SELECT_TEMPLATE");
+                PromptTemplate feedbackSelectTemplate =
+                    PromptTemplateUtils.getTemplate(template, "PROMPT_FEEDBACK_SELECT_TEMPLATE");
                 Map<String, Object> formatParams = new HashMap<>();
                 formatParams.put("original_prompt", prompt);
                 formatParams.put("suggestion", optimizedFeedback);
@@ -206,6 +256,14 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
         });
     }
 
+    /**
+     * insertString.
+     * 
+     * @param prompt prompt
+     * @param insert insert
+     * @return the result
+     * @since 0.1.7
+     */
     private String insertString(String prompt, Integer insert) {
         if (insert == null) {
             return prompt;
@@ -213,17 +271,25 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
         return prompt.substring(0, insert) + INSERT_STR + prompt.substring(insert);
     }
 
+    /**
+     * isFeedbackValid.
+     * 
+     * @param prompt prompt
+     * @param feedback feedback
+     * @return the result
+     * @since 0.1.7
+     */
     private CompletableFuture<String> isFeedbackValid(String prompt, String feedback) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                PromptTemplate feedbackIntentTemplate = PromptTemplateUtils.getTemplate(
-                        template,
-                        "PROMPT_FEEDBACK_INTENT_TEMPLATE");
+                PromptTemplate feedbackIntentTemplate =
+                    PromptTemplateUtils.getTemplate(template, "PROMPT_FEEDBACK_INTENT_TEMPLATE");
                 Map<String, Object> formatParams = new HashMap<>();
                 formatParams.put("original_prompt", prompt);
                 formatParams.put("feedbacks", feedback);
                 List<Object> messages = new ArrayList<>(feedbackIntentTemplate.format(formatParams).toMessages());
-                AssistantMessage feedbackMessage = model.invoke(messages, null, null, null, null, null, null, null, null, null);
+                AssistantMessage feedbackMessage =
+                    model.invoke(messages, null, null, null, null, null, null, null, null, null);
 
                 IntentResult result = extractIntentFromResponses(feedbackMessage.getContentAsString());
                 if (!result.intent || result.optimizedFeedback == null || result.optimizedFeedback.trim().isEmpty()) {
@@ -238,42 +304,66 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
         });
     }
 
+    /**
+     * isIndexWithinBounds.
+     * 
+     * @param prompt prompt
+     * @param mode mode
+     * @param startPos startPos
+     * @param endPos endPos
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isIndexWithinBounds(String prompt, String mode, Integer startPos, Integer endPos) {
         if (MODE_SELECT.equals(mode)) {
             if (startPos == null || endPos == null) {
-                throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR,
-                        "error_msg", "start_pos and end_pos must be provided for select mode");
+                throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR, "error_msg",
+                        "start_pos and end_pos must be provided for select mode");
             }
             if (startPos < 0 || endPos <= startPos || endPos > prompt.length()) {
-                throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR,
-                        "error_msg", "start_pos and end_pos must satisfy: 0 <= start_pos < end_pos <= len(prompt)");
+                throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR, "error_msg",
+                        "start_pos and end_pos must satisfy: 0 <= start_pos < end_pos <= len(prompt)");
             }
             return true;
         } else if (MODE_INSERT.equals(mode)) {
             if (startPos == null) {
-                throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR,
-                        "error_msg", "start_pos must be provided for insert mode");
+                throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR, "error_msg",
+                        "start_pos must be provided for insert mode");
             }
             if (startPos < 0 || startPos > prompt.length()) {
-                throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR,
-                        "error_msg", "start_pos must satisfy: 0 <= start_pos <= len(prompt)");
+                throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR, "error_msg",
+                        "start_pos must satisfy: 0 <= start_pos <= len(prompt)");
             }
             return true;
         }
         return false;
     }
 
+    /**
+     * isValidPrompt.
+     * 
+     * @param prompt prompt
+     * @param feedback feedback
+     * @since 0.1.7
+     */
     private void isValidPrompt(String prompt, String feedback) {
         if (prompt == null || feedback == null) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR,
-                    "error_msg", "prompt or feedback cannot be None");
+            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR, "error_msg",
+                    "prompt or feedback cannot be None");
         }
         if (prompt.trim().isEmpty() || feedback.trim().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR,
-                    "error_msg", "prompt or feedback cannot be empty");
+            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR, "error_msg",
+                    "prompt or feedback cannot be empty");
         }
     }
 
+    /**
+     * extractIntentFromResponses.
+     * 
+     * @param inputJson inputJson
+     * @return the result
+     * @since 0.1.7
+     */
     private IntentResult extractIntentFromResponses(String inputJson) {
         Pattern pattern = Pattern.compile("```json(.{1," + JSON_STRING_MAX_LENGTH + "}?)```", Pattern.DOTALL);
         Matcher match = pattern.matcher(inputJson);
@@ -287,7 +377,7 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
                 boolean intent = "true".equalsIgnoreCase(String.valueOf(intentObj)) || Boolean.TRUE.equals(intentObj);
                 String optimizedFeedback = (String) parsedJson.getOrDefault("optimized_feedback", "");
                 return new IntentResult(intent, optimizedFeedback != null ? optimizedFeedback.trim() : "");
-            } catch (Exception exception) {
+            } catch (JsonProcessingException exception) {
                 log.warn("Error parsing JSON from response", exception);
             }
         }

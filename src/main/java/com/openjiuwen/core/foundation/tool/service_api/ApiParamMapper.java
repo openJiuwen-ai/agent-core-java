@@ -16,9 +16,10 @@ import java.util.Map;
  * default value merging for query, path, and header parameters.
  * <p>
  * Mirrors Python's {@code APIParamMapper}.
+ * 
+ * @since 0.1.7
  */
 public class ApiParamMapper {
-
     private static final String LOCATION_KEY = "location";
     private static final String PROPERTIES_KEY = "properties";
 
@@ -27,16 +28,15 @@ public class ApiParamMapper {
 
     /**
      * Construct a new API parameter mapper.
-     *
-     * @param schema         schema defining parameter locations and properties
+     * 
+     * @param schema schema defining parameter locations and properties
      * @param defaultQueries default query parameters (merged with inputs)
      * @param defaultHeaders default header parameters (merged with inputs)
-     * @param defaultPaths   default path parameters (merged with inputs)
+     * @param defaultPaths default path parameters (merged with inputs)
+     * @since 0.1.7
      */
-    public ApiParamMapper(Map<String, Object> schema,
-                          Map<String, Object> defaultQueries,
-                          Map<String, Object> defaultHeaders,
-                          Map<String, Object> defaultPaths) {
+    public ApiParamMapper(Map<String, Object> schema, Map<String, Object> defaultQueries,
+            Map<String, Object> defaultHeaders, Map<String, Object> defaultPaths) {
         this.schema = schema;
         this.defaults = new EnumMap<>(ApiParamLocation.class);
         this.defaults.put(ApiParamLocation.QUERY, defaultQueries != null ? defaultQueries : Map.of());
@@ -45,18 +45,16 @@ public class ApiParamMapper {
     }
 
     /**
-     * Map input parameters to their respective API locations.
-     *
-     * @param inputs          input parameters to be mapped
-     * @param defaultLocation default location for parameters without explicit location in schema
-     * @return map from {@link ApiParamLocation} to parameters for that location
+     * map.
+     * 
+     * @param inputs inputs
+     * @param defaultLocation defaultLocation
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<ApiParamLocation, Map<String, Object>> map(Map<String, Object> inputs,
-                                                          ApiParamLocation defaultLocation) {
+            ApiParamLocation defaultLocation) {
         Map<ApiParamLocation, Map<String, Object>> result;
 
         if (schema == null) {
@@ -85,15 +83,14 @@ public class ApiParamMapper {
                     } else {
                         location = defaultLocation;
                     }
-                    result.computeIfAbsent(location, k -> new LinkedHashMap<>())
-                            .put(paramName, inputs.get(paramName));
+                    result.computeIfAbsent(location, k -> new LinkedHashMap<>()).put(paramName, inputs.get(paramName));
                 }
             }
         }
 
         // Merge defaults: input values override default values
-        for (ApiParamLocation loc : new ApiParamLocation[]{
-                ApiParamLocation.PATH, ApiParamLocation.QUERY, ApiParamLocation.HEADER}) {
+        for (ApiParamLocation loc : new ApiParamLocation[]{ApiParamLocation.PATH, ApiParamLocation.QUERY,
+                ApiParamLocation.HEADER}) {
             Map<String, Object> merged = new LinkedHashMap<>(defaults.getOrDefault(loc, Map.of()));
             merged.putAll(result.getOrDefault(loc, Map.of()));
             result.put(loc, merged);

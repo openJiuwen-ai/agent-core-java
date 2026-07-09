@@ -20,6 +20,8 @@ import java.util.concurrent.Callable;
 
 /**
  * Coroutine-task data model.
+ * 
+ * @since 0.1.7
  */
 public class Task {
     private static final Logger log = LoggerFactory.getLogger(Task.class);
@@ -46,18 +48,29 @@ public class Task {
 
     @FunctionalInterface
     interface StatusCallback {
+        /**
+         * handle.
+         * 
+         * @param task task
+         * @param status status
+         * @since 0.1.7
+         */
         void handle(Task task, String status);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Task.
+     * 
+     * @param owner owner
+     * @param taskId taskId
+     * @param name name
+     * @param group group
+     * @param timeout timeout
+     * @param metadata metadata
+     * @since 0.1.7
      */
-    public Task(TaskManager owner,
-                String taskId,
-                String name,
-                String group,
-                Double timeout,
-                Map<String, Object> metadata) {
+    public Task(TaskManager owner, String taskId, String name, String group, Double timeout,
+            Map<String, Object> metadata) {
         this.owner = owner;
         this.taskId = taskId;
         this.name = name;
@@ -67,153 +80,216 @@ public class Task {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTaskId() {
         return taskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getGroup.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getGroup() {
         return group;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getParentTaskId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getParentTaskId() {
         return parentTaskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setParentTaskId.
+     * 
+     * @param parentTaskId parentTaskId
+     * @since 0.1.7
      */
     public void setParentTaskId(String parentTaskId) {
         this.parentTaskId = parentTaskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStatus.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TaskStatus getStatus() {
         return status;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTimeout.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Double getTimeout() {
         return timeout;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCreatedAt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Instant getCreatedAt() {
         return createdAt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStartedAt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Instant getStartedAt() {
         return startedAt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFinishedAt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Instant getFinishedAt() {
         return finishedAt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getResult.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getResult() {
         return result;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getException.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Throwable getException() {
         return exception;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMetadata() {
         return new LinkedHashMap<>(metadata);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCancelledBy.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCancelledBy() {
         return cancelledBy;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCancelReason.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCancelReason() {
         return cancelReason;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isTerminal.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isTerminal() {
         return TaskStatus.TERMINAL_STATES.contains(status);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDisplayName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDisplayName() {
         return name != null && !name.isBlank() ? name : taskId.substring(0, Math.min(taskId.length(), 8));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getError.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getError() {
         return exception != null ? exception.getMessage() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setRunningFuture.
+     * 
+     * @param future future
+     * @since 0.1.7
      */
     public synchronized void setRunningFuture(Future<?> future) {
         this.cancelHandle = future;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTimeoutHandle.
+     * 
+     * @param future future
+     * @since 0.1.7
      */
     public synchronized void setTimeoutHandle(Future<?> future) {
         this.timeoutHandle = future;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * waitFor.
+     * 
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public Object waitFor() throws Exception {
         try {
             return doneFuture.get();
         } catch (InterruptedException e) {
-
             throw e;
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
@@ -225,7 +301,13 @@ public class Task {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * cancel.
+     * 
+     * @param isCascade isCascade
+     * @param reason reason
+     * @param cancelledBy cancelledBy
+     * @return the result
+     * @since 0.1.7
      */
     public boolean cancel(boolean isCascade, String reason, String cancelledBy) {
         synchronized (this) {
@@ -250,7 +332,11 @@ public class Task {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * abort.
+     * 
+     * @param reason reason
+     * @return the result
+     * @since 0.1.7
      */
     public boolean abort(String reason) {
         synchronized (this) {
@@ -306,12 +392,13 @@ public class Task {
                 }
             }
         } catch (InterruptedException e) {
-
             synchronized (this) {
                 if (isTimeoutTriggered) {
                     markTimeout();
                 } else if (!isTerminal()) {
                     markCancelled();
+                } else {
+                    // no-op
                 }
             }
         } catch (CancellationException e) {
@@ -320,6 +407,8 @@ public class Task {
                     markTimeout();
                 } else if (!isTerminal()) {
                     markCancelled();
+                } else {
+                    // no-op
                 }
             }
         } catch (Exception e) {
@@ -328,8 +417,8 @@ public class Task {
                 status = TaskStatus.FAILED;
                 finishedAt = Instant.now();
                 doneFuture.completeExceptionally(e);
-                log.info("Task execute failed: taskId={} name={} errorType={} message={}",
-                        taskId, name, e.getClass().getSimpleName(), e.getMessage());
+                log.info("Task execute failed: taskId={} name={} errorType={} message={}", taskId, name,
+                        e.getClass().getSimpleName(), e.getMessage());
                 invokeCallback(callback, "failed");
             }
             // The executor future observes this failure; task waiters use doneFuture.
@@ -342,6 +431,11 @@ public class Task {
         }
     }
 
+    /**
+     * markCancelled.
+     * 
+     * @since 0.1.7
+     */
     private void markCancelled() {
         if (isTerminal()) {
             return;
@@ -355,6 +449,11 @@ public class Task {
         invokeCallback(null, null);
     }
 
+    /**
+     * markTimeout.
+     * 
+     * @since 0.1.7
+     */
     private void markTimeout() {
         if (isTerminal()) {
             return;
@@ -368,6 +467,13 @@ public class Task {
         invokeCallback(null, null);
     }
 
+    /**
+     * invokeCallback.
+     * 
+     * @param callback callback
+     * @param statusName statusName
+     * @since 0.1.7
+     */
     private void invokeCallback(StatusCallback callback, String statusName) {
         if (callback != null && statusName != null) {
             callback.handle(this, statusName);
@@ -377,27 +483,30 @@ public class Task {
             } else if (status == TaskStatus.TIMEOUT) {
                 owner.handleStatus(this, "timeout");
             }
+        } else {
+            // no-op
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hashCode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int hashCode() {
         return Objects.hash(taskId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * equals.
+     * 
+     * @param other other
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean equals(Object other) {
         if (!(other instanceof Task task)) {
             return false;

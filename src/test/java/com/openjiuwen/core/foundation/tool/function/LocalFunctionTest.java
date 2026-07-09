@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.tool.function;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
@@ -15,34 +18,23 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for LocalFunction.
  * Ported from Python: tests/unit_tests/core/foundation/tool/test_tool_decorator.py
  */
 class LocalFunctionTest {
-
     // ============================== Construction tests ==============================
-
     @Nested
     @DisplayName("LocalFunction construction")
     class ConstructionTests {
-
         @Test
         @DisplayName("Create LocalFunction with valid card and function")
         void testValidConstruction() {
-            ToolCard card = ToolCard.builder()
-                    .name("add")
-                    .description("Add two numbers")
-                    .inputParams(Map.of(
-                            "type", "object",
-                            "properties", Map.of(
-                                    "a", Map.of("type", "integer", "description", "first arg"),
-                                    "b", Map.of("type", "integer", "description", "second arg")
-                            ),
-                            "required", new String[]{"a", "b"}
-                    ))
+            ToolCard card = ToolCard.builder().name("add").description("Add two numbers")
+                    .inputParams(Map.of("type", "object", "properties",
+                            Map.of("a", Map.of("type", "integer", "description", "first arg"), "b",
+                                    Map.of("type", "integer", "description", "second arg")),
+                            "required", new String[]{"a", "b"}))
                     .build();
 
             LocalFunction tool = new LocalFunction(card, inputs -> {
@@ -59,10 +51,7 @@ class LocalFunctionTest {
         @Test
         @DisplayName("Constructor with null func throws exception")
         void testNullFuncThrows() {
-            ToolCard card = ToolCard.builder()
-                    .name("test")
-                    .description("test")
-                    .build();
+            ToolCard card = ToolCard.builder().name("test").description("test").build();
 
             assertThrows(Throwable.class,
                     () -> new LocalFunction(card, (java.util.function.Function<Map<String, Object>, Object>) null));
@@ -77,10 +66,7 @@ class LocalFunctionTest {
         @Test
         @DisplayName("getFunc returns wrapped function")
         void testGetFunc() {
-            ToolCard card = ToolCard.builder()
-                    .name("test")
-                    .description("test")
-                    .build();
+            ToolCard card = ToolCard.builder().name("test").description("test").build();
 
             java.util.function.Function<Map<String, Object>, Object> func = inputs -> "hello";
             LocalFunction tool = new LocalFunction(card, func);
@@ -93,21 +79,14 @@ class LocalFunctionTest {
     @Nested
     @DisplayName("Invoke tests")
     class InvokeTests {
-
         @Test
         @DisplayName("Invoke subtraction function returns correct result")
         void testInvokeSubtraction() throws Exception {
-            ToolCard card = ToolCard.builder()
-                    .name("local_sub")
-                    .description("local function for sub")
-                    .inputParams(Map.of(
-                            "type", "object",
-                            "properties", Map.of(
-                                    "a", Map.of("description", "first arg", "type", "integer"),
-                                    "b", Map.of("description", "second arg", "type", "integer")
-                            ),
-                            "required", new String[]{"a", "b"}
-                    ))
+            ToolCard card = ToolCard.builder().name("local_sub").description("local function for sub")
+                    .inputParams(Map.of("type", "object", "properties",
+                            Map.of("a", Map.of("description", "first arg", "type", "integer"), "b",
+                                    Map.of("description", "second arg", "type", "integer")),
+                            "required", new String[]{"a", "b"}))
                     .build();
 
             LocalFunction sub = new LocalFunction(card, inputs -> {
@@ -126,10 +105,7 @@ class LocalFunctionTest {
         @Test
         @DisplayName("Invoke addition function returns correct result")
         void testInvokeAddition() throws Exception {
-            ToolCard card = ToolCard.builder()
-                    .name("add")
-                    .description("Add two numbers")
-                    .build();
+            ToolCard card = ToolCard.builder().name("add").description("Add two numbers").build();
 
             LocalFunction add = new LocalFunction(card, inputs -> {
                 int a = ((Number) inputs.get("a")).intValue();
@@ -144,10 +120,7 @@ class LocalFunctionTest {
         @Test
         @DisplayName("Invoke with complex input returns correct result")
         void testInvokeComplexInput() throws Exception {
-            ToolCard card = ToolCard.builder()
-                    .name("summarize")
-                    .description("汇总商品信息")
-                    .build();
+            ToolCard card = ToolCard.builder().name("summarize").description("汇总商品信息").build();
 
             LocalFunction summarize = new LocalFunction(card, inputs -> {
                 @SuppressWarnings("unchecked")
@@ -159,13 +132,9 @@ class LocalFunctionTest {
                 return total;
             });
 
-            Map<String, Object> input = Map.of(
-                    "title", "水果信息汇总",
-                    "products", List.of(
-                            Map.of("name", "苹果", "sales", 2, "price", 1.5),
-                            Map.of("name", "香蕉", "sales", 4, "price", 1.0)
-                    )
-            );
+            Map<String, Object> input =
+                Map.of("title", "水果信息汇总", "products", List.of(Map.of("name", "苹果", "sales", 2, "price", 1.5),
+                        Map.of("name", "香蕉", "sales", 4, "price", 1.0)));
 
             Object result = summarize.invoke(input);
             assertEquals(7.0, result);
@@ -174,20 +143,13 @@ class LocalFunctionTest {
         @Test
         @DisplayName("toolInfo returns correct ToolInfo from card")
         void testToolInfo() {
-            Map<String, Object> inputParams = Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "a", Map.of("description", "first arg", "type", "integer"),
-                            "b", Map.of("description", "second arg", "type", "integer")
-                    ),
-                    "required", new String[]{"a", "b"}
-            );
+            Map<String, Object> inputParams = Map.of("type", "object", "properties",
+                    Map.of("a", Map.of("description", "first arg", "type", "integer"), "b",
+                            Map.of("description", "second arg", "type", "integer")),
+                    "required", new String[]{"a", "b"});
 
-            ToolCard card = ToolCard.builder()
-                    .name("local_sub")
-                    .description("local function for sub")
-                    .inputParams(inputParams)
-                    .build();
+            ToolCard card = ToolCard.builder().name("local_sub").description("local function for sub")
+                    .inputParams(inputParams).build();
 
             LocalFunction sub = new LocalFunction(card, inputs -> 0);
 
@@ -203,14 +165,10 @@ class LocalFunctionTest {
     @Nested
     @DisplayName("Stream tests")
     class StreamTests {
-
         @Test
         @DisplayName("Stream rejects non-generator functions")
         void testStreamSingleResult() {
-            ToolCard card = ToolCard.builder()
-                    .name("test")
-                    .description("test")
-                    .build();
+            ToolCard card = ToolCard.builder().name("test").description("test").build();
 
             LocalFunction tool = new LocalFunction(card, inputs -> "single result");
             assertThrows(Throwable.class, () -> tool.stream(Map.of()));
@@ -219,10 +177,7 @@ class LocalFunctionTest {
         @Test
         @DisplayName("Stream returns Iterator directly if function returns Iterator")
         void testStreamReturnsIteratorDirectly() throws Exception {
-            ToolCard card = ToolCard.builder()
-                    .name("test")
-                    .description("test")
-                    .build();
+            ToolCard card = ToolCard.builder().name("test").description("test").build();
 
             List<Object> items = List.of("a", "b", "c");
             LocalFunction tool = new LocalFunction(card, inputs -> items.iterator());
@@ -238,10 +193,7 @@ class LocalFunctionTest {
         @Test
         @DisplayName("Stream converts Iterable to iterator")
         void testStreamConvertsIterable() throws Exception {
-            ToolCard card = ToolCard.builder()
-                    .name("test")
-                    .description("test")
-                    .build();
+            ToolCard card = ToolCard.builder().name("test").description("test").build();
 
             List<Object> items = List.of(1, 2, 3);
             LocalFunction tool = new LocalFunction(card, inputs -> items);

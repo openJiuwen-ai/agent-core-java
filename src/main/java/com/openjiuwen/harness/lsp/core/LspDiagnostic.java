@@ -10,13 +10,13 @@ import lombok.NoArgsConstructor;
 
 import java.util.Map;
 
-@Data
-@NoArgsConstructor
 /**
  * Public class LspDiagnostic used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
+@Data
+@NoArgsConstructor
 @AllArgsConstructor
 public class LspDiagnostic {
     private String serverName;

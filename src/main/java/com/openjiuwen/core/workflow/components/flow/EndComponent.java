@@ -13,25 +13,34 @@ import java.util.Map;
  * Alias for {@link End} — exit point component of the workflow.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.end_comp.End}.
+ * 
+ * @since 0.1.7
  */
 public class EndComponent extends End {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * EndComponent.
+     * 
+     * @since 0.1.7
      */
     public EndComponent() {
         super((EndConfig) null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EndComponent.
+     * 
+     * @param confMap confMap
+     * @since 0.1.7
      */
     public EndComponent(Map<String, Object> confMap) {
         super(confMap);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EndComponent.
+     * 
+     * @param conf conf
+     * @since 0.1.7
      */
     public EndComponent(EndConfig conf) {
         super(conf);

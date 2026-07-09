@@ -15,65 +15,108 @@ import java.util.Map;
  * Complete specification of a workflow structure.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.workflow_config.WorkflowSpec}.
+ * 
+ * @since 0.1.7
  */
 public class WorkflowSpec {
-
     private Map<String, List<String>> edges = new HashMap<>();
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, List<String>> streamEdges = new HashMap<>();
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, NodeConfig> compConfigs = new HashMap<>();
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> startNodes = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEdges.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, List<String>> getEdges() {
         return edges;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEdges.
+     * 
+     * @param edges edges
+     * @since 0.1.7
      */
     public void setEdges(Map<String, List<String>> edges) {
         this.edges = edges;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStreamEdges.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, List<String>> getStreamEdges() {
         return streamEdges;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStreamEdges.
+     * 
+     * @param streamEdges streamEdges
+     * @since 0.1.7
      */
     public void setStreamEdges(Map<String, List<String>> streamEdges) {
         this.streamEdges = streamEdges;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCompConfigs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, NodeConfig> getCompConfigs() {
         return compConfigs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCompConfigs.
+     * 
+     * @param compConfigs compConfigs
+     * @since 0.1.7
      */
     public void setCompConfigs(Map<String, NodeConfig> compConfigs) {
         this.compConfigs = compConfigs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStartNodes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getStartNodes() {
         return startNodes;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStartNodes.
+     * 
+     * @param startNodes startNodes
+     * @since 0.1.7
      */
     public void setStartNodes(List<String> startNodes) {
         this.startNodes = startNodes;

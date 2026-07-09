@@ -1,6 +1,10 @@
+
 package com.openjiuwen.core.memory.lite;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.harness.workspace.Workspace;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -8,10 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class MemoryLiteTest {
-
     @TempDir
     Path tempDir;
 
@@ -23,14 +24,8 @@ class MemoryLiteTest {
         Files.writeString(root.resolve("memory").resolve("2026-05-09.md"), "today we shipped release pipeline");
 
         Workspace workspace = Workspace.builder().rootPath(root.toString()).build();
-        MemoryIndexManager manager = MemoryIndexManager.get(new MemoryManagerParams(
-                "agent-a",
-                workspace,
-                new MemorySettings(),
-                null,
-                null,
-                "memory"
-        ));
+        MemoryIndexManager manager = MemoryIndexManager
+                .get(new MemoryManagerParams("agent-a", workspace, new MemorySettings(), null, null, "memory"));
 
         var results = manager.search("release", Map.of("max_results", 5, "min_score", 0.2));
         assertThat(results).isNotEmpty();
@@ -42,14 +37,7 @@ class MemoryLiteTest {
         Path root = tempDir.resolve("workspace-tools");
         Files.createDirectories(root.resolve("memory"));
         Workspace workspace = Workspace.builder().rootPath(root.toString()).build();
-        MemoryToolContext ctx = new MemoryToolContext(
-                workspace,
-                new MemorySettings(),
-                "agent-b",
-                null,
-                null,
-                null
-        );
+        MemoryToolContext ctx = new MemoryToolContext(workspace, new MemorySettings(), "agent-b", null, null, null);
 
         var write = MemoryToolOps.writeMemoryWithContext(ctx, "MEMORY.md", "prefers regression tests", false);
         var read = MemoryToolOps.readMemoryWithContext(ctx, "MEMORY.md", null, null);
@@ -65,15 +53,8 @@ class MemoryLiteTest {
         Path root = tempDir.resolve("workspace-coding");
         Files.createDirectories(root.resolve("coding_memory"));
         Workspace workspace = Workspace.builder().rootPath(root.toString()).build();
-        CodingMemoryToolContext ctx = new CodingMemoryToolContext(
-                workspace,
-                new MemorySettings(),
-                "agent-c",
-                null,
-                null,
-                null,
-                root.resolve("coding_memory").toString()
-        );
+        CodingMemoryToolContext ctx = new CodingMemoryToolContext(workspace, new MemorySettings(), "agent-c", null,
+                null, null, root.resolve("coding_memory").toString());
 
         String content = """
                 ---
@@ -86,7 +67,8 @@ class MemoryLiteTest {
                 """;
 
         var write = CodingMemoryToolOps.codingMemoryWriteWithContext(ctx, "build-cache.md", content);
-        var edit = CodingMemoryToolOps.codingMemoryEditWithContext(ctx, "build-cache.md", "enable gradle cache", "enable remote gradle cache");
+        var edit = CodingMemoryToolOps.codingMemoryEditWithContext(ctx, "build-cache.md", "enable gradle cache",
+                "enable remote gradle cache");
         var read = CodingMemoryToolOps.codingMemoryReadWithContext(ctx, "build-cache.md", null, null);
 
         assertThat(write.get("success")).isEqualTo(true);

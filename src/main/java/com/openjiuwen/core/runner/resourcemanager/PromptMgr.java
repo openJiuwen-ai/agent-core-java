@@ -14,13 +14,18 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * Unlike other managers, PromptMgr stores instances directly (not providers).
  * Mirrors Python's {@code PromptMgr} in {@code resources_manager/prompt_manager.py}.
+ * 
+ * @since 0.1.7
  */
 public class PromptMgr {
-
     private final ConcurrentHashMap<String, PromptTemplate> repo = new ConcurrentHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addPrompt.
+     * 
+     * @param templateId templateId
+     * @param template template
+     * @since 0.1.7
      */
     public void addPrompt(String templateId, PromptTemplate template) {
         if (templateId == null) {
@@ -33,7 +38,10 @@ public class PromptMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addPrompts.
+     * 
+     * @param templates templates
+     * @since 0.1.7
      */
     public void addPrompts(List<PromptEntry> templates) {
         if (templates == null) {
@@ -45,7 +53,11 @@ public class PromptMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removePrompt.
+     * 
+     * @param templateId templateId
+     * @return the result
+     * @since 0.1.7
      */
     public PromptTemplate removePrompt(String templateId) {
         return repo.remove(templateId);
@@ -53,13 +65,19 @@ public class PromptMgr {
 
     /**
      * Clear all registered prompts.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         repo.clear();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPrompt.
+     * 
+     * @param templateId templateId
+     * @return the result
+     * @since 0.1.7
      */
     public PromptTemplate getPrompt(String templateId) {
         if (templateId == null) {
@@ -68,6 +86,11 @@ public class PromptMgr {
         return repo.get(templateId);
     }
 
+    /**
+     * PromptEntry.
+     * 
+     * @since 0.1.7
+     */
     public record PromptEntry(String id, PromptTemplate template) {
     }
 }

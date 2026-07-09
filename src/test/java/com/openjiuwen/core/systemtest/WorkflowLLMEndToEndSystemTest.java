@@ -1,7 +1,12 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
@@ -28,10 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-
 /**
  * End-to-end integration test combining Workflow + LLM invocation.
  * A custom WorkflowComponent calls the real LLM API.
@@ -39,27 +40,16 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  */
 @Tag("system-test")
 class WorkflowLLMEndToEndSystemTest {
-
     private static Model model;
 
     @BeforeAll
     static void setUp() {
-        ModelClientConfig clientConfig = ModelClientConfig.builder()
-                .clientProvider(ApiConfigLoader.getModelProvider())
-                .apiKey(ApiConfigLoader.getApiKey())
-                .apiBase(ApiConfigLoader.getApiBase())
-                .timeout(120.0)
-                .maxRetries(2)
-                .verifySsl(ApiConfigLoader.getSslVerify())
-                .sslCert(ApiConfigLoader.getSslCert())
-                .build();
+        ModelClientConfig clientConfig = ModelClientConfig.builder().clientProvider(ApiConfigLoader.getModelProvider())
+                .apiKey(ApiConfigLoader.getApiKey()).apiBase(ApiConfigLoader.getApiBase()).timeout(120.0).maxRetries(2)
+                .verifySsl(ApiConfigLoader.getSslVerify()).sslCert(ApiConfigLoader.getSslCert()).build();
 
-        ModelRequestConfig requestConfig = ModelRequestConfig.builder()
-                .modelName(ApiConfigLoader.getModelName())
-                .temperature(0.7)
-                .topP(0.9)
-                .maxTokens(512)
-                .build();
+        ModelRequestConfig requestConfig = ModelRequestConfig.builder().modelName(ApiConfigLoader.getModelName())
+                .temperature(0.7).topP(0.9).maxTokens(512).build();
 
         model = new Model(clientConfig, requestConfig);
     }
@@ -82,8 +72,8 @@ class WorkflowLLMEndToEndSystemTest {
                 String query = (String) inputMap.get("query");
 
                 List<UserMessage> messages = List.of(new UserMessage(query));
-                AssistantMessage response = llmModel.invoke(
-                        messages, null, 0.7f, 0.9f, null, 256, null, null, null, null);
+                AssistantMessage response =
+                    llmModel.invoke(messages, null, 0.7f, 0.9f, null, 256, null, null, null, null);
 
                 String content = response != null ? response.getContentAsString() : "无回复";
                 return Map.of("answer", content != null ? content : "无内容");
@@ -113,25 +103,18 @@ class WorkflowLLMEndToEndSystemTest {
     @Test
     @DisplayName("End-to-end: Workflow with real LLM call")
     void testWorkflowWithLLMCall() {
-        WorkflowCard card = WorkflowCard.builder()
-                .id("llm-workflow")
-                .name("LLM Query Workflow")
-                .description("Workflow that queries an LLM")
-                .build();
+        WorkflowCard card = WorkflowCard.builder().id("llm-workflow").name("LLM Query Workflow")
+                .description("Workflow that queries an LLM").build();
 
         Workflow flow = new Workflow(card);
-        flow.setStartComp("start", new Start(),
-                Map.of("query", "${query}"), null);
-        flow.addWorkflowComp("llm", new LLMCallerComponent(model),
-                Map.of("query", "${start.query}"), null);
-        flow.setEndComp("end", new End(Map.of(
-                        "responseTemplate", "问题：{{query}}，回答：{{answer}}")),
+        flow.setStartComp("start", new Start(), Map.of("query", "${query}"), null);
+        flow.addWorkflowComp("llm", new LLMCallerComponent(model), Map.of("query", "${start.query}"), null);
+        flow.setEndComp("end", new End(Map.of("responseTemplate", "问题：{{query}}，回答：{{answer}}")),
                 Map.of("query", "${start.query}", "answer", "${llm.answer}"), null);
         flow.addConnection("start", "llm");
         flow.addConnection("llm", "end");
 
-        WorkflowOutput output = flow.invoke(
-                Map.of("query", "1加1等于几？"), newSession(), null);
+        WorkflowOutput output = flow.invoke(Map.of("query", "1加1等于几？"), newSession(), null);
 
         assertEquals(WorkflowExecutionState.COMPLETED, output.getState());
         assertNotNull(output.getResult());
@@ -144,21 +127,17 @@ class WorkflowLLMEndToEndSystemTest {
     @DisplayName("End-to-end: Multi-step workflow with LLM and transformation")
     void testMultiStepWorkflowWithLLM() {
         Workflow flow = new Workflow();
-        flow.setStartComp("start", new Start(),
-                Map.of("query", "${query}"), null);
-        flow.addWorkflowComp("llm", new LLMCallerComponent(model),
-                Map.of("query", "${start.query}"), null);
-        flow.addWorkflowComp("transform", new UpperCaseComponent(),
-                Map.of("text", "${llm.answer}"), null);
-        flow.setEndComp("end", new End(),
-                Map.of("answer", "${llm.answer}", "transformed", "${transform.result}"), null);
+        flow.setStartComp("start", new Start(), Map.of("query", "${query}"), null);
+        flow.addWorkflowComp("llm", new LLMCallerComponent(model), Map.of("query", "${start.query}"), null);
+        flow.addWorkflowComp("transform", new UpperCaseComponent(), Map.of("text", "${llm.answer}"), null);
+        flow.setEndComp("end", new End(), Map.of("answer", "${llm.answer}", "transformed", "${transform.result}"),
+                null);
 
         flow.addConnection("start", "llm");
         flow.addConnection("llm", "transform");
         flow.addConnection("transform", "end");
 
-        WorkflowOutput output = flow.invoke(
-                Map.of("query", "用英文说hello"), newSession(), null);
+        WorkflowOutput output = flow.invoke(Map.of("query", "用英文说hello"), newSession(), null);
 
         assertEquals(WorkflowExecutionState.COMPLETED, output.getState());
         assertNotNull(output.getResult());

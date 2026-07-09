@@ -12,17 +12,22 @@ import lombok.NoArgsConstructor;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Public class VerifyReportArtifact used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class VerifyReportArtifact used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class VerifyReportArtifact {
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> ciResult = new LinkedHashMap<>();
     @Builder.Default
     private String fixErrors = "";
@@ -30,5 +35,4 @@ public class VerifyReportArtifact {
     private boolean isReverted = false;
     @Builder.Default
     private String error = "";
-
 }

@@ -17,13 +17,18 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Builds ACE playbook delta operations from the reflection payload.
+ * 
+ * @since 0.1.7
  */
 public class CurateOp extends BaseOp {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * asyncExecute.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
         String matts = context.getString("matts", "none");
         if (!"none".equals(matts) && !"sequential".equals(matts)) {
@@ -56,10 +61,8 @@ public class CurateOp extends BaseOp {
                     continue;
                 }
 
-                String section = SchemaUtils.stringValue(
-                    candidate.get("section"),
-                    AceUtils.guessSection(context.getString("query", ""), content)
-                );
+                String section = SchemaUtils.stringValue(candidate.get("section"),
+                        AceUtils.guessSection(context.getString("query", ""), content));
                 String tag = normalizeTag(SchemaUtils.stringValue(candidate.get("tag"), "helpful"));
                 Playbook.Bullet existingBullet = findMatchingBullet(playbook, content);
 
@@ -89,6 +92,14 @@ public class CurateOp extends BaseOp {
         return CompletableFuture.completedFuture(null);
     }
 
+    /**
+     * findMatchingBullet.
+     * 
+     * @param playbook playbook
+     * @param content content
+     * @return the result
+     * @since 0.1.7
+     */
     private static Playbook.Bullet findMatchingBullet(Playbook playbook, String content) {
         String normalizedContent = AceUtils.normalizeForMatch(content);
         for (Playbook.Bullet bullet : playbook.bullets()) {
@@ -99,6 +110,13 @@ public class CurateOp extends BaseOp {
         return null;
     }
 
+    /**
+     * normalizeTag.
+     * 
+     * @param tag tag
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizeTag(String tag) {
         String upper = tag != null ? tag.toLowerCase(Locale.ROOT) : "helpful";
         return switch (upper) {

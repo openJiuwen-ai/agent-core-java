@@ -17,10 +17,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link #register(String, ObjectStorageProvider)}.
  * <p>
  * Calling point: attachment handling, large object persistence, etc.
- *
+ * 
  * @see ObjectStorageProvider
  * @see BaseObjectStorageClient
- * @since 0.1.12
+ * @since 0.1.7
  */
 public final class ObjectStorageFactory {
     private static final Map<String, ObjectStorageProvider> REGISTRY = new ConcurrentHashMap<>();
@@ -32,14 +32,20 @@ public final class ObjectStorageFactory {
         }
     }
 
+    /**
+     * ObjectStorageFactory.
+     * 
+     * @since 0.1.7
+     */
     private ObjectStorageFactory() {
     }
 
     /**
      * Register an object storage provider for a given type name.
-     *
-     * @param type     the storage type name (e.g. "obs", "s3", "minio")
+     * 
+     * @param type the storage type name (e.g. "obs", "s3", "minio")
      * @param provider the provider that creates BaseObjectStorageClient instances
+     * @since 0.1.7
      */
     public static void register(String type, ObjectStorageProvider provider) {
         REGISTRY.put(type, provider);
@@ -47,26 +53,26 @@ public final class ObjectStorageFactory {
 
     /**
      * Create an object storage client from a type and configuration.
-     *
+     * 
      * @param type the storage type
      * @param conf the configuration map
      * @return a new BaseObjectStorageClient instance
-     * @throws IllegalArgumentException if no provider is registered for the type
+     * @since 0.1.7
      */
     public static BaseObjectStorageClient create(String type, Map<String, Object> conf) {
         ObjectStorageProvider provider = REGISTRY.get(type);
         if (provider == null) {
-            throw new IllegalArgumentException(
-                    "No object storage provider registered for type: " + type);
+            throw new IllegalArgumentException("No object storage provider registered for type: " + type);
         }
         return provider.create(conf != null ? conf : Map.of());
     }
 
     /**
      * Check whether a provider is registered for the given type.
-     *
+     * 
      * @param type the storage type name
      * @return true if a provider exists
+     * @since 0.1.7
      */
     public static boolean hasProvider(String type) {
         return type != null && REGISTRY.containsKey(type);

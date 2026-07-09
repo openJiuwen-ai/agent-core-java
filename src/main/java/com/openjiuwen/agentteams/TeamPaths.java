@@ -9,41 +9,59 @@ import java.nio.file.Paths;
 
 /**
  * Shared filesystem path helpers for agent teams.
- *
- * <p>Single source of truth for the on-disk layout used by team workspaces,
+ * <p>
+ * Single source of truth for the on-disk layout used by team workspaces,
  * member workspaces, and the default sqlite db. Centralizing it here keeps
- * creation and cleanup in sync.</p>
+ * creation and cleanup in sync.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public final class TeamPaths {
-
     private static volatile Path configuredOpenjiuwenHome;
 
+    /**
+     * TeamPaths.
+     * 
+     * @since 0.1.7
+     */
     private TeamPaths() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * configureOpenjiuwenHome.
+     * 
+     * @param path path
+     * @since 0.1.7
      */
     public static void configureOpenjiuwenHome(String path) {
         configuredOpenjiuwenHome = Paths.get(path);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * configureOpenjiuwenHome.
+     * 
+     * @param path path
+     * @since 0.1.7
      */
     public static void configureOpenjiuwenHome(Path path) {
         configuredOpenjiuwenHome = path;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resetOpenjiuwenHome.
+     * 
+     * @since 0.1.7
      */
     public static void resetOpenjiuwenHome() {
         configuredOpenjiuwenHome = null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOpenjiuwenHome.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Path getOpenjiuwenHome() {
         if (configuredOpenjiuwenHome != null) {
@@ -53,28 +71,43 @@ public final class TeamPaths {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentTeamsHome.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Path getAgentTeamsHome() {
         return getOpenjiuwenHome().resolve(".agent_teams");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * teamHome.
+     * 
+     * @param teamName teamName
+     * @return the result
+     * @since 0.1.7
      */
     public static Path teamHome(String teamName) {
         return getAgentTeamsHome().resolve(teamName);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * independentMemberWorkspace.
+     * 
+     * @param memberName memberName
+     * @return the result
+     * @since 0.1.7
      */
     public static Path independentMemberWorkspace(String memberName) {
         return getOpenjiuwenHome().resolve(memberName + "_workspace");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * teamMemoryDir.
+     * 
+     * @param teamName teamName
+     * @return the result
+     * @since 0.1.7
      */
     public static Path teamMemoryDir(String teamName) {
         return teamHome(teamName).resolve("team-workspace").resolve("team-memory");

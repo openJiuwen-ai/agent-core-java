@@ -9,27 +9,49 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
-
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Utilities to parse JSON and structured content from LLM responses.
+ * 
+ * @since 0.1.7
  */
 public final class ParseResponse {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern REGEX_FIND_JSON_START = Pattern.compile("[\\[{]");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern REGEX_FIND_CODE_BLOCK = Pattern.compile("(?s)```([A-Za-z]*)\\s*\\n(.*?)```");
 
+    /**
+     * ParseResponse.
+     * 
+     * @since 0.1.7
+     */
     private ParseResponse() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseJson.
+     * 
+     * @param response response
+     * @param outputSchema outputSchema
+     * @return the result
+     * @since 0.1.7
      */
     public static Object parseJson(String response, Map<String, Object> outputSchema) {
         List<String> mustContainKeys = null;
@@ -44,6 +66,8 @@ public final class ParseResponse {
                     if (nestedRequired instanceof List<?> list) {
                         mustContainKeys = list.stream().map(String::valueOf).toList();
                     }
+                } else {
+                    // no-op
                 }
             }
         }
@@ -63,7 +87,12 @@ public final class ParseResponse {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * rawDecodeJson.
+     * 
+     * @param response response
+     * @param mustContainKeys mustContainKeys
+     * @return the result
+     * @since 0.1.7
      */
     public static Object rawDecodeJson(String response, List<String> mustContainKeys) {
         List<String> candidates = new ArrayList<>();
@@ -87,7 +116,12 @@ public final class ParseResponse {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * tryGetKey.
+     * 
+     * @param key key
+     * @param source source
+     * @return the result
+     * @since 0.1.7
      */
     public static Object tryGetKey(String key, Map<String, Object> source) {
         String normalizedKey = normalizeToken(key);
@@ -106,12 +140,13 @@ public final class ParseResponse {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ensureList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static List<Object> ensureList(Object value) {
         if (value instanceof List<?> list) {
             return new ArrayList<>(list);
@@ -125,15 +160,31 @@ public final class ParseResponse {
         return List.of(value);
     }
 
+    /**
+     * tryParse.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object tryParse(String content) {
         try {
-            return MAPPER.readValue(content, new TypeReference<Object>() { });
+            return MAPPER.readValue(content, new TypeReference<Object>() {
+            });
         } catch (JsonProcessingException ignored) {
             return null;
         }
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * normalizeRequiredKeys.
+     * 
+     * @param parsed parsed
+     * @param mustContainKeys mustContainKeys
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object normalizeRequiredKeys(Object parsed, List<String> mustContainKeys) {
         if (parsed == null) {
             return null;
@@ -154,6 +205,13 @@ public final class ParseResponse {
         return result;
     }
 
+    /**
+     * normalizeToken.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizeToken(String value) {
         return value == null ? "" : value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "");
     }

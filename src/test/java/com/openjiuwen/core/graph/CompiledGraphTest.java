@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.graph;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.graph.pregel.Pregel;
@@ -13,21 +16,18 @@ import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.InMemoryState;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link CompiledGraph}.
  */
 class CompiledGraphTest {
-
     @Test
     @DisplayName("invoke commits user inputs and calls workflow checkpoint hooks")
     void testInvokeCommitsUserInputsAndRunsCheckpointHooks() {
@@ -37,9 +37,7 @@ class CompiledGraphTest {
 
         CompiledGraph graph = new CompiledGraph(pregel, checkpointer);
 
-        Map<String, Object> result = graph.invoke(
-                Map.of(Constant.INPUTS_KEY, Map.of("question", "hello")),
-                session);
+        Map<String, Object> result = graph.invoke(Map.of(Constant.INPUTS_KEY, Map.of("question", "hello")), session);
 
         assertEquals(Map.of("result", 1), result);
         assertEquals(List.of("pre", "post"), checkpointer.calls);
@@ -59,8 +57,8 @@ class CompiledGraphTest {
         CompiledGraph graph = new CompiledGraph(pregel, checkpointer);
         InteractiveInput inputs = new InteractiveInput("resume");
 
-        RuntimeException error = assertThrows(RuntimeException.class,
-                () -> graph.invoke(Map.of(Constant.INPUTS_KEY, inputs), session));
+        RuntimeException error =
+            assertThrows(RuntimeException.class, () -> graph.invoke(Map.of(Constant.INPUTS_KEY, inputs), session));
 
         assertInstanceOf(IllegalStateException.class, error.getCause());
         assertSame(inputs, checkpointer.preWorkflowInputs);

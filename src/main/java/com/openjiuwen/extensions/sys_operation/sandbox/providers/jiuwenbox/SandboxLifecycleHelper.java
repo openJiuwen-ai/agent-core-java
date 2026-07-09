@@ -4,6 +4,9 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -11,26 +14,30 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
  * Static utility class mirroring Python's clear_jiuwenbox_shared_sandbox,
  * force_recreate_jiuwenbox_sandbox, and delete_jiuwenbox_sandbox global functions.
- *
- * @since 2026-01-01
+ * 
  * @version 1.0
+ * @since 0.1.7
  */
 public final class SandboxLifecycleHelper {
     private static final Logger logger = LoggerFactory.getLogger(SandboxLifecycleHelper.class);
+
+    /**
+     * SandboxLifecycleHelper.
+     * 
+     * @since 0.1.7
+     */
     private SandboxLifecycleHelper() {
     }
 
     /**
      * Clears the shared sandbox ID cache for the given base URL.
-     *
+     * 
      * @param baseUrl the jiuwenBox server base URL whose cached sandbox IDs should be cleared
      * @return the list of sandbox IDs that were removed from the cache
+     * @since 0.1.7
      */
     public static List<String> clearJiuwenBoxSharedSandbox(String baseUrl) {
         return JiuwenBoxProviderMixin.clearSharedSandbox(baseUrl);
@@ -39,7 +46,7 @@ public final class SandboxLifecycleHelper {
     /**
      * Force-recreates a jiuwenbox sandbox: clears cache, creates new sandbox,
      * uploads preserve files, and deletes stale sandbox IDs.
-     *
+     * 
      * @param baseUrl the jiuwenBox server base URL
      * @param policy the sandbox policy configuration map, may be null
      * @param policyMode the sandbox policy mode, may be null
@@ -49,6 +56,7 @@ public final class SandboxLifecycleHelper {
      * @param lifecycleHook the lifecycle event callback hook, may be null
      * @param reason the reason for recreation (e.g., "sandbox_lost")
      * @return the newly created sandbox ID
+     * @since 0.1.7
      */
     public static String forceRecreateJiuwenBoxSandbox(String baseUrl, Map<String, Object> policy, String policyMode,
             int timeoutSeconds, Object preserveFilesUpload, List<String> extraStaleSandboxIds,
@@ -117,10 +125,11 @@ public final class SandboxLifecycleHelper {
     /**
      * Deletes all jiuwenbox sandboxes: iterates cached base URLs, invokes lifecycle hooks,
      * and deletes each sandbox via the REST API.
-     *
+     * 
      * @param reason the reason for deletion (e.g., "shutdown")
      * @param timeoutSeconds the HTTP request timeout in seconds
      * @return the list of all sandbox IDs that were deleted
+     * @since 0.1.7
      */
     public static List<String> deleteJiuwenBoxSandbox(String reason, int timeoutSeconds) {
         List<String> allDeleted = new ArrayList<>();
@@ -165,10 +174,11 @@ public final class SandboxLifecycleHelper {
 
     /**
      * Extract idle timeout value from policy or context.
-     *
+     * 
      * @param policy the sandbox policy configuration map, may be null
      * @param context the event context map, may contain idle_timeout
      * @return Optional containing the idle timeout in seconds, or empty if not found
+     * @since 0.1.7
      */
     private static Optional<Integer> extractIdleTimeout(Map<String, Object> policy, Map<String, Object> context) {
         Object value = context.get("idle_timeout");
@@ -186,10 +196,11 @@ public final class SandboxLifecycleHelper {
 
     /**
      * Extract idle check interval value from policy or context.
-     *
+     * 
      * @param policy the sandbox policy configuration map, may be null
      * @param context the event context map, may contain idle_check_interval
      * @return Optional containing the idle check interval in seconds, or empty if not found
+     * @since 0.1.7
      */
     private static Optional<Integer> extractIdleCheckInterval(Map<String, Object> policy, Map<String, Object> context) {
         Object value = context.get("idle_check_interval");

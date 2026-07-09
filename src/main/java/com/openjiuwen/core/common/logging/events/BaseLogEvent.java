@@ -8,25 +8,38 @@ import lombok.Data;
 import lombok.experimental.SuperBuilder;
 
 import java.time.Instant;
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Base log event class — base class for all structured event types.
  * <p>
  * Uses Lombok {@code @Data} + {@code @SuperBuilder} for boilerplate reduction.
  * Subclasses should also be annotated with {@code @Data} and {@code @SuperBuilder}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
 public class BaseLogEvent {
-
     // Basic event information
     @lombok.Builder.Default
+    /**
+     * UUID.randomUUID.
+     * 
+     * @since 0.1.7
+     */
     private String eventId = UUID.randomUUID().toString();
     private LogEventType eventType;
     @lombok.Builder.Default
     private LogLevel logLevel = LogLevel.INFO;
     @lombok.Builder.Default
+    /**
+     * Instant.now.
+     * 
+     * @since 0.1.7
+     */
     private Instant timestamp = Instant.now();
 
     // Module information
@@ -55,9 +68,18 @@ public class BaseLogEvent {
 
     // Extended fields
     @lombok.Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
-    /** Default no-arg constructor for manual construction. */
+    /**
+     * Default no-arg constructor for manual construction.
+     * 
+     * @since 0.1.7
+     */
     public BaseLogEvent() {
         this.eventId = UUID.randomUUID().toString();
         this.logLevel = LogLevel.INFO;
@@ -69,6 +91,9 @@ public class BaseLogEvent {
 
     /**
      * Convert to a flat map for serialization / structured logging output.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -101,13 +126,21 @@ public class BaseLogEvent {
     /**
      * Extension point for subclasses to add their own fields to the map.
      * Override this instead of toMap() to keep base fields consistent.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
     protected void addFieldsToMap(Map<String, Object> map) {
         // default: nothing extra
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * putIfNotNull.
+     * 
+     * @param map map
+     * @param key key
+     * @param value value
+     * @since 0.1.7
      */
     protected static void putIfNotNull(Map<String, Object> map, String key, Object value) {
         if (value != null) {

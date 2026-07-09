@@ -11,23 +11,32 @@ import com.openjiuwen.core.session.BaseSession;
  * Loop condition based on iteration count with limit stored directly (not from schema).
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.condition.number.NumberConditionInSession}.
+ * 
+ * @since 0.1.7
  */
 public class NumberConditionInSession extends Condition {
-
     private final int limit;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * NumberConditionInSession.
+     * 
+     * @param limit limit
+     * @since 0.1.7
      */
     public NumberConditionInSession(int limit) {
         super();
         this.limit = limit;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * doInvoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object doInvoke(Object inputs, BaseSession session) {
         Object currentIdxObj = session.state().get(Constant.INDEX);
         int currentIdx = (currentIdxObj instanceof Number) ? ((Number) currentIdxObj).intValue() : 0;

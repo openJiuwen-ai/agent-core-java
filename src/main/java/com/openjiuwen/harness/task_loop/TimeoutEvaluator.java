@@ -6,48 +6,52 @@ package com.openjiuwen.harness.task_loop;
 
 /**
  * Public class TimeoutEvaluator used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class TimeoutEvaluator implements StopConditionEvaluator {
     private final double timeoutSeconds;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TimeoutEvaluator.
+     * 
+     * @param timeoutSeconds timeoutSeconds
+     * @since 0.1.7
      */
     public TimeoutEvaluator(double timeoutSeconds) {
         this.timeoutSeconds = timeoutSeconds;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String name() {
         return "Timeout";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shouldStop.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean shouldStop(StopEvaluationContext context) {
         return context != null && context.getElapsedSeconds() >= timeoutSeconds;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public java.util.Map<String, Object> getState() {
         return java.util.Map.of("timeout_seconds", timeoutSeconds);
     }

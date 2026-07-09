@@ -16,13 +16,24 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Registry for common task-manager tasks with weak-reference storage.
+ * 
+ * @since 0.1.7
  */
 public class TaskRegistry {
     private final Map<String, WeakReference<Task>> tasks = new LinkedHashMap<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Set<String>> groups = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * add.
+     * 
+     * @param task task
+     * @since 0.1.7
      */
     public void add(Task task) {
         tasks.put(task.getTaskId(), new WeakReference<>(task));
@@ -32,7 +43,11 @@ public class TaskRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param taskId taskId
+     * @return the result
+     * @since 0.1.7
      */
     public Task get(String taskId) {
         WeakReference<Task> ref = tasks.get(taskId);
@@ -44,14 +59,22 @@ public class TaskRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * contains.
+     * 
+     * @param taskId taskId
+     * @return the result
+     * @since 0.1.7
      */
     public boolean contains(String taskId) {
         return get(taskId) != null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getByGroup.
+     * 
+     * @param group group
+     * @return the result
+     * @since 0.1.7
      */
     public List<Task> getByGroup(String group) {
         Set<String> ids = groups.getOrDefault(group, Set.of());
@@ -66,7 +89,11 @@ public class TaskRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getByParent.
+     * 
+     * @param parentId parentId
+     * @return the result
+     * @since 0.1.7
      */
     public List<Task> getByParent(String parentId) {
         List<Task> result = new ArrayList<>();
@@ -83,7 +110,11 @@ public class TaskRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getByStatus.
+     * 
+     * @param status status
+     * @return the result
+     * @since 0.1.7
      */
     public List<Task> getByStatus(TaskStatus status) {
         List<Task> result = new ArrayList<>();
@@ -100,14 +131,20 @@ public class TaskRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRunning.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Task> getRunning() {
         return getByStatus(TaskStatus.RUNNING);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAll.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Task> getAll() {
         List<Task> result = new ArrayList<>();
@@ -121,7 +158,10 @@ public class TaskRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * keys.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Collection<String> keys() {
         cleanupStaleReferences();
@@ -129,7 +169,10 @@ public class TaskRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * items.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Set<Map.Entry<String, Task>> items() {
         cleanupStaleReferences();
@@ -144,7 +187,10 @@ public class TaskRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeUnsafe.
+     * 
+     * @param taskId taskId
+     * @since 0.1.7
      */
     public void removeUnsafe(String taskId) {
         WeakReference<Task> ref = tasks.remove(taskId);
@@ -166,20 +212,31 @@ public class TaskRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getGroupTaskIds.
+     * 
+     * @param group group
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getGroupTaskIds(String group) {
         return new ArrayList<>(groups.getOrDefault(group, Set.of()));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clear.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         tasks.clear();
         groups.clear();
     }
 
+    /**
+     * cleanupStaleReferences.
+     * 
+     * @since 0.1.7
+     */
     private void cleanupStaleReferences() {
         List<String> staleIds = new ArrayList<>();
         for (Map.Entry<String, WeakReference<Task>> entry : tasks.entrySet()) {

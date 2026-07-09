@@ -12,9 +12,10 @@ import java.util.Objects;
  * Output payload for interaction events.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.interaction.interaction.InteractionOutput}.
+ * 
+ * @since 0.1.7
  */
 public class InteractionOutput implements Serializable {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -22,13 +23,19 @@ public class InteractionOutput implements Serializable {
     private Object value;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * InteractionOutput.
+     * 
+     * @since 0.1.7
      */
     public InteractionOutput() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * InteractionOutput.
+     * 
+     * @param id id
+     * @param value value
+     * @since 0.1.7
      */
     public InteractionOutput(String id, Object value) {
         this.id = id;
@@ -36,37 +43,53 @@ public class InteractionOutput implements Serializable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getId() {
         return id;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setId.
+     * 
+     * @param id id
+     * @since 0.1.7
      */
     public void setId(String id) {
         this.id = id;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getValue() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setValue.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
     public void setValue(Object value) {
         this.value = value;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * equals.
+     * 
+     * @param o o
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean equals(Object o) {
         if (this == o) {
             return true;
@@ -77,10 +100,13 @@ public class InteractionOutput implements Serializable {
         return Objects.equals(id, that.id) && Objects.equals(value, that.value);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * hashCode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public int hashCode() {
         return Objects.hash(id, value);
     }

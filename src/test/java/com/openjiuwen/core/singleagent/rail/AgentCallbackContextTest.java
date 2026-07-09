@@ -1,18 +1,18 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent.rail;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Unit tests for {@link AgentCallbackContext}.
  */
 class AgentCallbackContextTest {
-
     @Test
     void testBuilderDefaults() {
         AgentCallbackContext ctx = AgentCallbackContext.builder().build();
@@ -76,9 +76,7 @@ class AgentCallbackContextTest {
         Map<String, Object> sharedExtra = new HashMap<>();
         sharedExtra.put("initial", true);
 
-        AgentCallbackContext ctx = AgentCallbackContext.builder()
-                .extra(sharedExtra)
-                .build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().extra(sharedExtra).build();
 
         ctx.getExtra().put("added", "later");
         assertThat(sharedExtra).containsEntry("added", "later");
@@ -106,25 +104,19 @@ class AgentCallbackContextTest {
         java.util.List<AgentCallbackEvent> firedEvents = new java.util.ArrayList<>();
         AgentCallbackFirer firer = (event, ctx) -> firedEvents.add(event);
 
-        AgentCallbackContext ctx = AgentCallbackContext.builder()
-                .agent(firer)
-                .build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().agent(firer).build();
 
         ctx.fire(AgentCallbackEvent.BEFORE_INVOKE);
         ctx.fire(AgentCallbackEvent.AFTER_MODEL_CALL);
 
-        assertThat(firedEvents).containsExactly(
-                AgentCallbackEvent.BEFORE_INVOKE,
-                AgentCallbackEvent.AFTER_MODEL_CALL
-        );
+        assertThat(firedEvents).containsExactly(AgentCallbackEvent.BEFORE_INVOKE, AgentCallbackEvent.AFTER_MODEL_CALL);
     }
 
     @Test
     void testFireSetsEventOnContext() {
-        AgentCallbackFirer firer = (event, ctx) -> {};
-        AgentCallbackContext ctx = AgentCallbackContext.builder()
-                .agent(firer)
-                .build();
+        AgentCallbackFirer firer = (event, ctx) -> {
+        };
+        AgentCallbackContext ctx = AgentCallbackContext.builder().agent(firer).build();
 
         ctx.fire(AgentCallbackEvent.ON_TOOL_EXCEPTION);
         assertThat(ctx.getEvent()).isEqualTo(AgentCallbackEvent.ON_TOOL_EXCEPTION);
@@ -132,9 +124,7 @@ class AgentCallbackContextTest {
 
     @Test
     void testFireWithNonFirerAgentDoesNotThrow() {
-        AgentCallbackContext ctx = AgentCallbackContext.builder()
-                .agent("not a firer")
-                .build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().agent("not a firer").build();
         // Should not throw
         ctx.fire(AgentCallbackEvent.BEFORE_INVOKE);
     }
@@ -147,14 +137,9 @@ class AgentCallbackContextTest {
 
     @Test
     void testBuilderWithInputs() {
-        InvokeInputs inputs = InvokeInputs.builder()
-                .query("test query")
-                .conversationId("conv1")
-                .build();
+        InvokeInputs inputs = InvokeInputs.builder().query("test query").conversationId("conv1").build();
 
-        AgentCallbackContext ctx = AgentCallbackContext.builder()
-                .inputs(inputs)
-                .build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().inputs(inputs).build();
 
         assertThat(ctx.getInputs()).isInstanceOf(InvokeInputs.class);
         assertThat(((InvokeInputs) ctx.getInputs()).getQuery()).isEqualTo("test query");

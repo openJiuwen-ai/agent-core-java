@@ -10,6 +10,8 @@ package com.openjiuwen.core.workflow.component;
  * routing functionality.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.IntentDetectionComponent}.
+ * 
+ * @since 0.1.7
  */
 public abstract class IntentDetectionComponent extends BranchComponent {
 }

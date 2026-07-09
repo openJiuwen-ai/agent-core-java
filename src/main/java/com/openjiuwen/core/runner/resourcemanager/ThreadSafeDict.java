@@ -16,31 +16,38 @@ import java.util.function.Supplier;
  * <p>
  * Mirrors Python's {@code ThreadSafeDict} in {@code resources_manager/thread_safe_dict.py}.
  * All operations are protected by a reentrant lock.
- *
- * @param <K> Key type
- * @param <V> Value type
+ * 
+ * @since 0.1.7
  */
 public class ThreadSafeDict<K, V> {
-
     private final ReentrantLock lock = new ReentrantLock();
     private final Map<K, V> data;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ThreadSafeDict.
+     * 
+     * @since 0.1.7
      */
     public ThreadSafeDict() {
         this.data = new HashMap<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ThreadSafeDict.
+     * 
+     * @param initialData initialData
+     * @since 0.1.7
      */
     public ThreadSafeDict(Map<K, V> initialData) {
         this.data = initialData != null ? new HashMap<>(initialData) : new HashMap<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public V get(K key) {
         lock.lock();
@@ -52,7 +59,12 @@ public class ThreadSafeDict<K, V> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOrDefault.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public V getOrDefault(K key, V defaultValue) {
         lock.lock();
@@ -64,7 +76,12 @@ public class ThreadSafeDict<K, V> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * put.
+     * 
+     * @param key key
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public V put(K key, V value) {
         lock.lock();
@@ -76,7 +93,11 @@ public class ThreadSafeDict<K, V> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * remove.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public V remove(K key) {
         lock.lock();
@@ -88,7 +109,11 @@ public class ThreadSafeDict<K, V> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * containsKey.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public boolean containsKey(K key) {
         lock.lock();
@@ -100,7 +125,10 @@ public class ThreadSafeDict<K, V> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * size.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int size() {
         lock.lock();
@@ -112,7 +140,9 @@ public class ThreadSafeDict<K, V> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clear.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         lock.lock();
@@ -125,6 +155,11 @@ public class ThreadSafeDict<K, V> {
 
     /**
      * Atomically get or set: if key is absent, put the default value and return it.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public V getOrSet(K key, V defaultValue) {
         lock.lock();
@@ -142,6 +177,11 @@ public class ThreadSafeDict<K, V> {
 
     /**
      * Atomically get or create: if key is absent, invoke creator and store the result.
+     * 
+     * @param key key
+     * @param creator creator
+     * @return the result
+     * @since 0.1.7
      */
     public V getOrCreate(K key, Supplier<V> creator) {
         lock.lock();
@@ -158,7 +198,10 @@ public class ThreadSafeDict<K, V> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * putAll.
+     * 
+     * @param m m
+     * @since 0.1.7
      */
     public void putAll(Map<K, V> m) {
         lock.lock();
@@ -171,6 +214,9 @@ public class ThreadSafeDict<K, V> {
 
     /**
      * Returns a snapshot of the keys.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Set<K> keys() {
         lock.lock();
@@ -183,6 +229,9 @@ public class ThreadSafeDict<K, V> {
 
     /**
      * Returns a snapshot of the values.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Collection<V> values() {
         lock.lock();
@@ -195,6 +244,9 @@ public class ThreadSafeDict<K, V> {
 
     /**
      * Returns a snapshot of the entries.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<K, V> snapshot() {
         lock.lock();
@@ -207,6 +259,9 @@ public class ThreadSafeDict<K, V> {
 
     /**
      * Returns a snapshot of all key-value pairs as a Set of Map.Entry (mirrors Python {@code dict.items()}).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Set<Map.Entry<K, V>> items() {
         lock.lock();
@@ -220,6 +275,11 @@ public class ThreadSafeDict<K, V> {
     /**
      * If key is absent or mapped to null, sets it to defaultValue and returns it;
      * otherwise returns the current value (mirrors Python {@code dict.setdefault()}).
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public V setdefault(K key, V defaultValue) {
         lock.lock();
@@ -238,6 +298,11 @@ public class ThreadSafeDict<K, V> {
     /**
      * Removes and returns the value for key, or defaultValue if not present
      * (mirrors Python {@code dict.pop()}).
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public V pop(K key, V defaultValue) {
         lock.lock();
@@ -254,6 +319,10 @@ public class ThreadSafeDict<K, V> {
     /**
      * Removes and returns the value for key. Throws if key is absent
      * (mirrors Python {@code dict.pop(key)} without default).
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public V pop(K key) {
         lock.lock();
@@ -270,15 +339,21 @@ public class ThreadSafeDict<K, V> {
     /**
      * Bulk update from another map (mirrors Python {@code dict.update()}).
      * Alias for {@link #putAll(Map)}.
+     * 
+     * @param m m
+     * @since 0.1.7
      */
     public void update(Map<K, V> m) {
         putAll(m);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String toString() {
         lock.lock();
         try {

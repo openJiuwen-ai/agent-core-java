@@ -13,24 +13,33 @@ import java.util.Optional;
  * Decorator around {@link Store} that adds logging for graph state operations.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.store.base.GraphStore}.
+ * 
+ * @since 0.1.7
  */
 public class GraphStore implements Store {
-
     private static final LoggerProtocol logger = Loggers.GRAPH;
 
     private final Store delegate;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GraphStore.
+     * 
+     * @param delegate delegate
+     * @since 0.1.7
      */
     public GraphStore(Store delegate) {
         this.delegate = delegate;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Optional<GraphStoreState> get(String sessionId, String ns) {
         try {
             Optional<GraphStoreState> state = delegate.get(sessionId, ns);
@@ -44,38 +53,46 @@ public class GraphStore implements Store {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * save.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @param state state
+     * @since 0.1.7
      */
+    @Override
     public void save(String sessionId, String ns, GraphStoreState state) {
-        logger.debug("Begin to save graph state of super-step[{}], sessionId={}, ns={}",
-                state.getStep(), sessionId, ns);
+        logger.debug("Begin to save graph state of super-step[{}], sessionId={}, ns={}", state.getStep(), sessionId,
+                ns);
         try {
             delegate.save(sessionId, ns, state);
-            logger.debug("Succeed to save graph state of super-step[{}], sessionId={}, ns={}",
-                    state.getStep(), sessionId, ns);
+            logger.debug("Succeed to save graph state of super-step[{}], sessionId={}, ns={}", state.getStep(),
+                    sessionId, ns);
         } catch (Exception e) {
-            logger.error("Failed to save graph state of super-step[{}], sessionId={}, ns={}",
-                    state.getStep(), sessionId, ns, e);
+            logger.error("Failed to save graph state of super-step[{}], sessionId={}, ns={}", state.getStep(),
+                    sessionId, ns, e);
             throw e;
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * delete.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @since 0.1.7
      */
+    @Override
     public void delete(String sessionId, String ns) {
-        logger.debug("Begin to delete {} graph states for session, sessionId={}",
-                ns != null ? ns : "all", sessionId);
+        logger.debug("Begin to delete {} graph states for session, sessionId={}", ns != null ? ns : "all", sessionId);
         try {
             delegate.delete(sessionId, ns);
-            logger.debug("Succeed to delete {} graph states for session, sessionId={}",
-                    ns != null ? ns : "all", sessionId);
+            logger.debug("Succeed to delete {} graph states for session, sessionId={}", ns != null ? ns : "all",
+                    sessionId);
         } catch (Exception e) {
-            logger.error("Failed to delete {} graph states for session, sessionId={}",
-                    ns != null ? ns : "all", sessionId, e);
+            logger.error("Failed to delete {} graph states for session, sessionId={}", ns != null ? ns : "all",
+                    sessionId, e);
             throw e;
         }
     }

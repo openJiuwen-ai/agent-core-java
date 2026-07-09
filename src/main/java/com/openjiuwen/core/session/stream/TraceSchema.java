@@ -12,20 +12,27 @@ import java.util.Map;
  * Trace stream schema.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.stream.base.TraceSchema}.
+ * 
+ * @since 0.1.7
  */
 public class TraceSchema implements WorkflowChunk {
-
     private String type;
     private Object payload;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TraceSchema.
+     * 
+     * @since 0.1.7
      */
     public TraceSchema() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TraceSchema.
+     * 
+     * @param type type
+     * @param payload payload
+     * @since 0.1.7
      */
     public TraceSchema(String type, Object payload) {
         this.type = type;
@@ -33,28 +40,40 @@ public class TraceSchema implements WorkflowChunk {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getType() {
         return type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setType.
+     * 
+     * @param type type
+     * @since 0.1.7
      */
     public void setType(String type) {
         this.type = type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPayload.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getPayload() {
         return payload;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setPayload.
+     * 
+     * @param payload payload
+     * @since 0.1.7
      */
     public void setPayload(Object payload) {
         this.payload = payload;
@@ -62,9 +81,10 @@ public class TraceSchema implements WorkflowChunk {
 
     /**
      * Validate data from a map.
-     *
+     * 
      * @param data the data map
      * @return a validated TraceSchema instance
+     * @since 0.1.7
      */
     public static TraceSchema fromMap(Map<String, Object> data) {
         if (data == null) {

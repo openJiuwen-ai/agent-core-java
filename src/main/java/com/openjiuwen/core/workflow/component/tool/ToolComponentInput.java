@@ -12,41 +12,58 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code ToolComponentInput} Pydantic model with {@code extra='allow'}.
  * Accepts arbitrary key/value entries as tool inputs.
+ * 
+ * @since 0.1.7
  */
 public class ToolComponentInput {
-
     private final Map<String, Object> fields;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolComponentInput.
+     * 
+     * @since 0.1.7
      */
     public ToolComponentInput() {
         this.fields = new LinkedHashMap<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolComponentInput.
+     * 
+     * @param fields fields
+     * @since 0.1.7
      */
     public ToolComponentInput(Map<String, Object> fields) {
         this.fields = fields != null ? new LinkedHashMap<>(fields) : new LinkedHashMap<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFields.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getFields() {
         return fields;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public Object get(String key) {
         return fields.get(key);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * put.
+     * 
+     * @param key key
+     * @param value value
+     * @since 0.1.7
      */
     public void put(String key, Object value) {
         fields.put(key, value);
@@ -54,19 +71,22 @@ public class ToolComponentInput {
 
     /**
      * Convert to a plain map (for tool invocation).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         return new LinkedHashMap<>(fields);
     }
 
     /**
-     * Create from a map.
-     * Mirrors Python's {@code ToolComponentInput(**inputs).model_dump()}.
+     * fromMap.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static ToolComponentInput fromMap(Object inputs) {
         if (inputs instanceof Map<?, ?> map) {
             return new ToolComponentInput((Map<String, Object>) map);

@@ -16,61 +16,71 @@ import java.util.List;
  * Default configuration for IntentDetection component including prompt templates.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.intent_detection_comp.IntentDetectionDefaultConfig}.
+ * 
+ * @since 0.1.7
  */
 public class IntentDetectionDefaultConfig {
-
     private static final String DEFAULT_SYSTEM_PROMPT_ZH = "你是一个识别用户输入意图的AI助手。";
     private static final String DEFAULT_SYSTEM_PROMPT_EN = "You are an AI assistant that identifies user input intent.";
 
     private static final String DEFAULT_USER_PROMPT_ZH = """
-            {{user_prompt}}
+        {{user_prompt}}
 
-            当前可供选择的功能分类如下：
-            {{category_info}}
+        当前可供选择的功能分类如下：
+        {{category_info}}
 
-            用户与助手的对话历史：
-            {{chat_history}}
+        用户与助手的对话历史：
+        {{chat_history}}
 
-            当前输入：
-            {{input}}
+        当前输入：
+        {{input}}
 
-            请根据当前输入和对话历史分析并输出最适合的功能分类。输出格式为 JSON，包含以下两个字段：
-            class: 代表分类结果
-            reason: 说明为何选择该分类
-            例如: {"class": "分类xx", "reason": "当前输入xxx"}
-            请参考以下示例：
-            {{example_content}}
-            如果没有合适的分类，请输出 {{default_class}}。
-            """;
+        请根据当前输入和对话历史分析并输出最适合的功能分类。输出格式为 JSON，包含以下两个字段：
+        class: 代表分类结果
+        reason: 说明为何选择该分类
+        例如: {"class": "分类xx", "reason": "当前输入xxx"}
+        请参考以下示例：
+        {{example_content}}
+        如果没有合适的分类，请输出 {{default_class}}。
+        """;
 
     private static final String DEFAULT_USER_PROMPT_EN = """
-            {{user_prompt}}
+        {{user_prompt}}
 
-            Available function categories:
-            {{category_info}}
+        Available function categories:
+        {{category_info}}
 
-            Conversation history between user and assistant:
-            {{chat_history}}
+        Conversation history between user and assistant:
+        {{chat_history}}
 
-            Current input:
-            {{input}}
+        Current input:
+        {{input}}
 
-            Please analyze the current input and conversation history, and output the most suitable function category. Output format is JSON with the following two fields:
-            class: represents the classification result
-            reason: explains why this classification was chosen
-            Example: {"class": "Category1", "reason": "Current input xxx"}
-            Please refer to the following examples:
-            {{example_content}}
-            If no suitable category isExists, output {{default_class}}.
-            """;
+        Please analyze the current input and conversation history, and output the most suitable function \
+        category. Output format is JSON with the following two fields:
+        class: represents the classification result
+        reason: explains why this classification was chosen
+        Example: {"class": "Category1", "reason": "Current input xxx"}
+        Please refer to the following examples:
+        {{example_content}}
+        If no suitable category isExists, output {{default_class}}.
+        """;
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> categoryList = new ArrayList<>();
     private PromptTemplate intentDetectionTemplate;
     private String defaultClass;
     private boolean enableInput = true;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * IntentDetectionDefaultConfig.
+     * 
+     * @param acceptLanguage acceptLanguage
+     * @since 0.1.7
      */
     public IntentDetectionDefaultConfig(String acceptLanguage) {
         this.intentDetectionTemplate = getDefaultTemplate(acceptLanguage);
@@ -79,6 +89,10 @@ public class IntentDetectionDefaultConfig {
 
     /**
      * Create a default intent detection template based on language.
+     * 
+     * @param acceptLanguage acceptLanguage
+     * @return the result
+     * @since 0.1.7
      */
     public static PromptTemplate getDefaultTemplate(String acceptLanguage) {
         List<BaseMessage> content = new ArrayList<>();
@@ -93,56 +107,80 @@ public class IntentDetectionDefaultConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCategoryList.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getCategoryList() {
         return categoryList;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCategoryList.
+     * 
+     * @param categoryList categoryList
+     * @since 0.1.7
      */
     public void setCategoryList(List<String> categoryList) {
         this.categoryList = categoryList;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getIntentDetectionTemplate.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public PromptTemplate getIntentDetectionTemplate() {
         return intentDetectionTemplate;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setIntentDetectionTemplate.
+     * 
+     * @param intentDetectionTemplate intentDetectionTemplate
+     * @since 0.1.7
      */
     public void setIntentDetectionTemplate(PromptTemplate intentDetectionTemplate) {
         this.intentDetectionTemplate = intentDetectionTemplate;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDefaultClass.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDefaultClass() {
         return defaultClass;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDefaultClass.
+     * 
+     * @param defaultClass defaultClass
+     * @since 0.1.7
      */
     public void setDefaultClass(String defaultClass) {
         this.defaultClass = defaultClass;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isEnableInput.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isEnableInput() {
         return enableInput;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEnableInput.
+     * 
+     * @param enableInput enableInput
+     * @since 0.1.7
      */
     public void setEnableInput(boolean enableInput) {
         this.enableInput = enableInput;

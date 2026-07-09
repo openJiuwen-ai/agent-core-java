@@ -8,8 +8,8 @@ import java.util.Locale;
 
 /**
  * Public enum PermissionLevel used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum PermissionLevel {
     ALLOW,
@@ -17,7 +17,11 @@ public enum PermissionLevel {
     DENY;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static PermissionLevel fromValue(Object value) {
         if (value == null) {

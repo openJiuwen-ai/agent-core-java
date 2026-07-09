@@ -12,15 +12,21 @@ import java.util.Map;
 /**
  * Loop callback that initializes intermediate loop variables from the session state.
  * <p>
- * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.callback.intermediate_loop_var.IntermediateLoopVarCallback}.
+ * Mirrors Python's
+ * {@code openjiuwen.core.workflow.components.flow.loop.callback.intermediate_loop_var.IntermediateLoopVarCallback}.
+ * 
+ * @since 0.1.7
  */
 public class IntermediateLoopVarCallback extends LoopCallback {
-
     private final Map<String, Object> intermediateLoopVar;
     private final String intermediateLoopVarRoot;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * IntermediateLoopVarCallback.
+     * 
+     * @param intermediateLoopVar intermediateLoopVar
+     * @param intermediateLoopVarRoot intermediateLoopVarRoot
+     * @since 0.1.7
      */
     public IntermediateLoopVarCallback(Map<String, Object> intermediateLoopVar, String intermediateLoopVarRoot) {
         this.intermediateLoopVar = intermediateLoopVar;
@@ -28,17 +34,24 @@ public class IntermediateLoopVarCallback extends LoopCallback {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * IntermediateLoopVarCallback.
+     * 
+     * @param intermediateLoopVar intermediateLoopVar
+     * @since 0.1.7
      */
     public IntermediateLoopVarCallback(Map<String, Object> intermediateLoopVar) {
         this(intermediateLoopVar, "");
     }
 
+    /**
+     * firstInLoop.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object firstInLoop(BaseSession session) {
         if (!(session.state() instanceof WorkflowStateCollection)) {
             return null;
@@ -50,26 +63,39 @@ public class IntermediateLoopVarCallback extends LoopCallback {
         return localVars;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * outLoop.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object outLoop(BaseSession session) {
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * startRound.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object startRound(BaseSession session) {
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * endRound.
+     * 
+     * @param session session
+     * @param loopTimes loopTimes
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object endRound(BaseSession session, int loopTimes) {
         return null;
     }

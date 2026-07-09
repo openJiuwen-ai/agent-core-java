@@ -11,14 +11,17 @@ import java.util.Map;
  * Configuration for creating a checkpointer via {@link CheckpointerFactory}.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.checkpointer.checkpointer.CheckpointerConfig}.
+ * 
+ * @since 0.1.7
  */
 public class CheckpointerConfig {
-
     private String type;
     private Map<String, Object> conf;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CheckpointerConfig.
+     * 
+     * @since 0.1.7
      */
     public CheckpointerConfig() {
         this.type = "in_memory";
@@ -26,7 +29,11 @@ public class CheckpointerConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CheckpointerConfig.
+     * 
+     * @param type type
+     * @param conf conf
+     * @since 0.1.7
      */
     public CheckpointerConfig(String type, Map<String, Object> conf) {
         this.type = type != null ? type : "in_memory";
@@ -34,28 +41,40 @@ public class CheckpointerConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getType() {
         return type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setType.
+     * 
+     * @param type type
+     * @since 0.1.7
      */
     public void setType(String type) {
         this.type = type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConf.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getConf() {
         return conf;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setConf.
+     * 
+     * @param conf conf
+     * @since 0.1.7
      */
     public void setConf(Map<String, Object> conf) {
         this.conf = conf;

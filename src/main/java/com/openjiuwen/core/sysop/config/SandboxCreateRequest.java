@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Request model for resolving or creating a sandbox endpoint.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

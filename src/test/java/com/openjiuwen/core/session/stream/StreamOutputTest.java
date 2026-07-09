@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.stream;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,15 +17,12 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for stream output: {@link StreamEmitter}, {@link StreamWriterManager}, {@link StreamWriter}.
  * <p>
  * Ported from Python's {@code test_stream_output.py}.
  */
 class StreamOutputTest {
-
     private StreamEmitter emitter;
     private StreamWriterManager manager;
 
@@ -39,11 +39,8 @@ class StreamOutputTest {
 
         // Producer: write data, then close
         CompletableFuture<Void> producer = CompletableFuture.runAsync(() -> {
-            List<Map<String, Object>> mockData = List.of(
-                    Map.of("name", "Alice", "age", 30),
-                    Map.of("name", "Bob", "age", 25),
-                    Map.of("name", "Charlie", "age", 35)
-            );
+            List<Map<String, Object>> mockData = List.of(Map.of("name", "Alice", "age", 30),
+                    Map.of("name", "Bob", "age", 25), Map.of("name", "Charlie", "age", 35));
             StreamWriter<CustomSchema> customWriter = manager.getCustomWriter();
             for (Map<String, Object> data : mockData) {
                 customWriter.write(data);
@@ -66,11 +63,9 @@ class StreamOutputTest {
         List<Object> received = new ArrayList<>();
 
         CompletableFuture<Void> producer = CompletableFuture.runAsync(() -> {
-            List<Map<String, Object>> mockData = List.of(
-                    Map.of("type", "nodeA", "index", 1, "payload", "nodeA_stream"),
+            List<Map<String, Object>> mockData = List.of(Map.of("type", "nodeA", "index", 1, "payload", "nodeA_stream"),
                     Map.of("type", "nodeB", "index", 1, "payload", "nodeB_stream"),
-                    Map.of("type", "nodeC", "index", 1, "payload", "nodeC_stream")
-            );
+                    Map.of("type", "nodeC", "index", 1, "payload", "nodeC_stream"));
             StreamWriter<OutputSchema> outputWriter = manager.getOutputWriter();
             for (Map<String, Object> data : mockData) {
                 outputWriter.write(data);
@@ -96,11 +91,9 @@ class StreamOutputTest {
         List<Object> received = new ArrayList<>();
 
         CompletableFuture<Void> producer = CompletableFuture.runAsync(() -> {
-            List<Map<String, Object>> mockData = List.of(
-                    Map.of("type", "on_chain_start", "payload", "nodeA_start"),
+            List<Map<String, Object>> mockData = List.of(Map.of("type", "on_chain_start", "payload", "nodeA_start"),
                     Map.of("type", "on_chain_end", "payload", "nodeA_end"),
-                    Map.of("type", "on_chain_error", "payload", "nodeA_error")
-            );
+                    Map.of("type", "on_chain_error", "payload", "nodeA_error"));
             StreamWriter<TraceSchema> traceWriter = manager.getTraceWriter();
             for (Map<String, Object> data : mockData) {
                 traceWriter.write(data);
@@ -129,9 +122,7 @@ class StreamOutputTest {
             emitter.close();
         });
 
-        CompletableFuture<List<Object>> consumer = CompletableFuture.supplyAsync(() ->
-                manager.collectStreamOutput()
-        );
+        CompletableFuture<List<Object>> consumer = CompletableFuture.supplyAsync(() -> manager.collectStreamOutput());
 
         producer.get(5, TimeUnit.SECONDS);
         List<Object> result = consumer.get(5, TimeUnit.SECONDS);

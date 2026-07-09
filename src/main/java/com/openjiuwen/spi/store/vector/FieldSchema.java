@@ -15,9 +15,10 @@ import java.util.Map;
  * Schema definition for a single field in a vector collection.
  * <p>
  * Mirrors Python's {@code FieldSchema} Pydantic model.
+ * 
+ * @since 0.1.7
  */
 public class FieldSchema {
-
     private final String name;
     private final VectorDataType dtype;
     private final boolean isPrimary;
@@ -29,6 +30,12 @@ public class FieldSchema {
     private final String description;
     private final Object defaultValue;
 
+    /**
+     * FieldSchema.
+     * 
+     * @param builder builder
+     * @since 0.1.7
+     */
     private FieldSchema(Builder builder) {
         this.name = builder.name;
         this.dtype = builder.dtype;
@@ -43,87 +50,122 @@ public class FieldSchema {
 
         // Validate dim for vector fields
         if (dim != null && dim <= 0) {
-            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
-                    "error_msg", "dim of vector field is invalid, field=" + name + ", dim=" + dim);
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
+                    "dim of vector field is invalid, field=" + name + ", dim=" + dim);
         }
         if (dtype == VectorDataType.FLOAT_VECTOR && dim == null) {
-            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
-                    "error_msg", "dim of vector field is missing, field=" + name);
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
+                    "dim of vector field is missing, field=" + name);
         }
     }
 
     // Getters
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDtype.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public VectorDataType getDtype() {
         return dtype;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isPrimary.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isPrimary() {
         return isPrimary;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAutoId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isAutoId() {
         return autoId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMaxLength.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getMaxLength() {
         return maxLength;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDim.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getDim() {
         return dim;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getElementType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public VectorDataType getElementType() {
         return elementType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMaxCapacity.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getMaxCapacity() {
         return maxCapacity;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDescription() {
         return description;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDefaultValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getDefaultValue() {
         return defaultValue;
     }
 
-    /** Convert to dictionary format. */
+    /**
+     * Convert to dictionary format.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, Object> toDict() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("name", name);
@@ -152,34 +194,37 @@ public class FieldSchema {
         return result;
     }
 
-    /** Create FieldSchema from a dictionary. */
+    /**
+     * Create FieldSchema from a dictionary.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
+     */
     public static FieldSchema fromDict(Map<String, Object> data) {
-        String dtypeStr = data.getOrDefault("type",
-                data.getOrDefault("dtype", "VARCHAR")).toString().toUpperCase(Locale.ROOT);
+        String dtypeStr =
+            data.getOrDefault("type", data.getOrDefault("dtype", "VARCHAR")).toString().toUpperCase(Locale.ROOT);
         VectorDataType dtype = VectorDataType.valueOf(dtypeStr);
 
-        Builder b = builder()
-                .name(data.get("name") instanceof String value ? value : String.valueOf(data.get("name")))
-                .dtype(dtype)
-                .isPrimary(Boolean.TRUE.equals(data.get("is_primary")))
+        Builder b = builder().name(data.get("name") instanceof String value ? value : String.valueOf(data.get("name")))
+                .dtype(dtype).isPrimary(Boolean.TRUE.equals(data.get("is_primary")))
                 .autoId(Boolean.TRUE.equals(data.get("auto_id")));
 
-        if (data.containsKey("max_length")) {
-            b.maxLength(((Number) data.get("max_length")).intValue());
+        if (data.get("max_length") instanceof Number n) {
+            b.maxLength(n.intValue());
         }
-        if (data.containsKey("dim")) {
-            b.dim(((Number) data.get("dim")).intValue());
+        if (data.get("dim") instanceof Number n) {
+            b.dim(n.intValue());
         }
         if (data.containsKey("element_type")) {
             b.elementType(VectorDataType.valueOf(data.get("element_type").toString().toUpperCase(Locale.ROOT)));
         }
-        if (data.containsKey("max_capacity")) {
-            b.maxCapacity(((Number) data.get("max_capacity")).intValue());
+        if (data.get("max_capacity") instanceof Number n) {
+            b.maxCapacity(n.intValue());
         }
         if (data.containsKey("description")) {
-            b.description(data.get("description") instanceof String value
-                    ? value
-                    : String.valueOf(data.get("description")));
+            b.description(
+                    data.get("description") instanceof String value ? value : String.valueOf(data.get("description")));
         }
         if (data.containsKey("default_value")) {
             b.defaultValue(data.get("default_value"));
@@ -189,14 +234,19 @@ public class FieldSchema {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder {
         private String name;
@@ -211,7 +261,11 @@ public class FieldSchema {
         private Object defaultValue;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
          */
         public Builder name(String name) {
             this.name = name;
@@ -219,7 +273,11 @@ public class FieldSchema {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * dtype.
+         * 
+         * @param dtype dtype
+         * @return the result
+         * @since 0.1.7
          */
         public Builder dtype(VectorDataType dtype) {
             this.dtype = dtype;
@@ -227,7 +285,11 @@ public class FieldSchema {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * isPrimary.
+         * 
+         * @param isPrimary isPrimary
+         * @return the result
+         * @since 0.1.7
          */
         public Builder isPrimary(boolean isPrimary) {
             this.isPrimary = isPrimary;
@@ -235,7 +297,11 @@ public class FieldSchema {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * autoId.
+         * 
+         * @param autoId autoId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder autoId(boolean autoId) {
             this.autoId = autoId;
@@ -243,7 +309,11 @@ public class FieldSchema {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * maxLength.
+         * 
+         * @param maxLength maxLength
+         * @return the result
+         * @since 0.1.7
          */
         public Builder maxLength(Integer maxLength) {
             this.maxLength = maxLength;
@@ -251,7 +321,11 @@ public class FieldSchema {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * dim.
+         * 
+         * @param dim dim
+         * @return the result
+         * @since 0.1.7
          */
         public Builder dim(Integer dim) {
             this.dim = dim;
@@ -259,7 +333,11 @@ public class FieldSchema {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * elementType.
+         * 
+         * @param elementType elementType
+         * @return the result
+         * @since 0.1.7
          */
         public Builder elementType(VectorDataType elementType) {
             this.elementType = elementType;
@@ -267,7 +345,11 @@ public class FieldSchema {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * maxCapacity.
+         * 
+         * @param maxCapacity maxCapacity
+         * @return the result
+         * @since 0.1.7
          */
         public Builder maxCapacity(Integer maxCapacity) {
             this.maxCapacity = maxCapacity;
@@ -275,7 +357,11 @@ public class FieldSchema {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * description.
+         * 
+         * @param description description
+         * @return the result
+         * @since 0.1.7
          */
         public Builder description(String description) {
             this.description = description;
@@ -283,7 +369,11 @@ public class FieldSchema {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * defaultValue.
+         * 
+         * @param defaultValue defaultValue
+         * @return the result
+         * @since 0.1.7
          */
         public Builder defaultValue(Object defaultValue) {
             this.defaultValue = defaultValue;
@@ -291,7 +381,10 @@ public class FieldSchema {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public FieldSchema build() {
             return new FieldSchema(this);

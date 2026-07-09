@@ -15,16 +15,17 @@ import com.openjiuwen.core.foundation.tool.mcp.client.SseClient;
  * Creates MCP clients that communicate with MCP servers over HTTP using
  * server-sent events for streaming responses. This is the default transport
  * when no client type is specified in the server configuration.
- *
- * @since 0.1.12
+ * 
  * @see McpClientProvider
  * @see com.openjiuwen.core.foundation.tool.mcp.client.SseClient
+ * @since 0.1.7
  */
 public final class SseMcpClientProvider implements McpClientProvider {
     /**
-     * Returns the SSE transport type name.
-     *
-     * @return the type name "sse"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -33,9 +34,10 @@ public final class SseMcpClientProvider implements McpClientProvider {
 
     /**
      * Creates an MCP client using SSE transport.
-     *
+     * 
      * @param config the MCP server configuration
      * @return a new SseClient instance
+     * @since 0.1.7
      */
     @Override
     public McpClient create(McpServerConfig config) {

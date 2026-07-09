@@ -17,22 +17,25 @@ import java.util.concurrent.ConcurrentHashMap;
  * Session configuration holding environment variables, workflow configs, and agent config.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.config.base.Config}.
+ * 
+ * @since 0.1.7
  */
 public class Config {
-
-    /**
-     * Mapping from environment variable key to config key.
-     */
     private static final String[][] ENV_CONFIG_KEYS = {
             {SessionConstants.WORKFLOW_EXECUTE_TIMEOUT_ENV_KEY, SessionConstants.WORKFLOW_EXECUTE_TIMEOUT},
             {SessionConstants.WORKFLOW_STREAM_FRAME_TIMEOUT_ENV_KEY, SessionConstants.WORKFLOW_STREAM_FRAME_TIMEOUT},
-            {SessionConstants.WORKFLOW_STREAM_FIRST_FRAME_TIMEOUT_ENV_KEY, SessionConstants.WORKFLOW_STREAM_FIRST_FRAME_TIMEOUT},
+            {SessionConstants.WORKFLOW_STREAM_FIRST_FRAME_TIMEOUT_ENV_KEY,
+                    SessionConstants.WORKFLOW_STREAM_FIRST_FRAME_TIMEOUT},
             {SessionConstants.COMP_STREAM_CALL_TIMEOUT_ENV_KEY, SessionConstants.COMP_STREAM_CALL_TIMEOUT_KEY},
             {SessionConstants.STREAM_INPUT_GEN_TIMEOUT_ENV_KEY, SessionConstants.STREAM_INPUT_GEN_TIMEOUT_KEY},
             {SessionConstants.LOOP_NUMBER_MAX_LIMIT_ENV_KEY, SessionConstants.LOOP_NUMBER_MAX_LIMIT_KEY},
-            {SessionConstants.FORCE_DEL_WORKFLOW_STATE_ENV_KEY, SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY}
-    };
+            {SessionConstants.FORCE_DEL_WORKFLOW_STATE_ENV_KEY, SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY}};
 
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, String> ENV_CONFIG_TYPES = new HashMap<>();
 
     static {
@@ -45,21 +48,39 @@ public class Config {
         ENV_CONFIG_TYPES.put(SessionConstants.FORCE_DEL_WORKFLOW_STATE_ENV_KEY, "bool");
     }
 
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, MetadataLike> callbackMetadata = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Object> env = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Object> workflowConfigs = new ConcurrentHashMap<>();
     private Object agentConfig;
 
     /**
-     * Thread-local override for workflow session variables.
-     * Mirrors Python's {@code contextvars.ContextVar workflow_session_vars}.
-     * Values set here take precedence over system environment variables.
+     * WORKFLOW_SESSION_VARS.
+     * 
+     * @since 0.1.7
      */
-    public static final ThreadLocal<Map<String, Object>> WORKFLOW_SESSION_VARS =
-            ThreadLocal.withInitial(HashMap::new);
+    public static final ThreadLocal<Map<String, Object>> WORKFLOW_SESSION_VARS = ThreadLocal.withInitial(HashMap::new);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Config.
+     * 
+     * @since 0.1.7
      */
     public Config() {
         loadEnvs();
@@ -67,8 +88,9 @@ public class Config {
 
     /**
      * Set environment variables.
-     *
+     * 
      * @param envs environment variables map
+     * @since 0.1.7
      */
     public void setEnvs(Map<String, Object> envs) {
         if (envs == null) {
@@ -79,10 +101,11 @@ public class Config {
 
     /**
      * Get an environment variable by key.
-     *
-     * @param key          the key
+     * 
+     * @param key the key
      * @param defaultValue default value if key is absent
      * @return the value or default
+     * @since 0.1.7
      */
     public Object getEnv(String key, Object defaultValue) {
         return env.getOrDefault(key, defaultValue);
@@ -90,6 +113,10 @@ public class Config {
 
     /**
      * Get an environment variable by key with null default.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public Object getEnv(String key) {
         return getEnv(key, null);
@@ -97,6 +124,9 @@ public class Config {
 
     /**
      * Get a copy of all environment variables.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getEnvs() {
         return new HashMap<>(env);
@@ -104,9 +134,10 @@ public class Config {
 
     /**
      * Get workflow config by workflow ID.
-     *
+     * 
      * @param workflowId the workflow ID
      * @return the workflow config or null
+     * @since 0.1.7
      */
     public Object getWorkflowConfig(String workflowId) {
         if (workflowId == null) {
@@ -117,6 +148,9 @@ public class Config {
 
     /**
      * Get agent config.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getAgentConfig() {
         return agentConfig;
@@ -124,6 +158,9 @@ public class Config {
 
     /**
      * Set agent config.
+     * 
+     * @param agentConfig agentConfig
+     * @since 0.1.7
      */
     public void setAgentConfig(Object agentConfig) {
         this.agentConfig = agentConfig;
@@ -131,9 +168,10 @@ public class Config {
 
     /**
      * Add a workflow config.
-     *
-     * @param workflowId     the workflow id
+     * 
+     * @param workflowId the workflow id
      * @param workflowConfig the config object
+     * @since 0.1.7
      */
     public void addWorkflowConfig(String workflowId, Object workflowConfig) {
         if (workflowId == null) {
@@ -147,6 +185,9 @@ public class Config {
 
     /**
      * Get callback metadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, MetadataLike> getCallbackMetadata() {
         return callbackMetadata;
@@ -154,10 +195,20 @@ public class Config {
 
     // ---- private ----
 
+    /**
+     * loadEnvs.
+     * 
+     * @since 0.1.7
+     */
     private void loadEnvs() {
         loadBuiltinConfigs();
     }
 
+    /**
+     * loadBuiltinConfigs.
+     * 
+     * @since 0.1.7
+     */
     private void loadBuiltinConfigs() {
         Map<String, Object> builtinConfigs = new LinkedHashMap<>();
         builtinConfigs.put(SessionConstants.COMP_STREAM_CALL_TIMEOUT_KEY, -1.0);
@@ -174,6 +225,12 @@ public class Config {
         setEnvs(builtinConfigs);
     }
 
+    /**
+     * loadEnvConfigs.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> loadEnvConfigs() {
         Map<String, Object> envConfigs = new LinkedHashMap<>();
         for (String[] envPair : ENV_CONFIG_KEYS) {
@@ -191,6 +248,15 @@ public class Config {
         return envConfigs;
     }
 
+    /**
+     * trySetEnv.
+     * 
+     * @param envConfigs envConfigs
+     * @param configKey configKey
+     * @param envKey envKey
+     * @param value value
+     * @since 0.1.7
+     */
     private void trySetEnv(Map<String, Object> envConfigs, String configKey, String envKey, String value) {
         if (value == null || value.isEmpty()) {
             return;
@@ -231,6 +297,8 @@ public class Config {
 
     /**
      * Metadata-like structure for callback registration.
+     * 
+     * @since 0.1.7
      */
     public static class MetadataLike {
         private String id;
@@ -238,13 +306,19 @@ public class Config {
         private String event;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * MetadataLike.
+         * 
+         * @since 0.1.7
          */
         public MetadataLike() {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * MetadataLike.
+         * 
+         * @param name name
+         * @param event event
+         * @since 0.1.7
          */
         public MetadataLike(String name, String event) {
             this.name = name;
@@ -252,7 +326,12 @@ public class Config {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * MetadataLike.
+         * 
+         * @param id id
+         * @param name name
+         * @param event event
+         * @since 0.1.7
          */
         public MetadataLike(String id, String name, String event) {
             this.id = id;
@@ -261,42 +340,60 @@ public class Config {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getId.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getId() {
             return id;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setId.
+         * 
+         * @param id id
+         * @since 0.1.7
          */
         public void setId(String id) {
             this.id = id;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getName.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getName() {
             return name;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setName.
+         * 
+         * @param name name
+         * @since 0.1.7
          */
         public void setName(String name) {
             this.name = name;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getEvent.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getEvent() {
             return event;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setEvent.
+         * 
+         * @param event event
+         * @since 0.1.7
          */
         public void setEvent(String event) {
             this.event = event;

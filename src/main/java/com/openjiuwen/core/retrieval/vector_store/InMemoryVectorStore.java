@@ -27,13 +27,20 @@ import java.util.regex.Pattern;
 
 /**
  * Local in-memory vector store used for translated retrieval regression tests.
+ * 
+ * @since 0.1.7
  */
 public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStore {
-
     private static final Pattern TOKEN_SPLIT = Pattern.compile("[^\\p{IsAlphabetic}\\p{IsDigit}_]+");
     private static final double BM25_K1 = 1.5;
     private static final double BM25_B = 0.75;
     private static final float EPSILON = 1e-6f;
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, Backend> DATABASES = new ConcurrentHashMap<>();
 
     private final Backend backend;
@@ -48,14 +55,21 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
     private final String docIdField;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * InMemoryVectorStore.
+     * 
+     * @param collectionName collectionName
+     * @since 0.1.7
      */
     public InMemoryVectorStore(String collectionName) {
         this(new VectorStoreConfig("chroma", collectionName), "hybrid");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * InMemoryVectorStore.
+     * 
+     * @param config config
+     * @param indexType indexType
+     * @since 0.1.7
      */
     public InMemoryVectorStore(VectorStoreConfig config, String indexType) {
         config.validate();
@@ -73,6 +87,13 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         backend.collectionMetadata.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
     }
 
+    /**
+     * InMemoryVectorStore.
+     * 
+     * @param source source
+     * @param collectionName collectionName
+     * @since 0.1.7
+     */
     private InMemoryVectorStore(InMemoryVectorStore source, String collectionName) {
         this.backend = source.backend;
         this.databaseName = source.databaseName;
@@ -88,35 +109,50 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         backend.collectionMetadata.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getCollectionName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getCollectionName() {
         return collectionName;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * setCollectionName.
+     * 
+     * @param collectionName collectionName
+     * @since 0.1.7
      */
+    @Override
     public void setCollectionName(String collectionName) {
         this.collectionName = collectionName;
         backend.collections.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * withCollection.
+     * 
+     * @param collectionName collectionName
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public VectorStore withCollection(String collectionName) {
         return new InMemoryVectorStore(this, collectionName);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * add.
+     * 
+     * @param data data
+     * @param batchSize batchSize
+     * @param options options
+     * @since 0.1.7
      */
+    @Override
     public void add(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> options) {
         if (data == null || data.isEmpty()) {
             return;
@@ -124,25 +160,27 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         Map<String, StoredRecord> collection = currentCollection();
         for (Map<String, Object> item : data) {
             Map<String, Object> metadata = castMap(item.get(metadataField));
-            String id = firstNonBlank(
-                    stringValue(item.get("id")),
-                    stringValue(item.get("chunk_id")),
-                    stringValue(metadata.get("chunk_id")),
-                    UUID.randomUUID().toString());
+            String id = firstNonBlank(stringValue(item.get("id")), stringValue(item.get("chunk_id")),
+                    stringValue(metadata.get("chunk_id")), UUID.randomUUID().toString());
             String text = stringValue(item.get(textField));
             List<Float> vector = castFloatList(item.get(vectorField));
             collection.put(id, new StoredRecord(id, text, vector, metadata, new LinkedHashMap<>(item)));
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * search.
+     * 
+     * @param queryVector queryVector
+     * @param topK topK
+     * @param filters filters
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public List<SearchResult> search(List<Float> queryVector,
-                                     int topK,
-                                     Map<String, Object> filters,
-                                     Map<String, Object> options) {
+    @Override
+    public List<SearchResult> search(List<Float> queryVector, int topK, Map<String, Object> filters,
+            Map<String, Object> options) {
         if (queryVector == null || queryVector.isEmpty()) {
             return List.of();
         }
@@ -156,14 +194,19 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return toSearchResults(scored, topK);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * sparseSearch.
+     * 
+     * @param queryText queryText
+     * @param topK topK
+     * @param filters filters
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public List<SearchResult> sparseSearch(String queryText,
-                                           int topK,
-                                           Map<String, Object> filters,
-                                           Map<String, Object> options) {
+    @Override
+    public List<SearchResult> sparseSearch(String queryText, int topK, Map<String, Object> filters,
+            Map<String, Object> options) {
         List<StoredRecord> corpus = filteredRecords(filters);
         List<ScoredRecord> scored = new ArrayList<>();
         for (StoredRecord record : corpus) {
@@ -172,16 +215,21 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return toSearchResults(scored, topK);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * hybridSearch.
+     * 
+     * @param queryText queryText
+     * @param queryVector queryVector
+     * @param topK topK
+     * @param alpha alpha
+     * @param filters filters
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public List<SearchResult> hybridSearch(String queryText,
-                                           List<Float> queryVector,
-                                           int topK,
-                                           double alpha,
-                                           Map<String, Object> filters,
-                                           Map<String, Object> options) {
+    @Override
+    public List<SearchResult> hybridSearch(String queryText, List<Float> queryVector, int topK, double alpha,
+            Map<String, Object> filters, Map<String, Object> options) {
         List<StoredRecord> corpus = filteredRecords(filters);
         List<ScoredRecord> scored = new ArrayList<>();
         for (StoredRecord record : corpus) {
@@ -194,10 +242,16 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return toSearchResults(scored, topK);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * delete.
+     * 
+     * @param ids ids
+     * @param filterExpr filterExpr
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean delete(List<String> ids, Map<String, Object> filterExpr, Map<String, Object> options) {
         Map<String, StoredRecord> collection = currentCollection();
         boolean changed = false;
@@ -220,27 +274,39 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return changed;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * tableExists.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean tableExists(String tableName) {
         return backend.collections.containsKey(tableName);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteTable.
+     * 
+     * @param tableName tableName
+     * @since 0.1.7
      */
+    @Override
     public void deleteTable(String tableName) {
         backend.collections.remove(tableName);
         backend.collectionMetadata.remove(tableName);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * queryByFilters.
+     * 
+     * @param filters filters
+     * @param limit limit
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<SearchResult> queryByFilters(Map<String, Object> filters, int limit) {
         List<SearchResult> results = new ArrayList<>();
         for (StoredRecord record : filteredRecords(filters)) {
@@ -252,53 +318,70 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return results;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * count.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public long count(String tableName) {
         return backend.collections.getOrDefault(tableName, Map.of()).size();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * listCollectionNames.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<String> listCollectionNames() {
         return new ArrayList<>(backend.collections.keySet());
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getCollectionMetadata.
+     * 
+     * @param collectionName collectionName
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> getCollectionMetadata(String collectionName) {
         return new LinkedHashMap<>(backend.collectionMetadata.getOrDefault(collectionName, Map.of()));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateCollectionMetadata.
+     * 
+     * @param collectionName collectionName
+     * @param metadata metadata
+     * @since 0.1.7
      */
+    @Override
     public void updateCollectionMetadata(String collectionName, Map<String, Object> metadata) {
         if (metadata == null || metadata.isEmpty()) {
             return;
         }
-        backend.collectionMetadata
-                .computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>())
-                .putAll(metadata);
+        backend.collectionMetadata.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>()).putAll(metadata);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateSchema.
+     * 
+     * @param collectionName collectionName
+     * @param operations operations
+     * @since 0.1.7
      */
+    @Override
     public void updateSchema(String collectionName, List<?> operations) {
         if (operations == null || operations.isEmpty()) {
             return;
         }
-        Map<String, StoredRecord> collection = backend.collections
-                .computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
+        Map<String, StoredRecord> collection =
+            backend.collections.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
         for (Map.Entry<String, StoredRecord> entry : new ArrayList<>(collection.entrySet())) {
             StoredRecord current = entry.getValue();
             StoredRecord updated = current;
@@ -309,82 +392,123 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getSchema.
+     * 
+     * @param collectionName collectionName
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public CollectionSchema getSchema(String collectionName) {
         return new CollectionSchema();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDatabaseName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getDatabaseName() {
         return databaseName;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDistanceMetric.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getDistanceMetric() {
         return distanceMetric;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getIndexType() {
         return indexType;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getTextField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getTextField() {
         return textField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getVectorField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getVectorField() {
         return vectorField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getSparseVectorField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getSparseVectorField() {
         return sparseVectorField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadataField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getMetadataField() {
         return metadataField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDocIdField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getDocIdField() {
         return docIdField;
     }
 
+    /**
+     * currentCollection.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, StoredRecord> currentCollection() {
         return backend.collections.computeIfAbsent(collectionName, key -> new ConcurrentHashMap<>());
     }
 
+    /**
+     * filteredRecords.
+     * 
+     * @param filters filters
+     * @return the result
+     * @since 0.1.7
+     */
     private List<StoredRecord> filteredRecords(Map<String, Object> filters) {
         List<StoredRecord> records = new ArrayList<>();
         for (StoredRecord record : currentCollection().values()) {
@@ -395,6 +519,14 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return records;
     }
 
+    /**
+     * matches.
+     * 
+     * @param record record
+     * @param filters filters
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean matches(StoredRecord record, Map<String, Object> filters) {
         for (Map.Entry<String, Object> entry : filters.entrySet()) {
             Object expected = entry.getValue();
@@ -405,11 +537,21 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
                 }
             } else if (actual == null || !actual.equals(expected)) {
                 return false;
+            } else {
+                // no-op
             }
         }
         return true;
     }
 
+    /**
+     * toSearchResults.
+     * 
+     * @param scored scored
+     * @param topK topK
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<SearchResult> toSearchResults(List<ScoredRecord> scored, int topK) {
         scored.sort(Comparator.comparingDouble(ScoredRecord::score).reversed());
         List<SearchResult> results = new ArrayList<>();
@@ -421,6 +563,14 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return results;
     }
 
+    /**
+     * vectorScore.
+     * 
+     * @param queryVector queryVector
+     * @param vector vector
+     * @return the result
+     * @since 0.1.7
+     */
     private double vectorScore(List<Float> queryVector, List<Float> vector) {
         return switch (distanceMetric) {
             case "dot" -> dot(queryVector, vector);
@@ -429,6 +579,14 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         };
     }
 
+    /**
+     * normalizedVectorScore.
+     * 
+     * @param queryVector queryVector
+     * @param vector vector
+     * @return the result
+     * @since 0.1.7
+     */
     private double normalizedVectorScore(List<Float> queryVector, List<Float> vector) {
         double score = vectorScore(queryVector, vector);
         return switch (distanceMetric) {
@@ -437,6 +595,15 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         };
     }
 
+    /**
+     * sparseScore.
+     * 
+     * @param queryText queryText
+     * @param text text
+     * @param corpus corpus
+     * @return the result
+     * @since 0.1.7
+     */
     private static double sparseScore(String queryText, String text, List<StoredRecord> corpus) {
         if (queryText == null || text == null) {
             return 0.0;
@@ -464,6 +631,13 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return score;
     }
 
+    /**
+     * tokens.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     private static Set<String> tokens(String text) {
         if (text == null || text.isBlank()) {
             return Collections.emptySet();
@@ -477,6 +651,13 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return tokens;
     }
 
+    /**
+     * tokenList.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> tokenList(String text) {
         if (text == null || text.isBlank()) {
             return List.of();
@@ -490,6 +671,13 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return tokens;
     }
 
+    /**
+     * termFrequency.
+     * 
+     * @param tokens tokens
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Integer> termFrequency(List<String> tokens) {
         Map<String, Integer> frequency = new HashMap<>();
         for (String token : tokens) {
@@ -498,6 +686,13 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return frequency;
     }
 
+    /**
+     * documentFrequency.
+     * 
+     * @param corpus corpus
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Integer> documentFrequency(List<StoredRecord> corpus) {
         Map<String, Integer> frequency = new HashMap<>();
         for (StoredRecord record : corpus) {
@@ -508,6 +703,13 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return frequency;
     }
 
+    /**
+     * averageDocLength.
+     * 
+     * @param corpus corpus
+     * @return the result
+     * @since 0.1.7
+     */
     private static double averageDocLength(List<StoredRecord> corpus) {
         if (corpus == null || corpus.isEmpty()) {
             return 1.0;
@@ -519,6 +721,14 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return (double) sum / corpus.size();
     }
 
+    /**
+     * dot.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static double dot(List<Float> left, List<Float> right) {
         int size = Math.min(left.size(), right.size());
         double sum = 0.0;
@@ -528,6 +738,14 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return sum;
     }
 
+    /**
+     * euclidean.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static double euclidean(List<Float> left, List<Float> right) {
         int size = Math.min(left.size(), right.size());
         double sum = 0.0;
@@ -538,6 +756,14 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return Math.sqrt(sum);
     }
 
+    /**
+     * cosine.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static double cosine(List<Float> left, List<Float> right) {
         double dot = dot(left, right);
         double leftNorm = Math.sqrt(dot(left, left));
@@ -549,6 +775,13 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * castMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> castMap(Object value) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> result = new LinkedHashMap<>();
@@ -561,9 +794,16 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * castFloatList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Float> castFloatList(Object value) {
         if (!(value instanceof List<?> list)) {
-            return null;
+            return java.util.Collections.emptyList();
         }
         List<Float> result = new ArrayList<>(list.size());
         for (Object item : list) {
@@ -574,10 +814,24 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return result;
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringValue(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * firstNonBlank.
+     * 
+     * @param values values
+     * @return the result
+     * @since 0.1.7
+     */
     private static String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -589,14 +843,27 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
 
     private static final class Backend {
         private final Map<String, Map<String, StoredRecord>> collections = new ConcurrentHashMap<>();
+
+        /**
+         * ConcurrentHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, Map<String, Object>> collectionMetadata = new ConcurrentHashMap<>();
     }
 
-    private record StoredRecord(String id,
-                                String text,
-                                List<Float> vector,
-                                Map<String, Object> metadata,
-                                Map<String, Object> fields) {
+    /**
+     * StoredRecord.
+     * 
+     * @param id id
+     * @param text text
+     * @param vector vector
+     * @param metadata metadata
+     * @param fields fields
+     * @since 0.1.7
+     */
+    private record StoredRecord(String id, String text, List<Float> vector, Map<String, Object> metadata,
+            Map<String, Object> fields) {
         Object field(String key) {
             if ("id".equals(key)) {
                 return id;
@@ -611,9 +878,24 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         }
     }
 
+    /**
+     * ScoredRecord.
+     * 
+     * @param record record
+     * @param score score
+     * @since 0.1.7
+     */
     private record ScoredRecord(StoredRecord record, double score) {
     }
 
+    /**
+     * applyOperation.
+     * 
+     * @param record record
+     * @param operation operation
+     * @return the result
+     * @since 0.1.7
+     */
     private StoredRecord applyOperation(StoredRecord record, Object operation) {
         String operationName = operation.getClass().getSimpleName();
         Map<String, Object> metadata = new LinkedHashMap<>(record.metadata == null ? Map.of() : record.metadata);
@@ -646,11 +928,8 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
             case "UpdateEmbeddingDimensionOperation" -> {
                 String fieldName = readString(operation, "getFieldName");
                 int newDimension = readInt(operation, "getNewDimension");
-                if ((fieldName == null
-                        || fieldName.equals(vectorField)
-                        || fieldName.equals("embedding")
-                        || fieldName.equals("vector"))
-                        && vector != null) {
+                if ((fieldName == null || fieldName.equals(vectorField) || fieldName.equals("embedding")
+                        || fieldName.equals("vector")) && vector != null) {
                     vector = resizeVector(vector, newDimension);
                     fields.put(vectorField, vector);
                 }
@@ -663,6 +942,14 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return new StoredRecord(record.id, record.text, vector, metadata, fields);
     }
 
+    /**
+     * renameField.
+     * 
+     * @param values values
+     * @param oldFieldName oldFieldName
+     * @param newFieldName newFieldName
+     * @since 0.1.7
+     */
     private static void renameField(Map<String, Object> values, String oldFieldName, String newFieldName) {
         if (values.containsKey(oldFieldName)) {
             Object value = values.remove(oldFieldName);
@@ -670,25 +957,38 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         }
     }
 
+    /**
+     * coerceScalar.
+     * 
+     * @param value value
+     * @param type type
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object coerceScalar(Object value, String type) {
         if (value == null || type == null) {
             return value;
         }
         return switch (type.toLowerCase(Locale.ROOT)) {
-            case "int", "int32", "int64", "integer", "long" -> value instanceof Number number
-                    ? number.longValue()
-                    : Long.parseLong(String.valueOf(value));
-            case "float", "double", "number" -> value instanceof Number number
-                    ? number.doubleValue()
-                    : Double.parseDouble(String.valueOf(value));
-            case "bool", "boolean" -> value instanceof Boolean bool
-                    ? bool
-                    : Boolean.parseBoolean(String.valueOf(value));
+            case "int", "int32", "int64", "integer", "long" ->
+                value instanceof Number number ? number.longValue() : Long.parseLong(String.valueOf(value));
+            case "float", "double", "number" ->
+                value instanceof Number number ? number.doubleValue() : Double.parseDouble(String.valueOf(value));
+            case "bool", "boolean" ->
+                value instanceof Boolean bool ? bool : Boolean.parseBoolean(String.valueOf(value));
             case "string", "varchar", "text" -> String.valueOf(value);
             default -> value;
         };
     }
 
+    /**
+     * resizeVector.
+     * 
+     * @param vector vector
+     * @param dimension dimension
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Float> resizeVector(List<Float> vector, int dimension) {
         if (dimension <= 0) {
             return vector;
@@ -700,16 +1000,40 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
         return resized;
     }
 
+    /**
+     * readString.
+     * 
+     * @param target target
+     * @param methodName methodName
+     * @return the result
+     * @since 0.1.7
+     */
     private static String readString(Object target, String methodName) {
         Object value = readValue(target, methodName);
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * readInt.
+     * 
+     * @param target target
+     * @param methodName methodName
+     * @return the result
+     * @since 0.1.7
+     */
     private static int readInt(Object target, String methodName) {
         Object value = readValue(target, methodName);
         return value instanceof Number number ? number.intValue() : 0;
     }
 
+    /**
+     * readValue.
+     * 
+     * @param target target
+     * @param methodName methodName
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object readValue(Object target, String methodName) {
         try {
             Method method = target.getClass().getMethod(methodName);

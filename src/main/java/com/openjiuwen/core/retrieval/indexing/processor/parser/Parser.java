@@ -13,11 +13,19 @@ import java.util.Map;
 
 /**
  * Document parser abstraction.
+ * 
+ * @since 0.1.7
  */
 public abstract class Parser implements Processor<String, List<Document>> {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * parse.
+     * 
+     * @param doc doc
+     * @param docId docId
+     * @param llmClient llmClient
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options) {
         String content = parseContent(doc, llmClient, options);
@@ -28,21 +36,36 @@ public abstract class Parser implements Processor<String, List<Document>> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseContent.
+     * 
+     * @param doc doc
+     * @param llmClient llmClient
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     protected abstract String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * supports.
+     * 
+     * @param doc doc
+     * @return the result
+     * @since 0.1.7
      */
     public boolean supports(String doc) {
         return false;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * process.
+     * 
+     * @param input input
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<Document> process(String input, Map<String, Object> options) {
         return parse(input, "", null, options);
     }

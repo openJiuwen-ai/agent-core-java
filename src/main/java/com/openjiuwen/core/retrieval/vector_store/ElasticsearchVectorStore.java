@@ -12,6 +12,7 @@ import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.spi.store.vector.CollectionSchema;
 import com.openjiuwen.spi.store.vector.FieldSchema;
 import com.openjiuwen.spi.store.vector.VectorDataType;
+
 import okhttp3.Credentials;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -33,14 +34,29 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Elasticsearch-backed vector store.
- *
- * <p>This implementation mirrors the Python ElasticsearchVectorStore shape: each collection maps to one ES
+ * <p>
+ * This implementation mirrors the Python ElasticsearchVectorStore shape: each collection maps to one ES
  * index, vector data is stored in a {@code dense_vector} field, and collection metadata is persisted in a
- * reserved document inside the same index.</p>
+ * reserved document inside the same index.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVectorStore {
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * TypeReference<>.
+     * 
+     * @since 0.1.7
+     */
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
     private static final String METADATA_DOC_ID = "__collection_metadata__";
@@ -58,18 +74,31 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
     private final String sparseVectorField = "sparse_vector";
     private final String metadataField = "metadata";
     private final String docIdField = "doc_id";
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Map<String, Object>> metadataCache = new ConcurrentHashMap<>();
     private String collectionName;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ElasticsearchVectorStore.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public ElasticsearchVectorStore(VectorStoreConfig config) {
         this(config, "hybrid");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ElasticsearchVectorStore.
+     * 
+     * @param config config
+     * @param indexType indexType
+     * @since 0.1.7
      */
     public ElasticsearchVectorStore(VectorStoreConfig config, String indexType) {
         config.validate();
@@ -82,13 +111,19 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         this.indexPrefix = config.getDatabaseName() == null || config.getDatabaseName().isBlank()
                 ? DEFAULT_PREFIX
                 : sanitizeIndexName(config.getDatabaseName());
-        this.client = new OkHttpClient.Builder()
-                .connectTimeout(Duration.ofSeconds(readIntEnv("ES_CONNECT_TIMEOUT_SECONDS", 10)))
-                .readTimeout(Duration.ofSeconds(readIntEnv("ES_READ_TIMEOUT_SECONDS", 60)))
-                .writeTimeout(Duration.ofSeconds(readIntEnv("ES_WRITE_TIMEOUT_SECONDS", 60)))
-                .build();
+        this.client =
+            new OkHttpClient.Builder().connectTimeout(Duration.ofSeconds(readIntEnv("ES_CONNECT_TIMEOUT_SECONDS", 10)))
+                    .readTimeout(Duration.ofSeconds(readIntEnv("ES_READ_TIMEOUT_SECONDS", 60)))
+                    .writeTimeout(Duration.ofSeconds(readIntEnv("ES_WRITE_TIMEOUT_SECONDS", 60))).build();
     }
 
+    /**
+     * ElasticsearchVectorStore.
+     * 
+     * @param source source
+     * @param collectionName collectionName
+     * @since 0.1.7
+     */
     private ElasticsearchVectorStore(ElasticsearchVectorStore source, String collectionName) {
         this.config = source.config;
         this.client = source.client;
@@ -101,26 +136,52 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         this.metadataCache.putAll(source.metadataCache);
     }
 
+    /**
+     * getCollectionName.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String getCollectionName() {
         return collectionName;
     }
 
+    /**
+     * setCollectionName.
+     * 
+     * @param collectionName collectionName
+     * @since 0.1.7
+     */
     @Override
     public void setCollectionName(String collectionName) {
         this.collectionName = collectionName;
     }
 
+    /**
+     * withCollection.
+     * 
+     * @param collectionName collectionName
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public VectorStore withCollection(String collectionName) {
         return new ElasticsearchVectorStore(this, collectionName);
     }
 
+    /**
+     * ensureCollection.
+     * 
+     * @param collectionName collectionName
+     * @param indexType indexType
+     * @param dimension dimension
+     * @param options options
+     * @since 0.1.7
+     */
     @Override
-    public void ensureCollection(String collectionName,
-                                 String indexType,
-                                 Integer dimension,
-                                 Map<String, Object> options) {
+    public void ensureCollection(String collectionName, String indexType, Integer dimension,
+            Map<String, Object> options) {
         if (tableExists(collectionName)) {
             return;
         }
@@ -134,6 +195,14 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         createCollection(collectionName, schema, dim);
     }
 
+    /**
+     * add.
+     * 
+     * @param data data
+     * @param batchSize batchSize
+     * @param options options
+     * @since 0.1.7
+     */
     @Override
     public void add(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> options) {
         if (data == null || data.isEmpty()) {
@@ -148,11 +217,19 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         refresh(indexName(collectionName));
     }
 
+    /**
+     * search.
+     * 
+     * @param queryVector queryVector
+     * @param topK topK
+     * @param filters filters
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public List<SearchResult> search(List<Float> queryVector,
-                                     int topK,
-                                     Map<String, Object> filters,
-                                     Map<String, Object> options) {
+    public List<SearchResult> search(List<Float> queryVector, int topK, Map<String, Object> filters,
+            Map<String, Object> options) {
         if (queryVector == null || queryVector.isEmpty()) {
             return List.of();
         }
@@ -167,11 +244,19 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return parseSearchResults(response);
     }
 
+    /**
+     * sparseSearch.
+     * 
+     * @param queryText queryText
+     * @param topK topK
+     * @param filters filters
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public List<SearchResult> sparseSearch(String queryText,
-                                           int topK,
-                                           Map<String, Object> filters,
-                                           Map<String, Object> options) {
+    public List<SearchResult> sparseSearch(String queryText, int topK, Map<String, Object> filters,
+            Map<String, Object> options) {
         Map<String, Object> query = queryText == null || queryText.isBlank()
                 ? Map.of("match_all", Map.of())
                 : Map.of("match", Map.of(textField, queryText));
@@ -185,16 +270,33 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return parseSearchResults(requestMap("POST", "/" + indexName(collectionName) + "/_search", body, true));
     }
 
+    /**
+     * hybridSearch.
+     * 
+     * @param queryText queryText
+     * @param queryVector queryVector
+     * @param topK topK
+     * @param alpha alpha
+     * @param filters filters
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public List<SearchResult> hybridSearch(String queryText,
-                                           List<Float> queryVector,
-                                           int topK,
-                                           double alpha,
-                                           Map<String, Object> filters,
-                                           Map<String, Object> options) {
+    public List<SearchResult> hybridSearch(String queryText, List<Float> queryVector, int topK, double alpha,
+            Map<String, Object> filters, Map<String, Object> options) {
         return search(queryVector, topK, filters, options);
     }
 
+    /**
+     * delete.
+     * 
+     * @param ids ids
+     * @param filterExpr filterExpr
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public boolean delete(List<String> ids, Map<String, Object> filterExpr, Map<String, Object> options) {
         boolean hasChanged = false;
@@ -215,6 +317,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return hasChanged;
     }
 
+    /**
+     * tableExists.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public boolean tableExists(String tableName) {
         try {
@@ -225,6 +334,12 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         }
     }
 
+    /**
+     * deleteTable.
+     * 
+     * @param tableName tableName
+     * @since 0.1.7
+     */
     @Override
     public void deleteTable(String tableName) {
         if (!tableExists(tableName)) {
@@ -234,6 +349,14 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         metadataCache.remove(indexName(tableName));
     }
 
+    /**
+     * queryByFilters.
+     * 
+     * @param filters filters
+     * @param limit limit
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public List<SearchResult> queryByFilters(Map<String, Object> filters, int limit) {
         Map<String, Object> query = filters == null || filters.isEmpty()
@@ -246,6 +369,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return parseSearchResults(requestMap("POST", "/" + indexName(collectionName) + "/_search", body, true));
     }
 
+    /**
+     * count.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public long count(String tableName) {
         Map<String, Object> response = requestMap("GET", "/" + indexName(tableName) + "/_count", null, true);
@@ -253,10 +383,16 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return count instanceof Number number ? number.longValue() : 0L;
     }
 
+    /**
+     * listCollectionNames.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public List<String> listCollectionNames() {
         Map<String, Object> response =
-                requestMap("GET", "/_cat/indices/" + indexPrefix + "__*?format=json", null, true);
+            requestMap("GET", "/_cat/indices/" + indexPrefix + "__*?format=json", null, true);
         List<String> result = new ArrayList<>();
         if (response.get("_items") instanceof List<?> items) {
             for (Object item : items) {
@@ -266,6 +402,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return result;
     }
 
+    /**
+     * appendCollectionName.
+     * 
+     * @param result result
+     * @param item item
+     * @since 0.1.7
+     */
     private void appendCollectionName(List<String> result, Object item) {
         if (!(item instanceof Map<?, ?> map)) {
             return;
@@ -276,6 +419,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         }
     }
 
+    /**
+     * getCollectionMetadata.
+     * 
+     * @param collectionName collectionName
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Map<String, Object> getCollectionMetadata(String collectionName) {
         Map<String, Object> metadata = loadMetadata(indexName(collectionName));
@@ -284,6 +434,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return new LinkedHashMap<>(metadata);
     }
 
+    /**
+     * updateCollectionMetadata.
+     * 
+     * @param collectionName collectionName
+     * @param metadata metadata
+     * @since 0.1.7
+     */
     @Override
     public void updateCollectionMetadata(String collectionName, Map<String, Object> metadata) {
         if (metadata == null || metadata.isEmpty()) {
@@ -295,6 +452,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         storeMetadata(index, current);
     }
 
+    /**
+     * updateSchema.
+     * 
+     * @param collectionName collectionName
+     * @param operations operations
+     * @since 0.1.7
+     */
     @Override
     public void updateSchema(String collectionName, List<?> operations) {
         if (operations == null || operations.isEmpty()) {
@@ -303,6 +467,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         throw new UnsupportedOperationException("ElasticsearchVectorStore.updateSchema is not implemented yet");
     }
 
+    /**
+     * getSchema.
+     * 
+     * @param collectionName collectionName
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public CollectionSchema getSchema(String collectionName) {
         Map<String, Object> metadata = loadMetadata(indexName(collectionName));
@@ -313,52 +484,113 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return new CollectionSchema();
     }
 
+    /**
+     * getDatabaseName.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String getDatabaseName() {
         return config.getDatabaseName();
     }
 
+    /**
+     * getDistanceMetric.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String getDistanceMetric() {
         return distanceMetric;
     }
 
+    /**
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String getIndexType() {
         return indexType;
     }
 
+    /**
+     * getTextField.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String getTextField() {
         return textField;
     }
 
+    /**
+     * getVectorField.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String getVectorField() {
         return vectorField;
     }
 
+    /**
+     * getSparseVectorField.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String getSparseVectorField() {
         return sparseVectorField;
     }
 
+    /**
+     * getMetadataField.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String getMetadataField() {
         return metadataField;
     }
 
+    /**
+     * getDocIdField.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public String getDocIdField() {
         return docIdField;
     }
 
+    /**
+     * close.
+     * 
+     * @since 0.1.7
+     */
     @Override
     public void close() {
         client.dispatcher().executorService().shutdown();
         client.connectionPool().evictAll();
     }
 
+    /**
+     * createCollection.
+     * 
+     * @param collectionName collectionName
+     * @param schema schema
+     * @param vectorDim vectorDim
+     * @since 0.1.7
+     */
     private void createCollection(String collectionName, CollectionSchema schema, int vectorDim) {
         String index = indexName(collectionName);
         Map<String, Object> properties = new LinkedHashMap<>();
@@ -378,12 +610,16 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         storeMetadata(index, metadata);
     }
 
+    /**
+     * mapEsType.
+     * 
+     * @param field field
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> mapEsType(FieldSchema field) {
         if (field.getDtype() == VectorDataType.FLOAT_VECTOR) {
-            return Map.of(
-                    "type", "dense_vector",
-                    "dims", field.getDim() == null ? 768 : field.getDim(),
-                    "index", true,
+            return Map.of("type", "dense_vector", "dims", field.getDim() == null ? 768 : field.getDim(), "index", true,
                     "similarity", esSimilarity());
         }
         return switch (field.getDtype()) {
@@ -397,6 +633,12 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         };
     }
 
+    /**
+     * esSimilarity.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String esSimilarity() {
         return switch (distanceMetric) {
             case "dot" -> "dot_product";
@@ -405,6 +647,12 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         };
     }
 
+    /**
+     * bulkIndex.
+     * 
+     * @param docs docs
+     * @since 0.1.7
+     */
     private void bulkIndex(List<Map<String, Object>> docs) {
         String index = indexName(collectionName);
         StringBuilder ndjson = new StringBuilder();
@@ -416,6 +664,14 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         requestText("POST", "/_bulk?refresh=false", ndjson.toString(), false, "application/x-ndjson");
     }
 
+    /**
+     * flattenDocument.
+     * 
+     * @param doc doc
+     * @param id id
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> flattenDocument(Map<String, Object> doc, String id) {
         Map<String, Object> flattened = new LinkedHashMap<>(doc);
         flattened.putIfAbsent("id", id);
@@ -431,15 +687,27 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return flattened;
     }
 
+    /**
+     * documentId.
+     * 
+     * @param doc doc
+     * @return the result
+     * @since 0.1.7
+     */
     private String documentId(Map<String, Object> doc) {
-        return firstNonBlank(
-                stringValue(doc.get("id")),
-                stringValue(doc.get("chunk_id")),
+        return firstNonBlank(stringValue(doc.get("id")), stringValue(doc.get("chunk_id")),
                 stringValue(doc.get(docIdField)),
                 doc.get(metadataField) instanceof Map<?, ?> map ? stringValue(map.get("chunk_id")) : null,
                 UUID.randomUUID().toString());
     }
 
+    /**
+     * inferDimension.
+     * 
+     * @param docs docs
+     * @return the result
+     * @since 0.1.7
+     */
     private int inferDimension(List<Map<String, Object>> docs) {
         for (Map<String, Object> doc : docs) {
             Object value = doc.get(vectorField);
@@ -454,10 +722,18 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return 768;
     }
 
-    private Map<String, Object> buildKnnSearchBody(List<Float> queryVector,
-                                                   int topK,
-                                                   Map<String, Object> filters,
-                                                   Map<String, Object> options) {
+    /**
+     * buildKnnSearchBody.
+     * 
+     * @param queryVector queryVector
+     * @param topK topK
+     * @param filters filters
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, Object> buildKnnSearchBody(List<Float> queryVector, int topK, Map<String, Object> filters,
+            Map<String, Object> options) {
         int numCandidates = Math.max(topK * 10, 100);
         if (options != null && options.get("num_candidates") instanceof Number number) {
             numCandidates = number.intValue();
@@ -477,15 +753,23 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return body;
     }
 
-    private Map<String, Object> buildScriptScoreSearchBody(List<Float> queryVector,
-                                                           int topK,
-                                                           Map<String, Object> filters) {
+    /**
+     * buildScriptScoreSearchBody.
+     * 
+     * @param queryVector queryVector
+     * @param topK topK
+     * @param filters filters
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, Object> buildScriptScoreSearchBody(List<Float> queryVector, int topK,
+            Map<String, Object> filters) {
         Map<String, Object> baseQuery = filters == null || filters.isEmpty()
                 ? Map.of("match_all", Map.of())
                 : Map.of("bool", Map.of("filter", filterClauses(filters)));
-        Map<String, Object> script = Map.of(
-                "source", "cosineSimilarity(params.query_vector, '" + vectorField + "') + 1.0",
-                "params", Map.of("query_vector", queryVector));
+        Map<String, Object> script =
+            Map.of("source", "cosineSimilarity(params.query_vector, '" + vectorField + "') + 1.0", "params",
+                    Map.of("query_vector", queryVector));
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("query", Map.of("script_score", Map.of("query", baseQuery, "script", script)));
         body.put("size", topK);
@@ -493,6 +777,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return body;
     }
 
+    /**
+     * filterClauses.
+     * 
+     * @param filters filters
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Map<String, Object>> filterClauses(Map<String, Object> filters) {
         List<Map<String, Object>> clauses = new ArrayList<>();
         for (Map.Entry<String, Object> entry : filters.entrySet()) {
@@ -505,27 +796,48 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return clauses;
     }
 
+    /**
+     * keywordCompatibleTermClause.
+     * 
+     * @param field field
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> keywordCompatibleTermClause(String field, Object value) {
         if (!(value instanceof String)) {
             return Map.of("term", Map.of(field, value));
         }
-        return Map.of("bool", Map.of("should", List.of(
-                Map.of("term", Map.of(field, value)),
-                Map.of("term", Map.of(field + ".keyword", value))
-        ), "minimum_should_match", 1));
+        return Map.of("bool", Map.of("should",
+                List.of(Map.of("term", Map.of(field, value)), Map.of("term", Map.of(field + ".keyword", value))),
+                "minimum_should_match", 1));
     }
 
+    /**
+     * keywordCompatibleTermsClause.
+     * 
+     * @param field field
+     * @param values values
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> keywordCompatibleTermsClause(String field, List<?> values) {
         boolean hasString = values.stream().anyMatch(String.class::isInstance);
         if (!hasString) {
             return Map.of("terms", Map.of(field, values));
         }
-        return Map.of("bool", Map.of("should", List.of(
-                Map.of("terms", Map.of(field, values)),
-                Map.of("terms", Map.of(field + ".keyword", values))
-        ), "minimum_should_match", 1));
+        return Map.of("bool", Map.of("should",
+                List.of(Map.of("terms", Map.of(field, values)), Map.of("terms", Map.of(field + ".keyword", values))),
+                "minimum_should_match", 1));
     }
 
+    /**
+     * parseSearchResults.
+     * 
+     * @param response response
+     * @return the result
+     * @since 0.1.7
+     */
     private List<SearchResult> parseSearchResults(Map<String, Object> response) {
         Map<String, Object> hitsRoot = castMap(response.get("hits"));
         List<?> hits = hitsRoot.get("hits") instanceof List<?> list ? list : List.of();
@@ -548,6 +860,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return results;
     }
 
+    /**
+     * loadMetadata.
+     * 
+     * @param index index
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> loadMetadata(String index) {
         if (metadataCache.containsKey(index)) {
             return new LinkedHashMap<>(metadataCache.get(index));
@@ -563,25 +882,61 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         }
     }
 
+    /**
+     * storeMetadata.
+     * 
+     * @param index index
+     * @param metadata metadata
+     * @since 0.1.7
+     */
     private void storeMetadata(String index, Map<String, Object> metadata) {
-        requestMap("PUT", "/" + index + "/_doc/" + METADATA_DOC_ID + "?refresh=true",
-                Map.of("_meta", metadata), true);
+        requestMap("PUT", "/" + index + "/_doc/" + METADATA_DOC_ID + "?refresh=true", Map.of("_meta", metadata), true);
         metadataCache.put(index, new LinkedHashMap<>(metadata));
     }
 
+    /**
+     * refresh.
+     * 
+     * @param index index
+     * @since 0.1.7
+     */
     private void refresh(String index) {
         requestText("POST", "/" + index + "/_refresh", null, true, "application/json");
     }
 
+    /**
+     * indexName.
+     * 
+     * @param collection collection
+     * @return the result
+     * @since 0.1.7
+     */
     private String indexName(String collection) {
         return indexPrefix + "__" + sanitizeIndexName(collection);
     }
 
+    /**
+     * stripPrefix.
+     * 
+     * @param index index
+     * @return the result
+     * @since 0.1.7
+     */
     private String stripPrefix(String index) {
         String prefix = indexPrefix + "__";
         return index.startsWith(prefix) ? index.substring(prefix.length()) : index;
     }
 
+    /**
+     * requestMap.
+     * 
+     * @param method method
+     * @param path path
+     * @param body body
+     * @param isFailOnError isFailOnError
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> requestMap(String method, String path, Object body, boolean isFailOnError) {
         String text = requestText(method, path, body == null ? null : toJson(body), isFailOnError, "application/json");
         if (text == null || text.isBlank()) {
@@ -599,14 +954,20 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         }
     }
 
-    private String requestText(String method,
-                               String path,
-                               String body,
-                               boolean isFailOnError,
-                               String contentType) {
-        RequestBody requestBody = body == null
-                ? null
-                : RequestBody.create(body, MediaType.get(contentType + "; charset=utf-8"));
+    /**
+     * requestText.
+     * 
+     * @param method method
+     * @param path path
+     * @param body body
+     * @param isFailOnError isFailOnError
+     * @param contentType contentType
+     * @return the result
+     * @since 0.1.7
+     */
+    private String requestText(String method, String path, String body, boolean isFailOnError, String contentType) {
+        RequestBody requestBody =
+            body == null ? null : RequestBody.create(body, MediaType.get(contentType + "; charset=utf-8"));
         Request.Builder builder = new Request.Builder().url(baseUrl + path);
         if (!authorization.isBlank()) {
             builder.header("Authorization", authorization);
@@ -616,8 +977,8 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
             ResponseBody responseBody = response.body();
             String text = responseBody == null ? "" : responseBody.string();
             if (isFailOnError && !response.isSuccessful()) {
-                throw new IllegalStateException("Elasticsearch request failed: method=" + method
-                        + ", path=" + path + ", status=" + response.code() + ", body=" + text);
+                throw new IllegalStateException("Elasticsearch request failed: method=" + method + ", path=" + path
+                        + ", status=" + response.code() + ", body=" + text);
             }
             return text;
         } catch (IOException exception) {
@@ -626,14 +987,34 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         }
     }
 
+    /**
+     * requestBodyOrEmpty.
+     * 
+     * @param requestBody requestBody
+     * @return the result
+     * @since 0.1.7
+     */
     private static RequestBody requestBodyOrEmpty(RequestBody requestBody) {
         return requestBody == null ? RequestBody.create(new byte[0], JSON) : requestBody;
     }
 
+    /**
+     * permitsRequestBody.
+     * 
+     * @param method method
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean permitsRequestBody(String method) {
         return !"GET".equalsIgnoreCase(method) && !"HEAD".equalsIgnoreCase(method);
     }
 
+    /**
+     * resolveBaseUrl.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static String resolveBaseUrl() {
         String url = System.getenv("ES_URL");
         if (url != null && !url.isBlank()) {
@@ -645,6 +1026,12 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return scheme + "://" + host + ":" + port;
     }
 
+    /**
+     * resolveAuthorization.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static String resolveAuthorization() {
         String username = System.getenv("ES_USERNAME");
         String password = System.getenv("ES_PASSWORD");
@@ -654,21 +1041,51 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return Credentials.basic(username, password == null ? "" : password);
     }
 
+    /**
+     * trimTrailingSlash.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String trimTrailingSlash(String value) {
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 
+    /**
+     * sanitizeIndexName.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String sanitizeIndexName(String value) {
-        String sanitized = value == null ? DEFAULT_PREFIX : value.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9_-]", "_");
+        String sanitized =
+            value == null ? DEFAULT_PREFIX : value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_-]", "_");
         return sanitized.isBlank() ? DEFAULT_PREFIX : sanitized;
     }
 
+    /**
+     * readEnv.
+     * 
+     * @param name name
+     * @param fallback fallback
+     * @return the result
+     * @since 0.1.7
+     */
     private static String readEnv(String name, String fallback) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? fallback : value;
     }
 
+    /**
+     * readIntEnv.
+     * 
+     * @param name name
+     * @param fallback fallback
+     * @return the result
+     * @since 0.1.7
+     */
     private static int readIntEnv(String name, int fallback) {
         String value = System.getenv(name);
         if (value == null || value.isBlank()) {
@@ -677,6 +1094,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return Integer.parseInt(value);
     }
 
+    /**
+     * toJson.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String toJson(Object value) {
         try {
             return MAPPER.writeValueAsString(value);
@@ -685,6 +1109,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         }
     }
 
+    /**
+     * castMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> castMap(Object value) {
         if (value instanceof Map<?, ?> map) {
             return stringMap(map);
@@ -692,6 +1123,13 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return new LinkedHashMap<>();
     }
 
+    /**
+     * stringMap.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> stringMap(Map<?, ?> map) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -700,10 +1138,24 @@ public class ElasticsearchVectorStore implements VectorStore, SchemaMutableVecto
         return result;
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringValue(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
 
+    /**
+     * firstNonBlank.
+     * 
+     * @param values values
+     * @return the result
+     * @since 0.1.7
+     */
     private static String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {

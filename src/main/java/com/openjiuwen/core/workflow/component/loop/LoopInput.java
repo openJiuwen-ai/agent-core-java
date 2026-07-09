@@ -11,98 +11,144 @@ import java.util.Map;
  * Input model for loop component configuration.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.LoopInput}.
+ * 
+ * @since 0.1.7
  */
 public class LoopInput {
-
     private String loopType = "";
     private Integer loopNumber = 0;
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> loopArray = new HashMap<>();
     private Object boolExpression = "";
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> intermediateVar = new HashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LoopInput.
+     * 
+     * @since 0.1.7
      */
     public LoopInput() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLoopType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getLoopType() {
         return loopType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLoopType.
+     * 
+     * @param loopType loopType
+     * @since 0.1.7
      */
     public void setLoopType(String loopType) {
         this.loopType = loopType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLoopNumber.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getLoopNumber() {
         return loopNumber;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLoopNumber.
+     * 
+     * @param loopNumber loopNumber
+     * @since 0.1.7
      */
     public void setLoopNumber(Integer loopNumber) {
         this.loopNumber = loopNumber;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLoopArray.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getLoopArray() {
         return loopArray;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLoopArray.
+     * 
+     * @param loopArray loopArray
+     * @since 0.1.7
      */
     public void setLoopArray(Map<String, Object> loopArray) {
         this.loopArray = loopArray;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getBoolExpression.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getBoolExpression() {
         return boolExpression;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setBoolExpression.
+     * 
+     * @param boolExpression boolExpression
+     * @since 0.1.7
      */
     public void setBoolExpression(Object boolExpression) {
         this.boolExpression = boolExpression;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getIntermediateVar.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getIntermediateVar() {
         return intermediateVar;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setIntermediateVar.
+     * 
+     * @param intermediateVar intermediateVar
+     * @since 0.1.7
      */
     public void setIntermediateVar(Map<String, Object> intermediateVar) {
         this.intermediateVar = intermediateVar;
     }
 
     /**
-     * Create a LoopInput from a map (similar to pydantic's model_validate).
+     * fromMap.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static LoopInput fromMap(Map<String, Object> map) {
         LoopInput input = new LoopInput();
         if (map == null) {
@@ -126,11 +172,19 @@ public class LoopInput {
         return input;
     }
 
+    /**
+     * parseLoopNumber.
+     * 
+     * @param rawValue rawValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static Integer parseLoopNumber(Object rawValue) {
         if (rawValue == null) {
             return null;
         }
-        if (rawValue instanceof Byte || rawValue instanceof Short || rawValue instanceof Integer || rawValue instanceof Long) {
+        if (rawValue instanceof Byte || rawValue instanceof Short || rawValue instanceof Integer
+                || rawValue instanceof Long) {
             return ((Number) rawValue).intValue();
         }
         if (rawValue instanceof Float || rawValue instanceof Double) {

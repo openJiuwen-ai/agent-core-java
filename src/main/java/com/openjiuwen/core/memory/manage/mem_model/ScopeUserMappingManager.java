@@ -4,25 +4,36 @@
 
 package com.openjiuwen.core.memory.manage.mem_model;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Manages scope-user mapping records in the SQL database.
+ * 
+ * @since 0.1.7
  */
 public class ScopeUserMappingManager {
-
     private final SqlDbStore sqlDb;
     private static final String META_TABLE = "scope_user_mapping";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ScopeUserMappingManager.
+     * 
+     * @param sqlDb sqlDb
+     * @since 0.1.7
      */
     public ScopeUserMappingManager(SqlDbStore sqlDb) {
         this.sqlDb = sqlDb;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * add.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @since 0.1.7
      */
     public void add(String userId, String scopeId) {
         Map<String, Object> data = new LinkedHashMap<>();
@@ -41,7 +52,11 @@ public class ScopeUserMappingManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteByScopeId.
+     * 
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
      */
     public boolean deleteByScopeId(String scopeId) {
         Map<String, Object> conditions = new LinkedHashMap<>();
@@ -50,7 +65,11 @@ public class ScopeUserMappingManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getByScopeId.
+     * 
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
      */
     public List<Map<String, Object>> getByScopeId(String scopeId) {
         Map<String, List<Object>> conditions = new LinkedHashMap<>();

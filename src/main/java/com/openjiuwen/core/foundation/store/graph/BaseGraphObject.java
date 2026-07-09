@@ -10,13 +10,27 @@ import java.util.Map;
 
 /**
  * Base class for all graph objects with common properties.
+ * 
+ * @since 0.1.7
  */
 public class BaseGraphObject {
     private String uuid = GraphUtils.getUuid();
+
+    /**
+     * GraphUtils.getCurrentUtcTimestamp.
+     * 
+     * @since 0.1.7
+     */
     private int createdAt = GraphUtils.getCurrentUtcTimestamp();
     private String userId = "default_user";
     private String objType = "";
     private String language = "cn";
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
     private String content = "";
     private List<Float> contentEmbedding;
@@ -24,147 +38,210 @@ public class BaseGraphObject {
     private final int version = 1;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUuid.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getUuid() {
         return uuid;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setUuid.
+     * 
+     * @param uuid uuid
+     * @since 0.1.7
      */
     public void setUuid(String uuid) {
         this.uuid = uuid;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCreatedAt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getCreatedAt() {
         return createdAt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCreatedAt.
+     * 
+     * @param createdAt createdAt
+     * @since 0.1.7
      */
     public void setCreatedAt(int createdAt) {
         this.createdAt = createdAt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUserId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getUserId() {
         return userId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setUserId.
+     * 
+     * @param userId userId
+     * @since 0.1.7
      */
     public void setUserId(String userId) {
         this.userId = userId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getObjType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getObjType() {
         return objType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setObjType.
+     * 
+     * @param objType objType
+     * @since 0.1.7
      */
     public void setObjType(String objType) {
         this.objType = objType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLanguage.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getLanguage() {
         return language;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLanguage.
+     * 
+     * @param language language
+     * @since 0.1.7
      */
     public void setLanguage(String language) {
         this.language = language;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMetadata() {
         return metadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMetadata.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getContent() {
         return content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setContent.
+     * 
+     * @param content content
+     * @since 0.1.7
      */
     public void setContent(String content) {
         this.content = content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContentEmbedding.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> getContentEmbedding() {
         return contentEmbedding;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setContentEmbedding.
+     * 
+     * @param contentEmbedding contentEmbedding
+     * @since 0.1.7
      */
     public void setContentEmbedding(List<Float> contentEmbedding) {
         this.contentEmbedding = contentEmbedding;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContentBm25.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> getContentBm25() {
         return contentBm25;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setContentBm25.
+     * 
+     * @param contentBm25 contentBm25
+     * @since 0.1.7
      */
     public void setContentBm25(List<Float> contentBm25) {
         this.contentBm25 = contentBm25;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getVersion.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getVersion() {
         return version;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fetchEmbedTask.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<GraphUtils.EmbedTask> fetchEmbedTask() {
         return List.of(new GraphUtils.EmbedTask(this, "contentEmbedding", content));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> result = new LinkedHashMap<>();

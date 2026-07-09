@@ -5,6 +5,7 @@
 package com.openjiuwen.autoharness.infra;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -18,8 +19,8 @@ import java.util.function.Consumer;
 
 /**
  * Public class GitHubCli used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class GitHubCli {
     private static final int DIAGNOSTIC_LIMIT = 240;
@@ -31,34 +32,41 @@ public class GitHubCli {
     private final List<InstallCommand> installCommandsOverride;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GitHubCli.
+     * 
+     * @since 0.1.7
      */
     public GitHubCli() {
-        this(new PathCommandLocator(),
-                new ProcessCommandRunner(),
-                System.getProperty("os.name", ""),
-                detectRootUser(),
+        this(new PathCommandLocator(), new ProcessCommandRunner(), System.getProperty("os.name", ""), detectRootUser(),
                 null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GitHubCli.
+     * 
+     * @param commandLocator commandLocator
+     * @param commandRunner commandRunner
+     * @param systemName systemName
+     * @param isRootUser isRootUser
+     * @since 0.1.7
      */
-    public GitHubCli(CommandLocator commandLocator,
-                     CommandRunner commandRunner,
-                     String systemName,
-                     boolean isRootUser) {
+    public GitHubCli(CommandLocator commandLocator, CommandRunner commandRunner, String systemName,
+            boolean isRootUser) {
         this(commandLocator, commandRunner, systemName, isRootUser, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GitHubCli.
+     * 
+     * @param commandLocator commandLocator
+     * @param commandRunner commandRunner
+     * @param systemName systemName
+     * @param isRootUser isRootUser
+     * @param installCommandsOverride installCommandsOverride
+     * @since 0.1.7
      */
-    public GitHubCli(CommandLocator commandLocator,
-                     CommandRunner commandRunner,
-                     String systemName,
-                     boolean isRootUser,
-                     List<InstallCommand> installCommandsOverride) {
+    public GitHubCli(CommandLocator commandLocator, CommandRunner commandRunner, String systemName, boolean isRootUser,
+            List<InstallCommand> installCommandsOverride) {
         this.commandLocator = Objects.requireNonNull(commandLocator, "commandLocator");
         this.commandRunner = Objects.requireNonNull(commandRunner, "commandRunner");
         this.systemName = systemName == null ? "" : systemName;
@@ -67,7 +75,11 @@ public class GitHubCli {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ensureReady.
+     * 
+     * @param emit emit
+     * @return the result
+     * @since 0.1.7
      */
     public GitHubCliStatus ensureReady(Consumer<String> emit) {
         Consumer<String> sink = emit == null ? ignored -> {
@@ -82,12 +94,8 @@ public class GitHubCli {
             if (!isInstalledNow) {
                 sink.accept("自动安装 `gh` 失败。本轮会退回网页补充调研，无法执行 GitHub-first 源码策略。");
                 sink.accept("请先安装 GitHub CLI 后重试：https://cli.github.com/");
-                return GitHubCliStatus.builder()
-                        .isAvailable(false)
-                        .isAuthenticated(false)
-                        .isInstalledNow(false)
-                        .path("")
-                        .build();
+                return GitHubCliStatus.builder().isAvailable(false).isAuthenticated(false).isInstalledNow(false)
+                        .path("").build();
             }
             sink.accept("已安装 `gh`: " + ghPath);
         }
@@ -100,12 +108,8 @@ public class GitHubCli {
             sink.accept("建议先执行 `gh auth login --web` 完成浏览器登录；若已有 token，也可使用 `gh auth login --with-token`。");
         }
 
-        return GitHubCliStatus.builder()
-                .isAvailable(true)
-                .isAuthenticated(isAuthenticated)
-                .isInstalledNow(isInstalledNow)
-                .path(ghPath)
-                .build();
+        return GitHubCliStatus.builder().isAvailable(true).isAuthenticated(isAuthenticated)
+                .isInstalledNow(isInstalledNow).path(ghPath).build();
     }
 
     boolean isGhAuthenticated(String ghPath) {
@@ -113,9 +117,8 @@ public class GitHubCli {
             return false;
         }
         try {
-            CommandResult result = commandRunner.run(
-                    List.of(ghPath, "auth", "status"),
-                    Duration.ofSeconds(15).toMillis());
+            CommandResult result =
+                commandRunner.run(List.of(ghPath, "auth", "status"), Duration.ofSeconds(15).toMillis());
             return result.exitCode() == 0;
         } catch (Exception ignored) {
             return false;
@@ -161,8 +164,7 @@ public class GitHubCli {
 
         if (system.contains("linux")) {
             if (isInstalled("apt-get")) {
-                commands.add(new InstallCommand(
-                        maybeSudo(List.of("apt-get", "install", "-y", "gh")),
+                commands.add(new InstallCommand(maybeSudo(List.of("apt-get", "install", "-y", "gh")),
                         "apt-get install -y gh"));
             }
             if (isInstalled("dnf")) {
@@ -172,23 +174,19 @@ public class GitHubCli {
                 commands.add(new InstallCommand(maybeSudo(List.of("yum", "install", "-y", "gh")), "yum install -y gh"));
             }
             if (isInstalled("pacman")) {
-                commands.add(new InstallCommand(
-                        maybeSudo(List.of("pacman", "-S", "--noconfirm", "github-cli")),
+                commands.add(new InstallCommand(maybeSudo(List.of("pacman", "-S", "--noconfirm", "github-cli")),
                         "pacman -S --noconfirm github-cli"));
             }
             if (isInstalled("zypper")) {
-                commands.add(new InstallCommand(
-                        maybeSudo(List.of("zypper", "--non-interactive", "install", "gh")),
+                commands.add(new InstallCommand(maybeSudo(List.of("zypper", "--non-interactive", "install", "gh")),
                         "zypper --non-interactive install gh"));
             }
         }
 
         if (system.contains("win") && isInstalled("winget")) {
-            commands.add(new InstallCommand(
-                    List.of("winget", "install", "--id", "GitHub.cli", "--exact",
-                            "--accept-source-agreements", "--accept-package-agreements"),
-                    "winget install --id GitHub.cli --exact"
-            ));
+            commands.add(new InstallCommand(List.of("winget", "install", "--id", "GitHub.cli", "--exact",
+                    "--accept-source-agreements", "--accept-package-agreements"),
+                    "winget install --id GitHub.cli --exact"));
         }
 
         return commands;
@@ -202,12 +200,26 @@ public class GitHubCli {
         return value.substring(0, limit - 3) + "...";
     }
 
+    /**
+     * isInstalled.
+     * 
+     * @param command command
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isInstalled(String command) {
         return !firstNonBlank(commandLocator.which(command)).isBlank();
     }
 
+    /**
+     * maybeSudo.
+     * 
+     * @param command command
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> maybeSudo(List<String> command) {
-            if (isRootUser) {
+        if (isRootUser) {
             return command;
         }
         if (isInstalled("sudo")) {
@@ -220,56 +232,86 @@ public class GitHubCli {
         return command;
     }
 
+    /**
+     * detectRootUser.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean detectRootUser() {
         return "root".equals(System.getProperty("user.name", ""));
     }
 
+    /**
+     * firstNonBlank.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String firstNonBlank(String value) {
         return value == null ? "" : value;
     }
 
     /**
- * Public interface CommandLocator used by the Java parity implementation.
- *
- * @since 1.0
- */
-public interface CommandLocator {
+     * Public interface CommandLocator used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public interface CommandLocator {
+        /**
+         * which.
+         * 
+         * @param command command
+         * @return the result
+         * @since 0.1.7
+         */
         String which(String command);
     }
 
     /**
- * Public interface CommandRunner used by the Java parity implementation.
- *
- * @since 1.0
- */
-public interface CommandRunner {
+     * Public interface CommandRunner used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public interface CommandRunner {
+        /**
+         * run.
+         * 
+         * @param command command
+         * @param timeoutMillis timeoutMillis
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         CommandResult run(List<String> command, long timeoutMillis) throws Exception;
     }
 
     /**
- * Public record CommandResult used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record CommandResult(int exitCode, String stdout, String stderr) {
+     * Public record CommandResult used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record CommandResult(int exitCode, String stdout, String stderr) {
     }
 
     /**
- * Public record InstallCommand used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record InstallCommand(List<String> command, String label) {
+     * Public record InstallCommand used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record InstallCommand(List<String> command, String label) {
     }
 
     static final class PathCommandLocator implements CommandLocator {
         /**
-         * Auto-generated for codecheck compliance.
+         * which.
+         * 
+         * @param command command
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public String which(String command) {
             String raw = firstNonBlank(command).trim();
             if (raw.isEmpty()) {
@@ -296,6 +338,13 @@ public record InstallCommand(List<String> command, String label) {
             return "";
         }
 
+        /**
+         * candidateExecutableNames.
+         * 
+         * @param command command
+         * @return the result
+         * @since 0.1.7
+         */
         private static List<String> candidateExecutableNames(String command) {
             String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
             if (!os.contains("win")) {
@@ -308,14 +357,19 @@ public record InstallCommand(List<String> command, String label) {
             List<String> names = new ArrayList<>();
             names.add(command);
             if (!pathExt.isBlank()) {
-                Arrays.stream(pathExt.split(";"))
-                        .map(String::trim)
-                        .filter(ext -> !ext.isEmpty())
+                Arrays.stream(pathExt.split(";")).map(String::trim).filter(ext -> !ext.isEmpty())
                         .forEach(ext -> names.add(command + ext.toLowerCase(Locale.ROOT)));
             }
             return names;
         }
 
+        /**
+         * isExecutableFile.
+         * 
+         * @param path path
+         * @return the result
+         * @since 0.1.7
+         */
         private static boolean isExecutableFile(Path path) {
             return Files.isRegularFile(path) && Files.isExecutable(path);
         }
@@ -323,12 +377,15 @@ public record InstallCommand(List<String> command, String label) {
 
     static final class ProcessCommandRunner implements CommandRunner {
         /**
-         * Auto-generated for codecheck compliance.
+         * run.
+         * 
+         * @param command command
+         * @param timeoutMillis timeoutMillis
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public CommandResult run(List<String> command, long timeoutMillis) throws Exception {
             Process process = new ProcessBuilder(command).start();
             boolean isFinished = process.waitFor(timeoutMillis, TimeUnit.MILLISECONDS);
@@ -336,8 +393,8 @@ public record InstallCommand(List<String> command, String label) {
                 process.destroyForcibly();
                 throw new IOException("timed out");
             }
-            String stdout = new String(process.getInputStream().readAllBytes());
-            String stderr = new String(process.getErrorStream().readAllBytes());
+            String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
             return new CommandResult(process.exitValue(), stdout, stderr);
         }
     }

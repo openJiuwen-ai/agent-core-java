@@ -5,11 +5,14 @@
 package com.openjiuwen.agentevolving.agent_rl.config.offlineconfig;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.offlineconfig.JiuwenRLHydraOverlay.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -17,18 +20,41 @@ import lombok.NoArgsConstructor;
 public class JiuwenRLHydraOverlay {
     private boolean isWholeTrajectory = false;
     private Integer finalKeepPerPrompt;
+
+    /**
+     * JiuwenRLHydraCustomFn.
+     * 
+     * @since 0.1.7
+     */
     private JiuwenRLHydraCustomFn customFn = new JiuwenRLHydraCustomFn();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isWhole_trajectory.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public boolean isWhole_trajectory() { return isWholeTrajectory(); }
+    public boolean isWhole_trajectory() {
+        return isWholeTrajectory();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getFinal_keep_per_prompt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public Integer getFinal_keep_per_prompt() { return getFinalKeepPerPrompt(); }
+    public Integer getFinal_keep_per_prompt() {
+        return getFinalKeepPerPrompt();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getCustom_fn.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public JiuwenRLHydraCustomFn getCustom_fn() { return getCustomFn(); }
+    public JiuwenRLHydraCustomFn getCustom_fn() {
+        return getCustomFn();
+    }
 }

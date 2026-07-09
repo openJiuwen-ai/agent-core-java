@@ -12,19 +12,21 @@ import java.util.List;
 /**
  * Alias/extension of {@link com.openjiuwen.core.workflow.component.llm.IntentDetectionCompConfig}
  * with positional constructor for test compatibility.
+ * 
+ * @since 0.1.7
  */
-public class IntentDetectionCompConfig
-        extends com.openjiuwen.core.workflow.component.llm.IntentDetectionCompConfig {
-
+public class IntentDetectionCompConfig extends com.openjiuwen.core.workflow.component.llm.IntentDetectionCompConfig {
     /**
-     * Positional constructor matching Python test usage:
-     * IntentDetectionCompConfig(modelCfg, modelClientCfg, userPrompt, categoryNameList)
+     * IntentDetectionCompConfig.
+     * 
+     * @param modelConfig modelConfig
+     * @param modelClientConfig modelClientConfig
+     * @param userPrompt userPrompt
+     * @param categoryNameList categoryNameList
+     * @since 0.1.7
      */
-    public IntentDetectionCompConfig(
-            ModelRequestConfig modelConfig,
-            ModelClientConfig modelClientConfig,
-            String userPrompt,
-            List<String> categoryNameList) {
+    public IntentDetectionCompConfig(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
+            String userPrompt, List<String> categoryNameList) {
         super();
         setModelConfig(modelConfig);
         setModelClientConfig(modelClientConfig);
@@ -33,20 +35,41 @@ public class IntentDetectionCompConfig
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * IntentDetectionCompConfig.
+     * 
+     * @since 0.1.7
      */
     public IntentDetectionCompConfig() {
         super();
     }
 
-    /** Snake_case aliases for test compatibility (mirrors Python attribute names). */
-    public void setModel_config(ModelRequestConfig modelConfig) { setModelConfig(modelConfig); }
     /**
-     * Auto-generated for codecheck compliance.
+     * Snake_case aliases for test compatibility (mirrors Python attribute names).
+     * 
+     * @param modelConfig modelConfig
+     * @since 0.1.7
      */
-    public void setModel_client_config(ModelClientConfig modelClientConfig) { setModelClientConfig(modelClientConfig); }
+    public void setModel_config(ModelRequestConfig modelConfig) {
+        setModelConfig(modelConfig);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setModel_client_config.
+     * 
+     * @param modelClientConfig modelClientConfig
+     * @since 0.1.7
      */
-    public void setCategory_name_list(List<String> categoryNameList) { setCategoryNameList(categoryNameList); }
+    public void setModel_client_config(ModelClientConfig modelClientConfig) {
+        setModelClientConfig(modelClientConfig);
+    }
+
+    /**
+     * setCategory_name_list.
+     * 
+     * @param categoryNameList categoryNameList
+     * @since 0.1.7
+     */
+    public void setCategory_name_list(List<String> categoryNameList) {
+        setCategoryNameList(categoryNameList);
+    }
 }

@@ -9,13 +9,17 @@ import java.util.List;
 
 /**
  * Sequential text preprocessing pipeline.
+ * 
+ * @since 0.1.7
  */
 public class PreprocessingPipeline implements TextPreprocessor {
-
     private final List<TextPreprocessor> preprocessors = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PreprocessingPipeline.
+     * 
+     * @param preprocessors preprocessors
+     * @since 0.1.7
      */
     public PreprocessingPipeline(List<TextPreprocessor> preprocessors) {
         if (preprocessors != null) {
@@ -24,12 +28,13 @@ public class PreprocessingPipeline implements TextPreprocessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * process.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String process(String text) {
         String current = text;
         for (TextPreprocessor preprocessor : preprocessors) {
@@ -39,21 +44,30 @@ public class PreprocessingPipeline implements TextPreprocessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addPreprocessor.
+     * 
+     * @param preprocessor preprocessor
+     * @since 0.1.7
      */
     public void addPreprocessor(TextPreprocessor preprocessor) {
         preprocessors.add(preprocessor);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * size.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int size() {
         return preprocessors.size();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPreprocessors.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<TextPreprocessor> getPreprocessors() {
         return List.copyOf(preprocessors);

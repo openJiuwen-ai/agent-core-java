@@ -4,6 +4,14 @@
 
 package com.openjiuwen.extensions.context_evolver.retrieve.task.reasoning_bank;
 
+import com.openjiuwen.extensions.context_evolver.core.context.RuntimeContext;
+import com.openjiuwen.extensions.context_evolver.core.context.ServiceContext;
+import com.openjiuwen.extensions.context_evolver.core.op.BaseOp;
+import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
+import com.openjiuwen.extensions.context_evolver.core.vector_store.MemoryVectorStore;
+import com.openjiuwen.extensions.context_evolver.schema.ReasoningBankMemory;
+import com.openjiuwen.extensions.context_evolver.schema.ReasoningBankRetrievedMemory;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -12,43 +20,44 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-import com.openjiuwen.extensions.context_evolver.core.context.RuntimeContext;
-import com.openjiuwen.extensions.context_evolver.core.op.BaseOp;
-import com.openjiuwen.extensions.context_evolver.core.vector_store.MemoryVectorStore;
-import com.openjiuwen.extensions.context_evolver.core.context.ServiceContext;
-import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
-import com.openjiuwen.extensions.context_evolver.schema.ReasoningBankMemory;
-import com.openjiuwen.extensions.context_evolver.schema.ReasoningBankRetrievedMemory;
-
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.retrieve.task.reasoning_bank.run.RecallMemoryOp}.
- * 
  * ReasoningBank algorithm memory recall operation.
+ * 
+ * @since 0.1.7
  */
 public class RecallMemoryOp extends BaseOp {
-    
     private final MemoryVectorStore vectorStore;
     private final int topK;
-    
+
     /**
-     * Auto-generated for codecheck compliance.
+     * RecallMemoryOp.
+     * 
+     * @since 0.1.7
      */
     public RecallMemoryOp() {
         this(1);
     }
-    
+
     /**
-     * Auto-generated for codecheck compliance.
+     * RecallMemoryOp.
+     * 
+     * @param topK topK
+     * @since 0.1.7
      */
     public RecallMemoryOp(int topK) {
         this.topK = topK;
         this.vectorStore = (MemoryVectorStore) ServiceContext.getInstance().getVectorStore();
     }
-    
-    @Override
+
     /**
-     * Auto-generated for codecheck compliance.
+     * asyncExecute.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
         String userId = context.getString("user_id", "default");
         String query = context.getString("query", "");
@@ -76,6 +85,13 @@ public class RecallMemoryOp extends BaseOp {
         });
     }
 
+    /**
+     * defaultEmbeddingFor.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Double> defaultEmbeddingFor(String value) {
         int dimensions = 32;
         double[] dense = new double[dimensions];
@@ -95,7 +111,7 @@ public class RecallMemoryOp extends BaseOp {
             previousSlot = slot;
         }
 
-        if (Arrays.stream(dense).allMatch(component -> component == 0.0d)) {
+        if (Arrays.stream(dense).allMatch(component -> Math.abs(component) < 1e-12)) {
             dense[0] = 1.0d;
         }
 

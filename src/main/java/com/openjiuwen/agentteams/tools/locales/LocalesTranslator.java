@@ -8,41 +8,60 @@ import java.util.Map;
 
 /**
  * Lightweight i18n for agent team tool descriptions.
- *
- * <p>Mirrors Python tools/locales/__init__.py: provides a
+ * <p>
+ * Mirrors Python tools/locales/__init__.py: provides a
  * {@code makeTranslator(lang)} factory that returns a translator
- * function for tool description strings.</p>
- *
- * <p>Resolution order: Markdown files under descs/&lt;lang&gt;/&lt;tool&gt;.md
- * take precedence over STRINGS dict entries.</p>
+ * function for tool description strings.
+ * </p>
+ * <p>
+ * Resolution order: Markdown files under descs/&lt;lang&gt;/&lt;tool&gt;.md
+ * take precedence over STRINGS dict entries.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public final class LocalesTranslator {
-
     private final String language;
     private final Map<String, String> strings;
 
-    private static final Map<String, Map<String, String>> STRING_TABLES = Map.of(
-            "cn", ToolStringsCn.STRINGS,
-            "en", ToolStringsEn.STRINGS
-    );
+    /**
+     * Map.of.
+     * 
+     * @since 0.1.7
+     */
+    private static final Map<String, Map<String, String>> STRING_TABLES =
+        Map.of("cn", ToolStringsCn.STRINGS, "en", ToolStringsEn.STRINGS);
 
+    /**
+     * LocalesTranslator.
+     * 
+     * @param language language
+     * @param strings strings
+     * @since 0.1.7
+     */
     private LocalesTranslator(String language, Map<String, String> strings) {
         this.language = language;
         this.strings = strings;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * makeTranslator.
+     * 
+     * @param lang lang
+     * @return the result
+     * @since 0.1.7
      */
     public static LocalesTranslator makeTranslator(String lang) {
-        String resolved = (lang != null && STRING_TABLES.containsKey(lang))
-                ? lang : "cn";
+        String resolved = (lang != null && STRING_TABLES.containsKey(lang)) ? lang : "cn";
         Map<String, String> table = STRING_TABLES.getOrDefault(resolved, ToolStringsCn.STRINGS);
         return new LocalesTranslator(resolved, table);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLanguage.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getLanguage() {
         return language;
@@ -50,11 +69,12 @@ public final class LocalesTranslator {
 
     /**
      * Translate a tool description key.
-     *
+     * 
      * @param tool the tool name (e.g. "send_message", "create_task")
-     * @param key  the key suffix (e.g. "_desc", ".content", ".to")
+     * @param key the key suffix (e.g. "_desc", ".content", ".to")
      * @param args optional format arguments
      * @return the translated string or the key itself if not found
+     * @since 0.1.7
      */
     public String t(String tool, String key, Object... args) {
         String lookupKey;
@@ -82,12 +102,17 @@ public final class LocalesTranslator {
         return lookupKey;
     }
 
+    /**
+     * loadMarkdownDesc.
+     * 
+     * @param tool tool
+     * @return the result
+     * @since 0.1.7
+     */
     private String loadMarkdownDesc(String tool) {
-        String resourcePath = "openjiuwen/agent_teams/tools/locales/descs/"
-                + language + "/" + tool + ".md";
+        String resourcePath = "openjiuwen/agent_teams/tools/locales/descs/" + language + "/" + tool + ".md";
         try {
-            java.io.InputStream is = getClass().getClassLoader()
-                    .getResourceAsStream(resourcePath);
+            java.io.InputStream is = getClass().getClassLoader().getResourceAsStream(resourcePath);
             if (is != null) {
                 byte[] bytes = is.readAllBytes();
                 return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
@@ -98,6 +123,14 @@ public final class LocalesTranslator {
         return null;
     }
 
+    /**
+     * formatMessage.
+     * 
+     * @param template template
+     * @param args args
+     * @return the result
+     * @since 0.1.7
+     */
     private static String formatMessage(String template, Object... args) {
         if (args.length == 0) {
             return template;

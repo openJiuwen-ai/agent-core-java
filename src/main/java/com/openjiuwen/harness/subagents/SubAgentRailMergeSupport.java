@@ -12,7 +12,17 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
+/**
+ * SubAgentRailMergeSupport
+ *
+ * @since 0.1.7
+ */
 final class SubAgentRailMergeSupport {
+    /**
+     * SubAgentRailMergeSupport.
+     * 
+     * @since 0.1.7
+     */
     private SubAgentRailMergeSupport() {
     }
 
@@ -29,6 +39,13 @@ final class SubAgentRailMergeSupport {
         };
     }
 
+    /**
+     * mergeMode.
+     * 
+     * @param factoryKwargs factoryKwargs
+     * @return the result
+     * @since 0.1.7
+     */
     private static MergeMode mergeMode(Map<String, Object> factoryKwargs) {
         Object raw = first(factoryKwargs, new String[]{"rails_merge_mode", "rail_merge_mode", "custom_rails_merge"});
         if (!(raw instanceof String text) || text.isBlank()) {
@@ -43,6 +60,13 @@ final class SubAgentRailMergeSupport {
         };
     }
 
+    /**
+     * customRails.
+     * 
+     * @param factoryKwargs factoryKwargs
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> customRails(Map<String, Object> factoryKwargs) {
         Object raw = first(factoryKwargs, new String[]{"custom_rails", "rails", "extra_rails"});
         if (raw == null) {
@@ -65,6 +89,14 @@ final class SubAgentRailMergeSupport {
         return List.of(raw);
     }
 
+    /**
+     * first.
+     * 
+     * @param values values
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object first(Map<String, Object> values, String[] keys) {
         if (values == null || values.isEmpty()) {
             return "";
@@ -77,6 +109,14 @@ final class SubAgentRailMergeSupport {
         return "";
     }
 
+    /**
+     * concat.
+     * 
+     * @param first first
+     * @param second second
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> concat(List<Object> first, List<Object> second) {
         List<Object> merged = new ArrayList<>(first.size() + second.size());
         merged.addAll(first);
@@ -84,6 +124,13 @@ final class SubAgentRailMergeSupport {
         return merged;
     }
 
+    /**
+     * copy.
+     * 
+     * @param items items
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> copy(List<Object> items) {
         if (items == null || items.isEmpty()) {
             return new ArrayList<>();
@@ -91,6 +138,13 @@ final class SubAgentRailMergeSupport {
         return items.stream().filter(Objects::nonNull).collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
     }
 
+    /**
+     * dedupeByClass.
+     * 
+     * @param rails rails
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> dedupeByClass(List<Object> rails) {
         Map<Class<?>, Object> deduped = new LinkedHashMap<>();
         for (Object rail : rails) {

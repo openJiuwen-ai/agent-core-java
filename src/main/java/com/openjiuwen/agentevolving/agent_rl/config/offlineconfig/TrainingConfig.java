@@ -7,6 +7,7 @@ package com.openjiuwen.agentevolving.agent_rl.config.offlineconfig;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -17,6 +18,8 @@ import java.util.Map;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.offlineconfig.TrainingConfig.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -67,47 +70,273 @@ public class TrainingConfig {
     private boolean isValBeforeTrainEnabled = true;
 
     private int criticWarmup = 0;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> logger = new ArrayList<>(List.of("tensorboard"));
     private boolean isLogRolloutDetailsEnabled = true;
     private boolean isLogRewardDistributionEnabled = false;
     private boolean isDevelopModeEnabled = false;
 
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> verlExtra = new LinkedHashMap<>();
     private String verlConfigPath;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolvedTrainFiles.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String resolvedTrainFiles() {
         return trainFiles != null ? trainFiles : trainDataPath;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolvedValFiles.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String resolvedValFiles() {
         return valFiles != null ? valFiles : valDataPath;
     }
 
-    @JsonIgnore public String getProject_name() { return getProjectName(); }
-    @JsonIgnore public String getExperiment_name() { return getExperimentName(); }
-    @JsonIgnore public String getAlgorithm_adv_estimator() { return getAlgorithmAdvEstimator(); }
-    @JsonIgnore public boolean isAlgorithm_norm_adv_by_std_in_grpo() { return isAlgorithmNormAdvByStdInGrpoEnabled(); }
-    @JsonIgnore public int getEpoch_num() { return getEpochNum(); }
-    @JsonIgnore public int getTrain_batch_size() { return getTrainBatchSize(); }
-    @JsonIgnore public int getRollout_concurrency() { return getRolloutConcurrency(); }
-    @JsonIgnore public String getVisible_device() { return getVisibleDevice(); }
-    @JsonIgnore public int getMax_prompt_length() { return getMaxPromptLength(); }
-    @JsonIgnore public int getMax_response_length() { return getMaxResponseLength(); }
-    @JsonIgnore public boolean isVal_before_train() { return isValBeforeTrainEnabled(); }
-    @JsonIgnore public boolean isLog_rollout_details() { return isLogRolloutDetailsEnabled(); }
-    @JsonIgnore public boolean isLog_reward_distribution() { return isLogRewardDistributionEnabled(); }
-    @JsonIgnore public Map<String, Object> getVerl_extra() { return getVerlExtra(); }
-    @JsonIgnore public String getVerl_config_path() { return getVerlConfigPath(); }
-    @JsonIgnore public int getTotal_epochs() { return getTotalEpochs(); }
-    @JsonIgnore public void setTrain_data_path(String value) { setTrainDataPath(value); }
-    @JsonIgnore public void setVal_data_path(String value) { setValDataPath(value); }
-    @JsonIgnore public void setTrain_files(String value) { setTrainFiles(value); }
-    @JsonIgnore public void setVal_files(String value) { setValFiles(value); }
-    @JsonIgnore public void setTotal_epochs(int value) { setTotalEpochs(value); }
+    /**
+     * getProject_name.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public String getProject_name() {
+        return getProjectName();
+    }
+
+    /**
+     * getExperiment_name.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public String getExperiment_name() {
+        return getExperimentName();
+    }
+
+    /**
+     * getAlgorithm_adv_estimator.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public String getAlgorithm_adv_estimator() {
+        return getAlgorithmAdvEstimator();
+    }
+
+    /**
+     * isAlgorithm_norm_adv_by_std_in_grpo.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public boolean isAlgorithm_norm_adv_by_std_in_grpo() {
+        return isAlgorithmNormAdvByStdInGrpoEnabled();
+    }
+
+    /**
+     * getEpoch_num.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public int getEpoch_num() {
+        return getEpochNum();
+    }
+
+    /**
+     * getTrain_batch_size.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public int getTrain_batch_size() {
+        return getTrainBatchSize();
+    }
+
+    /**
+     * getRollout_concurrency.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public int getRollout_concurrency() {
+        return getRolloutConcurrency();
+    }
+
+    /**
+     * getVisible_device.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public String getVisible_device() {
+        return getVisibleDevice();
+    }
+
+    /**
+     * getMax_prompt_length.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public int getMax_prompt_length() {
+        return getMaxPromptLength();
+    }
+
+    /**
+     * getMax_response_length.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public int getMax_response_length() {
+        return getMaxResponseLength();
+    }
+
+    /**
+     * isVal_before_train.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public boolean isVal_before_train() {
+        return isValBeforeTrainEnabled();
+    }
+
+    /**
+     * isLog_rollout_details.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public boolean isLog_rollout_details() {
+        return isLogRolloutDetailsEnabled();
+    }
+
+    /**
+     * isLog_reward_distribution.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public boolean isLog_reward_distribution() {
+        return isLogRewardDistributionEnabled();
+    }
+
+    /**
+     * getVerl_extra.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public Map<String, Object> getVerl_extra() {
+        return getVerlExtra();
+    }
+
+    /**
+     * getVerl_config_path.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public String getVerl_config_path() {
+        return getVerlConfigPath();
+    }
+
+    /**
+     * getTotal_epochs.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public int getTotal_epochs() {
+        return getTotalEpochs();
+    }
+
+    /**
+     * setTrain_data_path.
+     * 
+     * @param value value
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public void setTrain_data_path(String value) {
+        setTrainDataPath(value);
+    }
+
+    /**
+     * setVal_data_path.
+     * 
+     * @param value value
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public void setVal_data_path(String value) {
+        setValDataPath(value);
+    }
+
+    /**
+     * setTrain_files.
+     * 
+     * @param value value
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public void setTrain_files(String value) {
+        setTrainFiles(value);
+    }
+
+    /**
+     * setVal_files.
+     * 
+     * @param value value
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public void setVal_files(String value) {
+        setValFiles(value);
+    }
+
+    /**
+     * setTotal_epochs.
+     * 
+     * @param value value
+     * @since 0.1.7
+     */
+    @JsonIgnore
+    public void setTotal_epochs(int value) {
+        setTotalEpochs(value);
+    }
 }

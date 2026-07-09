@@ -18,10 +18,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link #register(String, VectorStoreProvider)} without modifying Core source.
  * <p>
  * Calling point: RAG retrieval, IR indexing, etc.
- *
- * @since 0.1.12
+ * 
  * @see VectorStoreProvider
  * @see BaseVectorStore
+ * @since 0.1.7
  */
 public final class VectorStoreFactory {
     private static final Map<String, VectorStoreProvider> REGISTRY = new ConcurrentHashMap<>();
@@ -43,14 +43,20 @@ public final class VectorStoreFactory {
         }
     }
 
+    /**
+     * VectorStoreFactory.
+     * 
+     * @since 0.1.7
+     */
     private VectorStoreFactory() {
     }
 
     /**
      * Register a vector store provider for a given type name.
-     *
-     * @param type     the store type name (e.g. "milvus", "custom_weaviate")
+     * 
+     * @param type the store type name (e.g. "milvus", "custom_weaviate")
      * @param provider the provider that creates BaseVectorStore instances
+     * @since 0.1.7
      */
     public static void register(String type, VectorStoreProvider provider) {
         REGISTRY.put(type, provider);
@@ -58,12 +64,11 @@ public final class VectorStoreFactory {
 
     /**
      * Create a vector store from a type name and configuration.
-     *
+     * 
      * @param storeType the store type
-     * @param conf      the configuration map
+     * @param conf the configuration map
      * @return a new BaseVectorStore instance
-     * @throws IllegalArgumentException if storeType is null
-     * @throws UnsupportedOperationException if no provider is registered for the type
+     * @since 0.1.7
      */
     public static BaseVectorStore create(String storeType, Map<String, Object> conf) {
         if (storeType == null) {
@@ -71,18 +76,17 @@ public final class VectorStoreFactory {
         }
         VectorStoreProvider provider = REGISTRY.get(storeType.toLowerCase(Locale.ROOT));
         if (provider == null) {
-            throw new UnsupportedOperationException(
-                    "No vector store provider registered for type: " + storeType);
+            throw new UnsupportedOperationException("No vector store provider registered for type: " + storeType);
         }
         return provider.create(conf != null ? conf : Map.of());
     }
 
     /**
      * Create a vector store with empty configuration.
-     *
+     * 
      * @param storeType the store type
      * @return a new BaseVectorStore instance
-     * @throws IllegalArgumentException if storeType is null
+     * @since 0.1.7
      */
     public static BaseVectorStore create(String storeType) {
         return create(storeType, Map.of());
@@ -90,9 +94,10 @@ public final class VectorStoreFactory {
 
     /**
      * Check whether a provider is registered for the given type.
-     *
+     * 
      * @param type the store type name
      * @return true if a provider exists
+     * @since 0.1.7
      */
     public static boolean hasProvider(String type) {
         if (type == null) {

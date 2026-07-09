@@ -1,7 +1,12 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.graph.store.InMemoryStore;
@@ -14,22 +19,15 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Integration tests for the Graph module's InMemoryStore.
  * Tests key-value storage used for graph state persistence.
  */
 @Tag("system-test")
 class GraphStoreSystemTest {
-
     private GraphStoreState createState(String ns, int step) {
-        return new GraphStoreState(ns, step,
-                Map.of("data", "value_" + step),
-                Collections.emptyList(), Collections.emptyMap(), Collections.emptyMap());
+        return new GraphStoreState(ns, step, Map.of("data", "value_" + step), Collections.emptyList(),
+                Collections.emptyMap(), Collections.emptyMap());
     }
 
     @Test
@@ -85,10 +83,8 @@ class GraphStoreSystemTest {
         assertTrue(store.get("sess_del", "ns_a").isPresent());
 
         store.delete("sess_del", "ns_a");
-        assertFalse(store.get("sess_del", "ns_a").isPresent(),
-                "Deleted namespace should return empty");
-        assertTrue(store.get("sess_del", "ns_b").isPresent(),
-                "Other ns should not be affected");
+        assertFalse(store.get("sess_del", "ns_a").isPresent(), "Deleted namespace should return empty");
+        assertTrue(store.get("sess_del", "ns_b").isPresent(), "Other ns should not be affected");
         System.out.println("[GraphStore Delete] ns_a deleted, ns_b still present");
     }
 

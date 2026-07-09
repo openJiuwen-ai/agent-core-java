@@ -1,21 +1,22 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.tracer;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.internal.AgentSession;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class TracerDecoratorTest {
-
     interface TestTool {
         String invoke(String input);
     }

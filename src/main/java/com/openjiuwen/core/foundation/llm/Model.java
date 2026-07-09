@@ -36,31 +36,47 @@ import java.util.ServiceLoader;
  * and delegates all calls to it.
  * <p>
  * Mirrors Python's {@code Model} class.
- *
- * <p>Usage:
+ * <p>
+ * Usage:
+ * 
  * <pre>
- *   Model model = new Model(modelClientConfig, modelRequestConfig);
- *   AssistantMessage response = model.invoke("Hello", null, null, null, null, null, null, null, null, null);
+ * Model model = new Model(modelClientConfig, modelRequestConfig);
+ * AssistantMessage response = model.invoke("Hello", null, null, null, null, null, null, null, null, null);
  * </pre>
+ * 
+ * @since 0.1.7
  */
 public class Model {
-
     /**
-     * SPI-based registry for model client factories.
-     * <p>
-     * Implementations of {@link ModelClientFactory} are discovered via
-     * {@link ServiceLoader}. Each factory declares which {@code clientProvider}
-     * name it supports.
+     * ModelClientFactory.
+     * 
+     * @since 0.1.7
      */
     public interface ModelClientFactory {
-        /** The provider name this factory handles (e.g., "OpenAI", "DashScope"). */
+        /**
+         * providerName.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         String providerName();
 
-        /** Create a client instance. */
+        /**
+         * Create a client instance.
+         * 
+         * @param modelConfig modelConfig
+         * @param clientConfig clientConfig
+         * @return the result
+         * @since 0.1.7
+         */
         BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig);
     }
 
-    /** Static registry populated from ServiceLoader + manual registration. */
+    /**
+     * Static registry populated from ServiceLoader + manual registration.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, ModelClientFactory> FACTORY_REGISTRY = new LinkedHashMap<>();
 
     static {
@@ -72,6 +88,9 @@ public class Model {
 
     /**
      * Register a model client factory programmatically.
+     * 
+     * @param factory factory
+     * @since 0.1.7
      */
     public static void registerFactory(ModelClientFactory factory) {
         FACTORY_REGISTRY.put(factory.providerName(), factory);
@@ -83,14 +102,15 @@ public class Model {
 
     /**
      * Construct a Model.
-     *
+     * 
      * @param modelClientConfig client configuration (apiKey, apiBase, clientProvider, etc.)
-     * @param modelConfig       model request parameters (modelName, temperature, topP, etc.)
+     * @param modelConfig model request parameters (modelName, temperature, topP, etc.)
+     * @since 0.1.7
      */
     public Model(ModelClientConfig modelClientConfig, ModelRequestConfig modelConfig) {
         if (modelClientConfig == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "error_msg", "model client config is none");
+            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR, "error_msg",
+                    "model client config is none");
         }
         this.modelClientConfig = modelClientConfig;
         this.modelConfig = modelConfig;
@@ -98,27 +118,40 @@ public class Model {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ModelRequestConfig getModelConfig() {
         return modelConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelClientConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ModelClientConfig getModelClientConfig() {
         return modelClientConfig;
     }
 
+    /**
+     * createModelClient.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     private BaseModelClient createModelClient(ModelClientConfig config) {
         if (config.getClientProvider() == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "error_msg", "model client config client_provider is none");
+            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR, "error_msg",
+                    "model client config client_provider is none");
         }
         if (config.getClientId() == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "error_msg", "model client config client_id is none");
+            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR, "error_msg",
+                    "model client config client_id is none");
         }
         String provider = config.getClientProvider().strip();
         ModelClientFactory factory = FACTORY_REGISTRY.get(provider);
@@ -133,9 +166,8 @@ public class Model {
             }
         }
         if (factory == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_PROVIDER_INVALID,
-                    "error_msg", "unavailable model provider: " + config.getClientProvider()
-                            + ",and available providers are: " + FACTORY_REGISTRY.keySet());
+            throw ErrorHelper.buildError(StatusCode.MODEL_PROVIDER_INVALID, "error_msg", "unavailable model provider: "
+                    + config.getClientProvider() + ",and available providers are: " + FACTORY_REGISTRY.keySet());
         }
         return factory.create(modelConfig, config);
     }
@@ -143,89 +175,120 @@ public class Model {
     // ==================== Delegation Methods ====================
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param messages messages
+     * @param tools tools
+     * @param temperature temperature
+     * @param topP topP
+     * @param model model
+     * @param maxTokens maxTokens
+     * @param stop stop
+     * @param outputParser outputParser
+     * @param timeout timeout
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public AssistantMessage invoke(Object messages,
-                                  Object tools,
-                                  Float temperature,
-                                  Float topP,
-                                  String model,
-                                  Integer maxTokens,
-                                  String stop,
-                                  BaseOutputParser outputParser,
-                                  Float timeout,
-                                  Map<String, Object> kwargs) throws Exception {
-        return client.invoke(messages, tools, temperature, topP, model, maxTokens,
-                stop, outputParser, timeout, kwargs);
+    public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+            Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs)
+            throws Exception {
+        return client.invoke(messages, tools, temperature, topP, model, maxTokens, stop, outputParser, timeout, kwargs);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param messages messages
+     * @param tools tools
+     * @param temperature temperature
+     * @param topP topP
+     * @param model model
+     * @param maxTokens maxTokens
+     * @param stop stop
+     * @param outputParser outputParser
+     * @param timeout timeout
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public Iterator<AssistantMessageChunk> stream(Object messages,
-                                                  Object tools,
-                                                  Float temperature,
-                                                  Float topP,
-                                                  String model,
-                                                  Integer maxTokens,
-                                                  String stop,
-                                                  BaseOutputParser outputParser,
-                                                  Float timeout,
-                                                  Map<String, Object> kwargs) throws Exception {
-        return client.stream(messages, tools, temperature, topP, model, maxTokens,
-                stop, outputParser, timeout, kwargs);
+    public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+            String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+            Map<String, Object> kwargs) throws Exception {
+        return client.stream(messages, tools, temperature, topP, model, maxTokens, stop, outputParser, timeout, kwargs);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateImage.
+     * 
+     * @param messages messages
+     * @param model model
+     * @param size size
+     * @param negativePrompt negativePrompt
+     * @param n n
+     * @param promptExtend promptExtend
+     * @param watermark watermark
+     * @param seed seed
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public ImageGenerationResponse generateImage(List<UserMessage> messages,
-                                                 String model,
-                                                 String size,
-                                                 String negativePrompt,
-                                                 int n,
-                                                 boolean promptExtend,
-                                                 boolean watermark,
-                                                 int seed,
-                                                 Map<String, Object> kwargs) throws Exception {
-        return client.generateImage(messages, model, size, negativePrompt, n,
-                promptExtend, watermark, seed, kwargs);
+    public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+            String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed, Map<String, Object> kwargs)
+            throws Exception {
+        return client.generateImage(messages, model, size, negativePrompt, n, promptExtend, watermark, seed, kwargs);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateSpeech.
+     * 
+     * @param messages messages
+     * @param model model
+     * @param voice voice
+     * @param languageType languageType
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public AudioGenerationResponse generateSpeech(List<UserMessage> messages,
-                                                  String model,
-                                                  String voice,
-                                                  String languageType,
-                                                  Map<String, Object> kwargs) throws Exception {
+    public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+            String languageType, Map<String, Object> kwargs) throws Exception {
         return client.generateSpeech(messages, model, voice, languageType, kwargs);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateVideo.
+     * 
+     * @param messages messages
+     * @param imgUrl imgUrl
+     * @param audioUrl audioUrl
+     * @param model model
+     * @param size size
+     * @param resolution resolution
+     * @param duration duration
+     * @param promptExtend promptExtend
+     * @param watermark watermark
+     * @param negativePrompt negativePrompt
+     * @param seed seed
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public VideoGenerationResponse generateVideo(List<UserMessage> messages,
-                                                 String imgUrl,
-                                                 String audioUrl,
-                                                 String model,
-                                                 String size,
-                                                 String resolution,
-                                                 int duration,
-                                                 boolean promptExtend,
-                                                 boolean watermark,
-                                                 String negativePrompt,
-                                                 Integer seed,
-                                                 Map<String, Object> kwargs) throws Exception {
-        return client.generateVideo(messages, imgUrl, audioUrl, model, size, resolution,
-                duration, promptExtend, watermark, negativePrompt, seed, kwargs);
+    public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+            String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+            String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception {
+        return client.generateVideo(messages, imgUrl, audioUrl, model, size, resolution, duration, promptExtend,
+                watermark, negativePrompt, seed, kwargs);
     }
 
     /**
      * Reactive version of {@link #invoke(Object, Object, Float, Float, String, Integer, String, BaseOutputParser,
      * Float, Map)}.
-     *
+     * 
      * @param messages input messages
      * @param tools available tools
      * @param temperature sampling temperature
@@ -237,25 +300,19 @@ public class Model {
      * @param timeout request timeout
      * @param kwargs extra provider arguments
      * @return Mono emitting the assistant message
+     * @since 0.1.7
      */
-    public Mono<AssistantMessage> invokeAsync(Object messages,
-                                             Object tools,
-                                             Float temperature,
-                                             Float topP,
-                                             String model,
-                                             Integer maxTokens,
-                                             String stop,
-                                             BaseOutputParser outputParser,
-                                             Float timeout,
-                                             Map<String, Object> kwargs) {
-        return ReactiveAdapters.fromCallable(() -> invoke(messages, tools, temperature, topP, model,
-                maxTokens, stop, outputParser, timeout, kwargs));
+    public Mono<AssistantMessage> invokeAsync(Object messages, Object tools, Float temperature, Float topP,
+            String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+            Map<String, Object> kwargs) {
+        return ReactiveAdapters.fromCallable(() -> invoke(messages, tools, temperature, topP, model, maxTokens, stop,
+                outputParser, timeout, kwargs));
     }
 
     /**
      * Reactive version of {@link #stream(Object, Object, Float, Float, String, Integer, String, BaseOutputParser,
      * Float, Map)}.
-     *
+     * 
      * @param messages input messages
      * @param tools available tools
      * @param temperature sampling temperature
@@ -267,19 +324,12 @@ public class Model {
      * @param timeout request timeout
      * @param kwargs extra provider arguments
      * @return Flux emitting assistant message chunks
+     * @since 0.1.7
      */
-    public Flux<AssistantMessageChunk> streamAsync(Object messages,
-                                                  Object tools,
-                                                  Float temperature,
-                                                  Float topP,
-                                                  String model,
-                                                  Integer maxTokens,
-                                                  String stop,
-                                                  BaseOutputParser outputParser,
-                                                  Float timeout,
-                                                  Map<String, Object> kwargs) {
+    public Flux<AssistantMessageChunk> streamAsync(Object messages, Object tools, Float temperature, Float topP,
+            String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+            Map<String, Object> kwargs) {
         return ReactiveAdapters.fromAutoCloseableIterator(() -> stream(messages, tools, temperature, topP, model,
                 maxTokens, stop, outputParser, timeout, kwargs));
     }
-
 }

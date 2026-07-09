@@ -11,25 +11,37 @@ import java.util.Map;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.io_schema.ReMeMemoryMetadata}.
+ * 
+ * @since 0.1.7
  */
 public class ReMeMemoryMetadata {
-
     private List<String> tags = new ArrayList<>();
     private String stepType;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> toolsUsed = new ArrayList<>();
     private Double confidence;
     private int freq;
     private Double utility;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ReMeMemoryMetadata.
+     * 
+     * @since 0.1.7
      */
     public ReMeMemoryMetadata() {
         // Default constructor
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -43,102 +55,139 @@ public class ReMeMemoryMetadata {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromMap.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public static ReMeMemoryMetadata fromMap(Map<String, Object> data) {
         ReMeMemoryMetadata result = new ReMeMemoryMetadata();
         result.tags = SchemaUtils.stringListValue(data.get("tags"));
         result.stepType = SchemaUtils.stringValue(data.get("step_type"), null);
         result.toolsUsed = SchemaUtils.stringListValue(data.get("tools_used"));
-        result.confidence = data.containsKey("confidence")
-            ? SchemaUtils.doubleValue(data.get("confidence"), 0.0d)
-            : null;
+        result.confidence =
+            data.containsKey("confidence") ? SchemaUtils.doubleValue(data.get("confidence"), 0.0d) : null;
         result.freq = SchemaUtils.intValue(data.get("freq"), 0);
-        result.utility = data.containsKey("utility")
-            ? SchemaUtils.doubleValue(data.get("utility"), 0.0d)
-            : null;
+        result.utility = data.containsKey("utility") ? SchemaUtils.doubleValue(data.get("utility"), 0.0d) : null;
         return result;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTags.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getTags() {
         return new ArrayList<>(tags);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTags.
+     * 
+     * @param tags tags
+     * @since 0.1.7
      */
     public void setTags(List<String> tags) {
         this.tags = tags != null ? new ArrayList<>(tags) : new ArrayList<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStepType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getStepType() {
         return stepType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStepType.
+     * 
+     * @param stepType stepType
+     * @since 0.1.7
      */
     public void setStepType(String stepType) {
         this.stepType = stepType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolsUsed.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getToolsUsed() {
         return new ArrayList<>(toolsUsed);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setToolsUsed.
+     * 
+     * @param toolsUsed toolsUsed
+     * @since 0.1.7
      */
     public void setToolsUsed(List<String> toolsUsed) {
         this.toolsUsed = toolsUsed != null ? new ArrayList<>(toolsUsed) : new ArrayList<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfidence.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Double getConfidence() {
         return confidence;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setConfidence.
+     * 
+     * @param confidence confidence
+     * @since 0.1.7
      */
     public void setConfidence(Double confidence) {
         this.confidence = confidence;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFreq.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getFreq() {
         return freq;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setFreq.
+     * 
+     * @param freq freq
+     * @since 0.1.7
      */
     public void setFreq(int freq) {
         this.freq = freq;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUtility.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Double getUtility() {
         return utility;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setUtility.
+     * 
+     * @param utility utility
+     * @since 0.1.7
      */
     public void setUtility(Double utility) {
         this.utility = utility;

@@ -8,7 +8,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 
 /**
  * Skip tool execution and inject a synthetic tool result/message.
- *
+ * 
  * @since 0.1.7
  */
 public class RejectResult extends InterruptDecision {
@@ -17,9 +17,10 @@ public class RejectResult extends InterruptDecision {
 
     /**
      * Create a rejection decision.
-     *
+     * 
      * @param toolResult synthetic tool result
      * @param toolMessage synthetic tool message
+     * @since 0.1.7
      */
     public RejectResult(Object toolResult, ToolMessage toolMessage) {
         this.toolResult = toolResult;
@@ -28,8 +29,9 @@ public class RejectResult extends InterruptDecision {
 
     /**
      * Return the synthetic tool result.
-     *
+     * 
      * @return synthetic tool result
+     * @since 0.1.7
      */
     public Object getToolResult() {
         return toolResult;
@@ -37,8 +39,9 @@ public class RejectResult extends InterruptDecision {
 
     /**
      * Return the synthetic tool message.
-     *
+     * 
      * @return synthetic tool message
+     * @since 0.1.7
      */
     public ToolMessage getToolMessage() {
         return toolMessage;

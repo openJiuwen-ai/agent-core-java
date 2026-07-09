@@ -22,14 +22,18 @@ import java.util.List;
  * <p>
  * Note: The actual release call depends on the InferenceAffinityModel interface,
  * which may not yet be implemented in Java. The comparison logic is fully ported.
+ * 
+ * @since 0.1.7
  */
 public class KVCacheManager {
-
     private final String sessionId;
     private ContextWindow lastContextWindow;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * KVCacheManager.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public KVCacheManager(String sessionId) {
         this.sessionId = sessionId;
@@ -41,8 +45,9 @@ public class KVCacheManager {
      * In the Python version, this calls {@code model.release()} on an
      * InferenceAffinityModel. In Java, the actual release is a no-op
      * until InferenceAffinityModel is implemented.
-     *
+     * 
      * @param contextWindow the current context window
+     * @since 0.1.7
      */
     public void release(ContextWindow contextWindow) {
         release(contextWindow, null);
@@ -51,9 +56,10 @@ public class KVCacheManager {
     /**
      * Check and release stale KV cache if the context window has changed and a model
      * with release capability is provided.
-     *
+     * 
      * @param contextWindow the current context window
-     * @param model         optional model instance
+     * @param model optional model instance
+     * @since 0.1.7
      */
     public void release(ContextWindow contextWindow, Object model) {
         if (lastContextWindow == null) {
@@ -63,22 +69,14 @@ public class KVCacheManager {
 
         ReleaseCheckResult result = checkReleaseNeeded(contextWindow);
 
-        if (result.shouldRelease
-                && (result.messagesReleasedIndex != null || result.toolsReleasedIndex != null)) {
-            Loggers.CONTEXT_ENGINE.info(
-                    "KV cache release triggered for session " + sessionId
-                            + " (msg_idx=" + result.messagesReleasedIndex
-                            + ", tool_idx=" + result.toolsReleasedIndex + ")");
+        if (result.shouldRelease && (result.messagesReleasedIndex != null || result.toolsReleasedIndex != null)) {
+            Loggers.CONTEXT_ENGINE.info("KV cache release triggered for session " + sessionId + " (msg_idx="
+                    + result.messagesReleasedIndex + ", tool_idx=" + result.toolsReleasedIndex + ")");
             if (model instanceof InferenceAffinityModel inferenceAffinityModel) {
                 try {
-                    inferenceAffinityModel.release(
-                            sessionId,
-                            lastContextWindow.getMessages(),
+                    inferenceAffinityModel.release(sessionId, lastContextWindow.getMessages(),
                             result.messagesReleasedIndex != null ? result.messagesReleasedIndex : 0,
-                            lastContextWindow.getToolList(),
-                            result.toolsReleasedIndex,
-                            null
-                    );
+                            lastContextWindow.getToolList(), result.toolsReleasedIndex, null);
                 } catch (Exception e) {
                     Loggers.CONTEXT_ENGINE.warning("Failed to release inference-affinity KV cache: " + e.getMessage());
                 }
@@ -88,6 +86,13 @@ public class KVCacheManager {
         lastContextWindow = contextWindow;
     }
 
+    /**
+     * checkReleaseNeeded.
+     * 
+     * @param contextWindow contextWindow
+     * @return the result
+     * @since 0.1.7
+     */
     private ReleaseCheckResult checkReleaseNeeded(ContextWindow contextWindow) {
         boolean shouldRelease = false;
         Integer msgIdx = null;
@@ -128,7 +133,15 @@ public class KVCacheManager {
         return new ReleaseCheckResult(shouldRelease, msgIdx, toolIdx);
     }
 
+    /**
+     * ReleaseCheckResult.
+     * 
+     * @param shouldRelease shouldRelease
+     * @param messagesReleasedIndex messagesReleasedIndex
+     * @param toolsReleasedIndex toolsReleasedIndex
+     * @since 0.1.7
+     */
     private record ReleaseCheckResult(boolean shouldRelease, Integer messagesReleasedIndex,
-                                      Integer toolsReleasedIndex) {
+            Integer toolsReleasedIndex) {
     }
 }

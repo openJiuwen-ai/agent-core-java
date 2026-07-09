@@ -16,16 +16,17 @@ import java.util.Map;
  * Creates vector store instances backed by Milvus, a high-performance
  * open-source vector database designed for scalable similarity search
  * and AI application workloads.
- *
- * @since 0.1.12
+ * 
  * @see VectorStoreProvider
  * @see com.openjiuwen.core.foundation.store.vector.MilvusVectorStore
+ * @since 0.1.7
  */
 public final class MilvusVectorStoreProvider implements VectorStoreProvider {
     /**
-     * Returns the Milvus vector store type name.
-     *
-     * @return the type name "milvus"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -34,9 +35,10 @@ public final class MilvusVectorStoreProvider implements VectorStoreProvider {
 
     /**
      * Creates a new Milvus vector store instance.
-     *
+     * 
      * @param conf the configuration map for Milvus connection
      * @return a new MilvusVectorStore instance
+     * @since 0.1.7
      */
     @Override
     public BaseVectorStore create(Map<String, Object> conf) {

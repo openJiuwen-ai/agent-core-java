@@ -9,14 +9,12 @@ import java.util.Map;
 
 /**
  * Redis TTL (Time To Live) configuration for stored data.
- *
- * <p>Mirrors Python's {@code openjiuwen.extensions.checkpointer.redis.checkpointer.RedisTTLConfig}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.extensions.checkpointer.redis.checkpointer.RedisTTLConfig}.
+ * 
+ * @since 0.1.7
  */
 public class RedisTTLConfig {
-
-    /**
-     * Default TTL in minutes for stored data.
-     */
     private Double defaultTtl;
 
     /**
@@ -26,6 +24,8 @@ public class RedisTTLConfig {
 
     /**
      * Default constructor.
+     * 
+     * @since 0.1.7
      */
     public RedisTTLConfig() {
         this.defaultTtl = null;
@@ -34,9 +34,10 @@ public class RedisTTLConfig {
 
     /**
      * Constructor with parameters.
-     *
-     * @param defaultTtl    Default TTL in minutes
+     * 
+     * @param defaultTtl Default TTL in minutes
      * @param refreshOnRead Whether to refresh TTL on read
+     * @since 0.1.7
      */
     public RedisTTLConfig(Double defaultTtl, boolean refreshOnRead) {
         this.defaultTtl = defaultTtl;
@@ -45,46 +46,56 @@ public class RedisTTLConfig {
 
     /**
      * Create from a configuration map.
-     *
+     * 
      * @param config Configuration map
      * @return RedisTTLConfig instance
+     * @since 0.1.7
      */
     public static RedisTTLConfig fromMap(Map<String, Object> config) {
         if (config == null) {
             return new RedisTTLConfig();
         }
-        Double defaultTtl = config.get("default_ttl") != null 
-            ? ((Number) config.get("default_ttl")).doubleValue() 
-            : null;
-        Boolean refreshOnRead = config.get("refresh_on_read") != null
-            ? (Boolean) config.get("refresh_on_read")
-            : false;
+        Double defaultTtl =
+            config.get("default_ttl") != null ? ((Number) config.get("default_ttl")).doubleValue() : null;
+        Boolean refreshOnRead = config.get("refresh_on_read") != null ? (Boolean) config.get("refresh_on_read") : false;
         return new RedisTTLConfig(defaultTtl, refreshOnRead);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDefaultTtl.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Double getDefaultTtl() {
         return defaultTtl;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDefaultTtl.
+     * 
+     * @param defaultTtl defaultTtl
+     * @since 0.1.7
      */
     public void setDefaultTtl(Double defaultTtl) {
         this.defaultTtl = defaultTtl;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isRefreshOnRead.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isRefreshOnRead() {
         return refreshOnRead;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setRefreshOnRead.
+     * 
+     * @param refreshOnRead refreshOnRead
+     * @since 0.1.7
      */
     public void setRefreshOnRead(boolean refreshOnRead) {
         this.refreshOnRead = refreshOnRead;
@@ -92,8 +103,9 @@ public class RedisTTLConfig {
 
     /**
      * Get TTL in seconds.
-     *
+     * 
      * @return TTL in seconds, or null if not set
+     * @since 0.1.7
      */
     public Integer getTtlSeconds() {
         if (defaultTtl == null) {
@@ -104,8 +116,9 @@ public class RedisTTLConfig {
 
     /**
      * Convert this TTL configuration into the map shape used by storage helpers.
-     *
+     * 
      * @return storage-friendly TTL map
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> ttl = new LinkedHashMap<>();

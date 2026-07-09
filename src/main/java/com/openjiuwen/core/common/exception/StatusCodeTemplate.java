@@ -9,49 +9,33 @@ import java.util.Set;
 /**
  * Template for generating new StatusCode entries.
  * Used by tooling / code generation rather than at runtime.
- *
- * @param name            suggested enum member name, e.g. "WORKFLOW_EXECUTE_TIMEOUT"
- * @param codeSuggestion  human-readable code range, e.g. "100000–100999"
- * @param messageTemplate message template with {placeholders}
- * @param exceptionSemantic exception class name, e.g. "ValidationError"
+ * @since 0.1.7
  */
-public record StatusCodeTemplate(
-    String name,
-    String codeSuggestion,
-    String messageTemplate,
-    String exceptionSemantic
-) {
+public record StatusCodeTemplate(String name, String codeSuggestion, String messageTemplate, String exceptionSemantic) {
 
     // ==================== Allowed Values ====================
-
     /**
-     * Auto-generated for codecheck compliance.
+     * ALLOWED_SCOPES.
+     * @since 0.1.7
      */
-    public static final Set<String> ALLOWED_SCOPES = Set.of(
-        "WORKFLOW", "COMPONENT", "AGENT", "TOOL", "MODEL", "SESSION",
-        "GRAPH", "CONTROLLER", "RUNNER", "PROMPT", "COMMON", "CONTEXT",
-        "TOOLCHAIN", "MEMORY", "RETRIEVAL", "SYS_OPERATION"
-    );
-
+    public static final Set<String> ALLOWED_SCOPES =
+        Set.of("WORKFLOW", "COMPONENT", "AGENT", "TOOL", "MODEL", "SESSION", "GRAPH", "CONTROLLER", "RUNNER", "PROMPT",
+                "COMMON", "CONTEXT", "TOOLCHAIN", "MEMORY", "RETRIEVAL", "SYS_OPERATION");
     /**
-     * Auto-generated for codecheck compliance.
+     * ALLOWED_FAILURE_TYPES.
+     * @since 0.1.7
      */
-    public static final Set<String> ALLOWED_FAILURE_TYPES = Set.of(
-        "INVALID", "NOT_FOUND", "NOT_SUPPORTED", "CONFIG_ERROR", "PARAM_ERROR", "TYPE_ERROR",
-        "INIT_FAILED", "CALL_FAILED",
-        "EXECUTION_ERROR", "RUNTIME_ERROR", "PROCESS_ERROR", "TIMEOUT", "INTERRUPTED"
-    );
-
-    // ==================== Factory ====================
-
+    public static final Set<String> ALLOWED_FAILURE_TYPES =
+        Set.of("INVALID", "NOT_FOUND", "NOT_SUPPORTED", "CONFIG_ERROR", "PARAM_ERROR", "TYPE_ERROR", "INIT_FAILED",
+                "CALL_FAILED", "EXECUTION_ERROR", "RUNTIME_ERROR", "PROCESS_ERROR", "TIMEOUT", "INTERRUPTED");
     /**
-     * Generate a {@link StatusCodeTemplate} from structured inputs.
-     *
-     * @param scope       one of {@link #ALLOWED_SCOPES}
-     * @param subject     short noun, e.g. "connection"
-     * @param failureType one of {@link #ALLOWED_FAILURE_TYPES}
-     * @param detail      optional detail fragment inserted between scope and subject
-     * @return populated template
+     * generate.
+     * @param scope scope
+     * @param subject subject
+     * @param failureType failureType
+     * @param detail detail
+     * @return the result
+     * @since 0.1.7
      */
     public static StatusCodeTemplate generate(String scope, String subject, String failureType, String detail) {
         if (!ALLOWED_SCOPES.contains(scope)) {
@@ -70,14 +54,25 @@ public record StatusCodeTemplate(
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generate.
+     * @param scope scope
+     * @param subject subject
+     * @param failureType failureType
+     * @return the result
+     * @since 0.1.7
      */
     public static StatusCodeTemplate generate(String scope, String subject, String failureType) {
         return generate(scope, subject, failureType, null);
     }
-
-    // ==================== Internal ====================
-
+    /**
+     * generateName.
+     * @param scope scope
+     * @param subject subject
+     * @param detail detail
+     * @param failureType failureType
+     * @return the result
+     * @since 0.1.7
+     */
     private static String generateName(String scope, String subject, String detail, String failureType) {
         StringBuilder sb = new StringBuilder(scope);
         if (detail != null && !detail.isEmpty()) {
@@ -88,6 +83,12 @@ public record StatusCodeTemplate(
         return sb.toString();
     }
 
+    /**
+     * exceptionSemanticFromFailure.
+     * @param failureType failureType
+     * @return the result
+     * @since 0.1.7
+     */
     private static String exceptionSemanticFromFailure(String failureType) {
         return switch (failureType) {
             case "INVALID", "NOT_FOUND", "NOT_SUPPORTED", "CONFIG_ERROR", "PARAM_ERROR" -> "ValidationError";

@@ -11,14 +11,14 @@ import lombok.NoArgsConstructor;
 
 import java.util.Map;
 
+/**
+ * Public class StopEvaluationContext used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class StopEvaluationContext used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class StopEvaluationContext {
     private int iteration;

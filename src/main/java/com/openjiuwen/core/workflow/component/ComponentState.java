@@ -10,8 +10,11 @@ import lombok.NoArgsConstructor;
 
 /**
  * Public workflow component runtime state shell.
- *
- * <p>Mirrors Python's {@code ComponentState}.</p>
+ * <p>
+ * Mirrors Python's {@code ComponentState}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor

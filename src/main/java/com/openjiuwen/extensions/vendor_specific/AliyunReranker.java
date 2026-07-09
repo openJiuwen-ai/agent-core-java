@@ -15,38 +15,53 @@ import java.util.Locale;
 
 /**
  * Aliyun reranker client mirroring Python's vendor-specific implementation.
+ * 
+ * @since 0.1.7
  */
 public class AliyunReranker extends StandardReranker {
-
+    /**
+     * END_POINT.
+     * 
+     * @since 0.1.7
+     */
     public static final String END_POINT = "/services/rerank/text-rerank/text-rerank";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AliyunReranker.
+     * 
+     * @since 0.1.7
      */
     public AliyunReranker() {
         super(new RerankerConfig());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AliyunReranker.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public AliyunReranker(RerankerConfig config) {
         super(config);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * buildRequestPayload.
+     * 
+     * @param query query
+     * @param documents documents
+     * @param instruct instruct
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    protected Map<String, Object> buildRequestPayload(String query,
-                                                      List<String> documents,
-                                                      Object instruct,
-                                                      Map<String, Object> options) {
+    @Override
+    protected Map<String, Object> buildRequestPayload(String query, List<String> documents, Object instruct,
+            Map<String, Object> options) {
         Map<String, Object> parameters = new LinkedHashMap<>();
         parameters.put("return_documents", false);
-        parameters.put("top_n", options != null && options.containsKey("top_n")
-                ? options.get("top_n")
-                : documents.size());
+        parameters.put("top_n",
+                options != null && options.containsKey("top_n") ? options.get("top_n") : documents.size());
         if (instruct instanceof String instructText && !instructText.isEmpty()) {
             parameters.put("instruct", instructText);
         }
@@ -62,14 +77,22 @@ public class AliyunReranker extends StandardReranker {
         return payload;
     }
 
+    /**
+     * rerankOrderedScores.
+     * 
+     * @param query query
+     * @param documents documents
+     * @param instruct instruct
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    protected List<Double> rerankOrderedScores(String query,
-                                               List<String> documents,
-                                               Object instruct,
-                                               Map<String, Object> options) {
+    protected List<Double> rerankOrderedScores(String query, List<String> documents, Object instruct,
+            Map<String, Object> options) {
         List<Double> scores = new ArrayList<>();
-        boolean hasFrenchInstruction = instruct instanceof String text
-                && text.toLowerCase(Locale.ROOT).contains("french");
+        boolean hasFrenchInstruction =
+            instruct instanceof String text && text.toLowerCase(Locale.ROOT).contains("french");
         String normalizedQuery = query == null ? "" : query.toLowerCase(Locale.ROOT);
 
         for (String document : documents) {
@@ -88,10 +111,13 @@ public class AliyunReranker extends StandardReranker {
         return scores;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * endpoint.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected String endpoint() {
         return END_POINT;
     }

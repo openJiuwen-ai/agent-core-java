@@ -1,14 +1,15 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.spi.store.object;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for ObjectStorageFactory SPI registration.
@@ -16,9 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * No built-in providers exist; all implementations are registered by Service adapters.
  */
 class ObjectStorageFactorySpiTest {
-
     // ========== No built-in providers ==========
-
     @Test
     @DisplayName("No built-in object storage providers are registered")
     void noBuiltInProviders() {
@@ -30,8 +29,8 @@ class ObjectStorageFactorySpiTest {
     @Test
     @DisplayName("create() with unregistered type throws IllegalArgumentException")
     void createUnregisteredTypeThrows() {
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> ObjectStorageFactory.create("obs", Map.of()));
+        IllegalArgumentException ex =
+            assertThrows(IllegalArgumentException.class, () -> ObjectStorageFactory.create("obs", Map.of()));
         assertTrue(ex.getMessage().contains("obs"));
     }
 
@@ -42,9 +41,14 @@ class ObjectStorageFactorySpiTest {
     void registerCustomProvider() {
         ObjectStorageFactory.register("mock_obs", new ObjectStorageProvider() {
             @Override
-            public String typeName() { return "mock_obs"; }
+            public String typeName() {
+                return "mock_obs";
+            }
+
             @Override
-            public BaseObjectStorageClient create(Map<String, Object> conf) { return new MockObjectStorageClient(); }
+            public BaseObjectStorageClient create(Map<String, Object> conf) {
+                return new MockObjectStorageClient();
+            }
         });
         assertTrue(ObjectStorageFactory.hasProvider("mock_obs"));
 
@@ -58,15 +62,25 @@ class ObjectStorageFactorySpiTest {
     void registerOverridesExisting() {
         ObjectStorageFactory.register("mock_s3", new ObjectStorageProvider() {
             @Override
-            public String typeName() { return "mock_s3"; }
+            public String typeName() {
+                return "mock_s3";
+            }
+
             @Override
-            public BaseObjectStorageClient create(Map<String, Object> conf) { return new MockObjectStorageClient(); }
+            public BaseObjectStorageClient create(Map<String, Object> conf) {
+                return new MockObjectStorageClient();
+            }
         });
         ObjectStorageFactory.register("mock_s3", new ObjectStorageProvider() {
             @Override
-            public String typeName() { return "mock_s3"; }
+            public String typeName() {
+                return "mock_s3";
+            }
+
             @Override
-            public BaseObjectStorageClient create(Map<String, Object> conf) { return new AnotherMockObjectStorageClient(); }
+            public BaseObjectStorageClient create(Map<String, Object> conf) {
+                return new AnotherMockObjectStorageClient();
+            }
         });
 
         BaseObjectStorageClient client = ObjectStorageFactory.create("mock_s3", Map.of());
@@ -94,7 +108,10 @@ class ObjectStorageFactorySpiTest {
     void createWithNullConf() {
         ObjectStorageFactory.register("mock_null_conf", new ObjectStorageProvider() {
             @Override
-            public String typeName() { return "mock_null_conf"; }
+            public String typeName() {
+                return "mock_null_conf";
+            }
+
             @Override
             public BaseObjectStorageClient create(Map<String, Object> conf) {
                 assertNotNull(conf);
@@ -109,8 +126,7 @@ class ObjectStorageFactorySpiTest {
     @Test
     @DisplayName("create() with empty string type throws IllegalArgumentException")
     void createWithEmptyTypeThrows() {
-        assertThrows(IllegalArgumentException.class,
-                () -> ObjectStorageFactory.create("", Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> ObjectStorageFactory.create("", Map.of()));
     }
 
     @Test
@@ -118,9 +134,14 @@ class ObjectStorageFactorySpiTest {
     void createReturnsDifferentInstances() {
         ObjectStorageFactory.register("mock_multi", new ObjectStorageProvider() {
             @Override
-            public String typeName() { return "mock_multi"; }
+            public String typeName() {
+                return "mock_multi";
+            }
+
             @Override
-            public BaseObjectStorageClient create(Map<String, Object> conf) { return new MockObjectStorageClient(); }
+            public BaseObjectStorageClient create(Map<String, Object> conf) {
+                return new MockObjectStorageClient();
+            }
         });
 
         BaseObjectStorageClient client1 = ObjectStorageFactory.create("mock_multi", Map.of());
@@ -133,7 +154,10 @@ class ObjectStorageFactorySpiTest {
     void registerProviderThatReadsConf() {
         ObjectStorageFactory.register("mock_conf_aware", new ObjectStorageProvider() {
             @Override
-            public String typeName() { return "mock_conf_aware"; }
+            public String typeName() {
+                return "mock_conf_aware";
+            }
+
             @Override
             public BaseObjectStorageClient create(Map<String, Object> conf) {
                 assertNotNull(conf);
@@ -154,9 +178,14 @@ class ObjectStorageFactorySpiTest {
 
         ObjectStorageFactory.register(type, new ObjectStorageProvider() {
             @Override
-            public String typeName() { return type; }
+            public String typeName() {
+                return type;
+            }
+
             @Override
-            public BaseObjectStorageClient create(Map<String, Object> conf) { return new MockObjectStorageClient(); }
+            public BaseObjectStorageClient create(Map<String, Object> conf) {
+                return new MockObjectStorageClient();
+            }
         });
 
         assertTrue(ObjectStorageFactory.hasProvider(type));
@@ -177,31 +206,67 @@ class ObjectStorageFactorySpiTest {
 
     static class MockObjectStorageClient extends BaseObjectStorageClient {
         @Override
-        public boolean uploadFile(String bucketName, String objectName, java.nio.file.Path filePath) { return true; }
+        public boolean uploadFile(String bucketName, String objectName, java.nio.file.Path filePath) {
+            return true;
+        }
+
         @Override
-        public boolean downloadFile(String bucketName, String objectName, java.nio.file.Path filePath) { return true; }
+        public boolean downloadFile(String bucketName, String objectName, java.nio.file.Path filePath) {
+            return true;
+        }
+
         @Override
-        public boolean deleteObject(String bucketName, String objectName) { return true; }
+        public boolean deleteObject(String bucketName, String objectName) {
+            return true;
+        }
+
         @Override
-        public boolean createBucket(String bucketName, String location) { return true; }
+        public boolean createBucket(String bucketName, String location) {
+            return true;
+        }
+
         @Override
-        public boolean deleteBucket(String bucketName) { return true; }
+        public boolean deleteBucket(String bucketName) {
+            return true;
+        }
+
         @Override
-        public java.util.List<java.util.Map<String, Object>> listObjects(String bucketName, String objectPrefix, int maxObjects) { return java.util.List.of(); }
+        public java.util.List<java.util.Map<String, Object>> listObjects(String bucketName, String objectPrefix,
+                int maxObjects) {
+            return java.util.List.of();
+        }
     }
 
     static class AnotherMockObjectStorageClient extends BaseObjectStorageClient {
         @Override
-        public boolean uploadFile(String bucketName, String objectName, java.nio.file.Path filePath) { return true; }
+        public boolean uploadFile(String bucketName, String objectName, java.nio.file.Path filePath) {
+            return true;
+        }
+
         @Override
-        public boolean downloadFile(String bucketName, String objectName, java.nio.file.Path filePath) { return true; }
+        public boolean downloadFile(String bucketName, String objectName, java.nio.file.Path filePath) {
+            return true;
+        }
+
         @Override
-        public boolean deleteObject(String bucketName, String objectName) { return true; }
+        public boolean deleteObject(String bucketName, String objectName) {
+            return true;
+        }
+
         @Override
-        public boolean createBucket(String bucketName, String location) { return true; }
+        public boolean createBucket(String bucketName, String location) {
+            return true;
+        }
+
         @Override
-        public boolean deleteBucket(String bucketName) { return true; }
+        public boolean deleteBucket(String bucketName) {
+            return true;
+        }
+
         @Override
-        public java.util.List<java.util.Map<String, Object>> listObjects(String bucketName, String objectPrefix, int maxObjects) { return java.util.List.of(); }
+        public java.util.List<java.util.Map<String, Object>> listObjects(String bucketName, String objectPrefix,
+                int maxObjects) {
+            return java.util.List.of();
+        }
     }
 }

@@ -22,11 +22,12 @@ import java.util.UUID;
  * <p>
  * Mirrors Python's {@code ModelClientConfig} model.
  * Supports extra fields via {@link #extraFields}.
+ * 
+ * @since 0.1.7
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonDeserialize(builder = ModelClientConfig.Builder.class)
 public class ModelClientConfig {
-
     private final String clientId;
     private final String clientProvider;
     private final String apiKey;
@@ -38,20 +39,26 @@ public class ModelClientConfig {
     private final Map<String, String> headers;
     private final Map<String, Object> extraFields;
 
+    /**
+     * ModelClientConfig.
+     * 
+     * @param builder builder
+     * @since 0.1.7
+     */
     private ModelClientConfig(Builder builder) {
         this.clientId = builder.clientId != null ? builder.clientId : UUID.randomUUID().toString();
         this.clientProvider = Objects.requireNonNull(builder.clientProvider, "clientProvider must not be null");
         this.apiKey = Objects.requireNonNull(builder.apiKey, "apiKey must not be null");
         this.apiBase = Objects.requireNonNull(builder.apiBase, "apiBase must not be null");
-        
+
         // Validate timeout - must be > 0 (matches Python Pydantic Field(gt=0))
         if (builder.timeout <= 0) {
             throw new IllegalArgumentException(
-                    "Input should be greater than 0 [type=greater_than, input_value=" + builder.timeout + ", input_type=" + 
-                    (builder.timeout == (int)builder.timeout ? "int" : "float") + "]");
+                    "Input should be greater than 0 [type=greater_than, input_value=" + builder.timeout
+                            + ", input_type=" + (builder.timeout == (int) builder.timeout ? "int" : "float") + "]");
         }
         this.timeout = builder.timeout;
-        
+
         this.maxRetries = builder.maxRetries;
         this.verifySsl = builder.verifySsl;
         this.sslCert = builder.sslCert;
@@ -59,102 +66,131 @@ public class ModelClientConfig {
         this.extraFields = builder.extraFields;
     }
 
-    // ==================== Getters ====================
-
-    @JsonProperty("client_id")
     /**
-     * Auto-generated for codecheck compliance.
+     * getClientId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonProperty("client_id")
     public String getClientId() {
         return clientId;
     }
 
-    @JsonProperty("client_provider")
     /**
-     * Auto-generated for codecheck compliance.
+     * getClientProvider.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonProperty("client_provider")
     public String getClientProvider() {
         return clientProvider;
     }
 
-    @JsonProperty("api_key")
     /**
-     * Auto-generated for codecheck compliance.
+     * getApiKey.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonProperty("api_key")
     public String getApiKey() {
         return apiKey;
     }
 
-    @JsonProperty("api_base")
     /**
-     * Auto-generated for codecheck compliance.
+     * getApiBase.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonProperty("api_base")
     public String getApiBase() {
         return apiBase;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTimeout.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getTimeout() {
         return timeout;
     }
 
-    @JsonProperty("max_retries")
     /**
-     * Auto-generated for codecheck compliance.
+     * getMaxRetries.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonProperty("max_retries")
     public int getMaxRetries() {
         return maxRetries;
     }
 
-    @JsonProperty("verify_ssl")
     /**
-     * Auto-generated for codecheck compliance.
+     * isVerifySsl.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonProperty("verify_ssl")
     public boolean isVerifySsl() {
         return verifySsl;
     }
 
-    @JsonProperty("ssl_cert")
     /**
-     * Auto-generated for codecheck compliance.
+     * getSslCert.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonProperty("ssl_cert")
     public String getSslCert() {
         return sslCert;
     }
 
-    @JsonProperty("headers")
     /**
-     * Auto-generated for codecheck compliance.
+     * getHeaders.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonProperty("headers")
     public Map<String, String> getHeaders() {
         return new LinkedHashMap<>(headers);
     }
 
-    @JsonAnyGetter
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtraFields.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonAnyGetter
     public Map<String, Object> getExtraFields() {
         return extraFields;
     }
 
-    // ==================== Builder ====================
-
     /**
      * Creates a new builder for ModelClientConfig.
-     *
+     * 
      * @return a new Builder instance
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
-    @JsonPOJOBuilder(withPrefix = "")
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
+    @JsonPOJOBuilder(withPrefix = "")
     public static class Builder {
         private String clientId;
         private String clientProvider;
@@ -164,85 +200,133 @@ public class ModelClientConfig {
         private int maxRetries = 3;
         private boolean verifySsl = true;
         private String sslCert;
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, String> headers = new LinkedHashMap<>();
+
+        /**
+         * HashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, Object> extraFields = new HashMap<>();
 
-        @JsonProperty("client_id")
         /**
-         * Auto-generated for codecheck compliance.
+         * clientId.
+         * 
+         * @param clientId clientId
+         * @return the result
+         * @since 0.1.7
          */
+        @JsonProperty("client_id")
         public Builder clientId(String clientId) {
             this.clientId = clientId;
             return this;
         }
 
-        @JsonProperty("client_provider")
         /**
-         * Auto-generated for codecheck compliance.
+         * clientProvider.
+         * 
+         * @param clientProvider clientProvider
+         * @return the result
+         * @since 0.1.7
          */
+        @JsonProperty("client_provider")
         public Builder clientProvider(String clientProvider) {
             this.clientProvider = clientProvider;
             return this;
         }
 
-        @JsonProperty("api_key")
         /**
-         * Auto-generated for codecheck compliance.
+         * apiKey.
+         * 
+         * @param apiKey apiKey
+         * @return the result
+         * @since 0.1.7
          */
+        @JsonProperty("api_key")
         public Builder apiKey(String apiKey) {
             this.apiKey = apiKey;
             return this;
         }
 
-        @JsonProperty("api_base")
         /**
-         * Auto-generated for codecheck compliance.
+         * apiBase.
+         * 
+         * @param apiBase apiBase
+         * @return the result
+         * @since 0.1.7
          */
+        @JsonProperty("api_base")
         public Builder apiBase(String apiBase) {
             this.apiBase = apiBase;
             return this;
         }
 
-        @JsonProperty("timeout")
         /**
-         * Auto-generated for codecheck compliance.
+         * timeout.
+         * 
+         * @param timeout timeout
+         * @return the result
+         * @since 0.1.7
          */
+        @JsonProperty("timeout")
         public Builder timeout(double timeout) {
             this.timeout = timeout;
             return this;
         }
 
-        @JsonProperty("max_retries")
         /**
-         * Auto-generated for codecheck compliance.
+         * maxRetries.
+         * 
+         * @param maxRetries maxRetries
+         * @return the result
+         * @since 0.1.7
          */
+        @JsonProperty("max_retries")
         public Builder maxRetries(int maxRetries) {
             this.maxRetries = maxRetries;
             return this;
         }
 
-        @JsonProperty("verify_ssl")
         /**
-         * Auto-generated for codecheck compliance.
+         * verifySsl.
+         * 
+         * @param verifySsl verifySsl
+         * @return the result
+         * @since 0.1.7
          */
+        @JsonProperty("verify_ssl")
         public Builder verifySsl(boolean verifySsl) {
             this.verifySsl = verifySsl;
             return this;
         }
 
-        @JsonProperty("ssl_cert")
         /**
-         * Auto-generated for codecheck compliance.
+         * sslCert.
+         * 
+         * @param sslCert sslCert
+         * @return the result
+         * @since 0.1.7
          */
+        @JsonProperty("ssl_cert")
         public Builder sslCert(String sslCert) {
             this.sslCert = sslCert;
             return this;
         }
 
-        @JsonProperty("headers")
         /**
-         * Auto-generated for codecheck compliance.
+         * headers.
+         * 
+         * @param headers headers
+         * @return the result
+         * @since 0.1.7
          */
+        @JsonProperty("headers")
         public Builder headers(Map<String, ?> headers) {
             this.headers.clear();
             if (headers != null) {
@@ -256,7 +340,12 @@ public class ModelClientConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * header.
+         * 
+         * @param key key
+         * @param value value
+         * @return the result
+         * @since 0.1.7
          */
         public Builder header(String key, String value) {
             if (key != null && value != null) {
@@ -265,10 +354,15 @@ public class ModelClientConfig {
             return this;
         }
 
-        @JsonAnySetter
         /**
-         * Auto-generated for codecheck compliance.
+         * extraField.
+         * 
+         * @param key key
+         * @param value value
+         * @return the result
+         * @since 0.1.7
          */
+        @JsonAnySetter
         public Builder extraField(String key, Object value) {
             this.extraFields.put(key, value);
             return this;
@@ -276,20 +370,24 @@ public class ModelClientConfig {
 
         /**
          * Builds the ModelClientConfig instance.
-         *
+         * 
          * @return a new ModelClientConfig instance
+         * @since 0.1.7
          */
         public ModelClientConfig build() {
             return new ModelClientConfig(this);
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String toString() {
-        return "ModelClientConfig{clientId='" + clientId + "', clientProvider='" + clientProvider
-                + "', apiBase='" + apiBase + "'}";
+        return "ModelClientConfig{clientId='" + clientId + "', clientProvider='" + clientProvider + "', apiBase='"
+                + apiBase + "'}";
     }
 }

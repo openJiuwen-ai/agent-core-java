@@ -1,7 +1,14 @@
+
 package com.openjiuwen.agentevolving.optimizer.tool_call.utils;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -12,20 +19,12 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class ToolCallUtilsTest {
-
     @Test
     void formatUtilsParseJsonMatchesPythonFallbacks() {
         @SuppressWarnings("unchecked")
-        Map<String, Object> parsedWithHeader = (Map<String, Object>) FormatUtils.parseJson(
-                "noise {\"answer\": \"ok\", \"x\": 1} tail",
-                "answer"
-        );
+        Map<String, Object> parsedWithHeader =
+            (Map<String, Object>) FormatUtils.parseJson("noise {\"answer\": \"ok\", \"x\": 1} tail", "answer");
         @SuppressWarnings("unchecked")
         Map<String, Object> parsedLiteral = (Map<String, Object>) FormatUtils.parseJson("{'answer': 'ok', 'x': 2}");
 
@@ -45,9 +44,7 @@ class ToolCallUtilsTest {
     @Test
     void baseMethodProducesVerifiedAnswerAndSupportsTruthyVerbose() {
         RecordingBaseMethod method = new RecordingBaseMethod(
-                Map.of("gen_model_id", "gpt-x", "llm_api_key", "k", "verbose", 1),
-                "{\"answer\": \"final answer\"}"
-        );
+                Map.of("gen_model_id", "gpt-x", "llm_api_key", "k", "verbose", 1), "{\"answer\": \"final answer\"}");
 
         String output = method.produceAnswerFromApiCall("inst", "doc", "api_result");
 
@@ -61,11 +58,10 @@ class ToolCallUtilsTest {
     @Test
     void baseMethodRejectsErrorPayload() {
         RecordingBaseMethod method = new RecordingBaseMethod(
-                Map.of("gen_model_id", "gpt-x", "llm_api_key", "k", "verbose", false),
-                "{\"error\":\"bad\"}"
-        );
+                Map.of("gen_model_id", "gpt-x", "llm_api_key", "k", "verbose", false), "{\"error\":\"bad\"}");
 
-        assertThrows(IllegalArgumentException.class, () -> method.produceAnswerFromApiCall("inst", "doc", "api_result"));
+        assertThrows(IllegalArgumentException.class,
+                () -> method.produceAnswerFromApiCall("inst", "doc", "api_result"));
     }
 
     @Test
@@ -81,44 +77,19 @@ class ToolCallUtilsTest {
 
     @Test
     void beamSearchSearchPruneTimeoutAndEarlyStopMatchPython() {
-        BeamSearch beamSearch = new BeamSearch(
-                new DummyMethod(),
-                1,
-                2,
-                2,
-                1,
-                false,
-                false,
-                false,
-                100.0,
-                1
-        );
+        BeamSearch beamSearch = new BeamSearch(new DummyMethod(), 1, 2, 2, 1, false, false, false, 100.0, 1);
 
         List<List<Object>> result = beamSearch.search(Map.of("name", "tool"));
         assertEquals(1, result.size());
         assertEquals(Map.of("it", 0), result.get(0).get(0));
         assertEquals(Map.of("it", 2), result.get(0).get(result.get(0).size() - 1));
 
-        List<TreeNode> pruned = beamSearch.prune(List.of(
-                new TreeNode("a", 1.0, Map.of()),
-                new TreeNode("b", 3.0, Map.of()),
-                new TreeNode("c", 2.0, Map.of())
-        ));
+        List<TreeNode> pruned = beamSearch.prune(List.of(new TreeNode("a", 1.0, Map.of()),
+                new TreeNode("b", 3.0, Map.of()), new TreeNode("c", 2.0, Map.of())));
         assertEquals(1, pruned.size());
         assertEquals(3.0, pruned.get(0).getScore());
 
-        BeamSearch timeoutSearch = new BeamSearch(
-                new DummyMethod(),
-                1,
-                1,
-                3,
-                1,
-                false,
-                true,
-                false,
-                1.0,
-                1
-        );
+        BeamSearch timeoutSearch = new BeamSearch(new DummyMethod(), 1, 1, 3, 1, false, true, false, 1.0, 1);
         timeoutSearch.setTimeoutMs(-1L);
         List<List<Object>> timedOut = timeoutSearch.search(Map.of("name", "tool"));
         assertEquals(1, timedOut.size());
@@ -131,37 +102,13 @@ class ToolCallUtilsTest {
 
     @Test
     void beamSearchRejectsInvalidRootsAndSupportsThreeArgStepMethods() {
-        BeamSearch invalidSearch = new BeamSearch(
-                new InvalidMethod(),
-                1,
-                1,
-                1,
-                1,
-                false,
-                true,
-                true,
-                100.0,
-                1
-        );
+        BeamSearch invalidSearch = new BeamSearch(new InvalidMethod(), 1, 1, 1, 1, false, true, true, 100.0, 1);
 
         assertThrows(RuntimeException.class, () -> invalidSearch.search(Map.of("name", "tool")));
-        assertThrows(
-                RuntimeException.class,
-                () -> invalidSearch.expand(List.of(new TreeNode("r", 1.0, Map.of("ok", 1))), Map.of("name", "tool"), null, 1)
-        );
+        assertThrows(RuntimeException.class, () -> invalidSearch
+                .expand(List.of(new TreeNode("r", 1.0, Map.of("ok", 1))), Map.of("name", "tool"), null, 1));
 
-        BeamSearch threeArgSearch = new BeamSearch(
-                new ThreeArgMethod(),
-                1,
-                1,
-                1,
-                1,
-                false,
-                false,
-                false,
-                100.0,
-                1
-        );
+        BeamSearch threeArgSearch = new BeamSearch(new ThreeArgMethod(), 1, 1, 1, 1, false, false, false, 100.0, 1);
         List<List<Object>> result = threeArgSearch.search(Map.of("name", "tool"));
 
         assertEquals(1, result.size());
@@ -190,32 +137,13 @@ class ToolCallUtilsTest {
                 """;
 
         try (MockOpenAiServer server = new MockOpenAiServer(responseBody)) {
-            Object verified = RitsUtils.ritsResponse(
-                    "gpt-test",
-                    "hello",
-                    "key",
-                    String::toUpperCase,
-                    false,
-                    Map.of("api_base", server.baseUrl())
-            );
-            Object raw = RitsUtils.ritsResponse(
-                    "gpt-test",
-                    "hello",
-                    "key",
-                    null,
-                    false,
-                    Map.of("api_base", server.baseUrl())
-            );
-            Object wrapped = RitsUtils.getRitsResponse(
-                    "gpt-test",
-                    "hello",
-                    "key",
-                    text -> {
-                        throw new RuntimeException("x");
-                    },
-                    false,
-                    Map.of("api_base", server.baseUrl())
-            );
+            Object verified = RitsUtils.ritsResponse("gpt-test", "hello", "key", String::toUpperCase, false,
+                    Map.of("api_base", server.baseUrl()));
+            Object raw =
+                RitsUtils.ritsResponse("gpt-test", "hello", "key", null, false, Map.of("api_base", server.baseUrl()));
+            Object wrapped = RitsUtils.getRitsResponse("gpt-test", "hello", "key", text -> {
+                throw new RuntimeException("x");
+            }, false, Map.of("api_base", server.baseUrl()));
 
             assertEquals("RAW-OUTPUT", verified);
             assertEquals("raw-output", raw);
@@ -237,13 +165,8 @@ class ToolCallUtilsTest {
         }
 
         @Override
-        protected Object invokeRitsResponse(
-                String modelId,
-                String prompt,
-                String llmApiKey,
-                Function<String, Object> verifyFn,
-                Map<String, Object> kwargs
-        ) {
+        protected Object invokeRitsResponse(String modelId, String prompt, String llmApiKey,
+                Function<String, Object> verifyFn, Map<String, Object> kwargs) {
             this.modelId = modelId;
             this.prompt = prompt;
             this.apiKey = llmApiKey;
@@ -252,7 +175,8 @@ class ToolCallUtilsTest {
     }
 
     private static final class DummyMethod {
-        public BeamSearch.StepResult step(Map<String, Object> tool, List<Object> examples, List<Object> prevOutputs, int it) {
+        public BeamSearch.StepResult step(Map<String, Object> tool, List<Object> examples, List<Object> prevOutputs,
+                int it) {
             if (it == 0) {
                 return new BeamSearch.StepResult("root", 1.0, Map.of("it", 0));
             }
@@ -261,7 +185,8 @@ class ToolCallUtilsTest {
     }
 
     private static final class InvalidMethod {
-        public BeamSearch.StepResult step(Map<String, Object> tool, List<Object> examples, List<Object> prevOutputs, int it) {
+        public BeamSearch.StepResult step(Map<String, Object> tool, List<Object> examples, List<Object> prevOutputs,
+                int it) {
             return new BeamSearch.StepResult("x", -1.0, Map.of("bad", true));
         }
     }

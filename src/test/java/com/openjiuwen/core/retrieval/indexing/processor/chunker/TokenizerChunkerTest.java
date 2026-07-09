@@ -1,7 +1,13 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -10,20 +16,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class TokenizerChunkerTest {
-
     @Test
     void chunkTextUsesExternalTokenizer() {
-        Function<String, List<String>> tokenizer = text -> Arrays.stream(text.replaceAll("[^A-Za-z0-9\\s]", " ")
-                        .trim()
-                        .split("\\s+"))
-                .filter(part -> !part.isBlank())
-                .toList();
+        Function<String, List<String>> tokenizer =
+            text -> Arrays.stream(text.replaceAll("[^A-Za-z0-9\\s]", " ").trim().split("\\s+"))
+                    .filter(part -> !part.isBlank()).toList();
         TokenizerChunker chunker = new TokenizerChunker(2, 0, tokenizer, "en", Map.of());
 
         List<String> chunks = chunker.chunkText("One two. Three four.");
@@ -44,11 +42,9 @@ class TokenizerChunkerTest {
 
     @Test
     void chunkTextWithOverlapPreservesContext() {
-        Function<String, List<String>> tokenizer = text -> Arrays.stream(text.replaceAll("[^A-Za-z0-9\\s]", " ")
-                        .trim()
-                        .split("\\s+"))
-                .filter(part -> !part.isBlank())
-                .toList();
+        Function<String, List<String>> tokenizer =
+            text -> Arrays.stream(text.replaceAll("[^A-Za-z0-9\\s]", " ").trim().split("\\s+"))
+                    .filter(part -> !part.isBlank()).toList();
         // chunkSize=3, overlap=1 → each chunk holds up to 3 tokens, overlap keeps 1 token from previous
         TokenizerChunker chunker = new TokenizerChunker(3, 1, tokenizer, "en", Map.of());
 

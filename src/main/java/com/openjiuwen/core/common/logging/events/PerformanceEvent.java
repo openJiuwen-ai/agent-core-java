@@ -10,7 +10,11 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Performance metric related event. */
+/**
+ * Performance metric related event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -22,17 +26,22 @@ public class PerformanceEvent extends BaseLogEvent {
     private String operation;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PerformanceEvent.
+     * 
+     * @since 0.1.7
      */
     public PerformanceEvent() {
         super();
         setModuleType(ModuleType.SYSTEM);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "metric_name", metricName);
         putIfNotNull(map, "metric_value", metricValue);

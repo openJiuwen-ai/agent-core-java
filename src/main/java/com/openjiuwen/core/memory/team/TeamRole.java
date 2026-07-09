@@ -8,15 +8,18 @@ import java.util.Locale;
 
 /**
  * Public enum TeamRole used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum TeamRole {
     LEADER,
     TEAMMATE;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return name().toLowerCase(Locale.ROOT);

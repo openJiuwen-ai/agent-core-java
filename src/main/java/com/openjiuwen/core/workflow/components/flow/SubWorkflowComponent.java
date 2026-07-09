@@ -11,11 +11,15 @@ import com.openjiuwen.core.workflow.component.SubWorkflowComponentImpl;
  * Concrete sub-workflow component (alias for {@link SubWorkflowComponentImpl}).
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.workflow_comp.SubWorkflowComponent}.
+ * 
+ * @since 0.1.7
  */
 public class SubWorkflowComponent extends SubWorkflowComponentImpl {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * SubWorkflowComponent.
+     * 
+     * @param subWorkflow subWorkflow
+     * @since 0.1.7
      */
     public SubWorkflowComponent(Workflow subWorkflow) {
         super(subWorkflow);

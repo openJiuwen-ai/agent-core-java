@@ -1,20 +1,18 @@
+
 package com.openjiuwen.extensions.sys_operation.sandbox;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class SandboxProfileCompatibilityTest {
-
     @Test
     void aioProfileShouldBuildGatewayConfigThroughLauncherConfig() {
-        SandboxGatewayConfig config = AioSandboxProfile.config(
-                "http://localhost:8080",
-                Map.of("timeout_seconds", 30)
-        );
+        SandboxGatewayConfig config = AioSandboxProfile.config("http://localhost:8080", Map.of("timeout_seconds", 30));
 
         assertThat(config.getGatewayUrl()).isEqualTo("http://localhost:8080");
         assertThat(config.getParams()).isEmpty();
@@ -27,10 +25,8 @@ class SandboxProfileCompatibilityTest {
 
     @Test
     void jiuwenBoxProfileShouldBuildGatewayConfigThroughLauncherConfig() {
-        SandboxGatewayConfig config = JiuwenBoxSandboxProfile.config(
-                "http://localhost:8321",
-                Map.of("sandbox_id", "sbx-1")
-        );
+        SandboxGatewayConfig config =
+            JiuwenBoxSandboxProfile.config("http://localhost:8321", Map.of("sandbox_id", "sbx-1"));
 
         assertThat(config.getGatewayUrl()).isEqualTo("http://localhost:8321");
         assertThat(config.getParams()).isEmpty();

@@ -6,6 +6,7 @@ package com.openjiuwen.core.context.context;
 
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+
 import lombok.Builder;
 import lombok.Getter;
 
@@ -13,6 +14,8 @@ import lombok.Getter;
  * Session-memory update thresholds.
  * <p>
  * Mirrors Python's {@code SessionMemoryConfig}.
+ * 
+ * @since 0.1.7
  */
 @Getter
 @Builder
@@ -31,23 +34,28 @@ public class SessionMemoryConfig {
     private int directReplaceMaxRetries = 2;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SessionMemoryConfig.
+     * 
+     * @since 0.1.7
      */
     public SessionMemoryConfig() {
         this(10000, 5000, 3, null, null, "agent_edit", 2);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SessionMemoryConfig.
+     * 
+     * @param triggerTokens triggerTokens
+     * @param triggerAddTokens triggerAddTokens
+     * @param toolMin toolMin
+     * @param model model
+     * @param modelClient modelClient
+     * @param updateMode updateMode
+     * @param directReplaceMaxRetries directReplaceMaxRetries
+     * @since 0.1.7
      */
-    public SessionMemoryConfig(
-            int triggerTokens,
-            int triggerAddTokens,
-            int toolMin,
-            ModelRequestConfig model,
-            ModelClientConfig modelClient,
-            String updateMode,
-            int directReplaceMaxRetries) {
+    public SessionMemoryConfig(int triggerTokens, int triggerAddTokens, int toolMin, ModelRequestConfig model,
+            ModelClientConfig modelClient, String updateMode, int directReplaceMaxRetries) {
         if (triggerTokens <= 0 || triggerAddTokens <= 0 || toolMin <= 0) {
             throw new IllegalArgumentException("session-memory thresholds must be positive");
         }

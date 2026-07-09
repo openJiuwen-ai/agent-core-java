@@ -9,15 +9,20 @@ import com.openjiuwen.autoharness.schema.OptimizationTask;
 
 /**
  * Public class TaskContext used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class TaskContext extends SessionContext {
     private final OptimizationTask task;
     private final TaskRuntime runtime;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskContext.
+     * 
+     * @param orchestrator orchestrator
+     * @param task task
+     * @param runtime runtime
+     * @since 0.1.7
      */
     public TaskContext(AutoHarnessOrchestrator orchestrator, OptimizationTask task, TaskRuntime runtime) {
         super(orchestrator);
@@ -26,32 +31,42 @@ public class TaskContext extends SessionContext {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * taskId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String taskId() {
         return taskKey(task);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * taskKey.
+     * 
+     * @param task task
+     * @return the result
+     * @since 0.1.7
      */
     public static String taskKey(OptimizationTask task) {
         return task != null && task.getTopic() != null && !task.getTopic().isBlank() ? task.getTopic() : "task";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTask.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public OptimizationTask getTask() {
         return task;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRuntime.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TaskRuntime getRuntime() {
         return runtime;

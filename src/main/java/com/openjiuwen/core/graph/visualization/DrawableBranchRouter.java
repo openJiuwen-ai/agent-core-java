@@ -8,17 +8,23 @@ import java.util.List;
 
 /**
  * Represents a branch router's drawable information for visualization.
- *
- * <p>Contains target node names and their associated display labels.
- * Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_edge.DrawableBranchRouter}.</p>
+ * <p>
+ * Contains target node names and their associated display labels.
+ * Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_edge.DrawableBranchRouter}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class DrawableBranchRouter {
-
     private final List<String> targets;
     private final List<String> datas;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DrawableBranchRouter.
+     * 
+     * @param targets targets
+     * @param datas datas
+     * @since 0.1.7
      */
     public DrawableBranchRouter(List<String> targets, List<String> datas) {
         this.targets = targets;
@@ -26,14 +32,20 @@ public class DrawableBranchRouter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTargets.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getTargets() {
         return targets;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDatas.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getDatas() {
         return datas;

@@ -15,16 +15,27 @@ import java.util.stream.Collectors;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.channels.BarrierChannel}.
  * The channel becomes ready only when all expected senders have sent a message.
+ * 
+ * @since 0.1.7
  */
 public class BarrierChannel extends Channel {
-
     private final String nodeName;
     private final Set<String> expected;
+
+    /**
+     * HashSet<>.
+     * 
+     * @since 0.1.7
+     */
     private final Set<String> received = new HashSet<>();
     private final String routerKey;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BarrierChannel.
+     * 
+     * @param nodeName nodeName
+     * @param expected expected
+     * @since 0.1.7
      */
     public BarrierChannel(String nodeName, Set<String> expected) {
         super(nodeName);
@@ -33,34 +44,47 @@ public class BarrierChannel extends Channel {
         this.routerKey = makeRouterKey(nodeName, expected);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getKey.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getKey() {
         return routerKey;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getNodeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getNodeName() {
         return nodeName;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * isReady.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean isReady() {
         return received.equals(expected);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * accept.
+     * 
+     * @param msg msg
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean accept(Message msg) {
         if (msg instanceof BarrierMessage barrierMsg) {
             if (!received.contains(barrierMsg.getSender())) {
@@ -71,27 +95,35 @@ public class BarrierChannel extends Channel {
         return false;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * consume.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void consume() {
         received.clear();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * snapshot.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object snapshot() {
         return new ArrayList<>(received);
     }
 
+    /**
+     * restore.
+     * 
+     * @param snapshotData snapshotData
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void restore(Object snapshotData) {
         if (snapshotData instanceof List<?> list) {
             received.clear();
@@ -103,6 +135,14 @@ public class BarrierChannel extends Channel {
         }
     }
 
+    /**
+     * makeRouterKey.
+     * 
+     * @param name name
+     * @param expected expected
+     * @return the result
+     * @since 0.1.7
+     */
     private static String makeRouterKey(String name, Set<String> expected) {
         String senders = expected.stream().sorted().collect(Collectors.joining("|"));
         return "barrier:" + senders + "->" + name;

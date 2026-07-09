@@ -1,8 +1,14 @@
+
 package com.openjiuwen.core.memory.migration;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
 import com.openjiuwen.core.memory.migration.operation.OperationMetadata;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,12 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class MigrationPlanTest {
-
     private Map<String, List<BaseOperation>> sqlBackup;
     private Map<String, List<BaseOperation>> vectorBackup;
     private Map<String, List<BaseOperation>> kvBackup;

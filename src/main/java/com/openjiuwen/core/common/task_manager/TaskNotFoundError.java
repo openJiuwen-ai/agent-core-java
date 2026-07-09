@@ -8,10 +8,15 @@ import com.openjiuwen.core.common.exception.StatusCode;
 
 /**
  * Raised when a task cannot be found.
+ * 
+ * @since 0.1.7
  */
 public class TaskNotFoundError extends TaskError {
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskNotFoundError.
+     * 
+     * @param msg msg
+     * @since 0.1.7
      */
     public TaskNotFoundError(String msg) {
         super(StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR, msg);

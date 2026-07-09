@@ -10,17 +10,23 @@ import com.openjiuwen.harness.workspace.Workspace;
 
 /**
  * Runtime context for general lite memory tools.
+ * 
+ * @since 0.1.7
  */
 public class MemoryToolContext extends LiteMemoryToolContextBase {
     /**
-     * Auto-generated for codecheck compliance.
+     * MemoryToolContext.
+     * 
+     * @param workspace workspace
+     * @param settings settings
+     * @param agentId agentId
+     * @param embeddingConfig embeddingConfig
+     * @param sysOperation sysOperation
+     * @param manager manager
+     * @since 0.1.7
      */
-    public MemoryToolContext(Workspace workspace,
-                             MemorySettings settings,
-                             String agentId,
-                             EmbeddingConfig embeddingConfig,
-                             SysOperation sysOperation,
-                             MemoryIndexManager manager) {
+    public MemoryToolContext(Workspace workspace, MemorySettings settings, String agentId,
+            EmbeddingConfig embeddingConfig, SysOperation sysOperation, MemoryIndexManager manager) {
         this.workspace = workspace;
         this.settings = settings;
         this.agentId = agentId;

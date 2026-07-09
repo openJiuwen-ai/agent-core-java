@@ -11,10 +11,10 @@ package com.openjiuwen.core.controller.schema;
  * to identify user requests and route them to appropriate processing logic.
  * <p>
  * Mirrors Python's {@code IntentType(Enum)}.
+ * 
+ * @since 0.1.7
  */
 public enum IntentType {
-
-    /** Execute new task / interrupt executing tasks and execute new task */
     CREATE_TASK("create_task"),
 
     /** Pause executing task */
@@ -48,14 +48,21 @@ public enum IntentType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static IntentType fromValue(String value) {
         for (IntentType type : values()) {
@@ -66,10 +73,13 @@ public enum IntentType {
         throw new IllegalArgumentException("Unknown IntentType: " + value);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String toString() {
         return value;
     }

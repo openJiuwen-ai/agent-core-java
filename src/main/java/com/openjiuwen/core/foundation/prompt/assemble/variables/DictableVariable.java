@@ -23,9 +23,10 @@ import java.util.regex.Pattern;
  * Variable class for processing dict or list type placeholders recursively.
  * <p>
  * Mirrors Python's {@code DictableVariable}.
+ * 
+ * @since 0.1.7
  */
 public class DictableVariable extends Variable {
-
     private static final Logger LOG = LoggerFactory.getLogger(DictableVariable.class);
 
     private final Object data; // List or Map
@@ -36,19 +37,19 @@ public class DictableVariable extends Variable {
 
     /**
      * Construct a DictableVariable.
-     *
-     * @param data   the template data (List or Map) containing placeholders
-     * @param name   variable name
+     * 
+     * @param data the template data (List or Map) containing placeholders
+     * @param name variable name
      * @param prefix placeholder prefix
      * @param suffix placeholder suffix
+     * @since 0.1.7
      */
     public DictableVariable(Object data, String name, String prefix, String suffix) {
         super(name, List.of());
         this.data = data;
         this.prefix = prefix;
         this.suffix = suffix;
-        this.pattern = Pattern.compile(
-                Pattern.quote(prefix) + "([^{}]*?)" + Pattern.quote(suffix));
+        this.pattern = Pattern.compile(Pattern.quote(prefix) + "([^{}]*?)" + Pattern.quote(suffix));
 
         LinkedHashSet<String> uniquePlaceholders = new LinkedHashSet<>();
         scanPlaceholders(data, uniquePlaceholders);
@@ -61,14 +62,21 @@ public class DictableVariable extends Variable {
         this.inputKeys = new ArrayList<>(keys);
     }
 
+    /**
+     * scanPlaceholders.
+     * 
+     * @param obj obj
+     * @param result result
+     * @since 0.1.7
+     */
     private void scanPlaceholders(Object obj, LinkedHashSet<String> result) {
         if (obj instanceof String s) {
             Matcher matcher = pattern.matcher(s);
             while (matcher.find()) {
                 String placeholder = matcher.group(1).strip();
                 if (placeholder.isEmpty()) {
-                    throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
-                            "error_msg", "placeholders cannot be empty string");
+                    throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED, "error_msg",
+                            "placeholders cannot be empty string");
                 }
                 result.add(placeholder);
             }
@@ -80,19 +88,32 @@ public class DictableVariable extends Variable {
             for (Object v : map.values()) {
                 scanPlaceholders(v, result);
             }
+        } else {
+            // no-op
         }
     }
 
+    /**
+     * update.
+     * 
+     * @param kwargs kwargs
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void update(Map<String, Object> kwargs) {
         this.value = recursiveFormat(deepCopy(data), kwargs);
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * recursiveFormat.
+     * 
+     * @param obj obj
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     private Object recursiveFormat(Object obj, Map<String, Object> kwargs) {
         if (obj instanceof List<?> list) {
             List<Object> result = new ArrayList<>(list.size());
@@ -124,18 +145,17 @@ public class DictableVariable extends Variable {
                     if (val instanceof Map<?, ?> m) {
                         val = m.get(node);
                     } else {
-                        var field = val.getClass().getMethod(
-                                "get" + node.substring(0, 1).toUpperCase(Locale.ROOT) + node.substring(1));
+                        var field = val.getClass()
+                                .getMethod("get" + node.substring(0, 1).toUpperCase(Locale.ROOT) + node.substring(1));
                         val = field.invoke(val);
                     }
                 }
             } catch (Exception e) {
-                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
-                        "error_msg", "error parsing the placeholder `" + placeholder + "`");
+                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED, "error_msg",
+                        "error parsing the placeholder `" + placeholder + "`");
             }
             if (!(val instanceof String || val instanceof Number || val instanceof Boolean)) {
-                LOG.info("Converting non-string value to String via toString(). " +
-                        "Placeholder: {}", placeholder);
+                LOG.info("Converting non-string value to String via toString(). " + "Placeholder: {}", placeholder);
             }
             formattedText = formattedText.replace(placeholderStr, String.valueOf(val));
         }
@@ -143,6 +163,13 @@ public class DictableVariable extends Variable {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * deepCopy.
+     * 
+     * @param obj obj
+     * @return the result
+     * @since 0.1.7
+     */
     private Object deepCopy(Object obj) {
         if (obj instanceof Map<?, ?> map) {
             Map<String, Object> copy = new LinkedHashMap<>();

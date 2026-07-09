@@ -22,20 +22,32 @@ import java.util.Map;
 
 /**
  * Unified configuration manager for retrieval module.
+ * 
+ * @since 0.1.7
  */
 public class ConfigManager {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Object> configs = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ConfigManager.
+     * 
+     * @since 0.1.7
      */
     public ConfigManager() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ConfigManager.
+     * 
+     * @param configPath configPath
+     * @since 0.1.7
      */
     public ConfigManager(String configPath) {
         if (configPath != null) {
@@ -44,28 +56,30 @@ public class ConfigManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadFromFile.
+     * 
+     * @param path path
+     * @since 0.1.7
      */
     public void loadFromFile(String path) {
         Path file = Path.of(path);
         if (!Files.exists(file)) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_UTILS_CONFIG_FILE_NOT_FOUND,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_UTILS_CONFIG_FILE_NOT_FOUND,
                     "Configuration file does not exist: " + path);
         }
         String lowerName = file.getFileName().toString().toLowerCase(Locale.ROOT);
         try {
             Map<String, Object> data;
             if (lowerName.endsWith(".json")) {
-                data = MAPPER.readValue(Files.readString(file), new TypeReference<>() {});
+                data = MAPPER.readValue(Files.readString(file), new TypeReference<>() {
+                });
             } else if (lowerName.endsWith(".yaml") || lowerName.endsWith(".yml")) {
                 try (InputStream input = Files.newInputStream(file)) {
                     Object loaded = new Yaml().load(input);
                     data = loaded instanceof Map<?, ?> map ? castMap(map) : Map.of();
                 }
             } else {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_UTILS_CONFIG_FORMAT_NOT_SUPPORT,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_UTILS_CONFIG_FORMAT_NOT_SUPPORT,
                         "Unsupported configuration file format: " + lowerName);
             }
             KnowledgeBaseConfig config = fromMap(data);
@@ -76,7 +90,10 @@ public class ConfigManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * saveToFile.
+     * 
+     * @param path path
+     * @since 0.1.7
      */
     public void saveToFile(String path) {
         KnowledgeBaseConfig config = getKnowledgeBaseConfig();
@@ -94,8 +111,7 @@ public class ConfigManager {
             } else if (lowerName.endsWith(".yaml") || lowerName.endsWith(".yml")) {
                 Files.writeString(file, new Yaml().dump(data));
             } else {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_UTILS_CONFIG_FORMAT_NOT_SUPPORT,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_UTILS_CONFIG_FORMAT_NOT_SUPPORT,
                         "Unsupported configuration file format: " + lowerName);
             }
         } catch (IOException e) {
@@ -103,10 +119,14 @@ public class ConfigManager {
         }
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @param configType configType
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public <T> T getConfig(Class<T> configType) {
         for (Object value : configs.values()) {
             if (configType.isInstance(value)) {
@@ -117,25 +137,37 @@ public class ConfigManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getKnowledgeBaseConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public KnowledgeBaseConfig getKnowledgeBaseConfig() {
         Object value = configs.get("knowledge_base");
         if (!(value instanceof KnowledgeBaseConfig config)) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_UTILS_CONFIG_PROCESS_ERROR,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_UTILS_CONFIG_PROCESS_ERROR,
                     "Knowledge base configuration not loaded");
         }
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateConfig.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public void updateConfig(Object config) {
         configs.put(config.getClass().getSimpleName(), config);
     }
 
+    /**
+     * fromMap.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
+     */
     private static KnowledgeBaseConfig fromMap(Map<String, Object> data) {
         KnowledgeBaseConfig config = new KnowledgeBaseConfig();
         config.setKbId((String) data.get("kb_id"));
@@ -155,6 +187,13 @@ public class ConfigManager {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * castMap.
+     * 
+     * @param source source
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> castMap(Map<?, ?> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : source.entrySet()) {

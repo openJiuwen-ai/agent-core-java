@@ -31,111 +31,138 @@ import java.util.function.Function;
 
 /**
  * Role-filtered team tool wrappers aligned with Python agent_teams/tools/team_tools.py.
+ * 
+ * @since 0.1.7
  */
 public final class TeamTools {
     /**
-     * Auto-generated for codecheck compliance.
+     * LEADER_ONLY_TOOLS.
+     * 
+     * @since 0.1.7
      */
-    public static final Set<String> LEADER_ONLY_TOOLS = Set.of(
-            "build_team",
-            "clean_team",
-            "spawn_member",
-            "shutdown_member",
-            "approve_plan",
-            "approve_tool",
-            "create_task",
-            "update_task",
-            "list_members"
-    );
+    public static final Set<String> LEADER_ONLY_TOOLS = Set.of("build_team", "clean_team", "spawn_member",
+            "shutdown_member", "approve_plan", "approve_tool", "create_task", "update_task", "list_members");
+
     /**
-     * Auto-generated for codecheck compliance.
+     * MEMBER_ONLY_TOOLS.
+     * 
+     * @since 0.1.7
      */
     public static final Set<String> MEMBER_ONLY_TOOLS = Set.of("claim_task", "enter_worktree", "exit_worktree");
+
     /**
-     * Auto-generated for codecheck compliance.
+     * SHARED_TOOLS.
+     * 
+     * @since 0.1.7
      */
     public static final Set<String> SHARED_TOOLS = Set.of("view_task", "send_message", "workspace_meta");
+
     /**
-     * Auto-generated for codecheck compliance.
+     * HUMAN_AGENT_TOOLS.
+     * 
+     * @since 0.1.7
      */
     public static final Set<String> HUMAN_AGENT_TOOLS = Set.of("send_message");
+
     /**
-     * Auto-generated for codecheck compliance.
+     * LEADER_TOOLS.
+     * 
+     * @since 0.1.7
      */
     public static final Set<String> LEADER_TOOLS = union(LEADER_ONLY_TOOLS, SHARED_TOOLS);
+
     /**
-     * Auto-generated for codecheck compliance.
+     * MEMBER_TOOLS.
+     * 
+     * @since 0.1.7
      */
     public static final Set<String> MEMBER_TOOLS = union(MEMBER_ONLY_TOOLS, SHARED_TOOLS);
 
+    /**
+     * TeamTools.
+     * 
+     * @since 0.1.7
+     */
     private TeamTools() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createTeamTools.
+     * 
+     * @param role role
+     * @param backend backend
+     * @return the result
+     * @since 0.1.7
      */
     public static List<Tool> createTeamTools(String role, TeamBackend backend) {
         return createTeamTools(role, backend, "build_mode", Set.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createTeamTools.
+     * 
+     * @param role role
+     * @param backend backend
+     * @param teammateMode teammateMode
+     * @param excludeTools excludeTools
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<Tool> createTeamTools(
-            String role,
-            TeamBackend backend,
-            String teammateMode,
-            Set<String> excludeTools
-    ) {
+    public static List<Tool> createTeamTools(String role, TeamBackend backend, String teammateMode,
+            Set<String> excludeTools) {
         return createTeamTools(role, backend, teammateMode, excludeTools, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createTeamTools.
+     * 
+     * @param role role
+     * @param backend backend
+     * @param teammateMode teammateMode
+     * @param excludeTools excludeTools
+     * @param workspaceManager workspaceManager
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<Tool> createTeamTools(
-            String role,
-            TeamBackend backend,
-            String teammateMode,
-            Set<String> excludeTools,
-            TeamWorkspaceManager workspaceManager
-    ) {
+    public static List<Tool> createTeamTools(String role, TeamBackend backend, String teammateMode,
+            Set<String> excludeTools, TeamWorkspaceManager workspaceManager) {
         return createTeamTools(role, backend, teammateMode, excludeTools, workspaceManager, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createTeamTools.
+     * 
+     * @param role role
+     * @param backend backend
+     * @param teammateMode teammateMode
+     * @param excludeTools excludeTools
+     * @param workspaceManager workspaceManager
+     * @param worktreeManager worktreeManager
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<Tool> createTeamTools(
-            String role,
-            TeamBackend backend,
-            String teammateMode,
-            Set<String> excludeTools,
-            TeamWorkspaceManager workspaceManager,
-            WorktreeManager worktreeManager
-    ) {
-        return createTeamTools(
-                role,
-                backend,
-                teammateMode,
-                excludeTools,
-                workspaceManager,
-                worktreeManager,
+    public static List<Tool> createTeamTools(String role, TeamBackend backend, String teammateMode,
+            Set<String> excludeTools, TeamWorkspaceManager workspaceManager, WorktreeManager worktreeManager) {
+        return createTeamTools(role, backend, teammateMode, excludeTools, workspaceManager, worktreeManager,
                 ignored -> null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createTeamTools.
+     * 
+     * @param role role
+     * @param backend backend
+     * @param teammateMode teammateMode
+     * @param excludeTools excludeTools
+     * @param workspaceManager workspaceManager
+     * @param worktreeManager worktreeManager
+     * @param modelConfigAllocator modelConfigAllocator
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<Tool> createTeamTools(
-            String role,
-            TeamBackend backend,
-            String teammateMode,
-            Set<String> excludeTools,
-            TeamWorkspaceManager workspaceManager,
-            WorktreeManager worktreeManager,
-            Function<String, Allocation> modelConfigAllocator
-    ) {
+    public static List<Tool> createTeamTools(String role, TeamBackend backend, String teammateMode,
+            Set<String> excludeTools, TeamWorkspaceManager workspaceManager, WorktreeManager worktreeManager,
+            Function<String, Allocation> modelConfigAllocator) {
         Map<String, Tool> allTools = new LinkedHashMap<>();
         allTools.put("build_team", new BuildTeamTool(backend));
         allTools.put("clean_team", new CleanTeamTool(backend));
@@ -182,6 +209,14 @@ public final class TeamTools {
         return tools;
     }
 
+    /**
+     * union.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static Set<String> union(Set<String> left, Set<String> right) {
         Set<String> values = new LinkedHashSet<>(left);
         values.addAll(right);
@@ -190,41 +225,50 @@ public final class TeamTools {
 
     static class TeamTool extends Tool {
         /**
-         * Auto-generated for codecheck compliance.
+         * TeamTool.
+         * 
+         * @param name name
+         * @param description description
+         * @param inputParams inputParams
+         * @since 0.1.7
          */
         protected TeamTool(String name, String description, Map<String, Object> inputParams) {
-            super(ToolCard.builder()
-                    .id("team." + name)
-                    .name(name)
-                    .description(description)
-                    .inputParams(inputParams)
+            super(ToolCard.builder().id("team." + name).name(name).description(description).inputParams(inputParams)
                     .build());
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             return ToolOutput.builder().success(false).error("Not implemented").build();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * stream.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) {
             return List.<Object>of(invoke(inputs, kwargs)).iterator();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * isOk.
+         * 
+         * @param data data
+         * @return the result
+         * @since 0.1.7
          */
         protected ToolOutput isOk(Object data) {
             ToolOutput output = ToolOutput.builder().success(true).data(data).build();
@@ -232,7 +276,11 @@ public final class TeamTools {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * error.
+         * 
+         * @param error error
+         * @return the result
+         * @since 0.1.7
          */
         protected ToolOutput error(String error) {
             ToolOutput output = ToolOutput.builder().success(false).error(error).build();
@@ -240,7 +288,11 @@ public final class TeamTools {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         protected String mapResult(ToolOutput output) {
             return mappedContent(output);
@@ -248,30 +300,46 @@ public final class TeamTools {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MappedToolOutput.
+     * 
+     * @since 0.1.7
      */
     public static final class MappedToolOutput extends ToolOutput {
         private final String mappedContent;
 
+        /**
+         * MappedToolOutput.
+         * 
+         * @param success success
+         * @param data data
+         * @param error error
+         * @param mappedContent mappedContent
+         * @since 0.1.7
+         */
         private MappedToolOutput(boolean success, Object data, String error, String mappedContent) {
             super(success, data, error);
             this.mappedContent = mappedContent;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * from.
+         * 
+         * @param output output
+         * @param mappedContent mappedContent
+         * @return the result
+         * @since 0.1.7
          */
         public static MappedToolOutput from(ToolOutput output, String mappedContent) {
             return new MappedToolOutput(output.isSuccess(), output.getData(), output.getError(), mappedContent);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * toString.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public String toString() {
             return mappedContent;
         }
@@ -281,54 +349,53 @@ public final class TeamTools {
         private final TeamBackend backend;
 
         BuildTeamTool(TeamBackend backend) {
-            super("build_team", "Create a new team.", objectSchema(Map.of(
-                    "display_name", stringSchema("Team display name"),
-                    "team_desc", stringSchema("Team description"),
-                    "leader_display_name", stringSchema("Leader display name"),
-                    "leader_desc", stringSchema("Leader description"),
-                    "enable_hitt", Map.of("type", "boolean", "default", false)
-            ), List.of("display_name", "team_desc", "leader_display_name", "leader_desc")));
+            super("build_team", "Create a new team.",
+                    objectSchema(Map.of("display_name", stringSchema("Team display name"), "team_desc",
+                            stringSchema("Team description"), "leader_display_name",
+                            stringSchema("Leader display name"), "leader_desc", stringSchema("Leader description"),
+                            "enable_hitt", Map.of("type", "boolean", "default", false)),
+                            List.of("display_name", "team_desc", "leader_display_name", "leader_desc")));
             this.backend = backend;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Map<String, Object> safeInputs = safeInputs(inputs);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("team_name", backend.getTeamName());
             data.put("display_name", stringValue(safeInputs.get("display_name"), backend.getDisplayName()));
             data.put("leader_member_name", backend.getMemberName());
-            data.put(
-                    "leader_display_name",
+            data.put("leader_display_name",
                     stringValue(safeInputs.get("leader_display_name"), backend.getMemberName()));
             data.put("enable_hitt", booleanValue(safeInputs.get("enable_hitt"), false));
             return isOk(data);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         protected String mapResult(ToolOutput output) {
             if (!output.isSuccess()) {
                 return output.getError() != null ? output.getError() : "Failed to build team";
             }
             Map<?, ?> data = (Map<?, ?>) output.getData();
             String hittNote = Boolean.TRUE.equals(data.get("enable_hitt")) ? " [human_agent registered]" : "";
-            return "Team created: team_name=" + data.get("team_name")
-                    + " display_name=" + data.get("display_name")
-                    + " leader_member_name=" + data.get("leader_member_name")
-                    + " leader_display_name=" + data.get("leader_display_name")
-                    + hittNote;
+            return "Team created: team_name=" + data.get("team_name") + " display_name=" + data.get("display_name")
+                    + " leader_member_name=" + data.get("leader_member_name") + " leader_display_name="
+                    + data.get("leader_display_name") + hittNote;
         }
     }
 
@@ -342,35 +409,30 @@ public final class TeamTools {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             // Guard: don't allow cleanup while there are incomplete tasks.
             // Also reject if any leader-assigned task was cancelled (should be completed).
             var tasks = backend.getTaskManager().list();
             var incomplete = tasks.stream()
-                .filter(t -> !"completed".equals(t.getStatus()) && !"cancelled".equals(t.getStatus()))
-                .toList();
+                    .filter(t -> !"completed".equals(t.getStatus()) && !"cancelled".equals(t.getStatus())).toList();
             if (!incomplete.isEmpty()) {
-                List<String> titles = incomplete.stream()
-                    .map(t -> "[" + t.getTaskId() + "] " + t.getTitle())
-                    .toList();
+                List<String> titles = incomplete.stream().map(t -> "[" + t.getTaskId() + "] " + t.getTitle()).toList();
                 return error("Cannot clean team while " + incomplete.size()
-                    + " task(s) remain incomplete. Complete them first: " + titles);
+                        + " task(s) remain incomplete. Complete them first: " + titles);
             }
-            var cancelled = tasks.stream()
-                .filter(t -> "cancelled".equals(t.getStatus()))
-                .toList();
+            var cancelled = tasks.stream().filter(t -> "cancelled".equals(t.getStatus())).toList();
             if (!cancelled.isEmpty()) {
-                List<String> titles = cancelled.stream()
-                    .map(t -> "[" + t.getTaskId() + "] " + t.getTitle())
-                    .toList();
+                List<String> titles = cancelled.stream().map(t -> "[" + t.getTaskId() + "] " + t.getTitle()).toList();
                 return error("Cannot clean team while " + cancelled.size()
-                    + " task(s) were cancelled. The leader must complete them: " + titles);
+                        + " task(s) were cancelled. The leader must complete them: " + titles);
             }
             boolean success = backend.cleanTeam().join();
             if (!success) {
@@ -380,12 +442,13 @@ public final class TeamTools {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         protected String mapResult(ToolOutput output) {
             if (!output.isSuccess()) {
                 return output.getError() != null ? output.getError() : "Failed to clean team";
@@ -399,30 +462,29 @@ public final class TeamTools {
         private final Function<String, Allocation> modelConfigAllocator;
 
         SpawnMemberTool(TeamBackend backend, Function<String, Allocation> modelConfigAllocator) {
-            super("spawn_member", "Create a new team member.", objectSchema(Map.of(
-                    "member_name", stringSchema("Member name"),
-                    "display_name", stringSchema("Display name"),
-                    "desc", stringSchema("Member description"),
-                    "prompt", stringSchema(
-                        "First instruction the member receives at startup. "
-                        + "Use it to assign specific tasks, set priorities, "
-                        + "or define constraints. Give clear direction; "
-                        + "each member should receive a different prompt "
-                        + "matching their assigned task. Leave blank to let "
-                        + "the member choose tasks autonomously by domain."),
-                    "model_name", stringSchema("Model name")
-            ), List.of("member_name", "display_name")));
+            super("spawn_member", "Create a new team member.",
+                    objectSchema(Map.of("member_name", stringSchema("Member name"), "display_name",
+                            stringSchema("Display name"), "desc", stringSchema("Member description"), "prompt",
+                            stringSchema("First instruction the member receives at startup. "
+                                    + "Use it to assign specific tasks, set priorities, "
+                                    + "or define constraints. Give clear direction; "
+                                    + "each member should receive a different prompt "
+                                    + "matching their assigned task. Leave blank to let "
+                                    + "the member choose tasks autonomously by domain."),
+                            "model_name", stringSchema("Model name")), List.of("member_name", "display_name")));
             this.backend = backend;
             this.modelConfigAllocator = modelConfigAllocator != null ? modelConfigAllocator : ignored -> null;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Map<String, Object> safeInputs = safeInputs(inputs);
             String memberName = stringValue(safeInputs.get("member_name"), "");
@@ -432,10 +494,12 @@ public final class TeamTools {
             }
             String modelName = stringValue(safeInputs.get("model_name"), null);
             Allocation allocation = modelConfigAllocator.apply(modelName);
-            boolean success = backend.spawnMember(memberName, displayName, AgentCard.builder()
-                    .name(displayName)
-                    .description(stringValue(safeInputs.get("desc"), ""))
-                    .build(), TeamRole.MEMBER, stringValue(safeInputs.get("prompt"), null), allocation).join();
+            boolean success = backend
+                    .spawnMember(memberName, displayName,
+                            AgentCard.builder().name(displayName).description(stringValue(safeInputs.get("desc"), ""))
+                                    .build(),
+                            TeamRole.MEMBER, stringValue(safeInputs.get("prompt"), null), allocation)
+                    .join();
             if (!success) {
                 return error("Failed to spawn member");
             }
@@ -443,19 +507,20 @@ public final class TeamTools {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         protected String mapResult(ToolOutput output) {
             if (!output.isSuccess()) {
                 return output.getError() != null ? output.getError() : "Failed to spawn member";
             }
             Map<?, ?> data = (Map<?, ?>) output.getData();
-            return "Member spawned: member_name=" + data.get("member_name")
-                    + " display_name=" + data.get("display_name");
+            return "Member spawned: member_name=" + data.get("member_name") + " display_name="
+                    + data.get("display_name");
         }
     }
 
@@ -463,20 +528,21 @@ public final class TeamTools {
         private final TeamBackend backend;
 
         ShutdownMemberTool(TeamBackend backend) {
-            super("shutdown_member", "Shutdown a member.", objectSchema(Map.of(
-                    "member_name", stringSchema("Member name"),
-                    "force", Map.of("type", "boolean", "default", false)
-            ), List.of("member_name")));
+            super("shutdown_member", "Shutdown a member.",
+                    objectSchema(Map.of("member_name", stringSchema("Member name"), "force",
+                            Map.of("type", "boolean", "default", false)), List.of("member_name")));
             this.backend = backend;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Map<String, Object> safeInputs = safeInputs(inputs);
             String memberName = stringValue(safeInputs.get("member_name"), "");
@@ -490,12 +556,13 @@ public final class TeamTools {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         protected String mapResult(ToolOutput output) {
             if (!output.isSuccess()) {
                 return output.getError() != null ? output.getError() : "Failed to shutdown member";
@@ -508,21 +575,22 @@ public final class TeamTools {
         private final TeamBackend backend;
 
         ApprovePlanTool(TeamBackend backend) {
-            super("approve_plan", "Approve or reject a member plan.", objectSchema(Map.of(
-                    "member_name", stringSchema("Member name"),
-                    "approved", Map.of("type", "boolean"),
-                    "feedback", stringSchema("Feedback")
-            ), List.of("member_name", "approved")));
+            super("approve_plan", "Approve or reject a member plan.",
+                    objectSchema(Map.of("member_name", stringSchema("Member name"), "approved",
+                            Map.of("type", "boolean"), "feedback", stringSchema("Feedback")),
+                            List.of("member_name", "approved")));
             this.backend = backend;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Map<String, Object> safeInputs = safeInputs(inputs);
             String memberName = stringValue(safeInputs.get("member_name"), "");
@@ -537,12 +605,13 @@ public final class TeamTools {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         protected String mapResult(ToolOutput output) {
             if (!output.isSuccess()) {
                 return output.getError() != null ? output.getError() : "Failed to approve/reject plan";
@@ -557,23 +626,23 @@ public final class TeamTools {
         private final TeamBackend backend;
 
         ApproveToolCallTool(TeamBackend backend) {
-            super("approve_tool", "Approve or reject a teammate tool call.", objectSchema(Map.of(
-                    "member_name", stringSchema("Member name"),
-                    "tool_call_id", stringSchema("Tool call id"),
-                    "approved", Map.of("type", "boolean"),
-                    "feedback", stringSchema("Feedback"),
-                    "auto_confirm", Map.of("type", "boolean", "default", false)
-            ), List.of("member_name", "tool_call_id", "approved")));
+            super("approve_tool", "Approve or reject a teammate tool call.",
+                    objectSchema(Map.of("member_name", stringSchema("Member name"), "tool_call_id",
+                            stringSchema("Tool call id"), "approved", Map.of("type", "boolean"), "feedback",
+                            stringSchema("Feedback"), "auto_confirm", Map.of("type", "boolean", "default", false)),
+                            List.of("member_name", "tool_call_id", "approved")));
             this.backend = backend;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Map<String, Object> safeInputs = safeInputs(inputs);
             String memberName = stringValue(safeInputs.get("member_name"), "");
@@ -583,29 +652,29 @@ public final class TeamTools {
             }
             boolean approved = booleanValue(safeInputs.get("approved"), false);
             boolean autoConfirm = booleanValue(safeInputs.get("auto_confirm"), false);
-            if (!backend.approveTool(memberName, toolCallId, approved,
-                    stringValue(safeInputs.get("feedback"), null), autoConfirm).join()) {
+            if (!backend.approveTool(memberName, toolCallId, approved, stringValue(safeInputs.get("feedback"), null),
+                    autoConfirm).join()) {
                 return error("Failed to approve tool call");
             }
             return isOk(Map.of("member_name", memberName, "tool_call_id", toolCallId, "approved", approved));
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         protected String mapResult(ToolOutput output) {
             if (!output.isSuccess()) {
                 return output.getError() != null ? output.getError() : "Failed to approve/reject tool call";
             }
             Map<?, ?> data = (Map<?, ?>) output.getData();
             String decision = Boolean.TRUE.equals(data.get("approved")) ? "approved" : "rejected";
-            return "Tool call " + decision + ": tool_call_id=" + data.get("tool_call_id")
-                    + " member_name=" + data.get("member_name")
-                    + " decision=" + decision;
+            return "Tool call " + decision + ": tool_call_id=" + data.get("tool_call_id") + " member_name="
+                    + data.get("member_name") + " decision=" + decision;
         }
     }
 
@@ -618,37 +687,34 @@ public final class TeamTools {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
-            List<Map<String, Object>> members = backend.listMembers().stream()
-                    .map(member -> {
-                        Map<String, Object> item = new LinkedHashMap<>();
-                        item.put("member_name", member.getMemberName());
-                        item.put("display_name", member.getDisplayName());
-                        item.put("status", member.getStatus() != null ? member.getStatus().value() : "");
-                        item.put(
-                                "role",
-                                member.getRole() != null
-                                        ? member.getRole().name().toLowerCase(Locale.ROOT)
-                                        : "");
-                        return item;
-                    })
-                    .toList();
+            List<Map<String, Object>> members = backend.listMembers().stream().map(member -> {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("member_name", member.getMemberName());
+                item.put("display_name", member.getDisplayName());
+                item.put("status", member.getStatus() != null ? member.getStatus().value() : "");
+                item.put("role", member.getRole() != null ? member.getRole().name().toLowerCase(Locale.ROOT) : "");
+                return item;
+            }).toList();
             return isOk(Map.of("members", members, "count", members.size()));
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         protected String mapResult(ToolOutput output) {
             if (!output.isSuccess()) {
                 return output.getError() != null ? output.getError() : "Failed to list members";
@@ -657,16 +723,11 @@ public final class TeamTools {
             if (!(membersValue instanceof List<?> members) || members.isEmpty()) {
                 return "No members";
             }
-            return members.stream()
-                    .filter(Map.class::isInstance)
-                    .map(item -> {
-                        Map<?, ?> member = (Map<?, ?>) item;
-                        return "member_name=" + member.get("member_name")
-                                + " display_name=" + member.get("display_name")
-                                + " status=" + member.get("status");
-                    })
-                    .reduce((left, right) -> left + "\n" + right)
-                    .orElse("No members");
+            return members.stream().filter(Map.class::isInstance).map(item -> {
+                Map<?, ?> member = (Map<?, ?>) item;
+                return "member_name=" + member.get("member_name") + " display_name=" + member.get("display_name")
+                        + " status=" + member.get("status");
+            }).reduce((left, right) -> left + "\n" + right).orElse("No members");
         }
     }
 
@@ -674,53 +735,50 @@ public final class TeamTools {
         private final TeamTaskManager taskManager;
 
         TaskCreateTool(TeamTaskManager taskManager) {
-            super("create_task", "Create team tasks. Each task MUST have a title, content, and assignee (member name).", objectSchema(Map.of(
-                    "tasks", Map.of("type", "array",
-                        "items", objectSchema(Map.of(
-                            "title", stringSchema("Task title"),
-                            "content", stringSchema("Task description or instructions"),
-                            "assignee", stringSchema("Member name who should work on this task (e.g. 'fundamental-analyst')"),
-                            "task_id", stringSchema("Optional custom task ID"),
-                            "dependencies", Map.of("type", "array", "items", Map.of("type", "string"),
-                                "description", "List of task IDs this task depends on")
-                        ), List.of("title", "content", "assignee")))
-            ), List.of("tasks")));
+            super("create_task", "Create team tasks. Each task MUST have a title, content, and assignee (member name).",
+                    objectSchema(Map.of("tasks", Map.of("type", "array", "items", objectSchema(
+                            Map.of("title", stringSchema("Task title"), "content",
+                                    stringSchema("Task description or instructions"), "assignee",
+                                    stringSchema(
+                                            "Member name who should work on this task (e.g. 'fundamental-analyst')"),
+                                    "task_id", stringSchema("Optional custom task ID"), "dependencies",
+                                    Map.of("type", "array", "items", Map.of("type", "string"), "description",
+                                            "List of task IDs this task depends on")),
+                            List.of("title", "content", "assignee")))), List.of("tasks")));
             this.taskManager = taskManager;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Object tasksValue = safeInputs(inputs).get("tasks");
             if (!(tasksValue instanceof List<?> rawTasks) || rawTasks.isEmpty()) {
                 return error("'tasks' is required");
             }
-            List<Map<String, Object>> taskSpecs = rawTasks.stream()
-                    .filter(Map.class::isInstance)
-                    .map(value -> (Map<String, Object>) value)
-                    .toList();
+            List<Map<String, Object>> taskSpecs =
+                rawTasks.stream().filter(Map.class::isInstance).map(value -> (Map<String, Object>) value).toList();
             List<TeamTask> created = taskManager.addBatch(taskSpecs).join();
             if (created.isEmpty()) {
                 return error("No valid tasks created");
             }
-            return isOk(Map.of(
-                    "tasks", created.stream().map(TeamTools::taskBrief).toList(),
-                    "count", created.size()
-            ));
+            return isOk(Map.of("tasks", created.stream().map(TeamTools::taskBrief).toList(), "count", created.size()));
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         protected String mapResult(ToolOutput output) {
             if (!output.isSuccess()) {
                 return output.getError() != null ? output.getError() : "Operation failed";
@@ -744,21 +802,23 @@ public final class TeamTools {
         private final TeamTaskManager taskManager;
 
         ViewTaskTool(TeamTaskManager taskManager) {
-            super("view_task", "View tasks.", objectSchema(Map.of(
-                    "action", Map.of("type", "string", "enum", List.of("get", "list", "claimable")),
-                    "task_id", stringSchema("Task id"),
-                    "status", stringSchema("Task status")
-            ), List.of()));
+            super("view_task", "View tasks.",
+                    objectSchema(
+                            Map.of("action", Map.of("type", "string", "enum", List.of("get", "list", "claimable")),
+                                    "task_id", stringSchema("Task id"), "status", stringSchema("Task status")),
+                            List.of()));
             this.taskManager = taskManager;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Map<String, Object> safeInputs = safeInputs(inputs);
             String action = stringValue(safeInputs.get("action"), "list");
@@ -773,25 +833,26 @@ public final class TeamTools {
             if ("claimable".equals(action)) {
                 tasks = taskManager.getClaimableTasks();
             } else {
-                String statusFilter = safeInputs.get("status") != null
-                        ? String.valueOf(safeInputs.get("status")) : null;
-                tasks = taskManager.list().stream()
-                        .filter(task -> statusFilter == null
-                                || statusFilter.equals(task.getStatus())
-                                || ("claimable".equals(statusFilter) && "pending".equals(task.getStatus())))
-                        .toList();
+                String statusFilter =
+                    safeInputs.get("status") != null ? String.valueOf(safeInputs.get("status")) : null;
+                tasks =
+                    taskManager.list().stream()
+                            .filter(task -> statusFilter == null || statusFilter.equals(task.getStatus())
+                                    || ("claimable".equals(statusFilter) && "pending".equals(task.getStatus())))
+                            .toList();
             }
             Loggers.TOOL.info("view_task action={} found {} task(s)", action, tasks.size());
             return isOk(Map.of("tasks", tasks.stream().map(TeamTools::taskBrief).toList(), "count", tasks.size()));
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         protected String mapResult(ToolOutput output) {
             if (!output.isSuccess()) {
                 return output.getError() != null ? output.getError() : "Task not found";
@@ -811,18 +872,14 @@ public final class TeamTools {
             if (!(tasksValue instanceof List<?> tasks) || tasks.isEmpty()) {
                 return "No tasks isFound";
             }
-            return tasks.stream()
-                    .filter(Map.class::isInstance)
-                    .map(item -> {
-                        Map<?, ?> task = (Map<?, ?>) item;
-                        String line = "#" + task.get("task_id") + " [" + task.get("status") + "] " + task.get("title");
-                        if (task.get("assignee") != null) {
-                            line += " (" + task.get("assignee") + ")";
-                        }
-                        return line;
-                    })
-                    .reduce((left, right) -> left + "\n" + right)
-                    .orElse("No tasks isFound");
+            return tasks.stream().filter(Map.class::isInstance).map(item -> {
+                Map<?, ?> task = (Map<?, ?>) item;
+                String line = "#" + task.get("task_id") + " [" + task.get("status") + "] " + task.get("title");
+                if (task.get("assignee") != null) {
+                    line += " (" + task.get("assignee") + ")";
+                }
+                return line;
+            }).reduce((left, right) -> left + "\n" + right).orElse("No tasks isFound");
         }
     }
 
@@ -830,24 +887,23 @@ public final class TeamTools {
         private final TeamBackend backend;
 
         UpdateTaskTool(TeamBackend backend) {
-            super("update_task", "Update task content or cancel tasks.", objectSchema(Map.of(
-                    "task_id", stringSchema("Task id"),
-                    "status", Map.of("type", "string", "enum", List.of("cancelled")),
-                    "title", stringSchema("Title"),
-                    "content", stringSchema("Content"),
-                    "assignee", stringSchema("Assignee"),
-                    "add_blocked_by", Map.of("type", "array", "items", Map.of("type", "string"))
-            ), List.of("task_id")));
+            super("update_task", "Update task content or cancel tasks.",
+                    objectSchema(Map.of("task_id", stringSchema("Task id"), "status",
+                            Map.of("type", "string", "enum", List.of("cancelled")), "title", stringSchema("Title"),
+                            "content", stringSchema("Content"), "assignee", stringSchema("Assignee"), "add_blocked_by",
+                            Map.of("type", "array", "items", Map.of("type", "string"))), List.of("task_id")));
             this.backend = backend;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Map<String, Object> safeInputs = safeInputs(inputs);
             String taskId = stringValue(safeInputs.get("task_id"), "");
@@ -883,9 +939,9 @@ public final class TeamTools {
             }
             List<String> updated = new ArrayList<>();
             if (safeInputs.containsKey("title") || safeInputs.containsKey("content")) {
-                TaskOpResult result = backend.getTaskManager().updateTaskResult(taskId,
-                        stringValue(safeInputs.get("title"), null),
-                        stringValue(safeInputs.get("content"), null)).join();
+                TaskOpResult result =
+                    backend.getTaskManager().updateTaskResult(taskId, stringValue(safeInputs.get("title"), null),
+                            stringValue(safeInputs.get("content"), null)).join();
                 if (!result.isOk()) {
                     return error(result.getReason());
                 }
@@ -918,15 +974,27 @@ public final class TeamTools {
             return isOk(Map.of("task_id", taskId, "status", "updated", "updated_fields", updated));
         }
 
+        /**
+         * isHumanAgentLocked.
+         * 
+         * @param task task
+         * @return the result
+         * @since 0.1.7
+         */
         private boolean isHumanAgentLocked(TeamTask task) {
             if (task == null || task.getAssignee() == null) {
                 return false;
             }
             var member = backend.getMember(task.getAssignee());
-            return member != null
-                    && member.getRole() == com.openjiuwen.agentteams.schema.team.TeamRole.HUMAN_AGENT;
+            return member != null && member.getRole() == com.openjiuwen.agentteams.schema.team.TeamRole.HUMAN_AGENT;
         }
 
+        /**
+         * cancelMemberIfClaimed.
+         * 
+         * @param task task
+         * @since 0.1.7
+         */
         private void cancelMemberIfClaimed(TeamTask task) {
             if (task.getAssignee() != null) {
                 backend.shutdownMember(task.getAssignee(), false);
@@ -934,12 +1002,13 @@ public final class TeamTools {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         protected String mapResult(ToolOutput output) {
             if (!output.isSuccess()) {
                 return output.getError() != null ? output.getError() : "Operation failed";
@@ -956,27 +1025,29 @@ public final class TeamTools {
         private final TeamTaskManager taskManager;
 
         ClaimTaskTool(TeamTaskManager taskManager) {
-            super("claim_task", "Claim or complete a task.", objectSchema(Map.of(
-                    "task_id", stringSchema("Task id"),
-                    "status", Map.of("type", "string", "enum", List.of("claimed", "completed"))
-            ), List.of("task_id", "status")));
+            super("claim_task", "Claim or complete a task.",
+                    objectSchema(
+                            Map.of("task_id", stringSchema("Task id"), "status",
+                                    Map.of("type", "string", "enum", List.of("claimed", "completed"))),
+                            List.of("task_id", "status")));
             this.taskManager = taskManager;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Map<String, Object> safeInputs = safeInputs(inputs);
             String taskId = stringValue(safeInputs.get("task_id"), "");
             String status = stringValue(safeInputs.get("status"), "");
-            com.openjiuwen.core.common.logging.Loggers.TOOL.info(
-                "ClaimTaskTool.invoke: taskId={} status={} cardId={}",
-                taskId, status, getCard() != null ? getCard().getId() : "null");
+            com.openjiuwen.core.common.logging.Loggers.TOOL.info("ClaimTaskTool.invoke: taskId={} status={} cardId={}",
+                    taskId, status, getCard() != null ? getCard().getId() : "null");
             TeamTask task = taskManager.get(taskId);
             if (task == null) {
                 return error("Task not found");
@@ -995,20 +1066,18 @@ public final class TeamTools {
             if (!result.isOk()) {
                 return error(result.getReason());
             }
-            return isOk(Map.of(
-                    "task_id", taskId,
-                    "updated_fields", List.of("status"),
-                    "status_change", Map.of("from", task.getStatus(), "to", nextStatus)
-            ));
+            return isOk(Map.of("task_id", taskId, "updated_fields", List.of("status"), "status_change",
+                    Map.of("from", task.getStatus(), "to", nextStatus)));
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         protected String mapResult(ToolOutput output) {
             if (!output.isSuccess()) {
                 return output.getError() != null ? output.getError() : "Task not found";
@@ -1027,21 +1096,23 @@ public final class TeamTools {
         private final TeamBackend backend;
 
         SendMessageTool(TeamBackend backend) {
-            super("send_message", "Send a message to a member or broadcast.", objectSchema(Map.of(
-                    "to", stringSchema("Recipient member name or *"),
-                    "content", stringSchema("Message content"),
-                    "summary", stringSchema("Short summary")
-            ), List.of("to", "content")));
+            super("send_message", "Send a message to a member or broadcast.",
+                    objectSchema(
+                            Map.of("to", stringSchema("Recipient member name or *"), "content",
+                                    stringSchema("Message content"), "summary", stringSchema("Short summary")),
+                            List.of("to", "content")));
             this.backend = backend;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Map<String, Object> safeInputs = safeInputs(inputs);
             String to = stringValue(safeInputs.get("to"), "").trim();
@@ -1053,8 +1124,7 @@ public final class TeamTools {
             if (content.isBlank()) {
                 return error("'content' is required");
             }
-            if (!"*".equals(to)
-                    && !"user".equals(to)
+            if (!"*".equals(to) && !"user".equals(to)
                     && backend.getDb().member.getMember(to, backend.getTeamName()) == null) {
                 // Try to resolve by display_name
                 String resolved = backend.resolveMemberName(to);
@@ -1091,12 +1161,13 @@ public final class TeamTools {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mapResult.
+         * 
+         * @param output output
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         protected String mapResult(ToolOutput output) {
             if (!output.isSuccess()) {
                 return output.getError() != null ? output.getError() : "Failed to send message";
@@ -1114,21 +1185,23 @@ public final class TeamTools {
         private final TeamBackend backend;
 
         WorkspaceMetaTool(TeamWorkspaceManager workspaceManager, TeamBackend backend) {
-            super("workspace_meta", "Workspace lock management and version history.", objectSchema(Map.of(
-                    "action", Map.of("type", "string", "enum", List.of("lock", "unlock", "locks", "history")),
-                    "path", stringSchema("Workspace-relative path")
-            ), List.of("action")));
+            super("workspace_meta", "Workspace lock management and version history.",
+                    objectSchema(Map.of("action",
+                            Map.of("type", "string", "enum", List.of("lock", "unlock", "locks", "history")), "path",
+                            stringSchema("Workspace-relative path")), List.of("action")));
             this.workspaceManager = workspaceManager;
             this.backend = backend;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             Map<String, Object> safeInputs = safeInputs(inputs);
             String action = stringValue(safeInputs.get("action"), "");
@@ -1170,20 +1243,21 @@ public final class TeamTools {
         private final TeamBackend backend;
 
         EnterWorktreeTool(WorktreeManager worktreeManager, TeamBackend backend) {
-            super("enter_worktree", "Create or enter an isolated git worktree.", objectSchema(Map.of(
-                    "name", stringSchema("Worktree slug")
-            ), List.of()));
+            super("enter_worktree", "Create or enter an isolated git worktree.",
+                    objectSchema(Map.of("name", stringSchema("Worktree slug")), List.of()));
             this.worktreeManager = worktreeManager;
             this.backend = backend;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             if (worktreeManager.getCurrentSession() != null) {
                 return error("Already in worktree '" + worktreeManager.getCurrentSession().getWorktreeName()
@@ -1194,9 +1268,8 @@ public final class TeamTools {
             if (slug.isBlank()) {
                 slug = "worktree-" + UUID.randomUUID().toString().substring(0, 8);
             }
-            String repoRoot = stringValue(
-                    kwargs != null ? kwargs.get("repo_root") : null,
-                    System.getProperty("user.dir"));
+            String repoRoot =
+                stringValue(kwargs != null ? kwargs.get("repo_root") : null, System.getProperty("user.dir"));
             String memberName = stringValue(kwargs != null ? kwargs.get("member_name") : null, backend.getMemberName());
             String teamName = stringValue(kwargs != null ? kwargs.get("team_name") : null, backend.getTeamName());
             try {
@@ -1204,8 +1277,8 @@ public final class TeamTools {
                 Map<String, Object> data = new LinkedHashMap<>();
                 data.put("worktree_path", session.getWorktreePath());
                 data.put("worktree_branch", session.getWorktreeBranch());
-                data.put("message", "Created worktree at " + session.getWorktreePath()
-                        + " on branch " + session.getWorktreeBranch() + ". CWD switched to worktree.");
+                data.put("message", "Created worktree at " + session.getWorktreePath() + " on branch "
+                        + session.getWorktreeBranch() + ". CWD switched to worktree.");
                 return isOk(data);
             } catch (Exception e) {
                 return error("Failed to create worktree: " + e.getMessage());
@@ -1217,20 +1290,23 @@ public final class TeamTools {
         private final WorktreeManager worktreeManager;
 
         ExitWorktreeTool(WorktreeManager worktreeManager) {
-            super("exit_worktree", "Exit the current worktree session.", objectSchema(Map.of(
-                    "action", Map.of("type", "string", "enum", List.of("keep", "remove")),
-                    "discard_changes", Map.of("type", "boolean", "default", false)
-            ), List.of("action")));
+            super("exit_worktree", "Exit the current worktree session.",
+                    objectSchema(
+                            Map.of("action", Map.of("type", "string", "enum", List.of("keep", "remove")),
+                                    "discard_changes", Map.of("type", "boolean", "default", false)),
+                            List.of("action")));
             this.worktreeManager = worktreeManager;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param inputs inputs
+         * @param kwargs kwargs
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolOutput invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
             WorktreeSession session = worktreeManager.getCurrentSession();
             if (session == null) {
@@ -1253,9 +1329,8 @@ public final class TeamTools {
                 data.put("original_cwd", session.getOriginalCwd());
                 data.put("worktree_path", session.getWorktreePath());
                 data.put("worktree_branch", session.getWorktreeBranch());
-                data.put("message", ("keep".equals(action) ? "Kept" : "Removed")
-                        + " worktree (branch " + session.getWorktreeBranch() + "). Returned to "
-                        + session.getOriginalCwd());
+                data.put("message", ("keep".equals(action) ? "Kept" : "Removed") + " worktree (branch "
+                        + session.getWorktreeBranch() + "). Returned to " + session.getOriginalCwd());
                 if (summary != null) {
                     data.put("discarded_files", summary.getChangedFiles());
                     data.put("discarded_commits", summary.getCommits());
@@ -1267,22 +1342,60 @@ public final class TeamTools {
         }
     }
 
+    /**
+     * objectSchema.
+     * 
+     * @param properties properties
+     * @param required required
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
         return Map.of("type", "object", "properties", properties, "required", required);
     }
 
+    /**
+     * stringSchema.
+     * 
+     * @param description description
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> stringSchema(String description) {
         return Map.of("type", "string", "description", description);
     }
 
+    /**
+     * safeInputs.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> safeInputs(Map<String, Object> inputs) {
         return inputs != null ? inputs : Map.of();
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param value value
+     * @param fallback fallback
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringValue(Object value, String fallback) {
         return value != null ? String.valueOf(value) : fallback;
     }
 
+    /**
+     * booleanValue.
+     * 
+     * @param value value
+     * @param fallback fallback
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean booleanValue(Object value, boolean fallback) {
         if (value instanceof Boolean bool) {
             return bool;
@@ -1290,6 +1403,13 @@ public final class TeamTools {
         return value != null ? Boolean.parseBoolean(String.valueOf(value)) : fallback;
     }
 
+    /**
+     * stringList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> stringList(Object value) {
         if (value instanceof List<?> list) {
             return list.stream().map(String::valueOf).toList();
@@ -1297,6 +1417,13 @@ public final class TeamTools {
         return List.of();
     }
 
+    /**
+     * taskBrief.
+     * 
+     * @param task task
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> taskBrief(TeamTask task) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("task_id", task.getTaskId());
@@ -1308,6 +1435,13 @@ public final class TeamTools {
         return item;
     }
 
+    /**
+     * lockData.
+     * 
+     * @param lock lock
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> lockData(WorkspaceFileLock lock) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("file_path", lock.getFilePath());

@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Mutable working-directory state for the current execution context.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

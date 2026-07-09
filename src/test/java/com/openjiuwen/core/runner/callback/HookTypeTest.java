@@ -1,10 +1,11 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.runner.callback;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for HookType enum values.
@@ -12,7 +13,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @DisplayName("HookType Enum Tests")
 class HookTypeTest {
-
     @Test
     @DisplayName("HookType has correct values")
     void testHookTypeValues() {

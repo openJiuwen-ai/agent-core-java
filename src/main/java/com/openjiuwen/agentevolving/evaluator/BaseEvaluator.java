@@ -15,55 +15,50 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * Abstract evaluator for converting (case, prediction) to EvaluatedCase.
- *
- * <p>Implement evaluate() for single case, use batchEvaluate() for parallel execution.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.evaluator.evaluator.BaseEvaluator}.
+ * <p>
+ * Implement evaluate() for single case, use batchEvaluate() for parallel execution.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.evaluator.evaluator.BaseEvaluator}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseEvaluator {
-
     /**
-     * Evaluate single case with model prediction.
-     *
-     * @param caseData Original Case with inputs and label
-     * @param predict  Model prediction to evaluate
-     * @return EvaluatedCase with score and reasoning
+     * evaluate.
+     * 
+     * @param caseData caseData
+     * @param predict predict
+     * @return the result
+     * @since 0.1.7
      */
     public abstract EvaluatedCase evaluate(Case caseData, Map<String, Object> predict);
 
     /**
      * Evaluate multiple cases in parallel.
-     *
-     * @param cases       List of Cases
-     * @param predicts    List of model predictions
+     * 
+     * @param cases List of Cases
+     * @param predicts List of model predictions
      * @param numParallel Number of parallel workers
      * @return List of EvaluatedCases
+     * @since 0.1.7
      */
-    public List<EvaluatedCase> batchEvaluate(
-            List<Case> cases,
-            List<Map<String, Object>> predicts,
-            int numParallel
-    ) {
+    public List<EvaluatedCase> batchEvaluate(List<Case> cases, List<Map<String, Object>> predicts, int numParallel) {
         List<Case> safeCases = cases != null ? cases : List.of();
         List<Map<String, Object>> safePredicts = predicts != null ? predicts : List.of();
         if (safeCases.size() != safePredicts.size()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.TOOLCHAIN_EVALUATOR_EXECUTION_ERROR,
-                    "error_msg",
-                    "length of cases: " + safeCases.size()
-                            + " does not equal with length of predicts: " + safePredicts.size()
-            );
+            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_EVALUATOR_EXECUTION_ERROR, "error_msg",
+                    "length of cases: " + safeCases.size() + " does not equal with length of predicts: "
+                            + safePredicts.size());
         }
-        TuneUtils.validateDigitalParameter(
-                numParallel,
-                "num_parallel",
-                TuneConstant.MIN_PARALLEL_NUM,
-                TuneConstant.MAX_PARALLEL_NUM
-        );
+        TuneUtils.validateDigitalParameter(numParallel, "num_parallel", TuneConstant.MIN_PARALLEL_NUM,
+                TuneConstant.MAX_PARALLEL_NUM);
         int workers = Math.min(numParallel, safeCases.size());
         ExecutorService executor = Executors.newFixedThreadPool(workers);
         try {
@@ -95,10 +90,11 @@ public abstract class BaseEvaluator {
 
     /**
      * Evaluate multiple cases with default single-threaded execution.
-     *
-     * @param cases    List of Cases
+     * 
+     * @param cases List of Cases
      * @param predicts List of model predictions
      * @return List of evaluated cases
+     * @since 0.1.7
      */
     public List<EvaluatedCase> batchEvaluate(List<Case> cases, List<Map<String, Object>> predicts) {
         return batchEvaluate(cases, predicts, TuneConstant.DEFAULT_PARALLEL_NUM);
@@ -106,11 +102,12 @@ public abstract class BaseEvaluator {
 
     /**
      * Evaluate multiple cases from a case loader.
-     *
-     * @param cases       CaseLoader instance
-     * @param predicts    List of model predictions
+     * 
+     * @param cases CaseLoader instance
+     * @param predicts List of model predictions
      * @param numParallel Number of parallel workers
      * @return List of evaluated cases
+     * @since 0.1.7
      */
     public List<EvaluatedCase> batchEvaluate(CaseLoader cases, List<Map<String, Object>> predicts, int numParallel) {
         return batchEvaluate(cases != null ? cases.getCases() : List.of(), predicts, numParallel);

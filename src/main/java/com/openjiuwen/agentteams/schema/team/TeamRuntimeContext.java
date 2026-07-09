@@ -12,14 +12,14 @@ import lombok.NoArgsConstructor;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Public class TeamRuntimeContext used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class TeamRuntimeContext used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class TeamRuntimeContext {
     private String teamId;
@@ -30,5 +30,10 @@ public class TeamRuntimeContext {
     @Builder.Default
     private TeamLifecycle lifecycle = TeamLifecycle.CREATED;
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
 }

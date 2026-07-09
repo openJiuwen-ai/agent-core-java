@@ -5,6 +5,7 @@
 package com.openjiuwen.core.singleagent.schema;
 
 import com.openjiuwen.core.common.schema.Part;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,6 +18,8 @@ import java.util.Map;
 
 /**
  * Artifact data model - represents a result artifact within an AgentResult.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -27,7 +30,17 @@ public class Artifact {
     private String name;
     private String description;
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Part> parts = new ArrayList<>();
     @Builder.Default
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new HashMap<>();
 }

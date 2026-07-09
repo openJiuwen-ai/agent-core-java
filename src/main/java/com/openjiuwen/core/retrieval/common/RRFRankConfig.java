@@ -9,46 +9,61 @@ import java.util.Map;
 
 /**
  * RRF ranker configuration.
+ * 
+ * @since 0.1.7
  */
 public class RRFRankConfig extends BaseRankConfig {
-
     private int k = 40;
     private boolean denseName = true;
     private boolean denseContent = true;
     private boolean sparseContent = true;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RRFRankConfig.
+     * 
+     * @since 0.1.7
      */
     public RRFRankConfig() {
         super("rrf", true);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getArgs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public RankerArguments getArgs() {
         return new RankerArguments(List.of(k), Map.of());
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * isActive.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<Integer> isActive() {
         return List.of(denseName ? 1 : 0, denseContent ? 1 : 0, sparseContent ? 1 : 0);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getK.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getK() {
         return k;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setK.
+     * 
+     * @param k k
+     * @since 0.1.7
      */
     public void setK(int k) {
         if (k < 0) {
@@ -58,42 +73,60 @@ public class RRFRankConfig extends BaseRankConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isDenseName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isDenseName() {
         return denseName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDenseName.
+     * 
+     * @param denseName denseName
+     * @since 0.1.7
      */
     public void setDenseName(boolean denseName) {
         this.denseName = denseName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isDenseContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isDenseContent() {
         return denseContent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDenseContent.
+     * 
+     * @param denseContent denseContent
+     * @since 0.1.7
      */
     public void setDenseContent(boolean denseContent) {
         this.denseContent = denseContent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isSparseContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isSparseContent() {
         return sparseContent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSparseContent.
+     * 
+     * @param sparseContent sparseContent
+     * @since 0.1.7
      */
     public void setSparseContent(boolean sparseContent) {
         this.sparseContent = sparseContent;

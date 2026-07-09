@@ -9,15 +9,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Snapshot of a team member status used by team-monitor query and event views.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-/**
- * Snapshot of a team member status used by team-monitor query and event views.
- *
- * @since 1.0
- */
 public class MemberInfo {
     private String memberId;
     private String teamId;

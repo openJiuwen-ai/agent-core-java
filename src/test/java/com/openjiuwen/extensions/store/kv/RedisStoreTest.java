@@ -1,6 +1,15 @@
+
 package com.openjiuwen.extensions.store.kv;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.spi.store.KVStorePipeline;
+
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -10,15 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class RedisStoreTest {
-
     @Test
     void basicCrudAndPrefixOperationsWork() {
         RedisStore store = new RedisStore(new FakeRedisClient());
@@ -99,7 +100,7 @@ class RedisStoreTest {
     @Test
     void getPreservesBinaryValuesLikeJedisByteApi() {
         RedisStore store = new RedisStore(new JedisLikeBinaryClient());
-        byte[] serialized = new byte[] {(byte) 0xAC, (byte) 0xED, 0, 5, 0x7B};
+        byte[] serialized = new byte[]{(byte) 0xAC, (byte) 0xED, 0, 5, 0x7B};
 
         store.set("blob-key", serialized);
 

@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Data structure for download file operation.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

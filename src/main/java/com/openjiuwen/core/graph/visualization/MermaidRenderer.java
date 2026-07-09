@@ -20,12 +20,22 @@ import java.util.logging.Logger;
  * Mirrors the Python {@code Mermaid} class that uses mermaid.ink for rendering.
  */
 final class MermaidRenderer {
-
     private static final Logger LOGGER = Logger.getLogger(MermaidRenderer.class.getName());
     private static final String MERMAID_INK_BASE = "https://mermaid.ink";
+
+    /**
+     * Duration.ofSeconds.
+     * 
+     * @since 0.1.7
+     */
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
     private static final int MAX_ATTEMPTS = 3;
 
+    /**
+     * MermaidRenderer.
+     * 
+     * @since 0.1.7
+     */
     private MermaidRenderer() {
     }
 
@@ -49,22 +59,24 @@ final class MermaidRenderer {
         return render(mermaidSyntax, "/svg/");
     }
 
+    /**
+     * render.
+     * 
+     * @param mermaidSyntax mermaidSyntax
+     * @param pathPrefix pathPrefix
+     * @return the result
+     * @since 0.1.7
+     */
     private static byte[] render(String mermaidSyntax, String pathPrefix) {
-        HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(TIMEOUT)
-                .build();
+        HttpClient client = HttpClient.newBuilder().connectTimeout(TIMEOUT).build();
 
-        String encoded = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(mermaidSyntax.getBytes(StandardCharsets.UTF_8));
+        String encoded =
+            Base64.getUrlEncoder().withoutPadding().encodeToString(mermaidSyntax.getBytes(StandardCharsets.UTF_8));
         URI uri = URI.create(MERMAID_INK_BASE + pathPrefix + encoded);
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(uri)
-                        .timeout(TIMEOUT)
-                        .GET()
-                        .build();
+                HttpRequest request = HttpRequest.newBuilder().uri(uri).timeout(TIMEOUT).GET().build();
 
                 HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
                 if (response.statusCode() == 200) {
@@ -83,12 +95,17 @@ final class MermaidRenderer {
         return fallbackBytes(mermaidSyntax, pathPrefix);
     }
 
+    /**
+     * fallbackBytes.
+     * 
+     * @param mermaidSyntax mermaidSyntax
+     * @param pathPrefix pathPrefix
+     * @return the result
+     * @since 0.1.7
+     */
     private static byte[] fallbackBytes(String mermaidSyntax, String pathPrefix) {
         if ("/svg/".equals(pathPrefix)) {
-            String escaped = mermaidSyntax
-                    .replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;");
+            String escaped = mermaidSyntax.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
             String svg = """
                     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="80">
                       <rect width="100%%" height="100%%" fill="white"/>

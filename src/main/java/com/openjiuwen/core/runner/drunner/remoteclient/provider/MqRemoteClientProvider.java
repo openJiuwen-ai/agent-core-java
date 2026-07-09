@@ -14,17 +14,18 @@ import com.openjiuwen.core.runner.drunner.remoteclient.RemoteClientProvider;
  * <p>
  * Creates remote clients that communicate with distributed agents via
  * message queue, suitable for asynchronous and distributed execution scenarios.
- *
+ * 
  * @author OpenJiuwen Team
- * @since 0.1.12
  * @see RemoteClientProvider
  * @see com.openjiuwen.core.runner.drunner.remoteclient.MqRemoteClient
+ * @since 0.1.7
  */
 public final class MqRemoteClientProvider implements RemoteClientProvider {
     /**
-     * Returns the MQ protocol type name.
-     *
-     * @return the type name "MQ"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -33,9 +34,10 @@ public final class MqRemoteClientProvider implements RemoteClientProvider {
 
     /**
      * Creates a remote client using MQ protocol.
-     *
+     * 
      * @param config the remote client configuration
      * @return a new MqRemoteClient instance
+     * @since 0.1.7
      */
     @Override
     public RemoteClient create(RemoteClientConfig config) {

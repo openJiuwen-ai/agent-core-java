@@ -1,13 +1,17 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.runner;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
 import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -17,13 +21,10 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for RunnerConfig SPI configuration fields and global config management.
  */
 class RunnerConfigTest {
-
     @BeforeEach
     void resetGlobalConfig() {
         RunnerConfig.setRunnerConfig(null);
@@ -41,7 +42,6 @@ class RunnerConfigTest {
     @Nested
     @DisplayName("Default values")
     class DefaultValues {
-
         @Test
         @DisplayName("DEFAULT has distributedMode=false")
         void defaultDistributedMode() {
@@ -97,7 +97,6 @@ class RunnerConfigTest {
     @Nested
     @DisplayName("Global config management")
     class GlobalConfig {
-
         @Test
         @DisplayName("getRunnerConfig() returns DEFAULT when none set")
         void getRunnerConfigReturnsDefault() {
@@ -109,10 +108,7 @@ class RunnerConfigTest {
         @Test
         @DisplayName("setRunnerConfig() replaces global config")
         void setRunnerConfigReplacesGlobal() {
-            RunnerConfig custom = RunnerConfig.builder()
-                    .distributedMode(true)
-                    .envPrefix("test")
-                    .build();
+            RunnerConfig custom = RunnerConfig.builder().distributedMode(true).envPrefix("test").build();
             RunnerConfig.setRunnerConfig(custom);
 
             RunnerConfig current = RunnerConfig.getRunnerConfig();
@@ -123,9 +119,7 @@ class RunnerConfigTest {
         @Test
         @DisplayName("setRunnerConfig(null) resets to DEFAULT on next get")
         void setRunnerConfigNullResetsToDefault() {
-            RunnerConfig custom = RunnerConfig.builder()
-                    .distributedMode(true)
-                    .build();
+            RunnerConfig custom = RunnerConfig.builder().distributedMode(true).build();
             RunnerConfig.setRunnerConfig(custom);
             assertTrue(RunnerConfig.getRunnerConfig().isDistributedMode());
 
@@ -136,9 +130,7 @@ class RunnerConfigTest {
         @Test
         @DisplayName("getRunnerConfig() returns same instance after set")
         void getRunnerConfigReturnsSameInstance() {
-            RunnerConfig custom = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .build();
+            RunnerConfig custom = RunnerConfig.builder().distributedMode(false).build();
             RunnerConfig.setRunnerConfig(custom);
             assertSame(custom, RunnerConfig.getRunnerConfig());
         }
@@ -149,17 +141,12 @@ class RunnerConfigTest {
     @Nested
     @DisplayName("Checkpointer config")
     class CheckpointerConfig {
-
         @Test
         @DisplayName("checkpointerConfig with type and conf")
         void checkpointerConfigWithTypeAndConf() {
-            Map<String, Object> cpConfig = Map.of(
-                    "type", "redis",
-                    "conf", Map.of("connection", Map.of("url", "redis://localhost:6379")));
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            Map<String, Object> cpConfig =
+                Map.of("type", "redis", "conf", Map.of("connection", Map.of("url", "redis://localhost:6379")));
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             assertEquals("redis", config.getCheckpointerConfig().get("type"));
             assertNotNull(config.getCheckpointerConfig().get("conf"));
@@ -169,10 +156,7 @@ class RunnerConfigTest {
         @DisplayName("checkpointerConfig with in_memory type")
         void checkpointerConfigInMemory() {
             Map<String, Object> cpConfig = Map.of("type", "in_memory", "conf", Map.of());
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             assertEquals("in_memory", config.getCheckpointerConfig().get("type"));
         }
@@ -180,13 +164,9 @@ class RunnerConfigTest {
         @Test
         @DisplayName("checkpointerConfig with persistence type and kv_store")
         void checkpointerConfigPersistence() {
-            Map<String, Object> cpConfig = Map.of(
-                    "type", "persistence",
-                    "conf", Map.of("db_type", "sqlite", "db_path", "/tmp/cp.db"));
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            Map<String, Object> cpConfig =
+                Map.of("type", "persistence", "conf", Map.of("db_type", "sqlite", "db_path", "/tmp/cp.db"));
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             assertEquals("persistence", config.getCheckpointerConfig().get("type"));
         }
@@ -204,19 +184,12 @@ class RunnerConfigTest {
     @Nested
     @DisplayName("MCP servers config")
     class McpServersConfig {
-
         @Test
         @DisplayName("mcpServers with single SSE server")
         void mcpServersSingleSse() {
-            McpServerConfig server = McpServerConfig.builder()
-                    .serverName("my-mcp")
-                    .serverPath("http://localhost:8080/mcp")
-                    .clientType("sse")
-                    .build();
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .mcpServers(List.of(server))
-                    .build();
+            McpServerConfig server = McpServerConfig.builder().serverName("my-mcp")
+                    .serverPath("http://localhost:8080/mcp").clientType("sse").build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).mcpServers(List.of(server)).build();
 
             assertEquals(1, config.getMcpServers().size());
             assertEquals("my-mcp", config.getMcpServers().get(0).getServerName());
@@ -226,20 +199,12 @@ class RunnerConfigTest {
         @Test
         @DisplayName("mcpServers with multiple servers of different types")
         void mcpServersMultipleTypes() {
-            McpServerConfig sseServer = McpServerConfig.builder()
-                    .serverName("sse-mcp")
-                    .serverPath("http://localhost:8080/mcp")
-                    .clientType("sse")
-                    .build();
-            McpServerConfig stdioServer = McpServerConfig.builder()
-                    .serverName("stdio-mcp")
-                    .serverPath("/usr/local/bin/mcp-server")
-                    .clientType("stdio")
-                    .build();
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .mcpServers(List.of(sseServer, stdioServer))
-                    .build();
+            McpServerConfig sseServer = McpServerConfig.builder().serverName("sse-mcp")
+                    .serverPath("http://localhost:8080/mcp").clientType("sse").build();
+            McpServerConfig stdioServer = McpServerConfig.builder().serverName("stdio-mcp")
+                    .serverPath("/usr/local/bin/mcp-server").clientType("stdio").build();
+            RunnerConfig config =
+                RunnerConfig.builder().distributedMode(false).mcpServers(List.of(sseServer, stdioServer)).build();
 
             assertEquals(2, config.getMcpServers().size());
             assertEquals("sse", config.getMcpServers().get(0).getClientType());
@@ -249,16 +214,10 @@ class RunnerConfigTest {
         @Test
         @DisplayName("mcpServers with auth headers")
         void mcpServersWithAuthHeaders() {
-            McpServerConfig server = McpServerConfig.builder()
-                    .serverName("auth-mcp")
-                    .serverPath("http://localhost:8080/mcp")
-                    .clientType("sse")
-                    .authHeaders(Map.of("Authorization", "Bearer token123"))
-                    .build();
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .mcpServers(List.of(server))
-                    .build();
+            McpServerConfig server =
+                McpServerConfig.builder().serverName("auth-mcp").serverPath("http://localhost:8080/mcp")
+                        .clientType("sse").authHeaders(Map.of("Authorization", "Bearer token123")).build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).mcpServers(List.of(server)).build();
 
             Map<String, String> headers = config.getMcpServers().get(0).getAuthHeaders();
             assertNotNull(headers);
@@ -268,16 +227,10 @@ class RunnerConfigTest {
         @Test
         @DisplayName("mcpServers with custom params")
         void mcpServersWithParams() {
-            McpServerConfig server = McpServerConfig.builder()
-                    .serverName("param-mcp")
-                    .serverPath("http://localhost:8080/mcp")
-                    .clientType("sse")
-                    .params(Map.of("timeout", 30, "retry_count", 3))
-                    .build();
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .mcpServers(List.of(server))
-                    .build();
+            McpServerConfig server =
+                McpServerConfig.builder().serverName("param-mcp").serverPath("http://localhost:8080/mcp")
+                        .clientType("sse").params(Map.of("timeout", 30, "retry_count", 3)).build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).mcpServers(List.of(server)).build();
 
             Map<String, Object> params = config.getMcpServers().get(0).getParams();
             assertNotNull(params);
@@ -298,17 +251,12 @@ class RunnerConfigTest {
     @Nested
     @DisplayName("KV store config")
     class KvStoreConfig {
-
         @Test
         @DisplayName("kvStoreConfig with redis type")
         void kvStoreConfigRedis() {
-            Map<String, Object> kvConfig = Map.of(
-                    "type", "redis",
-                    "conf", Map.of("url", "redis://localhost:6379", "cluster_mode", false));
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .kvStoreConfig(kvConfig)
-                    .build();
+            Map<String, Object> kvConfig =
+                Map.of("type", "redis", "conf", Map.of("url", "redis://localhost:6379", "cluster_mode", false));
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).kvStoreConfig(kvConfig).build();
 
             assertEquals("redis", config.getKvStoreConfig().get("type"));
         }
@@ -317,10 +265,7 @@ class RunnerConfigTest {
         @DisplayName("kvStoreConfig with in_memory type")
         void kvStoreConfigInMemory() {
             Map<String, Object> kvConfig = Map.of("type", "in_memory", "conf", Map.of());
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .kvStoreConfig(kvConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).kvStoreConfig(kvConfig).build();
 
             assertEquals("in_memory", config.getKvStoreConfig().get("type"));
         }
@@ -338,17 +283,12 @@ class RunnerConfigTest {
     @Nested
     @DisplayName("Vector store config")
     class VectorStoreConfig {
-
         @Test
         @DisplayName("vectorStoreConfig with milvus type")
         void vectorStoreConfigMilvus() {
-            Map<String, Object> vsConfig = Map.of(
-                    "type", "milvus",
-                    "conf", Map.of("uri", "http://localhost:19530", "collection", "kb_chunks"));
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .vectorStoreConfig(vsConfig)
-                    .build();
+            Map<String, Object> vsConfig =
+                Map.of("type", "milvus", "conf", Map.of("uri", "http://localhost:19530", "collection", "kb_chunks"));
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).vectorStoreConfig(vsConfig).build();
 
             assertEquals("milvus", config.getVectorStoreConfig().get("type"));
         }
@@ -356,13 +296,8 @@ class RunnerConfigTest {
         @Test
         @DisplayName("vectorStoreConfig with chroma type")
         void vectorStoreConfigChroma() {
-            Map<String, Object> vsConfig = Map.of(
-                    "type", "chroma",
-                    "conf", Map.of("host", "localhost", "port", 8000));
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .vectorStoreConfig(vsConfig)
-                    .build();
+            Map<String, Object> vsConfig = Map.of("type", "chroma", "conf", Map.of("host", "localhost", "port", 8000));
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).vectorStoreConfig(vsConfig).build();
 
             assertEquals("chroma", config.getVectorStoreConfig().get("type"));
         }
@@ -380,17 +315,12 @@ class RunnerConfigTest {
     @Nested
     @DisplayName("Object storage config")
     class ObjectStorageConfig {
-
         @Test
         @DisplayName("objectStorageConfig with obs type")
         void objectStorageConfigObs() {
-            Map<String, Object> obsConfig = Map.of(
-                    "type", "obs",
-                    "conf", Map.of("endpoint", "https://obs.example.com", "bucket", "my-bucket"));
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .objectStorageConfig(obsConfig)
-                    .build();
+            Map<String, Object> obsConfig =
+                Map.of("type", "obs", "conf", Map.of("endpoint", "https://obs.example.com", "bucket", "my-bucket"));
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).objectStorageConfig(obsConfig).build();
 
             assertEquals("obs", config.getObjectStorageConfig().get("type"));
         }
@@ -398,13 +328,9 @@ class RunnerConfigTest {
         @Test
         @DisplayName("objectStorageConfig with s3 type")
         void objectStorageConfigS3() {
-            Map<String, Object> obsConfig = Map.of(
-                    "type", "s3",
-                    "conf", Map.of("region", "us-east-1", "bucket", "my-s3-bucket"));
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .objectStorageConfig(obsConfig)
-                    .build();
+            Map<String, Object> obsConfig =
+                Map.of("type", "s3", "conf", Map.of("region", "us-east-1", "bucket", "my-s3-bucket"));
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).objectStorageConfig(obsConfig).build();
 
             assertEquals("s3", config.getObjectStorageConfig().get("type"));
         }
@@ -422,14 +348,10 @@ class RunnerConfigTest {
     @Nested
     @DisplayName("Topic templates")
     class TopicTemplates {
-
         @Test
         @DisplayName("agentTopicTemplate() without envPrefix")
         void agentTopicTemplateWithoutPrefix() {
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .envPrefix("")
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).envPrefix("").build();
             String template = config.agentTopicTemplate();
             assertTrue(template.startsWith("openjiuwen.single_agent"));
         }
@@ -437,10 +359,7 @@ class RunnerConfigTest {
         @Test
         @DisplayName("agentTopicTemplate() with envPrefix")
         void agentTopicTemplateWithPrefix() {
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .envPrefix("prod")
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).envPrefix("prod").build();
             String template = config.agentTopicTemplate();
             assertTrue(template.startsWith("prod."));
         }
@@ -448,10 +367,7 @@ class RunnerConfigTest {
         @Test
         @DisplayName("replyTopicTemplate() without envPrefix")
         void replyTopicTemplateWithoutPrefix() {
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .envPrefix("")
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).envPrefix("").build();
             String template = config.replyTopicTemplate();
             assertTrue(template.startsWith("openjiuwen.reply"));
         }
@@ -459,10 +375,7 @@ class RunnerConfigTest {
         @Test
         @DisplayName("replyTopicTemplate() with envPrefix")
         void replyTopicTemplateWithPrefix() {
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .envPrefix("staging")
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).envPrefix("staging").build();
             String template = config.replyTopicTemplate();
             assertTrue(template.startsWith("staging."));
         }
@@ -473,28 +386,20 @@ class RunnerConfigTest {
     @Nested
     @DisplayName("Full SPI config integration")
     class FullSpiConfigIntegration {
-
         @Test
         @DisplayName("All SPI configs can be set together")
         void allSpiConfigsTogether() {
             Map<String, Object> cpConfig = Map.of("type", "redis", "conf", Map.of("url", "redis://localhost:6379"));
-            McpServerConfig mcpServer = McpServerConfig.builder()
-                    .serverName("test-mcp")
-                    .serverPath("http://localhost:8080/mcp")
-                    .clientType("sse")
-                    .build();
+            McpServerConfig mcpServer = McpServerConfig.builder().serverName("test-mcp")
+                    .serverPath("http://localhost:8080/mcp").clientType("sse").build();
             Map<String, Object> kvConfig = Map.of("type", "in_memory", "conf", Map.of());
             Map<String, Object> vsConfig = Map.of("type", "milvus", "conf", Map.of("uri", "http://localhost:19530"));
-            Map<String, Object> obsConfig = Map.of("type", "obs", "conf", Map.of("endpoint", "https://obs.example.com"));
+            Map<String, Object> obsConfig =
+                Map.of("type", "obs", "conf", Map.of("endpoint", "https://obs.example.com"));
 
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .mcpServers(List.of(mcpServer))
-                    .kvStoreConfig(kvConfig)
-                    .vectorStoreConfig(vsConfig)
-                    .objectStorageConfig(obsConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig)
+                    .mcpServers(List.of(mcpServer)).kvStoreConfig(kvConfig).vectorStoreConfig(vsConfig)
+                    .objectStorageConfig(obsConfig).build();
 
             assertNotNull(config.getCheckpointerConfig());
             assertEquals(1, config.getMcpServers().size());
@@ -514,11 +419,8 @@ class RunnerConfigTest {
             Map<String, Object> cpConfig = Map.of("type", "redis", "conf", Map.of("url", "redis://localhost:6379"));
             Map<String, Object> kvConfig = Map.of("type", "in_memory", "conf", Map.of());
 
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .kvStoreConfig(kvConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig)
+                    .kvStoreConfig(kvConfig).build();
             RunnerConfig.setRunnerConfig(config);
 
             RunnerConfig retrieved = RunnerConfig.getRunnerConfig();
@@ -530,13 +432,8 @@ class RunnerConfigTest {
         @DisplayName("SPI config type extraction pattern")
         void spiConfigTypeExtractionPattern() {
             // Verify the standard pattern: config.get("type") + config.get("conf")
-            Map<String, Object> cpConfig = Map.of(
-                    "type", "persistence",
-                    "conf", Map.of("db_type", "sqlite"));
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            Map<String, Object> cpConfig = Map.of("type", "persistence", "conf", Map.of("db_type", "sqlite"));
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             Map<String, Object> stored = config.getCheckpointerConfig();
             String type = (String) stored.getOrDefault("type", "in_memory");
@@ -553,19 +450,13 @@ class RunnerConfigTest {
     @Nested
     @DisplayName("Builder patterns")
     class BuilderPatterns {
-
         @Test
         @DisplayName("Builder produces independent instances")
         void builderProducesIndependentInstances() {
-            RunnerConfig.RunnerConfigBuilder builder = RunnerConfig.builder()
-                    .distributedMode(false);
+            RunnerConfig.RunnerConfigBuilder builder = RunnerConfig.builder().distributedMode(false);
 
-            RunnerConfig config1 = builder
-                    .checkpointerConfig(Map.of("type", "in_memory"))
-                    .build();
-            RunnerConfig config2 = builder
-                    .checkpointerConfig(Map.of("type", "redis"))
-                    .build();
+            RunnerConfig config1 = builder.checkpointerConfig(Map.of("type", "in_memory")).build();
+            RunnerConfig config2 = builder.checkpointerConfig(Map.of("type", "redis")).build();
 
             // Lombok @Builder may share mutable state; just verify both are valid
             assertNotNull(config1.getCheckpointerConfig());
@@ -591,17 +482,8 @@ class RunnerConfigTest {
             Map<String, Object> vsConfig = Map.of("type", "chroma");
             Map<String, Object> obsConfig = Map.of("type", "s3");
 
-            RunnerConfig config = new RunnerConfig(
-                    false,
-                    new DistributedConfig(),
-                    "test",
-                    "instance-1",
-                    cpConfig,
-                    List.of(),
-                    kvConfig,
-                    vsConfig,
-                    obsConfig
-            );
+            RunnerConfig config = new RunnerConfig(false, new DistributedConfig(), "test", "instance-1", cpConfig,
+                    List.of(), kvConfig, vsConfig, obsConfig);
 
             assertFalse(config.isDistributedMode());
             assertEquals("test", config.getEnvPrefix());
@@ -618,15 +500,11 @@ class RunnerConfigTest {
     @Nested
     @DisplayName("Runner + RunnerConfig integration")
     class RunnerRunnerConfigIntegration {
-
         @Test
         @DisplayName("RunnerImpl constructor sets RunnerConfig as global")
         void runnerImplConstructorSetsGlobalConfig() {
             Map<String, Object> cpConfig = Map.of("type", "in_memory", "conf", Map.of());
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             RunnerImpl runner = new RunnerImpl("test-runner", config);
             assertSame(config, runner.getConfig());
@@ -644,13 +522,10 @@ class RunnerConfigTest {
         @DisplayName("RunnerImpl.setConfig() updates global config")
         void runnerImplSetConfigUpdatesGlobal() {
             RunnerImpl runner = new RunnerImpl("test-runner", null);
-            Map<String, Object> cpConfig = Map.of("type", "redis", "conf",
-                    Map.of("connection", Map.of("url", "redis://localhost:6379")));
+            Map<String, Object> cpConfig =
+                Map.of("type", "redis", "conf", Map.of("connection", Map.of("url", "redis://localhost:6379")));
 
-            RunnerConfig newConfig = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            RunnerConfig newConfig = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
             runner.setConfig(newConfig);
 
             assertEquals("redis", runner.getConfig().getCheckpointerConfig().get("type"));
@@ -660,10 +535,7 @@ class RunnerConfigTest {
         @DisplayName("Runner.start() initializes in_memory checkpointer from config")
         void runnerStartInitializesInMemoryCheckpointer() {
             Map<String, Object> cpConfig = Map.of("type", "in_memory", "conf", Map.of());
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             RunnerImpl runner = new RunnerImpl("test-runner", config);
             runner.start();
@@ -678,12 +550,9 @@ class RunnerConfigTest {
         @Test
         @DisplayName("Runner.start() initializes redis checkpointer from config")
         void runnerStartInitializesRedisCheckpointer() {
-            Map<String, Object> cpConfig = Map.of("type", "redis", "conf",
-                    Map.of("connection", Map.of("url", "redis://localhost:6379")));
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            Map<String, Object> cpConfig =
+                Map.of("type", "redis", "conf", Map.of("connection", Map.of("url", "redis://localhost:6379")));
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             RunnerImpl runner = new RunnerImpl("test-runner", config);
             runner.start();
@@ -698,9 +567,7 @@ class RunnerConfigTest {
         @Test
         @DisplayName("Runner.start() without checkpointerConfig does not override default")
         void runnerStartWithoutCheckpointerConfig() {
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).build();
             assertNull(config.getCheckpointerConfig());
 
             RunnerImpl runner = new RunnerImpl("test-runner", config);
@@ -717,14 +584,9 @@ class RunnerConfigTest {
         @DisplayName("Runner.start() with persistence checkpointer config")
         void runnerStartInitializesPersistenceCheckpointer() {
             com.openjiuwen.core.foundation.store.kv.InMemoryKVStore kvStore =
-                    new com.openjiuwen.core.foundation.store.kv.InMemoryKVStore();
-            Map<String, Object> cpConfig = Map.of(
-                    "type", "persistence",
-                    "conf", Map.of("kv_store", kvStore));
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+                new com.openjiuwen.core.foundation.store.kv.InMemoryKVStore();
+            Map<String, Object> cpConfig = Map.of("type", "persistence", "conf", Map.of("kv_store", kvStore));
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             RunnerImpl runner = new RunnerImpl("test-runner", config);
             runner.start();
@@ -740,22 +602,16 @@ class RunnerConfigTest {
         void runnerSetConfigThenStartAppliesNewCheckpointer() {
             // Start with in_memory
             Map<String, Object> cpConfig1 = Map.of("type", "in_memory", "conf", Map.of());
-            RunnerConfig config1 = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig1)
-                    .build();
+            RunnerConfig config1 = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig1).build();
             RunnerImpl runner = new RunnerImpl("test-runner", config1);
             runner.start();
             assertInstanceOf(InMemoryCheckpointer.class, CheckpointerFactory.getCheckpointer());
             runner.stop();
 
             // Switch to redis via setConfig + start
-            Map<String, Object> cpConfig2 = Map.of("type", "redis", "conf",
-                    Map.of("connection", Map.of("url", "redis://localhost:6379")));
-            RunnerConfig config2 = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig2)
-                    .build();
+            Map<String, Object> cpConfig2 =
+                Map.of("type", "redis", "conf", Map.of("connection", Map.of("url", "redis://localhost:6379")));
+            RunnerConfig config2 = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig2).build();
             runner.setConfig(config2);
             runner.start();
             assertInstanceOf(RedisCheckpointer.class, CheckpointerFactory.getCheckpointer());
@@ -767,10 +623,7 @@ class RunnerConfigTest {
         @DisplayName("Runner.start() with invalid checkpointer type throws exception")
         void runnerStartWithInvalidCheckpointerTypeThrows() {
             Map<String, Object> cpConfig = Map.of("type", "nonexistent_type", "conf", Map.of());
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             RunnerImpl runner = new RunnerImpl("test-runner", config);
             assertThrows(Exception.class, runner::start);
@@ -780,10 +633,7 @@ class RunnerConfigTest {
         @DisplayName("Runner.start() with checkpointerConfig missing type defaults to in_memory")
         void runnerStartWithMissingTypeDefaultsToInMemory() {
             Map<String, Object> cpConfig = Map.of("conf", Map.of());
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             RunnerImpl runner = new RunnerImpl("test-runner", config);
             runner.start();
@@ -798,10 +648,7 @@ class RunnerConfigTest {
         @DisplayName("Runner.start() with empty checkpointerConfig defaults to in_memory")
         void runnerStartWithEmptyCheckpointerConfig() {
             Map<String, Object> cpConfig = Map.of();
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             RunnerImpl runner = new RunnerImpl("test-runner", config);
             runner.start();
@@ -815,15 +662,9 @@ class RunnerConfigTest {
         @Test
         @DisplayName("RunnerConfig with mcpServers accessible after Runner construction")
         void runnerConfigMcpServersAccessibleAfterConstruction() {
-            McpServerConfig server = McpServerConfig.builder()
-                    .serverName("test-mcp")
-                    .serverPath("http://localhost:8080/mcp")
-                    .clientType("sse")
-                    .build();
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .mcpServers(List.of(server))
-                    .build();
+            McpServerConfig server = McpServerConfig.builder().serverName("test-mcp")
+                    .serverPath("http://localhost:8080/mcp").clientType("sse").build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).mcpServers(List.of(server)).build();
 
             RunnerImpl runner = new RunnerImpl("test-runner", config);
             assertEquals(1, runner.getConfig().getMcpServers().size());
@@ -834,23 +675,16 @@ class RunnerConfigTest {
         @DisplayName("RunnerConfig with all SPI fields accessible via Runner.getConfig()")
         void runnerConfigAllSpiFieldsAccessibleViaRunner() {
             Map<String, Object> cpConfig = Map.of("type", "in_memory", "conf", Map.of());
-            McpServerConfig mcpServer = McpServerConfig.builder()
-                    .serverName("mcp")
-                    .serverPath("http://localhost:8080/mcp")
-                    .clientType("sse")
-                    .build();
+            McpServerConfig mcpServer = McpServerConfig.builder().serverName("mcp")
+                    .serverPath("http://localhost:8080/mcp").clientType("sse").build();
             Map<String, Object> kvConfig = Map.of("type", "in_memory", "conf", Map.of());
             Map<String, Object> vsConfig = Map.of("type", "in_memory", "conf", Map.of());
-            Map<String, Object> obsConfig = Map.of("type", "obs", "conf", Map.of("endpoint", "https://obs.example.com"));
+            Map<String, Object> obsConfig =
+                Map.of("type", "obs", "conf", Map.of("endpoint", "https://obs.example.com"));
 
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .mcpServers(List.of(mcpServer))
-                    .kvStoreConfig(kvConfig)
-                    .vectorStoreConfig(vsConfig)
-                    .objectStorageConfig(obsConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig)
+                    .mcpServers(List.of(mcpServer)).kvStoreConfig(kvConfig).vectorStoreConfig(vsConfig)
+                    .objectStorageConfig(obsConfig).build();
 
             RunnerImpl runner = new RunnerImpl("test-runner", config);
             RunnerConfig retrieved = runner.getConfig();
@@ -873,12 +707,9 @@ class RunnerConfigTest {
         @Test
         @DisplayName("Runner.setConfig() updates global config visible to Runner.getConfig()")
         void runnerSetConfigUpdatesGlobalVisibleToGetConfig() {
-            Map<String, Object> cpConfig = Map.of("type", "redis", "conf",
-                    Map.of("connection", Map.of("url", "redis://localhost:6379")));
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            Map<String, Object> cpConfig =
+                Map.of("type", "redis", "conf", Map.of("connection", Map.of("url", "redis://localhost:6379")));
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             Runner.setConfig(config);
             assertEquals("redis", Runner.getConfig().getCheckpointerConfig().get("type"));
@@ -891,10 +722,7 @@ class RunnerConfigTest {
         @DisplayName("Multiple RunnerImpl instances share same global config")
         void multipleRunnerImplsShareGlobalConfig() {
             Map<String, Object> cpConfig = Map.of("type", "in_memory", "conf", Map.of());
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             RunnerImpl runner1 = new RunnerImpl("runner-1", config);
             // runner2 with null config uses global config set by runner1
@@ -909,10 +737,7 @@ class RunnerConfigTest {
         void runnerStartWithRedisClusterAlias() {
             Map<String, Object> cpConfig = Map.of("type", "redis_checkpointer_cluster", "conf",
                     Map.of("connection", Map.of("url", "redis://localhost:6379")));
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             RunnerImpl runner = new RunnerImpl("test-runner", config);
             runner.start();
@@ -927,10 +752,7 @@ class RunnerConfigTest {
         @DisplayName("Runner.start() with checkpointerConfig containing only type uses empty conf")
         void runnerStartWithOnlyTypeUsesEmptyConf() {
             Map<String, Object> cpConfig = Map.of("type", "in_memory");
-            RunnerConfig config = RunnerConfig.builder()
-                    .distributedMode(false)
-                    .checkpointerConfig(cpConfig)
-                    .build();
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false).checkpointerConfig(cpConfig).build();
 
             RunnerImpl runner = new RunnerImpl("test-runner", config);
             runner.start();

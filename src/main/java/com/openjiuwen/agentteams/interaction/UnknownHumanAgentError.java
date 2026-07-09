@@ -6,12 +6,15 @@ package com.openjiuwen.agentteams.interaction;
 
 /**
  * Raised when a requested human-agent member name does not exist in the current team runtime.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class UnknownHumanAgentError extends RuntimeException {
     /**
-     * Auto-generated for codecheck compliance.
+     * UnknownHumanAgentError.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     public UnknownHumanAgentError(String message) {
         super(message);

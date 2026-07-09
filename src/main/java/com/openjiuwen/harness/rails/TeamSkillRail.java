@@ -16,8 +16,8 @@ import java.util.stream.Collectors;
 
 /**
  * Public class TeamSkillRail used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class TeamSkillRail extends EvolutionRail {
     private final String skillsDir;
@@ -25,14 +25,21 @@ public class TeamSkillRail extends EvolutionRail {
     private boolean isEvolutionInProgress;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamSkillRail.
+     * 
+     * @param skillsDir skillsDir
+     * @since 0.1.7
      */
     public TeamSkillRail(String skillsDir) {
         this(skillsDir, "cn");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamSkillRail.
+     * 
+     * @param skillsDir skillsDir
+     * @param language language
+     * @since 0.1.7
      */
     public TeamSkillRail(String skillsDir, String language) {
         super(EvolutionTriggerPoint.NONE, true);
@@ -41,23 +48,23 @@ public class TeamSkillRail extends EvolutionRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * priority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int priority() {
         return 80;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * onAfterToolCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected void onAfterToolCall(AgentCallbackContext ctx) {
         if (isEvolutionInProgress || ctx == null || !(ctx.getInputs() instanceof ToolCallInputs inputs)) {
             return;
@@ -69,7 +76,11 @@ public class TeamSkillRail extends EvolutionRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * notifyTeamCompleted.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     public boolean notifyTeamCompleted(AgentCallbackContext ctx) {
         if (isEvolutionInProgress) {
@@ -81,59 +92,77 @@ public class TeamSkillRail extends EvolutionRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * allTasksCompleted.
+     * 
+     * @param result result
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean allTasksCompleted(Object result) {
         String text = String.valueOf(result).toLowerCase(Locale.ROOT);
         if (!text.contains("completed")) {
             return false;
         }
-        return !(text.contains("pending")
-                || text.contains("claimed")
-                || text.contains("in_progress")
+        return !(text.contains("pending") || text.contains("claimed") || text.contains("in_progress")
                 || text.contains("blocked"));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatEvolutionRecords.
+     * 
+     * @param records records
+     * @return the result
+     * @since 0.1.7
      */
     public static String formatEvolutionRecords(List<EvolutionRecord> records) {
         return formatEvolutionRecords(records, "cn");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatEvolutionRecords.
+     * 
+     * @param records records
+     * @param language language
+     * @return the result
+     * @since 0.1.7
      */
     public static String formatEvolutionRecords(List<EvolutionRecord> records, String language) {
         if (records == null || records.isEmpty()) {
             return "en".equalsIgnoreCase(language) ? "(no evolution records)" : "（无演进经验）";
         }
-        return records.stream()
-                .map(record -> {
-                    String section = record.getChange() != null ? record.getChange().getSection() : "";
-                    String action = record.getChange() != null ? record.getChange().getAction() : "";
-                    String content = record.getChange() != null ? record.getChange().getContent() : "";
-                    return "- [" + section + "/" + action + "] " + content;
-                })
-                .collect(Collectors.joining("\n"));
+        return records.stream().map(record -> {
+            String section = record.getChange() != null ? record.getChange().getSection() : "";
+            String action = record.getChange() != null ? record.getChange().getAction() : "";
+            String content = record.getChange() != null ? record.getChange().getContent() : "";
+            return "- [" + section + "/" + action + "] " + content;
+        }).collect(Collectors.joining("\n"));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSkillsDir.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSkillsDir() {
         return skillsDir;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLanguage.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getLanguage() {
         return language;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isEvolutionInProgress.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isEvolutionInProgress() {
         return isEvolutionInProgress;

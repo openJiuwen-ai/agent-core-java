@@ -10,32 +10,54 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Auto-generated for codecheck compliance.
+ * LspDiagnosticRegistry.
+ * 
+ * @since 0.1.7
  */
 public final class LspDiagnosticRegistry {
     private static LspDiagnosticRegistry instance = new LspDiagnosticRegistry();
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<LspDiagnostic> pending = new ArrayList<>();
 
+    /**
+     * LspDiagnosticRegistry.
+     * 
+     * @since 0.1.7
+     */
     private LspDiagnosticRegistry() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInstance.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static LspDiagnosticRegistry getInstance() {
         return instance;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * reset.
+     * 
+     * @since 0.1.7
      */
     public static void reset() {
         instance = new LspDiagnosticRegistry();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * register.
+     * 
+     * @param serverName serverName
+     * @param uri uri
+     * @param diagnostics diagnostics
+     * @since 0.1.7
      */
     public synchronized void register(String serverName, String uri, List<Map<String, Object>> diagnostics) {
         if (diagnostics == null) {
@@ -47,7 +69,10 @@ public final class LspDiagnosticRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAndClear.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public synchronized List<LspDiagnostic> getAndClear() {
         List<LspDiagnostic> snapshot = new ArrayList<>(pending);
@@ -56,7 +81,10 @@ public final class LspDiagnosticRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * peek.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public synchronized List<LspDiagnostic> peek() {
         return Collections.unmodifiableList(new ArrayList<>(pending));

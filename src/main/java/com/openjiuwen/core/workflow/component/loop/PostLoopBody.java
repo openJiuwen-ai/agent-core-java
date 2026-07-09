@@ -15,15 +15,22 @@ import java.util.Map;
  * Post-body executable that tracks the finish index for loop iteration.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.PostLoopBody}.
+ * 
+ * @since 0.1.7
  */
 public class PostLoopBody extends Executable<Object, Object> {
-
     private int finishIndex = -1;
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * onInvoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object onInvoke(Object inputs, BaseSession session, Object... kwargs) {
         if (session.state() instanceof WorkflowStateCollection state) {
             Object fi = state.get(Constant.FINISH_INDEX);
@@ -39,23 +46,32 @@ public class PostLoopBody extends Executable<Object, Object> {
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * skipTrace.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean skipTrace() {
         return true;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFinishIndex.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getFinishIndex() {
         return finishIndex;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setFinishIndex.
+     * 
+     * @param finishIndex finishIndex
+     * @since 0.1.7
      */
     public void setFinishIndex(int finishIndex) {
         this.finishIndex = finishIndex;

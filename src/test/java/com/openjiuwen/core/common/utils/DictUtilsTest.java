@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.common.utils;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -9,21 +12,17 @@ import org.junit.jupiter.api.Test;
 
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * JUnit 5 tests for DictUtils.
  * Ported from Python: tests/unit_tests/core/common/utils/test_dict.py
  */
 class DictUtilsTest {
-
     // ==========================================================================
     // test_extract_leaf (Python: test_extract_leaf)
     // ==========================================================================
     @Nested
     @DisplayName("extractLeafNodes")
     class ExtractLeafNodesTests {
-
         @Test
         @DisplayName("Extract leaf nodes from a complex nested map")
         void testExtractLeafFromComplexMap() {
@@ -141,7 +140,6 @@ class DictUtilsTest {
     @Nested
     @DisplayName("rebuildMapFromPaths and rebuildDict")
     class RebuildTests {
-
         @Test
         @DisplayName("Rebuild dict from simple string-path leaf nodes")
         void testRebuildFromPaths() {
@@ -225,7 +223,6 @@ class DictUtilsTest {
     @Nested
     @DisplayName("createNestedMap")
     class CreateNestedMapTests {
-
         @Test
         @DisplayName("Create nested map from dotted path")
         void testCreateNestedMap() {
@@ -273,7 +270,6 @@ class DictUtilsTest {
     @Nested
     @DisplayName("flattenMap")
     class FlattenMapTests {
-
         @Test
         @DisplayName("Flatten nested map to dotted-path keys")
         void testFlattenMap() {
@@ -300,7 +296,6 @@ class DictUtilsTest {
     @Nested
     @DisplayName("formatPath")
     class FormatPathTests {
-
         @Test
         @DisplayName("Dict-only path uses dots")
         void testDictPath() {

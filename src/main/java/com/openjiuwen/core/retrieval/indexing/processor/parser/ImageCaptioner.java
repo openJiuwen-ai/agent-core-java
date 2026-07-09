@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,114 +18,160 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/** Lightweight image caption helper aligned with the Python retrieval parser stack. */
+/**
+ * Lightweight image caption helper aligned with the Python retrieval parser stack.
+ * 
+ * @since 0.1.7
+ */
 public class ImageCaptioner {
+    /**
+     * IMAGE_CAPTION_PROMPT.
+     * 
+     * @since 0.1.7
+     */
+    public static final String IMAGE_CAPTION_PROMPT = "Write a short caption describing the provided image.";
 
-  public static final String IMAGE_CAPTION_PROMPT =
-      "Write a short caption describing the provided image.";
-  public static final String SAVED_IMAGE_DIR = "images";
-  private static final String SAVED_IMAGES_ENV = "OPENJIUWEN_SAVED_IMAGES_DIR";
+    /**
+     * SAVED_IMAGE_DIR.
+     * 
+     * @since 0.1.7
+     */
+    public static final String SAVED_IMAGE_DIR = "images";
+    private static final String SAVED_IMAGES_ENV = "OPENJIUWEN_SAVED_IMAGES_DIR";
 
-  private final BaseModelClient llmClient;
+    private final BaseModelClient llmClient;
 
-  /** Auto-generated for codecheck compliance. */
-  public ImageCaptioner(BaseModelClient llmClient) {
-    this.llmClient = llmClient;
-  }
-
-  /** Auto-generated for codecheck compliance. */
-  public String cpImage(String imageLoc) {
-    String targetDir = System.getenv(SAVED_IMAGES_ENV);
-    if (targetDir == null || targetDir.isBlank()) {
-      targetDir = SAVED_IMAGE_DIR;
+    /**
+     * ImageCaptioner.
+     * 
+     * @param llmClient llmClient
+     * @since 0.1.7
+     */
+    public ImageCaptioner(BaseModelClient llmClient) {
+        this.llmClient = llmClient;
     }
-    return cpImage(imageLoc, targetDir);
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  public static String cpImage(String imageLoc, String targetDir) {
-    Path source = Path.of(imageLoc);
-    if (!Files.exists(source)) {
-      throw new IllegalArgumentException("Image not found at: " + imageLoc);
+    /**
+     * cpImage.
+     * 
+     * @param imageLoc imageLoc
+     * @return the result
+     * @since 0.1.7
+     */
+    public String cpImage(String imageLoc) {
+        String targetDir = System.getenv(SAVED_IMAGES_ENV);
+        if (targetDir == null || targetDir.isBlank()) {
+            targetDir = SAVED_IMAGE_DIR;
+        }
+        return cpImage(imageLoc, targetDir);
     }
-    try {
-      Path directory = Path.of(targetDir);
-      Files.createDirectories(directory);
-      Path destination = directory.resolve(source.getFileName().toString());
-      if (!source.toAbsolutePath().normalize().equals(destination.toAbsolutePath().normalize())) {
-        Files.copy(
-            source,
-            destination,
-            StandardCopyOption.REPLACE_EXISTING,
-            StandardCopyOption.COPY_ATTRIBUTES);
-      }
-      return destination.toString();
-    } catch (IOException ex) {
-      return source.toString();
-    }
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  public List<String> captionImages(List<String> imageLocs) {
-    List<String> captions = new ArrayList<>();
-    if (imageLocs == null) {
-      return captions;
+    /**
+     * cpImage.
+     * 
+     * @param imageLoc imageLoc
+     * @param targetDir targetDir
+     * @return the result
+     * @since 0.1.7
+     */
+    public static String cpImage(String imageLoc, String targetDir) {
+        Path source = Path.of(imageLoc);
+        if (!Files.exists(source)) {
+            throw new IllegalArgumentException("Image not found at: " + imageLoc);
+        }
+        try {
+            Path directory = Path.of(targetDir);
+            Files.createDirectories(directory);
+            Path destination = directory.resolve(source.getFileName().toString());
+            if (!source.toAbsolutePath().normalize().equals(destination.toAbsolutePath().normalize())) {
+                Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.COPY_ATTRIBUTES);
+            }
+            return destination.toString();
+        } catch (IOException ex) {
+            return source.toString();
+        }
     }
-    for (String imageLoc : imageLocs) {
-      if (imageLoc == null || !Files.exists(Path.of(imageLoc))) {
-        captions.add("");
-        continue;
-      }
-      captions.add(llmCall(imageLoc));
-    }
-    return captions;
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  protected String llmCall(String imageLoc) {
-    if (llmClient == null) {
-      return "";
+    /**
+     * captionImages.
+     * 
+     * @param imageLocs imageLocs
+     * @return the result
+     * @since 0.1.7
+     */
+    public List<String> captionImages(List<String> imageLocs) {
+        List<String> captions = new ArrayList<>();
+        if (imageLocs == null) {
+            return captions;
+        }
+        for (String imageLoc : imageLocs) {
+            if (imageLoc == null || !Files.exists(Path.of(imageLoc))) {
+                captions.add("");
+                continue;
+            }
+            captions.add(llmCall(imageLoc));
+        }
+        return captions;
     }
-    try {
-      String mimeType = probeMimeType(Path.of(imageLoc));
-      String base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(Path.of(imageLoc)));
-      String imageUrl = "data:" + mimeType + ";base64," + base64;
 
-      List<Map<String, Object>> content = new ArrayList<>();
-      content.add(Map.of("type", "text", "text", IMAGE_CAPTION_PROMPT));
-      content.add(Map.of("type", "image_url", "image_url", Map.of("url", imageUrl)));
+    /**
+     * llmCall.
+     * 
+     * @param imageLoc imageLoc
+     * @return the result
+     * @since 0.1.7
+     */
+    protected String llmCall(String imageLoc) {
+        if (llmClient == null) {
+            return "";
+        }
+        try {
+            String mimeType = probeMimeType(Path.of(imageLoc));
+            String base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(Path.of(imageLoc)));
+            String imageUrl = "data:" + mimeType + ";base64," + base64;
 
-      List<Map<String, Object>> messages = List.of(Map.of("role", "user", "content", content));
-      AssistantMessage response =
-          llmClient.invoke(messages, null, null, null, null, null, null, null, null, null);
-      Object responseContent = response == null ? null : response.getContent();
-      return responseContent == null ? "" : responseContent.toString();
-    } catch (Exception ex) {
-      return "";
-    }
-  }
+            List<Map<String, Object>> content = new ArrayList<>();
+            content.add(Map.of("type", "text", "text", IMAGE_CAPTION_PROMPT));
+            content.add(Map.of("type", "image_url", "image_url", Map.of("url", imageUrl)));
 
-  private static String probeMimeType(Path imagePath) throws IOException {
-    String mimeType = Files.probeContentType(imagePath);
-    if (mimeType != null && !mimeType.isBlank()) {
-      return mimeType;
+            List<Map<String, Object>> messages = List.of(Map.of("role", "user", "content", content));
+            AssistantMessage response =
+                llmClient.invoke(messages, null, null, null, null, null, null, null, null, null);
+            Object responseContent = response == null ? null : response.getContent();
+            return responseContent == null ? "" : responseContent.toString();
+        } catch (Exception ex) {
+            return "";
+        }
     }
-    String lower =
-        imagePath.getFileName() == null
-            ? ""
-            : imagePath.getFileName().toString().toLowerCase(Locale.ROOT);
-    Map<String, String> fallbackTypes = new LinkedHashMap<>();
-    fallbackTypes.put(".png", "image/png");
-    fallbackTypes.put(".jpg", "image/jpeg");
-    fallbackTypes.put(".jpeg", "image/jpeg");
-    fallbackTypes.put(".jfif", "image/jpeg");
-    fallbackTypes.put(".gif", "image/gif");
-    fallbackTypes.put(".webp", "image/webp");
-    for (Map.Entry<String, String> entry : fallbackTypes.entrySet()) {
-      if (lower.endsWith(entry.getKey())) {
-        return entry.getValue();
-      }
+
+    /**
+     * probeMimeType.
+     * 
+     * @param imagePath imagePath
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
+    private static String probeMimeType(Path imagePath) throws IOException {
+        String mimeType = Files.probeContentType(imagePath);
+        if (mimeType != null && !mimeType.isBlank()) {
+            return mimeType;
+        }
+        String lower =
+            imagePath.getFileName() == null ? "" : imagePath.getFileName().toString().toLowerCase(Locale.ROOT);
+        Map<String, String> fallbackTypes = new LinkedHashMap<>();
+        fallbackTypes.put(".png", "image/png");
+        fallbackTypes.put(".jpg", "image/jpeg");
+        fallbackTypes.put(".jpeg", "image/jpeg");
+        fallbackTypes.put(".jfif", "image/jpeg");
+        fallbackTypes.put(".gif", "image/gif");
+        fallbackTypes.put(".webp", "image/webp");
+        for (Map.Entry<String, String> entry : fallbackTypes.entrySet()) {
+            if (lower.endsWith(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+        return "image/png";
     }
-    return "image/png";
-  }
 }

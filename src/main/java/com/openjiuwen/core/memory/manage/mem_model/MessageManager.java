@@ -11,13 +11,18 @@ import com.openjiuwen.core.memory.manage.index.BaseMemoryManager;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * DB-based message management.
+ * 
+ * @since 0.1.7
  */
 public class MessageManager {
-
     private final SqlDbStore sqlDb;
     private final DataIdManager dataId;
     private final byte[] cryptoKey;
@@ -25,11 +30,19 @@ public class MessageManager {
 
     /**
      * Result of getting a message: the BaseMessage and its timestamp.
+     * 
+     * @since 0.1.7
      */
-    public record MessageRecord(BaseMessage message, OffsetDateTime timestamp) {}
+    public record MessageRecord(BaseMessage message, OffsetDateTime timestamp) {
+    }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MessageManager.
+     * 
+     * @param sqlDb sqlDb
+     * @param dataId dataId
+     * @param cryptoKey cryptoKey
+     * @since 0.1.7
      */
     public MessageManager(SqlDbStore sqlDb, DataIdManager dataId, byte[] cryptoKey) {
         this.sqlDb = sqlDb;
@@ -38,29 +51,24 @@ public class MessageManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * add.
+     * 
+     * @param req req
+     * @return the result
+     * @since 0.1.7
      */
     public String add(MessageAddRequest req) {
         if (req.getUserId() == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                    "memory_type", "message",
-                    "error_msg", "must provide user_id for add message"
-            );
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type", "message",
+                    "error_msg", "must provide user_id for add message");
         }
         if (req.getScopeId() == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                    "memory_type", "message",
-                    "error_msg", "must provide scope_id for add message"
-            );
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type", "message",
+                    "error_msg", "must provide scope_id for add message");
         }
         if (req.getContent() == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                    "memory_type", "message",
-                    "error_msg", "must provide content for add message"
-            );
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type", "message",
+                    "error_msg", "must provide content for add message");
         }
 
         String messageId = dataId.generateNextId(req.getUserId());
@@ -81,7 +89,14 @@ public class MessageManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param sessionId sessionId
+     * @param messageLen messageLen
+     * @return the result
+     * @since 0.1.7
      */
     public List<MessageRecord> get(String userId, String scopeId, String sessionId, int messageLen) {
         Map<String, Object> filters = new LinkedHashMap<>();
@@ -95,11 +110,8 @@ public class MessageManager {
             filters.put("session_id", sessionId);
         }
         if (messageLen <= 0) {
-            throw ErrorHelper.buildError(
-                    StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
-                    "memory_type", "message",
-                    "error_msg", "message length must be bigger than zero for get message"
-            );
+            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "message",
+                    "error_msg", "message length must be bigger than zero for get message");
         }
         List<Map<String, Object>> messages = sqlDb.getWithSort(MESSAGE_TABLE, filters, "timestamp", "DESC", messageLen);
 
@@ -110,8 +122,7 @@ public class MessageManager {
         List<MessageRecord> result = new ArrayList<>();
         for (Map<String, Object> msg : reversed) {
             BaseMessage baseMsg = toBaseMessage(msg);
-            baseMsg.setContent(BaseMemoryManager.decryptMemoryIfNeeded(
-                    cryptoKey, baseMsg.getContentAsString()));
+            baseMsg.setContent(BaseMemoryManager.decryptMemoryIfNeeded(cryptoKey, baseMsg.getContentAsString()));
             OffsetDateTime ts = parseTimestamp(msg.get("timestamp"));
             result.add(new MessageRecord(baseMsg, ts));
         }
@@ -119,7 +130,11 @@ public class MessageManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getById.
+     * 
+     * @param msgId msgId
+     * @return the result
+     * @since 0.1.7
      */
     public MessageRecord getById(String msgId) {
         Map<String, List<Object>> conditions = new LinkedHashMap<>();
@@ -130,14 +145,18 @@ public class MessageManager {
         }
         Map<String, Object> msg = messages.get(0);
         BaseMessage baseMsg = toBaseMessage(msg);
-        baseMsg.setContent(BaseMemoryManager.decryptMemoryIfNeeded(
-                cryptoKey, baseMsg.getContentAsString()));
+        baseMsg.setContent(BaseMemoryManager.decryptMemoryIfNeeded(cryptoKey, baseMsg.getContentAsString()));
         OffsetDateTime ts = parseTimestamp(msg.get("timestamp"));
         return new MessageRecord(baseMsg, ts);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteByUserAndScope.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
      */
     public boolean deleteByUserAndScope(String userId, String scopeId) {
         Map<String, Object> conditions = new LinkedHashMap<>();
@@ -146,17 +165,29 @@ public class MessageManager {
         return sqlDb.delete(MESSAGE_TABLE, conditions);
     }
 
+    /**
+     * toBaseMessage.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
+     */
     private BaseMessage toBaseMessage(Map<String, Object> data) {
-        BaseMessage msg = BaseMessage.builder()
-                .role(data.getOrDefault("role", "").toString())
-                .content(data.getOrDefault("content", "").toString())
-                .build();
+        BaseMessage msg = BaseMessage.builder().role(data.getOrDefault("role", "").toString())
+                .content(data.getOrDefault("content", "").toString()).build();
         if (data.containsKey("name")) {
             msg.setName(data.get("name").toString());
         }
         return msg;
     }
 
+    /**
+     * parseTimestamp.
+     * 
+     * @param tsObj tsObj
+     * @return the result
+     * @since 0.1.7
+     */
     private OffsetDateTime parseTimestamp(Object tsObj) {
         if (tsObj == null) {
             return OffsetDateTime.now(ZoneOffset.UTC);

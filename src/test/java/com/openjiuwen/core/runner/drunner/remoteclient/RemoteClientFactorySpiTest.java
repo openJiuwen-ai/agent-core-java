@@ -1,23 +1,23 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.runner.drunner.remoteclient;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.openjiuwen.extensions.a2a.A2ARemoteClient;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for RemoteClientFactory SPI registration and ServiceLoader discovery.
  */
 class RemoteClientFactorySpiTest {
-
     // ========== ServiceLoader auto-discovery ==========
-
     @Test
     @DisplayName("ServiceLoader discovers built-in MQ provider")
     void discoversMqProvider() {
@@ -35,10 +35,7 @@ class RemoteClientFactorySpiTest {
     @Test
     @DisplayName("create() with MQ config returns MqRemoteClient")
     void createMqClient() {
-        RemoteClientConfig config = RemoteClientConfig.builder()
-                .id("test-mq")
-                .protocol(ProtocolEnum.MQ)
-                .build();
+        RemoteClientConfig config = RemoteClientConfig.builder().id("test-mq").protocol(ProtocolEnum.MQ).build();
         RemoteClient client = RemoteClientFactory.create(config);
         assertInstanceOf(MqRemoteClient.class, client);
     }
@@ -46,10 +43,7 @@ class RemoteClientFactorySpiTest {
     @Test
     @DisplayName("create() with null protocol defaults to MQ")
     void createWithNullProtocolDefaultsToMq() {
-        RemoteClientConfig config = RemoteClientConfig.builder()
-                .id("test-default")
-                .protocol(null)
-                .build();
+        RemoteClientConfig config = RemoteClientConfig.builder().id("test-default").protocol(null).build();
         RemoteClient client = RemoteClientFactory.create(config);
         assertInstanceOf(MqRemoteClient.class, client);
     }
@@ -65,11 +59,8 @@ class RemoteClientFactorySpiTest {
     @Test
     @DisplayName("createA2A() creates A2A remote client")
     void createA2AClient() {
-        RemoteClientConfig config = RemoteClientConfig.builder()
-                .id("test-a2a")
-                .protocol(ProtocolEnum.A2A)
-                .url("http://localhost:9090/a2a")
-                .build();
+        RemoteClientConfig config = RemoteClientConfig.builder().id("test-a2a").protocol(ProtocolEnum.A2A)
+                .url("http://localhost:9090/a2a").build();
         RemoteClient client = RemoteClientFactory.createA2A(config);
         assertNotNull(client);
     }
@@ -81,15 +72,19 @@ class RemoteClientFactorySpiTest {
     void registerCustomProvider() {
         RemoteClientFactory.register("GRPC", new RemoteClientProvider() {
             @Override
-            public String typeName() { return "GRPC"; }
+            public String typeName() {
+                return "GRPC";
+            }
+
             @Override
-            public RemoteClient create(RemoteClientConfig config) { return new MqRemoteClient(config); }
+            public RemoteClient create(RemoteClientConfig config) {
+                return new MqRemoteClient(config);
+            }
         });
         assertTrue(RemoteClientFactory.hasProvider("GRPC"));
 
-        RemoteClientConfig config = RemoteClientConfig.builder()
-                .id("test-grpc")
-                .protocol(ProtocolEnum.MQ) // won't match GRPC
+        RemoteClientConfig config = RemoteClientConfig.builder().id("test-grpc").protocol(ProtocolEnum.MQ) // won't
+                                                                                                           // match GRPC
                 .build();
         // Verify GRPC provider exists
         assertTrue(RemoteClientFactory.hasProvider("GRPC"));
@@ -112,11 +107,8 @@ class RemoteClientFactorySpiTest {
     @Test
     @DisplayName("create() with A2A config returns A2ARemoteClient")
     void createA2AClientViaFactory() {
-        RemoteClientConfig config = RemoteClientConfig.builder()
-                .id("test-a2a-factory")
-                .protocol(ProtocolEnum.A2A)
-                .url("http://localhost:9090/a2a")
-                .build();
+        RemoteClientConfig config = RemoteClientConfig.builder().id("test-a2a-factory").protocol(ProtocolEnum.A2A)
+                .url("http://localhost:9090/a2a").build();
         RemoteClient client = RemoteClientFactory.create(config);
         assertInstanceOf(A2ARemoteClient.class, client);
     }
@@ -124,13 +116,8 @@ class RemoteClientFactorySpiTest {
     @Test
     @DisplayName("create() with MQ config and kwargs passes config through")
     void createMqClientWithKwargs() {
-        RemoteClientConfig config = RemoteClientConfig.builder()
-                .id("test-mq-kwargs")
-                .protocol(ProtocolEnum.MQ)
-                .topic("test-topic")
-                .url("http://localhost:9092")
-                .kwargs(Map.of("timeout", 5000))
-                .build();
+        RemoteClientConfig config = RemoteClientConfig.builder().id("test-mq-kwargs").protocol(ProtocolEnum.MQ)
+                .topic("test-topic").url("http://localhost:9092").kwargs(Map.of("timeout", 5000)).build();
         RemoteClient client = RemoteClientFactory.create(config);
         assertInstanceOf(MqRemoteClient.class, client);
     }
@@ -144,15 +131,18 @@ class RemoteClientFactorySpiTest {
         // Override MQ with custom provider
         RemoteClientFactory.register("MQ", new RemoteClientProvider() {
             @Override
-            public String typeName() { return "MQ"; }
+            public String typeName() {
+                return "MQ";
+            }
+
             @Override
-            public RemoteClient create(RemoteClientConfig config) { return new MqRemoteClient(config); }
+            public RemoteClient create(RemoteClientConfig config) {
+                return new MqRemoteClient(config);
+            }
         });
 
-        RemoteClientConfig config = RemoteClientConfig.builder()
-                .id("test-mq-override")
-                .protocol(ProtocolEnum.MQ)
-                .build();
+        RemoteClientConfig config =
+            RemoteClientConfig.builder().id("test-mq-override").protocol(ProtocolEnum.MQ).build();
         RemoteClient client = RemoteClientFactory.create(config);
         assertNotNull(client);
     }
@@ -166,10 +156,7 @@ class RemoteClientFactorySpiTest {
     @Test
     @DisplayName("Multiple create() calls with same config return different instances")
     void createReturnsDifferentInstances() {
-        RemoteClientConfig config = RemoteClientConfig.builder()
-                .id("test-multi")
-                .protocol(ProtocolEnum.MQ)
-                .build();
+        RemoteClientConfig config = RemoteClientConfig.builder().id("test-multi").protocol(ProtocolEnum.MQ).build();
         RemoteClient client1 = RemoteClientFactory.create(config);
         RemoteClient client2 = RemoteClientFactory.create(config);
         assertNotSame(client1, client2);
@@ -178,16 +165,9 @@ class RemoteClientFactorySpiTest {
     @Test
     @DisplayName("RemoteClientConfig builder preserves all fields")
     void remoteClientConfigPreservesFields() {
-        RemoteClientConfig config = RemoteClientConfig.builder()
-                .id("test-id")
-                .version("1.0")
-                .name("test-name")
-                .description("test-desc")
-                .protocol(ProtocolEnum.MQ)
-                .topic("test-topic")
-                .url("http://localhost:9092")
-                .kwargs(Map.of("key", "value"))
-                .build();
+        RemoteClientConfig config = RemoteClientConfig.builder().id("test-id").version("1.0").name("test-name")
+                .description("test-desc").protocol(ProtocolEnum.MQ).topic("test-topic").url("http://localhost:9092")
+                .kwargs(Map.of("key", "value")).build();
         assertEquals("test-id", config.getId());
         assertEquals("1.0", config.getVersion());
         assertEquals("test-name", config.getName());

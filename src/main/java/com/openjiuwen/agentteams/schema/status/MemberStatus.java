@@ -6,6 +6,8 @@ package com.openjiuwen.agentteams.schema.status;
 
 /**
  * Team member lifecycle states aligned to the current narrow Python recovery slice.
+ * 
+ * @since 0.1.7
  */
 public enum MemberStatus {
     UNSTARTED("unstarted"),
@@ -23,21 +25,31 @@ public enum MemberStatus {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * value.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String value() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isLiveForSessionSwitch.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isLiveForSessionSwitch() {
         return this != UNSTARTED && this != SHUTDOWN;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * canTransitionTo.
+     * 
+     * @param next next
+     * @return the result
+     * @since 0.1.7
      */
     public boolean canTransitionTo(MemberStatus next) {
         if (next == null) {
@@ -45,11 +57,8 @@ public enum MemberStatus {
         }
         return switch (this) {
             case UNSTARTED -> next == READY || next == SHUTDOWN || next == ERROR;
-            case READY -> next == READY
-                    || next == BUSY
-                    || next == SHUTDOWN_REQUESTED
-                    || next == SHUTDOWN
-                    || next == ERROR;
+            case READY ->
+                next == READY || next == BUSY || next == SHUTDOWN_REQUESTED || next == SHUTDOWN || next == ERROR;
             case BUSY -> next == READY || next == SHUTDOWN_REQUESTED || next == ERROR;
             case RESTARTING -> next == READY || next == ERROR || next == SHUTDOWN;
             case SHUTDOWN_REQUESTED -> next == SHUTDOWN || next == ERROR;
@@ -59,7 +68,11 @@ public enum MemberStatus {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static MemberStatus fromValue(String value) {
         if (value == null || value.isBlank()) {

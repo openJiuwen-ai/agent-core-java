@@ -12,23 +12,31 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.config.PregelConfig}
  * and {@code InnerPregelConfig}.
+ * 
+ * @since 0.1.7
  */
 public class PregelConfig {
-
     private String sessionId;
     private int recursionLimit;
     private String ns;
     private String parentNs;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PregelConfig.
+     * 
+     * @since 0.1.7
      */
     public PregelConfig() {
         this.recursionLimit = PregelConstants.MAX_RECURSIVE_LIMIT;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PregelConfig.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @param recursionLimit recursionLimit
+     * @since 0.1.7
      */
     public PregelConfig(String sessionId, String ns, int recursionLimit) {
         this.sessionId = sessionId;
@@ -37,56 +45,80 @@ public class PregelConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSessionId() {
         return sessionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSessionId.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRecursionLimit.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getRecursionLimit() {
         return recursionLimit;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setRecursionLimit.
+     * 
+     * @param recursionLimit recursionLimit
+     * @since 0.1.7
      */
     public void setRecursionLimit(int recursionLimit) {
         this.recursionLimit = recursionLimit;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getNs() {
         return ns;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setNs.
+     * 
+     * @param ns ns
+     * @since 0.1.7
      */
     public void setNs(String ns) {
         this.ns = ns;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getParentNs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getParentNs() {
         return parentNs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setParentNs.
+     * 
+     * @param parentNs parentNs
+     * @since 0.1.7
      */
     public void setParentNs(String parentNs) {
         this.parentNs = parentNs;
@@ -94,6 +126,10 @@ public class PregelConfig {
 
     /**
      * Get a config value by key name (for compatibility with dict-style access).
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public Object get(String key) {
         return switch (key) {
@@ -107,6 +143,9 @@ public class PregelConfig {
 
     /**
      * Convert to a map representation.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> map = new HashMap<>();
@@ -119,6 +158,10 @@ public class PregelConfig {
 
     /**
      * Create an inner config copy with defaults applied.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public static PregelConfig createInnerConfig(PregelConfig config) {
         PregelConfig inner = new PregelConfig();
@@ -126,14 +169,16 @@ public class PregelConfig {
             inner.sessionId = config.sessionId;
             inner.ns = config.ns;
             inner.parentNs = config.parentNs;
-            inner.recursionLimit = config.recursionLimit > 0 ? config.recursionLimit
-                    : PregelConstants.MAX_RECURSIVE_LIMIT;
+            inner.recursionLimit =
+                config.recursionLimit > 0 ? config.recursionLimit : PregelConstants.MAX_RECURSIVE_LIMIT;
         }
         return inner;
     }
 
     /**
-     * Default Pregel configuration.
+     * DEFAULT.
+     * 
+     * @since 0.1.7
      */
     public static final PregelConfig DEFAULT = new PregelConfig(null, null, PregelConstants.MAX_RECURSIVE_LIMIT);
 }

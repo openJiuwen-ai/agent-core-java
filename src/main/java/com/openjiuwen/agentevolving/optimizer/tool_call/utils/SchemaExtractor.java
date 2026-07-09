@@ -5,6 +5,7 @@
 package com.openjiuwen.agentevolving.optimizer.tool_call.utils;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.LinkedHashMap;
@@ -13,22 +14,29 @@ import java.util.Map;
 
 /**
  * Extract schema structure from JSON schema.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.schema_extractor}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.schema_extractor}.
+ * 
+ * @since 0.1.7
  */
 public final class SchemaExtractor {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    /**
+     * SchemaExtractor.
+     * 
+     * @since 0.1.7
+     */
     private SchemaExtractor() {
         // Utility class
     }
 
     /**
      * Extract schema structure without type information.
-     *
+     * 
      * @param schemaDict Schema dictionary or JSON string
      * @return Extracted schema structure
+     * @since 0.1.7
      */
     public static Map<String, Object> extractSchema(Object schemaDict) {
         Map<String, Object> schemaMap = null;
@@ -39,11 +47,9 @@ public final class SchemaExtractor {
             schemaMap = map;
         } else if (schemaDict instanceof String) {
             try {
-                schemaMap = OBJECT_MAPPER.readValue(
-                        (String) schemaDict,
-                        new TypeReference<Map<String, Object>>() {}
-                );
-            } catch (Exception e) {
+                schemaMap = OBJECT_MAPPER.readValue((String) schemaDict, new TypeReference<Map<String, Object>>() {
+                });
+            } catch (JsonProcessingException e) {
                 return new LinkedHashMap<>();
             }
         } else {
@@ -53,6 +59,13 @@ public final class SchemaExtractor {
         return extractSchemaRecursive(schemaMap);
     }
 
+    /**
+     * extractSchemaRecursive.
+     * 
+     * @param schemaDict schemaDict
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> extractSchemaRecursive(Map<String, Object> schemaDict) {
         if (schemaDict == null) {
             return new LinkedHashMap<>();

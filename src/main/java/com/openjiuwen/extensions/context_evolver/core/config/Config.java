@@ -4,6 +4,10 @@
 
 package com.openjiuwen.extensions.context_evolver.core.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yaml.snakeyaml.Yaml;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,35 +19,46 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.yaml.snakeyaml.Yaml;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.core.config}.
- * 
  * Configuration loader for context_evolver.
  * Loads configuration from .env file and config.yaml file.
+ * 
+ * @since 0.1.7
  */
 public class Config {
-    
     private static final Logger log = LoggerFactory.getLogger(Config.class);
-    
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, Object> config = new ConcurrentHashMap<>();
     private static volatile boolean configLoaded = false;
-    
+
+    /**
+     * Config.
+     * 
+     * @since 0.1.7
+     */
     private Config() {
         // Utility class
     }
-    
+
     /**
      * Convert string values to appropriate types.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     private static Object convertValue(String value) {
         if (value == null) {
             return null;
         }
-        
+
         String lower = value.toLowerCase(Locale.ROOT);
         if ("true".equals(lower) || "yes".equals(lower) || "1".equals(lower)) {
             return true;
@@ -51,7 +66,7 @@ public class Config {
         if ("false".equals(lower) || "no".equals(lower) || "0".equals(lower)) {
             return false;
         }
-        
+
         try {
             if (value.contains(".")) {
                 return Double.parseDouble(value);
@@ -61,36 +76,36 @@ public class Config {
             return value;
         }
     }
-    
+
     /**
      * Load configuration from .env and YAML files.
+     * 
+     * @since 0.1.7
      */
     public static synchronized void load() {
         load(null, null);
     }
-    
+
     /**
-     * Load configuration from specified paths.
-     *
-     * @param configPath path to YAML config file
-     * @param envPath    path to .env file
+     * load.
+     * 
+     * @param configPath configPath
+     * @param envPath envPath
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static synchronized void load(String configPath, String envPath) {
         if (configLoaded) {
             return;
         }
-        
+
         String rootDir = resolveDefaultRootDir();
-        
+
         // Load .env file
         if (envPath == null) {
             envPath = Paths.get(rootDir, ".env").toString();
         }
-        
+
         Path envFilePath = Paths.get(envPath);
         if (Files.exists(envFilePath)) {
             try (BufferedReader reader = Files.newBufferedReader(envFilePath, StandardCharsets.UTF_8)) {
@@ -108,12 +123,12 @@ public class Config {
                 log.warn("Failed to load .env file: {}", e.getMessage());
             }
         }
-        
+
         // Load config.yaml
         if (configPath == null) {
             configPath = Paths.get(rootDir, "config.yaml").toString();
         }
-        
+
         Path configFilePath = Paths.get(configPath);
         if (Files.exists(configFilePath)) {
             try {
@@ -133,23 +148,25 @@ public class Config {
 
         configLoaded = true;
     }
-    
+
     /**
      * Get a configuration value.
-     *
+     * 
      * @param key configuration key
      * @return the value or null
+     * @since 0.1.7
      */
     public static Object get(String key) {
         return get(key, null);
     }
-    
+
     /**
      * Get a configuration value with default.
-     *
-     * @param key          configuration key
+     * 
+     * @param key configuration key
      * @param defaultValue default value
      * @return the value or default
+     * @since 0.1.7
      */
     public static Object get(String key, Object defaultValue) {
         if (!configLoaded) {
@@ -167,25 +184,39 @@ public class Config {
 
         return defaultValue;
     }
-    
+
     /**
      * Get a string configuration value.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public static String getString(String key) {
         Object value = get(key);
         return value != null ? value.toString() : null;
     }
-    
+
     /**
      * Get a string configuration value with default.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public static String getString(String key, String defaultValue) {
         Object value = get(key);
         return value != null ? value.toString() : defaultValue;
     }
-    
+
     /**
      * Get an integer configuration value.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public static int getInt(String key, int defaultValue) {
         Object value = get(key);
@@ -194,9 +225,14 @@ public class Config {
         }
         return defaultValue;
     }
-    
+
     /**
      * Get a boolean configuration value.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean getBoolean(String key, boolean defaultValue) {
         Object value = get(key);
@@ -205,9 +241,13 @@ public class Config {
         }
         return defaultValue;
     }
-    
+
     /**
      * Set a configuration value.
+     * 
+     * @param key key
+     * @param value value
+     * @since 0.1.7
      */
     public static void setValue(String key, Object value) {
         if (!configLoaded) {
@@ -215,9 +255,12 @@ public class Config {
         }
         config.put(key, value);
     }
-    
+
     /**
      * Delete a configuration value.
+     * 
+     * @param key key
+     * @since 0.1.7
      */
     public static void delete(String key) {
         if (!configLoaded) {
@@ -225,9 +268,12 @@ public class Config {
         }
         config.remove(key);
     }
-    
+
     /**
      * Take a snapshot of current configuration.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> snapshot() {
         if (!configLoaded) {
@@ -235,18 +281,23 @@ public class Config {
         }
         return new HashMap<>(config);
     }
-    
+
     /**
      * Restore configuration from a snapshot.
+     * 
+     * @param snap snap
+     * @since 0.1.7
      */
     public static void restore(Map<String, Object> snap) {
         config.clear();
         config.putAll(snap);
         configLoaded = true;
     }
-    
+
     /**
      * Force reload configuration from files.
+     * 
+     * @since 0.1.7
      */
     public static synchronized void reload() {
         reload(null, null);
@@ -254,6 +305,10 @@ public class Config {
 
     /**
      * Force reload configuration from explicit files.
+     * 
+     * @param configPath configPath
+     * @param envPath envPath
+     * @since 0.1.7
      */
     public static synchronized void reload(String configPath, String envPath) {
         config.clear();
@@ -261,6 +316,12 @@ public class Config {
         load(configPath, envPath);
     }
 
+    /**
+     * resolveDefaultRootDir.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static String resolveDefaultRootDir() {
         String configuredRoot = System.getProperty("openjiuwen.context_evolver.root");
         if (configuredRoot != null && !configuredRoot.isBlank()) {
@@ -271,15 +332,13 @@ public class Config {
         Path current = cwd;
         while (current != null) {
             Path resourcesRoot = current.resolve(
-                Paths.get("src", "main", "resources", "com", "openjiuwen", "extensions", "context_evolver")
-            );
+                    Paths.get("src", "main", "resources", "com", "openjiuwen", "extensions", "context_evolver"));
             if (Files.exists(resourcesRoot)) {
                 return resourcesRoot.toString();
             }
 
-            Path sourceRoot = current.resolve(
-                Paths.get("src", "main", "java", "com", "openjiuwen", "extensions", "context_evolver")
-            );
+            Path sourceRoot =
+                current.resolve(Paths.get("src", "main", "java", "com", "openjiuwen", "extensions", "context_evolver"));
             if (Files.exists(sourceRoot)) {
                 return sourceRoot.toString();
             }

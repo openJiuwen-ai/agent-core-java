@@ -1,18 +1,19 @@
+
 package com.openjiuwen.agentevolving.evaluator;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.agentevolving.dataset.Case;
 import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
 import com.openjiuwen.agentevolving.evaluator.metrics.Metric;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 class MetricEvaluatorTest {
-
     @Test
     void evaluateAggregatesSingleAndMultipleMetrics() {
         Metric metric1 = new FixedMetric("metric1", 0.6);

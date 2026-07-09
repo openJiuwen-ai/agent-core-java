@@ -1,9 +1,14 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.embedding;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
 import com.openjiuwen.core.common.exception.BaseError;
+
 import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
@@ -11,11 +16,7 @@ import java.nio.ByteOrder;
 import java.util.Base64;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 class EmbeddingUtilsTest {
-
     @Test
     void parseBase64EmbeddingDecodesFloat32Values() {
         ByteBuffer buffer = ByteBuffer.allocate(Float.BYTES * 3).order(ByteOrder.LITTLE_ENDIAN);

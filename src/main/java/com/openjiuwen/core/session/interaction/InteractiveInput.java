@@ -14,12 +14,10 @@ import java.util.Map;
  * Interactive input data carrying user inputs for interactions.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.interaction.interactive_input.InteractiveInput}.
+ * 
+ * @since 0.1.7
  */
 public class InteractiveInput {
-
-    /**
-     * Map of interaction ID -> user input value.
-     */
     private Map<String, Object> userInputs;
 
     /**
@@ -29,6 +27,8 @@ public class InteractiveInput {
 
     /**
      * Create with no inputs.
+     * 
+     * @since 0.1.7
      */
     public InteractiveInput() {
         this.userInputs = new HashMap<>();
@@ -37,41 +37,53 @@ public class InteractiveInput {
 
     /**
      * Create with raw inputs.
-     *
+     * 
      * @param rawInputs the raw input value; must not be null
+     * @since 0.1.7
      */
     public InteractiveInput(Object rawInputs) {
         if (rawInputs == null) {
-            throw ErrorHelper.buildError(StatusCode.INTERACTION_INPUT_INVALID,
-                    "reason", "value of raw_inputs is none");
+            throw ErrorHelper.buildError(StatusCode.INTERACTION_INPUT_INVALID, "reason", "value of raw_inputs is none");
         }
         this.userInputs = new HashMap<>();
         this.rawInputs = rawInputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUserInputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getUserInputs() {
         return userInputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setUserInputs.
+     * 
+     * @param userInputs userInputs
+     * @since 0.1.7
      */
     public void setUserInputs(Map<String, Object> userInputs) {
         this.userInputs = userInputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRawInputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getRawInputs() {
         return rawInputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setRawInputs.
+     * 
+     * @param rawInputs rawInputs
+     * @since 0.1.7
      */
     public void setRawInputs(Object rawInputs) {
         this.rawInputs = rawInputs;
@@ -79,18 +91,19 @@ public class InteractiveInput {
 
     /**
      * Update user inputs for a specific node.
-     *
+     * 
      * @param nodeId the node ID
-     * @param value  the input value
+     * @param value the input value
+     * @since 0.1.7
      */
     public void update(String nodeId, Object value) {
         if (rawInputs != null) {
-            throw ErrorHelper.buildError(StatusCode.INTERACTION_INPUT_INVALID,
-                    "reason", "raw_inputs isExisted, update is invalid");
+            throw ErrorHelper.buildError(StatusCode.INTERACTION_INPUT_INVALID, "reason",
+                    "raw_inputs isExisted, update is invalid");
         }
         if (nodeId == null || value == null) {
-            throw ErrorHelper.buildError(StatusCode.INTERACTION_INPUT_INVALID,
-                    "reason", "value is none or node_id is none");
+            throw ErrorHelper.buildError(StatusCode.INTERACTION_INPUT_INVALID, "reason",
+                    "value is none or node_id is none");
         }
         userInputs.put(nodeId, value);
     }

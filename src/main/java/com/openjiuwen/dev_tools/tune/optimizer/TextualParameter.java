@@ -12,15 +12,19 @@ import java.util.Optional;
 
 /**
  * Mirrors Python's openjiuwen.dev_tools.tune.optimizer.base.TextualParameter.
+ * 
+ * @since 0.1.7
  */
 public class TextualParameter {
-
     private final LLMCall llmCall;
     private Map<String, String> gradients;
     private String description;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TextualParameter.
+     * 
+     * @param llmCall llmCall
+     * @since 0.1.7
      */
     public TextualParameter(LLMCall llmCall) {
         this.llmCall = llmCall;
@@ -29,56 +33,81 @@ public class TextualParameter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLlmCall.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public LLMCall getLlmCall() {
         return llmCall;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getGradients.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, String> getGradients() {
         return gradients;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setGradients.
+     * 
+     * @param gradients gradients
+     * @since 0.1.7
      */
     public void setGradients(Map<String, String> gradients) {
         this.gradients = gradients != null ? gradients : new HashMap<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDescription() {
         return description;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDescription.
+     * 
+     * @param description description
+     * @since 0.1.7
      */
     public void setDescription(String description) {
         this.description = description != null ? description : "";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setGradient.
+     * 
+     * @param name name
+     * @param gradient gradient
+     * @since 0.1.7
      */
     public void setGradient(String name, String gradient) {
         gradients.put(name, gradient);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getGradient.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
      */
     public Optional<String> getGradient(String name) {
         return Optional.ofNullable(gradients.get(name));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clearGradients.
+     * 
+     * @since 0.1.7
      */
     public void clearGradients() {
         gradients.clear();

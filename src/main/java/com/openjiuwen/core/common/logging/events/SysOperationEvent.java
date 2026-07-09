@@ -10,7 +10,11 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** SysOperation event. */
+/**
+ * SysOperation event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -24,17 +28,22 @@ public class SysOperationEvent extends BaseLogEvent {
     private Double methodExecTimeMs;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SysOperationEvent.
+     * 
+     * @since 0.1.7
      */
     public SysOperationEvent() {
         super();
         setModuleType(ModuleType.SYS_OPERATION);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "operation_name", operationName);
         putIfNotNull(map, "operation_mode", operationMode);

@@ -14,9 +14,10 @@ import java.util.Map;
 
 /**
  * Exposes a local agent over the distributed-runner MQ transport.
+ * 
+ * @since 0.1.7
  */
 public class AgentAdapter {
-
     private final String agentId;
     private final String version;
     private final String topic;
@@ -24,29 +25,33 @@ public class AgentAdapter {
     private boolean isStarted;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentAdapter.
+     * 
+     * @param agentId agentId
+     * @param version version
+     * @since 0.1.7
      */
     public AgentAdapter(String agentId, String version) {
         this.agentId = agentId;
         this.version = version != null ? version : "";
         this.topic = DistributedRunner.agentTopic(agentId, this.version);
-        this.server = new MqServerAdapter(
-                agentId,
-                topic,
-                this::handleInvoke,
-                this::handleStream
-        );
+        this.server = new MqServerAdapter(agentId, topic, this::handleInvoke, this::handleStream);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentAdapter.
+     * 
+     * @param agentId agentId
+     * @since 0.1.7
      */
     public AgentAdapter(String agentId) {
         this(agentId, "");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * start.
+     * 
+     * @since 0.1.7
      */
     public void start() {
         server.start();
@@ -54,7 +59,9 @@ public class AgentAdapter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stop.
+     * 
+     * @since 0.1.7
      */
     public void stop() {
         server.stop();
@@ -62,37 +69,63 @@ public class AgentAdapter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isStarted.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isStarted() {
         return isStarted;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isStopped.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isStopped() {
         return !isStarted;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTopic.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTopic() {
         return topic;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getServer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public MqServerAdapter getServer() {
         return server;
     }
 
+    /**
+     * handleInvoke.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private Object handleInvoke(Map<String, Object> inputs) {
         return Runner.runAgent(agentId, inputs, null, null);
     }
 
+    /**
+     * handleStream.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private Iterator<Object> handleStream(Map<String, Object> inputs) {
         return Runner.runAgentStreaming(agentId, inputs, null, null, List.of(StreamMode.OUTPUT));
     }

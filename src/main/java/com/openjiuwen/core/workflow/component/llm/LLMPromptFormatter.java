@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.workflow.component.llm;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 
@@ -15,15 +16,19 @@ import java.util.Map;
  * (markdown / JSON schema) into the last user message.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.llm_comp.LLMPromptFormatter}.
+ * 
+ * @since 0.1.7
  */
 public final class LLMPromptFormatter {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static final String DEFAULT_MARKDOWN_INSTRUCTION =
-            "Please return the answer in markdown format.\n"
-            + "- For headings, use number signs (#).\n"
-            + "- For list items, start with dashes (-).\n"
+    /**
+     * signs.
+     * 
+     * @since 0.1.7
+     */
+    private static final String DEFAULT_MARKDOWN_INSTRUCTION = "Please return the answer in markdown format.\n"
+            + "- For headings, use number signs (#).\n" + "- For list items, start with dashes (-).\n"
             + "- To emphasize text, wrap it with asterisks (*).\n"
             + "- For code or commands, surround them with backticks (`).\n"
             + "- For quoted text, use greater than signs (>).\n"
@@ -32,28 +37,32 @@ public final class LLMPromptFormatter {
             + "The question is: ${query}.";
 
     private static final String DEFAULT_JSON_INSTRUCTION =
-            "Carefully consider the user's question to ensure your answer is logical and makes sense.\n"
-            + "- Make sure your explanation is concise and easy to understand, not verbose.\n"
-            + "- Strictly return the answer in valid JSON format only, and "
-            + "\"DO NOT ADD ANY COMMENTS BEFORE OR AFTER IT\" to ensure it could be formatted "
-            + "as a JSON instance that conforms to the JSON schema below.\n"
-            + "Here is the JSON schema: ${json_schema}.\n"
-            + "The question is: ${query}.";
+        "Carefully consider the user's question to ensure your answer is logical and makes sense.\n"
+                + "- Make sure your explanation is concise and easy to understand, not verbose.\n"
+                + "- Strictly return the answer in valid JSON format only, and "
+                + "\"DO NOT ADD ANY COMMENTS BEFORE OR AFTER IT\" to ensure it could be formatted "
+                + "as a JSON instance that conforms to the JSON schema below.\n"
+                + "Here is the JSON schema: ${json_schema}.\n" + "The question is: ${query}.";
 
+    /**
+     * LLMPromptFormatter.
+     * 
+     * @since 0.1.7
+     */
     private LLMPromptFormatter() {
     }
 
     /**
      * Format prompt history with response format instructions.
-     *
-     * @param history        list of messages
+     * 
+     * @param history list of messages
      * @param responseFormat response format config
-     * @param outputConfig   output config
+     * @param outputConfig output config
      * @return formatted message list
+     * @since 0.1.7
      */
-    public static List<BaseMessage> formatPrompt(List<BaseMessage> history,
-                                                  Map<String, Object> responseFormat,
-                                                  Map<String, Object> outputConfig) {
+    public static List<BaseMessage> formatPrompt(List<BaseMessage> history, Map<String, Object> responseFormat,
+            Map<String, Object> outputConfig) {
         String resType = (String) responseFormat.get("type");
         if ("text".equals(resType)) {
             return history;
@@ -86,7 +95,7 @@ public final class LLMPromptFormatter {
             try {
                 String schemaStr = MAPPER.writeValueAsString(jsonSchema);
                 prompt = instruction.replace("${json_schema}", schemaStr).replace("${query}", query);
-            } catch (Exception e) {
+            } catch (JsonProcessingException e) {
                 prompt = instruction.replace("${query}", query);
             }
         } else {
@@ -97,6 +106,13 @@ public final class LLMPromptFormatter {
         return history;
     }
 
+    /**
+     * findLastUserIndex.
+     * 
+     * @param history history
+     * @return the result
+     * @since 0.1.7
+     */
     private static Integer findLastUserIndex(List<BaseMessage> history) {
         for (int i = history.size() - 1; i >= 0; i--) {
             if ("user".equals(history.get(i).getRole())) {
@@ -106,6 +122,13 @@ public final class LLMPromptFormatter {
         return null;
     }
 
+    /**
+     * getContentAsString.
+     * 
+     * @param message message
+     * @return the result
+     * @since 0.1.7
+     */
     private static String getContentAsString(BaseMessage message) {
         Object content = message.getContent();
         if (content instanceof String s) {

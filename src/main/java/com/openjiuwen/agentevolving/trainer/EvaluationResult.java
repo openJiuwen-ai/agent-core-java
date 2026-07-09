@@ -10,6 +10,8 @@ import java.util.List;
 
 /**
  * Evaluation result: aggregate score plus evaluated cases.
+ * 
+ * @since 0.1.7
  */
 public record EvaluationResult(double score, List<EvaluatedCase> evaluatedCases) {
 }

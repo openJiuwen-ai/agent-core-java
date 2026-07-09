@@ -1,12 +1,16 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
 
-import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
-import com.openjiuwen.core.retrieval.GraphKnowledgeBase;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
-import com.openjiuwen.core.retrieval.SimpleKnowledgeBase;
+import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
@@ -15,6 +19,8 @@ import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+import com.openjiuwen.core.retrieval.GraphKnowledgeBase;
+import com.openjiuwen.core.retrieval.SimpleKnowledgeBase;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.KnowledgeBaseConfig;
 import com.openjiuwen.core.retrieval.common.MultiKBRetrievalResult;
@@ -42,11 +48,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Advanced retrieval system tests covering gaps identified in CHECK doc:
  * updateDocuments, retrieveMultiKbWithSource, Chunker behavior, TextChunk model,
@@ -55,7 +56,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Tag("system-test")
 class RetrievalAdvancedSystemTest {
-
     @TempDir
     Path tempDir;
 
@@ -86,14 +86,8 @@ class RetrievalAdvancedSystemTest {
         private int invocationCount;
 
         QueueModelClient(String... responses) {
-            super(
-                    ModelRequestConfig.builder().modelName("fake-model").build(),
-                    ModelClientConfig.builder()
-                            .clientProvider("fake")
-                            .apiKey("fake-key")
-                            .apiBase("http://localhost")
-                            .verifySsl(false)
-                            .build());
+            super(ModelRequestConfig.builder().modelName("fake-model").build(), ModelClientConfig.builder()
+                    .clientProvider("fake").apiKey("fake-key").apiBase("http://localhost").verifySsl(false).build());
             this.responses = new ArrayList<>(List.of(responses));
         }
 
@@ -102,70 +96,38 @@ class RetrievalAdvancedSystemTest {
         }
 
         @Override
-        public AssistantMessage invoke(Object messages,
-                                       Object tools,
-                                       Float temperature,
-                                       Float topP,
-                                       String model,
-                                       Integer maxTokens,
-                                       String stop,
-                                       BaseOutputParser outputParser,
-                                       Float timeout,
-                                       Map<String, Object> kwargs) {
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+                Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             invocationCount++;
             String content = responses.isEmpty() ? "[]" : responses.remove(0);
             return new AssistantMessage(content);
         }
 
         @Override
-        public Iterator<AssistantMessageChunk> stream(Object messages,
-                                                      Object tools,
-                                                      Float temperature,
-                                                      Float topP,
-                                                      String model,
-                                                      Integer maxTokens,
-                                                      String stop,
-                                                      BaseOutputParser outputParser,
-                                                      Float timeout,
-                                                      Map<String, Object> kwargs) {
+        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+                String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             return List.<AssistantMessageChunk>of().iterator();
         }
 
         @Override
-        public ImageGenerationResponse generateImage(List<UserMessage> messages,
-                                                     String model,
-                                                     String size,
-                                                     String negativePrompt,
-                                                     int n,
-                                                     boolean promptExtend,
-                                                     boolean watermark,
-                                                     int seed,
-                                                     Map<String, Object> kwargs) {
+        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                Map<String, Object> kwargs) {
             return null;
         }
 
         @Override
-        public AudioGenerationResponse generateSpeech(List<UserMessage> messages,
-                                                      String model,
-                                                      String voice,
-                                                      String languageType,
-                                                      Map<String, Object> kwargs) {
+        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+                String languageType, Map<String, Object> kwargs) {
             return null;
         }
 
         @Override
-        public VideoGenerationResponse generateVideo(List<UserMessage> messages,
-                                                     String imgUrl,
-                                                     String audioUrl,
-                                                     String model,
-                                                     String size,
-                                                     String resolution,
-                                                     int duration,
-                                                     boolean promptExtend,
-                                                     boolean watermark,
-                                                     String negativePrompt,
-                                                     Integer seed,
-                                                     Map<String, Object> kwargs) {
+        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             return null;
         }
     }
@@ -174,43 +136,30 @@ class RetrievalAdvancedSystemTest {
         HashEmbedding embedding = new HashEmbedding(32, 256);
         InMemoryVectorStore vectorStore = new InMemoryVectorStore(collectionName);
         InMemoryIndexer indexer = new InMemoryIndexer(vectorStore);
-        return new SimpleKnowledgeBase(
-                new KnowledgeBaseConfig(kbName),
-                vectorStore, embedding, null,
+        return new SimpleKnowledgeBase(new KnowledgeBaseConfig(kbName), vectorStore, embedding, null,
                 new CharChunker(512, 64), indexer, null, null);
     }
 
     private GraphKnowledgeBase createGraphKnowledgeBase(String kbId, BaseModelClient llmClient) {
         InMemoryVectorStore vectorStore = new InMemoryVectorStore("graph_store_" + kbId);
         InMemoryIndexer indexer = new InMemoryIndexer(vectorStore);
-        return new GraphKnowledgeBase(
-                new KnowledgeBaseConfig(kbId, "vector", true, 64, 8),
-                vectorStore,
-                new HashEmbedding(32, 256),
-                null,
-                new CharChunker(64, 8),
-                new SimpleTripleExtractor(),
-                indexer,
-                llmClient,
-                null,
-                null);
+        return new GraphKnowledgeBase(new KnowledgeBaseConfig(kbId, "vector", true, 64, 8), vectorStore,
+                new HashEmbedding(32, 256), null, new CharChunker(64, 8), new SimpleTripleExtractor(), indexer,
+                llmClient, null, null);
     }
 
     @Nested
     @DisplayName("KnowledgeBase Parsing Tests")
     class KnowledgeBaseParsingTests {
-
         @Test
         @DisplayName("parseFiles delegates to parser and injects file_name")
         void testParseFiles() {
             RecordingParser parser = new RecordingParser();
-            SimpleKnowledgeBase kb = new SimpleKnowledgeBase(
-                    new KnowledgeBaseConfig("parse_file_kb"),
-                    null, null, parser, null, null, null, null);
+            SimpleKnowledgeBase kb = new SimpleKnowledgeBase(new KnowledgeBaseConfig("parse_file_kb"), null, null,
+                    parser, null, null, null, null);
 
-            List<String> filePaths = List.of(
-                    tempDir.resolve("alpha.txt").toString(),
-                    tempDir.resolve("beta.md").toString());
+            List<String> filePaths =
+                List.of(tempDir.resolve("alpha.txt").toString(), tempDir.resolve("beta.md").toString());
 
             List<Document> documents = kb.parseFiles(filePaths);
 
@@ -224,13 +173,10 @@ class RetrievalAdvancedSystemTest {
         @DisplayName("parseUrls skips unsupported URLs")
         void testParseUrls() {
             RecordingParser parser = new RecordingParser();
-            SimpleKnowledgeBase kb = new SimpleKnowledgeBase(
-                    new KnowledgeBaseConfig("parse_url_kb"),
-                    null, null, parser, null, null, null, null);
+            SimpleKnowledgeBase kb = new SimpleKnowledgeBase(new KnowledgeBaseConfig("parse_url_kb"), null, null,
+                    parser, null, null, null, null);
 
-            List<Document> documents = kb.parseUrls(List.of(
-                    "https://example.com/guide",
-                    "mailto:test@example.com"));
+            List<Document> documents = kb.parseUrls(List.of("https://example.com/guide", "mailto:test@example.com"));
 
             assertEquals(1, documents.size());
             assertEquals(1, parser.parsedDocs.size());
@@ -241,15 +187,13 @@ class RetrievalAdvancedSystemTest {
     @Nested
     @DisplayName("UpdateDocuments Tests")
     class UpdateDocumentsTests {
-
         @Test
         @DisplayName("updateDocuments adds new documents")
         void testUpdateDocumentsAdd() {
             SimpleKnowledgeBase kb = createTestKB("update_kb_1", "update_coll_1");
 
-            List<Document> docs = List.of(
-                    new Document("upd_doc1", "OpenJiuWen是一个智能体框架"),
-                    new Document("upd_doc2", "支持多种AI模型集成"));
+            List<Document> docs =
+                List.of(new Document("upd_doc1", "OpenJiuWen是一个智能体框架"), new Document("upd_doc2", "支持多种AI模型集成"));
 
             List<String> ids = kb.updateDocuments(docs);
             assertNotNull(ids);
@@ -266,8 +210,7 @@ class RetrievalAdvancedSystemTest {
             kb.addDocuments(List.of(new Document("doc_overwrite", "Original content")));
 
             // Update with new content
-            List<String> ids = kb.updateDocuments(
-                    List.of(new Document("doc_overwrite", "Updated content")));
+            List<String> ids = kb.updateDocuments(List.of(new Document("doc_overwrite", "Updated content")));
             assertNotNull(ids);
             assertFalse(ids.isEmpty());
             System.out.println("[UpdateDocs Overwrite] IDs: " + ids);
@@ -277,26 +220,17 @@ class RetrievalAdvancedSystemTest {
     @Nested
     @DisplayName("GraphKnowledgeBase Lifecycle Tests")
     class GraphKnowledgeBaseLifecycleTests {
-
         @Test
         @DisplayName("GraphKnowledgeBase builds chunk and triple indexes")
         void testGraphKnowledgeBaseLifecycleWithGraph() {
             String kbId = "graph_kb_" + UUID.randomUUID().toString().replace("-", "");
             InMemoryVectorStore store = new InMemoryVectorStore("graph_store_" + kbId);
-            GraphKnowledgeBase kb = new GraphKnowledgeBase(
-                    new KnowledgeBaseConfig(kbId, "vector", true, 64, 8),
-                    store,
-                    new HashEmbedding(32, 256),
-                    null,
-                    new CharChunker(64, 8),
-                    new SimpleTripleExtractor(),
-                    new InMemoryIndexer(store),
-                    null,
-                    null,
-                    null);
+            GraphKnowledgeBase kb = new GraphKnowledgeBase(new KnowledgeBaseConfig(kbId, "vector", true, 64, 8), store,
+                    new HashEmbedding(32, 256), null, new CharChunker(64, 8), new SimpleTripleExtractor(),
+                    new InMemoryIndexer(store), null, null, null);
 
-            List<String> addedIds = kb.addDocuments(List.of(
-                    new Document("graph_doc", "Alice knows Bob. Bob mentors Carol.")));
+            List<String> addedIds =
+                kb.addDocuments(List.of(new Document("graph_doc", "Alice knows Bob. Bob mentors Carol.")));
             assertEquals(List.of("graph_doc"), addedIds);
 
             List<RetrievalResult> results = kb.retrieve("Alice knows", new RetrievalConfig());
@@ -306,8 +240,8 @@ class RetrievalAdvancedSystemTest {
             assertNotNull(stats.get("chunk_index_info"));
             assertNotNull(stats.get("triple_index_info"));
 
-            List<String> updatedIds = kb.updateDocuments(List.of(
-                    new Document("graph_doc", "Alice teaches Carol. Carol trusts Alice.")));
+            List<String> updatedIds =
+                kb.updateDocuments(List.of(new Document("graph_doc", "Alice teaches Carol. Carol trusts Alice.")));
             assertEquals(List.of("graph_doc"), updatedIds);
             assertTrue(kb.deleteDocuments(List.of("graph_doc")));
         }
@@ -317,17 +251,9 @@ class RetrievalAdvancedSystemTest {
         void testGraphKnowledgeBaseWithoutGraphUsesChunkIndexOnly() {
             String kbId = "plain_kb_" + UUID.randomUUID().toString().replace("-", "");
             InMemoryVectorStore store = new InMemoryVectorStore("plain_store_" + kbId);
-            GraphKnowledgeBase kb = new GraphKnowledgeBase(
-                    new KnowledgeBaseConfig(kbId, "vector", false, 64, 8),
-                    store,
-                    new HashEmbedding(32, 256),
-                    null,
-                    new CharChunker(64, 8),
-                    new SimpleTripleExtractor(),
-                    new InMemoryIndexer(store),
-                    null,
-                    null,
-                    null);
+            GraphKnowledgeBase kb = new GraphKnowledgeBase(new KnowledgeBaseConfig(kbId, "vector", false, 64, 8), store,
+                    new HashEmbedding(32, 256), null, new CharChunker(64, 8), new SimpleTripleExtractor(),
+                    new InMemoryIndexer(store), null, null, null);
 
             kb.addDocuments(List.of(new Document("plain_doc", "OpenJiuWen supports local retrieval.")));
 
@@ -343,19 +269,15 @@ class RetrievalAdvancedSystemTest {
     @Nested
     @DisplayName("Agentic Graph Retrieval Tests")
     class AgenticGraphRetrievalTests {
-
         @Test
         @DisplayName("GraphKnowledgeBase agentic retrieval runs the local LLM-guided graph path")
         void testGraphKnowledgeBaseAgenticRetrievalRunsLocalGraphPath() {
-            QueueModelClient llmClient = new QueueModelClient(
-                    "[[\"Alice\",\"mentors\",\"Bob\"]]",
-                    "[[\"Alice\",\"mentors\",\"Bob\"]]",
-                    "{\"sufficient\":true,\"next_question\":null}");
+            QueueModelClient llmClient = new QueueModelClient("[[\"Alice\",\"mentors\",\"Bob\"]]",
+                    "[[\"Alice\",\"mentors\",\"Bob\"]]", "{\"sufficient\":true,\"next_question\":null}");
             String kbId = "agentic_kb_" + UUID.randomUUID().toString().replace("-", "");
             GraphKnowledgeBase kb = createGraphKnowledgeBase(kbId, llmClient);
 
-            kb.addDocuments(List.of(
-                    new Document("agent_doc_1", "Alice mentors Bob."),
+            kb.addDocuments(List.of(new Document("agent_doc_1", "Alice mentors Bob."),
                     new Document("agent_doc_2", "Bob founded ExampleCo.")));
 
             RetrievalConfig retrievalConfig = new RetrievalConfig();
@@ -376,22 +298,17 @@ class RetrievalAdvancedSystemTest {
     @Nested
     @DisplayName("RetrieveMultiKbWithSource Tests")
     class MultiKBWithSourceTests {
-
         @Test
         @DisplayName("retrieveMultiKbWithSource returns results with KB source")
         void testRetrieveMultiKbWithSource() {
             SimpleKnowledgeBase kb1 = createTestKB("source_kb_1", "source_coll_1");
-            kb1.addDocuments(List.of(
-                    new Document("s_d1", "智能体开发框架"),
-                    new Document("s_d2", "工具集成能力")));
+            kb1.addDocuments(List.of(new Document("s_d1", "智能体开发框架"), new Document("s_d2", "工具集成能力")));
 
             SimpleKnowledgeBase kb2 = createTestKB("source_kb_2", "source_coll_2");
-            kb2.addDocuments(List.of(
-                    new Document("s_d3", "Java版本智能体核心"),
-                    new Document("s_d4", "RAG检索增强")));
+            kb2.addDocuments(List.of(new Document("s_d3", "Java版本智能体核心"), new Document("s_d4", "RAG检索增强")));
 
-            List<MultiKBRetrievalResult> results = SimpleKnowledgeBase
-                    .retrieveMultiKbWithSource(List.of(kb1, kb2), "智能体", 3);
+            List<MultiKBRetrievalResult> results =
+                SimpleKnowledgeBase.retrieveMultiKbWithSource(List.of(kb1, kb2), "智能体", 3);
 
             assertNotNull(results);
             System.out.println("[MultiKBWithSource] Results: " + results.size());
@@ -406,7 +323,6 @@ class RetrievalAdvancedSystemTest {
     @Nested
     @DisplayName("CharChunker Tests")
     class CharChunkerTests {
-
         @Test
         @DisplayName("CharChunker splits text into overlapping chunks")
         void testCharChunkerBasic() {
@@ -449,9 +365,9 @@ class RetrievalAdvancedSystemTest {
         @DisplayName("CharChunker chunkDocuments produces TextChunks")
         void testCharChunkerDocuments() {
             CharChunker chunker = new CharChunker(20, 5);
-            List<Document> docs = List.of(
-                    new Document("doc_a", "This is the first document with enough text to chunk."),
-                    new Document("doc_b", "Second doc."));
+            List<Document> docs =
+                List.of(new Document("doc_a", "This is the first document with enough text to chunk."),
+                        new Document("doc_b", "Second doc."));
 
             List<TextChunk> textChunks = chunker.chunkDocuments(docs);
             assertNotNull(textChunks);
@@ -468,12 +384,11 @@ class RetrievalAdvancedSystemTest {
     @Nested
     @DisplayName("TextChunk Model Tests")
     class TextChunkTests {
-
         @Test
         @DisplayName("TextChunk.fromDocument creates chunk with metadata")
         void testTextChunkFromDocument() {
-            Document doc = new Document("src_doc", "Some chunk text",
-                    Map.of("source", "test", "category", "retrieval"));
+            Document doc =
+                new Document("src_doc", "Some chunk text", Map.of("source", "test", "category", "retrieval"));
 
             TextChunk chunk = TextChunk.fromDocument(doc, "Some chunk text");
 

@@ -11,13 +11,13 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 import java.util.Map;
 
-@Data
-@NoArgsConstructor
 /**
  * Public class DialogueMessage used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
+@Data
+@NoArgsConstructor
 @AllArgsConstructor
 public class DialogueMessage {
     private String content;
@@ -25,7 +25,10 @@ public class DialogueMessage {
     private Instant timestamp;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, String> toMap() {
         return Map.of("role", role, "content", content);

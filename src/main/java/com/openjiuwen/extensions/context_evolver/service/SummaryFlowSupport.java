@@ -10,8 +10,17 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * SummaryFlowSupport
+ *
+ * @since 0.1.7
+ */
 final class SummaryFlowSupport {
-
+    /**
+     * SummaryFlowSupport.
+     * 
+     * @since 0.1.7
+     */
     private SummaryFlowSupport() {
     }
 
@@ -50,10 +59,7 @@ final class SummaryFlowSupport {
         if (value == null || value.isBlank()) {
             return "";
         }
-        return value.toLowerCase(Locale.ROOT)
-            .replaceAll("[^a-z0-9]+", " ")
-            .trim()
-            .replaceAll("\\s+", " ");
+        return value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ").trim().replaceAll("\\s+", " ");
     }
 
     static List<String> actionLines(String trajectory) {
@@ -133,6 +139,13 @@ final class SummaryFlowSupport {
         return label ? 1.0d : 0.0d;
     }
 
+    /**
+     * normalizeTrajectoryMap.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizeTrajectoryMap(Map<?, ?> map) {
         StringBuilder builder = new StringBuilder();
         if (map.containsKey("role") && map.containsKey("content")) {
@@ -150,6 +163,14 @@ final class SummaryFlowSupport {
         return compact(String.valueOf(map));
     }
 
+    /**
+     * appendLine.
+     * 
+     * @param builder builder
+     * @param prefix prefix
+     * @param value value
+     * @since 0.1.7
+     */
     private static void appendLine(StringBuilder builder, String prefix, Object value) {
         if (value == null) {
             return;

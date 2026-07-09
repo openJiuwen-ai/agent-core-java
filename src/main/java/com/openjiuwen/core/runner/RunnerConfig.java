@@ -24,25 +24,34 @@ import java.util.concurrent.atomic.AtomicReference;
  * fields for checkpointer, KV store, vector store, and object storage.
  * Service adapters populate the SPI config maps before the Runner starts,
  * and the corresponding Factory classes use them to create provider instances.
- *
- * @since 0.1.12
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class RunnerConfig {
-
     @Builder.Default
     private boolean distributedMode = true;
 
     @Builder.Default
+    /**
+     * DistributedConfig.
+     * 
+     * @since 0.1.7
+     */
     private DistributedConfig distributedConfig = new DistributedConfig();
 
     @Builder.Default
     private String envPrefix = "";
 
     @Builder.Default
+    /**
+     * UUID.randomUUID.
+     * 
+     * @since 0.1.7
+     */
     private String instanceId = UUID.randomUUID().toString();
 
     /**
@@ -58,6 +67,8 @@ public class RunnerConfig {
      * Service adapters register MCP client providers via
      * {@link com.openjiuwen.core.foundation.tool.mcp.McpClientFactory#register}
      * before Runner starts, then provide server configs here.
+     * 
+     * @since 0.1.7
      */
     @Builder.Default
     private List<McpServerConfig> mcpServers = new ArrayList<>();
@@ -85,6 +96,9 @@ public class RunnerConfig {
 
     /**
      * Get agent topic template with environment prefix.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String agentTopicTemplate() {
         return distributedConfig.getAgentTopicTemplate(envPrefix);
@@ -92,6 +106,9 @@ public class RunnerConfig {
 
     /**
      * Get reply topic template with environment prefix.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String replyTopicTemplate() {
         return distributedConfig.getReplyTopicTemplate(envPrefix);
@@ -99,21 +116,29 @@ public class RunnerConfig {
 
     // ========== Global Config ==========
 
-    /** Default runner configuration (non-distributed, fake MQ). */
-    public static final RunnerConfig DEFAULT = RunnerConfig.builder()
-            .distributedMode(false)
-            .distributedConfig(DistributedConfig.builder()
-                    .requestTimeout(30.0)
-                    .messageQueueConfig(MessageQueueConfig.builder()
-                            .type(MessageQueueType.FAKE.getValue())
-                            .build())
+    /**
+     * DEFAULT.
+     * 
+     * @since 0.1.7
+     */
+    public static final RunnerConfig DEFAULT = RunnerConfig.builder().distributedMode(false)
+            .distributedConfig(DistributedConfig.builder().requestTimeout(30.0)
+                    .messageQueueConfig(MessageQueueConfig.builder().type(MessageQueueType.FAKE.getValue()).build())
                     .build())
             .build();
 
+    /**
+     * AtomicReference<>.
+     * 
+     * @since 0.1.7
+     */
     private static final AtomicReference<RunnerConfig> GLOBAL_CONFIG = new AtomicReference<>(null);
 
     /**
      * Set the global runner configuration.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public static void setRunnerConfig(RunnerConfig config) {
         GLOBAL_CONFIG.set(config);
@@ -122,6 +147,9 @@ public class RunnerConfig {
     /**
      * Get the global runner configuration.
      * Returns the default config if none has been set.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static RunnerConfig getRunnerConfig() {
         RunnerConfig config = GLOBAL_CONFIG.get();

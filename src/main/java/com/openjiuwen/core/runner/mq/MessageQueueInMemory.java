@@ -18,20 +18,31 @@ import java.util.concurrent.TimeUnit;
 /**
  * In-memory message queue with topic-based routing.
  * Mirrors Python's {@code MessageQueueInMemory} in {@code message_queue_inmemory.py}.
+ * 
+ * @since 0.1.7
  */
 public class MessageQueueInMemory extends MessageQueueBase {
-
     private static final Logger logger = LoggerFactory.getLogger(MessageQueueInMemory.class);
 
     private final int queueMaxSize;
     private final long timeoutMs;
     private volatile boolean running;
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, SubscriptionInMemory> subscribers = new ConcurrentHashMap<>();
     private BlockingQueue<TopicMessage> queue;
     private ExecutorService consumerExecutor;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MessageQueueInMemory.
+     * 
+     * @param queueMaxSize queueMaxSize
+     * @param timeoutMs timeoutMs
+     * @since 0.1.7
      */
     public MessageQueueInMemory(int queueMaxSize, long timeoutMs) {
         this.queueMaxSize = queueMaxSize;
@@ -41,33 +52,39 @@ public class MessageQueueInMemory extends MessageQueueBase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MessageQueueInMemory.
+     * 
+     * @since 0.1.7
      */
     public MessageQueueInMemory() {
         this(10000, 120_000L);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * start.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void start() {
         if (!running) {
             running = true;
-            consumerExecutor = Executors.newSingleThreadExecutor(
-                    r -> {
-                        Thread thread = new Thread(r, "mq-inmemory-0");
-                        thread.setDaemon(true);
-                        return thread;
-                    });
+            consumerExecutor = Executors.newSingleThreadExecutor(r -> {
+                Thread thread = new Thread(r, "mq-inmemory-0");
+                thread.setDaemon(true);
+                thread.setUncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception in " + t.getName(), e));
+                return thread;
+            });
             consumerExecutor.submit(this::consumeMessages);
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * stop.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void stop() {
         if (running) {
             running = false;
@@ -79,10 +96,14 @@ public class MessageQueueInMemory extends MessageQueueBase {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * subscribe.
+     * 
+     * @param topic topic
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public SubscriptionBase subscribe(String topic) {
         if (subscribers.containsKey(topic)) {
             throw new IllegalArgumentException("Topic '" + topic + "' is already subscribed.");
@@ -92,10 +113,13 @@ public class MessageQueueInMemory extends MessageQueueBase {
         return subscription;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * unsubscribe.
+     * 
+     * @param topic topic
+     * @since 0.1.7
      */
+    @Override
     public void unsubscribe(String topic) {
         SubscriptionInMemory sub = subscribers.remove(topic);
         if (sub != null) {
@@ -103,10 +127,14 @@ public class MessageQueueInMemory extends MessageQueueBase {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * produceMessage.
+     * 
+     * @param topic topic
+     * @param message message
+     * @since 0.1.7
      */
+    @Override
     public void produceMessage(String topic, QueueMessage message) {
         try {
             queue.put(new TopicMessage(topic, message));
@@ -115,6 +143,11 @@ public class MessageQueueInMemory extends MessageQueueBase {
         }
     }
 
+    /**
+     * consumeMessages.
+     * 
+     * @since 0.1.7
+     */
     private void consumeMessages() {
         while (running) {
             try {
@@ -135,6 +168,13 @@ public class MessageQueueInMemory extends MessageQueueBase {
         }
     }
 
+    /**
+     * TopicMessage.
+     * 
+     * @param topic topic
+     * @param message message
+     * @since 0.1.7
+     */
     private record TopicMessage(String topic, QueueMessage message) {
     }
 }

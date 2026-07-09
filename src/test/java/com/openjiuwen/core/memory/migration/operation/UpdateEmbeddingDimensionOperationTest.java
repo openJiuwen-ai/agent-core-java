@@ -4,21 +4,20 @@
 
 package com.openjiuwen.core.memory.migration.operation;
 
-import org.junit.jupiter.api.Test;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
-class UpdateEmbeddingDimensionOperationTest {
+import org.junit.jupiter.api.Test;
 
+class UpdateEmbeddingDimensionOperationTest {
     @Test
     void exposesPythonStyleRecomputeCallbackAndBatchSize() {
         OperationMetadata metadata = new OperationMetadata(3, "update embedding dimension");
         var func = (java.util.function.Function<Object, Object>) value -> "recomputed:" + value;
 
-        UpdateEmbeddingDimensionOperation operation = new UpdateEmbeddingDimensionOperation(
-                metadata, "vector_summary", "embedding", 768, func, 128);
+        UpdateEmbeddingDimensionOperation operation =
+            new UpdateEmbeddingDimensionOperation(metadata, "vector_summary", "embedding", 768, func, 128);
 
         assertEquals("vector_summary", operation.getDataType());
         assertEquals("embedding", operation.getFieldName());
@@ -29,8 +28,8 @@ class UpdateEmbeddingDimensionOperationTest {
 
     @Test
     void defaultConstructorKeepsOptionalCallbackNull() {
-        UpdateEmbeddingDimensionOperation operation = new UpdateEmbeddingDimensionOperation(
-                new OperationMetadata(1), "vector_summary", "embedding", 256, 1000);
+        UpdateEmbeddingDimensionOperation operation =
+            new UpdateEmbeddingDimensionOperation(new OperationMetadata(1), "vector_summary", "embedding", 256, 1000);
 
         assertNull(operation.getRecomputeEmbeddingFunc());
         assertEquals(1000, operation.getBatchSize());

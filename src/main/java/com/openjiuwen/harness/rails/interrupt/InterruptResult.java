@@ -8,7 +8,7 @@ import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 
 /**
  * Interrupt tool execution and wait for user input.
- *
+ * 
  * @since 0.1.7
  */
 public class InterruptResult extends InterruptDecision {
@@ -16,8 +16,9 @@ public class InterruptResult extends InterruptDecision {
 
     /**
      * Create an interrupt decision.
-     *
+     * 
      * @param request interruption request
+     * @since 0.1.7
      */
     public InterruptResult(InterruptRequest request) {
         this.request = request;
@@ -25,8 +26,9 @@ public class InterruptResult extends InterruptDecision {
 
     /**
      * Return the interruption request payload.
-     *
+     * 
      * @return interruption request
+     * @since 0.1.7
      */
     public InterruptRequest getRequest() {
         return request;

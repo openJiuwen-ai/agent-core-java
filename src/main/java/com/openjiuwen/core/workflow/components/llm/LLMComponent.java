@@ -4,27 +4,38 @@
 
 package com.openjiuwen.core.workflow.components.llm;
 
-import com.openjiuwen.core.workflow.component.llm.LLMExecutable;
-
 /**
  * Alias/extension of {@link com.openjiuwen.core.workflow.component.llm.LLMComponent}
  * with additional constructors for test compatibility.
+ * 
+ * @since 0.1.7
  */
 public class LLMComponent extends com.openjiuwen.core.workflow.component.llm.LLMComponent {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * LLMComponent.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public LLMComponent(com.openjiuwen.core.workflow.component.llm.LLMCompConfig config) {
         super(config);
     }
 
-    /** Accept our local LLMCompConfig subclass too. */
+    /**
+     * Accept our local LLMCompConfig subclass too.
+     * 
+     * @param config config
+     * @since 0.1.7
+     */
     public LLMComponent(LLMCompConfig config) {
         super(config);
     }
 
-    /** No-arg constructor — creates LLMComponent with empty config. */
+    /**
+     * No-arg constructor — creates LLMComponent with empty config.
+     * 
+     * @since 0.1.7
+     */
     public LLMComponent() {
         super(new com.openjiuwen.core.workflow.component.llm.LLMCompConfig());
     }

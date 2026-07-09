@@ -1,7 +1,19 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.retrieval.common.Document;
@@ -12,8 +24,6 @@ import com.openjiuwen.core.retrieval.embedding.HashEmbedding;
 import com.openjiuwen.core.retrieval.indexing.indexer.InMemoryIndexer;
 import com.openjiuwen.core.retrieval.indexing.indexer.Indexer;
 import com.openjiuwen.core.retrieval.indexing.processor.chunker.CharChunker;
-import com.openjiuwen.core.retrieval.indexing.processor.chunker.Chunker;
-import com.openjiuwen.core.retrieval.indexing.processor.extractor.Extractor;
 import com.openjiuwen.core.retrieval.indexing.processor.extractor.SimpleTripleExtractor;
 import com.openjiuwen.core.retrieval.indexing.processor.parser.Parser;
 import com.openjiuwen.core.retrieval.retriever.GraphRetriever;
@@ -23,7 +33,6 @@ import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mockito;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -31,23 +40,10 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 /**
  * Knowledge base regression tests ported from Python retrieval unit tests.
  */
 class KnowledgeBaseTest {
-
     @Test
     @DisplayName("knowledge base config validation and close")
     void testKnowledgeBaseValidationAndClose() {
@@ -262,7 +258,6 @@ class KnowledgeBaseTest {
     }
 
     private static final class ConcreteKnowledgeBase extends KnowledgeBase {
-
         private ConcreteKnowledgeBase(KnowledgeBaseConfig config) {
             super(config);
         }
@@ -314,7 +309,6 @@ class KnowledgeBaseTest {
     }
 
     private static final class UrlAwareParser extends Parser {
-
         private final List<String> parsedDocs = new ArrayList<>();
 
         @Override

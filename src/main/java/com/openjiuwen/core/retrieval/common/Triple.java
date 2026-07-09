@@ -12,32 +12,53 @@ import java.util.Map;
 
 /**
  * Knowledge triple.
+ * 
+ * @since 0.1.7
  */
 @Getter
 @Setter
 public class Triple {
-
     private String subject;
     private String predicate;
     private String object;
     private Double confidence;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Triple.
+     * 
+     * @since 0.1.7
      */
     public Triple() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Triple.
+     * 
+     * @param subject subject
+     * @param predicate predicate
+     * @param object object
+     * @since 0.1.7
      */
     public Triple(String subject, String predicate, String object) {
         this(subject, predicate, object, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Triple.
+     * 
+     * @param subject subject
+     * @param predicate predicate
+     * @param object object
+     * @param confidence confidence
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public Triple(String subject, String predicate, String object, Double confidence, Map<String, Object> metadata) {
         setSubject(subject);
@@ -48,7 +69,10 @@ public class Triple {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSubject.
+     * 
+     * @param subject subject
+     * @since 0.1.7
      */
     public void setSubject(String subject) {
         RetrievalValidation.requireNonNull(subject, "Triple.subject");
@@ -56,7 +80,10 @@ public class Triple {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setPredicate.
+     * 
+     * @param predicate predicate
+     * @since 0.1.7
      */
     public void setPredicate(String predicate) {
         RetrievalValidation.requireNonNull(predicate, "Triple.predicate");
@@ -64,7 +91,10 @@ public class Triple {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setObject.
+     * 
+     * @param object object
+     * @since 0.1.7
      */
     public void setObject(String object) {
         RetrievalValidation.requireNonNull(object, "Triple.object");
@@ -72,7 +102,10 @@ public class Triple {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMetadata.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);

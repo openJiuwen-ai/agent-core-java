@@ -20,12 +20,14 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Public class TeamWorkspaceManager used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class TeamWorkspaceManager {
     /**
-     * Auto-generated for codecheck compliance.
+     * ERROR_PRIVILEGE_NOT_HELD.
+     * 
+     * @since 0.1.7
      */
     public static final int ERROR_PRIVILEGE_NOT_HELD = 1314;
 
@@ -33,18 +35,41 @@ public class TeamWorkspaceManager {
     private final String workspacePath;
     private final String teamName;
     private final WorkspaceMode mode;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, WorkspaceFileLock> locks = new LinkedHashMap<>();
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<String> cleanupPaths = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamWorkspaceManager.
+     * 
+     * @param config config
+     * @param workspacePath workspacePath
+     * @param teamName teamName
+     * @since 0.1.7
      */
     public TeamWorkspaceManager(TeamWorkspaceConfig config, String workspacePath, String teamName) {
         this(config, workspacePath, teamName, WorkspaceMode.LOCAL);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamWorkspaceManager.
+     * 
+     * @param config config
+     * @param workspacePath workspacePath
+     * @param teamName teamName
+     * @param mode mode
+     * @since 0.1.7
      */
     public TeamWorkspaceManager(TeamWorkspaceConfig config, String workspacePath, String teamName, WorkspaceMode mode) {
         this.config = config != null ? config : TeamWorkspaceConfig.builder().build();
@@ -54,7 +79,10 @@ public class TeamWorkspaceManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * initialize.
+     * 
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public void initialize() throws IOException {
         Files.createDirectories(Path.of(workspacePath));
@@ -65,7 +93,11 @@ public class TeamWorkspaceManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * mountIntoWorkspace.
+     * 
+     * @param workspaceRoot workspaceRoot
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public void mountIntoWorkspace(String workspaceRoot) throws IOException {
         Path teamDir = Path.of(workspaceRoot).resolve(".team");
@@ -77,7 +109,11 @@ public class TeamWorkspaceManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * mountIntoWorktree.
+     * 
+     * @param worktreePath worktreePath
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public void mountIntoWorktree(String worktreePath) throws IOException {
         Path linkPath = Path.of(worktreePath).resolve(".team");
@@ -87,25 +123,32 @@ public class TeamWorkspaceManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * acquireLock.
+     * 
+     * @param filePath filePath
+     * @param holderId holderId
+     * @param holderName holderName
+     * @param timeoutSeconds timeoutSeconds
+     * @return the result
+     * @since 0.1.7
      */
     public synchronized boolean acquireLock(String filePath, String holderId, String holderName, int timeoutSeconds) {
         WorkspaceFileLock existing = locks.get(filePath);
         if (existing != null && !existing.isExpired()) {
             return false;
         }
-        locks.put(filePath, WorkspaceFileLock.builder()
-                .filePath(filePath)
-                .holderId(holderId)
-                .holderName(holderName)
-                .acquiredAt(Instant.now().toString())
-                .timeoutSeconds(timeoutSeconds)
-                .build());
+        locks.put(filePath, WorkspaceFileLock.builder().filePath(filePath).holderId(holderId).holderName(holderName)
+                .acquiredAt(Instant.now().toString()).timeoutSeconds(timeoutSeconds).build());
         return true;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * releaseLock.
+     * 
+     * @param filePath filePath
+     * @param holderId holderId
+     * @return the result
+     * @since 0.1.7
      */
     public synchronized boolean releaseLock(String filePath, String holderId) {
         WorkspaceFileLock existing = locks.get(filePath);
@@ -120,7 +163,11 @@ public class TeamWorkspaceManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLock.
+     * 
+     * @param filePath filePath
+     * @return the result
+     * @since 0.1.7
      */
     public synchronized WorkspaceFileLock getLock(String filePath) {
         WorkspaceFileLock lock = locks.get(filePath);
@@ -132,7 +179,10 @@ public class TeamWorkspaceManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listLocks.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public synchronized List<WorkspaceFileLock> listLocks() {
         locks.entrySet().removeIf(entry -> entry.getValue().isExpired());
@@ -140,26 +190,23 @@ public class TeamWorkspaceManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * handleLockRequest.
+     * 
+     * @param request request
+     * @return the result
+     * @since 0.1.7
      */
     public WorkspaceLockResponse handleLockRequest(WorkspaceLockRequest request) {
         if (request == null) {
-            return WorkspaceLockResponse.builder()
-                    .teamName(teamName)
-                    .memberName("")
-                    .filePath("")
-                    .isGranted(false)
+            return WorkspaceLockResponse.builder().teamName(teamName).memberName("").filePath("").isGranted(false)
                     .build();
         }
         boolean isGranted = false;
         String memberName = request.getMemberName() != null ? request.getMemberName() : "";
         if ("acquire".equals(request.getAction())) {
-            isGranted = acquireLock(
-                    request.getFilePath(),
-                    memberName,
+            isGranted = acquireLock(request.getFilePath(), memberName,
                     request.getHolderName() != null ? request.getHolderName() : memberName,
-                    request.getTimeoutSeconds() != null ? request.getTimeoutSeconds() : 300
-            );
+                    request.getTimeoutSeconds() != null ? request.getTimeoutSeconds() : 300);
         } else if ("release".equals(request.getAction())) {
             isGranted = releaseLock(request.getFilePath(), memberName);
         }
@@ -171,38 +218,36 @@ public class TeamWorkspaceManager {
                 holder = lockToMap(existing);
             }
         }
-        return WorkspaceLockResponse.builder()
-                .teamName(teamName)
-                .memberName(memberName)
-                .filePath(request.getFilePath())
-                .isGranted(isGranted)
-                .holder(holder)
-                .build();
+        return WorkspaceLockResponse.builder().teamName(teamName).memberName(memberName).filePath(request.getFilePath())
+                .isGranted(isGranted).holder(holder).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getHistory.
+     * 
+     * @param relativePath relativePath
+     * @return the result
+     * @since 0.1.7
      */
     public List<Map<String, Object>> getHistory(String relativePath) {
         return getHistory(relativePath, 10);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getHistory.
+     * 
+     * @param relativePath relativePath
+     * @param limit limit
+     * @return the result
+     * @since 0.1.7
      */
     public List<Map<String, Object>> getHistory(String relativePath, int limit) {
         if (!config.isVersionControl()) {
             return List.of();
         }
         try {
-            ProcessBuilder builder = new ProcessBuilder(
-                    "git",
-                    "log",
-                    "--max-count=" + Math.max(1, limit),
-                    "--format=%H|%an|%ai|%s",
-                    "--",
-                    relativePath != null ? relativePath : ""
-            );
+            ProcessBuilder builder = new ProcessBuilder("git", "log", "--max-count=" + Math.max(1, limit),
+                    "--format=%H|%an|%ai|%s", "--", relativePath != null ? relativePath : "");
             builder.directory(Path.of(workspacePath).toFile());
             Process process = builder.start();
             CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(() -> readProcessStream(process));
@@ -229,6 +274,13 @@ public class TeamWorkspaceManager {
         }
     }
 
+    /**
+     * readProcessStream.
+     * 
+     * @param process process
+     * @return the result
+     * @since 0.1.7
+     */
     private static String readProcessStream(Process process) {
         try {
             return new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
@@ -238,7 +290,10 @@ public class TeamWorkspaceManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerCleanupPath.
+     * 
+     * @param path path
+     * @since 0.1.7
      */
     public void registerCleanupPath(String path) {
         if (path != null && !path.isBlank()) {
@@ -247,14 +302,14 @@ public class TeamWorkspaceManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeCleanupPaths.
+     * 
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public void removeCleanupPaths() throws IOException {
-        cleanupPaths.stream()
-                .sorted(Comparator.<String>comparingInt(path -> Path.of(path).getNameCount()).reversed())
-                .map(path -> Path.of(path))
-                .filter(Files::exists)
-                .forEach(path -> {
+        cleanupPaths.stream().sorted(Comparator.<String>comparingInt(path -> Path.of(path).getNameCount()).reversed())
+                .map(path -> Path.of(path)).filter(Files::exists).forEach(path -> {
                     try {
                         if (Files.isDirectory(path)) {
                             try (var stream = Files.walk(path)) {
@@ -275,6 +330,14 @@ public class TeamWorkspaceManager {
                 });
     }
 
+    /**
+     * mountDirectory.
+     * 
+     * @param targetPath targetPath
+     * @param linkPath linkPath
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private void mountDirectory(Path targetPath, Path linkPath) throws IOException {
         try {
             Files.createSymbolicLink(linkPath, targetPath);
@@ -286,6 +349,13 @@ public class TeamWorkspaceManager {
         }
     }
 
+    /**
+     * lockToMap.
+     * 
+     * @param lock lock
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> lockToMap(WorkspaceFileLock lock) {
         Map<String, Object> holder = new LinkedHashMap<>();
         holder.put("file_path", lock.getFilePath());
@@ -297,28 +367,40 @@ public class TeamWorkspaceManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TeamWorkspaceConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkspacePath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getWorkspacePath() {
         return workspacePath;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTeamName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTeamName() {
         return teamName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public WorkspaceMode getMode() {
         return mode;

@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.io.Serial;
 import java.io.Serializable;
 
@@ -13,10 +14,11 @@ import java.io.Serializable;
  * Usage metadata returned by LLM responses.
  * <p>
  * Mirrors Python's {@code UsageMetadata} model.
+ * 
+ * @since 0.1.7
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class UsageMetadata implements Serializable {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -55,26 +57,33 @@ public class UsageMetadata implements Serializable {
     private int cacheTokens = 0;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * UsageMetadata.
+     * 
+     * @since 0.1.7
      */
     public UsageMetadata() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * UsageMetadata.
+     * 
+     * @param code code
+     * @param errMsg errMsg
+     * @param prompt prompt
+     * @param taskId taskId
+     * @param modelName modelName
+     * @param totalLatency totalLatency
+     * @param firstTokenTime firstTokenTime
+     * @param requestStartTime requestStartTime
+     * @param inputTokens inputTokens
+     * @param outputTokens outputTokens
+     * @param totalTokens totalTokens
+     * @param cacheTokens cacheTokens
+     * @since 0.1.7
      */
-    public UsageMetadata(int code,
-                         String errMsg,
-                         String prompt,
-                         String taskId,
-                         String modelName,
-                         double totalLatency,
-                         String firstTokenTime,
-                         String requestStartTime,
-                         int inputTokens,
-                         int outputTokens,
-                         int totalTokens,
-                         int cacheTokens) {
+    public UsageMetadata(int code, String errMsg, String prompt, String taskId, String modelName, double totalLatency,
+            String firstTokenTime, String requestStartTime, int inputTokens, int outputTokens, int totalTokens,
+            int cacheTokens) {
         this.code = code;
         this.errMsg = errMsg;
         this.prompt = prompt;
@@ -90,182 +99,259 @@ public class UsageMetadata implements Serializable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getCode() {
         return code;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCode.
+     * 
+     * @param code code
+     * @since 0.1.7
      */
     public void setCode(int code) {
         this.code = code;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getErrMsg.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getErrMsg() {
         return errMsg;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setErrMsg.
+     * 
+     * @param errMsg errMsg
+     * @since 0.1.7
      */
     public void setErrMsg(String errMsg) {
         this.errMsg = errMsg;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPrompt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getPrompt() {
         return prompt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setPrompt.
+     * 
+     * @param prompt prompt
+     * @since 0.1.7
      */
     public void setPrompt(String prompt) {
         this.prompt = prompt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTaskId() {
         return taskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTaskId.
+     * 
+     * @param taskId taskId
+     * @since 0.1.7
      */
     public void setTaskId(String taskId) {
         this.taskId = taskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getModelName() {
         return modelName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setModelName.
+     * 
+     * @param modelName modelName
+     * @since 0.1.7
      */
     public void setModelName(String modelName) {
         this.modelName = modelName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTotalLatency.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getTotalLatency() {
         return totalLatency;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTotalLatency.
+     * 
+     * @param totalLatency totalLatency
+     * @since 0.1.7
      */
     public void setTotalLatency(double totalLatency) {
         this.totalLatency = totalLatency;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFirstTokenTime.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getFirstTokenTime() {
         return firstTokenTime;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setFirstTokenTime.
+     * 
+     * @param firstTokenTime firstTokenTime
+     * @since 0.1.7
      */
     public void setFirstTokenTime(String firstTokenTime) {
         this.firstTokenTime = firstTokenTime;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRequestStartTime.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getRequestStartTime() {
         return requestStartTime;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setRequestStartTime.
+     * 
+     * @param requestStartTime requestStartTime
+     * @since 0.1.7
      */
     public void setRequestStartTime(String requestStartTime) {
         this.requestStartTime = requestStartTime;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputTokens.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getInputTokens() {
         return inputTokens;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInputTokens.
+     * 
+     * @param inputTokens inputTokens
+     * @since 0.1.7
      */
     public void setInputTokens(int inputTokens) {
         this.inputTokens = inputTokens;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOutputTokens.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getOutputTokens() {
         return outputTokens;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setOutputTokens.
+     * 
+     * @param outputTokens outputTokens
+     * @since 0.1.7
      */
     public void setOutputTokens(int outputTokens) {
         this.outputTokens = outputTokens;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTotalTokens.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getTotalTokens() {
         return totalTokens;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTotalTokens.
+     * 
+     * @param totalTokens totalTokens
+     * @since 0.1.7
      */
     public void setTotalTokens(int totalTokens) {
         this.totalTokens = totalTokens;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCacheTokens.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getCacheTokens() {
         return cacheTokens;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCacheTokens.
+     * 
+     * @param cacheTokens cacheTokens
+     * @since 0.1.7
      */
     public void setCacheTokens(int cacheTokens) {
         this.cacheTokens = cacheTokens;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static UsageMetadataBuilder builder() {
         return new UsageMetadataBuilder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * UsageMetadataBuilder.
+     * 
+     * @since 0.1.7
      */
     public static class UsageMetadataBuilder {
         private int code = 0;
@@ -282,7 +368,11 @@ public class UsageMetadata implements Serializable {
         private int cacheTokens = 0;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * code.
+         * 
+         * @param code code
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadataBuilder code(int code) {
             this.code = code;
@@ -290,7 +380,11 @@ public class UsageMetadata implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * errMsg.
+         * 
+         * @param errMsg errMsg
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadataBuilder errMsg(String errMsg) {
             this.errMsg = errMsg;
@@ -298,7 +392,11 @@ public class UsageMetadata implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * prompt.
+         * 
+         * @param prompt prompt
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadataBuilder prompt(String prompt) {
             this.prompt = prompt;
@@ -306,7 +404,11 @@ public class UsageMetadata implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * taskId.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadataBuilder taskId(String taskId) {
             this.taskId = taskId;
@@ -314,7 +416,11 @@ public class UsageMetadata implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * modelName.
+         * 
+         * @param modelName modelName
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadataBuilder modelName(String modelName) {
             this.modelName = modelName;
@@ -322,7 +428,11 @@ public class UsageMetadata implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * totalLatency.
+         * 
+         * @param totalLatency totalLatency
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadataBuilder totalLatency(double totalLatency) {
             this.totalLatency = totalLatency;
@@ -330,7 +440,11 @@ public class UsageMetadata implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * firstTokenTime.
+         * 
+         * @param firstTokenTime firstTokenTime
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadataBuilder firstTokenTime(String firstTokenTime) {
             this.firstTokenTime = firstTokenTime;
@@ -338,7 +452,11 @@ public class UsageMetadata implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * requestStartTime.
+         * 
+         * @param requestStartTime requestStartTime
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadataBuilder requestStartTime(String requestStartTime) {
             this.requestStartTime = requestStartTime;
@@ -346,7 +464,11 @@ public class UsageMetadata implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * inputTokens.
+         * 
+         * @param inputTokens inputTokens
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadataBuilder inputTokens(int inputTokens) {
             this.inputTokens = inputTokens;
@@ -354,7 +476,11 @@ public class UsageMetadata implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * outputTokens.
+         * 
+         * @param outputTokens outputTokens
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadataBuilder outputTokens(int outputTokens) {
             this.outputTokens = outputTokens;
@@ -362,7 +488,11 @@ public class UsageMetadata implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * totalTokens.
+         * 
+         * @param totalTokens totalTokens
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadataBuilder totalTokens(int totalTokens) {
             this.totalTokens = totalTokens;
@@ -370,7 +500,11 @@ public class UsageMetadata implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * cacheTokens.
+         * 
+         * @param cacheTokens cacheTokens
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadataBuilder cacheTokens(int cacheTokens) {
             this.cacheTokens = cacheTokens;
@@ -378,7 +512,10 @@ public class UsageMetadata implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public UsageMetadata build() {
             return new UsageMetadata(code, errMsg, prompt, taskId, modelName, totalLatency, firstTokenTime,

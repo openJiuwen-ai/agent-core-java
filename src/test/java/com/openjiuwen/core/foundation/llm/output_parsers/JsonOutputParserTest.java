@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.llm.output_parsers;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -16,14 +19,11 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for JsonOutputParser.
  * Ported from Python: tests/unit_tests/core/foundation/output_parser/test_json_output_parser.py
  */
 class JsonOutputParserTest {
-
     private JsonOutputParser parser;
 
     @BeforeEach
@@ -36,7 +36,6 @@ class JsonOutputParserTest {
     @Nested
     @DisplayName("parse() method tests")
     class ParseTests {
-
         @Test
         @DisplayName("Parse valid JSON string")
         void testParseValidJsonString() {
@@ -65,9 +64,8 @@ class JsonOutputParserTest {
         @Test
         @DisplayName("Parse valid JSON in AssistantMessage")
         void testParseValidJsonInAssistantMessage() {
-            AssistantMessage aiMessage = AssistantMessage.builder()
-                    .content("```json\n{\"status\": \"success\", \"code\": 200}\n```")
-                    .build();
+            AssistantMessage aiMessage =
+                AssistantMessage.builder().content("```json\n{\"status\": \"success\", \"code\": 200}\n```").build();
             Object result = parser.parse(aiMessage);
             assertNotNull(result);
             @SuppressWarnings("unchecked")
@@ -145,17 +143,11 @@ class JsonOutputParserTest {
     @Nested
     @DisplayName("streamParse() method tests")
     class StreamParseTests {
-
         @Test
         @DisplayName("Stream parse valid JSON chunks")
         @SuppressWarnings("unchecked")
         void testStreamParseValidJsonChunks() {
-            List<String> chunks = List.of(
-                    "```json\n",
-                    "{\"data\": ",
-                    "\"value\"}\n",
-                    "```"
-            );
+            List<String> chunks = List.of("```json\n", "{\"data\": ", "\"value\"}\n", "```");
 
             List<Object> parsedObjects = collectStreamResults(chunks.iterator());
 
@@ -168,16 +160,8 @@ class JsonOutputParserTest {
         @DisplayName("Stream parse fragmented JSON chunks")
         @SuppressWarnings("unchecked")
         void testStreamParseFragmentedJsonChunks() {
-            List<String> chunks = List.of(
-                    "Some text before.\n",
-                    "```json\n",
-                    "{\"id\": 1,",
-                    "\"name\": \"",
-                    "Fragmented Item\"",
-                    "}\n",
-                    "```\n",
-                    "More text after."
-            );
+            List<String> chunks = List.of("Some text before.\n", "```json\n", "{\"id\": 1,", "\"name\": \"",
+                    "Fragmented Item\"", "}\n", "```\n", "More text after.");
 
             List<Object> parsedObjects = collectStreamResults(chunks.iterator());
 
@@ -191,11 +175,7 @@ class JsonOutputParserTest {
         @DisplayName("Stream parse multiple JSON objects")
         @SuppressWarnings("unchecked")
         void testStreamParseMultipleJsonObjects() {
-            List<String> chunks = List.of(
-                    "```json\n{\"a\":1}\n```",
-                    "Some text.",
-                    "```json\n{\"b\":2}\n```"
-            );
+            List<String> chunks = List.of("```json\n{\"a\":1}\n```", "Some text.", "```json\n{\"b\":2}\n```");
 
             List<Object> parsedObjects = collectStreamResults(chunks.iterator());
 
@@ -207,12 +187,8 @@ class JsonOutputParserTest {
         @Test
         @DisplayName("Stream parse invalid JSON chunks yields empty")
         void testStreamParseInvalidJsonChunks() {
-            List<String> chunks = List.of(
-                    "```json\n",
-                    "{\"data\": ",
-                    "\"value\" \n",  // Missing closing brace
-                    "```"
-            );
+            List<String> chunks = List.of("```json\n", "{\"data\": ", "\"value\" \n", // Missing closing brace
+                    "```");
 
             List<Object> parsedObjects = collectStreamResults(chunks.iterator());
 
@@ -223,12 +199,7 @@ class JsonOutputParserTest {
         @DisplayName("Stream parse mixed content and JSON")
         @SuppressWarnings("unchecked")
         void testStreamParseMixedContentAndJson() {
-            List<String> chunks = List.of(
-                    "Hello world. ",
-                    "```json\n{\"key\":",
-                    "\"value\"}\n```",
-                    " End of message."
-            );
+            List<String> chunks = List.of("Hello world. ", "```json\n{\"key\":", "\"value\"}\n```", " End of message.");
 
             List<Object> parsedObjects = collectStreamResults(chunks.iterator());
 
@@ -241,10 +212,8 @@ class JsonOutputParserTest {
         @DisplayName("Stream parse AssistantMessageChunk objects")
         @SuppressWarnings("unchecked")
         void testStreamParseAssistantMessageChunks() {
-            List<Object> chunks = List.of(
-                    AssistantMessageChunk.builder().content("```json\n{\"status\":").build(),
-                    AssistantMessageChunk.builder().content("\"ok\"}\n```").build()
-            );
+            List<Object> chunks = List.of(AssistantMessageChunk.builder().content("```json\n{\"status\":").build(),
+                    AssistantMessageChunk.builder().content("\"ok\"}\n```").build());
 
             List<Object> parsedObjects = collectStreamResults(chunks.iterator());
 
@@ -257,10 +226,7 @@ class JsonOutputParserTest {
         @DisplayName("Stream parse direct JSON without markdown")
         @SuppressWarnings("unchecked")
         void testStreamParseDirectJsonWithoutMarkdown() {
-            List<String> chunks = List.of(
-                    "{\"direct\":",
-                    "\"json\"}"
-            );
+            List<String> chunks = List.of("{\"direct\":", "\"json\"}");
 
             List<Object> parsedObjects = collectStreamResults(chunks.iterator());
 
@@ -283,14 +249,8 @@ class JsonOutputParserTest {
         @DisplayName("Stream parse complex nested JSON chunks")
         @SuppressWarnings("unchecked")
         void testStreamParseComplexJsonChunks() {
-            List<String> chunks = List.of(
-                    "```json\n{",
-                    "\"users\":[",
-                    "{\"id\":1,\"name\":\"Alice\"},",
-                    "{\"id\":2,\"name\":\"Bob\"}",
-                    "],\"total\":2",
-                    "}\n```"
-            );
+            List<String> chunks = List.of("```json\n{", "\"users\":[", "{\"id\":1,\"name\":\"Alice\"},",
+                    "{\"id\":2,\"name\":\"Bob\"}", "],\"total\":2", "}\n```");
 
             List<Object> parsedObjects = collectStreamResults(chunks.iterator());
 

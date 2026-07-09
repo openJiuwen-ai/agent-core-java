@@ -14,6 +14,7 @@ import com.openjiuwen.autoharness.schema.OptimizationTask;
 import com.openjiuwen.autoharness.schema.PipelineSelectionArtifact;
 import com.openjiuwen.autoharness.schema.PullRequestDraft;
 import com.openjiuwen.core.session.stream.OutputSchema;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,32 +30,77 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Auto-generated for codecheck compliance.
+ * Parsers.
+ * 
+ * @since 0.1.7
  */
 public final class Parsers {
     private static final Logger logger = LoggerFactory.getLogger(Parsers.class);
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final Pattern JSON_CODE_BLOCK = Pattern.compile("```json\\s*(.*?)\\s*```", Pattern.DOTALL);
-    private static final Pattern JSON_ARRAY = Pattern.compile("\\[.*]", Pattern.DOTALL);
-    private static final Pattern JSON_OBJECT = Pattern.compile("\\{.*}", Pattern.DOTALL);
-    private static final Pattern KIND_LINE = Pattern.compile("(?m)^/kind\\s+([a-z_]+)\\s*$");
-    private static final Set<String> ALLOWED_PR_KINDS = Set.of(
-            "bug",
-            "task",
-            "feature",
-            "refactor",
-            "clean_code"
-    );
-    private static final Map<String, String> PIPELINE_NAME_ALIASES = Map.of(
-            "pr_pipeline", MetaEvolvePipeline.NAME,
-            "extended_harness_pipeline", ExtendedEvolvePipeline.NAME
-    );
 
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern JSON_CODE_BLOCK = Pattern.compile("```json\\s*(.*?)\\s*```", Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern JSON_ARRAY = Pattern.compile("\\[.*]", Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern JSON_OBJECT = Pattern.compile("\\{.*}", Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern KIND_LINE = Pattern.compile("(?m)^/kind\\s+([a-z_]+)\\s*$");
+
+    /**
+     * Set.of.
+     * 
+     * @since 0.1.7
+     */
+    private static final Set<String> ALLOWED_PR_KINDS = Set.of("bug", "task", "feature", "refactor", "clean_code");
+
+    /**
+     * Map.of.
+     * 
+     * @since 0.1.7
+     */
+    private static final Map<String, String> PIPELINE_NAME_ALIASES =
+        Map.of("pr_pipeline", MetaEvolvePipeline.NAME, "extended_harness_pipeline", ExtendedEvolvePipeline.NAME);
+
+    /**
+     * Parsers.
+     * 
+     * @since 0.1.7
+     */
     private Parsers() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseTasks.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
      */
     public static List<OptimizationTask> parseTasks(String raw) {
         String json = extractJsonArray(raw);
@@ -72,19 +118,20 @@ public final class Parsers {
             if (!item.isObject() || !item.has("topic")) {
                 continue;
             }
-            tasks.add(OptimizationTask.builder()
-                    .topic(stringValue(item.get("topic")))
-                    .description(stringValue(item.get("description")))
-                    .files(stringList(item.get("files")))
+            tasks.add(OptimizationTask.builder().topic(stringValue(item.get("topic")))
+                    .description(stringValue(item.get("description"))).files(stringList(item.get("files")))
                     .expectedEffect(stringValue(item.get("expected_effect")))
-                    .pipelineName(normalizePipelineName(stringValue(item.get("pipeline_name"))))
-                    .build());
+                    .pipelineName(normalizePipelineName(stringValue(item.get("pipeline_name")))).build());
         }
         return tasks;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseLearnings.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
      */
     public static List<Map<String, Object>> parseLearnings(String raw) {
         String json = extractJsonArray(raw);
@@ -108,7 +155,11 @@ public final class Parsers {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parsePrDraftWithError.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
      */
     public static PullRequestDraftParseResult parsePrDraftWithError(String raw) {
         String json = extractJsonObject(raw);
@@ -139,25 +190,27 @@ public final class Parsers {
         if (!ALLOWED_PR_KINDS.contains(kind)) {
             return new PullRequestDraftParseResult(null, "kind 必须是 bug/task/feature/refactor/clean_code 之一");
         }
-        return new PullRequestDraftParseResult(
-                PullRequestDraft.builder()
-                        .title(title)
-                        .body(body)
-                        .kind(kind)
-                        .build(),
-                ""
-        );
+        return new PullRequestDraftParseResult(PullRequestDraft.builder().title(title).body(body).kind(kind).build(),
+                "");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parsePrDraft.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
      */
     public static PullRequestDraft parsePrDraft(String raw) {
         return parsePrDraftWithError(raw).draft();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parsePipelineSelection.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
      */
     public static PipelineSelectionArtifact parsePipelineSelection(String raw) {
         String json = extractJsonObject(raw);
@@ -175,19 +228,19 @@ public final class Parsers {
             return null;
         }
 
-        return PipelineSelectionArtifact.builder()
-                .pipelineName(pipelineName)
-                .reason(stringValue(item.get("reason")))
+        return PipelineSelectionArtifact.builder().pipelineName(pipelineName).reason(stringValue(item.get("reason")))
                 .alternatives(normalizePipelineNames(stringList(item.get("alternatives"))))
-                .confidence(doubleValue(item.get("confidence")))
-                .riskLevel(stringValue(item.get("risk_level")))
+                .confidence(doubleValue(item.get("confidence"))).riskLevel(stringValue(item.get("risk_level")))
                 .requiredInputs(stringList(item.get("required_inputs")))
-                .fallbackPipeline(normalizePipelineName(stringValue(item.get("fallback_pipeline"))))
-                .build();
+                .fallbackPipeline(normalizePipelineName(stringValue(item.get("fallback_pipeline")))).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extractText.
+     * 
+     * @param chunk chunk
+     * @return the result
+     * @since 0.1.7
      */
     public static String extractText(Object chunk) {
         if (chunk instanceof OutputSchema outputSchema) {
@@ -201,7 +254,11 @@ public final class Parsers {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseGaps.
+     * 
+     * @param rawText rawText
+     * @return the result
+     * @since 0.1.7
      */
     public static List<Gap> parseGaps(String rawText) {
         if (rawText == null || rawText.isBlank()) {
@@ -244,19 +301,20 @@ public final class Parsers {
         return gaps;
     }
 
+    /**
+     * rowToGap.
+     * 
+     * @param cells cells
+     * @return the result
+     * @since 0.1.7
+     */
     private static Gap rowToGap(List<String> cells) {
         try {
-            return Gap.builder()
-                    .id(UUID.randomUUID().toString().replace("-", "").substring(0, 8))
-                    .competitor(cells.get(0))
-                    .feature(cells.get(1))
-                    .currentState(cells.get(2))
-                    .gapDescription(cells.get(3))
-                    .impact(Double.parseDouble(cells.get(4)))
-                    .feasibility(Double.parseDouble(cells.get(5)))
-                    .suggestedApproach(cells.get(6))
-                    .targetFiles(splitTargetFiles(cells.get(7)))
-                    .build();
+            return Gap.builder().id(UUID.randomUUID().toString().replace("-", "").substring(0, 8))
+                    .competitor(cells.get(0)).feature(cells.get(1)).currentState(cells.get(2))
+                    .gapDescription(cells.get(3)).impact(Double.parseDouble(cells.get(4)))
+                    .feasibility(Double.parseDouble(cells.get(5))).suggestedApproach(cells.get(6))
+                    .targetFiles(splitTargetFiles(cells.get(7))).build();
         } catch (IndexOutOfBoundsException | NumberFormatException ex) {
             List<String> sampleCells = cells.subList(0, Math.min(4, cells.size()));
             logger.warn("Skipping malformed gap row: {}", String.join(" | ", sampleCells));
@@ -264,6 +322,13 @@ public final class Parsers {
         }
     }
 
+    /**
+     * splitTargetFiles.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> splitTargetFiles(String raw) {
         if (raw == null || raw.isBlank()) {
             return List.of();
@@ -278,6 +343,14 @@ public final class Parsers {
         return files;
     }
 
+    /**
+     * readJson.
+     * 
+     * @param json json
+     * @param warningMessage warningMessage
+     * @return the result
+     * @since 0.1.7
+     */
     private static JsonNode readJson(String json, String warningMessage) {
         try {
             return OBJECT_MAPPER.readTree(json);
@@ -287,6 +360,13 @@ public final class Parsers {
         }
     }
 
+    /**
+     * extractJsonArray.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private static String extractJsonArray(String raw) {
         String codeBlock = extractCodeBlock(raw);
         if (codeBlock != null) {
@@ -295,6 +375,13 @@ public final class Parsers {
         return extractFirst(JSON_ARRAY, raw);
     }
 
+    /**
+     * extractJsonObject.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private static String extractJsonObject(String raw) {
         String codeBlock = extractCodeBlock(raw);
         if (codeBlock != null) {
@@ -303,10 +390,25 @@ public final class Parsers {
         return extractFirst(JSON_OBJECT, raw);
     }
 
+    /**
+     * extractCodeBlock.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private static String extractCodeBlock(String raw) {
         return extractFirst(JSON_CODE_BLOCK, raw);
     }
 
+    /**
+     * extractFirst.
+     * 
+     * @param pattern pattern
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private static String extractFirst(Pattern pattern, String raw) {
         if (raw == null || raw.isBlank()) {
             return nullValue();
@@ -318,6 +420,13 @@ public final class Parsers {
         return matcher.groupCount() >= 1 ? matcher.group(1) : matcher.group();
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param node node
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringValue(JsonNode node) {
         if (node == null || node.isNull()) {
             return "";
@@ -325,6 +434,13 @@ public final class Parsers {
         return node.isTextual() ? node.asText() : node.toString();
     }
 
+    /**
+     * doubleValue.
+     * 
+     * @param node node
+     * @return the result
+     * @since 0.1.7
+     */
     private static double doubleValue(JsonNode node) {
         if (node == null || node.isNull()) {
             return 0.0;
@@ -339,6 +455,13 @@ public final class Parsers {
         }
     }
 
+    /**
+     * stringList.
+     * 
+     * @param node node
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> stringList(JsonNode node) {
         if (node == null || !node.isArray()) {
             return List.of();
@@ -350,6 +473,13 @@ public final class Parsers {
         return values;
     }
 
+    /**
+     * normalizePipelineNames.
+     * 
+     * @param values values
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> normalizePipelineNames(List<String> values) {
         List<String> normalized = new ArrayList<>();
         for (String value : values) {
@@ -358,19 +488,32 @@ public final class Parsers {
         return normalized;
     }
 
+    /**
+     * normalizePipelineName.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizePipelineName(String name) {
         return PIPELINE_NAME_ALIASES.getOrDefault(name, name);
     }
 
     /**
- * Public record PullRequestDraftParseResult used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record PullRequestDraftParseResult(PullRequestDraft draft, String error) {
+     * Public record PullRequestDraftParseResult used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record PullRequestDraftParseResult(PullRequestDraft draft, String error) {
     }
+
+    /**
+     * nullValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static <T> T nullValue() {
         return null;
     }
-
 }

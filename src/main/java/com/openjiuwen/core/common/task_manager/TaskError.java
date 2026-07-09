@@ -11,10 +11,16 @@ import java.util.Map;
 
 /**
  * Base exception for common task-manager errors.
+ * 
+ * @since 0.1.7
  */
 public class TaskError extends ExecutionError {
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskError.
+     * 
+     * @param status status
+     * @param msg msg
+     * @since 0.1.7
      */
     public TaskError(StatusCode status, String msg) {
         super(status, msg, null, null, Map.of("error_msg", msg));

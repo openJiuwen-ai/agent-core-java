@@ -6,8 +6,8 @@ package com.openjiuwen.agentteams.monitor;
 
 /**
  * Event types emitted by team runtime and consumed by monitor subscribers.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum MonitorEventType {
     TEAM_CREATED,

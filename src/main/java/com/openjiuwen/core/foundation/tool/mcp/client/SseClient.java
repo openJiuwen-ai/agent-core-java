@@ -8,14 +8,19 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 
 /**
  * Java baseline SSE MCP client.
- *
- * <p>Current implementation uses HTTP JSON-RPC requests to the configured endpoint,
- * which is sufficient for MCP servers exposing SSE-compatible RPC endpoints.</p>
+ * <p>
+ * Current implementation uses HTTP JSON-RPC requests to the configured endpoint,
+ * which is sufficient for MCP servers exposing SSE-compatible RPC endpoints.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class SseClient extends AbstractHttpMcpClient {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * SseClient.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public SseClient(McpServerConfig config) {
         super(config);

@@ -13,21 +13,29 @@ import java.util.Objects;
  * Standard output stream schema.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.stream.base.OutputSchema}.
+ * 
+ * @since 0.1.7
  */
 public class OutputSchema implements WorkflowChunk {
-
     private String type;
     private int index;
     private Object payload;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OutputSchema.
+     * 
+     * @since 0.1.7
      */
     public OutputSchema() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OutputSchema.
+     * 
+     * @param type type
+     * @param index index
+     * @param payload payload
+     * @since 0.1.7
      */
     public OutputSchema(String type, int index, Object payload) {
         this.type = type;
@@ -36,57 +44,73 @@ public class OutputSchema implements WorkflowChunk {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getType() {
         return type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setType.
+     * 
+     * @param type type
+     * @since 0.1.7
      */
     public void setType(String type) {
         this.type = type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndex.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getIndex() {
         return index;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setIndex.
+     * 
+     * @param index index
+     * @since 0.1.7
      */
     public void setIndex(int index) {
         this.index = index;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPayload.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getPayload() {
         return payload;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setPayload.
+     * 
+     * @param payload payload
+     * @since 0.1.7
      */
     public void setPayload(Object payload) {
         this.payload = payload;
     }
 
     /**
-     * Validate data from a map.
-     *
-     * @param data the data map
-     * @return a validated OutputSchema instance
+     * fromMap.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static OutputSchema fromMap(Map<String, Object> data) {
         if (data == null) {
             throw new IllegalArgumentException("data is null");
@@ -101,10 +125,14 @@ public class OutputSchema implements WorkflowChunk {
         return schema;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * equals.
+     * 
+     * @param o o
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean equals(Object o) {
         if (this == o) {
             return true;
@@ -112,15 +140,16 @@ public class OutputSchema implements WorkflowChunk {
         if (!(o instanceof OutputSchema that)) {
             return false;
         }
-        return index == that.index
-                && Objects.equals(type, that.type)
-                && Objects.equals(payload, that.payload);
+        return index == that.index && Objects.equals(type, that.type) && Objects.equals(payload, that.payload);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * hashCode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public int hashCode() {
         return Objects.hash(type, index, payload);
     }

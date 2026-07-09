@@ -1,4 +1,11 @@
+
 package com.openjiuwen.extensions.context_evolver;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.extensions.context_evolver.core.config.Config;
 import com.openjiuwen.extensions.context_evolver.core.context.RuntimeContext;
@@ -9,6 +16,7 @@ import com.openjiuwen.extensions.context_evolver.core.op.ParallelOp;
 import com.openjiuwen.extensions.context_evolver.core.op.SequentialOp;
 import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
 import com.openjiuwen.extensions.context_evolver.core.vector_store.MemoryVectorStore;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,21 +25,13 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class ContextEvolverCoreRuntimeTest {
-
     private Map<String, Object> configSnapshot;
 
     @BeforeEach
@@ -52,18 +52,11 @@ class ContextEvolverCoreRuntimeTest {
     @Test
     void configReloadHonorsEnvPrecedenceTypeConversionAndEnvironmentFallback() throws Exception {
         Path envFile = tempDir.resolve(".env");
-        Files.writeString(
-            envFile,
-            "BOOL=true\nINT_VALUE=7\nFLOAT_VALUE=3.5\nLOCAL_ONLY=from_env\n",
-            StandardCharsets.UTF_8
-        );
+        Files.writeString(envFile, "BOOL=true\nINT_VALUE=7\nFLOAT_VALUE=3.5\nLOCAL_ONLY=from_env\n",
+                StandardCharsets.UTF_8);
 
         Path yamlFile = tempDir.resolve("config.yaml");
-        Files.writeString(
-            yamlFile,
-            "BOOL: false\nYAML_ONLY: yaml_value\nFLOAT_VALUE: 9.25\n",
-            StandardCharsets.UTF_8
-        );
+        Files.writeString(yamlFile, "BOOL: false\nYAML_ONLY: yaml_value\nFLOAT_VALUE: 9.25\n", StandardCharsets.UTF_8);
 
         Config.reload(yamlFile.toString(), envFile.toString());
 
@@ -154,27 +147,16 @@ class ContextEvolverCoreRuntimeTest {
     void memoryVectorStoreSupportsSimilarityFilteringAndSerializedReload() {
         MemoryVectorStore store = new MemoryVectorStore();
 
-        VectorNode aceNode = new VectorNode(
-            "ace",
-            "cache python results",
-            List.of(1.0, 0.0),
-            Map.of("workspace_id", "workspace-a", "type", "ace_memory")
-        );
-        VectorNode remeNode = new VectorNode(
-            "reme",
-            "design api responses",
-            List.of(0.0, 1.0),
-            Map.of("workspace_id", "workspace-b", "type", "reme_memory")
-        );
+        VectorNode aceNode = new VectorNode("ace", "cache python results", List.of(1.0, 0.0),
+                Map.of("workspace_id", "workspace-a", "type", "ace_memory"));
+        VectorNode remeNode = new VectorNode("reme", "design api responses", List.of(0.0, 1.0),
+                Map.of("workspace_id", "workspace-b", "type", "reme_memory"));
 
         store.asyncUpsert(aceNode).join();
         store.asyncUpsert(remeNode).join();
 
-        List<VectorNode> filtered = store.asyncSearch(
-            List.of(0.9, 0.1),
-            10,
-            Map.of("workspace_id", "workspace-a")
-        ).join();
+        List<VectorNode> filtered =
+            store.asyncSearch(List.of(0.9, 0.1), 10, Map.of("workspace_id", "workspace-a")).join();
         assertEquals(List.of("ace"), filtered.stream().map(VectorNode::getId).toList());
 
         Map<String, Map<String, Object>> serialized = new HashMap<>();
@@ -194,8 +176,7 @@ class ContextEvolverCoreRuntimeTest {
         serviceContext.registerService("llm", "shared-llm");
 
         RuntimeContext sequentialContext = new RuntimeContext();
-        SequentialOp sequential = new SequentialOp(new SetValueOp("first", "A"))
-            .then(new ServiceEchoOp("llm_seen"));
+        SequentialOp sequential = new SequentialOp(new SetValueOp("first", "A")).then(new ServiceEchoOp("llm_seen"));
         sequential.execute(sequentialContext).join();
 
         assertEquals("A", sequentialContext.getString("first"));
@@ -203,10 +184,8 @@ class ContextEvolverCoreRuntimeTest {
         assertTrue(sequential.toString().contains(">>"));
 
         RuntimeContext parallelContext = new RuntimeContext();
-        ParallelOp parallel = new ParallelOp(
-            new AsyncSetValueOp("left", "L"),
-            new AsyncSetValueOp("right", "R")
-        ).parallel(new AsyncSetValueOp("extra", "E"));
+        ParallelOp parallel = new ParallelOp(new AsyncSetValueOp("left", "L"), new AsyncSetValueOp("right", "R"))
+                .parallel(new AsyncSetValueOp("extra", "E"));
         parallel.execute(parallelContext).join();
 
         assertEquals("L", parallelContext.getString("left"));

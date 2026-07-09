@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.foundation.tool.service_api.parser;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Map;
@@ -14,22 +15,30 @@ import java.util.Set;
  * JSON response parser.
  * <p>
  * Mirrors Python's {@code JsonResponseParser}.
+ * 
+ * @since 0.1.7
  */
 public class JsonResponseParser extends BaseResponseParser {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static final Set<String> JSON_CONTENT_TYPES = Set.of(
-            "application/json",
-            "text/json",
-            "text/x-json",
-            "application/javascript"
-    );
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * Set.of.
+     * 
+     * @since 0.1.7
      */
+    private static final Set<String> JSON_CONTENT_TYPES =
+        Set.of("application/json", "text/json", "text/x-json", "application/javascript");
+
+    /**
+     * canParse.
+     * 
+     * @param contentType contentType
+     * @param statusCode statusCode
+     * @param headers headers
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
     public boolean canParse(String contentType, int statusCode, Map<String, String> headers) {
         if (contentType == null) {
             contentType = "";
@@ -47,11 +56,16 @@ public class JsonResponseParser extends BaseResponseParser {
         return false;
     }
 
+    /**
+     * parse.
+     * 
+     * @param responseData responseData
+     * @param contentType contentType
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object parse(byte[] responseData, String contentType) {
         if (responseData == null || responseData.length == 0) {
             return Map.of();
@@ -63,7 +77,7 @@ public class JsonResponseParser extends BaseResponseParser {
                 return MAPPER.readValue(decoded, java.util.List.class);
             }
             return MAPPER.readValue(decoded, Map.class);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("JSON parsing failed: " + e.getMessage(), e);
         }
     }

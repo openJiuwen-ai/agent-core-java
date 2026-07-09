@@ -26,13 +26,20 @@ import java.util.stream.Collectors;
  * state machine transitions, and follow-up question generation.
  * <p>
  * Mirrors Python's {@code QuestionerDirectReplyHandler}.
+ * 
+ * @since 0.1.7
  */
 public class QuestionerDirectReplyHandler {
-
     private static final Pattern JSON_BLOCK_PATTERN =
-            Pattern.compile("^\\s*```json\\s*|\\s*```\\s*$", Pattern.CASE_INSENSITIVE);
+        Pattern.compile("^\\s*```json\\s*|\\s*```\\s*$", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern JSON_BLOCK_SINGLE_PATTERN =
-            Pattern.compile("^\\s*'''json\\s*|\\s*'''\\s*$", Pattern.CASE_INSENSITIVE);
+        Pattern.compile("^\\s*'''json\\s*|\\s*'''\\s*$", Pattern.CASE_INSENSITIVE);
 
     private QuestionerConfig config;
     private Model model;
@@ -41,7 +48,11 @@ public class QuestionerDirectReplyHandler {
     private Object query = "";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public QuestionerDirectReplyHandler config(QuestionerConfig config) {
         this.config = config;
@@ -49,7 +60,11 @@ public class QuestionerDirectReplyHandler {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * model.
+     * 
+     * @param model model
+     * @return the result
+     * @since 0.1.7
      */
     public QuestionerDirectReplyHandler model(Model model) {
         this.model = model;
@@ -57,7 +72,11 @@ public class QuestionerDirectReplyHandler {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * state.
+     * 
+     * @param state state
+     * @return the result
+     * @since 0.1.7
      */
     public QuestionerDirectReplyHandler state(QuestionerState state) {
         this.state = state;
@@ -65,14 +84,21 @@ public class QuestionerDirectReplyHandler {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public QuestionerState getState() {
         return state;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * prompt.
+     * 
+     * @param prompt prompt
+     * @return the result
+     * @since 0.1.7
      */
     public QuestionerDirectReplyHandler prompt(PromptTemplate prompt) {
         this.prompt = prompt;
@@ -81,6 +107,12 @@ public class QuestionerDirectReplyHandler {
 
     /**
      * Execute the handler based on current state.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> handle(Object inputs, NodeSessionApi session, ModelContext context) {
         return switch (state.getStatus()) {
@@ -92,6 +124,15 @@ public class QuestionerDirectReplyHandler {
 
     // ==================== State handlers ====================
 
+    /**
+     * handleStartState.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> handleStartState(Object inputs, NodeSessionApi session, ModelContext context) {
         QuestionerInput questionerInput = QuestionerUtils.validateInputs(inputs);
         OutputCache output = new OutputCache();
@@ -109,26 +150,33 @@ public class QuestionerDirectReplyHandler {
 
         if (needExtractFields()) {
             boolean isContinueAsk = extractFromChatHistory(chatHistory, output);
-            QuestionerEvent event = isContinueAsk
-                    ? QuestionerEvent.USER_INTERACT_EVENT : QuestionerEvent.END_EVENT;
+            QuestionerEvent event = isContinueAsk ? QuestionerEvent.USER_INTERACT_EVENT : QuestionerEvent.END_EVENT;
             if (isContinueAsk) {
                 state.setQuestion(output.getQuestion());
             }
             state = state.handleEvent(event);
         } else {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INPUT_INVALID,
-                    "error_msg", "question_content is empty and no extractable fields are configured");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INPUT_INVALID, "error_msg",
+                    "question_content is empty and no extractable fields are configured");
         }
         return QuestionerUtils.formatQuestionerOutput(output);
     }
 
+    /**
+     * handleUserInteractState.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> handleUserInteractState(Object inputs, NodeSessionApi session, ModelContext context) {
         // Get latest human feedback via session interaction
         int totalReads = state.getResponseNum() + 1;
         for (int i = 0; i < totalReads; i++) {
-            this.query = (i == 0)
-                    ? session.interact(state.getQuestion())
-                    : session.userLatestInput(state.getQuestion());
+            this.query =
+                (i == 0) ? session.interact(state.getQuestion()) : session.userLatestInput(state.getQuestion());
         }
         state.incrementResponseNum();
 
@@ -137,8 +185,7 @@ public class QuestionerDirectReplyHandler {
         output.setUserResponse(query);
 
         List<BaseMessage> chatHistory = getChatHistory(context);
-        Object userResponse = !chatHistory.isEmpty()
-                ? chatHistory.get(chatHistory.size() - 1).getContent() : "";
+        Object userResponse = !chatHistory.isEmpty() ? chatHistory.get(chatHistory.size() - 1).getContent() : "";
 
         if (isSetQuestionContent() && !needExtractFields()) {
             output.setUserResponse(userResponse);
@@ -148,19 +195,24 @@ public class QuestionerDirectReplyHandler {
 
         if (needExtractFields()) {
             boolean isContinueAsk = extractFromChatHistory(chatHistory, output);
-            QuestionerEvent event = isContinueAsk
-                    ? QuestionerEvent.USER_INTERACT_EVENT : QuestionerEvent.END_EVENT;
+            QuestionerEvent event = isContinueAsk ? QuestionerEvent.USER_INTERACT_EVENT : QuestionerEvent.END_EVENT;
             if (isContinueAsk) {
                 state.setQuestion(output.getQuestion());
             }
             state = state.handleEvent(event);
         } else {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INPUT_INVALID,
-                    "error_msg", "question_content is empty and no extractable fields are configured");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INPUT_INVALID, "error_msg",
+                    "question_content is empty and no extractable fields are configured");
         }
         return QuestionerUtils.formatQuestionerOutput(output);
     }
 
+    /**
+     * handleEndState.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> handleEndState() {
         QuestionerOutput output = QuestionerOutput.fromFields(state.getExtractedKeyFields());
         output.setUserResponse(state.getUserResponse());
@@ -170,6 +222,14 @@ public class QuestionerDirectReplyHandler {
 
     // ==================== LLM extraction ====================
 
+    /**
+     * extractFromChatHistory.
+     * 
+     * @param chatHistory chatHistory
+     * @param output output
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean extractFromChatHistory(List<BaseMessage> chatHistory, OutputCache output) {
         List<BaseMessage> llmInputs = buildLlmInputs(chatHistory);
         Map<String, Object> extractedKeyFields = invokeLlmForExtraction(llmInputs);
@@ -186,12 +246,26 @@ public class QuestionerDirectReplyHandler {
         return checkIfContinueAsk(output);
     }
 
+    /**
+     * buildLlmInputs.
+     * 
+     * @param chatHistory chatHistory
+     * @return the result
+     * @since 0.1.7
+     */
     private List<BaseMessage> buildLlmInputs(List<BaseMessage> chatHistory) {
         Map<String, Object> templateInput = createPromptTemplateKeywords(chatHistory);
         PromptTemplate formatted = prompt.format(templateInput);
         return formatted.toMessages();
     }
 
+    /**
+     * createPromptTemplateKeywords.
+     * 
+     * @param chatHistory chatHistory
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> createPromptTemplateKeywords(List<BaseMessage> chatHistory) {
         List<String> paramsList = new ArrayList<>();
         List<String> requiredNameList = new ArrayList<>();
@@ -199,7 +273,8 @@ public class QuestionerDirectReplyHandler {
             paramsList.add(param.getFieldName() + ": " + param.getDescription());
             if (param.isRequired()) {
                 String name = (param.getCnFieldName() != null && !param.getCnFieldName().isEmpty())
-                        ? param.getCnFieldName() : param.getDescription();
+                        ? param.getCnFieldName()
+                        : param.getDescription();
                 requiredNameList.add(name);
             }
         }
@@ -208,17 +283,14 @@ public class QuestionerDirectReplyHandler {
         String requiredNameStr;
         String dialogueHistoryStr;
         if ("en".equals(lang)) {
-            requiredNameStr = String.join(", ", requiredNameList)
-                    + " (" + requiredNameList.size() + " required field(s))";
-            dialogueHistoryStr = chatHistory.stream()
-                    .map(m -> m.getRole() + ": " + m.getContent())
-                    .collect(Collectors.joining("\n"));
+            requiredNameStr =
+                String.join(", ", requiredNameList) + " (" + requiredNameList.size() + " required field(s))";
+            dialogueHistoryStr =
+                chatHistory.stream().map(m -> m.getRole() + ": " + m.getContent()).collect(Collectors.joining("\n"));
         } else {
-            requiredNameStr = String.join("、", requiredNameList)
-                    + requiredNameList.size() + "个必要信息";
-            dialogueHistoryStr = chatHistory.stream()
-                    .map(m -> m.getRole() + "：" + m.getContent())
-                    .collect(Collectors.joining("\n"));
+            requiredNameStr = String.join("、", requiredNameList) + requiredNameList.size() + "个必要信息";
+            dialogueHistoryStr =
+                chatHistory.stream().map(m -> m.getRole() + "：" + m.getContent()).collect(Collectors.joining("\n"));
         }
 
         Map<String, Object> keywords = new LinkedHashMap<>();
@@ -231,17 +303,22 @@ public class QuestionerDirectReplyHandler {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * invokeLlmForExtraction.
+     * 
+     * @param llmInputs llmInputs
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> invokeLlmForExtraction(List<BaseMessage> llmInputs) {
         String response;
         try {
-            AssistantMessage msg = model.invoke(llmInputs, null, null, null,
-                    null, null, null, null, null, null);
+            AssistantMessage msg = model.invoke(llmInputs, null, null, null, null, null, null, null, null, null);
             response = msg.getContent() != null ? msg.getContent().toString() : "";
         } catch (Exception e) {
             Map<String, Object> params = new LinkedHashMap<>();
             params.put("error_msg", "failed to invoke llm for extraction");
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INVOKE_CALL_FAILED,
-                    null, null, e, params);
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INVOKE_CALL_FAILED, null, null, e, params);
         }
 
         Map<String, Object> result;
@@ -250,8 +327,8 @@ public class QuestionerDirectReplyHandler {
             cleaned = JSON_BLOCK_SINGLE_PATTERN.matcher(cleaned).replaceAll("");
             Object parsed = new com.fasterxml.jackson.databind.ObjectMapper().readValue(cleaned, Object.class);
             if (!(parsed instanceof Map)) {
-                throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_EXECUTION_PROCESS_ERROR,
-                        "error_msg", "failed to parse json from llm response");
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_EXECUTION_PROCESS_ERROR, "error_msg",
+                        "failed to parse json from llm response");
             }
             result = (Map<String, Object>) parsed;
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
@@ -270,6 +347,13 @@ public class QuestionerDirectReplyHandler {
         return validateAndConvertFields(filtered);
     }
 
+    /**
+     * validateAndConvertFields.
+     * 
+     * @param extractedResult extractedResult
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> validateAndConvertFields(Map<String, Object> extractedResult) {
         Map<String, String> fieldTypeMap = new LinkedHashMap<>();
         for (FieldInfo f : config.getFieldNames()) {
@@ -292,6 +376,12 @@ public class QuestionerDirectReplyHandler {
 
     // ==================== State management ====================
 
+    /**
+     * updateStateKeyFields.
+     * 
+     * @param keyFields keyFields
+     * @since 0.1.7
+     */
     private void updateStateKeyFields(Map<String, Object> keyFields) {
         for (Map.Entry<String, Object> entry : keyFields.entrySet()) {
             if (entry.getValue() != null) {
@@ -300,18 +390,29 @@ public class QuestionerDirectReplyHandler {
         }
     }
 
+    /**
+     * updateParamDefaultValue.
+     * 
+     * @param output output
+     * @since 0.1.7
+     */
     private void updateParamDefaultValue(OutputCache output) {
         Map<String, Object> extractedKeyFields = state.getExtractedKeyFields();
         for (FieldInfo param : config.getFieldNames()) {
             String paramName = param.getFieldName();
             Object defaultValue = param.getDefaultValue();
-            if (defaultValue != null && !"".equals(defaultValue)
-                    && !extractedKeyFields.containsKey(paramName)) {
+            if (defaultValue != null && !"".equals(defaultValue) && !extractedKeyFields.containsKey(paramName)) {
                 output.getKeyFields().put(paramName, defaultValue);
             }
         }
     }
 
+    /**
+     * filterNonExtractedKeyFields.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private List<FieldInfo> filterNonExtractedKeyFields() {
         List<FieldInfo> result = new ArrayList<>();
         for (FieldInfo item : config.getFieldNames()) {
@@ -322,17 +423,24 @@ public class QuestionerDirectReplyHandler {
         return result;
     }
 
+    /**
+     * checkIfContinueAsk.
+     * 
+     * @param output output
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean checkIfContinueAsk(OutputCache output) {
         boolean isContinueAsk = false;
         List<FieldInfo> nonExtractedKeyFields = filterNonExtractedKeyFields();
         if (!nonExtractedKeyFields.isEmpty()) {
             if (!exceedMaxResponse()) {
-                output.setQuestion(QuestionerUtils.formatContinueAskQuestion(
-                        nonExtractedKeyFields, config.getAcceptLanguage()));
+                output.setQuestion(
+                        QuestionerUtils.formatContinueAskQuestion(nonExtractedKeyFields, config.getAcceptLanguage()));
                 isContinueAsk = true;
             } else {
-                throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_RUNTIME_ERROR,
-                        "error_msg", "max_response reached before all required fields were extracted");
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_RUNTIME_ERROR, "error_msg",
+                        "max_response reached before all required fields were extracted");
             }
         }
         if (isContinueAsk) {
@@ -343,28 +451,50 @@ public class QuestionerDirectReplyHandler {
         return isContinueAsk;
     }
 
+    /**
+     * exceedMaxResponse.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean exceedMaxResponse() {
         return state.getResponseNum() >= config.getMaxResponse();
     }
 
-    // ==================== Helpers ====================
-
+    /**
+     * isSetQuestionContent.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isSetQuestionContent() {
         return config.getQuestionContent() != null && !config.getQuestionContent().isEmpty();
     }
 
+    /**
+     * needExtractFields.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean needExtractFields() {
         return config.isExtractFieldsFromResponse()
                 && config.getFieldNames().size() > state.getExtractedKeyFields().size();
     }
 
+    /**
+     * getChatHistory.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     private List<BaseMessage> getChatHistory(ModelContext context) {
         List<BaseMessage> result = new ArrayList<>();
         // In Java version, context window access is synchronous
         if (config.isWithChatHistory() && context != null) {
             try {
-                var contextWindow = context.getContextWindow(
-                        null, null, null, config.getChatHistoryMaxRounds());
+                var contextWindow = context.getContextWindow(null, null, null, config.getChatHistoryMaxRounds());
                 if (contextWindow != null) {
                     result = new ArrayList<>(contextWindow.getMessages());
                 }

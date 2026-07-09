@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -18,6 +19,8 @@ import java.util.List;
  * Image generation response.
  * <p>
  * Mirrors Python's {@code ImageGenerationResponse} model.
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -26,8 +29,6 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ImageGenerationResponse extends GenerationResponse {
-
-    /** List of generated image URLs. */
     private List<String> images;
 
     /** List of generated images in base64 encoding. */

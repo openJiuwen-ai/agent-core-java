@@ -11,14 +11,14 @@ import lombok.NoArgsConstructor;
 
 /**
  * Base model for file/directory common properties.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class FileSystemItem {
-
-    /** Name of the file/directory. */
     private String name;
 
     /** Full absolute path of the file/directory. */

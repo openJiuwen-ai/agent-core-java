@@ -15,41 +15,48 @@ import java.time.Instant;
  * Data model for process stream events.
  * <p>
  * Mirrors Python's {@code StreamEvent} in {@code local/utils.py}.
- *
- * <p>Fields:
+ * <p>
+ * Fields:
  * <ul>
- *   <li>{@code type} — Event type (STDOUT/STDERR/EXIT/ERROR)</li>
- *   <li>{@code data} — Payload: text for stdout/stderr/error, exit code string for exit</li>
- *   <li>{@code timestamp} — UTC instant when the event was created</li>
+ * <li>{@code type} — Event type (STDOUT/STDERR/EXIT/ERROR)</li>
+ * <li>{@code data} — Payload: text for stdout/stderr/error, exit code string for exit</li>
+ * <li>{@code timestamp} — UTC instant when the event was created</li>
  * </ul>
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class StreamEvent {
-
-    /** Type of the stream event. */
     private StreamEventType type;
 
     /**
      * Event payload data with type dependent on event type:
      * <ul>
-     *   <li>stdout/stderr = text output {@code String}</li>
-     *   <li>exit = integer exit code ({@code Integer})</li>
-     *   <li>error = error message {@code String}</li>
+     * <li>stdout/stderr = text output {@code String}</li>
+     * <li>exit = integer exit code ({@code Integer})</li>
+     * <li>error = error message {@code String}</li>
      * </ul>
      * <p>
      * Mirrors Python's {@code data: Union[str, int]}.
      */
     private Object data;
 
-    /** UTC timestamp when the event was created. */
+    /**
+     * UTC timestamp when the event was created.
+     * 
+     * @since 0.1.7
+     */
     @Builder.Default
     private Instant timestamp = Instant.now();
 
     /**
      * Get data as String.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDataAsString() {
         return data != null ? data.toString() : null;
@@ -57,6 +64,9 @@ public class StreamEvent {
 
     /**
      * Get data as Integer (for EXIT events).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getDataAsInt() {
         if (data instanceof Integer i) {

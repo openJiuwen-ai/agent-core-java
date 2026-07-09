@@ -8,6 +8,7 @@ import com.openjiuwen.agentteams.tools.database.TeamDatabase;
 import com.openjiuwen.core.foundation.store.base_embedding.EmbeddingConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.harness.workspace.Workspace;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,6 +16,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Construction parameters for TeamMemoryManager.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -44,11 +47,17 @@ public class TeamMemoryManagerParams {
     private double timezoneOffsetHours = 8.0;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamMemoryManagerParamsBuilder.
+     * 
+     * @since 0.1.7
      */
     public static class TeamMemoryManagerParamsBuilder {
         /**
-         * Auto-generated for codecheck compliance.
+         * enableAutoExtract.
+         * 
+         * @param value value
+         * @return the result
+         * @since 0.1.7
          */
         public TeamMemoryManagerParamsBuilder enableAutoExtract(boolean value) {
             return this.isAutoExtractEnabled(value);

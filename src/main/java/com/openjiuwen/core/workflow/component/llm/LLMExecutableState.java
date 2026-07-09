@@ -10,14 +10,24 @@ import java.util.Map;
  * State maintained by LLMExecutable for caching stream results.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.llm_comp.LLMExecutableState}.
+ * 
+ * @since 0.1.7
  */
 public class LLMExecutableState {
-
     private Map<String, Object> finalResult = Map.of();
+
+    /**
+     * StringBuilder.
+     * 
+     * @since 0.1.7
+     */
     private final StringBuilder accumulatedContent = new StringBuilder();
 
     /**
      * Accumulate stream content chunks.
+     * 
+     * @param content content
+     * @since 0.1.7
      */
     public void accumulateContent(String content) {
         accumulatedContent.append(content);
@@ -25,9 +35,13 @@ public class LLMExecutableState {
 
     /**
      * Build final result from accumulated content.
+     * 
+     * @param responseFormat responseFormat
+     * @param outputConfig outputConfig
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Object> buildFinalResult(Map<String, Object> responseFormat,
-                                                 Map<String, Object> outputConfig) {
+    public Map<String, Object> buildFinalResult(Map<String, Object> responseFormat, Map<String, Object> outputConfig) {
         if (accumulatedContent.length() == 0) {
             return Map.of();
         }
@@ -36,6 +50,8 @@ public class LLMExecutableState {
 
     /**
      * Clear state.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         finalResult = Map.of();
@@ -43,14 +59,20 @@ public class LLMExecutableState {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFinalResult.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getFinalResult() {
         return finalResult;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setFinalResult.
+     * 
+     * @param finalResult finalResult
+     * @since 0.1.7
      */
     public void setFinalResult(Map<String, Object> finalResult) {
         this.finalResult = finalResult;

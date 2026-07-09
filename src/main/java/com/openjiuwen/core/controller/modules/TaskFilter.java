@@ -16,40 +16,48 @@ import java.util.List;
  * All fields are optional and can be combined for complex filtering.
  * <p>
  * Mirrors Python's {@code TaskFilter(BaseModel)}.
+ * 
+ * @since 0.1.7
  */
 public class TaskFilter {
-
-    private Object taskId;       // String or List<String>
+    private Object taskId; // String or List<String>
     private String sessionId;
     private String userId;
-    private Object priority;     // Integer or "highest"
+    private Object priority; // Integer or "highest"
     private TaskStatus status;
     private boolean withChildren;
     private boolean isRoot;
 
+    /**
+     * TaskFilter.
+     * 
+     * @since 0.1.7
+     */
     private TaskFilter() {
     }
 
     /**
      * Validate that at least one filter parameter is provided.
+     * 
+     * @since 0.1.7
      */
     private void validate() {
-        boolean allEmpty = taskId == null
-                && sessionId == null
-                && userId == null
-                && priority == null
-                && status == null
-                && !isRoot;
+        boolean allEmpty =
+            taskId == null && sessionId == null && userId == null && priority == null && status == null && !isRoot;
         if (allEmpty) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR,
-                    "error_msg", "At least one filter parameter must be provided");
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR, "error_msg",
+                    "At least one filter parameter must be provided");
         }
     }
 
     // Static factory methods for common filters
 
     /**
-     * Auto-generated for codecheck compliance.
+     * byTaskId.
+     * 
+     * @param taskId taskId
+     * @return the result
+     * @since 0.1.7
      */
     public static TaskFilter byTaskId(String taskId) {
         TaskFilter f = new TaskFilter();
@@ -58,7 +66,11 @@ public class TaskFilter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * byTaskIds.
+     * 
+     * @param taskIds taskIds
+     * @return the result
+     * @since 0.1.7
      */
     public static TaskFilter byTaskIds(List<String> taskIds) {
         TaskFilter f = new TaskFilter();
@@ -67,7 +79,11 @@ public class TaskFilter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * bySessionId.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public static TaskFilter bySessionId(String sessionId) {
         TaskFilter f = new TaskFilter();
@@ -76,7 +92,11 @@ public class TaskFilter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * byStatus.
+     * 
+     * @param status status
+     * @return the result
+     * @since 0.1.7
      */
     public static TaskFilter byStatus(TaskStatus status) {
         TaskFilter f = new TaskFilter();
@@ -85,7 +105,10 @@ public class TaskFilter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * byRoot.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static TaskFilter byRoot() {
         TaskFilter f = new TaskFilter();
@@ -94,7 +117,10 @@ public class TaskFilter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * byHighestPriority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static TaskFilter byHighestPriority() {
         TaskFilter f = new TaskFilter();
@@ -104,6 +130,9 @@ public class TaskFilter {
 
     /**
      * General-purpose builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
@@ -111,13 +140,16 @@ public class TaskFilter {
 
     // Getters
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskIdList.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public List<String> getTaskIdList() {
         if (taskId == null) {
-            return null;
+            return java.util.Collections.emptyList();
         }
         if (taskId instanceof String s) {
             return List.of(s);
@@ -126,35 +158,50 @@ public class TaskFilter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getTaskId() {
         return taskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSessionId() {
         return sessionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUserId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getUserId() {
         return userId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPriority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getPriority() {
         return priority;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPriorityAsInt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getPriorityAsInt() {
         if (priority instanceof Integer i) {
@@ -164,28 +211,40 @@ public class TaskFilter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isHighestPriority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isHighestPriority() {
         return "highest".equals(priority);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStatus.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TaskStatus getStatus() {
         return status;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isWithChildren.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isWithChildren() {
         return withChildren;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isRoot.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isRoot() {
         return isRoot;
@@ -193,12 +252,18 @@ public class TaskFilter {
 
     /**
      * Builder for TaskFilter.
+     * 
+     * @since 0.1.7
      */
     public static class Builder {
         private final TaskFilter filter = new TaskFilter();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * taskId.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder taskId(String taskId) {
             filter.taskId = taskId;
@@ -206,7 +271,11 @@ public class TaskFilter {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * taskIds.
+         * 
+         * @param taskIds taskIds
+         * @return the result
+         * @since 0.1.7
          */
         public Builder taskIds(List<String> taskIds) {
             filter.taskId = taskIds;
@@ -214,7 +283,11 @@ public class TaskFilter {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * sessionId.
+         * 
+         * @param sessionId sessionId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder sessionId(String sessionId) {
             filter.sessionId = sessionId;
@@ -222,7 +295,11 @@ public class TaskFilter {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * userId.
+         * 
+         * @param userId userId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder userId(String userId) {
             filter.userId = userId;
@@ -230,7 +307,11 @@ public class TaskFilter {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * priority.
+         * 
+         * @param priority priority
+         * @return the result
+         * @since 0.1.7
          */
         public Builder priority(int priority) {
             filter.priority = priority;
@@ -238,7 +319,10 @@ public class TaskFilter {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * highestPriority.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Builder highestPriority() {
             filter.priority = "highest";
@@ -246,7 +330,11 @@ public class TaskFilter {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * status.
+         * 
+         * @param status status
+         * @return the result
+         * @since 0.1.7
          */
         public Builder status(TaskStatus status) {
             filter.status = status;
@@ -254,7 +342,11 @@ public class TaskFilter {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * withChildren.
+         * 
+         * @param withChildren withChildren
+         * @return the result
+         * @since 0.1.7
          */
         public Builder withChildren(boolean withChildren) {
             filter.withChildren = withChildren;
@@ -262,7 +354,11 @@ public class TaskFilter {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * isRoot.
+         * 
+         * @param isRoot isRoot
+         * @return the result
+         * @since 0.1.7
          */
         public Builder isRoot(boolean isRoot) {
             filter.isRoot = isRoot;
@@ -270,7 +366,10 @@ public class TaskFilter {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public TaskFilter build() {
             filter.validate();

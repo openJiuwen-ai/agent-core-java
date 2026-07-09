@@ -1,5 +1,8 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
@@ -8,6 +11,7 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,22 +19,16 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Unit tests for {@link BaseAgent} — rail/callback integration via ReActAgent.
  * Mirrors Python TestRailRegistration, TestRailPriority, TestRailExtra, etc.
  */
 class BaseAgentTest {
-
     private ReActAgent agent;
 
     @BeforeEach
     void setUp() {
-        AgentCard card = AgentCard.builder()
-                .name("test-agent")
-                .description("Test agent")
-                .build();
+        AgentCard card = AgentCard.builder().name("test-agent").description("Test agent").build();
         agent = new ReActAgent(card);
     }
 
@@ -45,13 +43,16 @@ class BaseAgentTest {
     void testRegisterRailRegistersHooks() {
         AgentRail rail = new AgentRail() {
             @Override
-            public void beforeInvoke(AgentCallbackContext ctx) {}
+            public void beforeInvoke(AgentCallbackContext ctx) {
+            }
 
             @Override
-            public void afterInvoke(AgentCallbackContext ctx) {}
+            public void afterInvoke(AgentCallbackContext ctx) {
+            }
 
             @Override
-            public void beforeModelCall(AgentCallbackContext ctx) {}
+            public void beforeModelCall(AgentCallbackContext ctx) {
+            }
         };
 
         agent.registerRail(rail);
@@ -65,21 +66,36 @@ class BaseAgentTest {
     void testRegisterRailAllEightHooks() {
         AgentRail rail = new AgentRail() {
             @Override
-            public void beforeInvoke(AgentCallbackContext ctx) {}
+            public void beforeInvoke(AgentCallbackContext ctx) {
+            }
+
             @Override
-            public void afterInvoke(AgentCallbackContext ctx) {}
+            public void afterInvoke(AgentCallbackContext ctx) {
+            }
+
             @Override
-            public void beforeModelCall(AgentCallbackContext ctx) {}
+            public void beforeModelCall(AgentCallbackContext ctx) {
+            }
+
             @Override
-            public void afterModelCall(AgentCallbackContext ctx) {}
+            public void afterModelCall(AgentCallbackContext ctx) {
+            }
+
             @Override
-            public void onModelException(AgentCallbackContext ctx) {}
+            public void onModelException(AgentCallbackContext ctx) {
+            }
+
             @Override
-            public void beforeToolCall(AgentCallbackContext ctx) {}
+            public void beforeToolCall(AgentCallbackContext ctx) {
+            }
+
             @Override
-            public void afterToolCall(AgentCallbackContext ctx) {}
+            public void afterToolCall(AgentCallbackContext ctx) {
+            }
+
             @Override
-            public void onToolException(AgentCallbackContext ctx) {}
+            public void onToolException(AgentCallbackContext ctx) {
+            }
         };
 
         agent.registerRail(rail);
@@ -99,9 +115,7 @@ class BaseAgentTest {
         agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> order.add("high"), 90);
         agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> order.add("low"), 10);
 
-        AgentCallbackContext ctx = AgentCallbackContext.builder()
-                .agent(agent)
-                .build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().agent(agent).build();
         agent.fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
 
         assertThat(order).containsExactly("high", "low");
@@ -114,14 +128,12 @@ class BaseAgentTest {
         final boolean[] sawWriter = {false};
 
         // Higher priority value runs first: writer (90) runs before reader (10)
-        agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE,
-                ctx -> ctx.getExtra().put("writer_was_here", true), 90);
+        agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> ctx.getExtra().put("writer_was_here", true),
+                90);
         agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE,
                 ctx -> sawWriter[0] = Boolean.TRUE.equals(ctx.getExtra().get("writer_was_here")), 10);
 
-        AgentCallbackContext ctx = AgentCallbackContext.builder()
-                .agent(agent)
-                .build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().agent(agent).build();
         agent.fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
 
         assertThat(sawWriter[0]).isTrue();
@@ -131,14 +143,12 @@ class BaseAgentTest {
 
     @Test
     void testRailToolsAutoRegistration() {
-        ToolCard toolCard = ToolCard.builder()
-                .name("rail_tool")
-                .description("A rail tool")
-                .build();
+        ToolCard toolCard = ToolCard.builder().name("rail_tool").description("A rail tool").build();
 
         AgentRail rail = new AgentRail(List.of(toolCard)) {
             @Override
-            public void beforeInvoke(AgentCallbackContext ctx) {}
+            public void beforeInvoke(AgentCallbackContext ctx) {
+            }
         };
 
         agent.registerRail(rail);
@@ -154,14 +164,12 @@ class BaseAgentTest {
 
     @Test
     void testUnregisterRailRemovesTools() {
-        ToolCard toolCard = ToolCard.builder()
-                .name("rail_tool_unreg")
-                .description("Tool to unregister")
-                .build();
+        ToolCard toolCard = ToolCard.builder().name("rail_tool_unreg").description("Tool to unregister").build();
 
         AgentRail rail = new AgentRail(List.of(toolCard)) {
             @Override
-            public void beforeInvoke(AgentCallbackContext ctx) {}
+            public void beforeInvoke(AgentCallbackContext ctx) {
+            }
         };
 
         agent.registerRail(rail);
@@ -201,9 +209,7 @@ class BaseAgentTest {
         List<String> fired = new ArrayList<>();
         agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> fired.add("manual"), 50);
 
-        AgentCallbackContext ctx = AgentCallbackContext.builder()
-                .agent(agent)
-                .build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().agent(agent).build();
         agent.fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
 
         assertThat(fired).containsExactly("manual");
@@ -217,19 +223,14 @@ class BaseAgentTest {
 
         agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE,
                 ctx -> firedEvents.add(AgentCallbackEvent.BEFORE_INVOKE), 50);
-        agent.registerCallback(AgentCallbackEvent.AFTER_INVOKE,
-                ctx -> firedEvents.add(AgentCallbackEvent.AFTER_INVOKE), 50);
+        agent.registerCallback(AgentCallbackEvent.AFTER_INVOKE, ctx -> firedEvents.add(AgentCallbackEvent.AFTER_INVOKE),
+                50);
 
-        AgentCallbackContext ctx = AgentCallbackContext.builder()
-                .agent(agent)
-                .build();
+        AgentCallbackContext ctx = AgentCallbackContext.builder().agent(agent).build();
         agent.fireCallbackEvent(AgentCallbackEvent.BEFORE_INVOKE, ctx);
         agent.fireCallbackEvent(AgentCallbackEvent.AFTER_INVOKE, ctx);
 
-        assertThat(firedEvents).containsExactly(
-                AgentCallbackEvent.BEFORE_INVOKE,
-                AgentCallbackEvent.AFTER_INVOKE
-        );
+        assertThat(firedEvents).containsExactly(AgentCallbackEvent.BEFORE_INVOKE, AgentCallbackEvent.AFTER_INVOKE);
     }
 
     // ============ Agent Card ============
@@ -254,10 +255,7 @@ class BaseAgentTest {
 
     @Test
     void testConfigure() {
-        ReActAgentConfig config = ReActAgentConfig.builder()
-                .modelName("gpt-4")
-                .maxIterations(10)
-                .build();
+        ReActAgentConfig config = ReActAgentConfig.builder().modelName("gpt-4").maxIterations(10).build();
 
         agent.configure(config);
         assertThat(((ReActAgentConfig) agent.getConfig()).getModelName()).isEqualTo("gpt-4");
@@ -270,7 +268,8 @@ class BaseAgentTest {
     void testRegisterRailReturnsAgent() {
         AgentRail rail = new AgentRail() {
             @Override
-            public void beforeInvoke(AgentCallbackContext ctx) {}
+            public void beforeInvoke(AgentCallbackContext ctx) {
+            }
         };
         BaseAgent result = agent.registerRail(rail);
         assertThat(result).isSameAs(agent);
@@ -278,8 +277,8 @@ class BaseAgentTest {
 
     @Test
     void testRegisterCallbackReturnsAgent() {
-        BaseAgent result = agent.registerCallback(
-                AgentCallbackEvent.BEFORE_INVOKE, ctx -> {}, 50);
+        BaseAgent result = agent.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> {
+        }, 50);
         assertThat(result).isSameAs(agent);
     }
 }

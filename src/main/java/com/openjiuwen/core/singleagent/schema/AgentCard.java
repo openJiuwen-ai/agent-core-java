@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent.schema;
 
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -16,22 +17,20 @@ import java.util.Map;
 /**
  * Agent card data class.
  * Mirrors Python's {@code AgentCard} in {@code single_agent/schema/agent_card.py}.
- *
- * <p>{@code inputParams} and {@code outputParams} accept either a
+ * <p>
+ * {@code inputParams} and {@code outputParams} accept either a
  * {@code Map<String, Object>} (raw JSON-schema style) <b>or</b> a
  * {@code Class<?>} (model/schema type) to align with the Python
- * {@code dict[str, Any] | Type[BaseModel]} union.</p>
+ * {@code dict[str, Any] | Type[BaseModel]} union.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class AgentCard extends BaseCard {
-
-    /**
-     * Input parameter schema — may be a {@code Map<String, Object>} <b>or</b>
-     * a {@code Class<?>} representing a model type.
-     */
     private Object inputParams;
 
     /**
@@ -42,6 +41,10 @@ public class AgentCard extends BaseCard {
     /**
      * Resolve the given parameter holder to a {@code Map} suitable for
      * tool-info / JSON-schema contexts.
+     * 
+     * @param params params
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
     private static Map<String, Object> resolveParams(Object params) {
@@ -61,6 +64,9 @@ public class AgentCard extends BaseCard {
     /**
      * Get input params as a {@code Map}. If a {@code Class<?>} was stored,
      * it is isResolved to a minimal map descriptor.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getInputParamsAsMap() {
         return resolveParams(inputParams);
@@ -68,106 +74,130 @@ public class AgentCard extends BaseCard {
 
     /**
      * Get output params as a {@code Map}.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getOutputParamsAsMap() {
         return resolveParams(outputParams);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toolInfo.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object toolInfo() {
-        return ToolInfo.builder()
-                .name(getName())
-                .description(getDescription())
-                .parameters(getInputParamsAsMap())
+        return ToolInfo.builder().name(getName()).description(getDescription()).parameters(getInputParamsAsMap())
                 .build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputParams.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getInputParams() {
         return inputParams;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInputParams.
+     * 
+     * @param inputParams inputParams
+     * @since 0.1.7
      */
     public void setInputParams(Object inputParams) {
         this.inputParams = inputParams;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOutputParams.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getOutputParams() {
         return outputParams;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setOutputParams.
+     * 
+     * @param outputParams outputParams
+     * @since 0.1.7
      */
     public void setOutputParams(Object outputParams) {
         this.outputParams = outputParams;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder extends BaseCard.Builder {
         private Object inputParams;
         private Object outputParams;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * id.
+         * 
+         * @param id id
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder id(String id) {
             super.id(id);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder name(String name) {
             super.name(name);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * description.
+         * 
+         * @param description description
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder description(String description) {
             super.description(description);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * inputParams.
+         * 
+         * @param inputParams inputParams
+         * @return the result
+         * @since 0.1.7
          */
         public Builder inputParams(Object inputParams) {
             this.inputParams = inputParams;
@@ -175,7 +205,11 @@ public class AgentCard extends BaseCard {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * outputParams.
+         * 
+         * @param outputParams outputParams
+         * @return the result
+         * @since 0.1.7
          */
         public Builder outputParams(Object outputParams) {
             this.outputParams = outputParams;
@@ -183,12 +217,12 @@ public class AgentCard extends BaseCard {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public AgentCard build() {
             AgentCard card = new AgentCard();
             card.setId(id);

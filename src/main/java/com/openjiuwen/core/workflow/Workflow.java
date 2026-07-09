@@ -43,7 +43,6 @@ import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -63,10 +62,17 @@ import java.util.function.Function;
  * Orchestrates execution of connected components, managing data flow and streaming.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.workflow.Workflow}.
+ * 
+ * @since 0.1.7
  */
 public class Workflow {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /**
+     * Executors.newCachedThreadPool.
+     * 
+     * @since 0.1.7
+     */
     private static final ExecutorService STREAM_EXECUTOR = Executors.newCachedThreadPool();
 
     private final WorkflowCard card;
@@ -75,23 +81,31 @@ public class Workflow {
     private boolean isStreaming = false;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Workflow.
+     * 
+     * @param card card
+     * @since 0.1.7
      */
     public Workflow(WorkflowCard card) {
-        this.card = card != null ? card
-                : WorkflowCard.builder().id(UUID.randomUUID().toString().replace("-", "")).build();
+        this.card =
+            card != null ? card : WorkflowCard.builder().id(UUID.randomUUID().toString().replace("-", "")).build();
         this.internal = new BaseWorkflow(new WorkflowConfig(this.card), new PregelGraph());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Workflow.
+     * 
+     * @since 0.1.7
      */
     public Workflow() {
         this(null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCard.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public WorkflowCard getCard() {
         return card;
@@ -99,20 +113,29 @@ public class Workflow {
 
     /**
      * Set the starting component of the workflow.
+     * 
+     * @param startCompId startCompId
+     * @param component component
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow setStartComp(
-            String startCompId,
-            ComponentComposable component,
-            Object inputsSchema,
+    public Workflow setStartComp(String startCompId, ComponentComposable component, Object inputsSchema,
             Object outputsSchema) {
-        internal.addWorkflowComp(startCompId, component, false, inputsSchema, outputsSchema,
-                null, null, null);
+        internal.addWorkflowComp(startCompId, component, false, inputsSchema, outputsSchema, null, null, null);
         internal.startComp(startCompId);
         return this;
     }
 
     /**
      * Compatibility overload for translated tests that omit outputs schema.
+     * 
+     * @param startCompId startCompId
+     * @param component component
+     * @param inputsSchema inputsSchema
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow setStartComp(String startCompId, ComponentComposable component, Object inputsSchema) {
         return setStartComp(startCompId, component, inputsSchema, null);
@@ -120,6 +143,12 @@ public class Workflow {
 
     /**
      * Compatibility overload for translated tests that still use legacy POJO nodes.
+     * 
+     * @param startCompId startCompId
+     * @param component component
+     * @param inputsSchema inputsSchema
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow setStartComp(String startCompId, Object component, Object inputsSchema) {
         return setStartComp(startCompId, LegacyWorkflowComponentSupport.adapt(component), inputsSchema, null);
@@ -127,72 +156,119 @@ public class Workflow {
 
     /**
      * Add a component to the workflow graph.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param waitForAll waitForAll
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @param streamInputsSchema streamInputsSchema
+     * @param streamOutputsSchema streamOutputsSchema
+     * @param compAbility compAbility
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(
-            String compId,
-            ComponentComposable workflowComp,
-            Boolean waitForAll,
-            Object inputsSchema,
-            Object outputsSchema,
-            Object streamInputsSchema,
-            Object streamOutputsSchema,
+    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp, Boolean waitForAll,
+            Object inputsSchema, Object outputsSchema, Object streamInputsSchema, Object streamOutputsSchema,
             List<ComponentAbility> compAbility) {
-        internal.addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, outputsSchema,
-                streamInputsSchema, streamOutputsSchema, compAbility);
+        internal.addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, outputsSchema, streamInputsSchema,
+                streamOutputsSchema, compAbility);
         return this;
     }
 
     /**
      * Simplified addWorkflowComp with just ID, component, and schemas.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp,
-                                     Object inputsSchema, Object outputsSchema) {
+    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp, Object inputsSchema,
+            Object outputsSchema) {
         return addWorkflowComp(compId, workflowComp, null, inputsSchema, outputsSchema, null, null, null);
     }
 
     /**
      * Compatibility overload for translated tests that still use legacy POJO nodes.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(String compId, Object workflowComp,
-                                    Object inputsSchema, Object outputsSchema) {
-        internal.addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), null,
-                inputsSchema, outputsSchema, null, null, null);
+    public Workflow addWorkflowComp(String compId, Object workflowComp, Object inputsSchema, Object outputsSchema) {
+        internal.addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), null, inputsSchema,
+                outputsSchema, null, null, null);
         return this;
     }
 
     /**
      * Compatibility overload for translated tests that place wait_for_all after schemas.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @param waitForAll waitForAll
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp,
-                                    Object inputsSchema, Boolean waitForAll) {
+    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp, Object inputsSchema,
+            Boolean waitForAll) {
         internal.addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, null, null, null, null);
         return this;
     }
 
     /**
      * Compatibility overload for translated tests that place wait_for_all after schemas.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @param waitForAll waitForAll
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(String compId, Object workflowComp,
-                                    Object inputsSchema, Boolean waitForAll) {
-        internal.addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), waitForAll,
-                inputsSchema, null, null, null, null);
+    public Workflow addWorkflowComp(String compId, Object workflowComp, Object inputsSchema, Boolean waitForAll) {
+        internal.addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), waitForAll, inputsSchema,
+                null, null, null, null);
         return this;
     }
 
     /**
      * Compatibility overload for translated tests that place wait_for_all after schemas.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @param waitForAll waitForAll
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp,
-                                    Object inputsSchema, Object outputsSchema, Boolean waitForAll) {
+    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp, Object inputsSchema,
+            Object outputsSchema, Boolean waitForAll) {
         internal.addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, outputsSchema, null, null, null);
         return this;
     }
 
     /**
      * Compatibility overload for translated tests that place wait_for_all after schemas.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @param waitForAll waitForAll
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(String compId, Object workflowComp,
-                                    Object inputsSchema, Object outputsSchema, Boolean waitForAll) {
+    public Workflow addWorkflowComp(String compId, Object workflowComp, Object inputsSchema, Object outputsSchema,
+            Boolean waitForAll) {
         ComponentComposable adapted = LegacyWorkflowComponentSupport.adapt(workflowComp);
         internal.addWorkflowComp(compId, adapted, waitForAll, inputsSchema, outputsSchema, null, null, null);
         return this;
@@ -201,44 +277,76 @@ public class Workflow {
     /**
      * Compatibility overload for translated tests that place wait_for_all after both schemas
      * while still passing stream schemas.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @param waitForAll waitForAll
+     * @param streamInputsSchema streamInputsSchema
+     * @param streamOutputsSchema streamOutputsSchema
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp,
-                                    Object inputsSchema, Object outputsSchema, Boolean waitForAll,
-                                    Object streamInputsSchema, Object streamOutputsSchema) {
-        internal.addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, outputsSchema,
-                streamInputsSchema, streamOutputsSchema, null);
+    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp, Object inputsSchema,
+            Object outputsSchema, Boolean waitForAll, Object streamInputsSchema, Object streamOutputsSchema) {
+        internal.addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, outputsSchema, streamInputsSchema,
+                streamOutputsSchema, null);
         return this;
     }
 
     /**
      * Compatibility overload for translated tests that place wait_for_all after both schemas
      * while still passing stream schemas.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @param waitForAll waitForAll
+     * @param streamInputsSchema streamInputsSchema
+     * @param streamOutputsSchema streamOutputsSchema
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(String compId, Object workflowComp,
-                                    Object inputsSchema, Object outputsSchema, Boolean waitForAll,
-                                    Object streamInputsSchema, Object streamOutputsSchema) {
+    public Workflow addWorkflowComp(String compId, Object workflowComp, Object inputsSchema, Object outputsSchema,
+            Boolean waitForAll, Object streamInputsSchema, Object streamOutputsSchema) {
         ComponentComposable adapted = LegacyWorkflowComponentSupport.adapt(workflowComp);
-        internal.addWorkflowComp(compId, adapted, waitForAll, inputsSchema, outputsSchema,
-                streamInputsSchema, streamOutputsSchema, null);
+        internal.addWorkflowComp(compId, adapted, waitForAll, inputsSchema, outputsSchema, streamInputsSchema,
+                streamOutputsSchema, null);
         return this;
     }
 
     /**
      * Compatibility overload for translated tests that still pass explicit abilities.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @param waitForAll waitForAll
+     * @param compAbility compAbility
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp,
-                                    Object inputsSchema, Boolean waitForAll,
-                                    List<ComponentAbility> compAbility) {
+    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp, Object inputsSchema,
+            Boolean waitForAll, List<ComponentAbility> compAbility) {
         internal.addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, null, null, null, compAbility);
         return this;
     }
 
     /**
      * Compatibility overload for translated tests that still pass explicit abilities.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @param waitForAll waitForAll
+     * @param compAbility compAbility
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(String compId, Object workflowComp,
-                                    Object inputsSchema, Boolean waitForAll,
-                                    List<ComponentAbility> compAbility) {
+    public Workflow addWorkflowComp(String compId, Object workflowComp, Object inputsSchema, Boolean waitForAll,
+            List<ComponentAbility> compAbility) {
         ComponentComposable adapted = LegacyWorkflowComponentSupport.adapt(workflowComp);
         internal.addWorkflowComp(compId, adapted, waitForAll, inputsSchema, null, null, null, compAbility);
         return this;
@@ -246,20 +354,37 @@ public class Workflow {
 
     /**
      * Compatibility overload for translated tests that still pass explicit abilities.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @param waitForAll waitForAll
+     * @param compAbility compAbility
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp,
-                                    Object inputsSchema, Object outputsSchema, Boolean waitForAll,
-                                    List<ComponentAbility> compAbility) {
-        internal.addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, outputsSchema, null, null, compAbility);
+    public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp, Object inputsSchema,
+            Object outputsSchema, Boolean waitForAll, List<ComponentAbility> compAbility) {
+        internal.addWorkflowComp(compId, workflowComp, waitForAll, inputsSchema, outputsSchema, null, null,
+                compAbility);
         return this;
     }
 
     /**
      * Compatibility overload for translated tests that still pass explicit abilities.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @param waitForAll waitForAll
+     * @param compAbility compAbility
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow addWorkflowComp(String compId, Object workflowComp,
-                                    Object inputsSchema, Object outputsSchema, Boolean waitForAll,
-                                    List<ComponentAbility> compAbility) {
+    public Workflow addWorkflowComp(String compId, Object workflowComp, Object inputsSchema, Object outputsSchema,
+            Boolean waitForAll, List<ComponentAbility> compAbility) {
         ComponentComposable adapted = LegacyWorkflowComponentSupport.adapt(workflowComp);
         internal.addWorkflowComp(compId, adapted, waitForAll, inputsSchema, outputsSchema, null, null, compAbility);
         return this;
@@ -267,6 +392,12 @@ public class Workflow {
 
     /**
      * Compatibility overload for translated tests that omit outputs schema.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp, Object inputsSchema) {
         return addWorkflowComp(compId, workflowComp, inputsSchema, null);
@@ -274,15 +405,26 @@ public class Workflow {
 
     /**
      * Compatibility overload for translated tests that still use legacy POJO nodes.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param inputsSchema inputsSchema
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow addWorkflowComp(String compId, Object workflowComp, Object inputsSchema) {
-        internal.addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), null,
-                inputsSchema, null, null, null, null);
+        internal.addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), null, inputsSchema, null,
+                null, null, null);
         return this;
     }
 
     /**
      * Minimal addWorkflowComp with just ID and component.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow addWorkflowComp(String compId, ComponentComposable workflowComp) {
         internal.addWorkflowComp(compId, workflowComp, null, null, null, null, null, null);
@@ -291,25 +433,33 @@ public class Workflow {
 
     /**
      * Compatibility overload for translated tests that still use legacy POJO nodes.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow addWorkflowComp(String compId, Object workflowComp) {
-        internal.addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), null,
-                null, null, null, null, null);
+        internal.addWorkflowComp(compId, LegacyWorkflowComponentSupport.adapt(workflowComp), null, null, null, null,
+                null, null);
         return this;
     }
 
     /**
      * Set the ending component of the workflow.
+     * 
+     * @param endCompId endCompId
+     * @param component component
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @param streamInputsSchema streamInputsSchema
+     * @param streamOutputsSchema streamOutputsSchema
+     * @param responseMode responseMode
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow setEndComp(
-            String endCompId,
-            ComponentComposable component,
-            Object inputsSchema,
-            Object outputsSchema,
-            Object streamInputsSchema,
-            Object streamOutputsSchema,
-            String responseMode) {
-
+    public Workflow setEndComp(String endCompId, ComponentComposable component, Object inputsSchema,
+            Object outputsSchema, Object streamInputsSchema, Object streamOutputsSchema, String responseMode) {
         List<ComponentAbility> compAbility = new ArrayList<>();
         boolean waitForAll = false;
 
@@ -331,11 +481,10 @@ public class Workflow {
             }
         }
 
-        waitForAll = compAbility.contains(ComponentAbility.COLLECT)
-                || compAbility.contains(ComponentAbility.TRANSFORM);
+        waitForAll = compAbility.contains(ComponentAbility.COLLECT) || compAbility.contains(ComponentAbility.TRANSFORM);
 
-        internal.addWorkflowComp(endCompId, component, waitForAll, inputsSchema, outputsSchema,
-                streamInputsSchema, streamOutputsSchema, compAbility);
+        internal.addWorkflowComp(endCompId, component, waitForAll, inputsSchema, outputsSchema, streamInputsSchema,
+                streamOutputsSchema, compAbility);
         internal.endComp(endCompId);
         this.endCompId = endCompId;
         return this;
@@ -343,35 +492,63 @@ public class Workflow {
 
     /**
      * Simplified setEndComp.
+     * 
+     * @param endCompId endCompId
+     * @param component component
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow setEndComp(String endCompId, ComponentComposable component,
-                                Object inputsSchema, Object outputsSchema) {
+    public Workflow setEndComp(String endCompId, ComponentComposable component, Object inputsSchema,
+            Object outputsSchema) {
         return setEndComp(endCompId, component, inputsSchema, outputsSchema, null, null, null);
     }
 
     /**
      * Compatibility overload for translated tests that still use legacy POJO nodes
      * with explicit stream schemas and response mode.
+     * 
+     * @param endCompId endCompId
+     * @param component component
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @param streamInputsSchema streamInputsSchema
+     * @param streamOutputsSchema streamOutputsSchema
+     * @param responseMode responseMode
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow setEndComp(String endCompId, Object component,
-                               Object inputsSchema, Object outputsSchema,
-                               Object streamInputsSchema, Object streamOutputsSchema,
-                               String responseMode) {
-        return setEndComp(endCompId, LegacyWorkflowComponentSupport.adapt(component),
-                inputsSchema, outputsSchema, streamInputsSchema, streamOutputsSchema, responseMode);
+    public Workflow setEndComp(String endCompId, Object component, Object inputsSchema, Object outputsSchema,
+            Object streamInputsSchema, Object streamOutputsSchema, String responseMode) {
+        return setEndComp(endCompId, LegacyWorkflowComponentSupport.adapt(component), inputsSchema, outputsSchema,
+                streamInputsSchema, streamOutputsSchema, responseMode);
     }
 
     /**
      * Compatibility overload for translated tests that still pass {@code responseMode}
      * before the input schema.
+     * 
+     * @param endCompId endCompId
+     * @param component component
+     * @param responseMode responseMode
+     * @param inputsSchema inputsSchema
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow setEndComp(String endCompId, ComponentComposable component,
-                               String responseMode, Object inputsSchema) {
+    public Workflow setEndComp(String endCompId, ComponentComposable component, String responseMode,
+            Object inputsSchema) {
         return setEndComp(endCompId, component, inputsSchema, null, null, null, responseMode);
     }
 
     /**
      * Compatibility overload for translated tests that omit outputs schema.
+     * 
+     * @param endCompId endCompId
+     * @param component component
+     * @param inputsSchema inputsSchema
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow setEndComp(String endCompId, ComponentComposable component, Object inputsSchema) {
         return setEndComp(endCompId, component, inputsSchema, null);
@@ -380,14 +557,26 @@ public class Workflow {
     /**
      * Compatibility overload for translated tests that still pass {@code responseMode}
      * before the input schema.
+     * 
+     * @param endCompId endCompId
+     * @param component component
+     * @param responseMode responseMode
+     * @param inputsSchema inputsSchema
+     * @return the result
+     * @since 0.1.7
      */
-    public Workflow setEndComp(String endCompId, Object component,
-                               String responseMode, Object inputsSchema) {
+    public Workflow setEndComp(String endCompId, Object component, String responseMode, Object inputsSchema) {
         return setEndComp(endCompId, LegacyWorkflowComponentSupport.adapt(component), responseMode, inputsSchema);
     }
 
     /**
      * Compatibility overload for translated tests that still use legacy POJO nodes.
+     * 
+     * @param endCompId endCompId
+     * @param component component
+     * @param inputsSchema inputsSchema
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow setEndComp(String endCompId, Object component, Object inputsSchema) {
         return setEndComp(endCompId, LegacyWorkflowComponentSupport.adapt(component), inputsSchema, null);
@@ -395,6 +584,11 @@ public class Workflow {
 
     /**
      * Add a data connection between components.
+     * 
+     * @param srcCompId srcCompId
+     * @param targetCompId targetCompId
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow addConnection(Object srcCompId, String targetCompId) {
         internal.addConnection(srcCompId, targetCompId);
@@ -403,6 +597,11 @@ public class Workflow {
 
     /**
      * Add a streaming connection between components.
+     * 
+     * @param srcCompId srcCompId
+     * @param targetCompId targetCompId
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow addStreamConnection(String srcCompId, String targetCompId) {
         internal.addStreamConnection(srcCompId, targetCompId);
@@ -411,6 +610,11 @@ public class Workflow {
 
     /**
      * Add a conditional connection with routing logic.
+     * 
+     * @param srcCompId srcCompId
+     * @param router router
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow addConditionalConnection(String srcCompId, Object router) {
         internal.addConditionalConnection(srcCompId, router);
@@ -420,6 +624,11 @@ public class Workflow {
     /**
      * Compatibility overload so translated tests can pass lambdas without
      * explicit casts to {@code Object}.
+     * 
+     * @param srcCompId srcCompId
+     * @param router router
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow addConditionalConnection(String srcCompId, Function<Object, Object> router) {
         internal.addConditionalConnection(srcCompId, router);
@@ -427,28 +636,34 @@ public class Workflow {
     }
 
     /**
-     * Execute the workflow synchronously.
-     *
-     * @param inputs  input data
-     * @param session workflow session (NodeSessionApi for user-facing, BaseSession for sub)
-     * @param context model context
-     * @param isSub   whether this is a sub-workflow execution
-     * @return WorkflowOutput containing results and metadata
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @param isSub isSub
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public WorkflowOutput invoke(Object inputs, Object session, ModelContext context, boolean isSub) {
         return invoke(inputs, session, context, isSub, false);
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @param isSub isSub
+     * @param skipInputsValidate skipInputsValidate
+     * @return the result
+     * @since 0.1.7
      */
-    public WorkflowOutput invoke(Object inputs, Object session, ModelContext context,
-                                 boolean isSub, boolean skipInputsValidate) {
+    @SuppressWarnings("unchecked")
+    public WorkflowOutput invoke(Object inputs, Object session, ModelContext context, boolean isSub,
+            boolean skipInputsValidate) {
         if (isSub) {
             return new WorkflowOutput(invokeSubWorkflow(inputs, session, context), WorkflowExecutionState.COMPLETED);
         }
@@ -471,8 +686,7 @@ public class Workflow {
                     }
                     List<Object> outputChunks = collectOutputChunks(workflowSession);
                     if (isInterrupted(executionResult, outputChunks)) {
-                        return new WorkflowOutput(
-                                resolveInterruptedOutputChunks(executionResult, outputChunks),
+                        return new WorkflowOutput(resolveInterruptedOutputChunks(executionResult, outputChunks),
                                 WorkflowExecutionState.INPUT_REQUIRED);
                     }
                     Object result = isStreaming
@@ -494,6 +708,12 @@ public class Workflow {
 
     /**
      * Simplified invoke without sub flag.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     public WorkflowOutput invoke(Object inputs, Object session, ModelContext context) {
         return invoke(inputs, session, context, false);
@@ -501,40 +721,60 @@ public class Workflow {
 
     /**
      * Execute the workflow with streaming output.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @param isSub isSub
+     * @return the result
+     * @since 0.1.7
      */
     public Iterator<WorkflowChunk> stream(Object inputs, Object session, ModelContext context, boolean isSub) {
         return stream(inputs, session, context, List.of(StreamMode.OUTPUT), isSub, false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @param streamModes streamModes
+     * @return the result
+     * @since 0.1.7
      */
     public Iterator<WorkflowChunk> stream(Object inputs, Object session, ModelContext context,
-                                   List<StreamMode> streamModes) {
-        return stream(inputs, session, context,
-                streamModes != null ? streamModes : List.of(StreamMode.OUTPUT), false, false);
+            List<StreamMode> streamModes) {
+        return stream(inputs, session, context, streamModes != null ? streamModes : List.of(StreamMode.OUTPUT), false,
+                false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @param streamModes streamModes
+     * @param isSub isSub
+     * @param skipInputsValidate skipInputsValidate
+     * @return the result
+     * @since 0.1.7
      */
     public Iterator<WorkflowChunk> stream(Object inputs, Object session, ModelContext context,
-                                   List<StreamMode> streamModes, boolean isSub, boolean skipInputsValidate) {
+            List<StreamMode> streamModes, boolean isSub, boolean skipInputsValidate) {
         if (isSub) {
             return streamSubWorkflow(inputs, session, context);
         }
         validateSession(session);
         Object validatedInputs = validateInputs(inputs, skipInputsValidate);
         WorkflowSession workflowSession = createWorkflowSession(session, streamModes);
-        long firstFrameTimeoutMs = resolveTimeoutMillis(
-                workflowSession, SessionConstants.WORKFLOW_STREAM_FIRST_FRAME_TIMEOUT);
-        long frameTimeoutMs = resolveTimeoutMillis(
-                workflowSession, SessionConstants.WORKFLOW_STREAM_FRAME_TIMEOUT);
-        long executeTimeoutMs = resolveTimeoutMillis(
-                workflowSession, SessionConstants.WORKFLOW_EXECUTE_TIMEOUT);
-        long executionDeadlineNanos = executeTimeoutMs > 0
-                ? System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(executeTimeoutMs)
-                : -1L;
+        long firstFrameTimeoutMs =
+            resolveTimeoutMillis(workflowSession, SessionConstants.WORKFLOW_STREAM_FIRST_FRAME_TIMEOUT);
+        long frameTimeoutMs = resolveTimeoutMillis(workflowSession, SessionConstants.WORKFLOW_STREAM_FRAME_TIMEOUT);
+        long executeTimeoutMs = resolveTimeoutMillis(workflowSession, SessionConstants.WORKFLOW_EXECUTE_TIMEOUT);
+        long executionDeadlineNanos =
+            executeTimeoutMs > 0 ? System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(executeTimeoutMs) : -1L;
         String executeTimeoutText = formatTimeoutSeconds(executeTimeoutMs);
         AtomicReference<Object> finalPayload = new AtomicReference<>();
         AtomicReference<RuntimeException> executionError = new AtomicReference<>();
@@ -569,11 +809,7 @@ public class Workflow {
             private boolean done = false;
             private boolean streamClosed = false;
             private WorkflowChunk nextChunk;
-
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public boolean hasNext() {
                 if (done) {
                     return false;
@@ -590,9 +826,6 @@ public class Workflow {
             }
 
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public WorkflowChunk next() {
                 if (!hasNext()) {
                     throw new java.util.NoSuchElementException();
@@ -643,48 +876,39 @@ public class Workflow {
                 if (data != null) {
                     return data;
                 }
-                RuntimeException timeoutError = buildReceiveTimeoutError(
-                        currentFirstFrame, configuredTimeoutMs, receiveTimeoutMs);
+                RuntimeException timeoutError =
+                    buildReceiveTimeoutError(currentFirstFrame, configuredTimeoutMs, receiveTimeoutMs);
                 terminateStream(timeoutError);
                 throw timeoutError;
             }
 
-            private RuntimeException buildReceiveTimeoutError(
-                    boolean currentFirstFrame, long configuredTimeoutMs, long receiveTimeoutMs) {
+            private RuntimeException buildReceiveTimeoutError(boolean currentFirstFrame, long configuredTimeoutMs,
+                    long receiveTimeoutMs) {
                 boolean deadlineReached = isExecutionDeadlineReached(executionDeadlineNanos);
                 if (currentFirstFrame) {
                     if (configuredTimeoutMs > 0) {
-                        return ErrorHelper.buildError(
-                                StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT,
-                                "timeout", formatTimeoutSeconds(configuredTimeoutMs),
-                                "reason", "");
+                        return ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT, "timeout",
+                                formatTimeoutSeconds(configuredTimeoutMs), "reason", "");
                     }
                     if (deadlineReached) {
                         executionTimedOut.set(true);
                         return buildWorkflowExecutionTimeout(executeTimeoutText);
                     }
-                    return ErrorHelper.buildError(
-                            StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT,
-                            "timeout", formatTimeoutSeconds(receiveTimeoutMs),
-                            "reason", "");
+                    return ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT, "timeout",
+                            formatTimeoutSeconds(receiveTimeoutMs), "reason", "");
                 }
 
-                if (configuredTimeoutMs > 0
-                        && (executeTimeoutMs <= 0 || executeTimeoutMs > configuredTimeoutMs)) {
-                    return ErrorHelper.buildError(
-                            StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT,
-                            "timeout", formatTimeoutSeconds(configuredTimeoutMs),
-                            "reason", "");
+                if (configuredTimeoutMs > 0 && (executeTimeoutMs <= 0 || executeTimeoutMs > configuredTimeoutMs)) {
+                    return ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT, "timeout",
+                            formatTimeoutSeconds(configuredTimeoutMs), "reason", "");
                 }
                 if (deadlineReached) {
                     executionTimedOut.set(true);
                     return buildWorkflowExecutionTimeout(executeTimeoutText);
                 }
                 if (configuredTimeoutMs > 0) {
-                    return ErrorHelper.buildError(
-                            StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT,
-                            "timeout", formatTimeoutSeconds(configuredTimeoutMs),
-                            "reason", "");
+                    return ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT, "timeout",
+                            formatTimeoutSeconds(configuredTimeoutMs), "reason", "");
                 }
                 executionTimedOut.set(true);
                 return buildWorkflowExecutionTimeout(executeTimeoutText);
@@ -742,38 +966,61 @@ public class Workflow {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     public Iterator<WorkflowChunk> stream(Object inputs, Object session, ModelContext context) {
         return stream(inputs, session, context, List.of(StreamMode.OUTPUT), false, false);
     }
 
-
     /**
      * Generate a Mermaid diagram of the workflow.
-     *
+     * 
      * @return Mermaid syntax string for "mermaid" format; empty string for "png"/"svg" (use drawBytes instead)
+     * @since 0.1.7
      */
     public String draw() {
         return draw("", "mermaid", false, false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * draw.
+     * 
+     * @param title title
+     * @return the result
+     * @since 0.1.7
      */
     public String draw(String title) {
         return draw(title, "mermaid", false, false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * draw.
+     * 
+     * @param title title
+     * @param outputFormat outputFormat
+     * @param expandSubgraph expandSubgraph
+     * @return the result
+     * @since 0.1.7
      */
     public String draw(Object title, String outputFormat, Object expandSubgraph) {
         return draw(title, outputFormat, expandSubgraph, false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * draw.
+     * 
+     * @param title title
+     * @param outputFormat outputFormat
+     * @param expandSubgraph expandSubgraph
+     * @param enableAnimation enableAnimation
+     * @return the result
+     * @since 0.1.7
      */
     public String draw(Object title, String outputFormat, Object expandSubgraph, Object enableAnimation) {
         if ("png".equalsIgnoreCase(outputFormat)) {
@@ -782,25 +1029,31 @@ public class Workflow {
         if ("svg".equalsIgnoreCase(outputFormat)) {
             throw new UnsupportedOperationException("Use drawBytes() for svg output");
         }
-        return internal.toMermaid(normalizeTitle(title),
-                normalizeExpandSubgraph(expandSubgraph),
+        return internal.toMermaid(normalizeTitle(title), normalizeExpandSubgraph(expandSubgraph),
                 normalizeEnableAnimation(enableAnimation));
     }
 
     /**
      * Generate a binary diagram of the workflow (PNG or SVG).
-     *
-     * @param title          diagram title
-     * @param outputFormat   "png" or "svg"
+     * 
+     * @param title diagram title
+     * @param outputFormat "png" or "svg"
      * @param expandSubgraph subgraph expansion level
      * @return image binary data
+     * @since 0.1.7
      */
     public byte[] drawBytes(Object title, String outputFormat, Object expandSubgraph) {
         return drawBytes(normalizeTitle(title), outputFormat, expandSubgraph);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * drawBytes.
+     * 
+     * @param title title
+     * @param outputFormat outputFormat
+     * @param expandSubgraph expandSubgraph
+     * @return the result
+     * @since 0.1.7
      */
     public byte[] drawBytes(String title, String outputFormat, Object expandSubgraph) {
         if ("png".equalsIgnoreCase(outputFormat)) {
@@ -813,7 +1066,10 @@ public class Workflow {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInternalDrawable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public HasDrawable getInternalDrawable() {
         return internal;
@@ -821,18 +1077,31 @@ public class Workflow {
 
     // ======================= Private Methods =======================
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * invokeSubWorkflow.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public Object invokeSubWorkflow(Object inputs, Object session, ModelContext context) {
         return invokeSubWorkflow(inputs, session, context, null);
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * invokeSubWorkflow.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public Object invokeSubWorkflow(Object inputs, Object session, ModelContext context, Object config) {
         SubWorkflowSession subSession = createSubWorkflowSession(session);
         try {
@@ -855,17 +1124,31 @@ public class Workflow {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * streamSubWorkflow.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     public Iterator<WorkflowChunk> streamSubWorkflow(Object inputs, Object session, ModelContext context) {
         return streamSubWorkflow(inputs, session, context, null);
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * streamSubWorkflow.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
-    public Iterator<WorkflowChunk> streamSubWorkflow(Object inputs, Object session, ModelContext context, Object config) {
+    @SuppressWarnings("unchecked")
+    public Iterator<WorkflowChunk> streamSubWorkflow(Object inputs, Object session, ModelContext context,
+            Object config) {
         Object results = invokeSubWorkflow(inputs, session, context, config);
         if (results instanceof List<?> list) {
             List<WorkflowChunk> chunks = (List<WorkflowChunk>) (List<?>) list;
@@ -875,6 +1158,16 @@ public class Workflow {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * executeCompiledGraph.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     private Object executeCompiledGraph(Object inputs, BaseSession session, ModelContext context, Object config) {
         internal.autoCompleteAbilities();
         session.config().addWorkflowConfig(card.getId(), internal.getConfig());
@@ -886,15 +1179,29 @@ public class Workflow {
         return typedCompiled.invoke(graphInputs, session);
     }
 
+    /**
+     * wrapWorkflowException.
+     * 
+     * @param e e
+     * @return the result
+     * @since 0.1.7
+     */
     private RuntimeException wrapWorkflowException(Exception e) {
         if (e instanceof RuntimeException runtimeException) {
             return runtimeException;
         }
-        return ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTION_ERROR,
-                "reason", e.getMessage(),
-                "workflow", card.str());
+        return ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTION_ERROR, "reason", e.getMessage(), "workflow",
+                card.str());
     }
 
+    /**
+     * createWorkflowSession.
+     * 
+     * @param session session
+     * @param streamModes streamModes
+     * @return the result
+     * @since 0.1.7
+     */
     private WorkflowSession createWorkflowSession(Object session, List<StreamMode> streamModes) {
         internal.autoCompleteAbilities();
 
@@ -916,18 +1223,13 @@ public class Workflow {
             parent = baseSession;
             sessionId = baseSession.sessionId();
         } else {
-            throw ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTION_ERROR,
-                    "reason", "unsupported workflow session type: " + session.getClass().getSimpleName(),
-                    "card", card.getId());
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTION_ERROR, "reason",
+                    "unsupported workflow session type: " + session.getClass().getSimpleName(), "card", card.getId());
         }
 
         WorkflowSession workflowSession = existingWorkflowSession != null
                 ? existingWorkflowSession
-                : new WorkflowSession(
-                        card.getId(),
-                        parent,
-                        sessionId,
-                        InMemoryState.create(),
+                : new WorkflowSession(card.getId(), parent, sessionId, InMemoryState.create(),
                         session instanceof WorkflowSessionApi sessionApi ? sessionApi.getCallbackManager() : null);
         workflowSession.setWorkflowId(card.getId());
         if (envs != null) {
@@ -946,6 +1248,13 @@ public class Workflow {
         return workflowSession;
     }
 
+    /**
+     * createSubWorkflowSession.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private SubWorkflowSession createSubWorkflowSession(Object session) {
         internal.autoCompleteAbilities();
         BaseSession innerSession = extractInnerSession(session);
@@ -961,22 +1270,32 @@ public class Workflow {
         return subSession;
     }
 
+    /**
+     * buildActorManager.
+     * 
+     * @param session session
+     * @param subGraph subGraph
+     * @return the result
+     * @since 0.1.7
+     */
     private ActorManager buildActorManager(BaseSession session, boolean subGraph) {
-        return new ActorManager(
-                internal.getConfig().getSpec().getStreamEdges(),
-                internal.getStreamActor(),
-                subGraph,
-                session,
-                compId -> {
+        return new ActorManager(internal.getConfig().getSpec().getStreamEdges(), internal.getStreamActor(), subGraph,
+                session, compId -> {
                     if (internal.getConfig().getSpec().getCompConfigs().containsKey(compId)) {
                         List<ComponentAbility> abilities =
-                                internal.getConfig().getSpec().getCompConfigs().get(compId).getAbilities();
+                            internal.getConfig().getSpec().getCompConfigs().get(compId).getAbilities();
                         return abilities != null ? abilities : List.of();
                     }
                     return List.of();
                 });
     }
 
+    /**
+     * closeStreamEmitter.
+     * 
+     * @param workflowSession workflowSession
+     * @since 0.1.7
+     */
     private void closeStreamEmitter(WorkflowSession workflowSession) {
         if (workflowSession.streamWriterManager() != null
                 && !workflowSession.streamWriterManager().getStreamEmitter().isClosed()) {
@@ -988,6 +1307,10 @@ public class Workflow {
      * After graph execution, stream actors for consumers (e.g. End TRANSFORM) may still be blocked
      * waiting for producers that will not run until user input is returned. When the graph yielded
      * {@link PregelConstants#TASK_STATUS_INTERRUPT}, shut actors down instead of awaiting completion.
+     * 
+     * @param session session
+     * @param executionResult executionResult
+     * @since 0.1.7
      */
     private void finishStreamActorsAfterGraph(BaseSession session, Object executionResult) {
         if (session == null || !(session.actorManager() instanceof ActorManager actorManager)) {
@@ -1000,11 +1323,25 @@ public class Workflow {
         }
     }
 
+    /**
+     * graphYieldedInterrupt.
+     * 
+     * @param executionResult executionResult
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean graphYieldedInterrupt(Object executionResult) {
         return executionResult instanceof Map<?, ?> resultMap
                 && resultMap.containsKey(PregelConstants.TASK_STATUS_INTERRUPT);
     }
 
+    /**
+     * drainSubWorkflowStream.
+     * 
+     * @param subSession subSession
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> drainSubWorkflowStream(SubWorkflowSession subSession) {
         List<Object> messages = new ArrayList<>();
         if (subSession.actorManager() == null || subSession.actorManager().subWorkflowStream() == null) {
@@ -1020,6 +1357,13 @@ public class Workflow {
         return messages;
     }
 
+    /**
+     * collectOutputChunks.
+     * 
+     * @param workflowSession workflowSession
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> collectOutputChunks(WorkflowSession workflowSession) {
         if (workflowSession.streamWriterManager() == null) {
             return List.of();
@@ -1027,6 +1371,14 @@ public class Workflow {
         return workflowSession.streamWriterManager().collectStreamOutput();
     }
 
+    /**
+     * resolveTimeoutSeconds.
+     * 
+     * @param workflowSession workflowSession
+     * @param configKey configKey
+     * @return the result
+     * @since 0.1.7
+     */
     private Double resolveTimeoutSeconds(WorkflowSession workflowSession, String configKey) {
         if (workflowSession == null || workflowSession.config() == null || configKey == null) {
             return null;
@@ -1045,6 +1397,14 @@ public class Workflow {
         }
     }
 
+    /**
+     * resolveTimeoutMillis.
+     * 
+     * @param workflowSession workflowSession
+     * @param configKey configKey
+     * @return the result
+     * @since 0.1.7
+     */
     private long resolveTimeoutMillis(WorkflowSession workflowSession, String configKey) {
         Double seconds = resolveTimeoutSeconds(workflowSession, configKey);
         if (seconds == null || seconds < 0) {
@@ -1053,6 +1413,14 @@ public class Workflow {
         return Math.round(seconds * 1000);
     }
 
+    /**
+     * resolveReceiveTimeoutMillis.
+     * 
+     * @param configuredTimeoutMs configuredTimeoutMs
+     * @param executionDeadlineNanos executionDeadlineNanos
+     * @return the result
+     * @since 0.1.7
+     */
     private long resolveReceiveTimeoutMillis(long configuredTimeoutMs, long executionDeadlineNanos) {
         long remainingExecutionMs = remainingExecutionMillis(executionDeadlineNanos);
         if (remainingExecutionMs < 0) {
@@ -1065,6 +1433,13 @@ public class Workflow {
         return Math.max(1L, Math.min(configuredTimeoutMs, cappedExecutionMs));
     }
 
+    /**
+     * remainingExecutionMillis.
+     * 
+     * @param executionDeadlineNanos executionDeadlineNanos
+     * @return the result
+     * @since 0.1.7
+     */
     private long remainingExecutionMillis(long executionDeadlineNanos) {
         if (executionDeadlineNanos < 0) {
             return -1L;
@@ -1073,27 +1448,51 @@ public class Workflow {
         return TimeUnit.NANOSECONDS.toMillis(Math.max(0L, remainingNanos));
     }
 
+    /**
+     * isExecutionDeadlineReached.
+     * 
+     * @param executionDeadlineNanos executionDeadlineNanos
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isExecutionDeadlineReached(long executionDeadlineNanos) {
         return executionDeadlineNanos >= 0 && System.nanoTime() >= executionDeadlineNanos;
     }
 
+    /**
+     * formatTimeoutSeconds.
+     * 
+     * @param timeoutMs timeoutMs
+     * @return the result
+     * @since 0.1.7
+     */
     private String formatTimeoutSeconds(long timeoutMs) {
         if (timeoutMs < 0) {
             return String.valueOf(timeoutMs);
         }
-        return BigDecimal.valueOf(timeoutMs)
-                .movePointLeft(3)
-                .stripTrailingZeros()
-                .toPlainString();
+        return BigDecimal.valueOf(timeoutMs).movePointLeft(3).stripTrailingZeros().toPlainString();
     }
 
+    /**
+     * buildWorkflowExecutionTimeout.
+     * 
+     * @param timeoutText timeoutText
+     * @return the result
+     * @since 0.1.7
+     */
     private RuntimeException buildWorkflowExecutionTimeout(String timeoutText) {
-        return ErrorHelper.buildError(
-                StatusCode.WORKFLOW_EXECUTION_TIMEOUT,
-                "timeout", timeoutText,
-                "workflow", card.str());
+        return ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTION_TIMEOUT, "timeout", timeoutText, "workflow",
+                card.str());
     }
 
+    /**
+     * executeWithWorkflowTimeout.
+     * 
+     * @param task task
+     * @param timeoutMs timeoutMs
+     * @return the result
+     * @since 0.1.7
+     */
     private <T> T executeWithWorkflowTimeout(Callable<T> task, long timeoutMs) {
         CompletableFuture<T> future = CompletableFuture.supplyAsync(() -> {
             try {
@@ -1129,6 +1528,14 @@ public class Workflow {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * resolveInterruptedOutputChunks.
+     * 
+     * @param executionResult executionResult
+     * @param outputChunks outputChunks
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> resolveInterruptedOutputChunks(Object executionResult, List<Object> outputChunks) {
         if (outputChunks != null && !outputChunks.isEmpty()) {
             return outputChunks;
@@ -1145,8 +1552,7 @@ public class Workflow {
         if (interrupt instanceof OutputSchema outputSchema) {
             return List.of(outputSchema);
         }
-        if (interrupt instanceof Map<?, ?> interruptMap
-                && interruptMap.containsKey("type")
+        if (interrupt instanceof Map<?, ?> interruptMap && interruptMap.containsKey("type")
                 && interruptMap.containsKey("payload")) {
             return List.of(OutputSchema.fromMap((Map<String, Object>) interruptMap));
         }
@@ -1155,10 +1561,11 @@ public class Workflow {
             for (Object item : interruptList) {
                 if (item instanceof OutputSchema outputSchema) {
                     recovered.add(outputSchema);
-                } else if (item instanceof Map<?, ?> itemMap
-                        && itemMap.containsKey("type")
+                } else if (item instanceof Map<?, ?> itemMap && itemMap.containsKey("type")
                         && itemMap.containsKey("payload")) {
                     recovered.add(OutputSchema.fromMap((Map<String, Object>) itemMap));
+                } else {
+                    // no-op
                 }
             }
             if (!recovered.isEmpty()) {
@@ -1168,24 +1575,43 @@ public class Workflow {
         return outputChunks;
     }
 
+    /**
+     * isInterrupted.
+     * 
+     * @param executionResult executionResult
+     * @param outputChunks outputChunks
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isInterrupted(Object executionResult, List<Object> outputChunks) {
         if (executionResult instanceof Map<?, ?> resultMap
                 && resultMap.containsKey(PregelConstants.TASK_STATUS_INTERRUPT)) {
             return true;
         }
         for (Object chunk : outputChunks) {
-            if (chunk instanceof OutputSchema outputSchema
-                    && Constant.INTERACTION.equals(outputSchema.getType())) {
+            if (chunk instanceof OutputSchema outputSchema && Constant.INTERACTION.equals(outputSchema.getType())) {
                 return true;
             }
         }
         return false;
     }
 
+    /**
+     * resetGraphExecutionState.
+     * 
+     * @since 0.1.7
+     */
     private void resetGraphExecutionState() {
         internal.reset();
     }
 
+    /**
+     * traceWorkflowStart.
+     * 
+     * @param workflowSession workflowSession
+     * @param inputs inputs
+     * @since 0.1.7
+     */
     private void traceWorkflowStart(WorkflowSession workflowSession, Object inputs) {
         if (workflowSession.tracer() == null) {
             return;
@@ -1193,6 +1619,12 @@ public class Workflow {
         TracerWorkflowUtils.traceWorkflowStart(workflowSession, inputs);
     }
 
+    /**
+     * traceWorkflowDone.
+     * 
+     * @param workflowSession workflowSession
+     * @since 0.1.7
+     */
     private void traceWorkflowDone(WorkflowSession workflowSession) {
         if (workflowSession.tracer() == null
                 || !(workflowSession.state() instanceof WorkflowStateCollection stateCollection)) {
@@ -1202,6 +1634,13 @@ public class Workflow {
         TracerWorkflowUtils.traceWorkflowDone(workflowSession, outputs);
     }
 
+    /**
+     * extractInnerSession.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private BaseSession extractInnerSession(Object session) {
         if (session instanceof BaseSession) {
             return (BaseSession) session;
@@ -1229,6 +1668,13 @@ public class Workflow {
         throw new IllegalArgumentException("Unsupported session type: " + session.getClass().getSimpleName());
     }
 
+    /**
+     * normalizeTitle.
+     * 
+     * @param title title
+     * @return the result
+     * @since 0.1.7
+     */
     private String normalizeTitle(Object title) {
         if (title == null) {
             return "";
@@ -1236,18 +1682,31 @@ public class Workflow {
         if (title instanceof String titleValue) {
             return titleValue;
         }
-        throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
-                "reason", "'title' type is not str");
+        throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID, "reason", "'title' type is not str");
     }
 
+    /**
+     * normalizeEnableAnimation.
+     * 
+     * @param enableAnimation enableAnimation
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean normalizeEnableAnimation(Object enableAnimation) {
         if (enableAnimation instanceof Boolean booleanValue) {
             return booleanValue;
         }
-        throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
-                "reason", "'enable_animation' type is not bool");
+        throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID, "reason",
+                "'enable_animation' type is not bool");
     }
 
+    /**
+     * normalizeExpandSubgraph.
+     * 
+     * @param expandSubgraph expandSubgraph
+     * @return the result
+     * @since 0.1.7
+     */
     private int normalizeExpandSubgraph(Object expandSubgraph) {
         if (expandSubgraph == null) {
             return 0;
@@ -1260,22 +1719,35 @@ public class Workflow {
             if (value >= 0) {
                 return value;
             }
-            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
-                    "reason", "'expand_subgraph' type is not bool");
+            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID, "reason",
+                    "'expand_subgraph' type is not bool");
         }
-        throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
-                "reason", "'expand_subgraph' type is not bool");
+        throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID, "reason",
+                "'expand_subgraph' type is not bool");
     }
 
+    /**
+     * validateSession.
+     * 
+     * @param session session
+     * @since 0.1.7
+     */
     private void validateSession(Object session) {
         if (session != null) {
             return;
         }
-        throw ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTE_SESSION_INVALID,
-                "reason", "session is required for workflow execution",
-                "workflow", card.str());
+        throw ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTE_SESSION_INVALID, "reason",
+                "session is required for workflow execution", "workflow", card.str());
     }
 
+    /**
+     * validateInputs.
+     * 
+     * @param inputs inputs
+     * @param skipInputsValidate skipInputsValidate
+     * @return the result
+     * @since 0.1.7
+     */
     private Object validateInputs(Object inputs, boolean skipInputsValidate) {
         Object schema = card.getInputParams();
         if (schema == null || inputs instanceof InteractiveInput) {
@@ -1291,13 +1763,17 @@ public class Workflow {
             }
             return SchemaUtils.formatWithSchema(inputMap, schemaMap, skipInputsValidate);
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTE_INPUT_INVALID,
-                    "inputs", String.valueOf(inputs),
-                    "reason", "input validation failed against schema: " + e.getMessage(),
-                    "workflow", card.str());
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTE_INPUT_INVALID, "inputs", String.valueOf(inputs),
+                    "reason", "input validation failed against schema: " + e.getMessage(), "workflow", card.str());
         }
     }
 
+    /**
+     * validateTopLevelInputSchema.
+     * 
+     * @param schemaMap schemaMap
+     * @since 0.1.7
+     */
     private void validateTopLevelInputSchema(Map<String, Object> schemaMap) {
         if (schemaMap == null || schemaMap.isEmpty()) {
             return;
@@ -1311,6 +1787,13 @@ public class Workflow {
         }
     }
 
+    /**
+     * resolveInputSchema.
+     * 
+     * @param schema schema
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> resolveInputSchema(Object schema) {
         if (schema instanceof Map<?, ?> schemaMap) {
             @SuppressWarnings("unchecked")
@@ -1323,6 +1806,13 @@ public class Workflow {
         return Map.of();
     }
 
+    /**
+     * convertInputsToMap.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> convertInputsToMap(Object inputs) {
         if (inputs == null) {
             return null;
@@ -1336,6 +1826,13 @@ public class Workflow {
         });
     }
 
+    /**
+     * resolveFinalStreamPayload.
+     * 
+     * @param workflowSession workflowSession
+     * @return the result
+     * @since 0.1.7
+     */
     private Object resolveFinalStreamPayload(WorkflowSession workflowSession) {
         if (!(workflowSession.state() instanceof WorkflowStateCollection stateCollection)) {
             return null;

@@ -11,14 +11,14 @@ import lombok.NoArgsConstructor;
 
 import java.nio.file.Path;
 
+/**
+ * Public class HarnessConfigInfo used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class HarnessConfigInfo used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class HarnessConfigInfo {
     private String id;

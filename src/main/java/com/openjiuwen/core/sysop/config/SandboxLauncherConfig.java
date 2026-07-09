@@ -14,6 +14,8 @@ import java.util.Map;
 
 /**
  * Launcher/runtime acquisition configuration for sandbox execution.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -34,6 +36,11 @@ public class SandboxLauncherConfig {
     private Integer idleTtlSeconds;
 
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> extraParams = new LinkedHashMap<>();
 
     private String baseUrl;

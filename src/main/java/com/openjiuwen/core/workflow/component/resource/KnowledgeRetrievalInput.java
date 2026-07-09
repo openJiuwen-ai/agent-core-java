@@ -10,13 +10,19 @@ import java.util.Map;
 
 /**
  * Input model for the Knowledge Retrieval component.
+ * 
+ * @since 0.1.7
  */
 @Data
 public class KnowledgeRetrievalInput {
     private String query;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromMap.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     public static KnowledgeRetrievalInput fromMap(Map<String, Object> inputs) {
         KnowledgeRetrievalInput input = new KnowledgeRetrievalInput();

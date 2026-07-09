@@ -27,26 +27,42 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Query rewriter with template loading, JSON parsing, and optional context-aware compression.
+ * 
+ * @since 0.1.7
  */
 public class QueryRewriter {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final BaseModelClient llmClient;
     private final ModelContext context;
     private final int compressRange;
     private final String promptLang;
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, String> templateCache = new ConcurrentHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * QueryRewriter.
+     * 
+     * @param llmClient llmClient
+     * @since 0.1.7
      */
     public QueryRewriter(BaseModelClient llmClient) {
         this(llmClient, null, 20, "zh");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * QueryRewriter.
+     * 
+     * @param llmClient llmClient
+     * @param context context
+     * @param compressRange compressRange
+     * @param promptLang promptLang
+     * @since 0.1.7
      */
     public QueryRewriter(BaseModelClient llmClient, ModelContext context, int compressRange, String promptLang) {
         this.llmClient = llmClient;
@@ -56,21 +72,25 @@ public class QueryRewriter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * rewrite.
+     * 
+     * @param query query
+     * @param results results
+     * @return the result
+     * @since 0.1.7
      */
     public String rewrite(String query, List<RetrievalResult> results) {
         if (query == null || query.isBlank()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_QUERY_REWRITER_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_INPUT_INVALID,
                     "query must be non-empty");
         }
         if (llmClient == null) {
             return fallbackRewrite(query, results);
         }
-        String contextText = results == null ? "" : results.stream()
-                .limit(5)
-                .map(RetrievalResult::getText)
-                .reduce("", (left, right) -> left.isBlank() ? right : left + "\n" + right);
+        String contextText = results == null
+                ? ""
+                : results.stream().limit(5).map(RetrievalResult::getText).reduce("",
+                        (left, right) -> left.isBlank() ? right : left + "\n" + right);
         String template = """
                 Rewrite the query to improve retrieval precision.
                 Original query:
@@ -85,9 +105,7 @@ public class QueryRewriter {
                 """;
         String prompt = fillTemplate(template, Map.of("query", query, "history", contextText));
         try {
-            Map<String, Object> rewritten = parseAndRepairSchema(
-                    llmCall(prompt),
-                    rewriteSchema(),
+            Map<String, Object> rewritten = parseAndRepairSchema(llmCall(prompt), rewriteSchema(),
                     StatusCode.RETRIEVAL_QUERY_REWRITER_OUTPUT_INVALID);
             String standalone = String.valueOf(rewritten.getOrDefault("standalone_query", ""));
             return standalone.isBlank() ? fallbackRewrite(query, results) : standalone;
@@ -97,7 +115,11 @@ public class QueryRewriter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * compress.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> compress(List<BaseMessage> messages) {
         ensureLlm();
@@ -108,18 +130,20 @@ public class QueryRewriter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * rewrite.
+     * 
+     * @param query query
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> rewrite(String query) {
         if (query == null || query.isBlank()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_QUERY_REWRITER_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_INPUT_INVALID,
                     "query must be non-empty");
         }
         ensureLlm();
         if (context == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_QUERY_REWRITER_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_INPUT_INVALID,
                     "context is required for context-aware rewrite");
         }
         List<BaseMessage> fullHistory = context.getMessages((Integer) null, true);
@@ -132,17 +156,18 @@ public class QueryRewriter {
             }
         }
         List<BaseMessage> history = context.getMessages(compressRange, true);
-        String prompt = fillTemplate(loadTemplate("intention_completion"), Map.of(
-                "history", msgToText(history),
-                "query", query));
-        return parseAndRepairSchema(
-                llmCall(prompt),
-                rewriteSchema(),
+        String prompt =
+            fillTemplate(loadTemplate("intention_completion"), Map.of("history", msgToText(history), "query", query));
+        return parseAndRepairSchema(llmCall(prompt), rewriteSchema(),
                 StatusCode.RETRIEVAL_QUERY_REWRITER_OUTPUT_INVALID);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadTemplate.
+     * 
+     * @param promptBase promptBase
+     * @return the result
+     * @since 0.1.7
      */
     public String loadTemplate(String promptBase) {
         String cacheKey = promptBase + "_" + promptLang;
@@ -150,21 +175,23 @@ public class QueryRewriter {
             String resource = "/com/openjiuwen/core/retrieval/query_rewriter/prompts/" + key + ".md";
             try (InputStream input = QueryRewriter.class.getResourceAsStream(resource)) {
                 if (input == null) {
-                    throw RetrievalExceptions.error(
-                            StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND,
+                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND,
                             "prompt file not found: " + resource);
                 }
                 return new String(input.readAllBytes(), StandardCharsets.UTF_8);
             } catch (IOException ex) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND,
                         "prompt file read failed: " + resource);
             }
         });
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * msgToText.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
      */
     public String msgToText(List<BaseMessage> messages) {
         List<BaseMessage> source = messages;
@@ -203,11 +230,13 @@ public class QueryRewriter {
             return null;
         }
         try {
-            return MAPPER.readValue(json, new TypeReference<>() {});
-        } catch (Exception first) {
+            return MAPPER.readValue(json, new TypeReference<>() {
+            });
+        } catch (JsonProcessingException first) {
             try {
-                return MAPPER.readValue(repairJson(json), new TypeReference<>() {});
-            } catch (Exception ignored) {
+                return MAPPER.readValue(repairJson(json), new TypeReference<>() {
+                });
+            } catch (JsonProcessingException ignored) {
                 return null;
             }
         }
@@ -215,8 +244,7 @@ public class QueryRewriter {
 
     static Map<String, Object> schemaRepair(Map<String, Object> output, Map<String, Class<?>> schema) {
         if (output == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_QUERY_REWRITER_OUTPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_OUTPUT_INVALID,
                     "output must be a dict");
         }
         Map<String, Object> repaired = new LinkedHashMap<>();
@@ -237,6 +265,15 @@ public class QueryRewriter {
         return repaired;
     }
 
+    /**
+     * parseAndRepairSchema.
+     * 
+     * @param response response
+     * @param schema schema
+     * @param status status
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> parseAndRepairSchema(String response, Map<String, Class<?>> schema, StatusCode status) {
         String json = extractJson(response);
         Map<String, Object> parsed = parseLlmJson(json);
@@ -246,40 +283,47 @@ public class QueryRewriter {
         return schemaRepair(parsed, schema);
     }
 
+    /**
+     * llmCall.
+     * 
+     * @param prompt prompt
+     * @return the result
+     * @since 0.1.7
+     */
     private String llmCall(String prompt) {
         try {
-            AssistantMessage response = llmClient.invoke(
-                    List.of(Map.of("role", "user", "content", prompt)),
-                    null,
-                    0.0f,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    Map.of());
+            AssistantMessage response = llmClient.invoke(List.of(Map.of("role", "user", "content", prompt)), null, 0.0f,
+                    null, null, null, null, null, null, Map.of());
             if (response == null) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED,
                         "LLM returned null");
             }
             return response.getContentAsString();
-        } catch (RuntimeException ex) {
-            throw ex;
         } catch (Exception ex) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED, ex.getMessage());
         }
     }
 
+    /**
+     * ensureLlm.
+     * 
+     * @since 0.1.7
+     */
     private void ensureLlm() {
         if (llmClient == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_LLM_INVOKE_FAILED,
                     "llm_client is required");
         }
     }
 
+    /**
+     * fallbackRewrite.
+     * 
+     * @param query query
+     * @param results results
+     * @return the result
+     * @since 0.1.7
+     */
     private static String fallbackRewrite(String query, List<RetrievalResult> results) {
         if (results == null || results.isEmpty()) {
             return query;
@@ -288,6 +332,13 @@ public class QueryRewriter {
         return query + " " + first;
     }
 
+    /**
+     * stringify.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringify(Object value) {
         if (value == null) {
             return "";
@@ -298,6 +349,13 @@ public class QueryRewriter {
         return writeJson(value);
     }
 
+    /**
+     * writeJson.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String writeJson(Object value) {
         try {
             return MAPPER.writeValueAsString(value);
@@ -306,10 +364,24 @@ public class QueryRewriter {
         }
     }
 
+    /**
+     * repairJson.
+     * 
+     * @param json json
+     * @return the result
+     * @since 0.1.7
+     */
     private static String repairJson(String json) {
         return json.replaceAll(",\\s*([}\\]])", "$1");
     }
 
+    /**
+     * defaultValue.
+     * 
+     * @param type type
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object defaultValue(Class<?> type) {
         if (type == String.class) {
             return "";
@@ -320,11 +392,19 @@ public class QueryRewriter {
         if (type == Map.class) {
             return new LinkedHashMap<>();
         }
-        throw RetrievalExceptions.error(
-                StatusCode.RETRIEVAL_QUERY_REWRITER_OUTPUT_INVALID,
+        throw RetrievalExceptions.error(StatusCode.RETRIEVAL_QUERY_REWRITER_OUTPUT_INVALID,
                 "unsupported field type: " + type.getSimpleName());
     }
 
+    /**
+     * coerce.
+     * 
+     * @param type type
+     * @param field field
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object coerce(Class<?> type, String field, Object value) {
         if (type == String.class) {
             return stringify(value);
@@ -351,6 +431,13 @@ public class QueryRewriter {
         return value;
     }
 
+    /**
+     * normalizeTypo.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Map<String, Object>> normalizeTypo(Object value) {
         List<?> rawList = value instanceof List<?> list ? list : List.of(value);
         List<Map<String, Object>> repaired = new ArrayList<>();
@@ -375,10 +462,22 @@ public class QueryRewriter {
         return repaired;
     }
 
+    /**
+     * compressSchema.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Class<?>> compressSchema() {
         return Map.of("theme", List.class, "summary", String.class);
     }
 
+    /**
+     * rewriteSchema.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Class<?>> rewriteSchema() {
         Map<String, Class<?>> schema = new LinkedHashMap<>();
         schema.put("before", String.class);

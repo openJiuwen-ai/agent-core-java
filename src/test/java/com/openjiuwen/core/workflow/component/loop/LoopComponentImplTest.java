@@ -1,7 +1,12 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.workflow.component.loop;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -18,12 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class LoopComponentImplTest {
-
     @Test
     void rejectsFractionalLoopNumber() {
         BaseError error = assertThrows(BaseError.class, () -> invokeFlow(5.5, baseInputs()));
@@ -59,24 +59,21 @@ class LoopComponentImplTest {
         flow.setEndComp("end", new End(), Map.of("end_out", "${loop}"), null, null, null, null);
 
         LoopGroup loopGroup = new LoopGroup();
-        loopGroup.addWorkflowComp("loop_1", new AddTenNode(), true,
-                Map.of("source", "${loop.index}"), null, null, null, null);
-        loopGroup.addWorkflowComp("loop_2", new AddTenNode(), true,
-                Map.of("source", "${loop.user_num}"), null, null, null, null);
+        loopGroup.addWorkflowComp("loop_1", new AddTenNode(), true, Map.of("source", "${loop.index}"), null, null, null,
+                null);
+        loopGroup.addWorkflowComp("loop_2", new AddTenNode(), true, Map.of("source", "${loop.user_num}"), null, null,
+                null, null);
         loopGroup.addWorkflowComp("loop_3",
-                new LoopSetVariableComponent(Map.of("${loop.user_num}", "${loop_2.result}")),
-                true, null, null, null, null, null);
+                new LoopSetVariableComponent(Map.of("${loop.user_num}", "${loop_2.result}")), true, null, null, null,
+                null, null);
         loopGroup.startNodes(List.of("loop_1"));
         loopGroup.endNodes(List.of("loop_3"));
         loopGroup.addConnection("loop_1", "loop_2");
         loopGroup.addConnection("loop_2", "loop_3");
 
-        LoopComponentImpl loopComponent = new LoopComponentImpl(
-                loopGroup,
-                Map.of("l_out1", "${loop_1.result}", "l_out2", "${loop_2.result}"));
-        flow.addWorkflowComp("loop", loopComponent, Map.of(
-                "loop_type", "number",
-                "loop_number", loopNumber,
+        LoopComponentImpl loopComponent =
+            new LoopComponentImpl(loopGroup, Map.of("l_out1", "${loop_1.result}", "l_out2", "${loop_2.result}"));
+        flow.addWorkflowComp("loop", loopComponent, Map.of("loop_type", "number", "loop_number", loopNumber,
                 "intermediate_var", Map.of("user_num", "${start.input_num}")), null);
 
         flow.addConnection("start", "loop");

@@ -30,16 +30,21 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.store.inmemory.InMemoryStore}.
  * Stores the latest graph state per session ID and namespace.
+ * 
+ * @since 0.1.7
  */
 public class InMemoryStore implements Store {
-
-    /** Nested map: sessionId → (ns → state). */
     private final Map<String, Map<String, GraphStoreState>> storeCk = new ConcurrentHashMap<>();
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Optional<GraphStoreState> get(String sessionId, String ns) {
         Map<String, GraphStoreState> sessionMap = storeCk.get(sessionId);
         if (sessionMap == null) {
@@ -49,19 +54,27 @@ public class InMemoryStore implements Store {
         return Optional.ofNullable(deepCopy(state));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * save.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @param state state
+     * @since 0.1.7
      */
+    @Override
     public void save(String sessionId, String ns, GraphStoreState state) {
-        storeCk.computeIfAbsent(sessionId, k -> new ConcurrentHashMap<>())
-                .put(ns, deepCopy(state));
+        storeCk.computeIfAbsent(sessionId, k -> new ConcurrentHashMap<>()).put(ns, deepCopy(state));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * delete.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @since 0.1.7
      */
+    @Override
     public void delete(String sessionId, String ns) {
         Map<String, GraphStoreState> sessionMap = storeCk.get(sessionId);
         if (sessionMap == null) {
@@ -78,6 +91,13 @@ public class InMemoryStore implements Store {
         }
     }
 
+    /**
+     * deleteNsByPrefix.
+     * 
+     * @param subMap subMap
+     * @param prefix prefix
+     * @since 0.1.7
+     */
     private static void deleteNsByPrefix(Map<String, GraphStoreState> subMap, String prefix) {
         Iterator<String> it = subMap.keySet().iterator();
         while (it.hasNext()) {
@@ -89,22 +109,30 @@ public class InMemoryStore implements Store {
 
     /**
      * Recursive copy of graph state for Python copy.deepcopy-style store isolation.
+     * 
+     * @param state state
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
     private static GraphStoreState deepCopy(GraphStoreState state) {
         if (state == null) {
             return null;
         }
-        return GraphStoreState.create(
-                state.getNs(),
-                state.getStep(),
+        return GraphStoreState.create(state.getNs(), state.getStep(),
                 (Map<String, Object>) copyValue(state.getChannelValues()),
                 (List<Message>) copyValue(state.getPendingBuffer()),
                 (Map<String, PendingNode>) copyValue(state.getPendingNode()),
-                (Map<String, Integer>) copyValue(state.getNodeVersion())
-        );
+                (Map<String, Integer>) copyValue(state.getNodeVersion()));
     }
 
+    /**
+     * copyValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object copyValue(Object value) {
         if (value == null || isImmutableValue(value)) {
             return value;
@@ -168,15 +196,16 @@ public class InMemoryStore implements Store {
         throw new IllegalArgumentException("Unsupported graph state value for deep copy: " + type.getName());
     }
 
+    /**
+     * isImmutableValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isImmutableValue(Object value) {
-        return value instanceof String
-                || value instanceof Number
-                || value instanceof Boolean
-                || value instanceof Character
-                || value instanceof Enum<?>
-                || value instanceof BigInteger
-                || value instanceof BigDecimal
-                || value instanceof Temporal
-                || value instanceof Throwable;
+        return value instanceof String || value instanceof Number || value instanceof Boolean
+                || value instanceof Character || value instanceof Enum<?> || value instanceof BigInteger
+                || value instanceof BigDecimal || value instanceof Temporal || value instanceof Throwable;
     }
 }

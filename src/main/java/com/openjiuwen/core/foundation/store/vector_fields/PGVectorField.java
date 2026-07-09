@@ -11,35 +11,51 @@ import java.util.Map;
  * Index configuration for PGVector database.
  * <p>
  * Supports HNSW and IVFFlat algorithms.
+ * 
+ * @since 0.1.7
  */
 public class PGVectorField extends VectorField {
-
     private String indexType = "hnsw";
     private int m = 16;
     private int efConstruction = 64;
     private int efSearch = 40;
     private int lists = 100;
     private int probes = 1;
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> extraSearch = new HashMap<>();
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDatabaseType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getDatabaseType() {
         return "pg";
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getIndexType() {
         return indexType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setIndexType.
+     * 
+     * @param indexType indexType
+     * @since 0.1.7
      */
     public void setIndexType(String indexType) {
         if (!("hnsw".equals(indexType) || "ivfflat".equals(indexType))) {
@@ -49,14 +65,20 @@ public class PGVectorField extends VectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getM.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getM() {
         return m;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setM.
+     * 
+     * @param m m
+     * @since 0.1.7
      */
     public void setM(int m) {
         if (m < 2 || m > 2000) {
@@ -66,14 +88,20 @@ public class PGVectorField extends VectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEfConstruction.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getEfConstruction() {
         return efConstruction;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEfConstruction.
+     * 
+     * @param efConstruction efConstruction
+     * @since 0.1.7
      */
     public void setEfConstruction(int efConstruction) {
         if (efConstruction < 1) {
@@ -83,14 +111,20 @@ public class PGVectorField extends VectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEfSearch.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getEfSearch() {
         return efSearch;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEfSearch.
+     * 
+     * @param efSearch efSearch
+     * @since 0.1.7
      */
     public void setEfSearch(int efSearch) {
         if (efSearch < 1) {
@@ -100,14 +134,20 @@ public class PGVectorField extends VectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLists.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getLists() {
         return lists;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLists.
+     * 
+     * @param lists lists
+     * @since 0.1.7
      */
     public void setLists(int lists) {
         if (lists < 1) {
@@ -117,14 +157,20 @@ public class PGVectorField extends VectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getProbes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getProbes() {
         return probes;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setProbes.
+     * 
+     * @param probes probes
+     * @since 0.1.7
      */
     public void setProbes(int probes) {
         if (probes < 1) {
@@ -134,23 +180,33 @@ public class PGVectorField extends VectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtraSearch.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getExtraSearch() {
         return extraSearch;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setExtraSearch.
+     * 
+     * @param extraSearch extraSearch
+     * @since 0.1.7
      */
     public void setExtraSearch(Map<String, Object> extraSearch) {
         this.extraSearch = extraSearch != null ? extraSearch : new HashMap<>();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toDict.
+     * 
+     * @param stage stage
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> toDict(String stage) {
         Map<String, Object> result = new HashMap<>();
         if (STAGE_CONSTRUCT.equals(stage)) {

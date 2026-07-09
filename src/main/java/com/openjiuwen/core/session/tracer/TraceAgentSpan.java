@@ -10,32 +10,44 @@ import java.util.Map;
  * Agent trace span with invoke type, name, and metadata.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.tracer.span.TraceAgentSpan}.
+ * 
+ * @since 0.1.7
  */
 public class TraceAgentSpan extends Span {
-
     private String invokeType;
     private String name;
     private String elapsedTime;
     private Map<String, Object> metaData;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TraceAgentSpan.
+     * 
+     * @since 0.1.7
      */
     public TraceAgentSpan() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TraceAgentSpan.
+     * 
+     * @param traceId traceId
+     * @param invokeId invokeId
+     * @param parentInvokeId parentInvokeId
+     * @since 0.1.7
      */
     public TraceAgentSpan(String traceId, String invokeId, String parentInvokeId) {
         super(traceId, invokeId, parentInvokeId);
     }
 
+    /**
+     * setField.
+     * 
+     * @param fieldName fieldName
+     * @param value value
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected void setField(String fieldName, Object value) {
         switch (fieldName) {
             case "invoke_type":
@@ -66,10 +78,13 @@ public class TraceAgentSpan extends Span {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * snapshot.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public TraceAgentSpan snapshot() {
         TraceAgentSpan copy = new TraceAgentSpan();
         copyBaseFields(copy);
@@ -81,56 +96,80 @@ public class TraceAgentSpan extends Span {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInvokeType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getInvokeType() {
         return invokeType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInvokeType.
+     * 
+     * @param invokeType invokeType
+     * @since 0.1.7
      */
     public void setInvokeType(String invokeType) {
         this.invokeType = invokeType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setName.
+     * 
+     * @param name name
+     * @since 0.1.7
      */
     public void setName(String name) {
         this.name = name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getElapsedTime.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getElapsedTime() {
         return elapsedTime;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setElapsedTime.
+     * 
+     * @param elapsedTime elapsedTime
+     * @since 0.1.7
      */
     public void setElapsedTime(String elapsedTime) {
         this.elapsedTime = elapsedTime;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetaData.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMetaData() {
         return metaData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMetaData.
+     * 
+     * @param metaData metaData
+     * @since 0.1.7
      */
     public void setMetaData(Map<String, Object> metaData) {
         this.metaData = metaData;

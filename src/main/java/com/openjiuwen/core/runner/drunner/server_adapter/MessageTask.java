@@ -10,13 +10,19 @@ import java.util.concurrent.Future;
 
 /**
  * Associates a distributed request message with its in-flight execution task.
+ * 
+ * @since 0.1.7
  */
 public class MessageTask {
     private final DmqRequestMessage message;
     private final Future<?> task;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MessageTask.
+     * 
+     * @param message message
+     * @param task task
+     * @since 0.1.7
      */
     public MessageTask(DmqRequestMessage message, Future<?> task) {
         this.message = message;
@@ -24,14 +30,20 @@ public class MessageTask {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMessage.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public DmqRequestMessage getMessage() {
         return message;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTask.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Future<?> getTask() {
         return task;

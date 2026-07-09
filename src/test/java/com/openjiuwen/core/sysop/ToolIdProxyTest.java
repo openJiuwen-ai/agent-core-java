@@ -1,18 +1,18 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.sysop;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for ToolIdProxy.
  */
 class ToolIdProxyTest {
-
     @Test
     @DisplayName("toolId generates correct format: cardId.opType.methodName")
     void testToolIdFormat() {

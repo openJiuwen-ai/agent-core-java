@@ -13,6 +13,8 @@ import java.util.List;
 
 /**
  * Per-round budget control for large tool results.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -31,6 +33,11 @@ public class ToolResultBudgetProcessorConfig {
     private List<String> toolNameAllowlist;
 
     @Builder.Default
+    /**
+     * List.of.
+     * 
+     * @since 0.1.7
+     */
     private List<String> offloadMessageType = List.of("tool");
 
     @Builder.Default
@@ -41,7 +48,9 @@ public class ToolResultBudgetProcessorConfig {
     private Integer messagesToKeep;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validate.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         if (tokensThreshold <= 0) {

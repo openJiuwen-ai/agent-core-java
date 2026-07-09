@@ -8,6 +8,8 @@ package com.openjiuwen.core.workflow;
  * Possible states of workflow execution.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.base.WorkflowExecutionState}.
+ * 
+ * @since 0.1.7
  */
 public enum WorkflowExecutionState {
     COMPLETED,

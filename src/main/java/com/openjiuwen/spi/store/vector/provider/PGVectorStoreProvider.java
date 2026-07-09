@@ -15,16 +15,17 @@ import java.util.Map;
  * <p>
  * Creates vector store instances backed by PostgreSQL with the pgvector extension,
  * enabling vector similarity search within a relational database environment.
- *
- * @since 0.1.12
+ * 
  * @see VectorStoreProvider
  * @see com.openjiuwen.core.foundation.store.vector.PGVectorStore
+ * @since 0.1.7
  */
 public final class PGVectorStoreProvider implements VectorStoreProvider {
     /**
-     * Returns the PGVector store type name.
-     *
-     * @return the type name "pgvector"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -33,9 +34,10 @@ public final class PGVectorStoreProvider implements VectorStoreProvider {
 
     /**
      * Creates a new PGVector store instance.
-     *
+     * 
      * @param conf the configuration map for PostgreSQL/pgvector connection
      * @return a new PGVectorStore instance
+     * @since 0.1.7
      */
     @Override
     public BaseVectorStore create(Map<String, Object> conf) {

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.foundation.llm.model_clients;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -12,13 +13,21 @@ import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
-import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
+
+import okhttp3.Call;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,75 +44,95 @@ import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.TimeUnit;
 
-import okhttp3.Call;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
-
 /**
  * Basic OpenAI-compatible HTTP client used by the built-in providers.
+ * 
+ * @since 0.1.7
  */
 public class OpenAiCompatibleModelClient extends BaseModelClient {
-
     private static final Logger LOG = LoggerFactory.getLogger(OpenAiCompatibleModelClient.class);
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * MediaType.get.
+     * 
+     * @param charset=utf-8" charset=utf-8"
+     * @since 0.1.7
+     */
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
     private final OkHttpClient httpClient;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OpenAiCompatibleModelClient.
+     * 
+     * @param modelConfig modelConfig
+     * @param modelClientConfig modelClientConfig
+     * @since 0.1.7
      */
     public OpenAiCompatibleModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         super(modelConfig, modelClientConfig);
         this.httpClient = buildOkHttpClient(modelClientConfig.getTimeout());
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getClientName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected String getClientName() {
         return "OpenAI-compatible client";
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * validateConfig.
+     * 
+     * @since 0.1.7
      */
+    @Override
     protected void validateConfig() {
         if (modelClientConfig.getApiKey() == null || modelClientConfig.getApiKey().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "error_msg", "model client config api_key is required for OpenAI-compatible client.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR, "error_msg",
+                    "model client config api_key is required for OpenAI-compatible client.");
         }
         if (modelClientConfig.getApiBase() == null || modelClientConfig.getApiBase().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "error_msg", "model client config api_base is required for OpenAI-compatible client.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR, "error_msg",
+                    "model client config api_base is required for OpenAI-compatible client.");
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param messages messages
+     * @param tools tools
+     * @param temperature temperature
+     * @param topP topP
+     * @param model model
+     * @param maxTokens maxTokens
+     * @param stop stop
+     * @param outputParser outputParser
+     * @param timeout timeout
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public AssistantMessage invoke(Object messages,
-                                   Object tools,
-                                   Float temperature,
-                                   Float topP,
-                                   String model,
-                                   Integer maxTokens,
-                                   String stop,
-                                   BaseOutputParser outputParser,
-                                   Float timeout,
-                                   Map<String, Object> kwargs) throws Exception {
-        Map<String, Object> params = buildRequestParams(
-                messages, tools,
-                temperature != null ? temperature.doubleValue() : null,
-                topP != null ? topP.doubleValue() : null,
-                model, stop, maxTokens, false, kwargs);
+    @Override
+    public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+            Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs)
+            throws Exception {
+        Map<String, Object> params =
+            buildRequestParams(messages, tools, temperature != null ? temperature.doubleValue() : null,
+                    topP != null ? topP.doubleValue() : null, model, stop, maxTokens, false, kwargs);
 
         Call call = httpClient.newCall(buildRequest(params, timeout));
         applyCallTimeout(call, timeout);
@@ -117,25 +146,30 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param messages messages
+     * @param tools tools
+     * @param temperature temperature
+     * @param topP topP
+     * @param model model
+     * @param maxTokens maxTokens
+     * @param stop stop
+     * @param outputParser outputParser
+     * @param timeout timeout
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public Iterator<AssistantMessageChunk> stream(Object messages,
-                                                  Object tools,
-                                                  Float temperature,
-                                                  Float topP,
-                                                  String model,
-                                                  Integer maxTokens,
-                                                  String stop,
-                                                  BaseOutputParser outputParser,
-                                                  Float timeout,
-                                                  Map<String, Object> kwargs) throws Exception {
-        Map<String, Object> params = buildRequestParams(
-                messages, tools,
-                temperature != null ? temperature.doubleValue() : null,
-                topP != null ? topP.doubleValue() : null,
-                model, stop, maxTokens, true, kwargs);
+    @Override
+    public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+            String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+            Map<String, Object> kwargs) throws Exception {
+        Map<String, Object> params =
+            buildRequestParams(messages, tools, temperature != null ? temperature.doubleValue() : null,
+                    topP != null ? topP.doubleValue() : null, model, stop, maxTokens, true, kwargs);
 
         Call call = httpClient.newCall(buildRequest(params, timeout));
         applyCallTimeout(call, timeout);
@@ -150,72 +184,112 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         return new StreamingChunkIterator(body.byteStream(), resolveModelName(model, null), outputParser);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * generateImage.
+     * 
+     * @param messages messages
+     * @param model model
+     * @param size size
+     * @param negativePrompt negativePrompt
+     * @param n n
+     * @param promptExtend promptExtend
+     * @param watermark watermark
+     * @param seed seed
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public ImageGenerationResponse generateImage(List<UserMessage> messages,
-                                                 String model,
-                                                 String size,
-                                                 String negativePrompt,
-                                                 int n,
-                                                 boolean promptExtend,
-                                                 boolean watermark,
-                                                 int seed,
-                                                 Map<String, Object> kwargs) throws Exception {
+    @Override
+    public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+            String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed, Map<String, Object> kwargs)
+            throws Exception {
         throw new UnsupportedOperationException("Image generation is not supported by the built-in HTTP client");
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * generateSpeech.
+     * 
+     * @param messages messages
+     * @param model model
+     * @param voice voice
+     * @param languageType languageType
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public AudioGenerationResponse generateSpeech(List<UserMessage> messages,
-                                                  String model,
-                                                  String voice,
-                                                  String languageType,
-                                                  Map<String, Object> kwargs) throws Exception {
+    @Override
+    public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+            String languageType, Map<String, Object> kwargs) throws Exception {
         throw new UnsupportedOperationException("Speech generation is not supported by the built-in HTTP client");
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * generateVideo.
+     * 
+     * @param messages messages
+     * @param imgUrl imgUrl
+     * @param audioUrl audioUrl
+     * @param model model
+     * @param size size
+     * @param resolution resolution
+     * @param duration duration
+     * @param promptExtend promptExtend
+     * @param watermark watermark
+     * @param negativePrompt negativePrompt
+     * @param seed seed
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public VideoGenerationResponse generateVideo(List<UserMessage> messages,
-                                                 String imgUrl,
-                                                 String audioUrl,
-                                                 String model,
-                                                 String size,
-                                                 String resolution,
-                                                 int duration,
-                                                 boolean promptExtend,
-                                                 boolean watermark,
-                                                 String negativePrompt,
-                                                 Integer seed,
-                                                 Map<String, Object> kwargs) throws Exception {
+    @Override
+    public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+            String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+            String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception {
         throw new UnsupportedOperationException("Video generation is not supported by the built-in HTTP client");
     }
 
+    /**
+     * buildRequest.
+     * 
+     * @param params params
+     * @param timeoutOverride timeoutOverride
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private Request buildRequest(Map<String, Object> params, Float timeoutOverride) throws Exception {
         String body = MAPPER.writeValueAsString(params);
-        Request.Builder builder = new Request.Builder()
-                .url(normalizedApiBase() + "/chat/completions");
+        Request.Builder builder = new Request.Builder().url(normalizedApiBase() + "/chat/completions");
         applyConfiguredHeaders(builder, true);
         builder.post(RequestBody.create(body, JSON));
         return builder.build();
     }
 
+    /**
+     * buildOkHttpClient.
+     * 
+     * @param timeoutSeconds timeoutSeconds
+     * @return the result
+     * @since 0.1.7
+     */
     private OkHttpClient buildOkHttpClient(double timeoutSeconds) {
         Duration timeout = resolveTimeout(timeoutSeconds);
-        OkHttpClient.Builder builder = new OkHttpClient.Builder()
-                .connectTimeout(timeout)
-                .readTimeout(timeout)
-                .writeTimeout(timeout);
+        OkHttpClient.Builder builder =
+            new OkHttpClient.Builder().connectTimeout(timeout).readTimeout(timeout).writeTimeout(timeout);
         OkHttpProxySupport.configureFromEnvironment(builder, modelClientConfig.getApiBase());
         return builder.build();
     }
 
+    /**
+     * applyConfiguredHeaders.
+     * 
+     * @param builder builder
+     * @param includeJsonContentType includeJsonContentType
+     * @since 0.1.7
+     */
     private void applyConfiguredHeaders(Request.Builder builder, boolean includeJsonContentType) {
         if (includeJsonContentType) {
             builder.header("Content-Type", "application/json");
@@ -231,11 +305,27 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         }
     }
 
+    /**
+     * responseBody.
+     * 
+     * @param response response
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private static String responseBody(Response response) throws IOException {
         ResponseBody body = response.body();
         return body == null ? "" : body.string();
     }
 
+    /**
+     * responseBodyOrNull.
+     * 
+     * @param response response
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private static String responseBodyOrNull(Response response) throws IOException {
         if (response.isSuccessful()) {
             return null;
@@ -243,6 +333,13 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         return responseBody(response);
     }
 
+    /**
+     * applyCallTimeout.
+     * 
+     * @param call call
+     * @param timeoutOverride timeoutOverride
+     * @since 0.1.7
+     */
     private static void applyCallTimeout(Call call, Float timeoutOverride) {
         if (timeoutOverride == null) {
             return;
@@ -250,15 +347,35 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         call.timeout().timeout(resolveTimeout(timeoutOverride).toMillis(), TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * normalizedApiBase.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String normalizedApiBase() {
         return modelClientConfig.getApiBase().strip().replaceAll("/+$", "");
     }
 
+    /**
+     * resolveTimeout.
+     * 
+     * @param seconds seconds
+     * @return the result
+     * @since 0.1.7
+     */
     private static Duration resolveTimeout(double seconds) {
         long millis = Math.max(1_000L, Math.round(seconds * 1_000));
         return Duration.ofMillis(millis);
     }
 
+    /**
+     * ensureSuccess.
+     * 
+     * @param statusCode statusCode
+     * @param body body
+     * @since 0.1.7
+     */
     private static void ensureSuccess(int statusCode, String body) {
         if (statusCode >= 200 && statusCode < 300) {
             return;
@@ -267,9 +384,18 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         throw new RuntimeException("HTTP " + statusCode + ": " + responseBody);
     }
 
-    private AssistantMessage parseAssistantMessage(Map<String, Object> responseMap,
-                                                   String resolvedModel,
-                                                   BaseOutputParser outputParser) throws Exception {
+    /**
+     * parseAssistantMessage.
+     * 
+     * @param responseMap responseMap
+     * @param resolvedModel resolvedModel
+     * @param outputParser outputParser
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    private AssistantMessage parseAssistantMessage(Map<String, Object> responseMap, String resolvedModel,
+            BaseOutputParser outputParser) throws Exception {
         List<Map<String, Object>> choices = asListOfMaps(responseMap.get("choices"));
         if (choices == null || choices.isEmpty()) {
             throw new RuntimeException("No choices in response: " + responseMap);
@@ -288,20 +414,24 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         Object parserContent = parseWithOutputParser(content, outputParser);
         List<ToolCall> toolCalls = AssistantMessage.convertOpenAiToolCalls(asListOfMaps(message.get("tool_calls")));
 
-        return AssistantMessage.builder()
-                .content(content)
-                .toolCalls(toolCalls)
+        return AssistantMessage.builder().content(content).toolCalls(toolCalls)
                 .usageMetadata(buildUsageMetadata(responseMap.get("usage"), resolvedModel))
-                .finishReason(resolveFinishReason(choice.get("finish_reason"), toolCalls))
-                .parserContent(parserContent)
-                .reasoningContent(asString(message.get("reasoning_content")))
-                .build();
+                .finishReason(resolveFinishReason(choice.get("finish_reason"), toolCalls)).parserContent(parserContent)
+                .reasoningContent(asString(message.get("reasoning_content"))).build();
     }
 
-    private AssistantMessageChunk parseStreamChunk(Map<String, Object> event,
-                                                   String resolvedModel,
-                                                   BaseOutputParser outputParser,
-                                                   StringBuilder parserBuffer) {
+    /**
+     * parseStreamChunk.
+     * 
+     * @param event event
+     * @param resolvedModel resolvedModel
+     * @param outputParser outputParser
+     * @param parserBuffer parserBuffer
+     * @return the result
+     * @since 0.1.7
+     */
+    private AssistantMessageChunk parseStreamChunk(Map<String, Object> event, String resolvedModel,
+            BaseOutputParser outputParser, StringBuilder parserBuffer) {
         List<Map<String, Object>> choices = asListOfMaps(event.get("choices"));
         UsageMetadata usageMetadata = buildUsageMetadata(event.get("usage"), resolvedModel);
 
@@ -309,42 +439,38 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
             if (usageMetadata == null) {
                 return null;
             }
-            return AssistantMessageChunk.builder()
-                    .content("")
-                    .usageMetadata(usageMetadata)
-                    .finishReason("null")
+            return AssistantMessageChunk.builder().content("").usageMetadata(usageMetadata).finishReason("null")
                     .build();
         }
 
         Map<String, Object> choice = choices.get(0);
         Map<String, Object> delta = asMap(choice.get("delta"));
         Object content = delta != null ? delta.get("content") : "";
-        List<ToolCall> toolCalls = delta == null
-                ? null
-                : AssistantMessage.convertOpenAiToolCalls(asListOfMaps(delta.get("tool_calls")));
+        List<ToolCall> toolCalls =
+            delta == null ? null : AssistantMessage.convertOpenAiToolCalls(asListOfMaps(delta.get("tool_calls")));
         String reasoningContent = delta == null ? null : asString(delta.get("reasoning_content"));
         String finishReason = asString(choice.get("finish_reason"));
         String normalizedFinishReason = finishReason == null || finishReason.isBlank() ? "null" : finishReason;
         Object parserContent = parseStreamingContent(content, outputParser, parserBuffer);
 
-        if (isEmptyContent(content)
-                && (toolCalls == null || toolCalls.isEmpty())
-                && reasoningContent == null
-                && usageMetadata == null
-                && "null".equals(normalizedFinishReason)) {
+        if (isEmptyContent(content) && (toolCalls == null || toolCalls.isEmpty()) && reasoningContent == null
+                && usageMetadata == null && "null".equals(normalizedFinishReason)) {
             return null;
         }
 
-        return AssistantMessageChunk.builder()
-                .content(content == null ? "" : content)
-                .toolCalls(toolCalls)
-                .usageMetadata(usageMetadata)
-                .finishReason(normalizedFinishReason)
-                .parserContent(parserContent)
-                .reasoningContent(reasoningContent)
-                .build();
+        return AssistantMessageChunk.builder().content(content == null ? "" : content).toolCalls(toolCalls)
+                .usageMetadata(usageMetadata).finishReason(normalizedFinishReason).parserContent(parserContent)
+                .reasoningContent(reasoningContent).build();
     }
 
+    /**
+     * parseWithOutputParser.
+     * 
+     * @param content content
+     * @param outputParser outputParser
+     * @return the result
+     * @since 0.1.7
+     */
     private Object parseWithOutputParser(Object content, BaseOutputParser outputParser) {
         if (outputParser == null || isEmptyContent(content)) {
             return null;
@@ -357,9 +483,16 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         }
     }
 
-    private Object parseStreamingContent(Object content,
-                                         BaseOutputParser outputParser,
-                                         StringBuilder parserBuffer) {
+    /**
+     * parseStreamingContent.
+     * 
+     * @param content content
+     * @param outputParser outputParser
+     * @param parserBuffer parserBuffer
+     * @return the result
+     * @since 0.1.7
+     */
+    private Object parseStreamingContent(Object content, BaseOutputParser outputParser, StringBuilder parserBuffer) {
         if (outputParser == null || isEmptyContent(content)) {
             return null;
         }
@@ -375,6 +508,14 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         }
     }
 
+    /**
+     * resolveModelName.
+     * 
+     * @param explicitModel explicitModel
+     * @param responseMap responseMap
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveModelName(String explicitModel, Map<String, Object> responseMap) {
         if (explicitModel != null && !explicitModel.isBlank()) {
             return explicitModel;
@@ -388,6 +529,14 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         return "";
     }
 
+    /**
+     * buildUsageMetadata.
+     * 
+     * @param usageObject usageObject
+     * @param modelName modelName
+     * @return the result
+     * @since 0.1.7
+     */
     private UsageMetadata buildUsageMetadata(Object usageObject, String modelName) {
         Map<String, Object> usage = asMap(usageObject);
         if (usage == null && (modelName == null || modelName.isBlank())) {
@@ -400,15 +549,20 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
             cacheTokens = toInt(promptTokenDetails.get("cached_tokens"));
         }
 
-        return UsageMetadata.builder()
-                .modelName(modelName == null ? "" : modelName)
+        return UsageMetadata.builder().modelName(modelName == null ? "" : modelName)
                 .inputTokens(usage == null ? 0 : toInt(usage.get("prompt_tokens")))
                 .outputTokens(usage == null ? 0 : toInt(usage.get("completion_tokens")))
-                .totalTokens(usage == null ? 0 : toInt(usage.get("total_tokens")))
-                .cacheTokens(cacheTokens)
-                .build();
+                .totalTokens(usage == null ? 0 : toInt(usage.get("total_tokens"))).cacheTokens(cacheTokens).build();
     }
 
+    /**
+     * resolveFinishReason.
+     * 
+     * @param finishReason finishReason
+     * @param toolCalls toolCalls
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveFinishReason(Object finishReason, List<ToolCall> toolCalls) {
         String value = asString(finishReason);
         if (value != null && !value.isBlank()) {
@@ -417,6 +571,13 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         return toolCalls != null && !toolCalls.isEmpty() ? "tool_calls" : "stop";
     }
 
+    /**
+     * isEmptyContent.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isEmptyContent(Object content) {
         if (content == null) {
             return true;
@@ -430,6 +591,13 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         return false;
     }
 
+    /**
+     * stringifyContent.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringifyContent(Object content) {
         if (content == null) {
             return "";
@@ -439,12 +607,19 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         }
         try {
             return MAPPER.writeValueAsString(content);
-        } catch (Exception ignored) {
+        } catch (JsonProcessingException ignored) {
             return String.valueOf(content);
         }
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * asMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> asMap(Object value) {
         if (value instanceof Map<?, ?> map) {
             return (Map<String, Object>) map;
@@ -453,6 +628,13 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * asListOfMaps.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Map<String, Object>> asListOfMaps(Object value) {
         if (value instanceof List<?> list) {
             return (List<Map<String, Object>>) list;
@@ -460,33 +642,64 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         return null;
     }
 
+    /**
+     * asString.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String asString(Object value) {
         return value instanceof String s ? s : null;
     }
 
+    /**
+     * toInt.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static int toInt(Object value) {
         return value instanceof Number number ? number.intValue() : 0;
     }
 
     private final class StreamingChunkIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
-
         private final BufferedReader reader;
         private final String resolvedModel;
         private final BaseOutputParser outputParser;
+
+        /**
+         * StringBuilder.
+         * 
+         * @since 0.1.7
+         */
         private final StringBuilder parserBuffer = new StringBuilder();
 
         private AssistantMessageChunk nextChunk;
         private boolean finished;
         private volatile boolean isClosed;
 
-        private StreamingChunkIterator(InputStream inputStream,
-                                       String resolvedModel,
-                                       BaseOutputParser outputParser) {
+        /**
+         * StreamingChunkIterator.
+         * 
+         * @param inputStream inputStream
+         * @param resolvedModel resolvedModel
+         * @param outputParser outputParser
+         * @since 0.1.7
+         */
+        private StreamingChunkIterator(InputStream inputStream, String resolvedModel, BaseOutputParser outputParser) {
             this.reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
             this.resolvedModel = resolvedModel;
             this.outputParser = outputParser;
         }
 
+        /**
+         * hasNext.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         @Override
         public boolean hasNext() {
             if (nextChunk != null) {
@@ -504,6 +717,12 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
             return true;
         }
 
+        /**
+         * next.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         @Override
         public AssistantMessageChunk next() {
             if (!hasNext()) {
@@ -514,6 +733,12 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
             return current;
         }
 
+        /**
+         * readNextChunk.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         private AssistantMessageChunk readNextChunk() {
             try {
                 String line;
@@ -541,6 +766,11 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
         }
 
         // 关闭底层 reader，解除阻塞在 readLine() 的线程（readLine 不响应 interrupt）。
+        /**
+         * close.
+         * 
+         * @since 0.1.7
+         */
         @Override
         public void close() {
             if (isClosed) {
@@ -551,10 +781,17 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
             closeQuietly();
         }
 
+        /**
+         * closeQuietly.
+         * 
+         * @since 0.1.7
+         */
         private void closeQuietly() {
             try {
                 reader.close();
             } catch (IOException ignored) {
+
+                // Ignore.
             }
         }
     }

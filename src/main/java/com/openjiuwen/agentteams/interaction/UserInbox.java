@@ -12,35 +12,51 @@ import java.util.function.Consumer;
 
 /**
  * User-facing inbox API for sending direct or broadcast messages into team message channels.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class UserInbox {
     private final TeamMessageManager messageManager;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * UserInbox.
+     * 
+     * @param messageManager messageManager
+     * @since 0.1.7
      */
     public UserInbox(TeamMessageManager messageManager) {
         this.messageManager = messageManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * direct.
+     * 
+     * @param target target
+     * @param body body
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<String> direct(String target, String body) {
         return messageManager.sendMessage(body, target, TeamConstants.USER_PSEUDO_MEMBER_NAME);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * broadcast.
+     * 
+     * @param body body
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<String> broadcast(String body) {
         return messageManager.broadcastMessage(body, TeamConstants.USER_PSEUDO_MEMBER_NAME);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deliverToLeader.
+     * 
+     * @param deliverInput deliverInput
+     * @param body body
+     * @since 0.1.7
      */
     public static void deliverToLeader(Consumer<String> deliverInput, String body) {
         deliverInput.accept(body);

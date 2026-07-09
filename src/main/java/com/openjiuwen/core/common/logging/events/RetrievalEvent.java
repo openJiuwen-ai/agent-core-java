@@ -11,7 +11,11 @@ import lombok.experimental.SuperBuilder;
 import java.util.List;
 import java.util.Map;
 
-/** Retrieval related event. */
+/**
+ * Retrieval related event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -25,17 +29,22 @@ public class RetrievalEvent extends BaseLogEvent {
     private String knowledgeBaseId;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RetrievalEvent.
+     * 
+     * @since 0.1.7
      */
     public RetrievalEvent() {
         super();
         setModuleType(ModuleType.RETRIEVAL);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "retrieval_type", retrievalType);
         putIfNotNull(map, "query", query);

@@ -1,4 +1,8 @@
+
 package com.openjiuwen.core.memory.external;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -6,6 +10,7 @@ import com.openjiuwen.core.memory.MemInfo;
 import com.openjiuwen.core.memory.MemResult;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
 import com.openjiuwen.core.memory.manage.mem_model.MemoryType;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -14,11 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class MemoryProviderTest {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
@@ -39,15 +40,15 @@ class MemoryProviderTest {
     @Test
     void mem0ProviderShouldRequireApiKey() {
         Mem0MemoryProvider provider = new Mem0MemoryProvider();
-        assertThatThrownBy(() -> provider.initialize(Map.of()))
-                .isInstanceOf(IllegalArgumentException.class)
+        assertThatThrownBy(() -> provider.initialize(Map.of())).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("API key is required");
     }
 
     @Test
     void openVikingProviderShouldRememberAndBrowseResources() throws Exception {
         FakeVikingApi api = new FakeVikingApi();
-        OpenVikingMemoryProvider provider = new OpenVikingMemoryProvider("http://example.invalid", "", "acc", "user", "agent", api);
+        OpenVikingMemoryProvider provider =
+            new OpenVikingMemoryProvider("http://example.invalid", "", "acc", "user", "agent", api);
         provider.initialize(Map.of("session_id", "s1"));
 
         provider.handleToolCall("viking_remember", Map.of("content", "user prefers vim"));
@@ -68,8 +69,8 @@ class MemoryProviderTest {
         }
 
         @Override
-        public List<Map<String, Object>> searchMemories(String baseUrl, String apiKey, String query, Map<String, Object> filters,
-                                                        boolean rerank, int topK) {
+        public List<Map<String, Object>> searchMemories(String baseUrl, String apiKey, String query,
+                Map<String, Object> filters, boolean rerank, int topK) {
             String needle = query.toLowerCase();
             List<Map<String, Object>> results = new ArrayList<>();
             for (Map<String, Object> memory : memories) {
@@ -86,7 +87,7 @@ class MemoryProviderTest {
 
         @Override
         public void addMemories(String baseUrl, String apiKey, List<Map<String, Object>> messages,
-                                Map<String, Object> scope, boolean infer) {
+                Map<String, Object> scope, boolean infer) {
             for (Map<String, Object> message : messages) {
                 memories.add(Map.of("memory", String.valueOf(message.getOrDefault("content", ""))));
             }
@@ -98,8 +99,8 @@ class MemoryProviderTest {
         private final List<Map<String, Object>> resources = new ArrayList<>();
 
         @Override
-        public List<Map<String, Object>> search(String endpoint, String apiKey, String account, String user, String agent,
-                                                Map<String, Object> payload) {
+        public List<Map<String, Object>> search(String endpoint, String apiKey, String account, String user,
+                String agent, Map<String, Object> payload) {
             String needle = String.valueOf(payload.getOrDefault("query", "")).toLowerCase();
             List<Map<String, Object>> results = new ArrayList<>();
             for (Map<String, Object> memory : memories) {
@@ -119,7 +120,7 @@ class MemoryProviderTest {
 
         @Override
         public Map<String, Object> read(String endpoint, String apiKey, String account, String user, String agent,
-                                        String uri, String level) {
+                String uri, String level) {
             for (Map<String, Object> resource : resources) {
                 if (uri.equals(resource.get("uri"))) {
                     return Map.of("uri", uri, "level", level, "content", resource.get("abstract"));
@@ -130,7 +131,7 @@ class MemoryProviderTest {
 
         @Override
         public Map<String, Object> browse(String endpoint, String apiKey, String account, String user, String agent,
-                                          String action, String browsePath) {
+                String action, String browsePath) {
             if ("stat".equals(action)) {
                 return Map.of("path", browsePath, "memories", memories.size(), "resources", resources.size());
             }
@@ -139,13 +140,14 @@ class MemoryProviderTest {
 
         @Override
         public void appendSessionMessage(String endpoint, String apiKey, String account, String user, String agent,
-                                         String sessionId, String role, String content) {
-            memories.add(Map.of("uri", "viking://session/" + sessionId + "/" + role, "type", "memory", "score", 1.0, "abstract", content));
+                String sessionId, String role, String content) {
+            memories.add(Map.of("uri", "viking://session/" + sessionId + "/" + role, "type", "memory", "score", 1.0,
+                    "abstract", content));
         }
 
         @Override
-        public Map<String, Object> addResource(String endpoint, String apiKey, String account, String user, String agent,
-                                               Map<String, Object> payload) {
+        public Map<String, Object> addResource(String endpoint, String apiKey, String account, String user,
+                String agent, Map<String, Object> payload) {
             Map<String, Object> resource = new LinkedHashMap<>();
             resource.put("uri", "viking://resource/" + (resources.size() + 1));
             resource.put("type", "resource");
@@ -159,7 +161,8 @@ class MemoryProviderTest {
     @Test
     void openJiuwenProviderShouldFormatSearchAndSyncMessages() throws Exception {
         FakeBackend backend = new FakeBackend();
-        OpenJiuwenMemoryProvider provider = new OpenJiuwenMemoryProvider(Map.of(), backend, AgentMemoryConfig.builder().build());
+        OpenJiuwenMemoryProvider provider =
+            new OpenJiuwenMemoryProvider(Map.of(), backend, AgentMemoryConfig.builder().build());
         provider.initialize(Map.of("user_id", "u1", "scope_id", "s1", "session_id", "ss1"));
 
         String search = provider.handleToolCall("ltm_search", Map.of("query", "project"));
@@ -178,22 +181,22 @@ class MemoryProviderTest {
 
         @Override
         public List<MemResult> searchUserMem(String query, int num, String userId, String scopeId, double threshold) {
-            return List.of(MemResult.builder()
-                    .memInfo(MemInfo.builder().memId("1").content("project context").type(MemoryType.USER_PROFILE).build())
-                    .score(0.9)
-                    .build());
+            return List.of(MemResult.builder().memInfo(
+                    MemInfo.builder().memId("1").content("project context").type(MemoryType.USER_PROFILE).build())
+                    .score(0.9).build());
         }
 
         @Override
-        public List<MemResult> searchUserHistorySummary(String query, int num, String userId, String scopeId, double threshold) {
+        public List<MemResult> searchUserHistorySummary(String query, int num, String userId, String scopeId,
+                double threshold) {
             return List.of(MemResult.builder()
                     .memInfo(MemInfo.builder().memId("2").content("summary memory").type(MemoryType.SUMMARY).build())
-                    .score(0.8)
-                    .build());
+                    .score(0.8).build());
         }
 
         @Override
-        public void addMessages(List<BaseMessage> messages, AgentMemoryConfig config, String userId, String scopeId, String sessionId) {
+        public void addMessages(List<BaseMessage> messages, AgentMemoryConfig config, String userId, String scopeId,
+                String sessionId) {
             addMessagesCalls.incrementAndGet();
             lastMessages = new ArrayList<>(messages);
         }

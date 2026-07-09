@@ -10,17 +10,23 @@ import java.util.Set;
 
 /**
  * Public class BaseRegistry used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class BaseRegistry<T> {
     /**
-     * Auto-generated for codecheck compliance.
+     * items.
+     * 
+     * @since 0.1.7
      */
     protected final Map<String, T> items = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * register.
+     * 
+     * @param name name
+     * @param spec spec
+     * @since 0.1.7
      */
     public void register(String name, T spec) {
         if (items.containsKey(name)) {
@@ -30,14 +36,22 @@ public class BaseRegistry<T> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
      */
     public T get(String name) {
         return items.get(name);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * require.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
      */
     public T require(String name) {
         T value = items.get(name);
@@ -48,7 +62,10 @@ public class BaseRegistry<T> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * names.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Set<String> names() {
         return items.keySet();

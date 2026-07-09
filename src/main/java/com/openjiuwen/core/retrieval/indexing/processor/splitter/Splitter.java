@@ -16,26 +16,34 @@ import java.util.Map;
 
 /**
  * Text splitter abstraction.
+ * 
+ * @since 0.1.7
  */
 public abstract class Splitter implements Processor<List<Document>, List<TextChunk>> {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * chunkSize.
+     * 
+     * @since 0.1.7
      */
     protected final int chunkSize;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * chunkOverlap.
+     * 
+     * @since 0.1.7
      */
     protected final int chunkOverlap;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Splitter.
+     * 
+     * @param chunkSize chunkSize
+     * @param chunkOverlap chunkOverlap
+     * @since 0.1.7
      */
     protected Splitter(int chunkSize, int chunkOverlap) {
         RetrievalValidation.requirePositive(chunkSize, "chunk_size", StatusCode.RETRIEVAL_INDEXING_CHUNK_SIZE_INVALID);
-        RetrievalValidation.requireNonNegative(
-                chunkOverlap,
-                "chunk_overlap",
+        RetrievalValidation.requireNonNegative(chunkOverlap, "chunk_overlap",
                 StatusCode.RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID);
         if (chunkOverlap >= chunkSize) {
             throw com.openjiuwen.core.retrieval.common.RetrievalExceptions.error(
@@ -47,12 +55,20 @@ public abstract class Splitter implements Processor<List<Document>, List<TextChu
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * splitText.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     public abstract List<String> splitText(String text);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * splitSpans.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     public List<SplitSpan> splitSpans(String text) {
         List<String> chunks = splitText(text);
@@ -71,7 +87,11 @@ public abstract class Splitter implements Processor<List<Document>, List<TextChu
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNodesFromDocuments.
+     * 
+     * @param documents documents
+     * @return the result
+     * @since 0.1.7
      */
     public List<TextChunk> getNodesFromDocuments(List<Document> documents) {
         List<TextChunk> result = new ArrayList<>();
@@ -97,12 +117,14 @@ public abstract class Splitter implements Processor<List<Document>, List<TextChu
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * process.
+     * 
+     * @param input input
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<TextChunk> process(List<Document> input, Map<String, Object> options) {
         return getNodesFromDocuments(input);
     }

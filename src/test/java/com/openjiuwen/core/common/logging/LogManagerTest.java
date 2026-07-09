@@ -1,22 +1,21 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.common.logging;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.*;
 
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicReference;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * JUnit 5 tests for LogManager and LoggingUtils.
  * Ported from Python: tests/unit_tests/core/common/log/test_logger.py
  */
 class LogManagerTest {
-
     @BeforeEach
     void setUp() {
         LogManager.reset();
@@ -263,8 +262,9 @@ class LogManagerTest {
             logger.exception("Exception occurred", e);
         }
 
-        assertTrue(logger.messages.stream().anyMatch(m ->
-                        m.contains("Exception occurred") && m.contains("Test exception")),
+        assertTrue(
+                logger.messages.stream()
+                        .anyMatch(m -> m.contains("Exception occurred") && m.contains("Test exception")),
                 "Should contain both the message and exception detail");
     }
 
@@ -294,7 +294,6 @@ class LogManagerTest {
     @Nested
     @DisplayName("Thread safety")
     class ThreadSafetyTests {
-
         @Test
         @DisplayName("Trace/session IDs are isolated between threads")
         void testThreadTraceIdIsolation() throws InterruptedException {
@@ -304,21 +303,30 @@ class LogManagerTest {
 
             Thread t1 = new Thread(() -> {
                 LoggingUtils.setSessionId("10001");
-                try { Thread.sleep(10); } catch (InterruptedException ignored) {}
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException ignored) {
+                }
                 results.add(new String[]{"10001", LoggingUtils.getSessionId()});
             });
             t1.setUncaughtExceptionHandler((t, e) -> System.out.println(t.getName() + ":" + e.getMessage()));
 
             Thread t2 = new Thread(() -> {
                 LoggingUtils.setSessionId("10002");
-                try { Thread.sleep(10); } catch (InterruptedException ignored) {}
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException ignored) {
+                }
                 results.add(new String[]{"10002", LoggingUtils.getSessionId()});
             });
             t2.setUncaughtExceptionHandler((t, e) -> System.out.println(t.getName() + ":" + e.getMessage()));
 
             Thread t3 = new Thread(() -> {
                 LoggingUtils.setSessionId("10003");
-                try { Thread.sleep(10); } catch (InterruptedException ignored) {}
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException ignored) {
+                }
                 results.add(new String[]{"10003", LoggingUtils.getSessionId()});
             });
             t3.setUncaughtExceptionHandler((t, e) -> System.out.println(t.getName() + ":" + e.getMessage()));
@@ -348,7 +356,6 @@ class LogManagerTest {
     @Nested
     @DisplayName("LoggingUtils")
     class LoggingUtilsTests {
-
         @Test
         @DisplayName("Default session ID is 'default_trace_id'")
         void testDefaultSessionId() {

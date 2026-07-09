@@ -7,9 +7,10 @@ package com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription;
 /**
  * Cancellation reason for {@link ResponseCollector}.
  * Used to distinguish exception types after awakening.
+ * 
+ * @since 0.1.7
  */
 public enum CancelReason {
-    /** Runner/Adapter actively stopped. */
     RUNNER_STOPPED("runner_stopped"),
     /** TTL expired. */
     TTL_EXPIRE("ttl_expire"),
@@ -25,7 +26,10 @@ public enum CancelReason {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

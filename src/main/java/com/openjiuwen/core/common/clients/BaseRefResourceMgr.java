@@ -10,33 +10,46 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Base reference-counted resource manager.
- *
- * @param <T> resource type
- * @param <C> config type
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseRefResourceMgr<T extends RefCountedResource, C> {
     private final Map<String, T> resources = new ConcurrentHashMap<>();
 
     /**
- * Public record Acquisition used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record Acquisition<T>(T resource, boolean isNew) {
+     * Public record Acquisition used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record Acquisition<T>(T resource, boolean isNew) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getResourceKey.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     protected abstract String getResourceKey(C config);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createResource.
+     * 
+     * @param config config
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     protected abstract T createResource(C config) throws Exception;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * acquire.
+     * 
+     * @param config config
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public synchronized Acquisition<T> acquire(C config) throws Exception {
         String key = getResourceKey(config);
@@ -54,7 +67,11 @@ public record Acquisition<T>(T resource, boolean isNew) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * release.
+     * 
+     * @param config config
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public synchronized void release(C config) throws Exception {
         String key = getResourceKey(config);
@@ -70,7 +87,11 @@ public record Acquisition<T>(T resource, boolean isNew) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @param key key
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public synchronized void close(String key) throws Exception {
         T resource = resources.remove(key);
@@ -80,7 +101,10 @@ public record Acquisition<T>(T resource, boolean isNew) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * closeAll.
+     * 
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public synchronized void closeAll() throws Exception {
         for (T resource : resources.values()) {
@@ -90,7 +114,10 @@ public record Acquisition<T>(T resource, boolean isNew) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStats.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public synchronized Map<String, Object> getStats() {
         Map<String, Object> stats = new LinkedHashMap<>();

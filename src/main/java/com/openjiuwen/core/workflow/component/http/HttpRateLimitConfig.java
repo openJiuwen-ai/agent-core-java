@@ -12,8 +12,8 @@ import lombok.NoArgsConstructor;
  * HTTP rate limit configuration.
  * <p>
  * Mirrors Python's {@code HttpRateLimitConfig}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor

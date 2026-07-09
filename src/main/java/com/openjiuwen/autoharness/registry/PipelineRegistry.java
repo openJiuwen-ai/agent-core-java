@@ -8,12 +8,15 @@ import com.openjiuwen.autoharness.schema.PipelineSpec;
 
 /**
  * Public class PipelineRegistry used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class PipelineRegistry extends BaseRegistry<PipelineSpec> {
     /**
-     * Auto-generated for codecheck compliance.
+     * register.
+     * 
+     * @param spec spec
+     * @since 0.1.7
      */
     public void register(PipelineSpec spec) {
         super.register(spec.getName(), spec);

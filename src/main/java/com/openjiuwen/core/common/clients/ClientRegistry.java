@@ -18,34 +18,57 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Registry for client factories and client classes.
+ * 
+ * @since 0.1.7
  */
 public final class ClientRegistry {
     private final Map<String, ClientFactory> factories = new ConcurrentHashMap<>();
     private final Map<String, Class<?>> clientClasses = new ConcurrentHashMap<>();
 
     /**
- * Public interface ClientFactory used by the Java parity implementation.
- *
- * @since 1.0
- */
+     * Public interface ClientFactory used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
     @FunctionalInterface
-public interface ClientFactory {
+    public interface ClientFactory {
+        /**
+         * create.
+         * 
+         * @param kwargs kwargs
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         Object create(Map<String, Object> kwargs) throws Exception;
     }
 
+    /**
+     * ClientRegistry.
+     * 
+     * @since 0.1.7
+     */
     private ClientRegistry() {
         registerBuiltins();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInstance.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static ClientRegistry getInstance() {
         return SingletonSupport.getInstance(ClientRegistry.class, ClientRegistry::new);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerClient.
+     * 
+     * @param name name
+     * @param clientType clientType
+     * @param factory factory
+     * @since 0.1.7
      */
     public synchronized void registerClient(String name, String clientType, ClientFactory factory) {
         Objects.requireNonNull(factory, "factory must not be null");
@@ -57,7 +80,10 @@ public interface ClientFactory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerClass.
+     * 
+     * @param clientClass clientClass
+     * @since 0.1.7
      */
     public synchronized void registerClass(Class<?> clientClass) {
         Objects.requireNonNull(clientClass, "clientClass must not be null");
@@ -72,7 +98,6 @@ public interface ClientFactory {
             throw new IllegalArgumentException(
                     "Client class " + clientClass.getName() + " __client_type__ cannot be empty");
         }
-
         List<String> names = new ArrayList<>();
         if (clientNameValue instanceof String[] array) {
             for (String item : array) {
@@ -89,7 +114,6 @@ public interface ClientFactory {
         } else {
             names.add(String.valueOf(clientNameValue));
         }
-
         String clientType = String.valueOf(clientTypeValue);
         for (String name : names) {
             String fullName = fullName(name, clientType);
@@ -102,21 +126,39 @@ public interface ClientFactory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getClient.
+     * 
+     * @param name name
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public Object getClient(String name) throws Exception {
         return getClient(name, "common", Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getClient.
+     * 
+     * @param name name
+     * @param clientType clientType
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public Object getClient(String name, String clientType) throws Exception {
         return getClient(name, clientType, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getClient.
+     * 
+     * @param name name
+     * @param clientType clientType
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public Object getClient(String name, String clientType, Map<String, Object> kwargs) throws Exception {
         if (name == null || name.isBlank()) {
@@ -130,12 +172,10 @@ public interface ClientFactory {
                 lookupName = typedName;
             }
         }
-
         ClientFactory factory = factories.get(lookupName);
         if (factory == null) {
             String searchKey = clientType != null && !clientType.isBlank() ? fullName(name, clientType) : name;
-            throw new IllegalArgumentException(
-                    "Unknown client type: '" + searchKey + "'. Available: " + listClients());
+            throw new IllegalArgumentException("Unknown client type: '" + searchKey + "'. Available: " + listClients());
         }
 
         try {
@@ -146,7 +186,11 @@ public interface ClientFactory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * unregister.
+     * 
+     * @param name name
+     * @param clientType clientType
+     * @since 0.1.7
      */
     public synchronized void unregister(String name, String clientType) {
         String fullName = fullName(name, clientType);
@@ -158,7 +202,10 @@ public interface ClientFactory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listClients.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> listClients() {
         return new ArrayList<>(factories.keySet());
@@ -170,6 +217,11 @@ public interface ClientFactory {
         registerBuiltins();
     }
 
+    /**
+     * registerBuiltins.
+     * 
+     * @since 0.1.7
+     */
     private void registerBuiltins() {
         registerClient("http", "common", kwargs -> {
             Object configObj = kwargs.get("config");
@@ -197,6 +249,13 @@ public interface ClientFactory {
         });
     }
 
+    /**
+     * modelClientConfigFromMap.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     private static ModelClientConfig modelClientConfigFromMap(Map<String, Object> config) {
         return ModelClientConfig.builder()
                 .clientProvider(ClientConfigSupport.asString(config.getOrDefault("client_provider", "openai")))
@@ -208,10 +267,18 @@ public interface ClientFactory {
                 .maxRetries(ClientConfigSupport.asInt(config.get("max_retries"), 3))
                 .verifySsl(ClientConfigSupport.asBoolean(config.get("verify_ssl"), true))
                 .sslCert(ClientConfigSupport.asString(config.get("ssl_cert")))
-                .headers(ClientConfigSupport.asStringMap(config.get("headers")))
-                .build();
+                .headers(ClientConfigSupport.asStringMap(config.get("headers"))).build();
     }
 
+    /**
+     * instantiateClient.
+     * 
+     * @param clientClass clientClass
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private static Object instantiateClient(Class<?> clientClass, Map<String, Object> kwargs) throws Exception {
         try {
             Constructor<?> mapConstructor = clientClass.getDeclaredConstructor(Map.class);
@@ -224,6 +291,14 @@ public interface ClientFactory {
         }
     }
 
+    /**
+     * readStaticField.
+     * 
+     * @param clientClass clientClass
+     * @param fieldName fieldName
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object readStaticField(Class<?> clientClass, String fieldName) {
         try {
             Field field = clientClass.getDeclaredField(fieldName);
@@ -234,6 +309,14 @@ public interface ClientFactory {
         }
     }
 
+    /**
+     * fullName.
+     * 
+     * @param name name
+     * @param clientType clientType
+     * @return the result
+     * @since 0.1.7
+     */
     private static String fullName(String name, String clientType) {
         if (name == null || name.isBlank()) {
             return "";

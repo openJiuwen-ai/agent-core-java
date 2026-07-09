@@ -15,6 +15,8 @@ import java.util.Map;
 /**
  * Lightweight message container aligned with Python's
  * {@code multi_agent.team_runtime.envelope.MessageEnvelope}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -29,17 +31,28 @@ public class MessageEnvelope {
     private String sessionId;
 
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isP2p.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isP2p() {
         return recipient != null && !recipient.isBlank();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isPubsub.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isPubsub() {
         return topicId != null && !topicId.isBlank();

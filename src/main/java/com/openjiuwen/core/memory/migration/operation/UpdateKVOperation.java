@@ -10,12 +10,18 @@ import java.util.function.Consumer;
 
 /**
  * Update a key-value pair via a provided callable.
+ * 
+ * @since 0.1.7
  */
 public class UpdateKVOperation extends BaseOperation {
     private final Consumer<BaseKVStore> updateFunc;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * UpdateKVOperation.
+     * 
+     * @param metadata metadata
+     * @param updateFunc updateFunc
+     * @since 0.1.7
      */
     public UpdateKVOperation(OperationMetadata metadata, Consumer<BaseKVStore> updateFunc) {
         super(metadata);
@@ -23,7 +29,10 @@ public class UpdateKVOperation extends BaseOperation {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUpdateFunc.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Consumer<BaseKVStore> getUpdateFunc() {
         return updateFunc;

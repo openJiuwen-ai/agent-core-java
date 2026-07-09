@@ -7,12 +7,15 @@ package com.openjiuwen.core.workflow.components.tool;
 /**
  * Alias/extension of {@link com.openjiuwen.core.workflow.component.tool.ToolComponentConfig}
  * with a positional constructor for test compatibility.
+ * 
+ * @since 0.1.7
  */
-public class ToolComponentConfig
-        extends com.openjiuwen.core.workflow.component.tool.ToolComponentConfig {
-
+public class ToolComponentConfig extends com.openjiuwen.core.workflow.component.tool.ToolComponentConfig {
     /**
-     * Positional constructor: ToolComponentConfig(toolId).
+     * ToolComponentConfig.
+     * 
+     * @param toolId toolId
+     * @since 0.1.7
      */
     public ToolComponentConfig(String toolId) {
         super();
@@ -20,7 +23,9 @@ public class ToolComponentConfig
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolComponentConfig.
+     * 
+     * @since 0.1.7
      */
     public ToolComponentConfig() {
         super();

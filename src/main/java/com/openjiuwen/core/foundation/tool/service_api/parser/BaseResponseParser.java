@@ -10,30 +10,38 @@ import java.util.Locale;
  * Base class for response parsers.
  * <p>
  * Mirrors Python's {@code BaseResponseParser}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseResponseParser {
-
     /**
-     * Check if this parser can handle the response.
-     *
-     * @param contentType the Content-Type header value
-     * @param statusCode  HTTP status code
-     * @param headers     response headers (for additional checks)
-     * @return true if this parser can handle the response
+     * canParse.
+     * 
+     * @param contentType contentType
+     * @param statusCode statusCode
+     * @param headers headers
+     * @return the result
+     * @since 0.1.7
      */
     public abstract boolean canParse(String contentType, int statusCode, java.util.Map<String, String> headers);
 
     /**
      * Parse the response data.
-     *
+     * 
      * @param responseData the raw response bytes
-     * @param contentType  the Content-Type header
+     * @param contentType the Content-Type header
      * @return parsed result
+     * @since 0.1.7
      */
     public abstract Object parse(byte[] responseData, String contentType);
 
     /**
      * Decode bytes using the charset from Content-Type, defaulting to UTF-8.
+     * 
+     * @param data data
+     * @param contentType contentType
+     * @return the result
+     * @since 0.1.7
      */
     protected String decodeBytes(byte[] data, String contentType) {
         if (data == null || data.length == 0) {
@@ -52,6 +60,10 @@ public abstract class BaseResponseParser {
 
     /**
      * Extract charset from Content-Type header value (e.g., "text/html; charset=utf-8").
+     * 
+     * @param contentType contentType
+     * @return the result
+     * @since 0.1.7
      */
     protected static String extractCharsetFromContentType(String contentType) {
         if (contentType == null || contentType.isEmpty()) {

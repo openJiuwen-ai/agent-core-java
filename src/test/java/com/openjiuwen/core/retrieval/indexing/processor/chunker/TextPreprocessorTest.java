@@ -4,14 +4,15 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.retrieval.common.Document;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 class TextPreprocessorTest {
     @Test
@@ -25,15 +26,11 @@ class TextPreprocessorTest {
     @Test
     void urlEmailRemoverShouldSupportFlagsAndReplacement() {
         assertThat(new URLEmailRemover().process("Visit https://example.com and test@example.com"))
-                .doesNotContain("https://example.com")
-                .doesNotContain("test@example.com");
+                .doesNotContain("https://example.com").doesNotContain("test@example.com");
         assertThat(new URLEmailRemover(false, true, "[EMAIL]").process("Visit http://example.com and test@example.com"))
-                .contains("http://example.com")
-                .contains("[EMAIL]")
-                .doesNotContain("test@example.com");
+                .contains("http://example.com").contains("[EMAIL]").doesNotContain("test@example.com");
         assertThat(new URLEmailRemover(false, false, "[URL]").process("Visit www.example.com and test@example.com"))
-                .contains("www.example.com")
-                .contains("test@example.com");
+                .contains("www.example.com").contains("test@example.com");
         assertThat(new URLEmailRemover().process(null)).isNull();
     }
 
@@ -81,12 +78,7 @@ class TextPreprocessorTest {
 
     @Test
     void textChunkerShouldApplyExplicitPreprocessors() {
-        TextChunker chunker = new TextChunker(
-                200,
-                0,
-                "char",
-                null,
-                "auto",
+        TextChunker chunker = new TextChunker(200, 0, "char", null, "auto",
                 List.of(new WhitespaceNormalizer(), new URLEmailRemover(), new WhitespaceNormalizer()));
         Document document = new Document("id", "Visit https://example.com\nwith  spaces", Map.of());
 

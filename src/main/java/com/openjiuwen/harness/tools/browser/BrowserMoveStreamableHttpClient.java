@@ -5,12 +5,13 @@
 package com.openjiuwen.harness.tools.browser;
 
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+
 import lombok.Getter;
 
 /**
  * Public class BrowserMoveStreamableHttpClient used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 @Getter
 public class BrowserMoveStreamableHttpClient {
@@ -18,7 +19,10 @@ public class BrowserMoveStreamableHttpClient {
     private final String name;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BrowserMoveStreamableHttpClient.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public BrowserMoveStreamableHttpClient(McpServerConfig config) {
         this.serverPath = config.getServerPath();

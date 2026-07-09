@@ -11,7 +11,11 @@ import lombok.experimental.SuperBuilder;
 import java.util.List;
 import java.util.Map;
 
-/** LLM call related event. */
+/**
+ * LLM call related event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -36,17 +40,22 @@ public class LLMEvent extends BaseLogEvent {
     private Integer maxRetries;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LLMEvent.
+     * 
+     * @since 0.1.7
      */
     public LLMEvent() {
         super();
         setModuleType(ModuleType.LLM);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "model_name", modelName);
         putIfNotNull(map, "model_provider", modelProvider);

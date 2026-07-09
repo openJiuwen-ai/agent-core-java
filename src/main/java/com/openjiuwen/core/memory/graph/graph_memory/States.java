@@ -32,13 +32,23 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * State and lookup structures for graph memory updates.
+ * 
+ * @since 0.1.7
  */
 public final class States {
+    /**
+     * States.
+     * 
+     * @since 0.1.7
+     */
     private States() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * nestedClearDataclass.
+     * 
+     * @param dataObj dataObj
+     * @since 0.1.7
      */
     public static void nestedClearDataclass(Object dataObj) {
         if (dataObj instanceof Clearable clearable) {
@@ -47,24 +57,47 @@ public final class States {
     }
 
     /**
- * Public interface Clearable used by the Java parity implementation.
- *
- * @since 1.0
- */
-public interface Clearable {
+     * Public interface Clearable used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public interface Clearable {
+        /**
+         * clear.
+         * 
+         * @since 0.1.7
+         */
         void clear();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LookupTables.
+     * 
+     * @since 0.1.7
      */
     public static final class LookupTables implements Clearable {
         private final Map<String, Entity> entities = new LinkedHashMap<>();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, Relation> relations = new LinkedHashMap<>();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, Episode> episodes = new LinkedHashMap<>();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getEntity.
+         * 
+         * @param input input
+         * @return the result
+         * @since 0.1.7
          */
         public Entity getEntity(Map<String, Object> input) {
             String entityId = String.valueOf(input.get("uuid"));
@@ -77,7 +110,11 @@ public interface Clearable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getRelation.
+         * 
+         * @param input input
+         * @return the result
+         * @since 0.1.7
          */
         public Relation getRelation(Map<String, Object> input) {
             String relationId = String.valueOf(input.get("uuid"));
@@ -90,7 +127,11 @@ public interface Clearable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getEpisode.
+         * 
+         * @param input input
+         * @return the result
+         * @since 0.1.7
          */
         public Episode getEpisode(Map<String, Object> input) {
             String episodeId = String.valueOf(input.get("uuid"));
@@ -103,33 +144,41 @@ public interface Clearable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getEntities.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Entity> getEntities() {
             return entities;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getRelations.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Relation> getRelations() {
             return relations;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getEpisodes.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Episode> getEpisodes() {
             return episodes;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * clear.
+         * 
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public void clear() {
             entities.clear();
             relations.clear();
@@ -138,56 +187,90 @@ public interface Clearable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EntityMerge.
+     * 
+     * @since 0.1.7
      */
     public static final class EntityMerge implements Clearable {
         private Entity target;
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, Entity> source = new LinkedHashMap<>();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<Relation> newRelations = new ArrayList<>();
+
+        /**
+         * LinkedHashSet<>.
+         * 
+         * @since 0.1.7
+         */
         private final Set<String> relationsToKeep = new LinkedHashSet<>();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * EntityMerge.
+         * 
+         * @param target target
+         * @since 0.1.7
          */
         public EntityMerge(Entity target) {
             this.target = target;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTarget.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Entity getTarget() {
             return target;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getSource.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Entity> getSource() {
             return source;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getNewRelations.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<Relation> getNewRelations() {
             return newRelations;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getRelationsToKeep.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Set<String> getRelationsToKeep() {
             return relationsToKeep;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * clear.
+         * 
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public void clear() {
             source.clear();
             newRelations.clear();
@@ -196,20 +279,68 @@ public interface Clearable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GraphMemUpdate.
+     * 
+     * @since 0.1.7
      */
     public static final class GraphMemUpdate {
         private final List<Episode> addedEpisode = new ArrayList<>();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<Episode> updatedEpisode = new ArrayList<>();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<Entity> addedEntity = new ArrayList<>();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<Entity> updatedEntity = new ArrayList<>();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<Relation> addedRelation = new ArrayList<>();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<Relation> updatedRelation = new ArrayList<>();
+
+        /**
+         * LinkedHashSet<>.
+         * 
+         * @since 0.1.7
+         */
         private final Set<String> removedEntity = new LinkedHashSet<>();
+
+        /**
+         * LinkedHashSet<>.
+         * 
+         * @since 0.1.7
+         */
         private final Set<String> removedRelation = new LinkedHashSet<>();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * or.
+         * 
+         * @param other other
+         * @return the result
+         * @since 0.1.7
          */
         public GraphMemUpdate or(GraphMemUpdate other) {
             GraphMemUpdate merged = new GraphMemUpdate();
@@ -233,56 +364,80 @@ public interface Clearable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getAddedEpisode.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<Episode> getAddedEpisode() {
             return addedEpisode;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getUpdatedEpisode.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<Episode> getUpdatedEpisode() {
             return updatedEpisode;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getAddedEntity.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<Entity> getAddedEntity() {
             return addedEntity;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getUpdatedEntity.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<Entity> getUpdatedEntity() {
             return updatedEntity;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getAddedRelation.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<Relation> getAddedRelation() {
             return addedRelation;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getUpdatedRelation.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<Relation> getUpdatedRelation() {
             return updatedRelation;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getRemovedEntity.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Set<String> getRemovedEntity() {
             return removedEntity;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getRemovedRelation.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Set<String> getRemovedRelation() {
             return removedRelation;
@@ -290,141 +445,208 @@ public interface Clearable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GraphMemPrompting.
+     * 
+     * @since 0.1.7
      */
     public static final class GraphMemPrompting implements Clearable {
         private Map<String, Object> schemaEntityExtraction =
-                MultilingualBaseModel.responseFormat(EntitySummary.class, "cn");
+            MultilingualBaseModel.responseFormat(EntitySummary.class, "cn");
+
+        /**
+         * MultilingualBaseModel.responseFormat.
+         * 
+         * @since 0.1.7
+         */
         private Map<String, Object> schemaEntityDedupe =
-                MultilingualBaseModel.responseFormat(EntityDuplication.class, "cn");
+            MultilingualBaseModel.responseFormat(EntityDuplication.class, "cn");
+
+        /**
+         * MultilingualBaseModel.responseFormat.
+         * 
+         * @since 0.1.7
+         */
         private Map<String, Object> schemaRelationMerge =
-                MultilingualBaseModel.responseFormat(MergeRelations.class, "cn");
+            MultilingualBaseModel.responseFormat(MergeRelations.class, "cn");
+
+        /**
+         * MultilingualBaseModel.responseFormat.
+         * 
+         * @since 0.1.7
+         */
         private Map<String, Object> schemaRelationFilter =
-                MultilingualBaseModel.responseFormat(RelevantFacts.class, "cn");
+            MultilingualBaseModel.responseFormat(RelevantFacts.class, "cn");
         private String language = "cn";
         private String entityExtractionLanguage = "cn";
         private String relationExtractionLanguage = "cn";
         private String entityDedupeLanguage = "cn";
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getSchemaEntityExtraction.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Object> getSchemaEntityExtraction() {
             return schemaEntityExtraction;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getSchemaEntityDedupe.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Object> getSchemaEntityDedupe() {
             return schemaEntityDedupe;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getSchemaRelationMerge.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Object> getSchemaRelationMerge() {
             return schemaRelationMerge;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getSchemaRelationFilter.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Object> getSchemaRelationFilter() {
             return schemaRelationFilter;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getLanguage.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getLanguage() {
             return language;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setLanguage.
+         * 
+         * @param language language
+         * @since 0.1.7
          */
         public void setLanguage(String language) {
             this.language = language;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getEntityExtractionLanguage.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getEntityExtractionLanguage() {
             return entityExtractionLanguage;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setEntityExtractionLanguage.
+         * 
+         * @param entityExtractionLanguage entityExtractionLanguage
+         * @since 0.1.7
          */
         public void setEntityExtractionLanguage(String entityExtractionLanguage) {
             this.entityExtractionLanguage = entityExtractionLanguage;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getRelationExtractionLanguage.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getRelationExtractionLanguage() {
             return relationExtractionLanguage;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setRelationExtractionLanguage.
+         * 
+         * @param relationExtractionLanguage relationExtractionLanguage
+         * @since 0.1.7
          */
         public void setRelationExtractionLanguage(String relationExtractionLanguage) {
             this.relationExtractionLanguage = relationExtractionLanguage;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getEntityDedupeLanguage.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getEntityDedupeLanguage() {
             return entityDedupeLanguage;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setEntityDedupeLanguage.
+         * 
+         * @param entityDedupeLanguage entityDedupeLanguage
+         * @since 0.1.7
          */
         public void setEntityDedupeLanguage(String entityDedupeLanguage) {
             this.entityDedupeLanguage = entityDedupeLanguage;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setSchemaEntityExtraction.
+         * 
+         * @param schemaEntityExtraction schemaEntityExtraction
+         * @since 0.1.7
          */
         public void setSchemaEntityExtraction(Map<String, Object> schemaEntityExtraction) {
             this.schemaEntityExtraction = schemaEntityExtraction;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setSchemaEntityDedupe.
+         * 
+         * @param schemaEntityDedupe schemaEntityDedupe
+         * @since 0.1.7
          */
         public void setSchemaEntityDedupe(Map<String, Object> schemaEntityDedupe) {
             this.schemaEntityDedupe = schemaEntityDedupe;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setSchemaRelationMerge.
+         * 
+         * @param schemaRelationMerge schemaRelationMerge
+         * @since 0.1.7
          */
         public void setSchemaRelationMerge(Map<String, Object> schemaRelationMerge) {
             this.schemaRelationMerge = schemaRelationMerge;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setSchemaRelationFilter.
+         * 
+         * @param schemaRelationFilter schemaRelationFilter
+         * @since 0.1.7
          */
         public void setSchemaRelationFilter(Map<String, Object> schemaRelationFilter) {
             this.schemaRelationFilter = schemaRelationFilter;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * clear.
+         * 
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public void clear() {
             schemaEntityExtraction = new LinkedHashMap<>();
             schemaEntityDedupe = new LinkedHashMap<>();
@@ -434,259 +656,473 @@ public interface Clearable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GraphMemState.
+     * 
+     * @since 0.1.7
      */
     public static final class GraphMemState implements Clearable {
         private final List<CompletableFuture<?>> tasks = new ArrayList<>();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<CompletableFuture<?>> mergingTasks = new ArrayList<>();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<CompletableFuture<?>, Entity> mergingTasksEntities = new LinkedHashMap<>();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, CompletableFuture<?>> pendingMerge = new LinkedHashMap<>();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, List<Object>> relationDeferredUpdates = new LinkedHashMap<>();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<CompletableFuture<?>, Object> relationFilterTasks = new LinkedHashMap<>();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<Object> toRemove = new ArrayList<>();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<Object> tmpBuffer = new ArrayList<>();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<Entity> updatedEntitiesInCurrentEp = new ArrayList<>();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, Entity> retrievedEntities = new LinkedHashMap<>();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, Relation> retrievedRelations = new LinkedHashMap<>();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, Relation> faultyRelations = new LinkedHashMap<>();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, EntityMerge> mergeInfos = new LinkedHashMap<>();
+
+        /**
+         * GraphMemUpdate.
+         * 
+         * @since 0.1.7
+         */
         private final GraphMemUpdate memUpdate = new GraphMemUpdate();
+
+        /**
+         * GraphMemUpdate.
+         * 
+         * @since 0.1.7
+         */
         private final GraphMemUpdate memUpdateSkipEmbed = new GraphMemUpdate();
+
+        /**
+         * GraphUtils.getCurrentUtcTimestamp.
+         * 
+         * @since 0.1.7
+         */
         private int currentTimestamp = GraphUtils.getCurrentUtcTimestamp();
         private int referenceTimestamp = 0;
+
+        /**
+         * LookupTables.
+         * 
+         * @since 0.1.7
+         */
         private final LookupTables lookupTable = new LookupTables();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, Object> extras = new LinkedHashMap<>();
+
+        /**
+         * AddMemStrategy.
+         * 
+         * @since 0.1.7
+         */
         private AddMemStrategy strategy = new AddMemStrategy();
+
+        /**
+         * GraphMemPrompting.
+         * 
+         * @since 0.1.7
+         */
         private final GraphMemPrompting prompting = new GraphMemPrompting();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<EntityDef> entityTypes = new ArrayList<>();
         private EpisodeType episodeType = EpisodeType.CONVERSATION;
         private String content = "";
         private String history = "";
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTasks.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<CompletableFuture<?>> getTasks() {
             return tasks;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMergingTasks.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<CompletableFuture<?>> getMergingTasks() {
             return mergingTasks;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMergingTasksEntities.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<CompletableFuture<?>, Entity> getMergingTasksEntities() {
             return mergingTasksEntities;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getPendingMerge.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, CompletableFuture<?>> getPendingMerge() {
             return pendingMerge;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getRelationDeferredUpdates.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, List<Object>> getRelationDeferredUpdates() {
             return relationDeferredUpdates;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getRelationFilterTasks.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<CompletableFuture<?>, Object> getRelationFilterTasks() {
             return relationFilterTasks;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getToRemove.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<Object> getToRemove() {
             return toRemove;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTmpBuffer.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<Object> getTmpBuffer() {
             return tmpBuffer;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getUpdatedEntitiesInCurrentEp.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<Entity> getUpdatedEntitiesInCurrentEp() {
             return updatedEntitiesInCurrentEp;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getRetrievedEntities.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Entity> getRetrievedEntities() {
             return retrievedEntities;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getRetrievedRelations.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Relation> getRetrievedRelations() {
             return retrievedRelations;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getFaultyRelations.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Relation> getFaultyRelations() {
             return faultyRelations;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMergeInfos.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, EntityMerge> getMergeInfos() {
             return mergeInfos;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMemUpdate.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public GraphMemUpdate getMemUpdate() {
             return memUpdate;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMemUpdateSkipEmbed.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public GraphMemUpdate getMemUpdateSkipEmbed() {
             return memUpdateSkipEmbed;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getCurrentTimestamp.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public int getCurrentTimestamp() {
             return currentTimestamp;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setCurrentTimestamp.
+         * 
+         * @param currentTimestamp currentTimestamp
+         * @since 0.1.7
          */
         public void setCurrentTimestamp(int currentTimestamp) {
             this.currentTimestamp = currentTimestamp;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getReferenceTimestamp.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public int getReferenceTimestamp() {
             return referenceTimestamp;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setReferenceTimestamp.
+         * 
+         * @param referenceTimestamp referenceTimestamp
+         * @since 0.1.7
          */
         public void setReferenceTimestamp(int referenceTimestamp) {
             this.referenceTimestamp = referenceTimestamp;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getLookupTable.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public LookupTables getLookupTable() {
             return lookupTable;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getExtras.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Object> getExtras() {
             return extras;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getStrategy.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public AddMemStrategy getStrategy() {
             return strategy;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setStrategy.
+         * 
+         * @param strategy strategy
+         * @since 0.1.7
          */
         public void setStrategy(AddMemStrategy strategy) {
             this.strategy = strategy;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getPrompting.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public GraphMemPrompting getPrompting() {
             return prompting;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getEntityTypes.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<EntityDef> getEntityTypes() {
             return entityTypes;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getEpisodeType.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public EpisodeType getEpisodeType() {
             return episodeType;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setEpisodeType.
+         * 
+         * @param episodeType episodeType
+         * @since 0.1.7
          */
         public void setEpisodeType(EpisodeType episodeType) {
             this.episodeType = episodeType;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getContent.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getContent() {
             return content;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setContent.
+         * 
+         * @param content content
+         * @since 0.1.7
          */
         public void setContent(String content) {
             this.content = content;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getHistory.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getHistory() {
             return history;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setHistory.
+         * 
+         * @param history history
+         * @since 0.1.7
          */
         public void setHistory(String history) {
             this.history = history;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * clear.
+         * 
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public void clear() {
             tasks.clear();
             mergingTasks.clear();
@@ -710,11 +1146,15 @@ public interface Clearable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * batchEmbed.
+     * 
+     * @param data data
+     * @param embeddingService embeddingService
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<BaseGraphObject> batchEmbed(
-            List<BaseGraphObject> data,
-            Embedding embeddingService,
+    public static List<BaseGraphObject> batchEmbed(List<BaseGraphObject> data, Embedding embeddingService,
             GraphConfig config) {
         if (data.isEmpty()) {
             return List.of();
@@ -744,7 +1184,13 @@ public interface Clearable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * persistToDb.
+     * 
+     * @param dbBackend dbBackend
+     * @param state state
+     * @param config config
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public static void persistToDb(GraphStore dbBackend, GraphMemState state, GraphConfig config) throws Exception {
         state.getTmpBuffer().clear();
@@ -808,21 +1254,21 @@ public interface Clearable {
             dbBackend.addRelation(state.getMemUpdateSkipEmbed().getUpdatedRelation(), false, true, true);
         }
         if (!state.getMemUpdate().getRemovedEntity().isEmpty()) {
-            dbBackend.delete(
-                    GraphConstants.ENTITY_COLLECTION,
-                    new ArrayList<>(state.getMemUpdate().getRemovedEntity()),
+            dbBackend.delete(GraphConstants.ENTITY_COLLECTION, new ArrayList<>(state.getMemUpdate().getRemovedEntity()),
                     null);
         }
         if (!state.getMemUpdate().getRemovedRelation().isEmpty()) {
-            dbBackend.delete(
-                    GraphConstants.RELATION_COLLECTION,
-                    new ArrayList<>(state.getMemUpdate().getRemovedRelation()),
-                    null);
+            dbBackend.delete(GraphConstants.RELATION_COLLECTION,
+                    new ArrayList<>(state.getMemUpdate().getRemovedRelation()), null);
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * classifyRelationsExtracted.
+     * 
+     * @param relations relations
+     * @param state state
+     * @since 0.1.7
      */
     public static void classifyRelationsExtracted(List<Relation> relations, GraphMemState state) {
         for (EntityMerge mergeInfo : state.getMergeInfos().values()) {
@@ -864,6 +1310,13 @@ public interface Clearable {
         }
     }
 
+    /**
+     * mapToEntity.
+     * 
+     * @param input input
+     * @return the result
+     * @since 0.1.7
+     */
     private static Entity mapToEntity(Map<String, Object> input) {
         Entity entity = new Entity();
         entity.setUuid(String.valueOf(input.getOrDefault("uuid", GraphUtils.getUuid())));
@@ -876,6 +1329,13 @@ public interface Clearable {
         return entity;
     }
 
+    /**
+     * mapToRelation.
+     * 
+     * @param input input
+     * @return the result
+     * @since 0.1.7
+     */
     private static Relation mapToRelation(Map<String, Object> input) {
         Relation relation = new Relation();
         relation.setUuid(String.valueOf(input.getOrDefault("uuid", GraphUtils.getUuid())));
@@ -888,6 +1348,13 @@ public interface Clearable {
         return relation;
     }
 
+    /**
+     * mapToEpisode.
+     * 
+     * @param input input
+     * @return the result
+     * @since 0.1.7
+     */
     private static Episode mapToEpisode(Map<String, Object> input) {
         Episode episode = new Episode();
         episode.setUuid(String.valueOf(input.getOrDefault("uuid", GraphUtils.getUuid())));
@@ -899,10 +1366,25 @@ public interface Clearable {
         return episode;
     }
 
+    /**
+     * parseCreatedAt.
+     * 
+     * @param input input
+     * @return the result
+     * @since 0.1.7
+     */
     private static int parseCreatedAt(Map<String, Object> input) {
         return Integer.parseInt(String.valueOf(input.getOrDefault("created_at", GraphUtils.getCurrentUtcTimestamp())));
     }
 
+    /**
+     * findField.
+     * 
+     * @param type type
+     * @param name name
+     * @return Field
+     * @since 0.1.7
+     */
     private static java.lang.reflect.Field findField(Class<?> type, String name) {
         Class<?> current = type;
         while (current != null) {

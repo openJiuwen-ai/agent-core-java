@@ -6,11 +6,13 @@ package com.openjiuwen.core.graph.visualization;
 
 /**
  * Represents an edge in a drawable graph for visualization.
- *
- * <p>Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_edge.DrawableEdge}.</p>
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_edge.DrawableEdge}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class DrawableEdge {
-
     private final String source;
     private final String target;
     private Object data;
@@ -18,7 +20,11 @@ public class DrawableEdge {
     private boolean streaming;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DrawableEdge.
+     * 
+     * @param source source
+     * @param target target
+     * @since 0.1.7
      */
     public DrawableEdge(String source, String target) {
         this.source = source;
@@ -26,7 +32,14 @@ public class DrawableEdge {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DrawableEdge.
+     * 
+     * @param source source
+     * @param target target
+     * @param data data
+     * @param conditional conditional
+     * @param streaming streaming
+     * @since 0.1.7
      */
     public DrawableEdge(String source, String target, Object data, boolean conditional, boolean streaming) {
         this.source = source;
@@ -37,56 +50,80 @@ public class DrawableEdge {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSource.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSource() {
         return source;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTarget.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTarget() {
         return target;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getData.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getData() {
         return data;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setData.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     public void setData(Object data) {
         this.data = data;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isConditional.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isConditional() {
         return conditional;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setConditional.
+     * 
+     * @param conditional conditional
+     * @since 0.1.7
      */
     public void setConditional(boolean conditional) {
         this.conditional = conditional;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isStreaming.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isStreaming() {
         return streaming;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStreaming.
+     * 
+     * @param streaming streaming
+     * @since 0.1.7
      */
     public void setStreaming(boolean streaming) {
         this.streaming = streaming;

@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.session.utils.SessionUtils;
 
@@ -14,8 +17,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for SessionUtils.getBySchema and SessionUtils.updateDict.
  * <p>
@@ -23,13 +24,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * {@code test_clean_non_value}.
  */
 class SessionUtilsTest {
-
     // ---------- getBySchema tests ----------
-
     @Nested
     @DisplayName("getBySchema")
     class GetBySchemaTests {
-
         @Test
         @DisplayName("updateDict creates nested structure from dot-path key")
         void testUpdateDictCreateNested() {
@@ -194,14 +192,13 @@ class SessionUtilsTest {
     @Nested
     @DisplayName("updateDict null value deletion")
     class UpdateDictClean {
-
         @Test
         @DisplayName("null value removes top-level key")
         void testNullRemovesTopLevel() {
             Map<String, Object> data = new HashMap<>();
             data.put("a", new HashMap<>(Map.of("a1", 1, "a2", 2)));
-            data.put("b", new HashMap<>(Map.of("b1",
-                    new HashMap<>(Map.of("b11", "1", "b12", Arrays.asList(1, 2, null), "b13", "2")))));
+            data.put("b", new HashMap<>(
+                    Map.of("b1", new HashMap<>(Map.of("b11", "1", "b12", Arrays.asList(1, 2, null), "b13", "2")))));
             data.put("c", 2);
 
             Map<String, Object> update = new HashMap<>();
@@ -247,7 +244,6 @@ class SessionUtilsTest {
     @Nested
     @DisplayName("splitNestedPath")
     class SplitNestedPathTests {
-
         @Test
         @DisplayName("simple dot path splits correctly")
         void testSimpleDotPath() {
@@ -282,7 +278,6 @@ class SessionUtilsTest {
     @Nested
     @DisplayName("Reference path utilities")
     class RefPathTests {
-
         @Test
         @DisplayName("isRefPath recognizes ${xxx} pattern")
         void testIsRefPath() {

@@ -12,14 +12,14 @@ import lombok.NoArgsConstructor;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Public class EvolutionPatch used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class EvolutionPatch used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class EvolutionPatch {
     @Builder.Default
@@ -37,7 +37,10 @@ public class EvolutionPatch {
     private String scriptPurpose;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -54,33 +57,56 @@ public class EvolutionPatch {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromMap.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public static EvolutionPatch fromMap(Map<String, Object> data) {
         Map<String, Object> safe = data != null ? data : Map.of();
-        return EvolutionPatch.builder()
-                .section(string(safe.getOrDefault("section", "Troubleshooting")))
-                .action(string(safe.getOrDefault("action", "append")))
-                .content(string(safe.getOrDefault("content", "")))
+        return EvolutionPatch.builder().section(string(safe.getOrDefault("section", "Troubleshooting")))
+                .action(string(safe.getOrDefault("action", "append"))).content(string(safe.getOrDefault("content", "")))
                 .target(EvolutionTarget.fromValue(string(safe.get("target"))))
                 .skipReason(blankToNull(string(safe.get("skip_reason"))))
                 .mergeTarget(blankToNull(string(safe.get("merge_target"))))
                 .scriptFilename(blankToNull(string(safe.get("script_filename"))))
                 .scriptLanguage(blankToNull(string(safe.get("script_language"))))
-                .scriptPurpose(blankToNull(string(safe.get("script_purpose"))))
-                .build();
+                .scriptPurpose(blankToNull(string(safe.get("script_purpose")))).build();
     }
 
+    /**
+     * putIfPresent.
+     * 
+     * @param payload payload
+     * @param key key
+     * @param value value
+     * @since 0.1.7
+     */
     private static void putIfPresent(Map<String, Object> payload, String key, String value) {
         if (value != null && !value.isBlank()) {
             payload.put(key, value);
         }
     }
 
+    /**
+     * string.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String string(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
 
+    /**
+     * blankToNull.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
     }

@@ -9,14 +9,19 @@ import java.util.Map;
 
 /**
  * Base type for result-ranker configuration.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseRankConfig {
-
     private final String name;
     private final boolean higherIsBetter;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseRankConfig.
+     * 
+     * @param name name
+     * @param higherIsBetter higherIsBetter
+     * @since 0.1.7
      */
     protected BaseRankConfig(String name, boolean higherIsBetter) {
         this.name = name;
@@ -24,33 +29,49 @@ public abstract class BaseRankConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isHigherIsBetter.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isHigherIsBetter() {
         return higherIsBetter;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getArgs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public abstract RankerArguments getArgs();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isActive.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Integer> isActive() {
         return List.of(1, 1, 1);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRankerClass.
+     * 
+     * @param database database
+     * @return the result
+     * @since 0.1.7
      */
     public Class<?> getRankerClass(String database) {
         return ResultRankRegistry.getRankerClass(database, name);
@@ -58,6 +79,8 @@ public abstract class BaseRankConfig {
 
     /**
      * Ranker constructor arguments.
+     * 
+     * @since 0.1.7
      */
     public record RankerArguments(List<Object> positional, Map<String, Object> keyword) {
     }

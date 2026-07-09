@@ -1,13 +1,13 @@
+
 package com.openjiuwen.agentteams.worktree;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class WorktreeNoticeCompatibilityTest {
-
     @Test
     void shouldBuildNoticeForWorktreeContext() {
         Path parentCwd = Path.of("repo", "main").toAbsolutePath();
@@ -15,17 +15,13 @@ class WorktreeNoticeCompatibilityTest {
 
         String notice = WorktreeNotice.buildWorktreeNotice(parentCwd, worktreeCwd);
 
-        assertThat(notice)
-                .contains("Git Worktree Isolation Notice")
-                .contains("repo")
-                .contains("isolated")
+        assertThat(notice).contains("Git Worktree Isolation Notice").contains("repo").contains("isolated")
                 .contains("translate them to your worktree root");
     }
 
     @Test
     void shouldMentionEnterAndExitTools() {
-        String notice = WorktreeNotice.buildWorktreeNotice(
-                Path.of("repo", "main"), Path.of("tmp", "wt"));
+        String notice = WorktreeNotice.buildWorktreeNotice(Path.of("repo", "main"), Path.of("tmp", "wt"));
 
         assertThat(notice).contains("EnterWorktreeTool");
         assertThat(notice).contains("ExitWorktreeTool");

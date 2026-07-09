@@ -1,4 +1,7 @@
+
 package com.openjiuwen.harness.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.harness.tools.browser.BrowserActionController;
@@ -6,6 +9,7 @@ import com.openjiuwen.harness.tools.browser.BrowserProfile;
 import com.openjiuwen.harness.tools.browser.BrowserRunGuardrails;
 import com.openjiuwen.harness.tools.browser.BrowserService;
 import com.openjiuwen.harness.tools.browser.ManagedBrowserDriver;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -15,23 +19,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessBrowserRuntimeAdvancedCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
     @Test
     void managedBrowserShouldReuseReadyEndpointAndSkipExternalStop() throws Exception {
-        BrowserProfile profile = BrowserProfile.builder()
-                .name("test-profile")
-                .driverType("managed")
-                .cdpUrl("http://127.0.0.1:9333")
-                .userDataDir(".")
-                .debugPort(9333)
-                .host("127.0.0.1")
-                .build();
+        BrowserProfile profile = BrowserProfile.builder().name("test-profile").driverType("managed")
+                .cdpUrl("http://127.0.0.1:9333").userDataDir(".").debugPort(9333).host("127.0.0.1").build();
         ManagedBrowserDriver driver = new ManagedBrowserDriver(profile) {
             @Override
             public boolean isEndpointReady() {
@@ -53,7 +48,8 @@ class HarnessBrowserRuntimeAdvancedCompatibilityTest {
         Files.writeString(root.resolve("report.xlsx"), "data");
 
         List<Map<String, Object>> files = BrowserActionController.listDirFiles(root);
-        String script = BrowserActionController.buildSetInputFilesScript("#upload", List.of("/data/a.pdf", "/data/b.csv"));
+        String script =
+            BrowserActionController.buildSetInputFilesScript("#upload", List.of("/data/a.pdf", "/data/b.csv"));
 
         assertThat(files).hasSize(1);
         assertThat(files.get(0)).containsEntry("name", "report.xlsx");
@@ -70,7 +66,8 @@ class HarnessBrowserRuntimeAdvancedCompatibilityTest {
             return Map.of("ok", true, "selector", "input[type=\"file\"]", "paths", List.of("/tmp/x.pdf"));
         });
 
-        Map<String, Object> result = controller.runAction("browser_set_input_files", "s", "r", Map.of("paths", List.of("/tmp/x.pdf")));
+        Map<String, Object> result =
+            controller.runAction("browser_set_input_files", "s", "r", Map.of("paths", List.of("/tmp/x.pdf")));
 
         assertThat(invoked.get()).isTrue();
         assertThat(result).containsEntry("ok", true);
@@ -78,25 +75,22 @@ class HarnessBrowserRuntimeAdvancedCompatibilityTest {
 
     @Test
     void heartbeatShouldMarkHealthyAndDetectManagedDriverFailure() {
-        BrowserService service = new BrowserService(
-                "openai",
-                "test-key",
-                "https://example.invalid/v1",
-                "test-model",
-                McpServerConfig.builder().serverId("test").serverName("test").serverPath("stdio://playwright").clientType("stdio").build(),
-                BrowserRunGuardrails.builder().build()
-        );
+        BrowserService service = new BrowserService("openai", "test-key", "https://example.invalid/v1", "test-model",
+                McpServerConfig.builder().serverId("test").serverName("test").serverPath("stdio://playwright")
+                        .clientType("stdio").build(),
+                BrowserRunGuardrails.builder().build());
 
         service.setConnectionHealthy(true);
         service.checkConnection();
         assertThat(service.isConnectionHealthy()).isTrue();
 
-        service.setManagedDriver(new ManagedBrowserDriver(BrowserProfile.builder().cdpUrl("http://127.0.0.1:9333").build()) {
-            @Override
-            public boolean isEndpointReady() {
-                return false;
-            }
-        });
+        service.setManagedDriver(
+                new ManagedBrowserDriver(BrowserProfile.builder().cdpUrl("http://127.0.0.1:9333").build()) {
+                    @Override
+                    public boolean isEndpointReady() {
+                        return false;
+                    }
+                });
 
         try {
             service.checkConnection();

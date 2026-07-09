@@ -1,9 +1,13 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.runner.resourcemanager;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.runner.base.Tag;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.runner.base.TagUpdateStrategy;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,15 +16,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for TagMgr: tag/untag, find by tags, match strategies.
  * Translated from Python test_tag_manager.py
  */
 @DisplayName("TagMgr Tests")
 class TagMgrTest {
-
     private TagMgr tagMgr;
 
     @BeforeEach
@@ -114,8 +115,8 @@ class TagMgrTest {
     @Test
     @DisplayName("updateResourceTags REPLACE strategy")
     void testUpdateResourceTagsReplace() {
-        List<String> currentTags = tagMgr.updateResourceTags("res1",
-                List.of("tag5", "tag6"), TagUpdateStrategy.REPLACE);
+        List<String> currentTags =
+            tagMgr.updateResourceTags("res1", List.of("tag5", "tag6"), TagUpdateStrategy.REPLACE);
         assertEquals(Set.of("tag5", "tag6"), new HashSet<>(currentTags));
         assertFalse(currentTags.contains("tag1"));
         assertFalse(currentTags.contains("tag2"));
@@ -136,8 +137,7 @@ class TagMgrTest {
     @Test
     @DisplayName("updateResourceTags MERGE strategy")
     void testUpdateResourceTagsMerge() {
-        List<String> currentTags = tagMgr.updateResourceTags("res1",
-                List.of("tag5", "tag6"), TagUpdateStrategy.MERGE);
+        List<String> currentTags = tagMgr.updateResourceTags("res1", List.of("tag5", "tag6"), TagUpdateStrategy.MERGE);
         assertTrue(currentTags.contains("tag1"));
         assertTrue(currentTags.contains("tag2"));
         assertTrue(currentTags.contains("tag5"));
@@ -147,8 +147,7 @@ class TagMgrTest {
     @Test
     @DisplayName("updateResourceTags to GLOBAL")
     void testUpdateToGlobal() {
-        List<String> oldTags = tagMgr.updateResourceTags("res1",
-                Tag.GLOBAL, TagUpdateStrategy.REPLACE);
+        List<String> oldTags = tagMgr.updateResourceTags("res1", Tag.GLOBAL, TagUpdateStrategy.REPLACE);
         assertEquals(List.of(Tag.GLOBAL), oldTags);
         assertTrue(tagMgr.hasResourceTag("res1", Tag.GLOBAL));
     }
@@ -180,8 +179,7 @@ class TagMgrTest {
     @Test
     @DisplayName("findResourcesByTags ANY strategy")
     void testFindResourcesByTagsAny() {
-        List<String> resources = tagMgr.findResourcesByTags(
-                List.of("tag1", "tag3"), TagMatchStrategy.ANY, true);
+        List<String> resources = tagMgr.findResourcesByTags(List.of("tag1", "tag3"), TagMatchStrategy.ANY, true);
         assertTrue(resources.contains("res1")); // has tag1
         assertTrue(resources.contains("res2")); // has tag3
         assertTrue(resources.contains("res4")); // has tag1 and tag3
@@ -191,26 +189,23 @@ class TagMgrTest {
     @Test
     @DisplayName("findResourcesByTags ALL strategy")
     void testFindResourcesByTagsAll() {
-        List<String> resources = tagMgr.findResourcesByTags(
-                List.of("tag1", "tag3"), TagMatchStrategy.ALL, true);
+        List<String> resources = tagMgr.findResourcesByTags(List.of("tag1", "tag3"), TagMatchStrategy.ALL, true);
         assertFalse(resources.contains("res1")); // only tag1
         assertFalse(resources.contains("res2")); // only tag3
-        assertTrue(resources.contains("res4"));   // both tag1 and tag3
-        assertFalse(resources.contains("res3"));  // GLOBAL
+        assertTrue(resources.contains("res4")); // both tag1 and tag3
+        assertFalse(resources.contains("res3")); // GLOBAL
     }
 
     @Test
     @DisplayName("findResourcesByTags with nonexistent tag throws exception")
     void testFindResourcesWithNonexistentTag() {
-        assertThrows(Exception.class, () ->
-                tagMgr.findResourcesByTags(List.of("tag99"), TagMatchStrategy.ANY, false));
+        assertThrows(Exception.class, () -> tagMgr.findResourcesByTags(List.of("tag99"), TagMatchStrategy.ANY, false));
     }
 
     @Test
     @DisplayName("findResourcesByTags skip nonexistent tag")
     void testFindResourcesSkipNonexistentTag() {
-        List<String> resources = tagMgr.findResourcesByTags(
-                List.of("tag1", "tag99"), TagMatchStrategy.ANY, true);
+        List<String> resources = tagMgr.findResourcesByTags(List.of("tag1", "tag99"), TagMatchStrategy.ANY, true);
         assertTrue(resources.contains("res1"));
         assertTrue(resources.contains("res4"));
     }

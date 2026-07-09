@@ -16,13 +16,14 @@ import java.util.concurrent.ConcurrentHashMap;
  * Performance metrics for callback execution.
  * <p>
  * Tracks execution statistics including call counts, timing, and errors.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class CallbackMetrics {
-
     @Builder.Default
     private int callCount = 0;
 
@@ -42,9 +43,10 @@ public class CallbackMetrics {
 
     /**
      * Update metrics with new execution data.
-     *
+     * 
      * @param executionTime Time taken for execution in seconds
-     * @param isError       Whether the execution resulted in an error
+     * @param isError Whether the execution resulted in an error
+     * @since 0.1.7
      */
     public synchronized void update(double executionTime, boolean isError) {
         callCount++;
@@ -59,8 +61,9 @@ public class CallbackMetrics {
 
     /**
      * Calculate average execution time.
-     *
+     * 
      * @return Average execution time in seconds, or 0 if no calls
+     * @since 0.1.7
      */
     public double getAvgTime() {
         return callCount > 0 ? totalTime / callCount : 0.0;
@@ -68,8 +71,9 @@ public class CallbackMetrics {
 
     /**
      * Convert metrics to dictionary format.
-     *
+     * 
      * @return Map containing all metric values
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> result = new ConcurrentHashMap<>();

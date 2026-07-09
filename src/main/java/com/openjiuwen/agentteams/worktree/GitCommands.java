@@ -8,7 +8,9 @@ import com.openjiuwen.core.common.logging.Loggers;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -18,18 +20,24 @@ import java.util.concurrent.TimeUnit;
 /**
  * Pure subprocess wrapper for git operations. Zero business logic.
  * All methods are stateless and fail fast.
- *
- * <p>Mirrors Python worktree/git.py.</p>
+ * 
+ * @since 0.1.7
  */
 public final class GitCommands {
-
+    /**
+     * GitCommands.
+     * 
+     * @since 0.1.7
+     */
     private GitCommands() {
     }
 
     // ---- GitResult ----
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GitResult.
+     * 
+     * @since 0.1.7
      */
     public static class GitResult {
         private final int returncode;
@@ -42,25 +50,51 @@ public final class GitCommands {
             this.stderr = stderr;
         }
 
+        /**
+         * getReturncode.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         public int getReturncode() {
             return returncode;
         }
 
+        /**
+         * getStdout.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         public String getStdout() {
             return stdout;
         }
 
+        /**
+         * getStderr.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         public String getStderr() {
             return stderr;
         }
 
+        /**
+         * isOk.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         public boolean isOk() {
             return returncode == 0;
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GitError.
+     * 
+     * @since 0.1.7
      */
     public static class GitError extends RuntimeException {
         private final String command;
@@ -72,10 +106,22 @@ public final class GitCommands {
             this.returncode = returncode;
         }
 
+        /**
+         * getCommand.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         public String getCommand() {
             return command;
         }
 
+        /**
+         * getReturncode.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         public int getReturncode() {
             return returncode;
         }
@@ -83,10 +129,27 @@ public final class GitCommands {
 
     // ---- Core execution ----
 
+    /**
+     * runGit.
+     * 
+     * @param args args
+     * @param cwd cwd
+     * @return the result
+     * @since 0.1.7
+     */
     private static GitResult runGit(List<String> args, Path cwd) {
         return runGit(args, cwd, false);
     }
 
+    /**
+     * runGit.
+     * 
+     * @param args args
+     * @param cwd cwd
+     * @param check check
+     * @return the result
+     * @since 0.1.7
+     */
     private static GitResult runGit(List<String> args, Path cwd, boolean check) {
         List<String> command = new ArrayList<>();
         command.add("git");
@@ -102,16 +165,48 @@ public final class GitCommands {
 
             Process process = pb.start();
 
-            String stdout = readStream(process.inputReader());
-            String stderr = readStream(process.errorReader());
+            StringBuilder stdoutBuf = new StringBuilder();
+            StringBuilder stderrBuf = new StringBuilder();
+            Thread stdoutThread = new Thread(() -> {
+                try (InputStream inputStream = process.getInputStream();
+                        BufferedReader reader =
+                            new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+                    stdoutBuf.append(readStream(reader));
+                } catch (IOException e) {
+                    Loggers.AGENT.error("Failed to read git stdout", e);
+                }
+            }, "git-stdout-reader");
+            Thread stderrThread = new Thread(() -> {
+                try (InputStream errorStream = process.getErrorStream();
+                        BufferedReader reader =
+                            new BufferedReader(new InputStreamReader(errorStream, StandardCharsets.UTF_8))) {
+                    stderrBuf.append(readStream(reader));
+                } catch (IOException e) {
+                    Loggers.AGENT.error("Failed to read git stderr", e);
+                }
+            }, "git-stderr-reader");
+
+            // 设置未捕获异常处理器
+            Thread.UncaughtExceptionHandler handler = (thread, ex) -> {
+                Loggers.AGENT.error("Uncaught exception in thread " + thread.getName(), ex);
+            };
+            stdoutThread.setUncaughtExceptionHandler(handler);
+            stderrThread.setUncaughtExceptionHandler(handler);
+
+            stdoutThread.start();
+            stderrThread.start();
 
             boolean finished = process.waitFor(30, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
                 throw new GitError(String.join(" ", args), -1, "Timed out after 30s");
             }
+            stdoutThread.join(5000);
+            stderrThread.join(5000);
 
             int rc = process.exitValue();
+            String stdout = stdoutBuf.toString();
+            String stderr = stderrBuf.toString();
             GitResult result = new GitResult(rc, stdout, stderr);
 
             if (check && rc != 0) {
@@ -123,6 +218,14 @@ public final class GitCommands {
         }
     }
 
+    /**
+     * readStream.
+     * 
+     * @param reader reader
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private static String readStream(BufferedReader reader) throws IOException {
         StringBuilder sb = new StringBuilder();
         String line;
@@ -138,26 +241,37 @@ public final class GitCommands {
     // ---- Query operations ----
 
     /**
-     * Auto-generated for codecheck compliance.
+     * findGitRoot.
+     * 
+     * @param cwd cwd
+     * @return the result
+     * @since 0.1.7
      */
     public static String findGitRoot(Path cwd) {
         return runGit(List.of("rev-parse", "--show-toplevel"), cwd, true).getStdout().trim();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentBranch.
+     * 
+     * @param cwd cwd
+     * @return the result
+     * @since 0.1.7
      */
     public static String getCurrentBranch(Path cwd) {
         return runGit(List.of("rev-parse", "--abbrev-ref", "HEAD"), cwd, true).getStdout().trim();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDefaultBranch.
+     * 
+     * @param cwd cwd
+     * @return the result
+     * @since 0.1.7
      */
     public static String getDefaultBranch(Path cwd) {
         try {
-            GitResult result = runGit(
-                    List.of("symbolic-ref", "refs/remotes/origin/HEAD"), cwd);
+            GitResult result = runGit(List.of("symbolic-ref", "refs/remotes/origin/HEAD"), cwd);
             if (result.isOk()) {
                 String ref = result.getStdout().trim();
                 return ref.substring(ref.lastIndexOf('/') + 1);
@@ -178,21 +292,34 @@ public final class GitCommands {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * revParse.
+     * 
+     * @param ref ref
+     * @param cwd cwd
+     * @return the result
+     * @since 0.1.7
      */
     public static String revParse(String ref, Path cwd) {
         return runGit(List.of("rev-parse", ref), cwd, true).getStdout().trim();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveGitDir.
+     * 
+     * @param cwd cwd
+     * @return the result
+     * @since 0.1.7
      */
     public static String resolveGitDir(Path cwd) {
         return runGit(List.of("rev-parse", "--git-dir"), cwd, true).getStdout().trim();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * findCanonicalGitRoot.
+     * 
+     * @param cwd cwd
+     * @return the result
+     * @since 0.1.7
      */
     public static String findCanonicalGitRoot(Path cwd) {
         String gitDir = resolveGitDir(cwd);
@@ -229,10 +356,15 @@ public final class GitCommands {
     // ---- Worktree operations ----
 
     /**
-     * Auto-generated for codecheck compliance.
+     * worktreeAdd.
+     * 
+     * @param repoRoot repoRoot
+     * @param worktreePath worktreePath
+     * @param branchName branchName
+     * @param baseRef baseRef
+     * @since 0.1.7
      */
-    public static void worktreeAdd(
-            Path repoRoot, Path worktreePath, String branchName, String baseRef) {
+    public static void worktreeAdd(Path repoRoot, Path worktreePath, String branchName, String baseRef) {
         List<String> args = new ArrayList<>();
         args.add("worktree");
         args.add("add");
@@ -248,7 +380,12 @@ public final class GitCommands {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * worktreeRemove.
+     * 
+     * @param worktreePath worktreePath
+     * @param repoRoot repoRoot
+     * @param force force
+     * @since 0.1.7
      */
     public static void worktreeRemove(Path worktreePath, Path repoRoot, boolean force) {
         List<String> args = new ArrayList<>();
@@ -262,21 +399,33 @@ public final class GitCommands {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * worktreePrune.
+     * 
+     * @param repoRoot repoRoot
+     * @since 0.1.7
      */
     public static void worktreePrune(Path repoRoot) {
         runGit(List.of("worktree", "prune"), repoRoot, true);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * branchDelete.
+     * 
+     * @param branch branch
+     * @param repoRoot repoRoot
+     * @since 0.1.7
      */
     public static void branchDelete(String branch, Path repoRoot) {
         runGit(List.of("branch", "-D", branch), repoRoot, true);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fetchRef.
+     * 
+     * @param repoRoot repoRoot
+     * @param ref ref
+     * @param remote remote
+     * @since 0.1.7
      */
     public static void fetchRef(Path repoRoot, String ref, String remote) {
         String r = remote != null && !remote.isBlank() ? remote : "origin";
@@ -284,7 +433,11 @@ public final class GitCommands {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * sparseCheckoutSet.
+     * 
+     * @param worktreePath worktreePath
+     * @param paths paths
+     * @since 0.1.7
      */
     public static void sparseCheckoutSet(Path worktreePath, List<String> paths) {
         runGit(List.of("sparse-checkout", "set", "--cone"), worktreePath, true);
@@ -301,30 +454,39 @@ public final class GitCommands {
     // ---- Status queries ----
 
     /**
-     * Auto-generated for codecheck compliance.
+     * statusPorcelain.
+     * 
+     * @param cwd cwd
+     * @return the result
+     * @since 0.1.7
      */
     public static String statusPorcelain(Path cwd) {
         return runGit(List.of("status", "--porcelain"), cwd).getStdout();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * countCommitsSince.
+     * 
+     * @param baseCommit baseCommit
+     * @param cwd cwd
+     * @return the result
+     * @since 0.1.7
      */
     public static int countCommitsSince(String baseCommit, Path cwd) {
-        String result = runGit(
-                List.of("rev-list", "--count", baseCommit + "..HEAD"), cwd, true)
-                .getStdout().trim();
+        String result = runGit(List.of("rev-list", "--count", baseCommit + "..HEAD"), cwd, true).getStdout().trim();
         return result.isEmpty() ? 0 : Integer.parseInt(result);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasUnpushedCommits.
+     * 
+     * @param cwd cwd
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean hasUnpushedCommits(Path cwd) {
         try {
-            GitResult result = runGit(
-                    List.of("rev-list", "--max-count=1", "HEAD", "--not", "--remotes"),
-                    cwd);
+            GitResult result = runGit(List.of("rev-list", "--max-count=1", "HEAD", "--not", "--remotes"), cwd);
             return result.isOk() && !result.getStdout().trim().isEmpty();
         } catch (Exception e) {
             Loggers.AGENT.debug("Failed to check unpushed commits: {}", e.getMessage());
@@ -333,7 +495,11 @@ public final class GitCommands {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * readWorktreeHeadSha.
+     * 
+     * @param worktreePath worktreePath
+     * @return the result
+     * @since 0.1.7
      */
     public static String readWorktreeHeadSha(Path worktreePath) {
         Path gitFile = worktreePath.resolve(".git");

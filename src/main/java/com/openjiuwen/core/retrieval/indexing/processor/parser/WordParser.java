@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
+
 import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.XWPFPictureData;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
@@ -25,13 +26,21 @@ import java.util.Map;
 
 /**
  * DOCX parser with optional image caption support.
+ * 
+ * @since 0.1.7
  */
 public class WordParser extends Parser {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parse.
+     * 
+     * @param doc doc
+     * @param docId docId
+     * @param llmClient llmClient
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options) {
         try {
             String content = parseContent(doc, llmClient, options);
@@ -44,16 +53,23 @@ public class WordParser extends Parser {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parseContent.
+     * 
+     * @param doc doc
+     * @param llmClient llmClient
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
         Path path = Path.of(doc);
         if (!Files.exists(path)) {
             return null;
         }
-        try (InputStream inputStream = Files.newInputStream(path); XWPFDocument document = new XWPFDocument(inputStream)) {
+        try (InputStream inputStream = Files.newInputStream(path);
+                XWPFDocument document = new XWPFDocument(inputStream)) {
             List<String> content = new ArrayList<>();
             for (IBodyElement element : document.getBodyElements()) {
                 if (element instanceof XWPFParagraph paragraph) {
@@ -66,6 +82,8 @@ public class WordParser extends Parser {
                     if (!tableText.isBlank()) {
                         content.add(tableText);
                     }
+                } else {
+                    // no-op
                 }
             }
             if (llmClient != null) {
@@ -86,14 +104,25 @@ public class WordParser extends Parser {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * supports.
+     * 
+     * @param doc doc
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean supports(String doc) {
         return doc != null && doc.toLowerCase(Locale.ROOT).endsWith(".docx");
     }
 
+    /**
+     * tableToText.
+     * 
+     * @param table table
+     * @return the result
+     * @since 0.1.7
+     */
     private static String tableToText(XWPFTable table) {
         List<String> rows = new ArrayList<>();
         for (XWPFTableRow row : table.getRows()) {
@@ -106,6 +135,15 @@ public class WordParser extends Parser {
         return String.join("\n", rows).trim();
     }
 
+    /**
+     * extractPictures.
+     * 
+     * @param document document
+     * @param fileName fileName
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private static List<String> extractPictures(XWPFDocument document, String fileName) throws IOException {
         List<String> imagePaths = new ArrayList<>();
         Path outputDir = Path.of(ImageCaptioner.SAVED_IMAGE_DIR);

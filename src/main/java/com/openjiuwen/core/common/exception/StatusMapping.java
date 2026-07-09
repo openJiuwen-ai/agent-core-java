@@ -14,56 +14,40 @@ import java.util.function.Function;
  * <p>
  * Resolution order:
  * <ol>
- *   <li>Manual overrides</li>
- *   <li>Keyword-based rules (matched against the enum member name)</li>
- *   <li>Code-range-based rules</li>
- *   <li>Fallback: {@link ExecutionError}</li>
+ * <li>Manual overrides</li>
+ * <li>Keyword-based rules (matched against the enum member name)</li>
+ * <li>Code-range-based rules</li>
+ * <li>Fallback: {@link ExecutionError}</li>
  * </ol>
+ * 
+ * @since 0.1.7
  */
 public final class StatusMapping {
-
+    /**
+     * StatusMapping.
+     * 
+     * @since 0.1.7
+     */
     private StatusMapping() {
     }
 
     // ==================== Keyword Rules ====================
 
     private static final String[][] KEYWORD_RULES = {
-        {"INVALID", "VALIDATE", "NOT_SUPPORTED", "PARAM", "MISSING", "DUPLICATED", "CONFIG", "SCHEMA", "FORMAT", "TEMPLATE"},
-        {"INIT", "CONNECT", "SERVICE", "QUEUE", "PROVIDER", "CALL", "INVOKE_LLM", "MODEL", "REMOTE"},
-        {"TIMEOUT", "EXECUTE", "EXECUTION", "RUNTIME", "PROCESS", "STREAM", "RESPONSE"},
-    };
+            {"INVALID", "VALIDATE", "NOT_SUPPORTED", "PARAM", "MISSING", "DUPLICATED", "CONFIG", "SCHEMA", "FORMAT",
+                    "TEMPLATE"},
+            {"INIT", "CONNECT", "SERVICE", "QUEUE", "PROVIDER", "CALL", "INVOKE_LLM", "MODEL", "REMOTE"},
+            {"TIMEOUT", "EXECUTE", "EXECUTION", "RUNTIME", "PROCESS", "STREAM", "RESPONSE"}};
 
-    private static final String[] KEYWORD_EXCEPTION_NAMES = {
-        "ValidationError",
-        "FrameworkError",
-        "ExecutionError",
-    };
+    private static final String[] KEYWORD_EXCEPTION_NAMES = {"ValidationError", "FrameworkError", "ExecutionError"};
 
     // ==================== Range Rules ====================
 
-    private static final int[][] RANGE_BOUNDS = {
-        {100000, 119999},
-        {120000, 129999},
-        {130000, 139999},
-        {140000, 149999},
-        {150000, 159999},
-        {160000, 179999},
-        {180000, 189999},
-        {190000, 198999},
-        {199000, 199999},
-    };
+    private static final int[][] RANGE_BOUNDS = {{100000, 119999}, {120000, 129999}, {130000, 139999}, {140000, 149999},
+            {150000, 159999}, {160000, 179999}, {180000, 189999}, {190000, 198999}, {199000, 199999}};
 
-    private static final String[] RANGE_EXCEPTION_NAMES = {
-        "WorkflowError",
-        "AgentError",
-        "RunnerError",
-        "GraphError",
-        "ContextError",
-        "ToolchainError",
-        "FrameworkError",
-        "SessionError",
-        "SysOperationError",
-    };
+    private static final String[] RANGE_EXCEPTION_NAMES = {"WorkflowError", "AgentError", "RunnerError", "GraphError",
+            "ContextError", "ToolchainError", "FrameworkError", "SessionError", "SysOperationError"};
 
     // ==================== Manual Overrides ====================
 
@@ -79,6 +63,14 @@ public final class StatusMapping {
         MANUAL_OVERRIDES = Collections.unmodifiableMap(overrides);
     }
 
+    /**
+     * putIfExists.
+     * 
+     * @param map map
+     * @param enumName enumName
+     * @param exceptionName exceptionName
+     * @since 0.1.7
+     */
     private static void putIfExists(Map<StatusCode, String> map, String enumName, String exceptionName) {
         try {
             StatusCode code = StatusCode.valueOf(enumName);
@@ -91,30 +83,30 @@ public final class StatusMapping {
     // ==================== Exception Class Registry ====================
 
     @SuppressWarnings("unchecked")
-    private static final Map<String, Function<StatusCode, BaseError>> EXCEPTION_REGISTRY = Map.ofEntries(
-        Map.entry("BaseError", status -> new BaseError(status, null, null, null, null) {}),
-        Map.entry("FrameworkError", FrameworkError::new),
-        Map.entry("ExecutionError", ExecutionError::new),
-        Map.entry("ValidationError", ValidationError::new),
-        Map.entry("Termination", Termination::new),
-        Map.entry("WorkflowError", WorkflowError::new),
-        Map.entry("AgentError", AgentError::new),
-        Map.entry("ToolError", ToolError::new),
-        Map.entry("GraphError", GraphError::new),
-        Map.entry("SessionError", SessionError::new),
-        Map.entry("SysOperationError", SysOperationError::new),
-        Map.entry("ToolchainError", ToolchainError::new),
-        Map.entry("ContextError", ContextError::new),
-        Map.entry("RunnerError", RunnerError::new)
-    );
+    /**
+     * Map.ofEntries.
+     * 
+     * @param null null
+     * @since 0.1.7
+     */
+    private static final Map<String, Function<StatusCode, BaseError>> EXCEPTION_REGISTRY =
+        Map.ofEntries(Map.entry("BaseError", status -> new BaseError(status, null, null, null, null) {
+        }), Map.entry("FrameworkError", FrameworkError::new), Map.entry("ExecutionError", ExecutionError::new),
+                Map.entry("ValidationError", ValidationError::new), Map.entry("Termination", Termination::new),
+                Map.entry("WorkflowError", WorkflowError::new), Map.entry("AgentError", AgentError::new),
+                Map.entry("ToolError", ToolError::new), Map.entry("GraphError", GraphError::new),
+                Map.entry("SessionError", SessionError::new), Map.entry("SysOperationError", SysOperationError::new),
+                Map.entry("ToolchainError", ToolchainError::new), Map.entry("ContextError", ContextError::new),
+                Map.entry("RunnerError", RunnerError::new));
 
     // ==================== Resolution API ====================
 
     /**
      * Resolve the concrete exception class (as a factory) for the given status code.
-     *
+     * 
      * @param status the status code to resolve
      * @return a factory function that creates the appropriate exception
+     * @since 0.1.7
      */
     public static Function<StatusCode, BaseError> resolveExceptionFactory(StatusCode status) {
         // 1. Manual override
@@ -140,9 +132,10 @@ public final class StatusMapping {
 
     /**
      * Build an exception for the given status code using resolution rules.
-     *
+     * 
      * @param status the status code
      * @return a BaseError instance appropriate for the status
+     * @since 0.1.7
      */
     public static BaseError resolveException(StatusCode status) {
         return resolveExceptionFactory(status).apply(status);
@@ -150,8 +143,9 @@ public final class StatusMapping {
 
     /**
      * Generate full StatusCode → exception factory mapping for all status codes.
-     *
+     * 
      * @return an unmodifiable map of status codes to exception factories
+     * @since 0.1.7
      */
     public static Map<StatusCode, Function<StatusCode, BaseError>> buildStatusExceptionMap() {
         EnumMap<StatusCode, Function<StatusCode, BaseError>> mapping = new EnumMap<>(StatusCode.class);
@@ -163,6 +157,13 @@ public final class StatusMapping {
 
     // ==================== Internal Matching ====================
 
+    /**
+     * matchKeyword.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
+     */
     private static String matchKeyword(String name) {
         for (int i = 0; i < KEYWORD_RULES.length; i++) {
             for (String keyword : KEYWORD_RULES[i]) {
@@ -174,6 +175,13 @@ public final class StatusMapping {
         return null;
     }
 
+    /**
+     * matchRange.
+     * 
+     * @param code code
+     * @return the result
+     * @since 0.1.7
+     */
     private static String matchRange(int code) {
         for (int i = 0; i < RANGE_BOUNDS.length; i++) {
             if (code >= RANGE_BOUNDS[i][0] && code <= RANGE_BOUNDS[i][1]) {

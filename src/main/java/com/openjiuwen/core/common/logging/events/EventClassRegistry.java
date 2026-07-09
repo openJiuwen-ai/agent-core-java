@@ -4,7 +4,12 @@
 
 package com.openjiuwen.core.common.logging.events;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.logging.Logger;
@@ -14,9 +19,15 @@ import java.lang.reflect.Method;
  * Event class registry — maps {@link LogEventType} to concrete event class constructors.
  * <p>
  * Contains both the static (built-in) mapping and a dynamic registry for custom event types.
+ * 
+ * @since 0.1.7
  */
 public final class EventClassRegistry {
-
+    /**
+     * EventClassRegistry.
+     * 
+     * @since 0.1.7
+     */
     private EventClassRegistry() {
     }
 
@@ -28,67 +39,61 @@ public final class EventClassRegistry {
         Map<LogEventType, Supplier<? extends BaseLogEvent>> m = new EnumMap<>(LogEventType.class);
 
         // Agent events
-        for (LogEventType t : List.of(
-            LogEventType.AGENT_START, LogEventType.AGENT_END, LogEventType.AGENT_INVOKE,
-            LogEventType.AGENT_RESPONSE, LogEventType.AGENT_ERROR)) {
+        for (LogEventType t : List.of(LogEventType.AGENT_START, LogEventType.AGENT_END, LogEventType.AGENT_INVOKE,
+                LogEventType.AGENT_RESPONSE, LogEventType.AGENT_ERROR)) {
             m.put(t, AgentEvent::new);
         }
 
         // Workflow events
-        for (LogEventType t : List.of(
-            LogEventType.WORKFLOW_EXECUTE_START, LogEventType.WORKFLOW_EXECUTE_END,
-            LogEventType.WORKFLOW_EXECUTE_ERROR, LogEventType.WORKFLOW_OUTPUT_CHUNK,
-            LogEventType.WORKFLOW_COMPONENT_START, LogEventType.WORKFLOW_COMPONENT_END,
-            LogEventType.WORKFLOW_COMPONENT_ERROR, LogEventType.WORKFLOW_BRANCH)) {
+        for (LogEventType t : List.of(LogEventType.WORKFLOW_EXECUTE_START, LogEventType.WORKFLOW_EXECUTE_END,
+                LogEventType.WORKFLOW_EXECUTE_ERROR, LogEventType.WORKFLOW_OUTPUT_CHUNK,
+                LogEventType.WORKFLOW_COMPONENT_START, LogEventType.WORKFLOW_COMPONENT_END,
+                LogEventType.WORKFLOW_COMPONENT_ERROR, LogEventType.WORKFLOW_BRANCH)) {
             m.put(t, WorkflowEvent::new);
         }
 
         // LLM events
-        for (LogEventType t : List.of(
-            LogEventType.LLM_CALL_START, LogEventType.LLM_CALL_END,
-            LogEventType.LLM_CALL_ERROR, LogEventType.LLM_STREAM_CHUNK)) {
+        for (LogEventType t : List.of(LogEventType.LLM_CALL_START, LogEventType.LLM_CALL_END,
+                LogEventType.LLM_CALL_ERROR, LogEventType.LLM_STREAM_CHUNK)) {
             m.put(t, LLMEvent::new);
         }
 
         // Tool events
-        for (LogEventType t : List.of(
-            LogEventType.TOOL_CALL_START, LogEventType.TOOL_CALL_END, LogEventType.TOOL_CALL_ERROR)) {
+        for (LogEventType t : List.of(LogEventType.TOOL_CALL_START, LogEventType.TOOL_CALL_END,
+                LogEventType.TOOL_CALL_ERROR)) {
             m.put(t, ToolEvent::new);
         }
 
         // Store events
-        for (LogEventType t : List.of(
-            LogEventType.STORE_ADD, LogEventType.STORE_DELETE, LogEventType.STORE_UPDATE,
-            LogEventType.STORE_RETRIEVE, LogEventType.STORE_LOAD)) {
+        for (LogEventType t : List.of(LogEventType.STORE_ADD, LogEventType.STORE_DELETE, LogEventType.STORE_UPDATE,
+                LogEventType.STORE_RETRIEVE, LogEventType.STORE_LOAD)) {
             m.put(t, StoreEvent::new);
         }
 
         // Memory events
-        for (LogEventType t : List.of(
-            LogEventType.MEMORY_PROCESS, LogEventType.MEMORY_STORE, LogEventType.MEMORY_RETRIEVE,
-            LogEventType.MEMORY_DELETE, LogEventType.MEMORY_UPDATE)) {
+        for (LogEventType t : List.of(LogEventType.MEMORY_PROCESS, LogEventType.MEMORY_STORE,
+                LogEventType.MEMORY_RETRIEVE, LogEventType.MEMORY_DELETE, LogEventType.MEMORY_UPDATE)) {
             m.put(t, MemoryEvent::new);
         }
 
         // Session events
-        for (LogEventType t : List.of(
-            LogEventType.SESSION_CREATE, LogEventType.SESSION_UPDATE, LogEventType.SESSION_DELETE,
-            LogEventType.SESSION_STREAM_CHUNK, LogEventType.SESSION_STREAM_ERROR,
-            LogEventType.CHECKPOINT_SAVE, LogEventType.CHECKPOINT_RESTORE,
-            LogEventType.CHECKPOINT_CLEAR, LogEventType.CHECKPOINT_ERROR,
-            LogEventType.CHECKPOINTER_STORE_ADD, LogEventType.CHECKPOINTER_STORE_REMOVE)) {
+        for (LogEventType t : List.of(LogEventType.SESSION_CREATE, LogEventType.SESSION_UPDATE,
+                LogEventType.SESSION_DELETE, LogEventType.SESSION_STREAM_CHUNK, LogEventType.SESSION_STREAM_ERROR,
+                LogEventType.CHECKPOINT_SAVE, LogEventType.CHECKPOINT_RESTORE, LogEventType.CHECKPOINT_CLEAR,
+                LogEventType.CHECKPOINT_ERROR, LogEventType.CHECKPOINTER_STORE_ADD,
+                LogEventType.CHECKPOINTER_STORE_REMOVE)) {
             m.put(t, SessionEvent::new);
         }
 
         // Context events
-        for (LogEventType t : List.of(
-            LogEventType.CONTEXT_ADD_MESSAGE, LogEventType.CONTEXT_CLEAR, LogEventType.CONTEXT_RETRIEVE)) {
+        for (LogEventType t : List.of(LogEventType.CONTEXT_ADD_MESSAGE, LogEventType.CONTEXT_CLEAR,
+                LogEventType.CONTEXT_RETRIEVE)) {
             m.put(t, ContextEvent::new);
         }
 
         // Retrieval events
-        for (LogEventType t : List.of(
-            LogEventType.RETRIEVAL_START, LogEventType.RETRIEVAL_END, LogEventType.RETRIEVAL_ERROR)) {
+        for (LogEventType t : List.of(LogEventType.RETRIEVAL_START, LogEventType.RETRIEVAL_END,
+                LogEventType.RETRIEVAL_ERROR)) {
             m.put(t, RetrievalEvent::new);
         }
 
@@ -100,41 +105,37 @@ public final class EventClassRegistry {
         m.put(LogEventType.USER_FEEDBACK, UserInteractionEvent::new);
 
         // System events
-        for (LogEventType t : List.of(
-            LogEventType.SYSTEM_START, LogEventType.SYSTEM_SHUTDOWN, LogEventType.SYSTEM_ERROR)) {
+        for (LogEventType t : List.of(LogEventType.SYSTEM_START, LogEventType.SYSTEM_SHUTDOWN,
+                LogEventType.SYSTEM_ERROR)) {
             m.put(t, SystemEvent::new);
         }
 
         // SysOperation events
-        for (LogEventType t : List.of(
-            LogEventType.SYS_OP_START, LogEventType.SYS_OP_END,
-            LogEventType.SYS_OP_ERROR, LogEventType.SYS_OP_STREAM)) {
+        for (LogEventType t : List.of(LogEventType.SYS_OP_START, LogEventType.SYS_OP_END, LogEventType.SYS_OP_ERROR,
+                LogEventType.SYS_OP_STREAM)) {
             m.put(t, SysOperationEvent::new);
         }
 
         // Graph events
-        for (LogEventType t : List.of(
-            LogEventType.GRAPH_SEND_STREAM_CHUNK, LogEventType.GRAPH_RECEIVE_STREAM_CHUNK,
-            LogEventType.GRAPH_VERTEX_INIT, LogEventType.GRAPH_VERTEX_CALL_START,
-            LogEventType.GRAPH_VERTEX_CALL_END, LogEventType.GRAPH_VERTEX_CALL_ERROR,
-            LogEventType.GRAPH_VERTEX_STREAM_ACTOR_START, LogEventType.GRAPH_VERTEX_STREAM_ACTOR_SHUTDOWN,
-            LogEventType.GRAPH_VERTEX_STREAM_CALL_START, LogEventType.GRAPH_VERTEX_STREAM_CALL_END,
-            LogEventType.GRAPH_VERTEX_STREAM_CALL_ERROR,
-            LogEventType.GRAPH_VERTEX_ABILITY_START, LogEventType.GRAPH_VERTEX_ABILITY_RUNNING,
-            LogEventType.GRAPH_VERTEX_ABILITY_END, LogEventType.GRAPH_VERTEX_ABILITY_ERROR,
-            LogEventType.GRAPH_SUPER_STEP_START, LogEventType.GRAPH_SUPER_STEP_END,
-            LogEventType.GRAPH_SUPER_STEP_ERROR,
-            LogEventType.GRAPH_START, LogEventType.GRAPH_END, LogEventType.GRAPH_ERROR,
-            LogEventType.GRAPH_STORE_SAVE, LogEventType.GRAPH_STORE_DELETE, LogEventType.GRAPH_STORE_GET)) {
+        for (LogEventType t : List.of(LogEventType.GRAPH_SEND_STREAM_CHUNK, LogEventType.GRAPH_RECEIVE_STREAM_CHUNK,
+                LogEventType.GRAPH_VERTEX_INIT, LogEventType.GRAPH_VERTEX_CALL_START,
+                LogEventType.GRAPH_VERTEX_CALL_END, LogEventType.GRAPH_VERTEX_CALL_ERROR,
+                LogEventType.GRAPH_VERTEX_STREAM_ACTOR_START, LogEventType.GRAPH_VERTEX_STREAM_ACTOR_SHUTDOWN,
+                LogEventType.GRAPH_VERTEX_STREAM_CALL_START, LogEventType.GRAPH_VERTEX_STREAM_CALL_END,
+                LogEventType.GRAPH_VERTEX_STREAM_CALL_ERROR, LogEventType.GRAPH_VERTEX_ABILITY_START,
+                LogEventType.GRAPH_VERTEX_ABILITY_RUNNING, LogEventType.GRAPH_VERTEX_ABILITY_END,
+                LogEventType.GRAPH_VERTEX_ABILITY_ERROR, LogEventType.GRAPH_SUPER_STEP_START,
+                LogEventType.GRAPH_SUPER_STEP_END, LogEventType.GRAPH_SUPER_STEP_ERROR, LogEventType.GRAPH_START,
+                LogEventType.GRAPH_END, LogEventType.GRAPH_ERROR, LogEventType.GRAPH_STORE_SAVE,
+                LogEventType.GRAPH_STORE_DELETE, LogEventType.GRAPH_STORE_GET)) {
             m.put(t, GraphEvent::new);
         }
 
         // Runner events
-        for (LogEventType t : List.of(
-            LogEventType.RUNNER_START, LogEventType.RUNNER_STOP,
-            LogEventType.RESOURCE_MGR_ADD_RESOURCE, LogEventType.RESOURCE_MGR_REMOVE_RESOURCE,
-            LogEventType.RESOURCE_MGR_GET_RESOURCE, LogEventType.RESOURCE_MGR_ADD_RESOURCE_SERVER,
-            LogEventType.RESOURCE_MGR_REMOVE_RESOURCE_SERVER, LogEventType.RESOURCE_MGR_REMOVE_TAG)) {
+        for (LogEventType t : List.of(LogEventType.RUNNER_START, LogEventType.RUNNER_STOP,
+                LogEventType.RESOURCE_MGR_ADD_RESOURCE, LogEventType.RESOURCE_MGR_REMOVE_RESOURCE,
+                LogEventType.RESOURCE_MGR_GET_RESOURCE, LogEventType.RESOURCE_MGR_ADD_RESOURCE_SERVER,
+                LogEventType.RESOURCE_MGR_REMOVE_RESOURCE_SERVER, LogEventType.RESOURCE_MGR_REMOVE_TAG)) {
             m.put(t, RunnerEvent::new);
         }
 
@@ -143,25 +144,38 @@ public final class EventClassRegistry {
 
     // ==================== Dynamic Registry ====================
 
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, Supplier<? extends BaseLogEvent>> CUSTOM_MAP = new ConcurrentHashMap<>();
 
     /**
      * Register a custom event class for a string event type.
-     *
-     * @throws IllegalArgumentException if the key conflicts with a built-in LogEventType value
+     * 
+     * @param eventTypeKey eventTypeKey
+     * @param factory factory
+     * @since 0.1.7
      */
     public static void register(String eventTypeKey, Supplier<? extends BaseLogEvent> factory) {
         // Ensure no conflict with built-in enum values
         for (LogEventType t : LogEventType.values()) {
             if (t.getValue().equals(eventTypeKey)) {
                 throw new IllegalArgumentException(
-                    "Event type '" + eventTypeKey + "' conflicts with predefined enum value.");
+                        "Event type '" + eventTypeKey + "' conflicts with predefined enum value.");
             }
         }
         CUSTOM_MAP.put(eventTypeKey, factory);
     }
 
-    /** Unregister a custom event class. */
+    /**
+     * Unregister a custom event class.
+     * 
+     * @param eventTypeKey eventTypeKey
+     * @return the result
+     * @since 0.1.7
+     */
     public static boolean unregister(String eventTypeKey) {
         return CUSTOM_MAP.remove(eventTypeKey) != null;
     }
@@ -169,6 +183,10 @@ public final class EventClassRegistry {
     /**
      * Get event factory for a given event type (enum or string).
      * Priority: custom registry → static map → BaseLogEvent.
+     * 
+     * @param eventType eventType
+     * @return the result
+     * @since 0.1.7
      */
     public static Supplier<? extends BaseLogEvent> getFactory(LogEventType eventType) {
         // Check custom first (by string value)
@@ -179,7 +197,13 @@ public final class EventClassRegistry {
         return STATIC_MAP.getOrDefault(eventType, BaseLogEvent::new);
     }
 
-    /** Get event factory by string key. */
+    /**
+     * Get event factory by string key.
+     * 
+     * @param eventTypeKey eventTypeKey
+     * @return the result
+     * @since 0.1.7
+     */
     public static Supplier<? extends BaseLogEvent> getFactory(String eventTypeKey) {
         Supplier<? extends BaseLogEvent> custom = CUSTOM_MAP.get(eventTypeKey);
         if (custom != null) {
@@ -195,6 +219,10 @@ public final class EventClassRegistry {
 
     /**
      * Create a log event of the appropriate type for the given event type.
+     * 
+     * @param eventType eventType
+     * @return the result
+     * @since 0.1.7
      */
     public static BaseLogEvent createEvent(LogEventType eventType) {
         BaseLogEvent event = getFactory(eventType).get();
@@ -204,9 +232,10 @@ public final class EventClassRegistry {
 
     /**
      * Create a log event of the appropriate type for the given string event type.
-     *
+     * 
      * @param eventTypeKey string event type key
      * @return a new event instance with the event type set
+     * @since 0.1.7
      */
     public static BaseLogEvent createEvent(String eventTypeKey) {
         LogEventType enumType = LogEventType.fromValue(eventTypeKey);
@@ -225,10 +254,11 @@ public final class EventClassRegistry {
      * {@link WorkflowStreamEvent} is created instead.
      * <p>
      * Unknown property keys are silently ignored (with a warning log).
-     *
-     * @param eventType  the event type
+     * 
+     * @param eventType the event type
      * @param properties field values to set on the event (camelCase keys)
      * @return the populated event
+     * @since 0.1.7
      */
     public static BaseLogEvent createEvent(LogEventType eventType, Map<String, Object> properties) {
         Supplier<? extends BaseLogEvent> factory = getFactory(eventType);
@@ -256,14 +286,15 @@ public final class EventClassRegistry {
      * <p>
      * Checks:
      * <ul>
-     *   <li>eventId is not null/empty</li>
-     *   <li>eventType is not null</li>
-     *   <li>logLevel is not null</li>
-     *   <li>moduleType is not null</li>
+     * <li>eventId is not null/empty</li>
+     * <li>eventType is not null</li>
+     * <li>logLevel is not null</li>
+     * <li>moduleType is not null</li>
      * </ul>
-     *
+     * 
      * @param event the event to validate
      * @return true if the event is valid
+     * @since 0.1.7
      */
     public static boolean validateEvent(BaseLogEvent event) {
         if (event == null) {
@@ -286,10 +317,19 @@ public final class EventClassRegistry {
 
     // ==================== Field population helper ====================
 
+    /**
+     * Logger.getLogger.
+     * 
+     * @since 0.1.7
+     */
     private static final Logger LOG = Logger.getLogger(EventClassRegistry.class.getName());
 
     /**
      * Populate fields on an event via reflection-based setter lookup.
+     * 
+     * @param event event
+     * @param properties properties
+     * @since 0.1.7
      */
     private static void populateFields(BaseLogEvent event, Map<String, Object> properties) {
         Class<?> clazz = event.getClass();
@@ -319,8 +359,8 @@ public final class EventClassRegistry {
         }
 
         if (!ignored.isEmpty()) {
-            LOG.warning("Ignoring undefined fields for " + event.getClass().getSimpleName()
-                    + ": " + String.join(", ", ignored));
+            LOG.warning("Ignoring undefined fields for " + event.getClass().getSimpleName() + ": "
+                    + String.join(", ", ignored));
         }
     }
 }

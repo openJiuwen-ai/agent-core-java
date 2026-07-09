@@ -1,19 +1,20 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.sysop;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for SysOperationCard.
  */
 class SysOperationCardTest {
-
     private SysOperationCard createCard(String id, OperationMode mode) {
         SysOperationCard card = new SysOperationCard();
         card.setId(id);
@@ -24,8 +25,7 @@ class SysOperationCardTest {
     @Test
     @DisplayName("generateToolId produces cardId.opType.methodName")
     void testGenerateToolId() {
-        assertEquals("sys_op.fs.readFile",
-                SysOperationCard.generateToolId("sys_op", "fs", "readFile"));
+        assertEquals("sys_op.fs.readFile", SysOperationCard.generateToolId("sys_op", "fs", "readFile"));
     }
 
     @Test

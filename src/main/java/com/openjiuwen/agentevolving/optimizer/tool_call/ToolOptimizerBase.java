@@ -11,29 +11,30 @@ import java.util.List;
 
 /**
  * Tool dimension optimizer base class.
- *
- * <p>Optimizes tunables exposed by ToolCallOperator (e.g., tool_description).
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.base.ToolOptimizerBase}.
+ * <p>
+ * Optimizes tunables exposed by ToolCallOperator (e.g., tool_description).
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.base.ToolOptimizerBase}.
+ * 
+ * @since 0.1.7
  */
 public abstract class ToolOptimizerBase extends BaseOptimizer {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolOptimizerBase.
+     * 
+     * @since 0.1.7
      */
     protected ToolOptimizerBase() {
         this.domain = "tool";
     }
 
     /**
-     * Default targets for tool optimizers.
-     *
-     * @return List of default targets
+     * defaultTargets.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<String> defaultTargets() {
         return Collections.singletonList("tool_description");
     }

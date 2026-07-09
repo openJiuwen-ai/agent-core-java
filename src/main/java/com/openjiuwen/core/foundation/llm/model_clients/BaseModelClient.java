@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.foundation.llm.model_clients;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.security.JdkHttpClientProxySupport;
@@ -43,26 +44,39 @@ import java.util.Set;
  * invoke, stream, generateImage, generateSpeech, generateVideo.
  * <p>
  * Mirrors Python's {@code BaseModelClient} ABC.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseModelClient {
-
     private static final Logger LOG = LoggerFactory.getLogger(BaseModelClient.class);
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * modelConfig.
+     * 
+     * @since 0.1.7
      */
     protected final ModelRequestConfig modelConfig;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * modelClientConfig.
+     * 
+     * @since 0.1.7
      */
     protected final ModelClientConfig modelClientConfig;
 
     /**
      * Initialize the model client.
-     *
-     * @param modelConfig       model parameter configuration (temperature, top_p, model_name, etc.)
+     * 
+     * @param modelConfig model parameter configuration (temperature, top_p, model_name, etc.)
      * @param modelClientConfig client configuration (api_key, api_base, timeout, etc.)
+     * @since 0.1.7
      */
     protected BaseModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         this.modelConfig = modelConfig;
@@ -72,6 +86,9 @@ public abstract class BaseModelClient {
 
     /**
      * Get client name for error messages. Subclasses can override.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected String getClientName() {
         return getClass().getSimpleName();
@@ -79,38 +96,44 @@ public abstract class BaseModelClient {
 
     /**
      * Validate configuration parameters. Subclasses can override for custom validation.
+     * 
+     * @since 0.1.7
      */
     protected void validateConfig() {
         String clientName = getClientName();
 
         if (modelClientConfig.getApiKey() == null || modelClientConfig.getApiKey().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "error_msg", "model client config api_key is required for " + clientName + ".");
+            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR, "error_msg",
+                    "model client config api_key is required for " + clientName + ".");
         }
         if (modelClientConfig.getApiBase() == null || modelClientConfig.getApiBase().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "error_msg", "model client config api_base is required for " + clientName + ".");
+            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR, "error_msg",
+                    "model client config api_base is required for " + clientName + ".");
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildHttpClient.
+     * 
+     * @param timeoutSeconds timeoutSeconds
+     * @return the result
+     * @since 0.1.7
      */
     protected HttpClient buildHttpClient(double timeoutSeconds) {
-        HttpClient.Builder builder = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
+        HttpClient.Builder builder = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofMillis(Math.max(1_000L, Math.round(timeoutSeconds * 1_000))));
-        SslUtils.configureHttpClientSsl(
-                builder,
-                modelClientConfig.getApiBase(),
-                modelClientConfig.isVerifySsl(),
+        SslUtils.configureHttpClientSsl(builder, modelClientConfig.getApiBase(), modelClientConfig.isVerifySsl(),
                 modelClientConfig.getSslCert());
         JdkHttpClientProxySupport.configureFromEnvironment(builder, modelClientConfig.getApiBase());
         return builder.build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * applyConfiguredHeaders.
+     * 
+     * @param builder builder
+     * @param includeJsonContentType includeJsonContentType
+     * @since 0.1.7
      */
     protected void applyConfiguredHeaders(HttpRequest.Builder builder, boolean includeJsonContentType) {
         if (includeJsonContentType) {
@@ -130,24 +153,25 @@ public abstract class BaseModelClient {
     // ==================== Message / Tool Conversion ====================
 
     /**
-     * Convert messages to a list of dicts in OpenAI format.
+     * convertMessagesToDict.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected List<Map<String, Object>> convertMessagesToDict(Object messages) {
         if (messages == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                    "error_msg", "The message sent to the llm cannot be empty.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                    "The message sent to the llm cannot be empty.");
         }
         if (messages instanceof String s) {
             return List.of(Map.of("role", "user", "content", s));
         }
         if (messages instanceof List<?> list) {
             if (list.isEmpty()) {
-                throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                        "error_msg", "The message sent to the llm cannot be empty.");
+                throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                        "The message sent to the llm cannot be empty.");
             }
             if (list.get(0) instanceof Map) {
                 return (List<Map<String, Object>>) messages;
@@ -162,14 +186,8 @@ public abstract class BaseModelClient {
                 if (msg instanceof AssistantMessage am && am.getToolCalls() != null && !am.getToolCalls().isEmpty()) {
                     List<Map<String, Object>> toolCallsList = new ArrayList<>();
                     for (var tc : am.getToolCalls()) {
-                        toolCallsList.add(Map.of(
-                                "id", tc.getId(),
-                                "type", tc.getType(),
-                                "function", Map.of(
-                                        "name", tc.getName(),
-                                        "arguments", tc.getArguments()
-                                )
-                        ));
+                        toolCallsList.add(Map.of("id", tc.getId(), "type", tc.getType(), "function",
+                                Map.of("name", tc.getName(), "arguments", tc.getArguments())));
                     }
                     dict.put("tool_calls", toolCallsList);
                 }
@@ -180,17 +198,18 @@ public abstract class BaseModelClient {
             }
             return result;
         }
-        throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                "error_msg", "Unsupported message type: " + messages.getClass());
+        throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                "Unsupported message type: " + messages.getClass());
     }
 
     /**
-     * Convert tools to OpenAI format.
+     * convertToolsToDict.
+     * 
+     * @param tools tools
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected List<Map<String, Object>> convertToolsToDict(Object tools) {
         if (tools == null) {
             return null;
@@ -205,14 +224,10 @@ public abstract class BaseModelClient {
             List<Map<String, Object>> result = new ArrayList<>();
             for (Object item : list) {
                 ToolInfo tool = (ToolInfo) item;
-                result.add(Map.of(
-                        "type", tool.getType(),
-                        "function", Map.of(
-                                "name", tool.getName(),
-                                "description", tool.getDescription() != null ? tool.getDescription() : "",
-                                "parameters", tool.getParameters() != null ? tool.getParameters() : Map.of()
-                        )
-                ));
+                result.add(Map.of("type", tool.getType(), "function",
+                        Map.of("name", tool.getName(), "description",
+                                tool.getDescription() != null ? tool.getDescription() : "", "parameters",
+                                tool.getParameters() != null ? tool.getParameters() : Map.of())));
             }
             return result;
         }
@@ -221,21 +236,24 @@ public abstract class BaseModelClient {
 
     /**
      * Build OpenAI-compatible request parameters.
+     * 
+     * @param messages messages
+     * @param tools tools
+     * @param temperature temperature
+     * @param topP topP
+     * @param model model
+     * @param stop stop
+     * @param maxTokens maxTokens
+     * @param stream stream
+     * @param extraKwargs extraKwargs
+     * @return the result
+     * @since 0.1.7
      */
-    protected Map<String, Object> buildRequestParams(Object messages,
-                                                     Object tools,
-                                                     Double temperature,
-                                                     Double topP,
-                                                     String model,
-                                                     String stop,
-                                                     Integer maxTokens,
-                                                     boolean stream,
-                                                     Map<String, Object> extraKwargs) {
-        String resolvedModel = model != null ? model
-                : (modelConfig != null ? modelConfig.getModelName() : null);
+    protected Map<String, Object> buildRequestParams(Object messages, Object tools, Double temperature, Double topP,
+            String model, String stop, Integer maxTokens, boolean stream, Map<String, Object> extraKwargs) {
+        String resolvedModel = model != null ? model : (modelConfig != null ? modelConfig.getModelName() : null);
         if (resolvedModel == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_CONFIG_ERROR,
-                    "error_msg", "The model cannot be None.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_CONFIG_ERROR, "error_msg", "The model cannot be None.");
         }
 
         List<Map<String, Object>> messagesDict = convertMessagesToDict(messages);
@@ -245,16 +263,17 @@ public abstract class BaseModelClient {
         params.put("messages", messagesDict);
         params.put("stream", stream);
 
-        double finalTemp = temperature != null ? temperature
+        double finalTemp = temperature != null
+                ? temperature
                 : (modelConfig != null && modelConfig.getTemperature() != null ? modelConfig.getTemperature() : 0.95);
         params.put("temperature", finalTemp);
 
-        double finalTopP = topP != null ? topP
-                : (modelConfig != null && modelConfig.getTopP() != null ? modelConfig.getTopP() : 0.1);
+        double finalTopP =
+            topP != null ? topP : (modelConfig != null && modelConfig.getTopP() != null ? modelConfig.getTopP() : 0.1);
         params.put("top_p", finalTopP);
 
-        Integer finalMaxTokens = maxTokens != null ? maxTokens
-                : (modelConfig != null ? modelConfig.getMaxTokens() : null);
+        Integer finalMaxTokens =
+            maxTokens != null ? maxTokens : (modelConfig != null ? modelConfig.getMaxTokens() : null);
         if (finalMaxTokens != null) {
             params.put("max_tokens", finalMaxTokens);
         }
@@ -267,8 +286,7 @@ public abstract class BaseModelClient {
             params.put("seed", modelConfig.getSeed());
         }
 
-        String finalStop = stop != null ? stop
-                : (modelConfig != null ? modelConfig.getStop() : null);
+        String finalStop = stop != null ? stop : (modelConfig != null ? modelConfig.getStop() : null);
         if (finalStop != null) {
             params.put("stop", finalStop);
         }
@@ -288,23 +306,15 @@ public abstract class BaseModelClient {
                 toolsJson = JSON_MAPPER.writeValueAsString(toolsDict);
             }
             messagesJson = JSON_MAPPER.writeValueAsString(messagesDict);
-        } catch (Exception ignored) {
+        } catch (JsonProcessingException ignored) {
             toolsJson = String.valueOf(toolsDict);
             messagesJson = String.valueOf(messagesDict);
         }
         com.openjiuwen.core.common.logging.Loggers.LLM.info(
-                "Before request chat model, LLM request params ready. " +
-                "model_name={}, model_provider={}, messages={}, tools={}, " +
-                "temperature={}, top_p={}, max_tokens={}, is_stream={}",
-                resolvedModel,
-                clientName,
-                messagesJson,
-                toolsJson,
-                finalTemp,
-                finalTopP,
-                finalMaxTokens,
-                stream
-        );
+                "Before request chat model, LLM request params ready. "
+                        + "model_name={}, model_provider={}, messages={}, tools={}, "
+                        + "temperature={}, top_p={}, max_tokens={}, is_stream={}",
+                resolvedModel, clientName, messagesJson, toolsJson, finalTemp, finalTopP, finalMaxTokens, stream);
 
         if (modelConfig != null && modelConfig.getExtraFields() != null) {
             for (var entry : modelConfig.getExtraFields().entrySet()) {
@@ -330,68 +340,102 @@ public abstract class BaseModelClient {
     // ==================== Abstract Methods ====================
 
     /**
-     * Invoke the LLM (synchronous, blocking via virtual thread).
+     * invoke.
+     * 
+     * @param messages messages
+     * @param tools tools
+     * @param temperature temperature
+     * @param topP topP
+     * @param model model
+     * @param maxTokens maxTokens
+     * @param stop stop
+     * @param outputParser outputParser
+     * @param timeout timeout
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract AssistantMessage invoke(Object messages,
-                                            Object tools,
-                                            Float temperature,
-                                            Float topP,
-                                            String model,
-                                            Integer maxTokens,
-                                            String stop,
-                                            BaseOutputParser outputParser,
-                                            Float timeout,
-                                            Map<String, Object> kwargs) throws Exception;
+    public abstract AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+            Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs)
+            throws Exception;
 
     /**
-     * Stream invoke the LLM.
+     * stream.
+     * 
+     * @param messages messages
+     * @param tools tools
+     * @param temperature temperature
+     * @param topP topP
+     * @param model model
+     * @param maxTokens maxTokens
+     * @param stop stop
+     * @param outputParser outputParser
+     * @param timeout timeout
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract Iterator<AssistantMessageChunk> stream(Object messages,
-                                                           Object tools,
-                                                           Float temperature,
-                                                           Float topP,
-                                                           String model,
-                                                           Integer maxTokens,
-                                                           String stop,
-                                                           BaseOutputParser outputParser,
-                                                           Float timeout,
-                                                           Map<String, Object> kwargs) throws Exception;
+    public abstract Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+            String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+            Map<String, Object> kwargs) throws Exception;
 
     /**
-     * Generate an image from a text prompt.
+     * generateImage.
+     * 
+     * @param messages messages
+     * @param model model
+     * @param size size
+     * @param negativePrompt negativePrompt
+     * @param n n
+     * @param promptExtend promptExtend
+     * @param watermark watermark
+     * @param seed seed
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract ImageGenerationResponse generateImage(List<UserMessage> messages,
-                                                          String model,
-                                                          String size,
-                                                          String negativePrompt,
-                                                          int n,
-                                                          boolean promptExtend,
-                                                          boolean watermark,
-                                                          int seed,
-                                                          Map<String, Object> kwargs) throws Exception;
+    public abstract ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+            String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed, Map<String, Object> kwargs)
+            throws Exception;
 
     /**
-     * Generate speech audio from text.
+     * generateSpeech.
+     * 
+     * @param messages messages
+     * @param model model
+     * @param voice voice
+     * @param languageType languageType
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract AudioGenerationResponse generateSpeech(List<UserMessage> messages,
-                                                           String model,
-                                                           String voice,
-                                                           String languageType,
-                                                           Map<String, Object> kwargs) throws Exception;
+    public abstract AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+            String languageType, Map<String, Object> kwargs) throws Exception;
 
     /**
-     * Generate video from a text prompt.
+     * generateVideo.
+     * 
+     * @param messages messages
+     * @param imgUrl imgUrl
+     * @param audioUrl audioUrl
+     * @param model model
+     * @param size size
+     * @param resolution resolution
+     * @param duration duration
+     * @param promptExtend promptExtend
+     * @param watermark watermark
+     * @param negativePrompt negativePrompt
+     * @param seed seed
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract VideoGenerationResponse generateVideo(List<UserMessage> messages,
-                                                          String imgUrl,
-                                                          String audioUrl,
-                                                          String model,
-                                                          String size,
-                                                          String resolution,
-                                                          int duration,
-                                                          boolean promptExtend,
-                                                          boolean watermark,
-                                                          String negativePrompt,
-                                                          Integer seed,
-                                                          Map<String, Object> kwargs) throws Exception;
+    public abstract VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+            String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+            String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception;
 }

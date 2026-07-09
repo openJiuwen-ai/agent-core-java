@@ -4,9 +4,9 @@
 
 package com.openjiuwen.core.runner;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
@@ -25,15 +25,16 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
-import com.openjiuwen.core.workflow.WorkflowChunk;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.workflow.Workflow;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.openjiuwen.core.workflow.WorkflowChunk;
 
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -49,9 +50,10 @@ import java.util.UUID;
  * <p>
  * Manages the lifecycle of agents, workflows, agent groups, and their execution.
  * Provides resource management, message queuing, and callback framework capabilities.
+ * 
+ * @since 0.1.7
  */
 public class RunnerImpl {
-
     private static final Logger logger = LoggerFactory.getLogger(RunnerImpl.class);
 
     private static final String DEFAULT_RUNNER_ID = "global";
@@ -70,14 +72,20 @@ public class RunnerImpl {
     private volatile ReplyTopicSubscription systemReplySub;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RunnerImpl.
+     * 
+     * @since 0.1.7
      */
     public RunnerImpl() {
         this(DEFAULT_RUNNER_ID, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RunnerImpl.
+     * 
+     * @param runnerId runnerId
+     * @param config config
+     * @since 0.1.7
      */
     public RunnerImpl(String runnerId, RunnerConfig config) {
         this.runnerId = runnerId != null ? runnerId : DEFAULT_RUNNER_ID;
@@ -92,10 +100,11 @@ public class RunnerImpl {
         }
     }
 
-    // ========== Properties ==========
-
     /**
      * Get the resource manager for workflow, agent, agent_group, tool, model, prompt...
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ResourceMgr getResourceMgr() {
         return resourceManager;
@@ -103,6 +112,9 @@ public class RunnerImpl {
 
     /**
      * Get the local message queue for publish/subscribe communication.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public LocalMessageQueue getPubsub() {
         return messageQueue;
@@ -110,6 +122,9 @@ public class RunnerImpl {
 
     /**
      * Get the callback framework.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public CallbackFramework getCallbackFramework() {
         return callbackFramework;
@@ -117,6 +132,9 @@ public class RunnerImpl {
 
     /**
      * Get the distributed message queue for cross-process communication.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public MessageQueueBase getDistPubsub() {
         return distributeMessageQueue;
@@ -124,15 +142,19 @@ public class RunnerImpl {
 
     /**
      * Get the reply topic subscription for distributed mode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ReplyTopicSubscription getSystemReplySub() {
         return systemReplySub;
     }
 
-    // ========== Config ==========
-
     /**
      * Set the runner configuration.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public void setConfig(RunnerConfig config) {
         logger.info("set runner {} config {}", runnerId, config);
@@ -141,17 +163,19 @@ public class RunnerImpl {
 
     /**
      * Retrieve the current runner configuration.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public RunnerConfig getConfig() {
         return RunnerConfig.getRunnerConfig();
     }
 
-    // ========== Lifecycle ==========
-
     /**
      * Start the runner and its associated components, such as message queue.
-     *
+     * 
      * @return true if started successfully
+     * @since 0.1.7
      */
     public boolean start() {
         boolean result = true;
@@ -176,13 +200,13 @@ public class RunnerImpl {
 
         if (RunnerConfig.getRunnerConfig().isDistributedMode()) {
             // Start distributed message queue
-            distributeMessageQueue = MessageQueueFactory.create(
-                    RunnerConfig.getRunnerConfig().getDistributedConfig().getMessageQueueConfig());
+            distributeMessageQueue = MessageQueueFactory
+                    .create(RunnerConfig.getRunnerConfig().getDistributedConfig().getMessageQueueConfig());
             distributeMessageQueue.start();
 
             // Start reply topic subscription
-            String replyTopic = RunnerConfig.getRunnerConfig().replyTopicTemplate()
-                    .replace("{instance_id}", RunnerConfig.getRunnerConfig().getInstanceId());
+            String replyTopic = RunnerConfig.getRunnerConfig().replyTopicTemplate().replace("{instance_id}",
+                    RunnerConfig.getRunnerConfig().getInstanceId());
             systemReplySub = new ReplyTopicSubscription(distributeMessageQueue, replyTopic);
             systemReplySub.activate();
         }
@@ -194,8 +218,9 @@ public class RunnerImpl {
 
     /**
      * Stop the runner and clean up resources.
-     *
+     * 
      * @return true if stopped successfully
+     * @since 0.1.7
      */
     public boolean stop() {
         logger.info("Begin to stop runner, runnerId={}", runnerId);
@@ -228,23 +253,25 @@ public class RunnerImpl {
 
     /**
      * Execute a workflow with given inputs.
-     *
+     * 
      * @param workflow Workflow ID or Workflow instance
-     * @param inputs   Input data for the workflow
-     * @param session  Session identifier or session object
-     * @param context  Model context
+     * @param inputs Input data for the workflow
+     * @param session Session identifier or session object
+     * @param context Model context
+     * @param envs envs
      * @return Workflow execution result
+     * @since 0.1.7
      */
     public Object runWorkflow(Object workflow, Object inputs, Object session, ModelContext context,
-                               Map<String, Object> envs) {
+            Map<String, Object> envs) {
         Workflow workflowInstance;
         Object workflowSession;
 
         if (workflow instanceof String workflowId) {
             Object wf = resourceManager.getWorkflow(workflowId);
             if (wf == null) {
-                throw ErrorHelper.buildError(StatusCode.RUNNER_RUN_AGENT_ERROR,
-                        "agent", workflowId, "reason", "workflow not exist");
+                throw ErrorHelper.buildError(StatusCode.RUNNER_RUN_AGENT_ERROR, "agent", workflowId, "reason",
+                        "workflow not exist");
             }
             workflowInstance = (Workflow) wf;
         } else if (workflow instanceof Workflow w) {
@@ -259,25 +286,26 @@ public class RunnerImpl {
 
     /**
      * Execute a workflow with streaming output support.
-     *
-     * @param workflow    Workflow ID or Workflow instance
-     * @param inputs      Input data for the workflow
-     * @param session     Session identifier or session object
-     * @param context     Model context
+     * 
+     * @param workflow Workflow ID or Workflow instance
+     * @param inputs Input data for the workflow
+     * @param session Session identifier or session object
+     * @param context Model context
      * @param streamModes Types of streaming data to output
+     * @param envs envs
      * @return Iterator of streaming chunks
+     * @since 0.1.7
      */
     public Iterator<WorkflowChunk> runWorkflowStreaming(Object workflow, Object inputs, Object session,
-                                                  ModelContext context, List<StreamMode> streamModes,
-                                                  Map<String, Object> envs) {
+            ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs) {
         Workflow workflowInstance;
         Object workflowSession;
 
         if (workflow instanceof String workflowId) {
             Object wf = resourceManager.getWorkflow(workflowId);
             if (wf == null) {
-                throw ErrorHelper.buildError(StatusCode.RUNNER_RUN_AGENT_ERROR,
-                        "agent", workflowId, "reason", "workflow not exist");
+                throw ErrorHelper.buildError(StatusCode.RUNNER_RUN_AGENT_ERROR, "agent", workflowId, "reason",
+                        "workflow not exist");
             }
             workflowInstance = (Workflow) wf;
         } else if (workflow instanceof Workflow w) {
@@ -298,15 +326,17 @@ public class RunnerImpl {
      * Note: BaseAgent/LegacyBaseAgent are not yet available in Java.
      * This method supports String agent IDs for resource-managed agents,
      * and Object agent instances for direct invocation.
-     *
-     * @param agent   Agent ID (String) or agent instance (Object)
-     * @param inputs  Input data for the agent
+     * 
+     * @param agent Agent ID (String) or agent instance (Object)
+     * @param inputs Input data for the agent
      * @param session Session identifier
      * @param context Model context
+     * @param envs envs
      * @return Agent execution result
+     * @since 0.1.7
      */
     public Object runAgent(Object agent, Object inputs, Object session, ModelContext context,
-                            Map<String, Object> envs) {
+            Map<String, Object> envs) {
         Object agentInstance = prepareAgent(agent);
         AgentSessionApi agentSession = prepareAgentSession(agentInstance, inputs, session);
         Object result = invokeAgent(agentInstance, inputs, agentSession, context);
@@ -316,17 +346,18 @@ public class RunnerImpl {
 
     /**
      * Execute a single agent with streaming output support.
-     *
-     * @param agent       Agent ID (String) or agent instance (Object)
-     * @param inputs      Input data for the agent
-     * @param session     Session identifier
-     * @param context     Model context
+     * 
+     * @param agent Agent ID (String) or agent instance (Object)
+     * @param inputs Input data for the agent
+     * @param session Session identifier
+     * @param context Model context
      * @param streamModes Types of streaming data to output
+     * @param envs envs
      * @return Iterator of streaming chunks
+     * @since 0.1.7
      */
-    public Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session,
-                                              ModelContext context, List<StreamMode> streamModes,
-                                              Map<String, Object> envs) {
+    public Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context,
+            List<StreamMode> streamModes, Map<String, Object> envs) {
         Object agentInstance = prepareAgent(agent);
         AgentSessionApi agentSession = prepareAgentSession(agentInstance, inputs, session, streamModes);
         Iterator<Object> iterator = streamAgent(agentInstance, inputs, agentSession, context, streamModes);
@@ -334,24 +365,26 @@ public class RunnerImpl {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * spawnAgent.
+     * 
+     * @param agentConfig agentConfig
+     * @param inputs inputs
+     * @param session session
+     * @param spawnConfig spawnConfig
+     * @return the result
+     * @since 0.1.7
      */
     public SpawnedProcessHandle spawnAgent(SpawnAgentConfig agentConfig, Object inputs, Object session,
-                                           SpawnConfig spawnConfig) {
+            SpawnConfig spawnConfig) {
         if (agentConfig == null) {
             throw new IllegalArgumentException("Runner.spawnAgent requires SpawnAgentConfig");
         }
         Map<String, Object> normalizedInputs = normalizeSpawnInputs(inputs);
-        Object sessionId = normalizedInputs.getOrDefault(
-                AGENT_CONVERSATION_ID,
-                session instanceof String ? String.valueOf(session) : DEFAULT_AGENT_SESSION_ID
-        );
+        Object sessionId = normalizedInputs.getOrDefault(AGENT_CONVERSATION_ID,
+                session instanceof String ? String.valueOf(session) : DEFAULT_AGENT_SESSION_ID);
         agentConfig.setSessionId(String.valueOf(sessionId));
-        SpawnedProcessHandle handle = SpawnProcesses.spawnProcess(
-                agentConfig.toPayload(),
-                normalizedInputs,
-                spawnConfig
-        );
+        SpawnedProcessHandle handle =
+            SpawnProcesses.spawnProcess(agentConfig.toPayload(), normalizedInputs, spawnConfig);
         if (spawnConfig != null) {
             handle.startHealthCheck();
         }
@@ -362,15 +395,17 @@ public class RunnerImpl {
 
     /**
      * Execute a group of agents with given inputs.
-     *
+     * 
      * @param agentGroup Agent group ID (String) or group instance (Object)
-     * @param inputs     Input data for the agent group
-     * @param session    Session identifier
-     * @param context    Model context
+     * @param inputs Input data for the agent group
+     * @param session Session identifier
+     * @param context Model context
+     * @param envs envs
      * @return Agent group execution result
+     * @since 0.1.7
      */
     public Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context,
-                                Map<String, Object> envs) {
+            Map<String, Object> envs) {
         Object groupInstance = prepareAgentGroup(agentGroup);
         AgentGroupSessionApi groupSession = prepareAgentGroupSession(inputs, session);
         resolveTeamId(agentGroup, groupSession);
@@ -382,17 +417,18 @@ public class RunnerImpl {
 
     /**
      * Execute a group of agents with streaming output support.
-     *
-     * @param agentGroup  Agent group ID (String) or group instance (Object)
-     * @param inputs      Input data for the agent group
-     * @param session     Session identifier
-     * @param context     Model context
+     * 
+     * @param agentGroup Agent group ID (String) or group instance (Object)
+     * @param inputs Input data for the agent group
+     * @param session Session identifier
+     * @param context Model context
      * @param streamModes Types of streaming data to output
+     * @param envs envs
      * @return Iterator of streaming chunks
+     * @since 0.1.7
      */
     public Iterator<Object> runAgentGroupStreaming(Object agentGroup, Object inputs, Object session,
-                                                    ModelContext context, List<StreamMode> streamModes,
-                                                    Map<String, Object> envs) {
+            ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs) {
         Object groupInstance = prepareAgentGroup(agentGroup);
         AgentGroupSessionApi groupSession = prepareAgentGroupSession(inputs, session, streamModes);
         resolveTeamId(agentGroup, groupSession);
@@ -401,26 +437,35 @@ public class RunnerImpl {
         return wrapStreamingIterator(iterator, groupSession);
     }
 
-    // ========== Release ==========
-
     /**
      * Release resources associated with a session.
-     *
+     * 
      * @param sessionId ID of the session to clean up
+     * @since 0.1.7
      */
     public void release(String sessionId) {
         CheckpointerFactory.getCheckpointer(null).release(sessionId);
     }
 
-    // ========== Internal ==========
-
     /**
      * Generate workflow key from ID and version (matches Python's generate_workflow_key).
+     * 
+     * @param workflowId workflowId
+     * @param workflowVersion workflowVersion
+     * @return the result
+     * @since 0.1.7
      */
     public static String generateWorkflowKey(String workflowId, String workflowVersion) {
         return workflowId + "_" + (workflowVersion != null ? workflowVersion : "");
     }
 
+    /**
+     * createWorkflowSession.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private Object createWorkflowSession(Object session) {
         if (session == null) {
             return new WorkflowSessionApi((BaseSession) null, null, null);
@@ -434,23 +479,35 @@ public class RunnerImpl {
         if (session instanceof WorkflowSessionApi || session instanceof BaseSession) {
             return session;
         }
-        throw new IllegalArgumentException("Unsupported workflow session type: "
-                + session.getClass().getSimpleName());
+        throw new IllegalArgumentException("Unsupported workflow session type: " + session.getClass().getSimpleName());
     }
 
+    /**
+     * prepareAgentGroup.
+     * 
+     * @param agentGroup agentGroup
+     * @return the result
+     * @since 0.1.7
+     */
     private Object prepareAgentGroup(Object agentGroup) {
         if (agentGroup instanceof String groupId) {
-            Object groupInstance = resourceManager.getAgentGroup(
-                    groupId, null, TagMatchStrategy.ALL);
+            Object groupInstance = resourceManager.getAgentGroup(groupId, null, TagMatchStrategy.ALL);
             if (groupInstance == null) {
-                throw ErrorHelper.buildError(StatusCode.RUNNER_RUN_AGENT_ERROR,
-                        "agent", groupId, "reason", "agent group not exist");
+                throw ErrorHelper.buildError(StatusCode.RUNNER_RUN_AGENT_ERROR, "agent", groupId, "reason",
+                        "agent group not exist");
             }
             return groupInstance;
         }
         return agentGroup;
     }
 
+    /**
+     * resolveTeamId.
+     * 
+     * @param agentGroup agentGroup
+     * @param groupSession groupSession
+     * @since 0.1.7
+     */
     private void resolveTeamId(Object agentGroup, AgentGroupSessionApi groupSession) {
         if (agentGroup instanceof String groupId) {
             groupSession.setTeamId(groupId);
@@ -471,14 +528,19 @@ public class RunnerImpl {
     /**
      * Invoke an agent instance. Uses reflection to call invoke method since
      * BaseAgent/LegacyBaseAgent are not yet available in Java.
+     * 
+     * @param agentInstance agentInstance
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     private Object invokeAgent(Object agentInstance, Object inputs, Object session, ModelContext context) {
         try {
-            return invokeFirstCompatibleMethod(agentInstance, "invoke",
-                    List.of(
-                            new Object[]{inputs, session, context},
-                            new Object[]{inputs, session},
-                            new Object[]{inputs}),
+            return invokeFirstCompatibleMethod(
+                    agentInstance, "invoke", List.of(new Object[]{inputs, session, context},
+                            new Object[]{inputs, session}, new Object[]{inputs}),
                     "Agent does not support invoke method");
         } catch (RuntimeException e) {
             throw wrapRunnerRuntime("Failed to invoke agent", e);
@@ -487,17 +549,22 @@ public class RunnerImpl {
 
     /**
      * Stream from an agent instance via reflection.
+     * 
+     * @param agentInstance agentInstance
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @param streamModes streamModes
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
     private Iterator<Object> streamAgent(Object agentInstance, Object inputs, Object session, ModelContext context,
-                                         List<StreamMode> streamModes) {
+            List<StreamMode> streamModes) {
         try {
             return (Iterator<Object>) invokeFirstCompatibleMethod(agentInstance, "stream",
-                    List.of(
-                            new Object[]{inputs, session, streamModes},
-                            new Object[]{inputs, session, context},
-                            new Object[]{inputs, session},
-                            new Object[]{inputs}),
+                    List.of(new Object[]{inputs, session, streamModes}, new Object[]{inputs, session, context},
+                            new Object[]{inputs, session}, new Object[]{inputs}),
                     "Agent does not support stream method");
         } catch (RuntimeException e) {
             throw wrapRunnerRuntime("Failed to stream agent", e);
@@ -506,14 +573,19 @@ public class RunnerImpl {
 
     /**
      * Invoke an agent group instance via reflection.
+     * 
+     * @param groupInstance groupInstance
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     private Object invokeAgentGroup(Object groupInstance, Object inputs, Object session, ModelContext context) {
         try {
-            return invokeFirstCompatibleMethod(groupInstance, "invoke",
-                    List.of(
-                            new Object[]{inputs, session, context},
-                            new Object[]{inputs, session},
-                            new Object[]{inputs}),
+            return invokeFirstCompatibleMethod(
+                    groupInstance, "invoke", List.of(new Object[]{inputs, session, context},
+                            new Object[]{inputs, session}, new Object[]{inputs}),
                     "Agent group does not support invoke method");
         } catch (RuntimeException e) {
             throw wrapRunnerRuntime("Failed to invoke agent group", e);
@@ -522,21 +594,35 @@ public class RunnerImpl {
 
     /**
      * Stream from an agent group instance via reflection.
+     * 
+     * @param groupInstance groupInstance
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    private Iterator<Object> streamAgentGroup(Object groupInstance, Object inputs, Object session, ModelContext context) {
+    private Iterator<Object> streamAgentGroup(Object groupInstance, Object inputs, Object session,
+            ModelContext context) {
         try {
-            return (Iterator<Object>) invokeFirstCompatibleMethod(groupInstance, "stream",
-                    List.of(
-                            new Object[]{inputs, session, context},
-                            new Object[]{inputs, session},
-                            new Object[]{inputs}),
+            return (Iterator<Object>) invokeFirstCompatibleMethod(
+                    groupInstance, "stream", List.of(new Object[]{inputs, session, context},
+                            new Object[]{inputs, session}, new Object[]{inputs}),
                     "Agent group does not support stream method");
         } catch (RuntimeException e) {
             throw wrapRunnerRuntime("Failed to stream agent group", e);
         }
     }
 
+    /**
+     * wrapRunnerRuntime.
+     * 
+     * @param message message
+     * @param error error
+     * @return the result
+     * @since 0.1.7
+     */
     private RuntimeException wrapRunnerRuntime(String message, RuntimeException error) {
         BaseError baseError = findBaseError(error);
         if (baseError != null) {
@@ -545,6 +631,13 @@ public class RunnerImpl {
         return new RuntimeException(message, error);
     }
 
+    /**
+     * findBaseError.
+     * 
+     * @param throwable throwable
+     * @return the result
+     * @since 0.1.7
+     */
     private BaseError findBaseError(Throwable throwable) {
         Throwable cursor = throwable;
         while (cursor != null) {
@@ -557,6 +650,13 @@ public class RunnerImpl {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * normalizeSpawnInputs.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> normalizeSpawnInputs(Object inputs) {
         if (inputs instanceof Map<?, ?> rawInputs) {
             java.util.LinkedHashMap<String, Object> normalized = new java.util.LinkedHashMap<>();
@@ -566,28 +666,60 @@ public class RunnerImpl {
         return Map.of("data", inputs);
     }
 
+    /**
+     * prepareAgent.
+     * 
+     * @param agent agent
+     * @return the result
+     * @since 0.1.7
+     */
     private Object prepareAgent(Object agent) {
         if (agent instanceof String agentId) {
             Object agentInstance = resourceManager.getAgent(agentId);
             if (agentInstance == null) {
-                throw ErrorHelper.buildError(StatusCode.RUNNER_RUN_AGENT_ERROR,
-                        "agent_id", agentId, "reason", "agent not exist");
+                throw ErrorHelper.buildError(StatusCode.RUNNER_RUN_AGENT_ERROR, "agent_id", agentId, "reason",
+                        "agent not exist");
             }
             return agentInstance;
         }
         return agent;
     }
 
+    /**
+     * prepareAgentSession.
+     * 
+     * @param agentInstance agentInstance
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private AgentSessionApi prepareAgentSession(Object agentInstance, Object inputs, Object session) {
         return prepareAgentSession(agentInstance, inputs, session, null);
     }
 
+    /**
+     * prepareAgentGroupSession.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private AgentGroupSessionApi prepareAgentGroupSession(Object inputs, Object session) {
         return prepareAgentGroupSession(inputs, session, null);
     }
 
-    private AgentGroupSessionApi prepareAgentGroupSession(Object inputs, Object session,
-                                                          List<StreamMode> streamModes) {
+    /**
+     * prepareAgentGroupSession.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param streamModes streamModes
+     * @return the result
+     * @since 0.1.7
+     */
+    private AgentGroupSessionApi prepareAgentGroupSession(Object inputs, Object session, List<StreamMode> streamModes) {
         AgentGroupSessionApi groupSession;
         if (session instanceof AgentGroupSessionApi existingGroupSession) {
             groupSession = existingGroupSession;
@@ -608,8 +740,18 @@ public class RunnerImpl {
         return groupSession;
     }
 
+    /**
+     * prepareAgentSession.
+     * 
+     * @param agentInstance agentInstance
+     * @param inputs inputs
+     * @param session session
+     * @param streamModes streamModes
+     * @return the result
+     * @since 0.1.7
+     */
     private AgentSessionApi prepareAgentSession(Object agentInstance, Object inputs, Object session,
-                                                List<StreamMode> streamModes) {
+            List<StreamMode> streamModes) {
         AgentSessionApi agentSession;
         if (session instanceof AgentSessionApi existingSession) {
             agentSession = existingSession;
@@ -617,17 +759,21 @@ public class RunnerImpl {
             agentSession.resetRunState();
         } else {
             String sessionId = resolveAgentSessionId(inputs, session);
-            agentSession = AgentSessionApi.create(
-                    sessionId,
-                    extractAgentEnvs(agentInstance),
-                    extractAgentCard(agentInstance),
-                    streamModes
-            );
+            agentSession = AgentSessionApi.create(sessionId, extractAgentEnvs(agentInstance),
+                    extractAgentCard(agentInstance), streamModes);
         }
         agentSession.preRun(inputs);
         return agentSession;
     }
 
+    /**
+     * resolveAgentSessionId.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveAgentSessionId(Object inputs, Object session) {
         if (inputs instanceof Map<?, ?> inputMap) {
             Object conversationId = inputMap.get(AGENT_CONVERSATION_ID);
@@ -645,6 +791,13 @@ public class RunnerImpl {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * extractAgentEnvs.
+     * 
+     * @param agentInstance agentInstance
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> extractAgentEnvs(Object agentInstance) {
         Object config = tryReadProperty(agentInstance, "getConfig", "config");
         if (config == null) {
@@ -657,10 +810,26 @@ public class RunnerImpl {
         return null;
     }
 
+    /**
+     * extractAgentCard.
+     * 
+     * @param agentInstance agentInstance
+     * @return the result
+     * @since 0.1.7
+     */
     private Object extractAgentCard(Object agentInstance) {
         return tryReadProperty(agentInstance, "getCard", "card");
     }
 
+    /**
+     * tryReadProperty.
+     * 
+     * @param target target
+     * @param getterName getterName
+     * @param fieldName fieldName
+     * @return the result
+     * @since 0.1.7
+     */
     private Object tryReadProperty(Object target, String getterName, String fieldName) {
         if (target == null) {
             return null;
@@ -682,8 +851,18 @@ public class RunnerImpl {
         }
     }
 
+    /**
+     * invokeFirstCompatibleMethod.
+     * 
+     * @param target target
+     * @param methodName methodName
+     * @param argVariants argVariants
+     * @param unsupportedMessage unsupportedMessage
+     * @return the result
+     * @since 0.1.7
+     */
     private Object invokeFirstCompatibleMethod(Object target, String methodName, List<Object[]> argVariants,
-                                               String unsupportedMessage) {
+            String unsupportedMessage) {
         RuntimeException lastFailure = null;
         for (Object[] args : argVariants) {
             Method method = findCompatibleMethod(target.getClass(), methodName, args);
@@ -708,6 +887,15 @@ public class RunnerImpl {
         throw new RuntimeException(unsupportedMessage);
     }
 
+    /**
+     * findCompatibleMethod.
+     * 
+     * @param targetClass targetClass
+     * @param methodName methodName
+     * @param args args
+     * @return the result
+     * @since 0.1.7
+     */
     private Method findCompatibleMethod(Class<?> targetClass, String methodName, Object[] args) {
         Method bestMethod = null;
         int bestScore = Integer.MIN_VALUE;
@@ -723,7 +911,6 @@ public class RunnerImpl {
         }
         if (bestMethod != null) {
             // The method may be public on a package-private or non-exported
-            // class (e.g. nested test agents), in which case Method.invoke
             // throws IllegalAccessException. setAccessible(true) bypasses the
             // enclosing-class access check the same way getDeclaredMethods
             // already does below.
@@ -744,6 +931,14 @@ public class RunnerImpl {
         return bestMethod;
     }
 
+    /**
+     * scoreMethod.
+     * 
+     * @param parameterTypes parameterTypes
+     * @param args args
+     * @return the result
+     * @since 0.1.7
+     */
     private int scoreMethod(Class<?>[] parameterTypes, Object[] args) {
         int score = 0;
         for (int i = 0; i < parameterTypes.length; i++) {
@@ -756,6 +951,14 @@ public class RunnerImpl {
         return score;
     }
 
+    /**
+     * scoreArgument.
+     * 
+     * @param parameterType parameterType
+     * @param arg arg
+     * @return the result
+     * @since 0.1.7
+     */
     private int scoreArgument(Class<?> parameterType, Object arg) {
         if (arg == null) {
             return parameterType.isPrimitive() ? -1 : 1;
@@ -777,6 +980,13 @@ public class RunnerImpl {
         return -1;
     }
 
+    /**
+     * wrapPrimitive.
+     * 
+     * @param type type
+     * @return the result
+     * @since 0.1.7
+     */
     private Class<?> wrapPrimitive(Class<?> type) {
         if (!type.isPrimitive()) {
             return type;
@@ -808,17 +1018,18 @@ public class RunnerImpl {
         return type;
     }
 
+    /**
+     * wrapStreamingIterator.
+     * 
+     * @param delegate delegate
+     * @param agentSession agentSession
+     * @return the result
+     * @since 0.1.7
+     */
     private Iterator<Object> wrapStreamingIterator(Iterator<Object> delegate, AgentSessionApi agentSession) {
         class CloseableStreamingIterator implements Iterator<Object>, AutoCloseable {
             private boolean postRunDone;
-
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public boolean hasNext() {
                 boolean hasNext = delegate.hasNext();
                 if (!hasNext) {
@@ -827,13 +1038,7 @@ public class RunnerImpl {
                 return hasNext;
             }
 
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Object next() {
                 try {
                     Object next = delegate.next();
@@ -870,22 +1075,23 @@ public class RunnerImpl {
 
     /**
      * Reactive version of {@link #runAgent(Object, Object, Object, ModelContext, Map)}.
-     *
+     * 
      * @param agent agent instance or identifier
      * @param inputs agent inputs
      * @param session session object, nullable
      * @param context model context, nullable
      * @param envs environment values, nullable
      * @return Mono emitting the agent result
+     * @since 0.1.7
      */
-    public Mono<Object> runAgentAsync(Object agent, Object inputs, Object session,
-                                     ModelContext context, Map<String, Object> envs) {
+    public Mono<Object> runAgentAsync(Object agent, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs) {
         return ReactiveAdapters.fromCallable(() -> runAgent(agent, inputs, session, context, envs));
     }
 
     /**
      * Reactive version of {@link #runAgentStreaming(Object, Object, Object, ModelContext, List, Map)}.
-     *
+     * 
      * @param agent agent instance or identifier
      * @param inputs agent inputs
      * @param session session object, nullable
@@ -893,39 +1099,38 @@ public class RunnerImpl {
      * @param streamModes stream output modes
      * @param envs environment values, nullable
      * @return Flux emitting stream chunks
+     * @since 0.1.7
      */
-    public Flux<Object> runAgentStreamingAsync(Object agent, Object inputs, Object session,
-                                              ModelContext context, List<StreamMode> streamModes,
-                                              Map<String, Object> envs) {
-        return deferWithSessionCleanup(
-                sessRef -> {
-                    Object agentInstance = prepareAgent(agent);
-                    AgentSessionApi sess = prepareAgentSession(agentInstance, inputs, session, streamModes);
-                    sessRef.set(sess);
-                    return ReactiveAdapters.fromAutoCloseableIterator(
-                            () -> streamAgent(agentInstance, inputs, sess, context, streamModes));
-                },
-                AgentSessionApi::postRun);
+    public Flux<Object> runAgentStreamingAsync(Object agent, Object inputs, Object session, ModelContext context,
+            List<StreamMode> streamModes, Map<String, Object> envs) {
+        return deferWithSessionCleanup(sessRef -> {
+            Object agentInstance = prepareAgent(agent);
+            AgentSessionApi sess = prepareAgentSession(agentInstance, inputs, session, streamModes);
+            sessRef.set(sess);
+            return ReactiveAdapters
+                    .fromAutoCloseableIterator(() -> streamAgent(agentInstance, inputs, sess, context, streamModes));
+        }, AgentSessionApi::postRun);
     }
 
     /**
      * 流式响应式方法公共脚手架：阻塞的 setup 在 boundedElastic 线程执行；
      * doFinally 保证 COMPLETE / ERROR / CANCEL 三种终态都触发 cleaner；
      * AtomicReference 填补 setup 完成到内层 Flux 首次订阅之间的取消空窗。
+     * 
+     * @param body body
+     * @param cleaner cleaner
+     * @return the result
+     * @since 0.1.7
      */
     private <T, S> Flux<T> deferWithSessionCleanup(
             java.util.function.Function<java.util.concurrent.atomic.AtomicReference<S>, Flux<T>> body,
             java.util.function.Consumer<S> cleaner) {
-        java.util.concurrent.atomic.AtomicReference<S> sessRef =
-                new java.util.concurrent.atomic.AtomicReference<>();
-        return Flux.defer(() -> body.apply(sessRef))
-                .doFinally(signal -> {
-                    S s = sessRef.getAndSet(null);
-                    if (s != null) {
-                        cleaner.accept(s);
-                    }
-                })
-                .subscribeOn(Schedulers.boundedElastic());
+        java.util.concurrent.atomic.AtomicReference<S> sessRef = new java.util.concurrent.atomic.AtomicReference<>();
+        return Flux.defer(() -> body.apply(sessRef)).doFinally(signal -> {
+            S s = sessRef.getAndSet(null);
+            if (s != null) {
+                cleaner.accept(s);
+            }
+        }).subscribeOn(Schedulers.boundedElastic());
     }
-
 }

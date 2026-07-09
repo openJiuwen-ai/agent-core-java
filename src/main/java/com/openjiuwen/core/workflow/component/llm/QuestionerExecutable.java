@@ -23,9 +23,10 @@ import java.util.Map;
  * {@link QuestionerDirectReplyHandler} for actual extraction.
  * <p>
  * Mirrors Python's {@code QuestionerExecutable}.
+ * 
+ * @since 0.1.7
  */
 public class QuestionerExecutable extends ComponentExecutable {
-
     private final QuestionerConfig config;
     private final QuestionerDefaultConfig defaultConfig;
     private final PromptTemplate prompt;
@@ -34,7 +35,10 @@ public class QuestionerExecutable extends ComponentExecutable {
     private QuestionerState state;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * QuestionerExecutable.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public QuestionerExecutable(QuestionerConfig config) {
         validateConfig(config);
@@ -44,17 +48,27 @@ public class QuestionerExecutable extends ComponentExecutable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * state.
+     * 
+     * @param state state
+     * @return the result
+     * @since 0.1.7
      */
     public QuestionerExecutable state(QuestionerState state) {
         this.state = state;
         return this;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         // Load node-scoped state first so resumed questioner runs can recover extracted fields.
         Object sessionState = session.getState(null);
@@ -97,20 +111,30 @@ public class QuestionerExecutable extends ComponentExecutable {
         return invokeResult;
     }
 
-    // ==================== Internal ====================
-
-    private Map<String, Object> handleQuestionerDirectReply(
-            Object inputs, NodeSessionApi session, ModelContext context, QuestionerState currentState) {
-        QuestionerDirectReplyHandler handler = new QuestionerDirectReplyHandler()
-                .config(config)
-                .model(llm)
-                .state(currentState)
-                .prompt(prompt);
+    /**
+     * handleQuestionerDirectReply.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @param currentState currentState
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, Object> handleQuestionerDirectReply(Object inputs, NodeSessionApi session, ModelContext context,
+            QuestionerState currentState) {
+        QuestionerDirectReplyHandler handler =
+            new QuestionerDirectReplyHandler().config(config).model(llm).state(currentState).prompt(prompt);
         Map<String, Object> result = new java.util.LinkedHashMap<>(handler.handle(inputs, session, context));
         result.put("_state", handler.getState());
         return result;
     }
 
+    /**
+     * initializeIfNeeded.
+     * 
+     * @since 0.1.7
+     */
     private void initializeIfNeeded() {
         if (initialized) {
             return;
@@ -119,26 +143,38 @@ public class QuestionerExecutable extends ComponentExecutable {
             llm = createLlmInstance();
             initialized = true;
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INVOKE_CALL_FAILED,
-                    "error_msg", "failed to initialize llm if needed");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INVOKE_CALL_FAILED, "error_msg",
+                    "failed to initialize llm if needed");
         }
     }
 
+    /**
+     * createLlmInstance.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Model createLlmInstance() {
         if (config.getModelId() != null) {
             // In the full framework, this would use Runner.resourceMgr.getModel().
             // For now, throw if only modelId is provided without client/request configs.
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INVOKE_CALL_FAILED,
-                    "error_msg", "model_id based model lookup not yet supported in Java; "
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INVOKE_CALL_FAILED, "error_msg",
+                    "model_id based model lookup not yet supported in Java; "
                             + "provide modelClientConfig and modelConfig instead");
         }
         if (config.getModelClientConfig() == null || config.getModelConfig() == null) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INVOKE_CALL_FAILED,
-                    "error_msg", "failed to create llm instance");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_INVOKE_CALL_FAILED, "error_msg",
+                    "failed to create llm instance");
         }
         return new Model(config.getModelClientConfig(), config.getModelConfig());
     }
 
+    /**
+     * initPrompt.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private PromptTemplate initPrompt() {
         List<BaseMessage> templateMessages = defaultConfig.getPromptTemplate();
         return PromptTemplate.builder().content(templateMessages).build();
@@ -146,38 +182,63 @@ public class QuestionerExecutable extends ComponentExecutable {
 
     // ==================== Config validation ====================
 
+    /**
+     * validateConfig.
+     * 
+     * @param config config
+     * @since 0.1.7
+     */
     private void validateConfig(QuestionerConfig config) {
         validateResponseTypeConfig(config.getResponseType());
         validateExtractKeyFieldsConfig(config.isExtractFieldsFromResponse(), config.getFieldNames());
         validateMaxResponseNumConfig(config.getMaxResponse());
     }
 
+    /**
+     * validateResponseTypeConfig.
+     * 
+     * @param responseType responseType
+     * @since 0.1.7
+     */
     private static void validateResponseTypeConfig(String responseType) {
         if (!ResponseType.isValid(responseType)) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_CONFIG_ERROR,
-                    "error_msg", "response type " + responseType + " is invalid");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_CONFIG_ERROR, "error_msg",
+                    "response type " + responseType + " is invalid");
         }
     }
 
+    /**
+     * validateExtractKeyFieldsConfig.
+     * 
+     * @param ifExtract ifExtract
+     * @param fields fields
+     * @since 0.1.7
+     */
     private static void validateExtractKeyFieldsConfig(boolean ifExtract, List<FieldInfo> fields) {
         if (ifExtract && (fields == null || fields.isEmpty())) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_CONFIG_ERROR,
-                    "error_msg", "extracted key fields cannot be empty");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_CONFIG_ERROR, "error_msg",
+                    "extracted key fields cannot be empty");
         }
         if (fields != null) {
             for (FieldInfo item : fields) {
                 if (item.getFieldName() == null || item.getFieldName().isEmpty()) {
-                    throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_CONFIG_ERROR,
-                            "error_msg", "extracted key field name cannot be empty");
+                    throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_CONFIG_ERROR, "error_msg",
+                            "extracted key field name cannot be empty");
                 }
             }
         }
     }
 
+    /**
+     * validateMaxResponseNumConfig.
+     * 
+     * @param maxResponseNum maxResponseNum
+     * @since 0.1.7
+     */
     private static void validateMaxResponseNumConfig(int maxResponseNum) {
         if (maxResponseNum <= 0) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_CONFIG_ERROR,
-                    "error_msg", "max response must be greater than 0");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_QUESTIONER_CONFIG_ERROR, "error_msg",
+                    "max response must be greater than 0");
         }
     }
 }

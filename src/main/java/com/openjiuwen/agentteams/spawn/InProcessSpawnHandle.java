@@ -17,6 +17,8 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Lightweight in-process spawn handle mirroring the first Python lifecycle surface.
+ * 
+ * @since 0.1.7
  */
 @Getter
 @Builder(toBuilder = true)
@@ -31,21 +33,32 @@ public class InProcessSpawnHandle implements SpawnHandle {
     private volatile ScheduledFuture<?> healthCheckTask;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAlive.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean isAlive() {
         return task != null && !task.isDone();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isHealthy.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean isHealthy() {
         return isAlive() && !isShutdownRequested;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * startHealthCheck.
+     * 
+     * @param intervalMillis intervalMillis
+     * @since 0.1.7
      */
     public void startHealthCheck(Long intervalMillis) {
         stopHealthCheck();
@@ -56,22 +69,20 @@ public class InProcessSpawnHandle implements SpawnHandle {
             thread.setUncaughtExceptionHandler((ignoredThread, ignoredError) -> markUnhealthy());
             return thread;
         });
-        healthCheckTask = healthCheckExecutor.scheduleWithFixedDelay(
-                () -> {
-                    if (!isHealthy()) {
-                        stopHealthCheck();
-                        markUnhealthy();
-                    }
-                },
-                safeInterval,
-                safeInterval,
-                TimeUnit.MILLISECONDS
-        );
+        healthCheckTask = healthCheckExecutor.scheduleWithFixedDelay(() -> {
+            if (!isHealthy()) {
+                stopHealthCheck();
+                markUnhealthy();
+            }
+        }, safeInterval, safeInterval, TimeUnit.MILLISECONDS);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stopHealthCheck.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void stopHealthCheck() {
         ScheduledFuture<?> scheduledTask = healthCheckTask;
         healthCheckTask = null;
@@ -86,19 +97,23 @@ public class InProcessSpawnHandle implements SpawnHandle {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isHealthCheckRunning.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean isHealthCheckRunning() {
         ScheduledFuture<?> scheduledTask = healthCheckTask;
         return scheduledTask != null && !scheduledTask.isDone() && !scheduledTask.isCancelled();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shutdown.
+     * 
+     * @param timeoutMillis timeoutMillis
+     * @return the result
+     * @since 0.1.7
      */
     public boolean shutdown(Long timeoutMillis) {
         isShutdownRequested = true;
@@ -112,7 +127,6 @@ public class InProcessSpawnHandle implements SpawnHandle {
         } catch (CancellationException ignored) {
             return task.isDone();
         } catch (InterruptedException e) {
-
             return task.isDone();
         } catch (ExecutionException | TimeoutException e) {
             return task.isDone();
@@ -121,8 +135,11 @@ public class InProcessSpawnHandle implements SpawnHandle {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * forceKill.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void forceKill() {
         isShutdownRequested = true;
         stopHealthCheck();
@@ -132,8 +149,12 @@ public class InProcessSpawnHandle implements SpawnHandle {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * waitForCompletion.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public int waitForCompletion() {
         if (task == null) {
             return -1;
@@ -142,7 +163,6 @@ public class InProcessSpawnHandle implements SpawnHandle {
             task.get();
             return 0;
         } catch (InterruptedException e) {
-
             return -1;
         } catch (ExecutionException | java.util.concurrent.CancellationException e) {
             return -1;
@@ -150,7 +170,9 @@ public class InProcessSpawnHandle implements SpawnHandle {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * markUnhealthy.
+     * 
+     * @since 0.1.7
      */
     public void markUnhealthy() {
         stopHealthCheck();
@@ -161,7 +183,10 @@ public class InProcessSpawnHandle implements SpawnHandle {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setOnUnhealthy.
+     * 
+     * @param onUnhealthy onUnhealthy
+     * @since 0.1.7
      */
     public void setOnUnhealthy(Runnable onUnhealthy) {
         this.onUnhealthy = onUnhealthy;

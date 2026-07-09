@@ -13,9 +13,6 @@ import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.workflow.ComponentExecutable;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -25,7 +22,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -41,22 +37,43 @@ import java.util.Optional;
  * with template placeholder resolution, and returns structured responses.
  * <p>
  * Mirrors Python's {@code HTTPRequestExecutable}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 public class HttpRequestExecutable extends ComponentExecutable {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final HttpComponentConfig config;
 
+    /**
+     * HttpRequestExecutable.
+     * 
+     * @param config config
+     * @since 0.1.7
+     */
     public HttpRequestExecutable(HttpComponentConfig config) {
         this.config = config;
     }
 
+    /**
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public HttpComponentConfig getConfig() {
         return config;
     }
 
+    /**
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
@@ -66,17 +83,44 @@ public class HttpRequestExecutable extends ComponentExecutable {
         return processResponse(response);
     }
 
+    /**
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
         Object result = invoke(inputs, session, context);
         return List.of(result).iterator();
     }
 
+    /**
+     * collect.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Object collect(Object inputs, NodeSessionApi session, ModelContext context) {
         return invoke(inputs, session, context);
     }
 
+    /**
+     * transform.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Iterator<Object> transform(Object inputs, NodeSessionApi session, ModelContext context) {
         return stream(inputs, session, context);
@@ -99,14 +143,29 @@ public class HttpRequestExecutable extends ComponentExecutable {
         return processed;
     }
 
-    private void processUrl(Map<String, Object> inputs, Map<String, Object> processed,
-                            HttpRequestParamConfig params) {
+    /**
+     * processUrl.
+     * 
+     * @param inputs inputs
+     * @param processed processed
+     * @param params params
+     * @since 0.1.7
+     */
+    private void processUrl(Map<String, Object> inputs, Map<String, Object> processed, HttpRequestParamConfig params) {
         String url = resolvePlaceholders(params.getUrl(), inputs);
         processed.put("url", url);
     }
 
+    /**
+     * processMethod.
+     * 
+     * @param inputs inputs
+     * @param processed processed
+     * @param params params
+     * @since 0.1.7
+     */
     private void processMethod(Map<String, Object> inputs, Map<String, Object> processed,
-                               HttpRequestParamConfig params) {
+            HttpRequestParamConfig params) {
         String method = inputs.containsKey("method")
                 ? String.valueOf(inputs.get("method")).toUpperCase(Locale.ROOT)
                 : (params.getMethod() != null ? params.getMethod().toUpperCase(Locale.ROOT) : "GET");
@@ -114,8 +173,16 @@ public class HttpRequestExecutable extends ComponentExecutable {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * processHeaders.
+     * 
+     * @param inputs inputs
+     * @param processed processed
+     * @param params params
+     * @since 0.1.7
+     */
     private void processHeaders(Map<String, Object> inputs, Map<String, Object> processed,
-                                HttpRequestParamConfig params) {
+            HttpRequestParamConfig params) {
         Map<String, String> headers = new LinkedHashMap<>();
         if (params.getHeaders() != null) {
             Object rawHeaders = params.getHeaders();
@@ -136,6 +203,8 @@ public class HttpRequestExecutable extends ComponentExecutable {
                         headers.put(k, resolvePlaceholders(v, inputs));
                     }
                 });
+            } else {
+                // no-op
             }
         }
         if (inputs.containsKey("headers") && inputs.get("headers") instanceof Map) {
@@ -145,8 +214,16 @@ public class HttpRequestExecutable extends ComponentExecutable {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * processQueryParams.
+     * 
+     * @param inputs inputs
+     * @param processed processed
+     * @param params params
+     * @since 0.1.7
+     */
     private void processQueryParams(Map<String, Object> inputs, Map<String, Object> processed,
-                                    HttpRequestParamConfig params) {
+            HttpRequestParamConfig params) {
         Map<String, Object> queryParams = new LinkedHashMap<>();
         if (params.getQueryParameters() != null) {
             params.getQueryParameters().forEach((k, v) -> {
@@ -163,8 +240,15 @@ public class HttpRequestExecutable extends ComponentExecutable {
     }
 
     @SuppressWarnings("unchecked")
-    private void processBody(Map<String, Object> inputs, Map<String, Object> processed,
-                             HttpRequestParamConfig params) {
+    /**
+     * processBody.
+     * 
+     * @param inputs inputs
+     * @param processed processed
+     * @param params params
+     * @since 0.1.7
+     */
+    private void processBody(Map<String, Object> inputs, Map<String, Object> processed, HttpRequestParamConfig params) {
         HttpRequestBodyConfig bodyConfig = params.getBody();
         if (bodyConfig == null) {
             processed.put("body", inputs.getOrDefault("body", null));
@@ -192,8 +276,16 @@ public class HttpRequestExecutable extends ComponentExecutable {
         processed.put("body", resolvedBody);
     }
 
+    /**
+     * processAuthentication.
+     * 
+     * @param inputs inputs
+     * @param processed processed
+     * @param params params
+     * @since 0.1.7
+     */
     private void processAuthentication(Map<String, Object> inputs, Map<String, Object> processed,
-                                       HttpRequestParamConfig params) {
+            HttpRequestParamConfig params) {
         HttpAuthConfig authConfig = params.getAuthentication();
         processed.put("authentication", authConfig != null ? authConfig : inputs.getOrDefault("authentication", null));
     }
@@ -213,6 +305,13 @@ public class HttpRequestExecutable extends ComponentExecutable {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * extractRequestParams.
+     * 
+     * @param processed processed
+     * @return the result
+     * @since 0.1.7
+     */
     private RequestParams extractRequestParams(Map<String, Object> processed) {
         RequestParams params = new RequestParams();
         Object urlObj = processed.get("url");
@@ -227,6 +326,13 @@ public class HttpRequestExecutable extends ComponentExecutable {
         return params;
     }
 
+    /**
+     * prepareBodyContent.
+     * 
+     * @param bodyObj bodyObj
+     * @return the result
+     * @since 0.1.7
+     */
     private BodyContent prepareBodyContent(Object bodyObj) {
         BodyContent content = new BodyContent();
         if (bodyObj instanceof HttpRequestBodyConfig bodyConfig) {
@@ -235,8 +341,8 @@ public class HttpRequestExecutable extends ComponentExecutable {
                     content.body = MAPPER.writeValueAsString(bodyConfig.getJsonData());
                     content.contentType = "application/json";
                 } catch (JsonProcessingException e) {
-                    throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR,
-                            "error_msg", "Failed to serialize JSON body: " + e.getMessage());
+                    throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR, "error_msg",
+                            "Failed to serialize JSON body: " + e.getMessage());
                 }
             } else if (bodyConfig.getContentType() == HttpContentType.TEXT && bodyConfig.getTextData() != null) {
                 content.body = bodyConfig.getTextData();
@@ -244,11 +350,21 @@ public class HttpRequestExecutable extends ComponentExecutable {
             } else if (bodyConfig.getContentType() == HttpContentType.FORM && bodyConfig.getFormData() != null) {
                 content.body = encodeFormData(bodyConfig.getFormData());
                 content.contentType = "application/x-www-form-urlencoded";
+            } else {
+                // no-op
             }
         }
         return content;
     }
 
+    /**
+     * buildHttpRequest.
+     * 
+     * @param params params
+     * @param bodyContent bodyContent
+     * @return the result
+     * @since 0.1.7
+     */
     private HttpRequest buildHttpRequest(RequestParams params, BodyContent bodyContent) {
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(URI.create(params.url));
 
@@ -263,7 +379,8 @@ public class HttpRequestExecutable extends ComponentExecutable {
         params.headers.forEach(requestBuilder::header);
 
         if (bodyContent.body != null) {
-            requestBuilder.method(params.method, HttpRequest.BodyPublishers.ofString(bodyContent.body, StandardCharsets.UTF_8));
+            requestBuilder.method(params.method,
+                    HttpRequest.BodyPublishers.ofString(bodyContent.body, StandardCharsets.UTF_8));
         } else {
             requestBuilder.method(params.method, HttpRequest.BodyPublishers.noBody());
         }
@@ -271,6 +388,14 @@ public class HttpRequestExecutable extends ComponentExecutable {
         return requestBuilder.build();
     }
 
+    /**
+     * executeWithRetry.
+     * 
+     * @param httpRequest httpRequest
+     * @param params params
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> executeWithRetry(HttpRequest httpRequest, RequestParams params) {
         HttpRetryConfig retryConfig = params.requestParams.getRetryConfig();
         int maxRetries = (retryConfig != null && retryConfig.isEnabled()) ? retryConfig.getMaxRetries() : 0;
@@ -297,22 +422,28 @@ public class HttpRequestExecutable extends ComponentExecutable {
                     retryCount++;
                     continue;
                 }
-                throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR,
-                        "error_msg", "HTTP request failed: " + e.getMessage());
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR, "error_msg",
+                        "HTTP request failed: " + e.getMessage());
             } catch (InterruptedException e) {
-                throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR,
-                        "error_msg", "HTTP request interrupted: " + e.getMessage());
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR, "error_msg",
+                        "HTTP request interrupted: " + e.getMessage());
             }
         }
 
-        throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR,
-                "error_msg", "HTTP request failed after retries");
+        throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR, "error_msg",
+                "HTTP request failed after retries");
     }
 
+    /**
+     * createHttpClient.
+     * 
+     * @param params params
+     * @return the result
+     * @since 0.1.7
+     */
     private HttpClient createHttpClient(HttpRequestParamConfig params) {
-        HttpClient.Builder clientBuilder = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .followRedirects(HttpClient.Redirect.NORMAL);
+        HttpClient.Builder clientBuilder =
+            HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).followRedirects(HttpClient.Redirect.NORMAL);
         long timeoutMillis = secondsToMillis(params.getTimeout());
         if (timeoutMillis > 0) {
             clientBuilder.connectTimeout(Duration.ofMillis(timeoutMillis));
@@ -320,25 +451,56 @@ public class HttpRequestExecutable extends ComponentExecutable {
         return clientBuilder.build();
     }
 
+    /**
+     * shouldRetry.
+     * 
+     * @param retryConfig retryConfig
+     * @param statusCode statusCode
+     * @param retryCount retryCount
+     * @param maxRetries maxRetries
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean shouldRetry(HttpRetryConfig retryConfig, int statusCode, int retryCount, int maxRetries) {
         return retryConfig != null && retryConfig.isEnabled()
-                && retryConfig.getRetryOnStatusCodes().contains(statusCode)
-                && retryCount < maxRetries;
+                && retryConfig.getRetryOnStatusCodes().contains(statusCode) && retryCount < maxRetries;
     }
 
+    /**
+     * shouldRetryOnException.
+     * 
+     * @param retryConfig retryConfig
+     * @param retryCount retryCount
+     * @param maxRetries maxRetries
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean shouldRetryOnException(HttpRetryConfig retryConfig, int retryCount, int maxRetries) {
         return retryConfig != null && retryConfig.isEnabled() && retryCount < maxRetries;
     }
 
+    /**
+     * sleepForRetry.
+     * 
+     * @param delay delay
+     * @since 0.1.7
+     */
     private void sleepForRetry(long delay) {
         try {
             Thread.sleep(delay);
         } catch (InterruptedException ie) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR,
-                    "error_msg", "HTTP request retry interrupted: " + ie.getMessage());
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR, "error_msg",
+                    "HTTP request retry interrupted: " + ie.getMessage());
         }
     }
 
+    /**
+     * buildResponseMap.
+     * 
+     * @param response response
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> buildResponseMap(HttpResponse<String> response) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status_code", response.statusCode());
@@ -371,15 +533,15 @@ public class HttpRequestExecutable extends ComponentExecutable {
         Object statusCodeObj = response.get("status_code");
         int statusCode = statusCodeObj instanceof Number ? ((Number) statusCodeObj).intValue() : 0;
         Object content = response.get("content");
-        Map<String, List<String>> responseHeaders = (Map<String, List<String>>) response.getOrDefault(
-                "headers", Map.of());
+        Map<String, List<String>> responseHeaders =
+            (Map<String, List<String>>) response.getOrDefault("headers", Map.of());
 
         HttpRequestParamConfig params = config.getRequestParams();
         HttpResponseHandlingConfig handlingConfig = params.getResponseHandling();
 
         // Parse body
-        String contentTypeHeader = responseHeaders.getOrDefault("Content-Type", List.of()).stream()
-                .findFirst().orElse("");
+        String contentTypeHeader =
+            responseHeaders.getOrDefault("Content-Type", List.of()).stream().findFirst().orElse("");
 
         HttpResponseFormat format = handlingConfig.getResponseFormat();
         if (format == HttpResponseFormat.AUTODETECT) {
@@ -453,11 +615,10 @@ public class HttpRequestExecutable extends ComponentExecutable {
 
         headers = new LinkedHashMap<>(headers);
 
-        if (authConfig.getType() == HttpAuthType.BASIC
-                && authConfig.getUsername() != null && authConfig.getPassword() != null) {
+        if (authConfig.getType() == HttpAuthType.BASIC && authConfig.getUsername() != null
+                && authConfig.getPassword() != null) {
             String credentials = authConfig.getUsername() + ":" + authConfig.getPassword();
-            String encoded = java.util.Base64.getEncoder().encodeToString(
-                    credentials.getBytes(StandardCharsets.UTF_8));
+            String encoded = java.util.Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
             headers.put("Authorization", "Basic " + encoded);
         } else if (authConfig.getType() == HttpAuthType.BEARER && authConfig.getToken() != null) {
             headers.put("Authorization", "Bearer " + authConfig.getToken());
@@ -494,17 +655,29 @@ public class HttpRequestExecutable extends ComponentExecutable {
         }
     }
 
+    /**
+     * secondsToMillis.
+     * 
+     * @param seconds seconds
+     * @return the result
+     * @since 0.1.7
+     */
     private static long secondsToMillis(double seconds) {
         if (seconds <= 0) {
             return 0;
         }
-        return BigDecimal.valueOf(seconds)
-                .multiply(BigDecimal.valueOf(1000))
-                .setScale(0, RoundingMode.HALF_UP)
-                .max(BigDecimal.ONE)
-                .longValue();
+        return BigDecimal.valueOf(seconds).multiply(BigDecimal.valueOf(1000)).setScale(0, RoundingMode.HALF_UP)
+                .max(BigDecimal.ONE).longValue();
     }
 
+    /**
+     * appendQueryParams.
+     * 
+     * @param url url
+     * @param params params
+     * @return the result
+     * @since 0.1.7
+     */
     private static String appendQueryParams(String url, Map<String, Object> params) {
         if (params == null || params.isEmpty()) {
             return url;
@@ -519,14 +692,20 @@ public class HttpRequestExecutable extends ComponentExecutable {
             if (!isFirst) {
                 builder.append("&");
             }
-            builder.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8))
-                    .append("=")
+            builder.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)).append("=")
                     .append(URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
             isFirst = false;
         }
         return builder.toString();
     }
 
+    /**
+     * encodeFormData.
+     * 
+     * @param formData formData
+     * @return the result
+     * @since 0.1.7
+     */
     private static String encodeFormData(Map<String, Object> formData) {
         StringBuilder builder = new StringBuilder();
         boolean isFirst = true;
@@ -534,14 +713,21 @@ public class HttpRequestExecutable extends ComponentExecutable {
             if (!isFirst) {
                 builder.append("&");
             }
-            builder.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8))
-                    .append("=")
+            builder.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)).append("=")
                     .append(URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
             isFirst = false;
         }
         return builder.toString();
     }
 
+    /**
+     * calculateRetryDelay.
+     * 
+     * @param retryCount retryCount
+     * @param retryConfig retryConfig
+     * @return the result
+     * @since 0.1.7
+     */
     private static long calculateRetryDelay(int retryCount, HttpRetryConfig retryConfig) {
         long baseDelay = retryConfig.getRetryDelay();
         String backoffType = retryConfig.getBackoffType();

@@ -6,10 +6,12 @@ package com.openjiuwen.harness.harness_config;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
@@ -21,15 +23,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Public class HarnessConfig used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-/**
- * Public class HarnessConfig used by the Java parity implementation.
- *
- * @since 1.0
- */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class HarnessConfig {
     @JsonProperty("schema_version")
@@ -50,14 +52,21 @@ public class HarnessConfig {
     private Double completionTimeout;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toYaml.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String toYaml() {
         return toYaml(null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toYaml.
+     * 
+     * @param outputPath outputPath
+     * @return the result
+     * @since 0.1.7
      */
     public String toYaml(Path outputPath) {
         String yaml = new Yaml().dump(toYamlMap());
@@ -72,7 +81,10 @@ public class HarnessConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toYamlMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toYamlMap() {
         Map<String, Object> data = new LinkedHashMap<>();
@@ -108,21 +120,25 @@ public class HarnessConfig {
         return data;
     }
 
+    /**
+     * MetaSchema.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class MetaSchema {
         @Builder.Default
         private String owner = "";
         @Builder.Default
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private List<String> tags = new ArrayList<>();
         @Builder.Default
         private String visibility = "internal";
@@ -136,17 +152,16 @@ public class HarnessConfig {
         }
     }
 
+    /**
+     * SectionSchema.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class SectionSchema {
         private String name;
         private Integer priority;
@@ -169,20 +184,24 @@ public class HarnessConfig {
         }
     }
 
+    /**
+     * ToolResourceSchema.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class ToolResourceSchema {
         private String type;
         @Builder.Default
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private List<String> names = new ArrayList<>();
         private String name;
         private String packageName;
@@ -191,23 +210,23 @@ public class HarnessConfig {
         private String className;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getPackageName.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @JsonProperty("package")
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public String getPackageName() {
             return packageName;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setPackageName.
+         * 
+         * @param packageName packageName
+         * @since 0.1.7
          */
         @JsonProperty("package")
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public void setPackageName(String packageName) {
             this.packageName = packageName;
         }
@@ -234,17 +253,16 @@ public class HarnessConfig {
         }
     }
 
+    /**
+     * RailResourceSchema.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class RailResourceSchema {
         private String type;
         private String name;
@@ -253,26 +271,31 @@ public class HarnessConfig {
         @JsonProperty("class")
         private String className;
         @Builder.Default
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private Map<String, Object> config = new LinkedHashMap<>();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getPackageName.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @JsonProperty("package")
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public String getPackageName() {
             return packageName;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setPackageName.
+         * 
+         * @param packageName packageName
+         * @since 0.1.7
          */
         @JsonProperty("package")
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public void setPackageName(String packageName) {
             this.packageName = packageName;
         }
@@ -299,19 +322,23 @@ public class HarnessConfig {
         }
     }
 
+    /**
+     * SkillsSchema.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class SkillsSchema {
         @Builder.Default
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private List<String> dirs = new ArrayList<>();
         @Builder.Default
         private String mode = "all";
@@ -327,25 +354,34 @@ public class HarnessConfig {
         }
     }
 
+    /**
+     * McpResourceSchema.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class McpResourceSchema {
         @Builder.Default
         private String type = "stdio";
         @Builder.Default
         private String command = "";
         @Builder.Default
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private List<String> args = new ArrayList<>();
         @Builder.Default
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private Map<String, String> env = new LinkedHashMap<>();
 
         Map<String, Object> toYamlMap() {
@@ -358,24 +394,38 @@ public class HarnessConfig {
         }
     }
 
+    /**
+     * ResourcesSchema.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class ResourcesSchema {
         @Builder.Default
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private List<ToolResourceSchema> tools = new ArrayList<>();
         @Builder.Default
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private List<RailResourceSchema> rails = new ArrayList<>();
         private SkillsSchema skills;
         @Builder.Default
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private List<McpResourceSchema> mcps = new ArrayList<>();
 
         boolean hasAny() {
@@ -400,19 +450,23 @@ public class HarnessConfig {
         }
     }
 
+    /**
+     * PromptsSchema.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class PromptsSchema {
         @Builder.Default
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private List<SectionSchema> sections = new ArrayList<>();
 
         Map<String, Object> toYamlMap() {
@@ -420,39 +474,38 @@ public class HarnessConfig {
         }
     }
 
+    /**
+     * WorkspaceSchema.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class WorkspaceSchema {
         @Builder.Default
         private String rootPath = "./";
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getRootPath.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @JsonProperty("root_path")
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public String getRootPath() {
             return rootPath;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setRootPath.
+         * 
+         * @param rootPath rootPath
+         * @since 0.1.7
          */
         @JsonProperty("root_path")
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public void setRootPath(String rootPath) {
             this.rootPath = rootPath;
         }

@@ -10,8 +10,17 @@ import com.openjiuwen.core.session.Session;
 
 /**
  * Legacy task planner contract.
+ * 
+ * @since 0.1.7
  */
 public interface Planner {
-
+    /**
+     * plan.
+     * 
+     * @param intent intent
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     Task plan(IntentDetectionController.Intent intent, Session session);
 }

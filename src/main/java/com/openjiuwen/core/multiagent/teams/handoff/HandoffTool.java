@@ -14,25 +14,26 @@ import java.util.Map;
 
 /**
  * Tool that signals control transfer to a target agent.
- *
- * <p>Mirrors Python's {@code HandoffTool}. Injected automatically by
+ * <p>
+ * Mirrors Python's {@code HandoffTool}. Injected automatically by
  * {@link HandoffTeam} into every agent's {@code AbilityManager}. The tool name
  * exposed to the LLM is {@code transfer_to_{target_id}}; invoking it returns a
  * payload carrying {@link HandoffSignal#HANDOFF_TARGET_KEY} which
- * {@link HandoffSignal#extract} consumes to drive the handoff chain.</p>
- *
- * @since 1.0
+ * {@link HandoffSignal#extract} consumes to drive the handoff chain.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class HandoffTool extends Tool {
-
     private final String targetId;
 
     /**
      * Create a handoff tool targeting {@code targetId}.
-     *
-     * @param targetId          ID of the agent to hand off to.
+     * 
+     * @param targetId ID of the agent to hand off to.
      * @param targetDescription Optional description of the target agent appended
-     *                          to the tool description shown to the LLM.
+     *            to the tool description shown to the LLM.
+     * @since 0.1.7
      */
     public HandoffTool(String targetId, String targetDescription) {
         super(buildCard(targetId, targetDescription));
@@ -40,14 +41,20 @@ public class HandoffTool extends Tool {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HandoffTool.
+     * 
+     * @param targetId targetId
+     * @since 0.1.7
      */
     public HandoffTool(String targetId) {
         this(targetId, "");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTargetId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTargetId() {
         return targetId;
@@ -56,16 +63,20 @@ public class HandoffTool extends Tool {
     /**
      * Return a handoff signal payload dict consumed by
      * {@link HandoffSignal#extract}.
-     *
-     * <p>Accepts a dict of tool arguments ({@code reason} / {@code message}).
-     * Missing values default to empty strings to match Python parity.</p>
+     * <p>
+     * Accepts a dict of tool arguments ({@code reason} / {@code message}).
+     * Missing values default to empty strings to match Python parity.
+     * </p>
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
-        String message = inputs != null && inputs.get("message") != null
-                ? String.valueOf(inputs.get("message")) : "";
-        String reason = inputs != null && inputs.get("reason") != null
-                ? String.valueOf(inputs.get("reason")) : "";
+        String message = inputs != null && inputs.get("message") != null ? String.valueOf(inputs.get("message")) : "";
+        String reason = inputs != null && inputs.get("reason") != null ? String.valueOf(inputs.get("reason")) : "";
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put(HandoffSignal.HANDOFF_TARGET_KEY, targetId);
         payload.put(HandoffSignal.HANDOFF_MESSAGE_KEY, message);
@@ -75,6 +86,11 @@ public class HandoffTool extends Tool {
 
     /**
      * Streaming variant — yields the single {@link #invoke} result.
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) {
@@ -82,6 +98,14 @@ public class HandoffTool extends Tool {
         return List.of(result).iterator();
     }
 
+    /**
+     * buildCard.
+     * 
+     * @param targetId targetId
+     * @param targetDescription targetDescription
+     * @return the result
+     * @since 0.1.7
+     */
     private static ToolCard buildCard(String targetId, String targetDescription) {
         String toolName = "transfer_to_" + targetId;
         String description = "Transfer the current task to " + targetId + " for processing.";
@@ -90,12 +114,10 @@ public class HandoffTool extends Tool {
         }
         Map<String, Object> reasonProp = new LinkedHashMap<>();
         reasonProp.put("type", "string");
-        reasonProp.put("description",
-                "Reason for handoff: briefly explain why the task is being transferred.");
+        reasonProp.put("description", "Reason for handoff: briefly explain why the task is being transferred.");
         Map<String, Object> messageProp = new LinkedHashMap<>();
         messageProp.put("type", "string");
-        messageProp.put("description",
-                "Context information passed to the next agent (optional).");
+        messageProp.put("description", "Context information passed to the next agent (optional).");
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("reason", reasonProp);
         properties.put("message", messageProp);
@@ -103,11 +125,6 @@ public class HandoffTool extends Tool {
         inputParams.put("type", "object");
         inputParams.put("properties", properties);
         inputParams.put("required", List.of("reason"));
-        return ToolCard.builder()
-                .id(toolName)
-                .name(toolName)
-                .description(description)
-                .inputParams(inputParams)
-                .build();
+        return ToolCard.builder().id(toolName).name(toolName).description(description).inputParams(inputParams).build();
     }
 }

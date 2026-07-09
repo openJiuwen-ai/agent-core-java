@@ -8,6 +8,8 @@ package com.openjiuwen.core.session.tracer;
  * Agent invoke type enum.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.tracer.data.InvokeType}.
+ * 
+ * @since 0.1.7
  */
 public enum InvokeType {
     PROMPT("prompt"),
@@ -25,7 +27,10 @@ public enum InvokeType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

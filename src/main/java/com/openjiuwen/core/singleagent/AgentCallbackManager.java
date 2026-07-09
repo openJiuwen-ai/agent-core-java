@@ -19,20 +19,43 @@ import java.util.function.Function;
 
 /**
  * Manager for agent callback/rail registration and execution.
- *
- * <p>Supports both function-style and rail-style callbacks with priority ordering.
- * Uses the Runner.callbackFramework() with agent_id-prefixed event names to avoid collisions.</p>
+ * <p>
+ * Supports both function-style and rail-style callbacks with priority ordering.
+ * Uses the Runner.callbackFramework() with agent_id-prefixed event names to avoid collisions.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class AgentCallbackManager {
-
     private final String agentId;
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Map<Consumer<AgentCallbackContext>, Function<Map<String, Object>, Object>>> wrappedCallbacks =
-            new ConcurrentHashMap<>();
+        new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, List<RegisteredCallback>> localCallbacks = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<AgentRail, List<RailRegistration>> railRegistrations = new ConcurrentHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentCallbackManager.
+     * 
+     * @param agentId agentId
+     * @since 0.1.7
      */
     public AgentCallbackManager(String agentId) {
         this.agentId = agentId;
@@ -40,10 +63,11 @@ public class AgentCallbackManager {
 
     /**
      * Register an agent callback for an event.
-     *
-     * @param event    the agent callback event
+     * 
+     * @param event the agent callback event
      * @param callback the callback consumer
      * @param priority execution priority (lower = runs first)
+     * @since 0.1.7
      */
     public void registerCallback(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback, int priority) {
         String agentEvent = getAgentEvent(event);
@@ -54,9 +78,7 @@ public class AgentCallbackManager {
             }
             return null;
         };
-        wrappedCallbacks
-                .computeIfAbsent(agentEvent, key -> new ConcurrentHashMap<>())
-                .put(callback, wrappedCallback);
+        wrappedCallbacks.computeIfAbsent(agentEvent, key -> new ConcurrentHashMap<>()).put(callback, wrappedCallback);
         localCallbacks
                 .computeIfAbsent(agentEvent, key -> Collections.synchronizedList(new ArrayList<RegisteredCallback>()))
                 .add(new RegisteredCallback(callback, priority));
@@ -67,6 +89,10 @@ public class AgentCallbackManager {
 
     /**
      * Register an agent callback with default priority.
+     * 
+     * @param event event
+     * @param callback callback
+     * @since 0.1.7
      */
     public void registerCallback(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback) {
         registerCallback(event, callback, 100);
@@ -74,9 +100,10 @@ public class AgentCallbackManager {
 
     /**
      * Register a rail instance.
-     *
-     * @param rail  the AgentRail to register
+     * 
+     * @param rail the AgentRail to register
      * @param agent the BaseAgent instance (for tool registration)
+     * @since 0.1.7
      */
     public void registerRail(AgentRail rail, Object agent) {
         rail.init(agent);
@@ -98,9 +125,10 @@ public class AgentCallbackManager {
 
     /**
      * Unregister a rail instance.
-     *
-     * @param rail  the AgentRail to unregister
+     * 
+     * @param rail the AgentRail to unregister
      * @param agent the BaseAgent instance (for tool removal)
+     * @since 0.1.7
      */
     public void unregisterRail(AgentRail rail, Object agent) {
         List<RailRegistration> registrations = railRegistrations.remove(rail);
@@ -125,14 +153,15 @@ public class AgentCallbackManager {
 
     /**
      * Unregister a callback from an event.
-     *
-     * @param event    the event
+     * 
+     * @param event the event
      * @param callback the original callback consumer
+     * @since 0.1.7
      */
     public void unregister(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback) {
         String agentEvent = getAgentEvent(event);
         Map<Consumer<AgentCallbackContext>, Function<Map<String, Object>, Object>> callbacksForEvent =
-                wrappedCallbacks.get(agentEvent);
+            wrappedCallbacks.get(agentEvent);
         if (callbacksForEvent == null) {
             return;
         }
@@ -158,8 +187,9 @@ public class AgentCallbackManager {
 
     /**
      * Clear hooks for a specific event or all events.
-     *
+     * 
      * @param event specific event to clear, or null to clear all
+     * @since 0.1.7
      */
     public void clear(AgentCallbackEvent event) {
         if (event != null) {
@@ -167,8 +197,8 @@ public class AgentCallbackManager {
             Runner.callbackFramework().unregisterEvent(agentEvent);
             wrappedCallbacks.remove(agentEvent);
             localCallbacks.remove(agentEvent);
-            railRegistrations.values().forEach(registrations ->
-                    registrations.removeIf(registration -> registration.event() == event));
+            railRegistrations.values()
+                    .forEach(registrations -> registrations.removeIf(registration -> registration.event() == event));
         } else {
             for (AgentCallbackEvent e : AgentCallbackEvent.values()) {
                 String agentEvent = getAgentEvent(e);
@@ -182,9 +212,10 @@ public class AgentCallbackManager {
 
     /**
      * Check if any hooks are registered for an event.
-     *
+     * 
      * @param event the event to check
      * @return true if hooks are registered
+     * @since 0.1.7
      */
     public boolean hasHooks(AgentCallbackEvent event) {
         String agentEvent = getAgentEvent(event);
@@ -193,9 +224,10 @@ public class AgentCallbackManager {
 
     /**
      * Execute all hooks for an event.
-     *
+     * 
      * @param event the event
-     * @param ctx   the callback context
+     * @param ctx the callback context
+     * @since 0.1.7
      */
     public void execute(AgentCallbackEvent event, AgentCallbackContext ctx) {
         String agentEvent = getAgentEvent(event);
@@ -212,14 +244,32 @@ public class AgentCallbackManager {
 
     /**
      * Generate event name with agent_id prefix.
+     * 
+     * @param event event
+     * @return the result
+     * @since 0.1.7
      */
     private String getAgentEvent(AgentCallbackEvent event) {
         return agentId + "_" + event.getValue();
     }
 
+    /**
+     * RailRegistration.
+     * 
+     * @param event event
+     * @param callback callback
+     * @since 0.1.7
+     */
     private record RailRegistration(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback) {
     }
 
+    /**
+     * RegisteredCallback.
+     * 
+     * @param callback callback
+     * @param priority priority
+     * @since 0.1.7
+     */
     private record RegisteredCallback(Consumer<AgentCallbackContext> callback, int priority) {
     }
 }

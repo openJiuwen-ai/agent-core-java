@@ -13,9 +13,10 @@ import java.util.UUID;
  * User-facing workflow session managing the lifecycle of a workflow execution.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.workflow.Session}.
+ * 
+ * @since 0.1.7
  */
 public class WorkflowSessionApi {
-
     private final String sessionId;
     private final Map<String, Object> envs;
     private final CallbackManager callbackManager;
@@ -24,10 +25,11 @@ public class WorkflowSessionApi {
 
     /**
      * Create a workflow session from a parent session.
-     *
-     * @param parent    the parent base session (nullable)
+     * 
+     * @param parent the parent base session (nullable)
      * @param sessionId the session ID (nullable, auto-generated if absent)
-     * @param envs      environment variables (nullable)
+     * @param envs environment variables (nullable)
+     * @since 0.1.7
      */
     public WorkflowSessionApi(BaseSession parent, String sessionId, Map<String, Object> envs) {
         this.callbackManager = new CallbackManager();
@@ -46,56 +48,81 @@ public class WorkflowSessionApi {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowSessionApi.
+     * 
+     * @param parent parent
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public WorkflowSessionApi(BaseSession parent, String sessionId) {
         this(parent, sessionId, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowSessionApi.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public WorkflowSessionApi(String sessionId) {
         this(null, sessionId, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCallbackManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public CallbackManager getCallbackManager() {
         return callbackManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSessionId() {
         return sessionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEnvs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getEnvs() {
         return envs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getParent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public BaseSession getParent() {
         return parent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWorkflowCard.
+     * 
+     * @param card card
+     * @since 0.1.7
      */
     public void setWorkflowCard(Object card) {
         this.workflowCard = card;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkflowCard.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getWorkflowCard() {
         return workflowCard;
@@ -103,6 +130,12 @@ public class WorkflowSessionApi {
 
     /**
      * Factory method to create a workflow session.
+     * 
+     * @param parent parent
+     * @param sessionId sessionId
+     * @param envs envs
+     * @return the result
+     * @since 0.1.7
      */
     public static WorkflowSessionApi create(BaseSession parent, String sessionId, Map<String, Object> envs) {
         return new WorkflowSessionApi(parent, sessionId, envs);

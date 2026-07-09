@@ -18,15 +18,21 @@ import java.util.Map;
  * Loop callback that collects round results and generates final output.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.callback.output.OutputCallback}.
+ * 
+ * @since 0.1.7
  */
 public class OutputCallback extends LoopCallback {
-
     private final Map<String, Object> outputsFormat;
     private final String resultRoot;
     private final String roundResultRoot;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OutputCallback.
+     * 
+     * @param outputsFormat outputsFormat
+     * @param roundResultRoot roundResultRoot
+     * @param resultRoot resultRoot
+     * @since 0.1.7
      */
     public OutputCallback(Map<String, Object> outputsFormat, String roundResultRoot, String resultRoot) {
         this.outputsFormat = outputsFormat;
@@ -35,17 +41,24 @@ public class OutputCallback extends LoopCallback {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OutputCallback.
+     * 
+     * @param outputsFormat outputsFormat
+     * @since 0.1.7
      */
     public OutputCallback(Map<String, Object> outputsFormat) {
         this(outputsFormat, null, null);
     }
 
+    /**
+     * firstInLoop.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object firstInLoop(BaseSession session) {
         if (session.state() instanceof WorkflowStateCollection) {
             List<Object> results = new ArrayList<>();
@@ -54,11 +67,15 @@ public class OutputCallback extends LoopCallback {
         return null;
     }
 
+    /**
+     * outLoop.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object outLoop(BaseSession session) {
         if (!(session.state() instanceof WorkflowStateCollection)) {
             return null;
@@ -69,19 +86,28 @@ public class OutputCallback extends LoopCallback {
         return generateOutput(session, results, new ArrayList<>(), outputsFormat);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * startRound.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object startRound(BaseSession session) {
         return null;
     }
 
+    /**
+     * endRound.
+     * 
+     * @param session session
+     * @param loopTimes loopTimes
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object endRound(BaseSession session, int loopTimes) {
         if (!(session.state() instanceof WorkflowStateCollection)) {
             return null;
@@ -102,6 +128,16 @@ public class OutputCallback extends LoopCallback {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * generateOutput.
+     * 
+     * @param session session
+     * @param results results
+     * @param root root
+     * @param outputFormat outputFormat
+     * @return the result
+     * @since 0.1.7
+     */
     private Object generateOutput(BaseSession session, List<Object> results, List<String> root, Object outputFormat) {
         if (outputFormat instanceof Map) {
             Map<String, Object> output = new HashMap<>();

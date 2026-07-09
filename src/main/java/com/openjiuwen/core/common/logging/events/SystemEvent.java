@@ -10,7 +10,11 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** System-level event. */
+/**
+ * System-level event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -20,17 +24,22 @@ public class SystemEvent extends BaseLogEvent {
     private Map<String, Object> resourceUsage;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SystemEvent.
+     * 
+     * @since 0.1.7
      */
     public SystemEvent() {
         super();
         setModuleType(ModuleType.SYSTEM);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "system_version", systemVersion);
         putIfNotNull(map, "system_config", systemConfig);

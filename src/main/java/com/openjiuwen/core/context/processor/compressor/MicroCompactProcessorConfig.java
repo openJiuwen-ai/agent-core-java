@@ -15,6 +15,8 @@ import java.util.List;
  * Configuration for the {@link MicroCompactProcessor} ContextProcessor.
  * <p>
  * Mirrors Python's {@code MicroCompactProcessorConfig}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -25,6 +27,11 @@ public class MicroCompactProcessorConfig {
     private int triggerThreshold = 5;
 
     @Builder.Default
+    /**
+     * List.of.
+     * 
+     * @since 0.1.7
+     */
     private List<String> compactableToolNames = List.of("grep", "glob", "read_file", "web_search", "web_fetch");
 
     @Builder.Default
@@ -34,7 +41,9 @@ public class MicroCompactProcessorConfig {
     private String clearedMarker = "[Old tool result content cleared]";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validate.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         if (triggerThreshold <= 0) {

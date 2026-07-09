@@ -6,9 +6,10 @@ package com.openjiuwen.core.runner.callback;
 
 /**
  * Types of hooks that can be registered for lifecycle events.
+ * 
+ * @since 0.1.7
  */
 public enum HookType {
-    /** Executed before event processing. */
     BEFORE("before"),
     /** Executed after event processing. */
     AFTER("after"),
@@ -24,7 +25,10 @@ public enum HookType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

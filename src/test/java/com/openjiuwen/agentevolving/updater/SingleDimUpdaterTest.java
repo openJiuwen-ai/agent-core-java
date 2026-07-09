@@ -1,9 +1,17 @@
+
 package com.openjiuwen.agentevolving.updater;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
 import com.openjiuwen.agentevolving.optimizer.BaseOptimizer;
 import com.openjiuwen.agentevolving.trajectory.Trajectory;
 import com.openjiuwen.agentevolving.trajectory.Updates;
+
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
@@ -11,14 +19,7 @@ import org.mockito.Mockito;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-
 class SingleDimUpdaterTest {
-
     @Test
     void bindDelegatesTargetsFromArgumentsOrConfig() {
         BaseOptimizer optimizer = Mockito.mock(BaseOptimizer.class);

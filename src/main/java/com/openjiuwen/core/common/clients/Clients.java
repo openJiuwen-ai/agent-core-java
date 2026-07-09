@@ -14,34 +14,54 @@ import java.time.Duration;
 
 /**
  * Static entrypoints mirroring Python's openjiuwen.core.common.clients exports.
+ * 
+ * @since 0.1.7
  */
 public final class Clients {
+    /**
+     * Clients.
+     * 
+     * @since 0.1.7
+     */
     private Clients() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getClientRegistry.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static ClientRegistry getClientRegistry() {
         return ClientRegistry.getInstance();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConnectorPoolManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static ConnectorPoolManager getConnectorPoolManager() {
         return ConnectorPoolManager.getInstance();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getHttpSessionManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static HttpSessionManager getHttpSessionManager() {
         return HttpSessionManager.getInstance();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createHttpxClient.
+     * 
+     * @param config config
+     * @return HttpClient
+     * @since 0.1.7
      */
     public static java.net.http.HttpClient createHttpxClient(HttpXConnectorPoolConfig config) {
         Object conn = getConnectorPoolManager().getConnectorPool("httpx", config).conn();
@@ -52,26 +72,28 @@ public final class Clients {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createAsyncOpenAiClient.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public static OpenAIClientAsync createAsyncOpenAiClient(ModelClientConfig config) {
-        return OpenAIOkHttpClientAsync.builder()
-                .apiKey(config.getApiKey())
-                .baseUrl(config.getApiBase())
+        return OpenAIOkHttpClientAsync.builder().apiKey(config.getApiKey()).baseUrl(config.getApiBase())
                 .timeout(Duration.ofSeconds(Math.max(1L, Math.round(config.getTimeout()))))
-                .maxRetries(config.getMaxRetries())
-                .build();
+                .maxRetries(config.getMaxRetries()).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createOpenAiClient.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public static OpenAIClient createOpenAiClient(ModelClientConfig config) {
-        return OpenAIOkHttpClient.builder()
-                .apiKey(config.getApiKey())
-                .baseUrl(config.getApiBase())
+        return OpenAIOkHttpClient.builder().apiKey(config.getApiKey()).baseUrl(config.getApiBase())
                 .timeout(Duration.ofSeconds(Math.max(1L, Math.round(config.getTimeout()))))
-                .maxRetries(config.getMaxRetries())
-                .build();
+                .maxRetries(config.getMaxRetries()).build();
     }
 }

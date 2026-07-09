@@ -11,21 +11,27 @@ import java.util.Map;
  * <p>
  * Not intended for direct use. Use specific index classes like:
  * MilvusAUTO, MilvusHNSW, MilvusIVF, MilvusFLAT, or MilvusSCANN instead.
+ * 
+ * @since 0.1.7
  */
 public abstract class MilvusVectorField extends VectorField {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDatabaseType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getDatabaseType() {
         return "milvus";
     }
 
     /**
      * Validate scalar quantization (SQ) options for index construction.
-     *
+     * 
+     * @param extraConstruct extraConstruct
      * @return empty string if valid, otherwise semicolon-prefixed error messages
+     * @since 0.1.7
      */
     protected static String validateSqConstruct(Map<String, Object> extraConstruct) {
         StringBuilder err = new StringBuilder();
@@ -37,9 +43,10 @@ public abstract class MilvusVectorField extends VectorField {
             }
             if (Boolean.TRUE.equals(refine) && refineType != null) {
                 String rt = refineType.toString();
-                if (!("SQ6".equals(rt) || "SQ8".equals(rt) || "FP16".equals(rt)
-                        || "BF16".equals(rt) || "FP32".equals(rt))) {
-                    err.append("; if set, \"refine_type\" must be one of [\"SQ6\", \"SQ8\", \"FP16\", \"BF16\", \"FP32\"]");
+                if (!("SQ6".equals(rt) || "SQ8".equals(rt) || "FP16".equals(rt) || "BF16".equals(rt)
+                        || "FP32".equals(rt))) {
+                    err.append("; if set, \"refine_type\" must be one of [\""
+                            + "SQ6\", \"SQ8\", \"FP16\", \"BF16\", \"FP32\"]");
                 }
             }
         }
@@ -48,6 +55,10 @@ public abstract class MilvusVectorField extends VectorField {
 
     /**
      * Validate scalar quantization (SQ) options for search stage.
+     * 
+     * @param extraSearch extraSearch
+     * @return the result
+     * @since 0.1.7
      */
     protected static String validateSqSearch(Map<String, Object> extraSearch) {
         StringBuilder err = new StringBuilder();
@@ -62,6 +73,10 @@ public abstract class MilvusVectorField extends VectorField {
 
     /**
      * Validate product quantization (PQ) options for index construction.
+     * 
+     * @param extraConstruct extraConstruct
+     * @return the result
+     * @since 0.1.7
      */
     protected static String validatePqConstruct(Map<String, Object> extraConstruct) {
         StringBuilder err = new StringBuilder();

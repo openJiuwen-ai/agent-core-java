@@ -16,8 +16,8 @@ import java.util.Map;
 
 /**
  * Public class ActiveContextSynthesizer used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class ActiveContextSynthesizer {
     private static final long ONE_DAY_SECS = 86_400L;
@@ -25,14 +25,22 @@ public class ActiveContextSynthesizer {
     private final ExperienceStore store;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ActiveContextSynthesizer.
+     * 
+     * @param experienceDir experienceDir
+     * @since 0.1.7
      */
     public ActiveContextSynthesizer(String experienceDir) {
         this.store = new ExperienceStore(experienceDir);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * synthesize.
+     * 
+     * @param experiences experiences
+     * @param maxTokens maxTokens
+     * @return the result
+     * @since 0.1.7
      */
     public String synthesize(List<Experience> experiences, int maxTokens) {
         if (experiences == null || experiences.isEmpty()) {
@@ -43,9 +51,8 @@ public class ActiveContextSynthesizer {
             grouped.computeIfAbsent(experience.getType(), ignored -> new ArrayList<>()).add(experience);
         }
         long now = System.currentTimeMillis() / 1000;
-        grouped.values().forEach(items -> items.sort(
-                Comparator.comparingDouble((Experience exp) -> timeWeight(exp.getTimestamp(), now)).reversed()
-        ));
+        grouped.values().forEach(items -> items
+                .sort(Comparator.comparingDouble((Experience exp) -> timeWeight(exp.getTimestamp(), now)).reversed()));
         StringBuilder builder = new StringBuilder();
         appendSection(builder, "### 近期优化经验", grouped.get(ExperienceType.OPTIMIZATION));
         appendSection(builder, "### 失败教训", grouped.get(ExperienceType.FAILURE));
@@ -56,12 +63,25 @@ public class ActiveContextSynthesizer {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadAndSynthesize.
+     * 
+     * @param topK topK
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public String loadAndSynthesize(int topK) throws IOException {
         return synthesize(store.listRecent(topK), 2000);
     }
 
+    /**
+     * appendSection.
+     * 
+     * @param builder builder
+     * @param header header
+     * @param experiences experiences
+     * @since 0.1.7
+     */
     private static void appendSection(StringBuilder builder, String header, List<Experience> experiences) {
         if (experiences == null || experiences.isEmpty()) {
             return;
@@ -71,10 +91,7 @@ public class ActiveContextSynthesizer {
         }
         builder.append(header).append('\n');
         for (Experience experience : experiences) {
-            builder.append("- ")
-                    .append(experience.getTopic())
-                    .append(": ")
-                    .append(experience.getSummary());
+            builder.append("- ").append(experience.getTopic()).append(": ").append(experience.getSummary());
             if (experience.getOutcome() != null && !experience.getOutcome().isBlank()) {
                 builder.append(" (").append(experience.getOutcome()).append(')');
             }

@@ -9,35 +9,55 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Auto-generated for codecheck compliance.
+ * WebToolFactory.
+ * 
+ * @since 0.1.7
  */
 public final class WebToolFactory {
+    /**
+     * WebToolFactory.
+     * 
+     * @since 0.1.7
+     */
     private WebToolFactory() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isFreeSearchEnabled.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isFreeSearchEnabled() {
         return WebFreeSearchTool.isFreeSearchEnabled(System.getenv());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isPaidSearchEnabled.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isPaidSearchEnabled() {
         return WebPaidSearchTool.isPaidSearchEnabled(System.getenv());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createWebTools.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static List<Object> createWebTools() {
         return createWebTools(System.getenv());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createWebTools.
+     * 
+     * @param env env
+     * @return the result
+     * @since 0.1.7
      */
     public static List<Object> createWebTools(Map<String, String> env) {
         List<Object> tools = new ArrayList<>();

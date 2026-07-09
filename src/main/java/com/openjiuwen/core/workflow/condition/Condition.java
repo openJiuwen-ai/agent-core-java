@@ -15,23 +15,31 @@ import java.util.Map;
  * Abstract condition for workflow branching and loop control.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.condition.condition.Condition}.
+ * 
+ * @since 0.1.7
  */
 public abstract class Condition extends AtomicNode {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * inputSchema.
+     * 
+     * @since 0.1.7
      */
     protected Object inputSchema;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Condition.
+     * 
+     * @since 0.1.7
      */
     public Condition() {
         this(null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Condition.
+     * 
+     * @param inputSchema inputSchema
+     * @since 0.1.7
      */
     public Condition(Object inputSchema) {
         this.inputSchema = inputSchema;
@@ -39,9 +47,10 @@ public abstract class Condition extends AtomicNode {
 
     /**
      * Evaluate the condition against the given session.
-     *
+     * 
      * @param session the session to evaluate against
      * @return true if the condition is satisfied
+     * @since 0.1.7
      */
     public boolean evaluate(BaseSession session) {
         Map<String, Object> kwargs = new HashMap<>();
@@ -53,10 +62,14 @@ public abstract class Condition extends AtomicNode {
         return false;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * doAtomicInvoke.
+     * 
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected Object doAtomicInvoke(Map<String, Object> kwargs) {
         BaseSession session = (BaseSession) kwargs.get("session");
         Object inputs;
@@ -78,15 +91,20 @@ public abstract class Condition extends AtomicNode {
 
     /**
      * Perform the condition check.
-     *
-     * @param inputs  input data
+     * 
+     * @param inputs input data
      * @param session the session
      * @return boolean result or Object[]{boolean, outputs} for conditions that also produce state
+     * @since 0.1.7
      */
     public abstract Object doInvoke(Object inputs, BaseSession session);
 
     /**
      * Get trace info for this condition.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public Object traceInfo(BaseSession session) {
         return "";

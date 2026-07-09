@@ -11,23 +11,27 @@ import lombok.NoArgsConstructor;
 
 /**
  * Represents a skill with its metadata.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class Skill {
-
     private String name;
     private String description;
     private String directory;
     @Builder.Default
     private long updateAt = 0L;
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String toString() {
         return "Skill: " + name + "\nDescription: " + description + "\nDirectory: " + directory;
     }
@@ -35,8 +39,9 @@ public class Skill {
     /**
      * Compact representation matching Python's {@code __repr__()}.
      * Truncates description to 30 chars.
-     *
+     * 
      * @return a compact single-line representation
+     * @since 0.1.7
      */
     public String toRepr() {
         String desc = description != null ? description : "";

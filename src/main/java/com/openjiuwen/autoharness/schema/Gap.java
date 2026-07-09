@@ -12,14 +12,14 @@ import lombok.NoArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Public class Gap used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class Gap used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class Gap {
     @Builder.Default
@@ -39,10 +39,18 @@ public class Gap {
     @Builder.Default
     private String suggestedApproach = "";
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> targetFiles = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * priority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double priority() {
         return impact * feasibility;

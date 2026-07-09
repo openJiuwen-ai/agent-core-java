@@ -13,39 +13,53 @@ import java.util.function.Function;
 
 /**
  * Composite chunker with preprocessing.
+ * 
+ * @since 0.1.7
  */
 public class TextChunker extends Chunker {
-
     private final Chunker innerChunker;
     private final PreprocessingPipeline pipeline;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TextChunker.
+     * 
+     * @param chunkSize chunkSize
+     * @param chunkOverlap chunkOverlap
+     * @param chunkUnit chunkUnit
+     * @since 0.1.7
      */
     public TextChunker(int chunkSize, int chunkOverlap, String chunkUnit) {
         this(chunkSize, chunkOverlap, chunkUnit, null, "auto");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TextChunker.
+     * 
+     * @param chunkSize chunkSize
+     * @param chunkOverlap chunkOverlap
+     * @param chunkUnit chunkUnit
+     * @param tokenizer tokenizer
+     * @param language language
+     * @since 0.1.7
      */
-    public TextChunker(int chunkSize,
-                       int chunkOverlap,
-                       String chunkUnit,
-                       Function<String, List<String>> tokenizer,
-                       String language) {
+    public TextChunker(int chunkSize, int chunkOverlap, String chunkUnit, Function<String, List<String>> tokenizer,
+            String language) {
         this(chunkSize, chunkOverlap, chunkUnit, tokenizer, language, List.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TextChunker.
+     * 
+     * @param chunkSize chunkSize
+     * @param chunkOverlap chunkOverlap
+     * @param chunkUnit chunkUnit
+     * @param tokenizer tokenizer
+     * @param language language
+     * @param preprocessors preprocessors
+     * @since 0.1.7
      */
-    public TextChunker(int chunkSize,
-                       int chunkOverlap,
-                       String chunkUnit,
-                       Function<String, List<String>> tokenizer,
-                       String language,
-                       List<TextPreprocessor> preprocessors) {
+    public TextChunker(int chunkSize, int chunkOverlap, String chunkUnit, Function<String, List<String>> tokenizer,
+            String language, List<TextPreprocessor> preprocessors) {
         super(chunkSize, chunkOverlap);
         this.innerChunker = "char".equalsIgnoreCase(chunkUnit)
                 ? new CharChunker(chunkSize, chunkOverlap)
@@ -53,23 +67,32 @@ public class TextChunker extends Chunker {
         this.pipeline = new PreprocessingPipeline(preprocessors);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * chunkText.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<String> chunkText(String text) {
         return innerChunker.chunkText(pipeline.process(text));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * chunkDocuments.
+     * 
+     * @param documents documents
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<TextChunk> chunkDocuments(List<Document> documents) {
         List<Document> normalized = new ArrayList<>();
         if (documents != null) {
             for (Document document : documents) {
-                normalized.add(new Document(document.getId(), pipeline.process(document.getText()), document.getMetadata()));
+                normalized.add(
+                        new Document(document.getId(), pipeline.process(document.getText()), document.getMetadata()));
             }
         }
         return innerChunker.chunkDocuments(normalized);

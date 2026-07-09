@@ -7,29 +7,40 @@ package com.openjiuwen.core.session.callback;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.lang.reflect.Method;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages callback handlers and triggers events.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.callback.callback_manager.CallbackManager}.
+ * 
+ * @since 0.1.7
  */
 public class CallbackManager {
-
     private final Map<String, BaseHandler> handlers = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, List<String>> triggerEvents = new ConcurrentHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CallbackManager.
+     * 
+     * @since 0.1.7
      */
     public CallbackManager() {
     }
 
     /**
      * Register handlers from a config map.
-     *
+     * 
      * @param configs map of handler name -> handler instance
+     * @since 0.1.7
      */
     public void register(Map<String, BaseHandler> configs) {
         if (configs == null) {
@@ -45,10 +56,11 @@ public class CallbackManager {
 
     /**
      * Trigger a specific event on a handler.
-     *
+     * 
      * @param handlerClassName the handler name
-     * @param eventName        the event method name
-     * @param kwargs           the event arguments
+     * @param eventName the event method name
+     * @param kwargs the event arguments
+     * @since 0.1.7
      */
     public void trigger(String handlerClassName, String eventName, Map<String, Object> kwargs) {
         BaseHandler handler = handlers.get(handlerClassName);
@@ -91,14 +103,23 @@ public class CallbackManager {
 
     /**
      * Get a registered handler by name.
-     *
+     * 
      * @param handlerName the handler name
      * @return the handler or null
+     * @since 0.1.7
      */
     public BaseHandler getHandler(String handlerName) {
         return handlers.get(handlerName);
     }
 
+    /**
+     * findMethod.
+     * 
+     * @param handler handler
+     * @param eventName eventName
+     * @return the result
+     * @since 0.1.7
+     */
     private Method findMethod(BaseHandler handler, String eventName) {
         for (Method method : handler.getClass().getMethods()) {
             if (method.getName().equals(eventName)) {
@@ -108,6 +129,14 @@ public class CallbackManager {
         return null;
     }
 
+    /**
+     * resolveEventName.
+     * 
+     * @param handlerClassName handlerClassName
+     * @param eventName eventName
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveEventName(String handlerClassName, String eventName) {
         List<String> events = triggerEvents.get(handlerClassName);
         if (events == null || events.isEmpty()) {
@@ -123,6 +152,14 @@ public class CallbackManager {
         return null;
     }
 
+    /**
+     * buildMethodArgs.
+     * 
+     * @param method method
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     private Object[] buildMethodArgs(Method method, Map<String, Object> kwargs) {
         java.lang.reflect.Parameter[] parameters = method.getParameters();
         Object[] args = new Object[parameters.length];
@@ -143,6 +180,13 @@ public class CallbackManager {
         return args;
     }
 
+    /**
+     * defaultPrimitiveValue.
+     * 
+     * @param primitiveType primitiveType
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object defaultPrimitiveValue(Class<?> primitiveType) {
         if (primitiveType == boolean.class) {
             return false;
@@ -171,6 +215,13 @@ public class CallbackManager {
         return null;
     }
 
+    /**
+     * snakeToCamel.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String snakeToCamel(String value) {
         if (value == null || value.isEmpty() || !value.contains("_")) {
             return value;
@@ -188,6 +239,13 @@ public class CallbackManager {
         return builder.toString();
     }
 
+    /**
+     * camelToSnake.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String camelToSnake(String value) {
         if (value == null || value.isEmpty()) {
             return value;

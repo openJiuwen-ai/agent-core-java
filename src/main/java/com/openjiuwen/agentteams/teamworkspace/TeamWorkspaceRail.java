@@ -11,22 +11,40 @@ import java.util.Set;
 
 /**
  * Transparent version control and locking for the .team/ mount point.
- *
- * <p>Mirrors Python TeamWorkspaceRail: intercepts filesystem tool calls
+ * <p>
+ * Mirrors Python TeamWorkspaceRail: intercepts filesystem tool calls
  * and applies workspace policies (pull before read, lock on write,
- * auto-commit after write).</p>
+ * auto-commit after write).
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class TeamWorkspaceRail extends DeepAgentRail {
-
     private static final String TEAM_PREFIX = ".team/";
+
+    /**
+     * Set.of.
+     * 
+     * @since 0.1.7
+     */
     private static final Set<String> WRITE_TOOLS = Set.of("write_file", "edit_file");
+
+    /**
+     * Set.of.
+     * 
+     * @since 0.1.7
+     */
     private static final Set<String> READ_TOOLS = Set.of("read_file", "glob", "grep", "list_files");
 
     private final TeamWorkspaceManager workspaceManager;
     private final String memberName;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamWorkspaceRail.
+     * 
+     * @param workspaceManager workspaceManager
+     * @param memberName memberName
+     * @since 0.1.7
      */
     public TeamWorkspaceRail(TeamWorkspaceManager workspaceManager, String memberName) {
         this.workspaceManager = workspaceManager;
@@ -34,7 +52,10 @@ public class TeamWorkspaceRail extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * priority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public int priority() {
@@ -42,7 +63,10 @@ public class TeamWorkspaceRail extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * beforeToolCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
     public void beforeToolCall(AgentCallbackContext ctx) {
@@ -59,7 +83,10 @@ public class TeamWorkspaceRail extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterToolCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
     public void afterToolCall(AgentCallbackContext ctx) {
@@ -74,21 +101,38 @@ public class TeamWorkspaceRail extends DeepAgentRail {
         }
     }
 
+    /**
+     * maybePull.
+     * 
+     * @since 0.1.7
+     */
     private void maybePull() {
         // Throttled pull for distributed mode
     }
 
+    /**
+     * extractPath.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
+     */
     private static String extractPath(AgentCallbackContext ctx) {
         // Path extraction is context-dependent; override in subclasses as needed
         return null;
     }
 
+    /**
+     * resolveWorkspaceRelative.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
     private static String resolveWorkspaceRelative(String path) {
         if (path == null) {
             return null;
         }
-        return path.startsWith(TEAM_PREFIX)
-                ? path.substring(TEAM_PREFIX.length())
-                : path;
+        return path.startsWith(TEAM_PREFIX) ? path.substring(TEAM_PREFIX.length()) : path;
     }
 }

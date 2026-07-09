@@ -5,6 +5,7 @@
 package com.openjiuwen.core.singleagent.schema;
 
 import com.openjiuwen.core.controller.schema.TaskStatus;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,6 +18,8 @@ import java.util.Map;
 
 /**
  * Agent result data model.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -27,7 +30,17 @@ public class AgentResult {
     private String sessionId;
     private TaskStatus status;
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Artifact> artifacts = new ArrayList<>();
     @Builder.Default
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new HashMap<>();
 }

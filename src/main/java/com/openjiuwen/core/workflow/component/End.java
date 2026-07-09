@@ -25,9 +25,10 @@ import java.util.regex.Pattern;
  * Exit point component of the workflow with optional response template rendering.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.end_comp.End}.
+ * 
+ * @since 0.1.7
  */
 public class End extends WorkflowComponent {
-
     private static final Pattern TEMPLATE_PATTERN = Pattern.compile("(\\{\\{[^}]+\\}\\})");
 
     private final EndConfig conf;
@@ -37,7 +38,10 @@ public class End extends WorkflowComponent {
     private boolean mix = false;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * End.
+     * 
+     * @param conf conf
+     * @since 0.1.7
      */
     public End(EndConfig conf) {
         if (conf != null) {
@@ -62,16 +66,21 @@ public class End extends WorkflowComponent {
         }
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * End.
+     * 
+     * @param confMap confMap
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public End(Map<String, Object> confMap) {
         this(confMap != null ? EndConfig.fromMap(confMap) : null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * End.
+     * 
+     * @since 0.1.7
      */
     public End() {
         this((EndConfig) null);
@@ -81,6 +90,8 @@ public class End extends WorkflowComponent {
      * Mark this End component as mixed-mode (concurrent data sources).
      * <p>
      * Mirrors Python's {@code End.set_mix()}.
+     * 
+     * @since 0.1.7
      */
     @Override
     public void setMix() {
@@ -88,17 +99,26 @@ public class End extends WorkflowComponent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isMix.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isMix() {
         return mix;
     }
 
+    /**
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         if (template != null) {
             Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : new HashMap<>();
@@ -120,11 +140,17 @@ public class End extends WorkflowComponent {
         return null;
     }
 
+    /**
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
         Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : new HashMap<>();
         List<Object> frames = new ArrayList<>();
@@ -167,11 +193,17 @@ public class End extends WorkflowComponent {
         return frames.iterator();
     }
 
+    /**
+     * transform.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Iterator<Object> transform(Object inputs, NodeSessionApi session, ModelContext context) {
         Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : new HashMap<>();
         if (template != null) {
@@ -180,11 +212,17 @@ public class End extends WorkflowComponent {
         return outputTransformIterator(inputsMap);
     }
 
+    /**
+     * collect.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object collect(Object inputs, NodeSessionApi session, ModelContext context) {
         if (template != null) {
             Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : new HashMap<>();
@@ -209,6 +247,13 @@ public class End extends WorkflowComponent {
         return Map.of("output", inputs);
     }
 
+    /**
+     * materializeStreamingInputs.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> materializeStreamingInputs(Map<String, Object> inputs) {
         List<Map.Entry<List<String>, Object>> entries = new ArrayList<>();
         for (Map.Entry<List<String>, Object> entry : DictUtils.extractLeafNodes(inputs, null)) {
@@ -226,10 +271,25 @@ public class End extends WorkflowComponent {
         return DictUtils.rebuildDict(entries);
     }
 
+    /**
+     * buildTemplateFrame.
+     * 
+     * @param index index
+     * @param data data
+     * @return the result
+     * @since 0.1.7
+     */
     private static OutputSchema buildTemplateFrame(int index, Object data) {
         return new OutputSchema(Constant.END_NODE_STREAM, index, Map.of("response", data));
     }
 
+    /**
+     * templateTransformIterator.
+     * 
+     * @param inputsMap inputsMap
+     * @return the result
+     * @since 0.1.7
+     */
     private Iterator<Object> templateTransformIterator(Map<String, Object> inputsMap) {
         return new Iterator<>() {
             private int segmentIndex = 0;
@@ -237,20 +297,13 @@ public class End extends WorkflowComponent {
             private Iterator<?> currentIterator;
             private Object nextFrame;
             private boolean prepared = false;
-
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public boolean hasNext() {
                 prepareNext();
                 return nextFrame != null;
             }
 
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Object next() {
                 if (!hasNext()) {
                     throw new java.util.NoSuchElementException();
@@ -283,9 +336,7 @@ public class End extends WorkflowComponent {
 
                     int currentSegmentIndex = segmentIndex++;
                     String seg = segments.get(currentSegmentIndex);
-                    Object data = isVariable.get(currentSegmentIndex)
-                            ? getNestedValue(seg, inputsMap)
-                            : seg;
+                    Object data = isVariable.get(currentSegmentIndex) ? getNestedValue(seg, inputsMap) : seg;
                     if (data instanceof Iterator<?> iterator) {
                         currentIterator = iterator;
                         continue;
@@ -299,6 +350,13 @@ public class End extends WorkflowComponent {
         };
     }
 
+    /**
+     * outputTransformIterator.
+     * 
+     * @param inputsMap inputsMap
+     * @return the result
+     * @since 0.1.7
+     */
     private Iterator<Object> outputTransformIterator(Map<String, Object> inputsMap) {
         List<Map.Entry<List<String>, Object>> entries = DictUtils.extractLeafNodes(inputsMap, null);
         return new Iterator<>() {
@@ -307,20 +365,13 @@ public class End extends WorkflowComponent {
             private Iterator<?> currentIterator;
             private Object nextFrame;
             private boolean prepared = false;
-
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public boolean hasNext() {
                 prepareNext();
                 return nextFrame != null;
             }
 
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Object next() {
                 if (!hasNext()) {
                     throw new java.util.NoSuchElementException();
@@ -367,6 +418,14 @@ public class End extends WorkflowComponent {
         };
     }
 
+    /**
+     * wrapOutput.
+     * 
+     * @param key key
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> wrapOutput(String key, Object value) {
         Map<String, Object> output = new LinkedHashMap<>();
         output.put(key, value);
@@ -379,6 +438,10 @@ public class End extends WorkflowComponent {
 
     /**
      * Render a template string with {{variable}} substitution.
+     *
+     * @param template template
+     * @param inputs inputs
+     * @return String
      */
     static String renderTemplate(String template, Map<String, Object> inputs) {
         StringBuilder result = new StringBuilder();
@@ -398,6 +461,9 @@ public class End extends WorkflowComponent {
 
     /**
      * Split template into segments (static text and {{variable}} parts).
+     *
+     * @param template template
+     * @return List<String>
      */
     static List<String> splitTemplate(String template) {
         List<String> result = new ArrayList<>();
@@ -418,6 +484,10 @@ public class End extends WorkflowComponent {
 
     /**
      * Get a value from a nested map using a dot-separated path.
+     *
+     * @param path path
+     * @param data data
+     * @return Object
      */
     @SuppressWarnings("unchecked")
     static Object getNestedValue(String path, Map<String, Object> data) {

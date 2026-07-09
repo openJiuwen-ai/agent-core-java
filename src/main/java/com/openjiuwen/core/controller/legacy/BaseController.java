@@ -10,6 +10,7 @@ import com.openjiuwen.core.runner.mq.InvokeQueueMessage;
 import com.openjiuwen.core.runner.mq.MessageQueueInMemory;
 import com.openjiuwen.core.runner.mq.SubscriptionBase;
 import com.openjiuwen.core.session.Session;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,33 +25,56 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Legacy controller base class backed by the in-memory message queue.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseController {
-
     private static final Logger LOG = LoggerFactory.getLogger(BaseController.class);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @since 0.1.7
      */
     protected Object config;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * contextEngine.
+     * 
+     * @since 0.1.7
      */
     protected ContextEngine contextEngine;
 
+    /**
+     * MessageQueueInMemory.
+     * 
+     * @since 0.1.7
+     */
     private final MessageQueueInMemory msgQueue = new MessageQueueInMemory();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, SubscriptionBase> subscriptions = new ConcurrentHashMap<>();
     private volatile boolean started;
     private Object group;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseController.
+     * 
+     * @since 0.1.7
      */
     protected BaseController() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseController.
+     * 
+     * @param config config
+     * @param contextEngine contextEngine
+     * @since 0.1.7
      */
     protected BaseController(Object config, ContextEngine contextEngine) {
         this.config = config;
@@ -58,7 +82,10 @@ public abstract class BaseController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setupFromAgent.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     public void setupFromAgent(Object agent) {
         this.config = readProperty(agent, "getAgentConfig", "agentConfig");
@@ -69,7 +96,12 @@ public abstract class BaseController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> invoke(Map<String, Object> inputs, Session session) {
         ensureStarted();
@@ -95,28 +127,37 @@ public abstract class BaseController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * handleEvent.
+     * 
+     * @param event event
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     protected abstract Map<String, Object> handleEvent(Event event, Session session);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createMessage.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     public Event createMessage(Map<String, Object> inputs) {
         Map<String, Object> extensions = new LinkedHashMap<>(inputs);
         extensions.remove("query");
         extensions.remove("conversation_id");
         extensions.remove("user_id");
-        return Event.createUserEvent(
-                inputs.get("query"),
+        return Event.createUserEvent(inputs.get("query"),
                 String.valueOf(inputs.getOrDefault("conversation_id", "default_session")),
-                inputs.get("user_id") != null ? String.valueOf(inputs.get("user_id")) : null,
-                extensions
-        );
+                inputs.get("user_id") != null ? String.valueOf(inputs.get("user_id")) : null, extensions);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * cleanupConversation.
+     * 
+     * @param conversationId conversationId
+     * @since 0.1.7
      */
     public void cleanupConversation(String conversationId) {
         SubscriptionBase subscription = subscriptions.remove(conversationId);
@@ -128,7 +169,9 @@ public abstract class BaseController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stop.
+     * 
+     * @since 0.1.7
      */
     public void stop() {
         for (Map.Entry<String, SubscriptionBase> entry : subscriptions.entrySet()) {
@@ -141,7 +184,10 @@ public abstract class BaseController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setGroup.
+     * 
+     * @param group group
+     * @since 0.1.7
      */
     public void setGroup(Object group) {
         this.group = group;
@@ -152,33 +198,39 @@ public abstract class BaseController {
      * Send event to specified agent (point-to-point).
      * Delegates to the group's controller for actual routing.
      * Mirrors Python's {@code BaseController.send_to_agent()}.
+     * 
+     * @param agentId agentId
+     * @param event event
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public Object sendToAgent(String agentId, Event event, Session session) {
         if (group != null) {
             Object groupController = readProperty(group, "getGroupController", "groupController");
             if (groupController != null) {
                 try {
-                    Method method = groupController.getClass().getMethod("sendToAgent", Event.class, String.class, Session.class);
+                    Method method =
+                        groupController.getClass().getMethod("sendToAgent", Event.class, String.class, Session.class);
                     return method.invoke(groupController, event, agentId, session);
                 } catch (Exception e) {
                     throw new RuntimeException("Failed to send_to_agent via group controller", e);
                 }
             }
         }
-        throw new RuntimeException(
-                getClass().getSimpleName() + ": Cannot sendToAgent('" + agentId + "'). "
-                        + "Agent is not part of a group with a controller.");
+        throw new RuntimeException(getClass().getSimpleName() + ": Cannot sendToAgent('" + agentId + "'). "
+                + "Agent is not part of a group with a controller.");
     }
 
     /**
-     * Publish event to subscribers (broadcast).
-     * Delegates to the group's controller for actual routing.
-     * Mirrors Python's {@code BaseController.publish()}.
+     * publish.
+     * 
+     * @param event event
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Object> publish(Event event, Session session) {
         if (group != null) {
             Object groupController = readProperty(group, "getGroupController", "groupController");
@@ -195,11 +247,15 @@ public abstract class BaseController {
                 }
             }
         }
-        throw new RuntimeException(
-                getClass().getSimpleName() + ": Cannot publish(). "
-                        + "Agent is not part of a group with a controller.");
+        throw new RuntimeException(getClass().getSimpleName() + ": Cannot publish(). "
+                + "Agent is not part of a group with a controller.");
     }
 
+    /**
+     * ensureStarted.
+     * 
+     * @since 0.1.7
+     */
     private void ensureStarted() {
         if (!started) {
             msgQueue.start();
@@ -207,6 +263,13 @@ public abstract class BaseController {
         }
     }
 
+    /**
+     * getOrCreateSubscription.
+     * 
+     * @param conversationId conversationId
+     * @return the result
+     * @since 0.1.7
+     */
     private SubscriptionBase getOrCreateSubscription(String conversationId) {
         return subscriptions.computeIfAbsent(conversationId, key -> {
             SubscriptionBase subscription = msgQueue.subscribe(topicFor(key));
@@ -224,10 +287,26 @@ public abstract class BaseController {
         });
     }
 
+    /**
+     * topicFor.
+     * 
+     * @param conversationId conversationId
+     * @return the result
+     * @since 0.1.7
+     */
     private static String topicFor(String conversationId) {
         return "controller_messages_" + conversationId;
     }
 
+    /**
+     * readProperty.
+     * 
+     * @param target target
+     * @param getterName getterName
+     * @param fieldName fieldName
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object readProperty(Object target, String getterName, String fieldName) {
         if (target == null) {
             return null;
@@ -236,6 +315,8 @@ public abstract class BaseController {
             Method getter = target.getClass().getMethod(getterName);
             return getter.invoke(target);
         } catch (Exception ignored) {
+
+            // Ignore.
         }
         try {
             Field field = target.getClass().getDeclaredField(fieldName);
@@ -246,6 +327,13 @@ public abstract class BaseController {
         }
     }
 
+    /**
+     * castMap.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> castMap(Map<?, ?> map) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : map.entrySet()) {

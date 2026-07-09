@@ -13,9 +13,10 @@ import java.util.UUID;
 
 /**
  * Synchronous distributed lock using KV store exclusive_set.
+ * 
+ * @since 0.1.7
  */
 public class DistributedLock implements AutoCloseable {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
     private final BaseKVStore store;
@@ -25,7 +26,11 @@ public class DistributedLock implements AutoCloseable {
     private String lockValue;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DistributedLock.
+     * 
+     * @param store store
+     * @param lockName lockName
+     * @since 0.1.7
      */
     public DistributedLock(BaseKVStore store, String lockName) {
         this.store = store;
@@ -35,7 +40,9 @@ public class DistributedLock implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * acquire.
+     * 
+     * @since 0.1.7
      */
     public void acquire() {
         this.lockValue = UUID.randomUUID().toString();
@@ -54,7 +61,9 @@ public class DistributedLock implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * release.
+     * 
+     * @since 0.1.7
      */
     public void release() {
         try {
@@ -67,10 +76,12 @@ public class DistributedLock implements AutoCloseable {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void close() {
         release();
     }

@@ -29,65 +29,90 @@ import java.util.concurrent.atomic.AtomicLong;
  * Base class for HTTP-based MCP transports.
  */
 abstract class AbstractHttpMcpClient implements McpClient {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @since 0.1.7
      */
     protected final McpServerConfig config;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * httpClient.
+     * 
+     * @since 0.1.7
      */
     protected final HttpClient httpClient;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * requestCounter.
+     * 
+     * @since 0.1.7
      */
     protected final AtomicLong requestCounter = new AtomicLong();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * connected.
+     * 
+     * @since 0.1.7
      */
     protected volatile boolean connected;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AbstractHttpMcpClient.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     protected AbstractHttpMcpClient(McpServerConfig config) {
         this.config = config;
         this.httpClient = HttpClient.newBuilder().build();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * connect.
+     * 
+     * @param retryTimes retryTimes
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public boolean connect(int retryTimes, float timeout) throws Exception {
         this.connected = true;
         try {
-            callRpc("initialize", Map.of(
-                    "protocolVersion", "2024-11-05",
-                    "clientInfo", Map.of("name", "agent-core-java", "version", "0.1.7"),
-                    "capabilities", Map.of()
-            ), timeout);
+            callRpc("initialize", Map.of("protocolVersion", "2024-11-05", "clientInfo",
+                    Map.of("name", "agent-core-java", "version", "0.1.7"), "capabilities", Map.of()), timeout);
         } catch (Exception ignored) {
             // Some servers allow direct method calls without explicit initialize.
         }
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * disconnect.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean disconnect(float timeout) {
         this.connected = false;
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * listTools.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public List<Object> listTools(float timeout) throws Exception {
         Map<String, Object> result = callRpc("tools/list", Map.of(), timeout);
         List<Object> tools = new ArrayList<>();
@@ -97,33 +122,49 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return tools;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * listResources.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public List<Object> listResources(float timeout) throws Exception {
         Map<String, Object> result = callRpc("resources/list", Map.of(), timeout);
         return new ArrayList<>(asListOfMaps(result.get("resources")));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * readResource.
+     * 
+     * @param uri uri
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public List<Object> readResource(String uri, float timeout) throws Exception {
         Map<String, Object> result = callRpc("resources/read", Map.of("uri", uri), timeout);
         return new ArrayList<>(asListOfMaps(result.get("contents")));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * callTool.
+     * 
+     * @param toolName toolName
+     * @param arguments arguments
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
-        Map<String, Object> result = callRpc("tools/call", Map.of(
-                "name", toolName,
-                "arguments", arguments == null ? Map.of() : arguments
-        ), timeout);
+        Map<String, Object> result = callRpc("tools/call",
+                Map.of("name", toolName, "arguments", arguments == null ? Map.of() : arguments), timeout);
         Object content = result.get("content");
         if (content instanceof List<?> list && !list.isEmpty() && list.get(list.size() - 1) instanceof Map<?, ?> map) {
             Object text = map.get("text");
@@ -134,10 +175,16 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return result;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolInfo.
+     * 
+     * @param toolName toolName
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public Optional<Object> getToolInfo(String toolName, float timeout) throws Exception {
         for (Object tool : listTools(timeout)) {
             if (tool instanceof McpToolCard card && toolName.equals(card.getName())) {
@@ -147,16 +194,26 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return Optional.empty();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getServerPath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getServerPath() {
         return config.getServerPath();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * callRpc.
+     * 
+     * @param method method
+     * @param params params
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     protected Map<String, Object> callRpc(String method, Map<String, Object> params, float timeout) throws Exception {
         ensureConnected();
@@ -166,18 +223,18 @@ abstract class AbstractHttpMcpClient implements McpClient {
         requestBody.put("method", method);
         requestBody.put("params", params == null ? Map.of() : params);
 
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(withAuthQuery(config.getServerPath())))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(requestBody), StandardCharsets.UTF_8));
-        if (timeout != McpServerConfig.NO_TIMEOUT && timeout > 0) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(withAuthQuery(config.getServerPath())))
+                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers
+                        .ofString(MAPPER.writeValueAsString(requestBody), StandardCharsets.UTF_8));
+        if (Float.compare(timeout, McpServerConfig.NO_TIMEOUT) != 0 && timeout > 0) {
             builder.timeout(Duration.ofMillis((long) (timeout * 1000)));
         }
         for (Map.Entry<String, String> entry : config.getAuthHeaders().entrySet()) {
             builder.header(entry.getKey(), entry.getValue());
         }
 
-        HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        HttpResponse<String> response =
+            httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         Map<String, Object> payload = MAPPER.readValue(response.body(), new TypeReference<>() {
         });
         if (payload.containsKey("error")) {
@@ -193,7 +250,11 @@ abstract class AbstractHttpMcpClient implements McpClient {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toToolCard.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
      */
     protected McpToolCard toToolCard(Map<String, Object> item) {
         Map<String, Object> inputSchema = asMap(item.get("inputSchema"));
@@ -203,45 +264,61 @@ abstract class AbstractHttpMcpClient implements McpClient {
         }
         Object name = item.get("name");
         Object description = item.get("description");
-        return McpToolCard.builder()
-                .name(name != null ? String.valueOf(name) : "")
-                .description(description != null ? String.valueOf(description) : "")
-                .serverName(config.getServerName())
-                .serverId(config.getServerId())
-                .inputParams(inputSchema != null ? inputSchema : Map.of())
-                .build();
+        return McpToolCard.builder().name(name != null ? String.valueOf(name) : "")
+                .description(description != null ? String.valueOf(description) : "").serverName(config.getServerName())
+                .serverId(config.getServerId()).inputParams(inputSchema != null ? inputSchema : Map.of()).build();
     }
 
+    /**
+     * ensureConnected.
+     * 
+     * @since 0.1.7
+     */
     private void ensureConnected() {
         if (!connected) {
             throw new IllegalStateException("MCP client is not connected: " + config.getServerPath());
         }
     }
 
+    /**
+     * withAuthQuery.
+     * 
+     * @param url url
+     * @return the result
+     * @since 0.1.7
+     */
     private String withAuthQuery(String url) {
         if (config.getAuthQueryParams() == null || config.getAuthQueryParams().isEmpty()) {
             return url;
         }
         StringJoiner joiner = new StringJoiner("&");
         for (Map.Entry<String, String> entry : config.getAuthQueryParams().entrySet()) {
-            joiner.add(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)
-                    + "=" + URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));
+            joiner.add(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8) + "="
+                    + URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));
         }
         return url + (url.contains("?") ? "&" : "?") + joiner;
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * asMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     protected static Map<String, Object> asMap(Object value) {
         return value instanceof Map<?, ?> map ? castMap(map) : null;
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * asListOfMaps.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     protected static List<Map<String, Object>> asListOfMaps(Object value) {
         if (!(value instanceof List<?> list)) {
             return List.of();
@@ -255,6 +332,13 @@ abstract class AbstractHttpMcpClient implements McpClient {
         return result;
     }
 
+    /**
+     * castMap.
+     * 
+     * @param source source
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> castMap(Map<?, ?> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : source.entrySet()) {

@@ -16,17 +16,19 @@ import java.util.Map;
 
 /**
  * Extract Trajectory from Session.tracer() spans.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.trajectory.operation.TracerTrajectoryExtractor}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.trajectory.operation.TracerTrajectoryExtractor}.
+ * 
+ * @since 0.1.7
  */
 public class TracerTrajectoryExtractor {
-
     /**
-     * Extract trajectory from session tracer.
-     *
-     * @param session   Agent session with tracer attribute
-     * @param execution Execution specification for this trajectory
-     * @return Trajectory containing all steps and their dependencies
+     * extract.
+     * 
+     * @param session session
+     * @param execution execution
+     * @return the result
+     * @since 0.1.7
      */
     public Trajectory extract(Object session, ExecutionSpec execution) {
         Object tracer = getTracer(session);
@@ -50,15 +52,17 @@ public class TracerTrajectoryExtractor {
 
         List<int[]> edges = buildEdges(steps, invokeIndex);
 
-        return Trajectory.builder()
-                .caseId(execution.getCaseId())
-                .executionId(execution.getExecutionId())
-                .traceId(getTraceId(tracer))
-                .steps(steps)
-                .edges(edges.isEmpty() ? null : edges)
-                .build();
+        return Trajectory.builder().caseId(execution.getCaseId()).executionId(execution.getExecutionId())
+                .traceId(getTraceId(tracer)).steps(steps).edges(edges.isEmpty() ? null : edges).build();
     }
 
+    /**
+     * getTracer.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private Object getTracer(Object session) {
         if (session == null) {
             return null;
@@ -77,24 +81,30 @@ public class TracerTrajectoryExtractor {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * getAgentSpans.
+     * 
+     * @param tracer tracer
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> getAgentSpans(Object tracer) {
-        Object spanManager = getAttribute(
-                tracer,
-                List.of("tracerAgentSpanManager", "tracer_agent_span_manager"),
-                Object.class,
-                null
-        );
+        Object spanManager =
+            getAttribute(tracer, List.of("tracerAgentSpanManager", "tracer_agent_span_manager"), Object.class, null);
         return collectSpansFromManager(spanManager);
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * getWorkflowSpans.
+     * 
+     * @param tracer tracer
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> getWorkflowSpans(Object tracer) {
-        Map<String, Object> managers = getAttribute(
-                tracer,
-                List.of("tracerWorkflowSpanManagerDict", "tracer_workflow_span_manager_dict"),
-                Map.class,
-                Map.of()
-        );
+        Map<String, Object> managers = getAttribute(tracer,
+                List.of("tracerWorkflowSpanManagerDict", "tracer_workflow_span_manager_dict"), Map.class, Map.of());
         List<Object> spans = new ArrayList<>();
         for (Object spanManager : managers.values()) {
             spans.addAll(collectSpansFromManager(spanManager));
@@ -103,6 +113,13 @@ public class TracerTrajectoryExtractor {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * collectSpansFromManager.
+     * 
+     * @param spanManager spanManager
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> collectSpansFromManager(Object spanManager) {
         if (spanManager == null) {
             return List.of();
@@ -132,6 +149,13 @@ public class TracerTrajectoryExtractor {
         }
     }
 
+    /**
+     * snapshotSpan.
+     * 
+     * @param span span
+     * @return the result
+     * @since 0.1.7
+     */
     private Object snapshotSpan(Object span) {
         try {
             Method method = span.getClass().getMethod("snapshot");
@@ -141,45 +165,53 @@ public class TracerTrajectoryExtractor {
         }
     }
 
+    /**
+     * getTraceId.
+     * 
+     * @param tracer tracer
+     * @return the result
+     * @since 0.1.7
+     */
     private String getTraceId(Object tracer) {
         return getAttribute(tracer, List.of("traceId", "_traceId", "_trace_id"), String.class, null);
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * buildAgentStep.
+     * 
+     * @param span span
+     * @return the result
+     * @since 0.1.7
+     */
     private StepResult buildAgentStep(Object span) {
-        Map<String, Object> baseMeta = getAttribute(
-                span,
-                List.of("metaData", "meta_data"),
-                Map.class,
-                new LinkedHashMap<>()
-        );
+        Map<String, Object> baseMeta =
+            getAttribute(span, List.of("metaData", "meta_data"), Map.class, new LinkedHashMap<>());
         String operatorId = getOperatorId(span, baseMeta);
         String nodeId = getStringFromMap(baseMeta, new String[]{"node_id", "component_id"});
 
-        TrajectoryStep step = TrajectoryStep.builder()
-                .kind(classifySpanKind(span))
-                .operatorId(operatorId)
+        TrajectoryStep step = TrajectoryStep.builder().kind(classifySpanKind(span)).operatorId(operatorId)
                 .agentId(getStringFromMap(baseMeta, new String[]{"agent_id"}))
-                .role(getStringFromMap(baseMeta, new String[]{"role"}))
-                .nodeId(nodeId)
-                .inputs(extractInputs(span))
-                .outputs(extractOutputs(span))
-                .error(getAttribute(span, List.of("error"), Object.class, null))
+                .role(getStringFromMap(baseMeta, new String[]{"role"})).nodeId(nodeId).inputs(extractInputs(span))
+                .outputs(extractOutputs(span)).error(getAttribute(span, List.of("error"), Object.class, null))
                 .startTimeMs(getTimeMs(span, "startTime", "start_time"))
-                .endTimeMs(getTimeMs(span, "endTime", "end_time"))
-                .meta(buildAgentMeta(span, baseMeta))
-                .build();
+                .endTimeMs(getTimeMs(span, "endTime", "end_time")).meta(buildAgentMeta(span, baseMeta)).build();
 
         String invokeId = getAttribute(span, List.of("invokeId", "invoke_id"), String.class, null);
         return new StepResult(step, invokeId);
     }
 
+    /**
+     * buildWorkflowStep.
+     * 
+     * @param span span
+     * @return the result
+     * @since 0.1.7
+     */
     private TrajectoryStep buildWorkflowStep(Object span) {
-        String nodeId = firstNonBlank(
-                getAttribute(span, List.of("componentId", "component_id"), String.class, null),
+        String nodeId = firstNonBlank(getAttribute(span, List.of("componentId", "component_id"), String.class, null),
                 getAttribute(span, List.of("componentName", "component_name"), String.class, null),
-                getAttribute(span, List.of("workflowName", "workflow_name"), String.class, null)
-        );
+                getAttribute(span, List.of("workflowName", "workflow_name"), String.class, null));
 
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("workflow_id", getAttribute(span, List.of("workflowId", "workflow_id"), String.class, null));
@@ -191,21 +223,20 @@ public class TracerTrajectoryExtractor {
         meta.put("loop_index", getAttribute(span, List.of("loopIndex", "loop_index"), Object.class, null));
         meta.put("parent_node_id", getAttribute(span, List.of("parentNodeId", "parent_node_id"), String.class, null));
 
-        return TrajectoryStep.builder()
-                .kind(StepKind.WORKFLOW)
-                .operatorId(null)
-                .agentId(null)
-                .role(null)
-                .nodeId(nodeId)
-                .inputs(extractInputs(span))
-                .outputs(extractOutputs(span))
+        return TrajectoryStep.builder().kind(StepKind.WORKFLOW).operatorId(null).agentId(null).role(null).nodeId(nodeId)
+                .inputs(extractInputs(span)).outputs(extractOutputs(span))
                 .error(getAttribute(span, List.of("error"), Object.class, null))
                 .startTimeMs(getTimeMs(span, "startTime", "start_time"))
-                .endTimeMs(getTimeMs(span, "endTime", "end_time"))
-                .meta(meta)
-                .build();
+                .endTimeMs(getTimeMs(span, "endTime", "end_time")).meta(meta).build();
     }
 
+    /**
+     * classifySpanKind.
+     * 
+     * @param span span
+     * @return the result
+     * @since 0.1.7
+     */
     private StepKind classifySpanKind(Object span) {
         String invokeType = getAttribute(span, List.of("invokeType", "invoke_type"), String.class, "");
         if ("plugin".equalsIgnoreCase(invokeType)) {
@@ -223,16 +254,29 @@ public class TracerTrajectoryExtractor {
         return StepKind.AGENT;
     }
 
+    /**
+     * getOperatorId.
+     * 
+     * @param span span
+     * @param meta meta
+     * @return the result
+     * @since 0.1.7
+     */
     private String getOperatorId(Object span, Map<String, Object> meta) {
-        return firstNonBlank(
-                getAttribute(span, List.of("operatorId", "operator_id"), String.class, null),
+        return firstNonBlank(getAttribute(span, List.of("operatorId", "operator_id"), String.class, null),
                 getAttribute(span, List.of("llmCallId", "llm_call_id"), String.class, null),
                 getStringFromMap(meta, new String[]{"operator_id"}),
-                getAttribute(span, List.of("name"), String.class, null)
-        );
+                getAttribute(span, List.of("name"), String.class, null));
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * extractInputs.
+     * 
+     * @param span span
+     * @return the result
+     * @since 0.1.7
+     */
     private Object extractInputs(Object span) {
         Object raw = getAttribute(span, List.of("inputs"), Object.class, null);
         if (raw instanceof Map<?, ?> map && map.containsKey("inputs")) {
@@ -242,6 +286,13 @@ public class TracerTrajectoryExtractor {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * extractOutputs.
+     * 
+     * @param span span
+     * @return the result
+     * @since 0.1.7
+     */
     private Object extractOutputs(Object span) {
         Object raw = getAttribute(span, List.of("outputs"), Object.class, null);
         if (raw instanceof Map<?, ?> map && map.containsKey("outputs")) {
@@ -251,19 +302,32 @@ public class TracerTrajectoryExtractor {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * buildAgentMeta.
+     * 
+     * @param span span
+     * @param baseMeta baseMeta
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> buildAgentMeta(Object span, Map<String, Object> baseMeta) {
         Map<String, Object> meta = deepCopyMap(baseMeta);
         meta.put("invoke_id", getAttribute(span, List.of("invokeId", "invoke_id"), String.class, null));
-        meta.put("parent_invoke_id", getAttribute(span, List.of("parentInvokeId", "parent_invoke_id"), String.class, null));
-        meta.put("child_invokes", deepCopyValue(getAttribute(
-                span,
-                List.of("childInvokesId", "child_invokes_id"),
-                List.class,
-                null
-        )));
+        meta.put("parent_invoke_id",
+                getAttribute(span, List.of("parentInvokeId", "parent_invoke_id"), String.class, null));
+        meta.put("child_invokes",
+                deepCopyValue(getAttribute(span, List.of("childInvokesId", "child_invokes_id"), List.class, null)));
         return meta;
     }
 
+    /**
+     * buildEdges.
+     * 
+     * @param steps steps
+     * @param invokeIndex invokeIndex
+     * @return the result
+     * @since 0.1.7
+     */
     private List<int[]> buildEdges(List<TrajectoryStep> steps, Map<String, Integer> invokeIndex) {
         List<int[]> edges = new ArrayList<>();
         for (int idx = 0; idx < steps.size(); idx++) {
@@ -288,6 +352,16 @@ public class TracerTrajectoryExtractor {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * getAttribute.
+     * 
+     * @param obj obj
+     * @param names names
+     * @param type type
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private <T> T getAttribute(Object obj, List<String> names, Class<T> type, T defaultValue) {
         if (obj == null) {
             return defaultValue;
@@ -303,6 +377,8 @@ public class TracerTrajectoryExtractor {
                     return (T) value;
                 }
             } catch (Exception ignored) {
+
+                // Ignore.
             }
             try {
                 Object value = getRequiredFieldValue(obj, name);
@@ -313,11 +389,21 @@ public class TracerTrajectoryExtractor {
                     return (T) value;
                 }
             } catch (Exception ignored) {
+
+                // Ignore.
             }
         }
         return defaultValue;
     }
 
+    /**
+     * invokeNoArgs.
+     * 
+     * @param obj obj
+     * @param methodName methodName
+     * @return the result
+     * @since 0.1.7
+     */
     private Object invokeNoArgs(Object obj, String methodName) {
         try {
             Method method = obj.getClass().getMethod(methodName);
@@ -327,12 +413,31 @@ public class TracerTrajectoryExtractor {
         }
     }
 
-    private Object getRequiredFieldValue(Object obj, String fieldName) throws NoSuchFieldException, IllegalAccessException {
+    /**
+     * getRequiredFieldValue.
+     * 
+     * @param obj obj
+     * @param fieldName fieldName
+     * @return the result
+     * @throws NoSuchFieldException NoSuchFieldException
+     * @throws IllegalAccessException IllegalAccessException
+     * @since 0.1.7
+     */
+    private Object getRequiredFieldValue(Object obj, String fieldName)
+            throws NoSuchFieldException, IllegalAccessException {
         Field field = findField(obj.getClass(), fieldName);
         field.setAccessible(true);
         return field.get(obj);
     }
 
+    /**
+     * getFieldValue.
+     * 
+     * @param obj obj
+     * @param fieldName fieldName
+     * @return the result
+     * @since 0.1.7
+     */
     private Object getFieldValue(Object obj, String fieldName) {
         if (obj == null) {
             return null;
@@ -344,6 +449,15 @@ public class TracerTrajectoryExtractor {
         }
     }
 
+    /**
+     * findField.
+     * 
+     * @param type type
+     * @param fieldName fieldName
+     * @return the result
+     * @throws NoSuchFieldException NoSuchFieldException
+     * @since 0.1.7
+     */
     private Field findField(Class<?> type, String fieldName) throws NoSuchFieldException {
         Class<?> current = type;
         while (current != null) {
@@ -356,6 +470,14 @@ public class TracerTrajectoryExtractor {
         throw new NoSuchFieldException(fieldName);
     }
 
+    /**
+     * getStringFromMap.
+     * 
+     * @param map map
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private String getStringFromMap(Map<String, Object> map, String[] keys) {
         if (map == null) {
             return null;
@@ -369,6 +491,14 @@ public class TracerTrajectoryExtractor {
         return null;
     }
 
+    /**
+     * getTimeMs.
+     * 
+     * @param obj obj
+     * @param fieldNames fieldNames
+     * @return the result
+     * @since 0.1.7
+     */
     private Long getTimeMs(Object obj, String... fieldNames) {
         Object value = getAttribute(obj, List.of(fieldNames), Object.class, null);
         if (value instanceof LocalDateTime localDateTime) {
@@ -380,6 +510,13 @@ public class TracerTrajectoryExtractor {
         return null;
     }
 
+    /**
+     * deepCopyMap.
+     * 
+     * @param source source
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> deepCopyMap(Map<String, Object> source) {
         Map<String, Object> copy = new LinkedHashMap<>();
         if (source == null) {
@@ -392,6 +529,13 @@ public class TracerTrajectoryExtractor {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * deepCopyValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private Object deepCopyValue(Object value) {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> copy = new LinkedHashMap<>();
@@ -410,6 +554,13 @@ public class TracerTrajectoryExtractor {
         return value;
     }
 
+    /**
+     * capitalize.
+     * 
+     * @param fieldName fieldName
+     * @return the result
+     * @since 0.1.7
+     */
     private String capitalize(String fieldName) {
         if (fieldName == null || fieldName.isEmpty()) {
             return fieldName;
@@ -417,6 +568,13 @@ public class TracerTrajectoryExtractor {
         return Character.toUpperCase(fieldName.charAt(0)) + fieldName.substring(1);
     }
 
+    /**
+     * firstNonBlank.
+     * 
+     * @param values values
+     * @return the result
+     * @since 0.1.7
+     */
     private String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -426,6 +584,13 @@ public class TracerTrajectoryExtractor {
         return null;
     }
 
+    /**
+     * StepResult.
+     * 
+     * @param step step
+     * @param invokeId invokeId
+     * @since 0.1.7
+     */
     private record StepResult(TrajectoryStep step, String invokeId) {
     }
 }

@@ -1,30 +1,26 @@
+
 package com.openjiuwen.deepagents;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.deepagents.middlewares.ContextEngineeringMiddleware;
 import com.openjiuwen.deepagents.middlewares.TaskPlanningMiddleware;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class DeepAgentsMiddlewareCompatibilityTest {
-
     @Test
     void contextEngineeringMiddlewareShouldNormalizeConfigSections() {
         ContextEngineeringMiddleware middleware = new ContextEngineeringMiddleware();
-        DeepAgentConfig config = DeepAgentConfig.builder()
-                .systemPrompt("You are a coding agent")
-                .workspacePath("/tmp/repo")
-                .language("en")
-                .skillDirectories(List.of("/tmp/repo/skills"))
+        DeepAgentConfig config = DeepAgentConfig.builder().systemPrompt("You are a coding agent")
+                .workspacePath("/tmp/repo").language("en").skillDirectories(List.of("/tmp/repo/skills"))
                 .skillMode("auto_list")
-                .extraPromptSections(List.of(
-                        Map.of("name", "repo", "priority", 40, "content", Map.of("en", "Use rg")),
-                        Map.of("name", "identity", "priority", 10, "content", Map.of("en", "Be precise"))
-                ))
+                .extraPromptSections(List.of(Map.of("name", "repo", "priority", 40, "content", Map.of("en", "Use rg")),
+                        Map.of("name", "identity", "priority", 10, "content", Map.of("en", "Be precise"))))
                 .build();
 
         Map<String, Object> result = middleware.process(config);
@@ -43,12 +39,8 @@ class DeepAgentsMiddlewareCompatibilityTest {
     void contextEngineeringMiddlewareShouldAcceptMapInput() {
         ContextEngineeringMiddleware middleware = new ContextEngineeringMiddleware();
 
-        Map<String, Object> result = middleware.process(Map.of(
-                "system_prompt", "hello",
-                "workspace_path", "/repo",
-                "language", "cn",
-                "extra_prompt_sections", List.of(Map.of("name", "repo", "content", "notes"))
-        ));
+        Map<String, Object> result = middleware.process(Map.of("system_prompt", "hello", "workspace_path", "/repo",
+                "language", "cn", "extra_prompt_sections", List.of(Map.of("name", "repo", "content", "notes"))));
 
         assertThat(result).containsEntry("system_prompt", "hello");
         @SuppressWarnings("unchecked")
@@ -61,11 +53,8 @@ class DeepAgentsMiddlewareCompatibilityTest {
         TaskPlanningMiddleware middleware = new TaskPlanningMiddleware();
 
         Map<String, Object> fromString = middleware.plan("Implement harness config");
-        Map<String, Object> fromMap = middleware.plan(Map.of(
-                "query", "Migrate module",
-                "steps", List.of("compare", "implement", "test"),
-                "mode", "plan"
-        ));
+        Map<String, Object> fromMap = middleware.plan(
+                Map.of("query", "Migrate module", "steps", List.of("compare", "implement", "test"), "mode", "plan"));
 
         assertThat(fromString).containsEntry("count", 1);
         assertThat(fromString).containsEntry("mode", "plan");

@@ -1,4 +1,8 @@
+
 package com.openjiuwen.agentteams.agent;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.agentteams.schema.status.ExecutionStatus;
 import com.openjiuwen.agentteams.schema.status.MemberStatus;
@@ -13,6 +17,7 @@ import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptEntry;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
+
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -23,17 +28,12 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 @Tag("agent-teams-stream-slice")
 class StreamControllerCompatibilityTest {
-
     @Test
     void detectTaskFailedShouldParseCodeAndText() {
-        StreamController.TaskFailure failure = StreamController.detectTaskFailed(
-                failedChunk(181001, "model call failed, reason: timeout")
-        );
+        StreamController.TaskFailure failure =
+            StreamController.detectTaskFailed(failedChunk(181001, "model call failed, reason: timeout"));
 
         assertThat(failure).isNotNull();
         assertThat(failure.code()).isEqualTo(181001);
@@ -45,17 +45,11 @@ class StreamControllerCompatibilityTest {
     void executeRoundShouldRetryOn181001AndOnlyQueueFinalChunk() {
         List<ExecutionStatus> executionLog = new ArrayList<>();
         List<Map<String, Object>> callInputs = new ArrayList<>();
-        StreamController controller = controller(
-                ignored -> { },
-                executionLog::add,
-                null,
-                scriptedExecutor(callInputs, List.of(
-                        List.of(failedChunk(181001, "timeout #1")),
-                        List.of(failedChunk(181001, "timeout #2")),
-                        List.of(failedChunk(181001, "timeout #3")),
-                        List.of(answerChunk("final answer"))
-                ))
-        );
+        StreamController controller = controller(ignored -> {
+        }, executionLog::add, null,
+                scriptedExecutor(callInputs,
+                        List.of(List.of(failedChunk(181001, "timeout #1")), List.of(failedChunk(181001, "timeout #2")),
+                                List.of(failedChunk(181001, "timeout #3")), List.of(answerChunk("final answer")))));
 
         controller.executeRound("initial query");
 
@@ -63,19 +57,11 @@ class StreamControllerCompatibilityTest {
         assertThat(callInputs.get(0)).containsEntry("query", "initial query");
         assertThat(callInputs.subList(1, callInputs.size()))
                 .allSatisfy(inputs -> assertThat(inputs).containsEntry("query", StreamController.RETRY_QUERY));
-        assertThat(drainQueue(controller.getStreamQueue()))
-                .singleElement()
-                .isInstanceOf(OutputSchema.class)
+        assertThat(drainQueue(controller.getStreamQueue())).singleElement().isInstanceOf(OutputSchema.class)
                 .extracting(chunk -> ((Map<?, ?>) ((OutputSchema) chunk).getPayload()).get("output"))
                 .isEqualTo("final answer");
-        assertThat(executionLog)
-                .containsExactly(
-                        ExecutionStatus.STARTING,
-                        ExecutionStatus.RUNNING,
-                        ExecutionStatus.COMPLETING,
-                        ExecutionStatus.COMPLETED,
-                        ExecutionStatus.IDLE
-                );
+        assertThat(executionLog).containsExactly(ExecutionStatus.STARTING, ExecutionStatus.RUNNING,
+                ExecutionStatus.COMPLETING, ExecutionStatus.COMPLETED, ExecutionStatus.IDLE);
     }
 
     @Test
@@ -87,10 +73,10 @@ class StreamControllerCompatibilityTest {
         for (int index = 0; index <= StreamController.MAX_RETRY_ATTEMPTS; index++) {
             failingRounds.add(List.of(failedChunk(181001, "timeout #" + index)));
         }
-        StreamController controller = controller(statusLog::add, executionLog::add, null, scriptedExecutor(callInputs, failingRounds));
+        StreamController controller =
+            controller(statusLog::add, executionLog::add, null, scriptedExecutor(callInputs, failingRounds));
 
-        assertThatThrownBy(() -> controller.runOneRound("initial query"))
-                .isInstanceOf(BaseError.class)
+        assertThatThrownBy(() -> controller.runOneRound("initial query")).isInstanceOf(BaseError.class)
                 .satisfies(error -> {
                     BaseError baseError = (BaseError) error;
                     assertThat(baseError.getStatus()).isEqualTo(StatusCode.AGENT_CONTROLLER_EXECUTION_CALL_FAILED);
@@ -99,33 +85,21 @@ class StreamControllerCompatibilityTest {
 
         assertThat(callInputs).hasSize(StreamController.MAX_RETRY_ATTEMPTS + 1);
         assertThat(statusLog).containsExactly(MemberStatus.READY, MemberStatus.BUSY, MemberStatus.ERROR);
-        assertThat(executionLog)
-                .containsExactly(
-                        ExecutionStatus.STARTING,
-                        ExecutionStatus.RUNNING,
-                        ExecutionStatus.FAILED,
-                        ExecutionStatus.IDLE
-                );
+        assertThat(executionLog).containsExactly(ExecutionStatus.STARTING, ExecutionStatus.RUNNING,
+                ExecutionStatus.FAILED, ExecutionStatus.IDLE);
         assertThat(controller.getStreamQueue()).isEmpty();
     }
 
     @Test
     void interruptResumeValidationShouldRequireSubsetOfPendingInterruptIds() {
         AgentSessionApi session = AgentSessionApi.create("sess-1", null, null);
-        session.updateState(Map.of(
-                ToolInterruptionState.INTERRUPTION_KEY,
-                interruptionState("call-1", "call-2")
-        ));
-        StreamController controller = controller(ignored -> { }, execution -> { }, null, (agent, inputs, sessionId) -> List.<Object>of().iterator());
-        controller = new StreamController(
-                Object::new,
-                () -> "leader",
-                ignored -> { },
-                ignored -> { },
-                () -> session,
-                null,
-                (agent, inputs, sessionId) -> List.<Object>of().iterator()
-        );
+        session.updateState(Map.of(ToolInterruptionState.INTERRUPTION_KEY, interruptionState("call-1", "call-2")));
+        StreamController controller = controller(ignored -> {
+        }, execution -> {
+        }, null, (agent, inputs, sessionId) -> List.<Object>of().iterator());
+        controller = new StreamController(Object::new, () -> "leader", ignored -> {
+        }, ignored -> {
+        }, () -> session, null, (agent, inputs, sessionId) -> List.<Object>of().iterator());
 
         InteractiveInput valid = new InteractiveInput();
         valid.update("call-1", Map.of("approved", true));
@@ -145,15 +119,10 @@ class StreamControllerCompatibilityTest {
     void runOneRoundShouldDrainPendingInputsIntoCombinedFollowUp() {
         List<Map<String, Object>> callInputs = new ArrayList<>();
         AtomicInteger wakeCount = new AtomicInteger();
-        StreamController controller = controller(
-                ignored -> { },
-                execution -> { },
-                wakeCount::incrementAndGet,
-                scriptedExecutor(callInputs, List.of(
-                        List.of(answerChunk("round-1")),
-                        List.of(answerChunk("round-2"))
-                ))
-        );
+        StreamController controller = controller(ignored -> {
+        }, execution -> {
+        }, wakeCount::incrementAndGet, scriptedExecutor(callInputs,
+                List.of(List.of(answerChunk("round-1")), List.of(answerChunk("round-2")))));
         controller.getPendingInputs().add("follow-up one");
         controller.getPendingInputs().add("follow-up two");
 
@@ -169,39 +138,24 @@ class StreamControllerCompatibilityTest {
     @Test
     void runOneRoundShouldWakeMailboxWhenNoPendingFollowUpExists() {
         AtomicInteger wakeCount = new AtomicInteger();
-        StreamController controller = controller(
-                ignored -> { },
-                execution -> { },
-                wakeCount::incrementAndGet,
-                (agent, inputs, sessionId) -> List.<Object>of(answerChunk("done")).iterator()
-        );
+        StreamController controller = controller(ignored -> {
+        }, execution -> {
+        }, wakeCount::incrementAndGet, (agent, inputs, sessionId) -> List.<Object>of(answerChunk("done")).iterator());
 
         controller.runOneRound("initial query");
 
         assertThat(wakeCount.get()).isEqualTo(1);
     }
 
-    private static StreamController controller(
-            Consumer<MemberStatus> statusUpdater,
-            Consumer<ExecutionStatus> executionUpdater,
-            Runnable wakeMailboxCallback,
-            StreamController.StreamRoundExecutor executor
-    ) {
-        return new StreamController(
-                Object::new,
-                () -> "leader",
-                statusUpdater,
-                executionUpdater,
-                () -> AgentSessionApi.create("sess-1", null, null),
-                wakeMailboxCallback,
-                executor
-        );
+    private static StreamController controller(Consumer<MemberStatus> statusUpdater,
+            Consumer<ExecutionStatus> executionUpdater, Runnable wakeMailboxCallback,
+            StreamController.StreamRoundExecutor executor) {
+        return new StreamController(Object::new, () -> "leader", statusUpdater, executionUpdater,
+                () -> AgentSessionApi.create("sess-1", null, null), wakeMailboxCallback, executor);
     }
 
-    private static StreamController.StreamRoundExecutor scriptedExecutor(
-            List<Map<String, Object>> callInputs,
-            List<List<Object>> rounds
-    ) {
+    private static StreamController.StreamRoundExecutor scriptedExecutor(List<Map<String, Object>> callInputs,
+            List<List<Object>> rounds) {
         List<List<Object>> mutableRounds = new ArrayList<>(rounds);
         return (agent, inputs, sessionId) -> {
             callInputs.add(new LinkedHashMap<>(inputs));
@@ -217,11 +171,8 @@ class StreamControllerCompatibilityTest {
     }
 
     private static ControllerOutputChunk failedChunk(int code, String message) {
-        ControllerOutputPayload payload = new ControllerOutputPayload(
-                StreamController.TASK_FAILED_PAYLOAD_TYPE,
-                List.of(new DataFrame.TextDataFrame("[" + code + "] " + message)),
-                Map.of("task_id", "t1")
-        );
+        ControllerOutputPayload payload = new ControllerOutputPayload(StreamController.TASK_FAILED_PAYLOAD_TYPE,
+                List.of(new DataFrame.TextDataFrame("[" + code + "] " + message)), Map.of("task_id", "t1"));
         ControllerOutputChunk chunk = new ControllerOutputChunk();
         chunk.setControllerPayload(payload);
         return chunk;
@@ -235,11 +186,8 @@ class StreamControllerCompatibilityTest {
         List<ToolInterruptEntry> entries = new ArrayList<>();
         for (String interruptId : interruptIds) {
             entries.add(ToolInterruptEntry.builder()
-                    .request(InterruptRequest.builder().interruptId(interruptId).build())
-                    .build());
+                    .request(InterruptRequest.builder().interruptId(interruptId).build()).build());
         }
-        return ToolInterruptionState.builder()
-                .interruptedTools(entries)
-                .build();
+        return ToolInterruptionState.builder().interruptedTools(entries).build();
     }
 }

@@ -14,32 +14,53 @@ import java.util.UUID;
 
 /**
  * Text chunk model.
+ * 
+ * @since 0.1.7
  */
 @Getter
 @Setter
 public class TextChunk {
-
     private String id;
     private String text;
     private String docId;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
     private List<Float> embedding;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TextChunk.
+     * 
+     * @since 0.1.7
      */
     public TextChunk() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TextChunk.
+     * 
+     * @param id id
+     * @param text text
+     * @param docId docId
+     * @since 0.1.7
      */
     public TextChunk(String id, String text, String docId) {
         this(id, text, docId, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TextChunk.
+     * 
+     * @param id id
+     * @param text text
+     * @param docId docId
+     * @param metadata metadata
+     * @param embedding embedding
+     * @since 0.1.7
      */
     public TextChunk(String id, String text, String docId, Map<String, Object> metadata, List<Float> embedding) {
         setId(id);
@@ -50,26 +71,36 @@ public class TextChunk {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromDocument.
+     * 
+     * @param document document
+     * @param chunkText chunkText
+     * @return the result
+     * @since 0.1.7
      */
     public static TextChunk fromDocument(Document document, String chunkText) {
         return fromDocument(document, chunkText, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromDocument.
+     * 
+     * @param document document
+     * @param chunkText chunkText
+     * @param id id
+     * @return the result
+     * @since 0.1.7
      */
     public static TextChunk fromDocument(Document document, String chunkText, String id) {
-        return new TextChunk(
-                id == null || id.isBlank() ? UUID.randomUUID().toString() : id,
-                chunkText,
-                document.getId(),
-                document.getMetadata(),
-                null);
+        return new TextChunk(id == null || id.isBlank() ? UUID.randomUUID().toString() : id, chunkText,
+                document.getId(), document.getMetadata(), null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setId.
+     * 
+     * @param id id
+     * @since 0.1.7
      */
     public void setId(String id) {
         RetrievalValidation.requireNonBlank(id, "TextChunk.id");
@@ -77,7 +108,10 @@ public class TextChunk {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setText.
+     * 
+     * @param text text
+     * @since 0.1.7
      */
     public void setText(String text) {
         RetrievalValidation.requireNonNull(text, "TextChunk.text");
@@ -85,7 +119,10 @@ public class TextChunk {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDocId.
+     * 
+     * @param docId docId
+     * @since 0.1.7
      */
     public void setDocId(String docId) {
         RetrievalValidation.requireNonBlank(docId, "TextChunk.docId");
@@ -93,14 +130,20 @@ public class TextChunk {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMetadata.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEmbedding.
+     * 
+     * @param embedding embedding
+     * @since 0.1.7
      */
     public void setEmbedding(List<Float> embedding) {
         this.embedding = embedding == null ? null : List.copyOf(embedding);

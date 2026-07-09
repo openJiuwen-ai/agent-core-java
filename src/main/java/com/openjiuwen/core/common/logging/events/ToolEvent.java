@@ -10,7 +10,11 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Tool call related event. */
+/**
+ * Tool call related event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -24,17 +28,22 @@ public class ToolEvent extends BaseLogEvent {
     private String toolCallId;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolEvent.
+     * 
+     * @since 0.1.7
      */
     public ToolEvent() {
         super();
         setModuleType(ModuleType.TOOL);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "tool_name", toolName);
         putIfNotNull(map, "tool_type", toolType);

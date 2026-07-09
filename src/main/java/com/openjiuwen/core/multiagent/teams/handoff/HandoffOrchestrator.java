@@ -15,16 +15,21 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Public class HandoffOrchestrator used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class HandoffOrchestrator {
     /**
-     * Auto-generated for codecheck compliance.
+     * COORDINATOR_STATE_KEY.
+     * 
+     * @since 0.1.7
      */
     public static final String COORDINATOR_STATE_KEY = "__handoff_coordinator__";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * HANDOFF_HISTORY_KEY.
+     * 
+     * @since 0.1.7
      */
     public static final String HANDOFF_HISTORY_KEY = "__handoff_history__";
 
@@ -36,7 +41,12 @@ public class HandoffOrchestrator {
     private CompletableFuture<Object> doneFuture;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HandoffOrchestrator.
+     * 
+     * @param startAgentId startAgentId
+     * @param registeredAgents registeredAgents
+     * @param config config
+     * @since 0.1.7
      */
     public HandoffOrchestrator(String startAgentId, List<String> registeredAgents, HandoffConfig config) {
         this.currentAgentId = startAgentId;
@@ -46,14 +56,23 @@ public class HandoffOrchestrator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HandoffOrchestrator.
+     * 
+     * @param startAgentId startAgentId
+     * @param registeredAgents registeredAgents
+     * @since 0.1.7
      */
     public HandoffOrchestrator(String startAgentId, List<String> registeredAgents) {
         this(startAgentId, registeredAgents, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildRouteGraph.
+     * 
+     * @param agents agents
+     * @param routes routes
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Set<String>> buildRouteGraph(List<String> agents, List<HandoffRoute> routes) {
         Map<String, Set<String>> graph = new LinkedHashMap<>();
@@ -77,7 +96,11 @@ public class HandoffOrchestrator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * requestHandoff.
+     * 
+     * @param targetId targetId
+     * @return the result
+     * @since 0.1.7
      */
     public boolean requestHandoff(String targetId) {
         if (handoffCount >= maxHandoffs) {
@@ -95,7 +118,10 @@ public class HandoffOrchestrator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * complete.
+     * 
+     * @param result result
+     * @since 0.1.7
      */
     public void complete(Object result) {
         if (!doneFuture().isDone()) {
@@ -104,7 +130,10 @@ public class HandoffOrchestrator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * error.
+     * 
+     * @param throwable throwable
+     * @since 0.1.7
      */
     public void error(Throwable throwable) {
         if (!doneFuture().isDone()) {
@@ -113,28 +142,29 @@ public class HandoffOrchestrator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * saveToSession.
+     * 
+     * @param session session
+     * @since 0.1.7
      */
     public void saveToSession(AgentGroupSessionApi session) {
-        session.updateState(Map.of(
-                COORDINATOR_STATE_KEY, Map.of(
-                        "current_agent_id", currentAgentId,
-                        "handoff_count", handoffCount
-                )
-        ));
+        session.updateState(Map.of(COORDINATOR_STATE_KEY,
+                Map.of("current_agent_id", currentAgentId, "handoff_count", handoffCount)));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * restoreFromSession.
+     * 
+     * @param session session
+     * @param startAgentId startAgentId
+     * @param registeredAgents registeredAgents
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public static HandoffOrchestrator restoreFromSession(AgentGroupSessionApi session,
-                                                         String startAgentId,
-                                                         List<String> registeredAgents,
-                                                         HandoffConfig config) {
+    public static HandoffOrchestrator restoreFromSession(AgentGroupSessionApi session, String startAgentId,
+            List<String> registeredAgents, HandoffConfig config) {
         HandoffOrchestrator orchestrator = new HandoffOrchestrator(startAgentId, registeredAgents, config);
         Object state = session != null ? session.getState(COORDINATOR_STATE_KEY) : null;
         if (state instanceof Map<?, ?> map) {
@@ -151,7 +181,10 @@ public class HandoffOrchestrator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * doneFuture.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<Object> doneFuture() {
         if (doneFuture == null) {
@@ -161,14 +194,20 @@ public class HandoffOrchestrator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getHandoffCount.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getHandoffCount() {
         return handoffCount;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentAgentId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCurrentAgentId() {
         return currentAgentId;

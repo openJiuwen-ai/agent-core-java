@@ -12,23 +12,40 @@ import java.util.Map;
 
 /**
  * Mirrors module-level defaults from Python's onlineconfig.py.
+ * 
+ * @since 0.1.7
  */
 public final class OnlineConfigDefaults {
     /**
-     * Auto-generated for codecheck compliance.
+     * BUILTIN_ONLINE_RL_CONFIG.
+     * 
+     * @since 0.1.7
      */
     public static final Map<String, Object> BUILTIN_ONLINE_RL_CONFIG =
-            Collections.unmodifiableMap(new LinkedHashMap<>());
+        Collections.unmodifiableMap(new LinkedHashMap<>());
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ONLINE_PPO_VERL_HYDRA_OVERLAY.
+     * 
+     * @since 0.1.7
      */
     public static final Map<String, Object> ONLINE_PPO_VERL_HYDRA_OVERLAY =
-            freezeMap(createOnlinePpoVerlHydraOverlay());
+        freezeMap(createOnlinePpoVerlHydraOverlay());
 
+    /**
+     * OnlineConfigDefaults.
+     * 
+     * @since 0.1.7
+     */
     private OnlineConfigDefaults() {
     }
 
+    /**
+     * createOnlinePpoVerlHydraOverlay.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> createOnlinePpoVerlHydraOverlay() {
         LinkedHashMap<String, Object> root = new LinkedHashMap<>();
 
@@ -144,6 +161,13 @@ public final class OnlineConfigDefaults {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * freezeMap.
+     * 
+     * @param source source
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> freezeMap(Map<String, Object> source) {
         LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : source.entrySet()) {
@@ -160,6 +184,13 @@ public final class OnlineConfigDefaults {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * freezeList.
+     * 
+     * @param source source
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> freezeList(List<?> source) {
         ArrayList<Object> copy = new ArrayList<>();
         for (Object value : source) {

@@ -10,58 +10,59 @@ import java.util.List;
 
 /**
  * Public class ExtendedEvolvePipeline used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class ExtendedEvolvePipeline extends BasePipeline {
     /**
-     * Auto-generated for codecheck compliance.
+     * NAME.
+     * 
+     * @since 0.1.7
      */
     public static final String NAME = "extended_evolve_pipeline";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String name() {
         return NAME;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * description.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String description() {
         return "Extended evolve generation pipeline.";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * expectedOutputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<String> expectedOutputs() {
         return List.of("package_result");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Object> stream(BaseExecutionContext ctx) {
-        return List.of(BaseExecutionContext.message(
-                "当前已选择扩展流水线，但实现尚未完成: " + NAME
-        ));
+        return List.of(BaseExecutionContext.message("当前已选择扩展流水线，但实现尚未完成: " + NAME));
     }
 }

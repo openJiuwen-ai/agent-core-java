@@ -16,116 +16,161 @@ import java.util.Map;
  * Used for routing/branching components that don't need full session functionality.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.internal.wrapper.RouterSession}.
+ * 
+ * @since 0.1.7
  */
 public class RouterSession extends StateSession {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * RouterSession.
+     * 
+     * @param inner inner
+     * @since 0.1.7
      */
     public RouterSession(BaseSession inner) {
         super(inner);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * interact.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
+    @Override
     public void interact(Object value) {
         // no-op
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * trace.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @Override
     public void trace(Map<String, Object> data) {
         TracerWorkflowUtils.trace(inner, data);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * traceError.
+     * 
+     * @param error error
+     * @since 0.1.7
      */
+    @Override
     public void traceError(Exception error) {
         TracerWorkflowUtils.traceError(inner, error);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * streamWriter.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public StreamWriter<?> streamWriter() {
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * customWriter.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public StreamWriter<?> customWriter() {
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * writeStream.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @Override
     public void writeStream(Object data) {
         // no-op
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * writeCustomStream.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @Override
     public void writeCustomStream(Map<String, Object> data) {
         // no-op
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateGlobalState.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @Override
     public void updateGlobalState(Map<String, Object> data) {
         // no-op
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateState.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @Override
     public void updateState(Map<String, Object> data) {
         // no-op
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkflowConfig.
+     * 
+     * @param workflowId workflowId
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object getWorkflowConfig(String workflowId) {
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Config.MetadataLike getAgentConfig() {
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getEnv.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object getEnv(String key) {
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * base.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public BaseSession base() {
         return null;
     }

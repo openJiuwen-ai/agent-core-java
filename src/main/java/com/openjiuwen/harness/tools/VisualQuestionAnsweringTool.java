@@ -10,43 +10,62 @@ import java.util.Map;
 
 /**
  * Public class VisualQuestionAnsweringTool used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class VisualQuestionAnsweringTool {
     /**
-     * Auto-generated for codecheck compliance.
+     * visionModelConfig.
+     * 
+     * @since 0.1.7
      */
     public final VisionModelConfig visionModelConfig;
     private final VisionCaller caller;
 
     /**
- * Public interface VisionCaller used by the Java parity implementation.
- *
- * @since 1.0
- */
+     * Public interface VisionCaller used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
     @FunctionalInterface
-public interface VisionCaller {
+    public interface VisionCaller {
+        /**
+         * call.
+         * 
+         * @param imagePathOrUrl imagePathOrUrl
+         * @param prompt prompt
+         * @param config config
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         VisionResult call(String imagePathOrUrl, String prompt, VisionModelConfig config) throws Exception;
     }
 
     /**
- * Public record VisionResult used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record VisionResult(String text, String model) {
+     * Public record VisionResult used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record VisionResult(String text, String model) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * VisualQuestionAnsweringTool.
+     * 
+     * @param visionModelConfig visionModelConfig
+     * @since 0.1.7
      */
     public VisualQuestionAnsweringTool(VisionModelConfig visionModelConfig) {
         this(visionModelConfig, (image, prompt, config) -> new VisionResult(prompt, config.getModel()));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * VisualQuestionAnsweringTool.
+     * 
+     * @param visionModelConfig visionModelConfig
+     * @param caller caller
+     * @since 0.1.7
      */
     public VisualQuestionAnsweringTool(VisionModelConfig visionModelConfig, VisionCaller caller) {
         this.visionModelConfig = visionModelConfig;
@@ -54,7 +73,11 @@ public record VisionResult(String text, String model) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput invoke(Map<String, Object> inputs) {
         if (visionModelConfig == null) {
@@ -68,15 +91,10 @@ public record VisionResult(String text, String model) {
             if (isIncludeOcr) {
                 ocrText = caller.call(image, "ocr", visionModelConfig).text();
             }
-            String prompt = isIncludeOcr
-                    ? "OCR result:\n" + ocrText + "\n\nQuestion:\n" + question
-                    : question;
+            String prompt = isIncludeOcr ? "OCR result:\n" + ocrText + "\n\nQuestion:\n" + question : question;
             VisionResult answer = caller.call(image, prompt, visionModelConfig);
-            return ToolOutput.builder().success(true).data(Map.of(
-                    "ocr_text", ocrText,
-                    "answer", answer.text(),
-                    "model", answer.model()
-            )).build();
+            return ToolOutput.builder().success(true)
+                    .data(Map.of("ocr_text", ocrText, "answer", answer.text(), "model", answer.model())).build();
         } catch (Exception ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();
         }

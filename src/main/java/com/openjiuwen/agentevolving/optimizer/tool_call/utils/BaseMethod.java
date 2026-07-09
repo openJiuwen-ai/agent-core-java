@@ -12,21 +12,31 @@ import java.util.function.Function;
 
 /**
  * Base method class for tool optimization.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.base_method.BaseMethod}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.base_method.BaseMethod}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseMethod {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @since 0.1.7
      */
     protected final Map<String, Object> config;
+
+    /**
+     * verbose.
+     * 
+     * @since 0.1.7
+     */
     protected final boolean verbose;
 
     /**
      * Create base method with configuration.
-     *
+     * 
      * @param config Configuration map
+     * @since 0.1.7
      */
     public BaseMethod(Map<String, Object> config) {
         this.config = config != null ? config : Map.of();
@@ -35,31 +45,43 @@ public abstract class BaseMethod {
 
     /**
      * Produce answer from API call.
-     *
-     * @param instruction  Instruction text
-     * @param docStr       Documentation string
-     * @param apiResponse  API response
+     * 
+     * @param instruction Instruction text
+     * @param docStr Documentation string
+     * @param apiResponse API response
      * @return Answer string
+     * @since 0.1.7
      */
     public String produceAnswerFromApiCall(String instruction, String docStr, String apiResponse) {
         String userPrompt = String.format("""
-Please respond in natural language text. Do not include code in your responses. You are given an API tool with the following documentation, which includes the functionality description, required parameters, code snippets for API calls, etc.
+                Please respond in natural language text. Do not include code in your responses. You are given \
+                an API tool with the following documentation, which includes the functionality description, \
+                required parameters, code snippets for API calls, etc.
 
-Documentation:
-%s
+                Documentation:
+                %s
 
-You are given the following instruction: "%s"
-To produce a response to the instruction, you made an API call to the given tool, which returned the following results:
-%s
+                You are given the following instruction: "%s"
+                To produce a response to the instruction, you made an API call to the given tool, which \
+                returned the following results:
+                %s
 
-Given the instruction and the results of API call, produce an effective and short answer (less than 300 letters) to the user in natural language. Your answer must be based on the results of the API call, do not hallucinate or answer anything not in the API results. You must not include code, comments, JSON data structures, notes, or other irrelevant information in your answer. If there is an error or failure using the tool, you must report the error in your answer and do not make things up, especially when you receive an input about invalid parameters. Also, absolutely do NOT tell a user about a simulated response. Treat every successful API output as real. Every successful API call contains real data. This is very important.
+                Given the instruction and the results of API call, produce an effective and short answer (less \
+                than 300 letters) to the user in natural language. Your answer must be based on the results of \
+                the API call, do not hallucinate or answer anything not in the API results. You must not \
+                include code, comments, JSON data structures, notes, or other irrelevant information in your \
+                answer. If there is an error or failure using the tool, you must report the error in your \
+                answer and do not make things up, especially when you receive an input about invalid \
+                parameters. Also, absolutely do NOT tell a user about a simulated response. Treat every \
+                successful API output as real. Every successful API call contains real data. This is very \
+                important.
 
-Finally, organize your output in the following JSON format:
-{
-    "answer": answer
-}
-You must strictly follow the output format. You can begin your task now.
-""", docStr, instruction, apiResponse);
+                Finally, organize your output in the following JSON format:
+                {
+                    "answer": answer
+                }
+                You must strictly follow the output format. You can begin your task now.
+                """, docStr, instruction, apiResponse);
 
         Function<String, Object> verifyOutput = output -> {
             Object parsed = FormatUtils.parseJson(output);
@@ -77,17 +99,9 @@ You must strictly follow the output format. You can begin your task now.
         };
 
         String prompt = FormatUtils.formatPromptLlama("", userPrompt);
-        Object output = invokeRitsResponse(
-                (String) config.get("gen_model_id"),
-                prompt,
-                (String) config.get("llm_api_key"),
-                verifyOutput,
-                Map.of(
-                        "max_attempts", 15,
-                        "include_stop_sequence", false,
-                        "stop_sequences", List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>")
-                )
-        );
+        Object output = invokeRitsResponse((String) config.get("gen_model_id"), prompt,
+                (String) config.get("llm_api_key"), verifyOutput, Map.of("max_attempts", 15, "include_stop_sequence",
+                        false, "stop_sequences", List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>")));
 
         if (verbose) {
             Loggers.AGENT.info("Final LLM output: {}", output);
@@ -100,8 +114,9 @@ You must strictly follow the output format. You can begin your task now.
 
     /**
      * Get configuration.
-     *
+     * 
      * @return Configuration map
+     * @since 0.1.7
      */
     public Map<String, Object> getConfig() {
         return config;
@@ -109,26 +124,37 @@ You must strictly follow the output format. You can begin your task now.
 
     /**
      * Check if verbose mode is enabled.
-     *
+     * 
      * @return True if verbose
+     * @since 0.1.7
      */
     public boolean isVerbose() {
         return verbose;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invokeRitsResponse.
+     * 
+     * @param modelId modelId
+     * @param prompt prompt
+     * @param llmApiKey llmApiKey
+     * @param verifyFn verifyFn
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
-    protected Object invokeRitsResponse(
-            String modelId,
-            String prompt,
-            String llmApiKey,
-            Function<String, Object> verifyFn,
-            Map<String, Object> kwargs
-    ) {
+    protected Object invokeRitsResponse(String modelId, String prompt, String llmApiKey,
+            Function<String, Object> verifyFn, Map<String, Object> kwargs) {
         return RitsUtils.getRitsResponse(modelId, prompt, llmApiKey, verifyFn, verbose, kwargs);
     }
 
+    /**
+     * isTruthy.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isTruthy(Object value) {
         if (value instanceof Boolean bool) {
             return bool;

@@ -27,25 +27,37 @@ import java.util.stream.Collectors;
 
 /**
  * Legacy single-agent base class.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseAgent {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * agentConfig.
+     * 
+     * @since 0.1.7
      */
     protected final AgentConfig agentConfig;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * tools.
+     * 
+     * @since 0.1.7
      */
     protected final List<Tool> tools = new ArrayList<>();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * workflows.
+     * 
+     * @since 0.1.7
      */
     protected final List<Workflow> workflows = new ArrayList<>();
     private final ContextEngine contextEngine;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseAgent.
+     * 
+     * @param agentConfig agentConfig
+     * @since 0.1.7
      */
     protected BaseAgent(AgentConfig agentConfig) {
         this.agentConfig = agentConfig;
@@ -53,7 +65,10 @@ public abstract class BaseAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AgentConfig getAgentConfig() {
         return agentConfig;
@@ -64,6 +79,8 @@ public abstract class BaseAgent {
     /**
      * Lightweight wrapper that mirrors Python's {@code Config} object returned
      * by {@code legacy.BaseAgent.config()}.
+     * 
+     * @since 0.1.7
      */
     public static class Config {
         private final AgentConfig agentConfig;
@@ -74,8 +91,9 @@ public abstract class BaseAgent {
 
         /**
          * Backward-compatible accessor.
-         *
+         * 
          * @return the wrapped {@link AgentConfig}
+         * @since 0.1.7
          */
         public AgentConfig getAgentConfig() {
             return agentConfig;
@@ -85,8 +103,9 @@ public abstract class BaseAgent {
     /**
      * Return a {@link Config} wrapper – mirrors Python's
      * {@code agent.config().get_agent_config()} call chain.
-     *
+     * 
      * @return a Config wrapper around this agent's configuration
+     * @since 0.1.7
      */
     public Config config() {
         return new Config(agentConfig);
@@ -94,8 +113,9 @@ public abstract class BaseAgent {
 
     /**
      * Get the context engine.
-     *
+     * 
      * @return the context engine
+     * @since 0.1.7
      */
     public ContextEngine getContextEngine() {
         return contextEngine;
@@ -103,6 +123,9 @@ public abstract class BaseAgent {
 
     /**
      * Create default ContextEngine from config.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     private ContextEngine createContextEngine() {
         int maxRounds = 10;
@@ -118,15 +141,14 @@ public abstract class BaseAgent {
                 // Config may not have constrain field
             }
         }
-        return new ContextEngine(ContextEngineConfig.builder()
-                .maxContextMessageNum(maxRounds * 2)
-                .build());
+        return new ContextEngine(ContextEngineConfig.builder().maxContextMessageNum(maxRounds * 2).build());
     }
 
     /**
      * Add prompt template entries to configuration.
-     *
+     * 
      * @param promptTemplate list of prompt dicts to append
+     * @since 0.1.7
      */
     public void addPrompt(List<Map<String, String>> promptTemplate) {
         if (promptTemplate == null || promptTemplate.isEmpty()) {
@@ -149,7 +171,10 @@ public abstract class BaseAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addTools.
+     * 
+     * @param newTools newTools
+     * @since 0.1.7
      */
     public void addTools(List<Tool> newTools) {
         if (newTools == null || newTools.isEmpty()) {
@@ -165,7 +190,10 @@ public abstract class BaseAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addWorkflows.
+     * 
+     * @param newWorkflows newWorkflows
+     * @since 0.1.7
      */
     public void addWorkflows(List<Workflow> newWorkflows) {
         if (newWorkflows == null || newWorkflows.isEmpty()) {
@@ -178,19 +206,12 @@ public abstract class BaseAgent {
     }
 
     /**
-     * Add workflows from a heterogeneous list that may contain {@link Workflow}
-     * instances, {@link WorkflowFactory} objects, or generic {@link Supplier}
-     * providers with a {@code card()} method.
-     *
-     * <p>Mirrors Python's {@code BaseAgent.add_workflows(List[Union[Workflow,
-     * Callable[[], Workflow]]])}.</p>
-     *
-     * @param items list of Workflow / WorkflowFactory / Supplier&lt;Workflow&gt;
+     * addWorkflowItems.
+     * 
+     * @param items items
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void addWorkflowItems(List<?> items) {
         if (items == null || items.isEmpty()) {
             return;
@@ -219,8 +240,9 @@ public abstract class BaseAgent {
 
     /**
      * Remove workflows from agent (update config and resource manager).
-     *
+     * 
      * @param workflowKeys list of [workflowId, workflowVersion] pairs to remove
+     * @since 0.1.7
      */
     public void removeWorkflows(List<String[]> workflowKeys) {
         if (workflowKeys == null || workflowKeys.isEmpty()) {
@@ -255,8 +277,9 @@ public abstract class BaseAgent {
 
     /**
      * Bind workflows - backward compatible alias for addWorkflows.
-     *
+     * 
      * @param newWorkflows workflows to bind
+     * @since 0.1.7
      */
     public void bindWorkflows(List<Workflow> newWorkflows) {
         addWorkflows(newWorkflows);
@@ -264,8 +287,9 @@ public abstract class BaseAgent {
 
     /**
      * Bind workflows – variant accepting heterogeneous items.
-     *
+     * 
      * @param items list of Workflow / WorkflowFactory / Supplier
+     * @since 0.1.7
      */
     public void bindWorkflowItems(List<?> items) {
         addWorkflowItems(items);
@@ -273,8 +297,9 @@ public abstract class BaseAgent {
 
     /**
      * Add plugin schemas to configuration.
-     *
+     * 
      * @param plugins list of PluginSchema to add
+     * @since 0.1.7
      */
     public void addPlugins(List<PluginSchema> plugins) {
         if (plugins == null || plugins.isEmpty()) {
@@ -285,9 +310,8 @@ public abstract class BaseAgent {
             @SuppressWarnings("unchecked")
             List<PluginSchema> existingPlugins = (List<PluginSchema>) method.invoke(agentConfig);
             if (existingPlugins != null) {
-                Set<String> existingNames = existingPlugins.stream()
-                        .map(PluginSchema::getName)
-                        .collect(Collectors.toSet());
+                Set<String> existingNames =
+                    existingPlugins.stream().map(PluginSchema::getName).collect(Collectors.toSet());
                 for (PluginSchema plugin : plugins) {
                     if (!existingNames.contains(plugin.getName())) {
                         existingPlugins.add(plugin);
@@ -295,29 +319,42 @@ public abstract class BaseAgent {
                     }
                 }
             } else {
-                Loggers.AGENT.warning(agentConfig.getClass().getSimpleName()
-                        + " has no plugins field, addPlugins operation ignored");
+                Loggers.AGENT.warning(
+                        agentConfig.getClass().getSimpleName() + " has no plugins field, addPlugins operation ignored");
             }
         } catch (Exception e) {
-            Loggers.AGENT.warning(agentConfig.getClass().getSimpleName()
-                    + " has no plugins field, addPlugins operation ignored");
+            Loggers.AGENT.warning(
+                    agentConfig.getClass().getSimpleName() + " has no plugins field, addPlugins operation ignored");
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clearSession.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public void clearSession(String sessionId) {
         Runner.release(sessionId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public abstract Object invoke(Map<String, Object> inputs, Session session);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public abstract Iterator<Object> stream(Map<String, Object> inputs, Session session);
 }

@@ -21,9 +21,15 @@ import java.util.function.Function;
  * and schema migration helpers.
  * <p>
  * Mirrors Python's {@code store.vector.utils} module.
+ * 
+ * @since 0.1.7
  */
 public final class VectorStoreUtils {
-
+    /**
+     * VectorStoreUtils.
+     * 
+     * @since 0.1.7
+     */
     private VectorStoreUtils() {
     }
 
@@ -31,17 +37,22 @@ public final class VectorStoreUtils {
 
     /**
      * Convert squared L2 distance to normalized similarity in [0, 1].
-     *
+     * 
      * @param rawScore raw L2 distance score
-     * @param maxDist  maximum distance (defaults to 4 for unit vectors)
+     * @param maxDist maximum distance (defaults to 4 for unit vectors)
      * @return normalized similarity score in [0, 1]
+     * @since 0.1.7
      */
     public static double convertL2Squared(double rawScore, double maxDist) {
         return Math.max(0.0, (maxDist - rawScore) / maxDist);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * convertL2Squared.
+     * 
+     * @param rawScore rawScore
+     * @return the result
+     * @since 0.1.7
      */
     public static double convertL2Squared(double rawScore) {
         return convertL2Squared(rawScore, 4.0);
@@ -49,9 +60,10 @@ public final class VectorStoreUtils {
 
     /**
      * Convert cosine similarity to normalized similarity in [0, 1].
-     *
+     * 
      * @param rawScore raw cosine similarity (range [-1, 1])
      * @return normalized similarity score in [0, 1]
+     * @since 0.1.7
      */
     public static double convertCosineSimilarity(double rawScore) {
         return (rawScore + 1.0) / 2.0;
@@ -59,9 +71,10 @@ public final class VectorStoreUtils {
 
     /**
      * Convert cosine distance to normalized cosine similarity in [0, 1].
-     *
+     * 
      * @param rawScore raw cosine distance (range [0, 2])
      * @return normalized similarity score in [0, 1]
+     * @since 0.1.7
      */
     public static double convertCosineDistance(double rawScore) {
         return (2.0 - rawScore) / 2.0;
@@ -69,9 +82,10 @@ public final class VectorStoreUtils {
 
     /**
      * Convert raw inner product to normalized similarity in [0, 1].
-     *
+     * 
      * @param rawScore raw inner product
      * @return normalized similarity score in [0, 1]
+     * @since 0.1.7
      */
     public static double convertIpSimilarity(double rawScore) {
         return Math.max(0.0, Math.min(1.0, (rawScore + 1.0) / 2.0));
@@ -79,9 +93,10 @@ public final class VectorStoreUtils {
 
     /**
      * Convert inner product distance form to normalized similarity in [0, 1].
-     *
+     * 
      * @param rawScore IP distance (range [0, 2])
      * @return normalized similarity score in [0, 1]
+     * @since 0.1.7
      */
     public static double convertIpDistance(double rawScore) {
         return Math.max(0.0, Math.min(1.0, (2.0 - rawScore) / 2.0));
@@ -89,39 +104,36 @@ public final class VectorStoreUtils {
 
     // ====== Type Mapping ======
 
-    private static final Map<String, VectorDataType> TYPE_MAPPING = Map.ofEntries(
-            Map.entry("string", VectorDataType.VARCHAR),
-            Map.entry("str", VectorDataType.VARCHAR),
-            Map.entry("varchar", VectorDataType.VARCHAR),
-            Map.entry("int", VectorDataType.INT32),
-            Map.entry("integer", VectorDataType.INT32),
-            Map.entry("int32", VectorDataType.INT32),
-            Map.entry("int64", VectorDataType.INT64),
-            Map.entry("long", VectorDataType.INT64),
-            Map.entry("float", VectorDataType.FLOAT),
-            Map.entry("float32", VectorDataType.FLOAT),
-            Map.entry("double", VectorDataType.DOUBLE),
-            Map.entry("float64", VectorDataType.DOUBLE),
-            Map.entry("bool", VectorDataType.BOOL),
-            Map.entry("boolean", VectorDataType.BOOL),
-            Map.entry("json", VectorDataType.JSON),
-            Map.entry("vector", VectorDataType.FLOAT_VECTOR),
-            Map.entry("float_vector", VectorDataType.FLOAT_VECTOR)
-    );
+    /**
+     * Map.ofEntries.
+     * 
+     * @param VectorDataType.VARCHAR VectorDataType.VARCHAR
+     * @since 0.1.7
+     */
+    private static final Map<String, VectorDataType> TYPE_MAPPING =
+        Map.ofEntries(Map.entry("string", VectorDataType.VARCHAR), Map.entry("str", VectorDataType.VARCHAR),
+                Map.entry("varchar", VectorDataType.VARCHAR), Map.entry("int", VectorDataType.INT32),
+                Map.entry("integer", VectorDataType.INT32), Map.entry("int32", VectorDataType.INT32),
+                Map.entry("int64", VectorDataType.INT64), Map.entry("long", VectorDataType.INT64),
+                Map.entry("float", VectorDataType.FLOAT), Map.entry("float32", VectorDataType.FLOAT),
+                Map.entry("double", VectorDataType.DOUBLE), Map.entry("float64", VectorDataType.DOUBLE),
+                Map.entry("bool", VectorDataType.BOOL), Map.entry("boolean", VectorDataType.BOOL),
+                Map.entry("json", VectorDataType.JSON), Map.entry("vector", VectorDataType.FLOAT_VECTOR),
+                Map.entry("float_vector", VectorDataType.FLOAT_VECTOR));
 
     /**
      * Map a string type name to VectorDataType.
-     *
+     * 
      * @param typeStr the string representation of the type
      * @return the corresponding VectorDataType
-     * @throws com.openjiuwen.core.common.exception.BaseError if unknown type
+     * @since 0.1.7
      */
     public static VectorDataType mapStringToVectorDataType(String typeStr) {
         String normalized = typeStr.toLowerCase(Locale.ROOT).strip();
         VectorDataType result = TYPE_MAPPING.get(normalized);
         if (result == null) {
-            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
-                    "error_msg", "Unknown type string: '" + typeStr + "'. Supported types: " + TYPE_MAPPING.keySet());
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
+                    "Unknown type string: '" + typeStr + "'. Supported types: " + TYPE_MAPPING.keySet());
         }
         return result;
     }
@@ -129,24 +141,14 @@ public final class VectorStoreUtils {
     // ====== Schema Migration ======
 
     /**
-     * Compute the final schema after applying all operations.
-     * <p>
-     * Operations are expected to have the following known types (checked by class name):
-     * <ul>
-     *   <li>AddScalarFieldOperation - adds a new scalar field</li>
-     *   <li>RenameScalarFieldOperation - renames a field</li>
-     *   <li>UpdateScalarFieldTypeOperation - updates a field's data type</li>
-     *   <li>UpdateEmbeddingDimensionOperation - updates vector field dimension</li>
-     * </ul>
-     *
-     * @param oldSchema  the original schema
-     * @param operations list of operations to apply
-     * @return the resulting schema after all operations
+     * computeNewSchema.
+     * 
+     * @param oldSchema oldSchema
+     * @param operations operations
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static CollectionSchema computeNewSchema(CollectionSchema oldSchema, List<?> operations) {
         Map<String, Object> schemaDict = oldSchema.toDict();
         CollectionSchema newSchema = CollectionSchema.fromDict(schemaDict);
@@ -158,6 +160,14 @@ public final class VectorStoreUtils {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * applySchemaOperation.
+     * 
+     * @param schema schema
+     * @param operation operation
+     * @return the result
+     * @since 0.1.7
+     */
     private static CollectionSchema applySchemaOperation(CollectionSchema schema, Object operation) {
         // Use reflection-based approach to check operation type by class name
         String className = operation.getClass().getSimpleName();
@@ -169,11 +179,19 @@ public final class VectorStoreUtils {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * applyMapOperation.
+     * 
+     * @param schema schema
+     * @param opMap opMap
+     * @return the result
+     * @since 0.1.7
+     */
     private static CollectionSchema applyMapOperation(CollectionSchema schema, Map<String, Object> opMap) {
-        String type = (String) opMap.get("type");
+        String type = (opMap.get("type") instanceof String __v0 ? __v0 : null);
         if (type == null) {
-            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
-                    "error_msg", "Operation map must contain 'type' key");
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
+                    "Operation map must contain 'type' key");
         }
         Map<String, Object> schemaDict = schema.toDict();
         List<Map<String, Object>> fields = (List<Map<String, Object>>) schemaDict.get("fields");
@@ -193,7 +211,7 @@ public final class VectorStoreUtils {
                 return result;
             }
             case "rename_field" -> {
-                String oldName = (String) opMap.get("old_field_name");
+                String oldName = (opMap.get("old_field_name") instanceof String __v0 ? __v0 : null);
                 String newName = (String) opMap.get("new_field_name");
                 if (oldName.equals(newName)) {
                     return schema;
@@ -213,12 +231,22 @@ public final class VectorStoreUtils {
                 updateVectorDimInList(fields, fieldName, newDim);
                 return CollectionSchema.fromDict(schemaDict);
             }
-            default -> throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
-                    "error_msg", "Unsupported operation type: " + type);
+            default -> throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
+                    "Unsupported operation type: " + type);
         }
     }
 
-    private static CollectionSchema applyReflectiveOperation(CollectionSchema schema, Object operation, String className) {
+    /**
+     * applyReflectiveOperation.
+     * 
+     * @param schema schema
+     * @param operation operation
+     * @param className className
+     * @return the result
+     * @since 0.1.7
+     */
+    private static CollectionSchema applyReflectiveOperation(CollectionSchema schema, Object operation,
+            String className) {
         try {
             Map<String, Object> schemaDict = schema.toDict();
             @SuppressWarnings("unchecked")
@@ -255,14 +283,22 @@ public final class VectorStoreUtils {
                 updateVectorDimInList(fields, fieldName, newDim);
                 return CollectionSchema.fromDict(schemaDict);
             } else {
-                throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
-                        "error_msg", "Unsupported operation type: " + className);
+                throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
+                        "Unsupported operation type: " + className);
             }
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException("Failed to apply schema operation: " + className, e);
         }
     }
 
+    /**
+     * renameFieldInList.
+     * 
+     * @param fields fields
+     * @param oldName oldName
+     * @param newName newName
+     * @since 0.1.7
+     */
     private static void renameFieldInList(List<Map<String, Object>> fields, String oldName, String newName) {
         boolean oldExists = false;
         boolean newExists = false;
@@ -275,12 +311,12 @@ public final class VectorStoreUtils {
             }
         }
         if (!oldExists) {
-            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
-                    "error_msg", "Old field '" + oldName + "' does not exist");
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
+                    "Old field '" + oldName + "' does not exist");
         }
         if (newExists) {
-            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
-                    "error_msg", "New field '" + newName + "' already exists");
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
+                    "New field '" + newName + "' already exists");
         }
         for (Map<String, Object> field : fields) {
             if (oldName.equals(field.get("name"))) {
@@ -290,25 +326,41 @@ public final class VectorStoreUtils {
         }
     }
 
+    /**
+     * updateFieldTypeInList.
+     * 
+     * @param fields fields
+     * @param fieldName fieldName
+     * @param newFieldType newFieldType
+     * @since 0.1.7
+     */
     private static void updateFieldTypeInList(List<Map<String, Object>> fields, String fieldName, String newFieldType) {
         boolean found = false;
         for (Map<String, Object> field : fields) {
             if (fieldName.equals(field.get("name"))) {
                 found = true;
                 if (VectorDataType.FLOAT_VECTOR.name().equals(field.get("type"))) {
-                    throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
-                            "error_msg", "Cannot update type of vector field '" + fieldName + "'");
+                    throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
+                            "Cannot update type of vector field '" + fieldName + "'");
                 }
                 field.put("type", mapStringToVectorDataType(newFieldType).name());
                 break;
             }
         }
         if (!found) {
-            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
-                    "error_msg", "Field '" + fieldName + "' does not exist");
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
+                    "Field '" + fieldName + "' does not exist");
         }
     }
 
+    /**
+     * updateVectorDimInList.
+     * 
+     * @param fields fields
+     * @param fieldName fieldName
+     * @param newDim newDim
+     * @since 0.1.7
+     */
     private static void updateVectorDimInList(List<Map<String, Object>> fields, String fieldName, int newDim) {
         boolean found = false;
         boolean isVector = false;
@@ -323,12 +375,12 @@ public final class VectorStoreUtils {
             }
         }
         if (!found) {
-            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
-                    "error_msg", "Field '" + fieldName + "' does not exist");
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
+                    "Field '" + fieldName + "' does not exist");
         }
         if (!isVector) {
-            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID,
-                    "error_msg", "Field '" + fieldName + "' is not a vector field");
+            throw ErrorHelper.buildError(StatusCode.STORE_VECTOR_SCHEMA_INVALID, "error_msg",
+                    "Field '" + fieldName + "' is not a vector field");
         }
     }
 
@@ -336,9 +388,10 @@ public final class VectorStoreUtils {
 
     /**
      * Build a unified transform function that applies all operations to a document.
-     *
+     * 
      * @param operations list of operations to apply
      * @return transform function
+     * @since 0.1.7
      */
     public static Function<Map<String, Object>, Map<String, Object>> buildTransformFuncForOperations(
             List<?> operations) {
@@ -352,6 +405,13 @@ public final class VectorStoreUtils {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * applyOperationToDoc.
+     * 
+     * @param doc doc
+     * @param operation operation
+     * @since 0.1.7
+     */
     private static void applyOperationToDoc(Map<String, Object> doc, Object operation) {
         String className = operation.getClass().getSimpleName();
         try {
@@ -377,6 +437,13 @@ public final class VectorStoreUtils {
         }
     }
 
+    /**
+     * applyMapOperationToDoc.
+     * 
+     * @param doc doc
+     * @param opMap opMap
+     * @since 0.1.7
+     */
     private static void applyMapOperationToDoc(Map<String, Object> doc, Map<String, Object> opMap) {
         String type = (String) opMap.get("type");
         if ("add_field".equals(type)) {
@@ -391,6 +458,8 @@ public final class VectorStoreUtils {
             if (doc.containsKey(oldName)) {
                 doc.put(newName, doc.remove(oldName));
             }
+        } else {
+            // no-op
         }
     }
 }

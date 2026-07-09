@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.tool.mcp;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,6 +20,8 @@ import java.util.UUID;
  * MCP (Model Context Protocol) server configuration.
  * <p>
  * Mirrors Python's {@code McpServerConfig} model.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -26,8 +29,6 @@ import java.util.UUID;
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class McpServerConfig {
-
-    /** Unique server identifier. */
     @Builder.Default
     @JsonProperty("server_id")
     private String serverId = UUID.randomUUID().toString().replace("-", "");
@@ -45,20 +46,36 @@ public class McpServerConfig {
     @JsonProperty("client_type")
     private String clientType = "sse";
 
-    /** Additional parameters. */
+    /**
+     * Additional parameters.
+     * 
+     * @since 0.1.7
+     */
     @Builder.Default
     private Map<String, Object> params = new HashMap<>();
 
-    /** Authentication headers. */
+    /**
+     * Authentication headers.
+     * 
+     * @since 0.1.7
+     */
     @Builder.Default
     @JsonProperty("auth_headers")
     private Map<String, String> authHeaders = new HashMap<>();
 
-    /** Authentication query parameters. */
+    /**
+     * Authentication query parameters.
+     * 
+     * @since 0.1.7
+     */
     @Builder.Default
     @JsonProperty("auth_query_params")
     private Map<String, String> authQueryParams = new HashMap<>();
 
-    /** Constant for no timeout. */
+    /**
+     * NO_TIMEOUT.
+     * 
+     * @since 0.1.7
+     */
     public static final float NO_TIMEOUT = -1;
 }

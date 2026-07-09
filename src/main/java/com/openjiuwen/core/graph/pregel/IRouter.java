@@ -10,14 +10,16 @@ import java.util.List;
  * Router interface for dispatching messages after a node executes.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.IRouter}.
+ * 
+ * @since 0.1.7
  */
 public interface IRouter {
-
     /**
-     * Dispatch messages from the given source node.
-     *
-     * @param sourceNode the name of the node that just completed
-     * @return list of messages to send
+     * dispatch.
+     * 
+     * @param sourceNode sourceNode
+     * @return the result
+     * @since 0.1.7
      */
     List<Message> dispatch(String sourceNode);
 }

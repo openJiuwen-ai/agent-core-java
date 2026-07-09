@@ -8,6 +8,8 @@ package com.openjiuwen.core.common.logging.events;
  * Log event type enumeration.
  * <p>
  * Faithfully ported from Python's {@code LogEventType}.
+ * 
+ * @since 0.1.7
  */
 public enum LogEventType {
     // Agent events
@@ -144,8 +146,7 @@ public enum LogEventType {
     RESOURCE_MGR_GET_RESOURCE("get_resource"),
     RESOURCE_MGR_ADD_RESOURCE_SERVER("add_resource_server"),
     RESOURCE_MGR_REMOVE_RESOURCE_SERVER("remove_resource_server"),
-    RESOURCE_MGR_REMOVE_TAG("remove_tag"),
-    ;
+    RESOURCE_MGR_REMOVE_TAG("remove_tag");
 
     private final String value;
 
@@ -154,7 +155,10 @@ public enum LogEventType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
@@ -162,6 +166,10 @@ public enum LogEventType {
 
     /**
      * Lookup by string value, returns null if not found.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static LogEventType fromValue(String value) {
         for (LogEventType t : values()) {

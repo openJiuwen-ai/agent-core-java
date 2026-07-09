@@ -12,31 +12,41 @@ import java.util.Map;
 
 /**
  * AIO sandbox provider preset for Java sandbox gateway configuration.
+ * 
+ * @since 0.1.7
  */
 public final class AioSandboxProfile {
+    /**
+     * AioSandboxProfile.
+     * 
+     * @since 0.1.7
+     */
     private AioSandboxProfile() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @param gatewayUrl gatewayUrl
+     * @return the result
+     * @since 0.1.7
      */
     public static SandboxGatewayConfig config(String gatewayUrl) {
         return config(gatewayUrl, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @param gatewayUrl gatewayUrl
+     * @param extraParams extraParams
+     * @return the result
+     * @since 0.1.7
      */
     public static SandboxGatewayConfig config(String gatewayUrl, Map<String, Object> extraParams) {
         return SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .gatewayUrl(gatewayUrl)
-                        .baseUrl(gatewayUrl)
-                        .sandboxType("aio")
-                        .extraParams(new LinkedHashMap<>(extraParams))
-                        .build())
-                .gatewayUrl(gatewayUrl)
-                .build();
+                .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy").gatewayUrl(gatewayUrl)
+                        .baseUrl(gatewayUrl).sandboxType("aio").extraParams(new LinkedHashMap<>(extraParams)).build())
+                .gatewayUrl(gatewayUrl).build();
     }
 }

@@ -8,42 +8,92 @@ package com.openjiuwen.core.graph.pregel;
  * Constants for the Pregel graph execution engine.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.constants}.
+ * 
+ * @since 0.1.7
  */
 public final class PregelConstants {
-
+    /**
+     * PregelConstants.
+     * 
+     * @since 0.1.7
+     */
     private PregelConstants() {
     }
 
-    /** Virtual start node identifier. */
+    /**
+     * START.
+     * 
+     * @since 0.1.7
+     */
     public static final String START = "__start__";
 
-    /** Virtual end node identifier. */
+    /**
+     * END.
+     * 
+     * @since 0.1.7
+     */
     public static final String END = "__end__";
 
-    /** Default maximum recursion (super-step) limit. */
+    /**
+     * MAX_RECURSIVE_LIMIT.
+     * 
+     * @since 0.1.7
+     */
     public static final int MAX_RECURSIVE_LIMIT = 10000;
 
-    /** Task status for interrupted execution. */
+    /**
+     * TASK_STATUS_INTERRUPT.
+     * 
+     * @since 0.1.7
+     */
     public static final String TASK_STATUS_INTERRUPT = "__interrupt__";
 
-    /** Task status for failed execution. */
+    /**
+     * TASK_STATUS_ERROR.
+     * 
+     * @since 0.1.7
+     */
     public static final String TASK_STATUS_ERROR = "__error__";
 
-    /** Namespace separator used in config paths. */
+    /**
+     * NS_SEPARATOR.
+     * 
+     * @since 0.1.7
+     */
     public static final String NS_SEPARATOR = ":";
 
-    /** Replacement character for namespace separator in keys. */
+    /**
+     * NS_REPLACE_CHAR.
+     * 
+     * @since 0.1.7
+     */
     public static final String NS_REPLACE_CHAR = "#";
 
-    /** Config key for namespace. */
+    /**
+     * NS.
+     * 
+     * @since 0.1.7
+     */
     public static final String NS = "ns";
 
-    /** Config key for parent namespace. */
+    /**
+     * PARENT_NS.
+     * 
+     * @since 0.1.7
+     */
     public static final String PARENT_NS = "parent_ns";
 
-    /** Config key for session ID. */
+    /**
+     * SESSION_ID.
+     * 
+     * @since 0.1.7
+     */
     public static final String SESSION_ID = "session_id";
 
-    /** Config key for recursion limit. */
+    /**
+     * RECURSION_LIMIT.
+     * 
+     * @since 0.1.7
+     */
     public static final String RECURSION_LIMIT = "recursion_limit";
 }

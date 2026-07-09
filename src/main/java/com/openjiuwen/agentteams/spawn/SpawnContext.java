@@ -6,18 +6,30 @@ package com.openjiuwen.agentteams.spawn;
 
 /**
  * Inheritable session context for agent-team spawn flows.
- *
- * <p>Mirrors Python's {@code spawn/context.py}: the current session id is stored in thread-local
- * context, can be set for child work, and can later be reset to the previous value.</p>
+ * <p>
+ * Mirrors Python's {@code spawn/context.py}: the current session id is stored in thread-local
+ * context, can be set for child work, and can later be reset to the previous value.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public final class SpawnContext {
     private static final InheritableThreadLocal<String> SESSION_ID_CONTEXT = new InheritableThreadLocal<>();
 
+    /**
+     * SpawnContext.
+     * 
+     * @since 0.1.7
+     */
     private SpawnContext() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSessionId.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public static SessionToken setSessionId(String sessionId) {
         String previous = SESSION_ID_CONTEXT.get();
@@ -26,7 +38,10 @@ public final class SpawnContext {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static String getSessionId() {
         String sessionId = SESSION_ID_CONTEXT.get();
@@ -34,7 +49,10 @@ public final class SpawnContext {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resetSessionId.
+     * 
+     * @param token token
+     * @since 0.1.7
      */
     public static void resetSessionId(SessionToken token) {
         if (token == null) {
@@ -49,10 +67,10 @@ public final class SpawnContext {
     }
 
     /**
- * Public record SessionToken used by the Java parity implementation.
- *
- * @since 1.0
- */
+     * Public record SessionToken used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
     public record SessionToken(String previousSessionId) {
     }
 }

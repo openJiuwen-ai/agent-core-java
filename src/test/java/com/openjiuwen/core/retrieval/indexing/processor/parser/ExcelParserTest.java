@@ -1,10 +1,16 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.retrieval.common.Document;
+
 import org.apache.poi.xssf.usermodel.XSSFSheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
@@ -18,30 +24,21 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class ExcelParserTest {
-
     @TempDir
     Path tempDir;
 
     @Test
     void rowsToDocumentsGeneratesRowAndColumnDocs() {
         List<Document> docs = ExcelParser.rowsToDocuments(
-                List.of(
-                        List.of("Name", "Dept"),
-                        List.of("Alice", "Sales"),
-                        List.of("Bob", "Tech")),
-                "Sheet1",
-                "base",
-                0,
-                true);
+                List.of(List.of("Name", "Dept"), List.of("Alice", "Sales"), List.of("Bob", "Tech")), "Sheet1", "base",
+                0, true);
 
         assertEquals(4, docs.size());
-        assertTrue(docs.stream().anyMatch(doc -> "row".equals(doc.getMetadata().get("source_type")) && doc.getText().contains("Name: Alice")));
-        assertTrue(docs.stream().anyMatch(doc -> "column".equals(doc.getMetadata().get("source_type")) && doc.getText().contains("Column name: Name")));
+        assertTrue(docs.stream().anyMatch(
+                doc -> "row".equals(doc.getMetadata().get("source_type")) && doc.getText().contains("Name: Alice")));
+        assertTrue(docs.stream().anyMatch(doc -> "column".equals(doc.getMetadata().get("source_type"))
+                && doc.getText().contains("Column name: Name")));
     }
 
     @Test
@@ -64,7 +61,8 @@ class ExcelParserTest {
         ExcelParser parser = new ExcelParser();
         List<Document> docs = parser.parse(file.toString(), "tsv1", null, Map.of("include_header", false));
 
-        assertTrue(docs.stream().anyMatch(doc -> "row".equals(doc.getMetadata().get("source_type")) && "1, 2".equals(doc.getText())));
+        assertTrue(docs.stream()
+                .anyMatch(doc -> "row".equals(doc.getMetadata().get("source_type")) && "1, 2".equals(doc.getText())));
     }
 
     @Test
@@ -96,6 +94,7 @@ class ExcelParserTest {
     void parseMissingFileRaises() {
         ExcelParser parser = new ExcelParser();
 
-        assertThrows(BaseError.class, () -> parser.parse(tempDir.resolve("missing.xlsx").toString(), "x", null, Map.of()));
+        assertThrows(BaseError.class,
+                () -> parser.parse(tempDir.resolve("missing.xlsx").toString(), "x", null, Map.of()));
     }
 }

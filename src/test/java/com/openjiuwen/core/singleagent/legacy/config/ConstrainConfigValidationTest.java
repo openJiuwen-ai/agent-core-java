@@ -1,14 +1,14 @@
-package com.openjiuwen.core.singleagent.legacy.config;
 
-import org.junit.jupiter.api.Test;
+package com.openjiuwen.core.singleagent.legacy.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class ConstrainConfigValidationTest {
+import org.junit.jupiter.api.Test;
 
+class ConstrainConfigValidationTest {
     private static final String GREATER_THAN_ZERO_MESSAGE =
-            "Input should be greater than 0 [type=greater_than, input_value=0, input_type=int]";
+        "Input should be greater than 0 [type=greater_than, input_value=0, input_type=int]";
 
     @Test
     void builderRejectsZeroReservedMaxChatRounds() {
@@ -20,8 +20,8 @@ class ConstrainConfigValidationTest {
 
     @Test
     void builderRejectsZeroMaxIteration() {
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class,
-                () -> ConstrainConfig.builder().maxIteration(0).build());
+        IllegalArgumentException exception =
+            assertThrows(IllegalArgumentException.class, () -> ConstrainConfig.builder().maxIteration(0).build());
 
         assertEquals(GREATER_THAN_ZERO_MESSAGE, exception.getMessage());
     }
@@ -30,10 +30,10 @@ class ConstrainConfigValidationTest {
     void settersRejectZeroValues() {
         ConstrainConfig config = new ConstrainConfig();
 
-        IllegalArgumentException roundsException = assertThrows(IllegalArgumentException.class,
-                () -> config.setReservedMaxChatRounds(0));
-        IllegalArgumentException iterationException = assertThrows(IllegalArgumentException.class,
-                () -> config.setMaxIteration(0));
+        IllegalArgumentException roundsException =
+            assertThrows(IllegalArgumentException.class, () -> config.setReservedMaxChatRounds(0));
+        IllegalArgumentException iterationException =
+            assertThrows(IllegalArgumentException.class, () -> config.setMaxIteration(0));
 
         assertEquals(GREATER_THAN_ZERO_MESSAGE, roundsException.getMessage());
         assertEquals(GREATER_THAN_ZERO_MESSAGE, iterationException.getMessage());

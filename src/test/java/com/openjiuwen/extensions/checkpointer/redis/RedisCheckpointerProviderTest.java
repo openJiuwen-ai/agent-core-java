@@ -1,13 +1,5 @@
+
 package com.openjiuwen.extensions.checkpointer.redis;
-
-import com.openjiuwen.core.session.checkpointer.Checkpointer;
-import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
-import org.junit.jupiter.api.Test;
-
-import java.lang.reflect.Field;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -16,16 +8,23 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class RedisCheckpointerProviderTest {
+import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 
+import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Field;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+class RedisCheckpointerProviderTest {
     @Test
     void providerUsesSuppliedRedisClient() {
         RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider();
         FakeRedisClient redisClient = new FakeRedisClient();
 
-        Checkpointer checkpointer = provider.create(Map.of(
-                "connection", Map.of("redis_client", redisClient)
-        ));
+        Checkpointer checkpointer = provider.create(Map.of("connection", Map.of("redis_client", redisClient)));
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
         redisCheckpointer.getRedisStore().set("session-1:agent:key", "value");
@@ -37,10 +36,8 @@ class RedisCheckpointerProviderTest {
     void providerBuildsStandaloneClientFromUrlAndPropagatesTtl() throws Exception {
         RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider();
 
-        Checkpointer checkpointer = provider.create(Map.of(
-                "connection", Map.of("url", "redis://127.0.0.1:6379"),
-                "ttl", Map.of("default_ttl", 5, "refresh_on_read", true)
-        ));
+        Checkpointer checkpointer = provider.create(Map.of("connection", Map.of("url", "redis://127.0.0.1:6379"), "ttl",
+                Map.of("default_ttl", 5, "refresh_on_read", true)));
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
         assertFalse(redisCheckpointer.getRedisStore().isCluster());
@@ -52,16 +49,14 @@ class RedisCheckpointerProviderTest {
 
     @Test
     void clusterUrlsNormalizeAndFactoryUsesRedisProvider() {
-        RedisConnectionConfig connection = RedisConnectionConfig.fromMap(Map.of(
-                "url", "redis+cluster://127.0.0.1:7000"
-        ));
+        RedisConnectionConfig connection =
+            RedisConnectionConfig.fromMap(Map.of("url", "redis+cluster://127.0.0.1:7000"));
 
         assertTrue(connection.isClusterMode());
         assertEquals("redis://127.0.0.1:7000", connection.getConnectionUrl());
 
-        Checkpointer checkpointer = CheckpointerFactory.create("redis", Map.of(
-                "connection", Map.of("url", "redis://127.0.0.1:6379")
-        ));
+        Checkpointer checkpointer =
+            CheckpointerFactory.create("redis", Map.of("connection", Map.of("url", "redis://127.0.0.1:6379")));
 
         RedisCheckpointer redisCheckpointer = assertInstanceOf(RedisCheckpointer.class, checkpointer);
         assertNotNull(redisCheckpointer.graphStore());
@@ -71,8 +66,7 @@ class RedisCheckpointerProviderTest {
     void invalidConfigRaisesHelpfulError() {
         RedisCheckpointer.Provider provider = new RedisCheckpointer.Provider();
 
-        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> provider.create(Map.of()));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> provider.create(Map.of()));
 
         assertTrue(error.getMessage().contains("connection"));
     }
@@ -135,12 +129,8 @@ class RedisCheckpointerProviderTest {
 
         public List<String> scanIter(String pattern) {
             String prefix = pattern.endsWith("*") ? pattern.substring(0, pattern.length() - 1) : pattern;
-            return values.keySet().stream()
-                    .peek(this::cleanup)
-                    .filter(values::containsKey)
-                    .filter(key -> key.startsWith(prefix))
-                    .sorted()
-                    .toList();
+            return values.keySet().stream().peek(this::cleanup).filter(values::containsKey)
+                    .filter(key -> key.startsWith(prefix)).sorted().toList();
         }
 
         public boolean expire(String key, int ttlSeconds) {

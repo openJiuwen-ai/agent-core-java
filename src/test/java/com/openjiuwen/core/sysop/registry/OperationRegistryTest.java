@@ -1,23 +1,24 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.sysop.registry;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.local.LocalCodeOperation;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for OperationRegistry.
  */
 class OperationRegistryTest {
-
     @Test
     @DisplayName("getSupportedOperations returns known operations for LOCAL mode")
     void testGetSupportedOperationsLocal() {

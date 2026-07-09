@@ -12,45 +12,66 @@ import java.util.Map;
  * <p>
  * ChromaDB uses Hierarchical Navigable Small World (HNSW) algorithm for
  * approximate nearest neighbor search.
+ * 
+ * @since 0.1.7
  */
 public class ChromaVectorField extends VectorField {
-
     private int maxNeighbors = 16;
     private int efConstruction = 100;
     private float efSearch = 100;
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> extraSearch = new HashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ChromaVectorField.
+     * 
+     * @since 0.1.7
      */
     public ChromaVectorField() {
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDatabaseType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getDatabaseType() {
         return "chroma";
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getIndexType() {
         return "hnsw";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMaxNeighbors.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getMaxNeighbors() {
         return maxNeighbors;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMaxNeighbors.
+     * 
+     * @param maxNeighbors maxNeighbors
+     * @since 0.1.7
      */
     public void setMaxNeighbors(int maxNeighbors) {
         if (maxNeighbors < 2 || maxNeighbors > 2048) {
@@ -60,14 +81,20 @@ public class ChromaVectorField extends VectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEfConstruction.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getEfConstruction() {
         return efConstruction;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEfConstruction.
+     * 
+     * @param efConstruction efConstruction
+     * @since 0.1.7
      */
     public void setEfConstruction(int efConstruction) {
         if (efConstruction < 1) {
@@ -77,14 +104,20 @@ public class ChromaVectorField extends VectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEfSearch.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public float getEfSearch() {
         return efSearch;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEfSearch.
+     * 
+     * @param efSearch efSearch
+     * @since 0.1.7
      */
     public void setEfSearch(float efSearch) {
         if (efSearch < 1) {
@@ -94,20 +127,32 @@ public class ChromaVectorField extends VectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtraSearch.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getExtraSearch() {
         return extraSearch;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setExtraSearch.
+     * 
+     * @param extraSearch extraSearch
+     * @since 0.1.7
      */
     public void setExtraSearch(Map<String, Object> extraSearch) {
         validateExtraSearch(extraSearch);
         this.extraSearch = extraSearch;
     }
 
+    /**
+     * validateExtraSearch.
+     * 
+     * @param searchDict searchDict
+     * @since 0.1.7
+     */
     private void validateExtraSearch(Map<String, Object> searchDict) {
         if (searchDict == null) {
             return;
@@ -124,10 +169,14 @@ public class ChromaVectorField extends VectorField {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toDict.
+     * 
+     * @param stage stage
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> toDict(String stage) {
         Map<String, Object> result = new HashMap<>();
         if (STAGE_CONSTRUCT.equals(stage)) {

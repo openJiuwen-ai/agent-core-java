@@ -17,13 +17,20 @@ import java.util.Map;
 
 /**
  * Simple UTF-8 text file parser.
+ * 
+ * @since 0.1.7
  */
 public class TextFileParser extends Parser {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parseContent.
+     * 
+     * @param doc doc
+     * @param llmClient llmClient
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
         Path path = Path.of(doc);
         if (!Files.exists(path)) {
@@ -36,10 +43,14 @@ public class TextFileParser extends Parser {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * supports.
+     * 
+     * @param doc doc
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean supports(String doc) {
         String lower = doc == null ? "" : doc.toLowerCase(Locale.ROOT);
         return lower.endsWith(".txt") || lower.endsWith(".md");

@@ -13,14 +13,14 @@ import java.util.List;
 
 /**
  * Data structure for search files.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class SearchFilesData {
-
-    /** Total number of matching files. */
     private int totalMatches;
 
     /** List of matching files. */

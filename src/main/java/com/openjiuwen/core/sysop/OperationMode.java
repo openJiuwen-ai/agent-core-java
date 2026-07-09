@@ -8,6 +8,8 @@ package com.openjiuwen.core.sysop;
  * Enum for operation mode.
  * <p>
  * Mirrors Python's {@code OperationMode} enum in {@code sys_operation/base.py}.
+ * 
+ * @since 0.1.7
  */
 public enum OperationMode {
     LOCAL("local"),
@@ -20,7 +22,10 @@ public enum OperationMode {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
@@ -28,10 +33,10 @@ public enum OperationMode {
 
     /**
      * Parse a string value to OperationMode (case-insensitive).
-     *
+     * 
      * @param text the string to parse
      * @return the corresponding OperationMode
-     * @throws IllegalArgumentException if the text does not match any mode
+     * @since 0.1.7
      */
     public static OperationMode fromString(String text) {
         for (OperationMode mode : values()) {

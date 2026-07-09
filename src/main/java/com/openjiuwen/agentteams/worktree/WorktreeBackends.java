@@ -7,14 +7,28 @@ package com.openjiuwen.agentteams.worktree;
 import com.openjiuwen.agentteams.messager.Messager;
 
 /**
- * Auto-generated for codecheck compliance.
+ * WorktreeBackends.
+ * 
+ * @since 0.1.7
  */
 public final class WorktreeBackends {
+    /**
+     * WorktreeBackends.
+     * 
+     * @since 0.1.7
+     */
     private WorktreeBackends() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createBackend.
+     * 
+     * @param name name
+     * @param config config
+     * @param messager messager
+     * @param nodeId nodeId
+     * @return the result
+     * @since 0.1.7
      */
     public static Object createBackend(String name, WorktreeConfig config, Messager messager, String nodeId) {
         if ("remote".equals(name) || (messager != null && nodeId != null && !nodeId.isBlank())) {

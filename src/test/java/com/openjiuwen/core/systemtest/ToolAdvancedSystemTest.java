@@ -1,7 +1,13 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.service_api.RestfulApi;
@@ -16,11 +22,6 @@ import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * System tests for advanced Tool features: RestfulApi, McpTool card, ParserRegistry.
  * Covers gaps identified in CHECK doc for Tool module.
@@ -28,22 +29,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Tag("system-test")
 class ToolAdvancedSystemTest {
-
     @Nested
     @DisplayName("RestfulApi Tests")
     class RestfulApiTests {
-
         @Test
         @DisplayName("RestfulApiCard construction with valid fields")
         void testRestfulApiCardConstruction() {
-            RestfulApiCard card = RestfulApiCard.builder()
-                    .id("test_api")
-                    .name("Test API")
-                    .description("A test REST API tool")
-                    .url("https://api.example.com/test")
-                    .method("GET")
-                    .timeout(30)
-                    .build();
+            RestfulApiCard card =
+                RestfulApiCard.builder().id("test_api").name("Test API").description("A test REST API tool")
+                        .url("https://api.example.com/test").method("GET").timeout(30).build();
 
             assertNotNull(card);
             assertEquals("test_api", card.getId());
@@ -56,10 +50,8 @@ class ToolAdvancedSystemTest {
         @Test
         @DisplayName("RestfulApiCard default values")
         void testRestfulApiCardDefaults() {
-            RestfulApiCard card = RestfulApiCard.builder()
-                    .id("default_api")
-                    .url("https://api.example.com/default")
-                    .build();
+            RestfulApiCard card =
+                RestfulApiCard.builder().id("default_api").url("https://api.example.com/default").build();
 
             assertEquals("POST", card.getMethod());
             assertEquals(60, card.getTimeout());
@@ -70,30 +62,19 @@ class ToolAdvancedSystemTest {
         @Test
         @DisplayName("RestfulApi rejects invalid URL scheme")
         void testRestfulApiRejectsInvalidUrlScheme() {
-            RestfulApiCard card = RestfulApiCard.builder()
-                    .id("bad_api")
-                    .name("Bad API")
-                    .url("ftp://bad.example.com/test")
-                    .method("GET")
-                    .build();
+            RestfulApiCard card = RestfulApiCard.builder().id("bad_api").name("Bad API")
+                    .url("ftp://bad.example.com/test").method("GET").build();
 
-            assertThrows(Exception.class,
-                    () -> new RestfulApi(card),
-                    "Construction should fail for non-http(s) URL");
+            assertThrows(Exception.class, () -> new RestfulApi(card), "Construction should fail for non-http(s) URL");
         }
 
         @Test
         @DisplayName("RestfulApi rejects unsupported HTTP method")
         void testRestfulApiRejectsUnsupportedMethod() {
-            RestfulApiCard card = RestfulApiCard.builder()
-                    .id("bad_method_api")
-                    .name("Bad Method API")
-                    .url("https://httpbin.org/get")
-                    .method("TRACE")
-                    .build();
+            RestfulApiCard card = RestfulApiCard.builder().id("bad_method_api").name("Bad Method API")
+                    .url("https://httpbin.org/get").method("TRACE").build();
 
-            assertThrows(Exception.class,
-                    () -> new RestfulApi(card),
+            assertThrows(Exception.class, () -> new RestfulApi(card),
                     "Construction should fail for unsupported method");
         }
     }
@@ -101,17 +82,11 @@ class ToolAdvancedSystemTest {
     @Nested
     @DisplayName("McpToolCard Tests")
     class McpToolCardTests {
-
         @Test
         @DisplayName("McpToolCard construction with server info")
         void testMcpToolCardConstruction() {
-            McpToolCard card = McpToolCard.builder()
-                    .id("mcp_tool_1")
-                    .name("MCP Search")
-                    .description("Search tool via MCP")
-                    .serverName("search-server")
-                    .serverId("srv_001")
-                    .build();
+            McpToolCard card = McpToolCard.builder().id("mcp_tool_1").name("MCP Search")
+                    .description("Search tool via MCP").serverName("search-server").serverId("srv_001").build();
 
             assertNotNull(card);
             assertEquals("mcp_tool_1", card.getId());
@@ -123,13 +98,8 @@ class ToolAdvancedSystemTest {
         @Test
         @DisplayName("McpToolCard generates McpToolInfo")
         void testMcpToolCardToolInfo() {
-            McpToolCard card = McpToolCard.builder()
-                    .id("mcp_tool_2")
-                    .name("MCP Calculator")
-                    .description("Calculator via MCP protocol")
-                    .serverName("calc-server")
-                    .serverId("srv_002")
-                    .build();
+            McpToolCard card = McpToolCard.builder().id("mcp_tool_2").name("MCP Calculator")
+                    .description("Calculator via MCP protocol").serverName("calc-server").serverId("srv_002").build();
 
             assertNotNull(card.toolInfo());
             System.out.println("[McpToolCard ToolInfo] " + card.toolInfo());
@@ -139,7 +109,6 @@ class ToolAdvancedSystemTest {
     @Nested
     @DisplayName("ParserRegistry Tests")
     class ParserRegistryTests {
-
         @Test
         @DisplayName("ParserRegistry singleton instance")
         void testParserRegistrySingleton() {

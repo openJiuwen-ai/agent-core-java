@@ -5,11 +5,14 @@
 package com.openjiuwen.agentevolving.agent_rl.config.onlineconfig;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.onlineconfig.JiuwenConfig.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -23,7 +26,9 @@ public class JiuwenConfig {
     private Integer webPort;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validate.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         VLLMServiceConfig.validateOptionalPort(agentServerPort, "jiuwen.agent_server_port");
@@ -32,43 +37,102 @@ public class JiuwenConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgent_server_port.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public Integer getAgent_server_port() { return getAgentServerPort(); }
+    public Integer getAgent_server_port() {
+        return getAgentServerPort();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setAgent_server_port.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setAgent_server_port(Integer value) { setAgentServerPort(value); }
+    public void setAgent_server_port(Integer value) {
+        setAgentServerPort(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getApp_host.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getApp_host() { return getAppHost(); }
+    public String getApp_host() {
+        return getAppHost();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setApp_host.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setApp_host(String value) { setAppHost(value); }
+    public void setApp_host(String value) {
+        setAppHost(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getWs_port.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public Integer getWs_port() { return getWsPort(); }
+    public Integer getWs_port() {
+        return getWsPort();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setWs_port.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setWs_port(Integer value) { setWsPort(value); }
+    public void setWs_port(Integer value) {
+        setWsPort(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getWeb_host.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getWeb_host() { return getWebHost(); }
+    public String getWeb_host() {
+        return getWebHost();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setWeb_host.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setWeb_host(String value) { setWebHost(value); }
+    public void setWeb_host(String value) {
+        setWebHost(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getWeb_port.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public Integer getWeb_port() { return getWebPort(); }
+    public Integer getWeb_port() {
+        return getWebPort();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setWeb_port.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setWeb_port(Integer value) { setWebPort(value); }
+    public void setWeb_port(Integer value) {
+        setWebPort(value);
+    }
 }

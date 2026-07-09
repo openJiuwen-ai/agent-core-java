@@ -6,8 +6,8 @@ package com.openjiuwen.harness.schema;
 
 /**
  * Public enum AgentMode used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum AgentMode {
     NORMAL,

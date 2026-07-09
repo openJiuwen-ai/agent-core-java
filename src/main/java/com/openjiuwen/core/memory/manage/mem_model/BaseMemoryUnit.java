@@ -11,6 +11,8 @@ import lombok.experimental.SuperBuilder;
 
 /**
  * Base class for a single memory data item.
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder

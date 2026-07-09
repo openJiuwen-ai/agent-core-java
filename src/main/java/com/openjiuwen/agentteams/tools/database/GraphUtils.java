@@ -12,52 +12,63 @@ import java.util.Set;
 
 /**
  * Dependency graph helper functions and constants.
- *
- * <p>Mirrors Python tools/database/graph.py: cycle detection,
+ * <p>
+ * Mirrors Python tools/database/graph.py: cycle detection,
  * terminal statuses, and dependency rejection statuses for
- * task dependency graph operations.</p>
+ * task dependency graph operations.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public final class GraphUtils {
-
-    /** Task statuses considered terminal (no further transitions). */
-    public static final Set<String> TASK_TERMINAL_STATUSES =
-            Set.of("completed", "cancelled");
+    /**
+     * TASK_TERMINAL_STATUSES.
+     * 
+     * @since 0.1.7
+     */
+    public static final Set<String> TASK_TERMINAL_STATUSES = Set.of("completed", "cancelled");
 
     /**
-     * Task statuses that reject adding new dependencies.
-     * Once a task reaches any of these states, no new edges
-     * should be added that depend on it.
+     * TASK_DEPENDENCY_REJECT_STATUSES.
+     * 
+     * @since 0.1.7
      */
     public static final Set<String> TASK_DEPENDENCY_REJECT_STATUSES =
-            Set.of("completed", "cancelled", "claimed", "plan_approved");
+        Set.of("completed", "cancelled", "claimed", "plan_approved");
 
     private static final int WHITE = 0;
     private static final int GRAY = 1;
     private static final int BLACK = 2;
 
+    /**
+     * GraphUtils.
+     * 
+     * @since 0.1.7
+     */
     private GraphUtils() {
     }
 
     /**
      * Detect a cycle in a task-dependency adjacency map.
-     *
-     * <p>The map points from a task to the tasks it depends on
+     * <p>
+     * The map points from a task to the tasks it depends on
      * ({@code taskId -> [dependsOnTaskId, ...]}). The walk follows edges
      * in that direction; reaching an ancestor node in the current DFS
-     * path means the dependency chain loops back on itself.</p>
-     *
-     * <p>Uses iterative DFS with WHITE/GRAY/BLACK coloring to keep
-     * recursion depth bounded for deep dependency chains.</p>
-     *
+     * path means the dependency chain loops back on itself.
+     * </p>
+     * <p>
+     * Uses iterative DFS with WHITE/GRAY/BLACK coloring to keep
+     * recursion depth bounded for deep dependency chains.
+     * </p>
+     * 
      * @param adjacency outgoing-edge adjacency map (taskId -> dependsOn list)
      * @return the cycle as a list of task IDs (repeated node at both ends,
      *         e.g. [A, B, C, A]), or {@code null} if the graph is acyclic
+     * @since 0.1.7
      */
-    public static List<String> detectCycleInAdjacency(
-            Map<String, List<String>> adjacency) {
-
+    public static List<String> detectCycleInAdjacency(Map<String, List<String>> adjacency) {
         if (adjacency == null || adjacency.isEmpty()) {
-            return null;
+            return java.util.Collections.emptyList();
         }
 
         // Initialize colors for all nodes
@@ -121,12 +132,9 @@ public final class GraphUtils {
             }
         }
 
-        return null;
+        return java.util.Collections.emptyList();
     }
 
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     private static final class StackFrame {
         final String node;
         final List<String> children;

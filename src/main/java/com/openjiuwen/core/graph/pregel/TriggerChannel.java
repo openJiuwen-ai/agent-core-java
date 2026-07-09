@@ -11,30 +11,41 @@ import java.util.List;
  * Channel that triggers when any message is received.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.channels.TriggerChannel}.
+ * 
+ * @since 0.1.7
  */
 public class TriggerChannel extends Channel {
-
     private final List<TriggerMessage> messages = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TriggerChannel.
+     * 
+     * @param name name
+     * @since 0.1.7
      */
     public TriggerChannel(String name) {
         super(name);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * isReady.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean isReady() {
         return !messages.isEmpty();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * accept.
+     * 
+     * @param msg msg
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean accept(Message msg) {
         if (msg instanceof TriggerMessage triggerMsg) {
             messages.add(triggerMsg);
@@ -43,27 +54,35 @@ public class TriggerChannel extends Channel {
         return false;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * consume.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void consume() {
         messages.clear();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * snapshot.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object snapshot() {
         return new ArrayList<>(messages);
     }
 
+    /**
+     * restore.
+     * 
+     * @param snapshotData snapshotData
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void restore(Object snapshotData) {
         if (snapshotData instanceof List<?> list) {
             messages.clear();

@@ -16,16 +16,17 @@ import java.util.Map;
  * Creates in-memory vector store instances that store embeddings and metadata
  * in local memory. Suitable for testing and small-scale scenarios where
  * persistence and distributed access are not required.
- *
- * @since 0.1.12
+ * 
  * @see VectorStoreProvider
  * @see com.openjiuwen.core.foundation.store.vector.InMemoryVectorStore
+ * @since 0.1.7
  */
 public final class InMemoryVectorStoreProvider implements VectorStoreProvider {
     /**
-     * Returns the in-memory vector store type name.
-     *
-     * @return the type name "in_memory"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -34,9 +35,10 @@ public final class InMemoryVectorStoreProvider implements VectorStoreProvider {
 
     /**
      * Creates a new in-memory vector store instance.
-     *
+     * 
      * @param conf the configuration map for in-memory vector store
      * @return a new InMemoryVectorStore instance
+     * @since 0.1.7
      */
     @Override
     public BaseVectorStore create(Map<String, Object> conf) {

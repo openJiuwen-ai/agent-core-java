@@ -6,6 +6,8 @@ package com.openjiuwen.core.retrieval.common;
 
 /**
  * Supported vector store providers.
+ * 
+ * @since 0.1.7
  */
 public enum StoreType {
     MILVUS("milvus"),
@@ -20,14 +22,21 @@ public enum StoreType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * value.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String value() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static StoreType fromValue(String value) {
         String normalized = RetrievalValidation.validateStoreType(value, "StoreType");

@@ -13,13 +13,14 @@ import java.util.Map;
 
 /**
  * Single Markdown element with positional metadata.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class MarkdownElement {
-
     private String type;
 
     private Map<String, Object> content;

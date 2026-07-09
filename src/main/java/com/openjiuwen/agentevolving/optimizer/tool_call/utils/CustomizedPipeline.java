@@ -7,39 +7,45 @@ package com.openjiuwen.agentevolving.optimizer.tool_call.utils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.Loggers;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Customized pipeline for tool optimization.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.customized_pipline.customized_pipeline}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.customized_pipline.customized_pipeline}.
+ * 
+ * @since 0.1.7
  */
 public final class CustomizedPipeline {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    /**
+     * CustomizedPipeline.
+     * 
+     * @since 0.1.7
+     */
     private CustomizedPipeline() {
         // Utility class
     }
 
     /**
      * Run optimization pipeline.
-     *
-     * @param stage        Pipeline stage ("example" or "description")
-     * @param tool         Tool definition
-     * @param config       Configuration
+     * 
+     * @param stage Pipeline stage ("example" or "description")
+     * @param tool Tool definition
+     * @param config Configuration
      * @param toolCallable Tool callable function
      * @return Pipeline results
+     * @since 0.1.7
      */
-    public static List<Object> customizedPipeline(
-            String stage,
-            Map<String, Object> tool,
-            Map<String, Object> config,
-            Object toolCallable
-    ) {
+    public static List<Object> customizedPipeline(String stage, Map<String, Object> tool, Map<String, Object> config,
+            Object toolCallable) {
         String toolName = (String) tool.get("name");
 
         SimpleApiWrapper callApiFn;
@@ -66,18 +72,13 @@ public final class CustomizedPipeline {
 
         Loggers.AGENT.info("=== Starting SingleRoundSearch ===");
 
-        BeamSearch singleSearch = new BeamSearch(
-                method,
-                (Integer) config.getOrDefault("beam_width", 2),
-                (Integer) config.getOrDefault("expand_num", 3),
-                (Integer) config.getOrDefault("max_depth", 2),
+        BeamSearch singleSearch = new BeamSearch(method, (Integer) config.getOrDefault("beam_width", 2),
+                (Integer) config.getOrDefault("expand_num", 3), (Integer) config.getOrDefault("max_depth", 2),
                 (Integer) config.getOrDefault("num_workers", 2),
-                (Integer) config.getOrDefault("verbose", 1) == 1,
-                true,  // earlyStop
-                true,  // checkValid
-                3.0,   // maxScore
-                (Integer) config.getOrDefault("top_k", 5)
-        );
+                (Integer) config.getOrDefault("verbose", 1) == 1, true, // earlyStop
+                true, // checkValid
+                3.0, // maxScore
+                (Integer) config.getOrDefault("top_k", 5));
 
         List<List<Object>> result = singleSearch.search(tool);
         List<Object> mergedResult = new ArrayList<>();
@@ -101,7 +102,7 @@ public final class CustomizedPipeline {
                 mergedResult.addAll(result);
 
                 Files.writeString(savePath, OBJECT_MAPPER.writeValueAsString(mergedResult));
-            } catch (Exception e) {
+            } catch (IOException e) {
                 Loggers.AGENT.error("Failed to save results: {}", e.getMessage());
             }
         }

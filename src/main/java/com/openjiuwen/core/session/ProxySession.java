@@ -13,20 +13,26 @@ import com.openjiuwen.core.session.stream.StreamWriterManager;
  * Proxy session that delegates all calls to an underlying stub session.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.session.ProxySession}.
+ * 
+ * @since 0.1.7
  */
 public class ProxySession extends BaseSession {
-
     private BaseSession stub;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ProxySession.
+     * 
+     * @since 0.1.7
      */
     public ProxySession() {
         this(null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ProxySession.
+     * 
+     * @param stub stub
+     * @since 0.1.7
      */
     public ProxySession(BaseSession stub) {
         this.stub = stub;
@@ -34,8 +40,9 @@ public class ProxySession extends BaseSession {
 
     /**
      * Set the underlying session implementation.
-     *
+     * 
      * @param stub the session to delegate to
+     * @since 0.1.7
      */
     public void setSession(BaseSession stub) {
         this.stub = stub;
@@ -43,65 +50,87 @@ public class ProxySession extends BaseSession {
 
     /**
      * Get the underlying session implementation.
-     *
+     * 
      * @return the stub session
+     * @since 0.1.7
      */
     public BaseSession getStub() {
         return stub;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Config config() {
         return stub.config();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * state.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public State state() {
         return stub.state();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * tracer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object tracer() {
         return stub.tracer();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * streamWriterManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public StreamWriterManager streamWriterManager() {
         return stub.streamWriterManager();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * callbackManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public CallbackManager callbackManager() {
         return stub.callbackManager();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * sessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String sessionId() {
         return stub.sessionId();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * checkpointer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object checkpointer() {
         return stub.checkpointer();
     }

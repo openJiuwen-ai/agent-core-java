@@ -1,14 +1,24 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.operator.tool_call;
 
-import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.operator.OperatorStream;
 import com.openjiuwen.core.operator.OperatorTestSupport;
 import com.openjiuwen.core.operator.TunableSpec;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -19,22 +29,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-
 /**
  * Port of Python ToolCallOperator tests.
  */
 class ToolCallOperatorTest {
-
     @Test
     @DisplayName("operator id and tunables")
     void testOperatorIdAndTunables() {
@@ -59,9 +57,8 @@ class ToolCallOperatorTest {
         ToolRegistry registry = mock(ToolRegistry.class);
         ToolCallOperator operator = new ToolCallOperator(new TestTool(), "tool_call", null, registry);
 
-        operator.setParameter("tool_description", Map.of(
-                "tool1", "Updated description 1",
-                "tool2", "Updated description 2"));
+        operator.setParameter("tool_description",
+                Map.of("tool1", "Updated description 1", "tool2", "Updated description 2"));
         verify(registry).setToolDescription("tool1", "Updated description 1");
         verify(registry).setToolDescription("tool2", "Updated description 2");
 
@@ -95,8 +92,7 @@ class ToolCallOperatorTest {
     @DisplayName("invoke handles missing tool and router mode")
     void testInvokeMissingToolAndRouterMode() throws Exception {
         ToolCallOperator missing = new ToolCallOperator();
-        IllegalStateException noTool = assertThrows(
-                IllegalStateException.class,
+        IllegalStateException noTool = assertThrows(IllegalStateException.class,
                 () -> missing.invoke(Map.of(), new OperatorTestSupport.TrackingSession(), Map.of()));
         assertTrue(noTool.getMessage().contains("no tool"));
 
@@ -109,12 +105,12 @@ class ToolCallOperatorTest {
         };
         ToolCallOperator router = new ToolCallOperator(null, "tool_call", executor, null);
         @SuppressWarnings("unchecked")
-        List<ToolExecutionResult> results = (List<ToolExecutionResult>) router.invoke(
-                Map.of("tool_calls", List.of(
-                        Map.of("name", "func1", "args", Map.of()),
-                        Map.of("name", "func2", "args", Map.of()))),
-                new OperatorTestSupport.TrackingSession(),
-                Map.of());
+        List<ToolExecutionResult> results =
+            (List<ToolExecutionResult>) router.invoke(
+                    Map.of("tool_calls",
+                            List.of(Map.of("name", "func1", "args", Map.of()),
+                                    Map.of("name", "func2", "args", Map.of()))),
+                    new OperatorTestSupport.TrackingSession(), Map.of());
 
         assertEquals(2, results.size());
         assertEquals(2, executions.get());
@@ -169,7 +165,6 @@ class ToolCallOperatorTest {
     }
 
     private static final class TestTool extends Tool {
-
         private Object invokeResult = Map.of("result", "success");
         private List<Object> streamValues = List.of();
         private RuntimeException streamException;
@@ -177,11 +172,7 @@ class ToolCallOperatorTest {
         private Map<String, Object> lastKwargs;
 
         private TestTool() {
-            super(ToolCard.builder()
-                    .id("tool-id")
-                    .name("test-tool")
-                    .description("test tool")
-                    .build());
+            super(ToolCard.builder().id("tool-id").name("test-tool").description("test tool").build());
         }
 
         @Override

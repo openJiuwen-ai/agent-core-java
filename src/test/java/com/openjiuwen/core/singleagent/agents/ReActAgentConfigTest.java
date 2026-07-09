@@ -1,21 +1,21 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent.agents;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Unit tests for {@link ReActAgentConfig}.
  */
 class ReActAgentConfigTest {
-
     @Test
     void testDefaultValues() {
         ReActAgentConfig config = ReActAgentConfig.builder().build();
@@ -63,9 +63,7 @@ class ReActAgentConfigTest {
     @Test
     void testConfigurePromptTemplate() {
         ReActAgentConfig config = ReActAgentConfig.builder().build();
-        List<Map<String, String>> template = List.of(
-                Map.of("role", "system", "content", "You are a helper")
-        );
+        List<Map<String, String>> template = List.of(Map.of("role", "system", "content", "You are a helper"));
         config.configurePromptTemplate(template);
         assertThat(config.getPromptTemplate()).hasSize(1);
         assertThat(config.getPromptTemplate().get(0).get("role")).isEqualTo("system");
@@ -112,13 +110,9 @@ class ReActAgentConfigTest {
 
     @Test
     void testConfigureModelClientUpdatesExistingModelConfig() {
-        ModelRequestConfig existing = ModelRequestConfig.builder()
-                .modelName("old-model")
-                .build();
+        ModelRequestConfig existing = ModelRequestConfig.builder().modelName("old-model").build();
 
-        ReActAgentConfig config = ReActAgentConfig.builder()
-                .modelConfigObj(existing)
-                .build();
+        ReActAgentConfig config = ReActAgentConfig.builder().modelConfigObj(existing).build();
 
         config.configureModelClient("openai", "key", "url", "new-model", true);
 
@@ -137,12 +131,11 @@ class ReActAgentConfigTest {
     void testConfigureCustomHeadersBeforeModelClient() {
         ReActAgentConfig config = ReActAgentConfig.builder().build();
 
-        config.configureCustomHeaders(Map.of("token", "token-123", "userId", "user-456"))
-                .configureModelClient("openai", "key", "https://api.example.com", "gpt-4", false);
+        config.configureCustomHeaders(Map.of("token", "token-123", "userId", "user-456")).configureModelClient("openai",
+                "key", "https://api.example.com", "gpt-4", false);
 
         assertThat(config.getCustomHeaders()).containsEntry("token", "token-123");
-        assertThat(config.getModelClientConfig().getHeaders())
-                .containsEntry("token", "token-123")
+        assertThat(config.getModelClientConfig().getHeaders()).containsEntry("token", "token-123")
                 .containsEntry("userId", "user-456");
     }
 
@@ -158,15 +151,9 @@ class ReActAgentConfigTest {
 
     @Test
     void testBuilderFullConfig() {
-        ReActAgentConfig config = ReActAgentConfig.builder()
-                .modelName("gpt-4")
-                .modelProvider("openai")
-                .apiKey("key")
-                .apiBase("url")
-                .maxIterations(8)
-                .memScopeId("scope")
-                .promptTemplate(List.of(Map.of("role", "system", "content", "hello")))
-                .build();
+        ReActAgentConfig config = ReActAgentConfig.builder().modelName("gpt-4").modelProvider("openai").apiKey("key")
+                .apiBase("url").maxIterations(8).memScopeId("scope")
+                .promptTemplate(List.of(Map.of("role", "system", "content", "hello"))).build();
 
         assertThat(config.getModelName()).isEqualTo("gpt-4");
         assertThat(config.getMaxIterations()).isEqualTo(8);
@@ -176,9 +163,7 @@ class ReActAgentConfigTest {
     @Test
     void testChainingReturnsSelf() {
         ReActAgentConfig config = ReActAgentConfig.builder().build();
-        ReActAgentConfig result = config.configureModel("x")
-                .configureMemScope("s")
-                .configureMaxIterations(3);
+        ReActAgentConfig result = config.configureModel("x").configureMemScope("s").configureMaxIterations(3);
         assertThat(result).isSameAs(config);
     }
 }

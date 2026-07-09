@@ -6,6 +6,8 @@ package com.openjiuwen.core.memory.manage.mem_model;
 
 /**
  * Supported memory types for vector operations.
+ * 
+ * @since 0.1.7
  */
 public enum SupportMemoryType {
     USER_PROFILE("user_profile"),
@@ -18,7 +20,10 @@ public enum SupportMemoryType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

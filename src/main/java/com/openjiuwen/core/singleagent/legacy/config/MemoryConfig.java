@@ -14,15 +14,17 @@ import java.util.Map;
 
 /**
  * Legacy memory configuration.
- *
- * <p>Mirrors Python's {@code MemoryConfig} in {@code single_agent/legacy/config.py}.</p>
+ * <p>
+ * Mirrors Python's {@code MemoryConfig} in {@code single_agent/legacy/config.py}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class MemoryConfig {
-
     @Builder.Default
     private boolean enabled = true;
 
@@ -30,5 +32,10 @@ public class MemoryConfig {
     private String scope = "";
 
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> config = new LinkedHashMap<>();
 }

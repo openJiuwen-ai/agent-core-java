@@ -1,5 +1,9 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
@@ -17,6 +21,7 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.workflow.WorkflowCard;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -25,14 +30,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 /**
  * Supplementary tests for {@link AbilityManager} — execute, WorkflowCard, McpServerConfig.
  */
 class AbilityManagerSupplementTest {
-
     private AbilityManager manager;
 
     @BeforeEach
@@ -44,11 +45,8 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testAddAndGetWorkflowCard() {
-        WorkflowCard wc = WorkflowCard.builder()
-                .name("wf-1")
-                .description("test workflow")
-                .inputParams(Map.of("type", "object"))
-                .build();
+        WorkflowCard wc = WorkflowCard.builder().name("wf-1").description("test workflow")
+                .inputParams(Map.of("type", "object")).build();
 
         manager.add(wc);
 
@@ -69,11 +67,8 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testListToolInfoWorkflow() {
-        WorkflowCard wc = WorkflowCard.builder()
-                .name("wf-info")
-                .description("workflow desc")
-                .inputParams(Map.of("type", "object"))
-                .build();
+        WorkflowCard wc = WorkflowCard.builder().name("wf-info").description("workflow desc")
+                .inputParams(Map.of("type", "object")).build();
 
         manager.add(wc);
 
@@ -87,10 +82,7 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testAddAndGetMcpServerConfig() {
-        McpServerConfig mcp = McpServerConfig.builder()
-                .serverName("mcp-server-1")
-                .serverId("mcp-id-1")
-                .build();
+        McpServerConfig mcp = McpServerConfig.builder().serverName("mcp-server-1").serverId("mcp-id-1").build();
 
         manager.add(mcp);
 
@@ -100,10 +92,7 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testRemoveMcpServerAlsoRemovesAssociatedTools() {
-        McpServerConfig mcp = McpServerConfig.builder()
-                .serverName("mcp-svr")
-                .serverId("mcp-prefix")
-                .build();
+        McpServerConfig mcp = McpServerConfig.builder().serverName("mcp-svr").serverId("mcp-prefix").build();
         manager.add(mcp);
 
         // Add tool cards that belong to this MCP server (id prefixed with serverId)
@@ -204,11 +193,8 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testListToolInfoAgentWithInputParams() {
-        AgentCard ac = AgentCard.builder()
-                .name("agent-params")
-                .description("desc")
-                .inputParams(Map.of("query", Map.of("type", "string")))
-                .build();
+        AgentCard ac = AgentCard.builder().name("agent-params").description("desc")
+                .inputParams(Map.of("query", Map.of("type", "string"))).build();
         manager.add(ac);
 
         List<ToolInfo> infos = manager.listToolInfo();
@@ -223,7 +209,7 @@ class AbilityManagerSupplementTest {
     @Test
     void testExecuteWithEmptyList() {
         com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx =
-                com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
+            com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
 
         List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, List.of(), null, null);
         assertThat(results).isEmpty();
@@ -232,7 +218,7 @@ class AbilityManagerSupplementTest {
     @Test
     void testExecuteWithInvalidToolCallType() {
         com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx =
-                com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
+            com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
 
         // Passing a string instead of ToolCall — normalizeToolCalls should log warning
         List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, "not a tool call", null, null);
@@ -242,7 +228,7 @@ class AbilityManagerSupplementTest {
     @Test
     void testExecuteWithNullToolCall() {
         com.openjiuwen.core.singleagent.rail.AgentCallbackContext ctx =
-                com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
+            com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder().build();
 
         List<AbilityManager.ToolExecutionEntry> results = manager.execute(ctx, null, null, null);
         assertThat(results).isEmpty();
@@ -292,10 +278,9 @@ class AbilityManagerSupplementTest {
         }
 
         String toolId = "skip-tool-" + UUID.randomUUID();
-        LocalFunction tool = new LocalFunction(
-                ToolCard.builder().id(toolId).name(toolId).description("skip test").build(),
-                inputs -> "should-not-run"
-        );
+        LocalFunction tool =
+            new LocalFunction(ToolCard.builder().id(toolId).name(toolId).description("skip test").build(),
+                    inputs -> "should-not-run");
         Runner.resourceMgr().addTool(tool, null);
         try {
             SkippingAgent agent = new SkippingAgent();
@@ -303,17 +288,10 @@ class AbilityManagerSupplementTest {
             agent.registerRail(rail);
             manager.add(tool.getCard());
             Map<String, Object> extra = new java.util.LinkedHashMap<>();
-            AgentCallbackContext ctx = AgentCallbackContext.builder()
-                    .agent(agent)
-                    .extra(extra)
-                    .build();
+            AgentCallbackContext ctx = AgentCallbackContext.builder().agent(agent).extra(extra).build();
 
-            List<AbilityManager.ToolExecutionEntry> results = manager.execute(
-                    ctx,
-                    ToolCall.builder().id("tc-skip").name(toolId).arguments("{}").build(),
-                    null,
-                    null
-            );
+            List<AbilityManager.ToolExecutionEntry> results =
+                manager.execute(ctx, ToolCall.builder().id("tc-skip").name(toolId).arguments("{}").build(), null, null);
 
             assertThat(results).hasSize(1);
             assertThat(results.get(0).result()).isNull();
@@ -326,11 +304,7 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testExecuteSingleToolCallNotFound() {
-        ToolCall tc = ToolCall.builder()
-                .id("tc-1")
-                .name("nonexistent-tool")
-                .arguments("{}")
-                .build();
+        ToolCall tc = ToolCall.builder().id("tc-1").name("nonexistent-tool").arguments("{}").build();
 
         // Tool not registered and not in ResourceMgr — should throw
         assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
@@ -339,11 +313,7 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testExecuteSingleToolCallNullArguments() {
-        ToolCall tc = ToolCall.builder()
-                .id("tc-2")
-                .name("nonexistent-tool")
-                .arguments(null)
-                .build();
+        ToolCall tc = ToolCall.builder().id("tc-2").name("nonexistent-tool").arguments(null).build();
 
         assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
                 .isInstanceOf(AbilityExecutionError.class);
@@ -351,11 +321,7 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testExecuteSingleToolCallBlankArguments() {
-        ToolCall tc = ToolCall.builder()
-                .id("tc-3")
-                .name("nonexistent-tool")
-                .arguments("   ")
-                .build();
+        ToolCall tc = ToolCall.builder().id("tc-3").name("nonexistent-tool").arguments("   ").build();
 
         assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
                 .isInstanceOf(AbilityExecutionError.class);
@@ -363,11 +329,7 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testExecuteSingleToolCallInvalidJson() {
-        ToolCall tc = ToolCall.builder()
-                .id("tc-4")
-                .name("nonexistent-tool")
-                .arguments("not json")
-                .build();
+        ToolCall tc = ToolCall.builder().id("tc-4").name("nonexistent-tool").arguments("not json").build();
 
         // Invalid JSON args should be handled gracefully, then fail on tool lookup
         assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
@@ -386,10 +348,7 @@ class AbilityManagerSupplementTest {
         String serverId = "mcp-server-id-" + UUID.randomUUID();
         String toolId = serverId + ".demo-server.browser_navigate";
 
-        McpServerConfig server = McpServerConfig.builder()
-                .serverName("demo-server")
-                .serverId(serverId)
-                .build();
+        McpServerConfig server = McpServerConfig.builder().serverName("demo-server").serverId(serverId).build();
         manager.add(server);
 
         McpClient client = new McpClient() {
@@ -424,28 +383,19 @@ class AbilityManagerSupplementTest {
             }
         };
 
-        McpToolCard card = McpToolCard.builder()
-                .id(toolId)
-                .name("browser_navigate")
-                .description("Navigate browser")
-                .serverId(serverId)
-                .serverName("demo-server")
-                .build();
+        McpToolCard card = McpToolCard.builder().id(toolId).name("browser_navigate").description("Navigate browser")
+                .serverId(serverId).serverName("demo-server").build();
         Tool tool = new McpTool(client, card);
         Runner.resourceMgr().addTool(tool, "ut-mcp");
 
         try {
-            ToolCall tc = ToolCall.builder()
-                    .id("tc-mcp")
-                    .name("browser_navigate")
-                    .arguments("{\"url\":\"https://example.com\"}")
-                    .build();
+            ToolCall tc = ToolCall.builder().id("tc-mcp").name("browser_navigate")
+                    .arguments("{\"url\":\"https://example.com\"}").build();
 
             AbilityManager.ToolExecutionEntry entry = manager.executeSingleToolCall(tc, null, null);
 
-            assertThat(entry.result()).isEqualTo(Map.of(
-                    "result", Map.of("tool", "browser_navigate", "arguments", Map.of("url", "https://example.com"))
-            ));
+            assertThat(entry.result()).isEqualTo(Map.of("result",
+                    Map.of("tool", "browser_navigate", "arguments", Map.of("url", "https://example.com"))));
             assertThat(manager.get("browser_navigate")).isInstanceOf(ToolCard.class);
         } finally {
             Runner.resourceMgr().removeTool(toolId, "ut-mcp", TagMatchStrategy.ALL, true);
@@ -454,20 +404,12 @@ class AbilityManagerSupplementTest {
 
     @Test
     void testExecuteSingleToolCallMcpServerNameRaisesExplicitError() {
-        manager.add(McpServerConfig.builder()
-                .serverName("mcp-server")
-                .serverId("mcp-server-id")
-                .build());
+        manager.add(McpServerConfig.builder().serverName("mcp-server").serverId("mcp-server-id").build());
 
-        ToolCall tc = ToolCall.builder()
-                .id("tc-mcp")
-                .name("mcp-server")
-                .arguments("{}")
-                .build();
+        ToolCall tc = ToolCall.builder().id("tc-mcp").name("mcp-server").arguments("{}").build();
 
         assertThatThrownBy(() -> manager.executeSingleToolCall(tc, null, null))
-                .isInstanceOf(AbilityExecutionError.class)
-                .hasMessageContaining("not directly executable");
+                .isInstanceOf(AbilityExecutionError.class).hasMessageContaining("not directly executable");
     }
 
     // ========== ToolExecutionEntry record ==========

@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,10 +17,11 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code AssistantMessage} model. Handles conversion between
  * OpenAI nested format and flat {@link ToolCall} format during deserialization.
+ * 
+ * @since 0.1.7
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class AssistantMessage extends BaseMessage {
-
     @JsonProperty("tool_calls")
     private List<ToolCall> toolCalls;
 
@@ -36,23 +38,30 @@ public class AssistantMessage extends BaseMessage {
     private String reasoningContent;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AssistantMessage.
+     * 
+     * @since 0.1.7
      */
     public AssistantMessage() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AssistantMessage.
+     * 
+     * @param role role
+     * @param content content
+     * @param name name
+     * @param metadata metadata
+     * @param toolCalls toolCalls
+     * @param usageMetadata usageMetadata
+     * @param finishReason finishReason
+     * @param parserContent parserContent
+     * @param reasoningContent reasoningContent
+     * @since 0.1.7
      */
-    public AssistantMessage(String role,
-                            Object content,
-                            String name,
-                            Map<String, Object> metadata,
-                            List<ToolCall> toolCalls,
-                            UsageMetadata usageMetadata,
-                            String finishReason,
-                            Object parserContent,
-                            String reasoningContent) {
+    public AssistantMessage(String role, Object content, String name, Map<String, Object> metadata,
+            List<ToolCall> toolCalls, UsageMetadata usageMetadata, String finishReason, Object parserContent,
+            String reasoningContent) {
         super(role, content, name, metadata);
         this.toolCalls = toolCalls;
         this.usageMetadata = usageMetadata;
@@ -61,12 +70,11 @@ public class AssistantMessage extends BaseMessage {
         this.reasoningContent = reasoningContent;
     }
 
-    // ==================== Constructors ====================
-
     /**
      * Create an assistant message with string content.
-     *
+     * 
      * @param content the message content
+     * @since 0.1.7
      */
     public AssistantMessage(String content) {
         super("assistant", content);
@@ -74,82 +82,112 @@ public class AssistantMessage extends BaseMessage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRole.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String getRole() {
         String r = super.getRole();
         return r != null ? r : "assistant";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolCalls.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<ToolCall> getToolCalls() {
         return toolCalls;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setToolCalls.
+     * 
+     * @param toolCalls toolCalls
+     * @since 0.1.7
      */
     public void setToolCalls(List<ToolCall> toolCalls) {
         this.toolCalls = toolCalls;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUsageMetadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public UsageMetadata getUsageMetadata() {
         return usageMetadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setUsageMetadata.
+     * 
+     * @param usageMetadata usageMetadata
+     * @since 0.1.7
      */
     public void setUsageMetadata(UsageMetadata usageMetadata) {
         this.usageMetadata = usageMetadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFinishReason.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getFinishReason() {
         return finishReason;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setFinishReason.
+     * 
+     * @param finishReason finishReason
+     * @since 0.1.7
      */
     public void setFinishReason(String finishReason) {
         this.finishReason = finishReason;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getParserContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getParserContent() {
         return parserContent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setParserContent.
+     * 
+     * @param parserContent parserContent
+     * @since 0.1.7
      */
     public void setParserContent(Object parserContent) {
         this.parserContent = parserContent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReasoningContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getReasoningContent() {
         return reasoningContent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setReasoningContent.
+     * 
+     * @param reasoningContent reasoningContent
+     * @since 0.1.7
      */
     public void setReasoningContent(String reasoningContent) {
         this.reasoningContent = reasoningContent;
@@ -163,34 +201,30 @@ public class AssistantMessage extends BaseMessage {
      * OpenAI format: {@code {"id":"xxx","type":"function","function":{"name":"...","arguments":"..."}}}
      * <br>
      * Flat format: {@code {"id":"xxx","type":"function","name":"...","arguments":"..."}}
-     *
+     * 
      * @param rawToolCalls list of raw tool call maps from API
      * @return list of converted {@link ToolCall} instances
+     * @since 0.1.7
      */
     public static List<ToolCall> convertOpenAiToolCalls(List<Map<String, Object>> rawToolCalls) {
         if (rawToolCalls == null || rawToolCalls.isEmpty()) {
-            return null;
+            return java.util.Collections.emptyList();
         }
         List<ToolCall> result = new ArrayList<>();
         for (Map<String, Object> tc : rawToolCalls) {
             @SuppressWarnings("unchecked")
             Map<String, Object> function = (Map<String, Object>) tc.get("function");
             if (function != null) {
-                result.add(ToolCall.builder()
-                        .id((String) tc.get("id"))
-                        .type((String) tc.getOrDefault("type", "function"))
-                        .name((String) function.getOrDefault("name", ""))
-                        .arguments((String) function.getOrDefault("arguments", ""))
-                        .index(tc.get("index") != null ? ((Number) tc.get("index")).intValue() : 0)
-                        .build());
+                result.add(
+                        ToolCall.builder().id((String) tc.get("id")).type((String) tc.getOrDefault("type", "function"))
+                                .name((String) function.getOrDefault("name", ""))
+                                .arguments((String) function.getOrDefault("arguments", ""))
+                                .index(tc.get("index") instanceof Number n ? n.intValue() : 0).build());
             } else {
-                result.add(ToolCall.builder()
-                        .id((String) tc.get("id"))
-                        .type((String) tc.getOrDefault("type", "function"))
-                        .name((String) tc.getOrDefault("name", ""))
+                result.add(ToolCall.builder().id((String) tc.get("id"))
+                        .type((String) tc.getOrDefault("type", "function")).name((String) tc.getOrDefault("name", ""))
                         .arguments((String) tc.getOrDefault("arguments", ""))
-                        .index(tc.get("index") != null ? ((Number) tc.get("index")).intValue() : 0)
-                        .build());
+                        .index(tc.get("index") instanceof Number n ? n.intValue() : 0).build());
             }
         }
         return result;
@@ -198,8 +232,9 @@ public class AssistantMessage extends BaseMessage {
 
     /**
      * Convert this message to OpenAI-compatible dict format for API requests.
-     *
+     * 
      * @return a map containing the message in API format
+     * @since 0.1.7
      */
     public Map<String, Object> toApiFormat() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -236,87 +271,114 @@ public class AssistantMessage extends BaseMessage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder extends BaseMessage.Builder {
         /**
-         * Auto-generated for codecheck compliance.
+         * toolCalls.
+         * 
+         * @since 0.1.7
          */
         protected List<ToolCall> toolCalls;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * usageMetadata.
+         * 
+         * @since 0.1.7
          */
         protected UsageMetadata usageMetadata;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * finishReason.
+         * 
+         * @since 0.1.7
          */
         protected String finishReason;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * parserContent.
+         * 
+         * @since 0.1.7
          */
         protected Object parserContent;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * reasoningContent.
+         * 
+         * @since 0.1.7
          */
         protected String reasoningContent;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * role.
+         * 
+         * @param role role
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder role(String role) {
             super.role(role);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * content.
+         * 
+         * @param content content
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder content(Object content) {
             super.content(content);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder name(String name) {
             super.name(name);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * metadata.
+         * 
+         * @param metadata metadata
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder metadata(Map<String, Object> metadata) {
             super.metadata(metadata);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * toolCalls.
+         * 
+         * @param toolCalls toolCalls
+         * @return the result
+         * @since 0.1.7
          */
         public Builder toolCalls(List<ToolCall> toolCalls) {
             this.toolCalls = toolCalls;
@@ -324,7 +386,11 @@ public class AssistantMessage extends BaseMessage {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * usageMetadata.
+         * 
+         * @param usageMetadata usageMetadata
+         * @return the result
+         * @since 0.1.7
          */
         public Builder usageMetadata(UsageMetadata usageMetadata) {
             this.usageMetadata = usageMetadata;
@@ -332,7 +398,11 @@ public class AssistantMessage extends BaseMessage {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * finishReason.
+         * 
+         * @param finishReason finishReason
+         * @return the result
+         * @since 0.1.7
          */
         public Builder finishReason(String finishReason) {
             this.finishReason = finishReason;
@@ -340,7 +410,11 @@ public class AssistantMessage extends BaseMessage {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * parserContent.
+         * 
+         * @param parserContent parserContent
+         * @return the result
+         * @since 0.1.7
          */
         public Builder parserContent(Object parserContent) {
             this.parserContent = parserContent;
@@ -348,7 +422,11 @@ public class AssistantMessage extends BaseMessage {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * reasoningContent.
+         * 
+         * @param reasoningContent reasoningContent
+         * @return the result
+         * @since 0.1.7
          */
         public Builder reasoningContent(String reasoningContent) {
             this.reasoningContent = reasoningContent;
@@ -356,11 +434,14 @@ public class AssistantMessage extends BaseMessage {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public AssistantMessage build() {
-            return new AssistantMessage(role, content, name, metadata, toolCalls, usageMetadata,
-                    finishReason, parserContent, reasoningContent);
+            return new AssistantMessage(role, content, name, metadata, toolCalls, usageMetadata, finishReason,
+                    parserContent, reasoningContent);
         }
     }
 }

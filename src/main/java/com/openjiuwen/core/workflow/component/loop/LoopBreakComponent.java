@@ -16,27 +16,36 @@ import java.util.HashMap;
  * Component that breaks out of the current loop when invoked.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.LoopBreakComponent}.
+ * 
+ * @since 0.1.7
  */
 public class LoopBreakComponent extends WorkflowComponent {
-
     private LoopController loopController;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setController.
+     * 
+     * @param loopController loopController
+     * @since 0.1.7
      */
     public void setController(LoopController loopController) {
         this.loopController = loopController;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         if (loopController == null) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_BREAK_EXECUTION_ERROR,
-                    "reason", "failed to initialize loop controller",
-                    "comp", session.getComponentId());
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_BREAK_EXECUTION_ERROR, "reason",
+                    "failed to initialize loop controller", "comp", session.getComponentId());
         }
         loopController.breakLoop();
         return new HashMap<>();

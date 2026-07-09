@@ -6,36 +6,53 @@ package com.openjiuwen.core.retrieval.common;
 
 /**
  * Vector store configuration.
+ * 
+ * @since 0.1.7
  */
 public class VectorStoreConfig {
-
     private String storeProvider;
     private String databaseName = "";
     private String collectionName;
     private String distanceMetric = "cosine";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * VectorStoreConfig.
+     * 
+     * @since 0.1.7
      */
     public VectorStoreConfig() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * VectorStoreConfig.
+     * 
+     * @param storeProvider storeProvider
+     * @param collectionName collectionName
+     * @since 0.1.7
      */
     public VectorStoreConfig(String storeProvider, String collectionName) {
         this(storeProvider, "", collectionName, "cosine");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * VectorStoreConfig.
+     * 
+     * @param storeProvider storeProvider
+     * @param collectionName collectionName
+     * @since 0.1.7
      */
     public VectorStoreConfig(StoreType storeProvider, String collectionName) {
         this(storeProvider == null ? null : storeProvider.value(), "", collectionName, "cosine");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * VectorStoreConfig.
+     * 
+     * @param storeProvider storeProvider
+     * @param databaseName databaseName
+     * @param collectionName collectionName
+     * @param distanceMetric distanceMetric
+     * @since 0.1.7
      */
     public VectorStoreConfig(String storeProvider, String databaseName, String collectionName, String distanceMetric) {
         this.storeProvider = storeProvider;
@@ -46,7 +63,9 @@ public class VectorStoreConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validate.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         storeProvider = RetrievalValidation.validateStoreType(storeProvider, "VectorStoreConfig.storeProvider");
@@ -56,21 +75,30 @@ public class VectorStoreConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStoreProvider.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getStoreProvider() {
         return storeProvider;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStoreType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public StoreType getStoreType() {
         return StoreType.fromValue(storeProvider);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStoreProvider.
+     * 
+     * @param storeProvider storeProvider
+     * @since 0.1.7
      */
     public void setStoreProvider(String storeProvider) {
         this.storeProvider = storeProvider;
@@ -78,14 +106,20 @@ public class VectorStoreConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDatabaseName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDatabaseName() {
         return databaseName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDatabaseName.
+     * 
+     * @param databaseName databaseName
+     * @since 0.1.7
      */
     public void setDatabaseName(String databaseName) {
         this.databaseName = databaseName;
@@ -93,14 +127,20 @@ public class VectorStoreConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCollectionName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCollectionName() {
         return collectionName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCollectionName.
+     * 
+     * @param collectionName collectionName
+     * @since 0.1.7
      */
     public void setCollectionName(String collectionName) {
         this.collectionName = collectionName;
@@ -108,14 +148,20 @@ public class VectorStoreConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDistanceMetric.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDistanceMetric() {
         return distanceMetric;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDistanceMetric.
+     * 
+     * @param distanceMetric distanceMetric
+     * @since 0.1.7
      */
     public void setDistanceMetric(String distanceMetric) {
         this.distanceMetric = distanceMetric;

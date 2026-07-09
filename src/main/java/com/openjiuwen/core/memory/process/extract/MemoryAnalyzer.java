@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.memory.process.extract;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -16,6 +17,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
 import com.openjiuwen.core.memory.prompt.PromptApplier;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -23,28 +25,44 @@ import java.util.Map;
 
 /**
  * Analyzes conversation messages to determine key information, extract variables, and generate summary.
+ * 
+ * @since 0.1.7
  */
 public class MemoryAnalyzer {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * MemoryAnalyzer.
+     * 
+     * @since 0.1.7
+     */
     private MemoryAnalyzer() {
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * analyze.
+     * 
+     * @param messages messages
+     * @param historyMessages historyMessages
+     * @param baseChatModel baseChatModel
+     * @param memoryConfig memoryConfig
+     * @param summaryMaxToken summaryMaxToken
+     * @param forbiddenVariables forbiddenVariables
+     * @param retries retries
+     * @return the result
+     * @since 0.1.7
      */
-    public static MemoryAnalyzerResult analyze(
-            List<BaseMessage> messages,
-            List<BaseMessage> historyMessages,
-            Map.Entry<String, Model> baseChatModel,
-            AgentMemoryConfig memoryConfig,
-            int summaryMaxToken,
-            String forbiddenVariables,
-            int retries) {
-
+    @SuppressWarnings("unchecked")
+    public static MemoryAnalyzerResult analyze(List<BaseMessage> messages, List<BaseMessage> historyMessages,
+            Map.Entry<String, Model> baseChatModel, AgentMemoryConfig memoryConfig, int summaryMaxToken,
+            String forbiddenVariables, int retries) {
         if (messages == null || messages.isEmpty()) {
             MEMORY_LOGGER.warn("[{}] No messages to analyze", LogEventType.MEMORY_PROCESS);
             return null;
@@ -83,7 +101,7 @@ public class MemoryAnalyzer {
         try {
             variablesDescJson = MAPPER.writeValueAsString(variablesDescription);
             variablesOutputJson = MAPPER.writeValueAsString(variablesOutputFormat);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             variablesDescJson = "[]";
             variablesOutputJson = "[]";
         }
@@ -109,8 +127,8 @@ public class MemoryAnalyzer {
 
         for (int attempt = 0; attempt < retries; attempt++) {
             try {
-                AssistantMessage response = modelClient.invoke(
-                        modelInput, null, null, null, modelName, null, null, null, null, null);
+                AssistantMessage response =
+                    modelClient.invoke(modelInput, null, null, null, modelName, null, null, null, null, null);
                 Object res = parser.parse(response.getContentAsString());
                 if (res instanceof Map<?, ?> resMap) {
                     MemoryAnalyzerResult result = new MemoryAnalyzerResult();
@@ -123,10 +141,10 @@ public class MemoryAnalyzer {
                         for (Object item : varsList) {
                             if (item instanceof Map<?, ?> itemMap) {
                                 VariableResult vr = new VariableResult();
-                                Object variableKey = itemMap.containsKey("variable_key")
-                                        ? itemMap.get("variable_key") : "";
-                                Object variableValue = itemMap.containsKey("variable_value")
-                                        ? itemMap.get("variable_value") : "";
+                                Object variableKey =
+                                    itemMap.containsKey("variable_key") ? itemMap.get("variable_key") : "";
+                                Object variableValue =
+                                    itemMap.containsKey("variable_value") ? itemMap.get("variable_value") : "";
                                 vr.setVariableKey(String.valueOf(variableKey));
                                 vr.setVariableValue(String.valueOf(variableValue));
                                 variableResults.add(vr);
@@ -151,26 +169,38 @@ public class MemoryAnalyzer {
                 if (attempt < retries - 1) {
                     continue;
                 }
-                MEMORY_LOGGER.error("[{}] Categories model output format error: {}",
-                        LogEventType.MEMORY_PROCESS, e.getMessage());
+                MEMORY_LOGGER.error("[{}] Categories model output format error: {}", LogEventType.MEMORY_PROCESS,
+                        e.getMessage());
             }
         }
         return new MemoryAnalyzerResult();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * analyze.
+     * 
+     * @param messages messages
+     * @param historyMessages historyMessages
+     * @param baseChatModel baseChatModel
+     * @param memoryConfig memoryConfig
+     * @param summaryMaxToken summaryMaxToken
+     * @param forbiddenVariables forbiddenVariables
+     * @return the result
+     * @since 0.1.7
      */
-    public static MemoryAnalyzerResult analyze(
-            List<BaseMessage> messages,
-            List<BaseMessage> historyMessages,
-            Map.Entry<String, Model> baseChatModel,
-            AgentMemoryConfig memoryConfig,
-            int summaryMaxToken,
+    public static MemoryAnalyzerResult analyze(List<BaseMessage> messages, List<BaseMessage> historyMessages,
+            Map.Entry<String, Model> baseChatModel, AgentMemoryConfig memoryConfig, int summaryMaxToken,
             String forbiddenVariables) {
         return analyze(messages, historyMessages, baseChatModel, memoryConfig, summaryMaxToken, forbiddenVariables, 3);
     }
 
+    /**
+     * normalizeForbiddenVariables.
+     * 
+     * @param forbiddenVariables forbiddenVariables
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizeForbiddenVariables(String forbiddenVariables) {
         if (forbiddenVariables == null || forbiddenVariables.isBlank()) {
             return "None";

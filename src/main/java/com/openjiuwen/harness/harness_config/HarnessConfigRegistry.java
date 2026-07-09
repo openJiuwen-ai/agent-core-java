@@ -20,19 +20,38 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Auto-generated for codecheck compliance.
+ * HarnessConfigRegistry.
+ * @since 0.1.7
  */
 public final class HarnessConfigRegistry {
     private static final Map<String, HarnessConfigInfo> MANUAL = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, LoadedConfig> LOADED = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap.newKeySet.
+     * 
+     * @since 0.1.7
+     */
     private static final Set<String> DISABLED = ConcurrentHashMap.newKeySet();
     private static volatile List<HarnessConfigInfo> cache;
 
+    /**
+     * HarnessConfigRegistry.
+     * @since 0.1.7
+     */
     private HarnessConfigRegistry() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * register.
+     * @param info info
+     * @since 0.1.7
      */
     public static void register(HarnessConfigInfo info) {
         MANUAL.put(info.getId(), info);
@@ -40,7 +59,9 @@ public final class HarnessConfigRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * discover.
+     * @return the result
+     * @since 0.1.7
      */
     public static List<HarnessConfigInfo> discover() {
         if (cache == null) {
@@ -50,21 +71,25 @@ public final class HarnessConfigRegistry {
                 }
             }
         }
-        return cache.stream()
-                .filter(HarnessConfigInfo::isEnabled)
-                .filter(info -> !DISABLED.contains(info.getId()))
+        return cache.stream().filter(HarnessConfigInfo::isEnabled).filter(info -> !DISABLED.contains(info.getId()))
                 .toList();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * @param configId configId
+     * @return the result
+     * @since 0.1.7
      */
     public static HarnessConfigInfo get(String configId) {
         return discover().stream().filter(info -> info.getId().equals(configId)).findFirst().orElse(null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * load.
+     * @param configId configId
+     * @return the result
+     * @since 0.1.7
      */
     public static DeepAgent load(String configId) {
         HarnessConfigInfo info = get(configId);
@@ -83,7 +108,10 @@ public final class HarnessConfigRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * reloadIfChanged.
+     * @param configId configId
+     * @return the result
+     * @since 0.1.7
      */
     public static ReloadResult reloadIfChanged(String configId) {
         HarnessConfigInfo info = get(configId);
@@ -97,9 +125,7 @@ public final class HarnessConfigRegistry {
         Path normalized = configPath.toAbsolutePath().normalize();
         FileTime modifiedAt = lastModifiedTime(normalized);
         LoadedConfig loaded = LOADED.get(configId);
-        if (loaded != null
-                && normalized.equals(loaded.configPath())
-                && modifiedAt.equals(loaded.modifiedAt())) {
+        if (loaded != null && normalized.equals(loaded.configPath()) && modifiedAt.equals(loaded.modifiedAt())) {
             return new ReloadResult(false, loaded.agent());
         }
         DeepAgent agent = HarnessConfigBuilder.build(HarnessConfigLoader.load(normalized));
@@ -108,7 +134,10 @@ public final class HarnessConfigRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLoaded.
+     * @param configId configId
+     * @return the result
+     * @since 0.1.7
      */
     public static DeepAgent getLoaded(String configId) {
         LoadedConfig loaded = LOADED.get(configId);
@@ -116,7 +145,9 @@ public final class HarnessConfigRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * disable.
+     * @param configId configId
+     * @since 0.1.7
      */
     public static void disable(String configId) {
         DISABLED.add(configId);
@@ -124,35 +155,46 @@ public final class HarnessConfigRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * enable.
+     * @param configId configId
+     * @since 0.1.7
      */
     public static void enable(String configId) {
         DISABLED.remove(configId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * inspect.
+     * @param packageName packageName
+     * @return the result
+     * @since 0.1.7
      */
     public static List<HarnessConfigInfo> inspect(String packageName) {
-        return scan().stream()
-                .filter(info -> packageName.equals(info.getPackageName()))
-                .toList();
+        return scan().stream().filter(info -> packageName.equals(info.getPackageName())).toList();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invalidateCache.
+     * @since 0.1.7
      */
     public static void invalidateCache() {
         cache = null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clearLoaded.
+     * @param configId configId
+     * @since 0.1.7
      */
     public static void clearLoaded(String configId) {
         LOADED.remove(configId);
     }
 
+    /**
+     * scan.
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<HarnessConfigInfo> scan() {
         Map<String, HarnessConfigInfo> discovered = new LinkedHashMap<>();
         for (HarnessConfigInfo info : MANUAL.values()) {
@@ -170,6 +212,12 @@ public final class HarnessConfigRegistry {
         return List.copyOf(new ArrayList<>(discovered.values()));
     }
 
+    /**
+     * normalize.
+     * @param info info
+     * @return the result
+     * @since 0.1.7
+     */
     private static HarnessConfigInfo normalize(HarnessConfigInfo info) {
         if (info.getName() == null || info.getName().isBlank()) {
             info.setName(info.getId());
@@ -177,6 +225,12 @@ public final class HarnessConfigRegistry {
         return info;
     }
 
+    /**
+     * lastModifiedTime.
+     * @param configPath configPath
+     * @return the result
+     * @since 0.1.7
+     */
     private static FileTime lastModifiedTime(Path configPath) {
         try {
             return Files.getLastModifiedTime(configPath);
@@ -185,17 +239,25 @@ public final class HarnessConfigRegistry {
         }
     }
 
+    /**
+     * LoadedConfig.
+     * @param configPath configPath
+     * @param modifiedAt modifiedAt
+     * @param agent agent
+     * @since 0.1.7
+     */
     private record LoadedConfig(Path configPath, FileTime modifiedAt, DeepAgent agent) {
     }
 
     /**
- * Public record ReloadResult used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record ReloadResult(boolean isReloaded, DeepAgent agent) {
+     * Public record ReloadResult used by the Java parity implementation.
+     * @since 0.1.7
+     */
+    public record ReloadResult(boolean isReloaded, DeepAgent agent) {
         /**
-         * Auto-generated for codecheck compliance.
+         * reloaded.
+         * @return the result
+         * @since 0.1.7
          */
         public boolean reloaded() {
             return isReloaded();

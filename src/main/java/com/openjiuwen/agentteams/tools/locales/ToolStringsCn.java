@@ -13,7 +13,6 @@ import java.util.Map;
  * Mirrors Python tools/locales/cn.py.
  */
 final class ToolStringsCn {
-
     static final Map<String, String> STRINGS;
 
     static {
@@ -67,6 +66,11 @@ final class ToolStringsCn {
         STRINGS = Collections.unmodifiableMap(s);
     }
 
+    /**
+     * ToolStringsCn.
+     * 
+     * @since 0.1.7
+     */
     private ToolStringsCn() {
     }
 }

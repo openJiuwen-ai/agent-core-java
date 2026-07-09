@@ -12,21 +12,32 @@ import java.util.List;
 
 /**
  * Reusable helpers for building vector collection schemas.
+ * 
+ * @since 0.1.7
  */
 public final class BaseVectorFields {
-
+    /**
+     * BaseVectorFields.
+     * 
+     * @since 0.1.7
+     */
     private BaseVectorFields() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * defaultSchema.
+     * 
+     * @param vectorFieldName vectorFieldName
+     * @param dimension dimension
+     * @return the result
+     * @since 0.1.7
      */
     public static CollectionSchema defaultSchema(String vectorFieldName, int dimension) {
         return CollectionSchema.fromFields(List.of(
                 FieldSchema.builder().name("id").dtype(VectorDataType.VARCHAR).isPrimary(true).maxLength(256).build(),
                 FieldSchema.builder().name(vectorFieldName).dtype(VectorDataType.FLOAT_VECTOR).dim(dimension).build(),
                 FieldSchema.builder().name("text").dtype(VectorDataType.VARCHAR).maxLength(65535).build(),
-                FieldSchema.builder().name("metadata").dtype(VectorDataType.JSON).build()
-        ), "Default vector schema", false);
+                FieldSchema.builder().name("metadata").dtype(VectorDataType.JSON).build()), "Default vector schema",
+                false);
     }
 }

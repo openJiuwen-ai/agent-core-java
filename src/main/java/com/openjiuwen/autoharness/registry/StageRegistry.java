@@ -8,12 +8,15 @@ import com.openjiuwen.autoharness.schema.StageSpec;
 
 /**
  * Public class StageRegistry used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class StageRegistry extends BaseRegistry<StageSpec> {
     /**
-     * Auto-generated for codecheck compliance.
+     * register.
+     * 
+     * @param spec spec
+     * @since 0.1.7
      */
     public void register(StageSpec spec) {
         super.register(spec.getName(), spec);

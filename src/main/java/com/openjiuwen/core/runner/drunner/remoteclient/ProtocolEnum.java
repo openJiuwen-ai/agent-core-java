@@ -6,6 +6,8 @@ package com.openjiuwen.core.runner.drunner.remoteclient;
 
 /**
  * Supported remote transport protocols.
+ * 
+ * @since 0.1.7
  */
 public enum ProtocolEnum {
     MQ,

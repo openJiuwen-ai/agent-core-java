@@ -20,9 +20,8 @@ import java.util.Set;
 
 /**
  * Harness-level base rail for interrupt and resume handling.
- *
  * Mirrors Python's openjiuwen.harness.rails.interrupt.interrupt_base.
- *
+ * 
  * @since 0.1.7
  */
 public abstract class BaseInterruptRail extends AgentRail {
@@ -30,8 +29,9 @@ public abstract class BaseInterruptRail extends AgentRail {
 
     /**
      * Create an interrupt rail for a set of tool names.
-     *
+     * 
      * @param toolNames intercepted tool names
+     * @since 0.1.7
      */
     protected BaseInterruptRail(Iterable<String> toolNames) {
         if (toolNames != null) {
@@ -46,8 +46,9 @@ public abstract class BaseInterruptRail extends AgentRail {
 
     /**
      * Approve tool execution without overriding arguments.
-     *
+     * 
      * @return approve decision
+     * @since 0.1.7
      */
     public ApproveResult approve() {
         return new ApproveResult(null);
@@ -55,9 +56,10 @@ public abstract class BaseInterruptRail extends AgentRail {
 
     /**
      * Approve tool execution and override the tool arguments.
-     *
+     * 
      * @param newArgs rewritten tool arguments
      * @return approve decision
+     * @since 0.1.7
      */
     public ApproveResult approve(String newArgs) {
         return new ApproveResult(newArgs);
@@ -65,9 +67,10 @@ public abstract class BaseInterruptRail extends AgentRail {
 
     /**
      * Reject tool execution with a synthetic tool result.
-     *
+     * 
      * @param toolResult synthetic tool result
      * @return reject decision
+     * @since 0.1.7
      */
     public RejectResult reject(Object toolResult) {
         return new RejectResult(toolResult, null);
@@ -75,10 +78,11 @@ public abstract class BaseInterruptRail extends AgentRail {
 
     /**
      * Reject tool execution with a synthetic tool result and message.
-     *
+     * 
      * @param toolResult synthetic tool result
      * @param toolMessage synthetic tool message
      * @return reject decision
+     * @since 0.1.7
      */
     public RejectResult reject(Object toolResult, ToolMessage toolMessage) {
         return new RejectResult(toolResult, toolMessage);
@@ -86,9 +90,10 @@ public abstract class BaseInterruptRail extends AgentRail {
 
     /**
      * Interrupt tool execution and wait for user input.
-     *
+     * 
      * @param request interruption payload
      * @return interrupt decision
+     * @since 0.1.7
      */
     public InterruptResult interrupt(InterruptRequest request) {
         return new InterruptResult(request);
@@ -96,8 +101,9 @@ public abstract class BaseInterruptRail extends AgentRail {
 
     /**
      * Register a tool name intercepted by this rail.
-     *
+     * 
      * @param toolName tool name
+     * @since 0.1.7
      */
     public void addTool(String toolName) {
         if (toolName != null && !toolName.isEmpty()) {
@@ -107,8 +113,9 @@ public abstract class BaseInterruptRail extends AgentRail {
 
     /**
      * Register multiple tool names intercepted by this rail.
-     *
+     * 
      * @param toolNames tool names
+     * @since 0.1.7
      */
     public void addTools(Iterable<String> toolNames) {
         if (toolNames == null) {
@@ -121,9 +128,10 @@ public abstract class BaseInterruptRail extends AgentRail {
 
     /**
      * Backward-compatible alias of {@link #addTool(String)}.
-     *
+     * 
      * @param toolName tool name
      * @param ignoredPolicy ignored compatibility parameter
+     * @since 0.1.7
      */
     public void addPolicy(String toolName, Object ignoredPolicy) {
         addTool(toolName);
@@ -131,22 +139,21 @@ public abstract class BaseInterruptRail extends AgentRail {
 
     /**
      * Return all intercepted tool names.
-     *
+     * 
      * @return intercepted tool names
+     * @since 0.1.7
      */
     public Set<String> getToolNames() {
         return new LinkedHashSet<String>(toolNames);
     }
 
     /**
-     * Intercept tool execution before the tool is invoked.
-     *
-     * @param ctx callback context
+     * beforeToolCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void beforeToolCall(AgentCallbackContext ctx) {
         if (!(ctx.getInputs() instanceof ToolCallInputs)) {
             return;
@@ -166,24 +173,23 @@ public abstract class BaseInterruptRail extends AgentRail {
 
     /**
      * Resolve the decision for the current tool invocation.
-     *
+     * 
      * @param ctx callback context
      * @param toolCall current tool call
      * @param userInput resume input, when present
      * @return rail decision
+     * @since 0.1.7
      */
-    protected abstract InterruptDecision resolveInterrupt(
-            AgentCallbackContext ctx,
-            ToolCall toolCall,
-            Object userInput
-    );
+    protected abstract InterruptDecision resolveInterrupt(AgentCallbackContext ctx, ToolCall toolCall,
+            Object userInput);
 
     /**
      * Extract resume input for the current tool call from callback context.
-     *
+     * 
      * @param ctx callback context
      * @param toolCallId current tool call id
      * @return matched user input or null-equivalent object
+     * @since 0.1.7
      */
     protected Object getUserInput(AgentCallbackContext ctx, String toolCallId) {
         Object rawInput = ctx.getExtra().get(ToolInterruptionState.RESUME_USER_INPUT_KEY);
@@ -209,6 +215,14 @@ public abstract class BaseInterruptRail extends AgentRail {
         return rawInput;
     }
 
+    /**
+     * applyDecision.
+     * 
+     * @param ctx ctx
+     * @param toolCall toolCall
+     * @param decision decision
+     * @since 0.1.7
+     */
     private void applyDecision(AgentCallbackContext ctx, ToolCall toolCall, InterruptDecision decision) {
         ToolCallInputs inputs = null;
         if (ctx.getInputs() instanceof ToolCallInputs) {
@@ -231,10 +245,8 @@ public abstract class BaseInterruptRail extends AgentRail {
             ToolMessage toolMessage = rejectResult.getToolMessage();
             if (toolMessage == null) {
                 String toolCallId = toolCall != null ? toolCall.getId() : "";
-                toolMessage = ToolMessage.builder()
-                        .content(String.valueOf(rejectResult.getToolResult()))
-                        .toolCallId(toolCallId)
-                        .build();
+                toolMessage = ToolMessage.builder().content(String.valueOf(rejectResult.getToolResult()))
+                        .toolCallId(toolCallId).build();
             }
             inputs.setToolMsg(toolMessage);
             return;

@@ -8,9 +8,8 @@ import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 
 /**
  * Result wrapper for router-mode tool execution.
- *
- * @param result tool execution payload
- * @param toolMessage tool response message emitted alongside the payload
+ * 
+ * @since 0.1.7
  */
 public record ToolExecutionResult(Object result, ToolMessage toolMessage) {
 }

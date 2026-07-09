@@ -9,6 +9,8 @@ import java.util.Map;
 
 /**
  * Predict result: model predictions plus their execution sessions.
+ * 
+ * @since 0.1.7
  */
 public record PredictionResult(List<Map<String, Object>> predictions, List<Object> sessions) {
 }

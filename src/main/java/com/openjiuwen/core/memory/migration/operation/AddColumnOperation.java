@@ -6,6 +6,8 @@ package com.openjiuwen.core.memory.migration.operation;
 
 /**
  * Add a new column to a table.
+ * 
+ * @since 0.1.7
  */
 public class AddColumnOperation extends BaseOperation {
     private final String table;
@@ -15,10 +17,18 @@ public class AddColumnOperation extends BaseOperation {
     private final Object defaultValue;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AddColumnOperation.
+     * 
+     * @param metadata metadata
+     * @param table table
+     * @param columnName columnName
+     * @param columnType columnType
+     * @param nullable nullable
+     * @param defaultValue defaultValue
+     * @since 0.1.7
      */
-    public AddColumnOperation(OperationMetadata metadata, String table, String columnName,
-                              String columnType, boolean nullable, Object defaultValue) {
+    public AddColumnOperation(OperationMetadata metadata, String table, String columnName, String columnType,
+            boolean nullable, Object defaultValue) {
         super(metadata);
         this.table = table;
         this.columnName = columnName;
@@ -28,35 +38,50 @@ public class AddColumnOperation extends BaseOperation {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTable() {
         return table;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getColumnName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getColumnName() {
         return columnName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getColumnType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getColumnType() {
         return columnType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isNullable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isNullable() {
         return nullable;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDefaultValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getDefaultValue() {
         return defaultValue;

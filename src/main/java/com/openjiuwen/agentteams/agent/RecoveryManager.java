@@ -9,6 +9,7 @@ import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
 import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.agentteams.tools.TeamMember;
 import com.openjiuwen.core.session.AgentSessionApi;
+
 import lombok.RequiredArgsConstructor;
 
 import java.util.ArrayList;
@@ -20,27 +21,42 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Narrow Java port of the next Python recovery-manager/session-switch helper slice.
- *
- * <p>Scope intentionally stays small: identify live teammates that need rebinding during
+ * <p>
+ * Scope intentionally stays small: identify live teammates that need rebinding during
  * session switches, normalize their statuses through ERROR -> RESTARTING when required,
- * and record restart activity. Full DB-backed orchestration remains out of scope.</p>
+ * and record restart activity. Full DB-backed orchestration remains out of scope.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 @RequiredArgsConstructor
 public class RecoveryManager {
     private final TeamBackend teamBackend;
     private final String leaderMemberName;
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Boolean> spawnedHandles = new ConcurrentHashMap<>();
     private SpawnManager spawnManager;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSpawnManager.
+     * 
+     * @param spawnManager spawnManager
+     * @since 0.1.7
      */
     public void setSpawnManager(SpawnManager spawnManager) {
         this.spawnManager = spawnManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * recoverTeam.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> recoverTeam() {
         List<String> restarted = new ArrayList<>();
@@ -60,14 +76,16 @@ public class RecoveryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * persistLeaderConfig.
+     * 
+     * @param session session
+     * @param spec spec
+     * @param context context
+     * @param modelAllocator modelAllocator
+     * @since 0.1.7
      */
-    public void persistLeaderConfig(
-            AgentSessionApi session,
-            Object spec,
-            TeamRuntimeContext context,
-            ModelAllocator modelAllocator
-    ) {
+    public void persistLeaderConfig(AgentSessionApi session, Object spec, TeamRuntimeContext context,
+            ModelAllocator modelAllocator) {
         if (session == null || spec == null || context == null) {
             return;
         }
@@ -82,7 +100,11 @@ public class RecoveryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * persistAllocatorState.
+     * 
+     * @param session session
+     * @param modelAllocator modelAllocator
+     * @since 0.1.7
      */
     public void persistAllocatorState(AgentSessionApi session, ModelAllocator modelAllocator) {
         if (session == null || modelAllocator == null) {
@@ -92,7 +114,10 @@ public class RecoveryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * collectLiveTeammatesForSessionSwitch.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<RecoverableMember> collectLiveTeammatesForSessionSwitch() {
         List<RecoverableMember> recoverable = new ArrayList<>();
@@ -113,7 +138,10 @@ public class RecoveryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerSpawnedHandle.
+     * 
+     * @param memberName memberName
+     * @since 0.1.7
      */
     public void registerSpawnedHandle(String memberName) {
         if (memberName != null && !memberName.isBlank()) {
@@ -122,7 +150,10 @@ public class RecoveryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeSpawnedHandle.
+     * 
+     * @param memberName memberName
+     * @since 0.1.7
      */
     public void removeSpawnedHandle(String memberName) {
         if (memberName != null && !memberName.isBlank()) {
@@ -131,7 +162,11 @@ public class RecoveryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * restartForSessionSwitch.
+     * 
+     * @param recoverableMembers recoverableMembers
+     * @param isCleanupFirst isCleanupFirst
+     * @since 0.1.7
      */
     public void restartForSessionSwitch(List<RecoverableMember> recoverableMembers, boolean isCleanupFirst) {
         if (recoverableMembers == null) {
@@ -165,10 +200,10 @@ public class RecoveryManager {
     }
 
     /**
- * Public record RecoverableMember used by the Java parity implementation.
- *
- * @since 1.0
- */
+     * Public record RecoverableMember used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
     public record RecoverableMember(String memberName, MemberStatus status) {
     }
 }

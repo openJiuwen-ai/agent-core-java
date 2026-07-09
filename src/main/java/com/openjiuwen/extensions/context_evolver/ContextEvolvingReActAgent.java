@@ -18,9 +18,11 @@ import com.openjiuwen.extensions.context_evolver.core.file_connector.JSONFileCon
 import com.openjiuwen.extensions.context_evolver.core.file_connector.SafeModelDump;
 import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
 import com.openjiuwen.extensions.context_evolver.service.TaskMemoryService;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -32,14 +34,16 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * ReActAgent with integrated memory retrieval capabilities.
- *
- * <p>This agent automatically retrieves relevant memories before invoking
+ * <p>
+ * This agent automatically retrieves relevant memories before invoking
  * the base ReActAgent, augmenting the input with contextual knowledge.
- *
- * <p>Mirrors Python's {@code openjiuwen.extensions.context_evolver.context_evolving_react_agent.ContextEvolvingReActAgent}.
+ * <p>
+ * Mirrors Python's
+ * {@code openjiuwen.extensions.context_evolver.context_evolving_react_agent.ContextEvolvingReActAgent}.
+ * 
+ * @since 0.1.7
  */
 public class ContextEvolvingReActAgent extends ReActAgent {
-
     private static final Logger logger = LoggerFactory.getLogger(ContextEvolvingReActAgent.class);
 
     private final String userId;
@@ -54,19 +58,16 @@ public class ContextEvolvingReActAgent extends ReActAgent {
 
     /**
      * Initialize ContextEvolvingReActAgent.
-     *
-     * @param card                     Agent card (required)
-     * @param userId                   User identifier for memory retrieval
-     * @param memoryService            Optional pre-configured TaskMemoryService
-     * @param injectMemoriesInContext  If True, inject retrieved memories into system context
-     * @param memoryDir                Directory for memory persistence files
+     * 
+     * @param card Agent card (required)
+     * @param userId User identifier for memory retrieval
+     * @param memoryService Optional pre-configured TaskMemoryService
+     * @param injectMemoriesInContext If True, inject retrieved memories into system context
+     * @param memoryDir Directory for memory persistence files
+     * @since 0.1.7
      */
-    public ContextEvolvingReActAgent(
-            AgentCard card,
-            String userId,
-            TaskMemoryService memoryService,
-            boolean injectMemoriesInContext,
-            String memoryDir) {
+    public ContextEvolvingReActAgent(AgentCard card, String userId, TaskMemoryService memoryService,
+            boolean injectMemoriesInContext, String memoryDir) {
         super(card);
 
         this.userId = userId;
@@ -78,49 +79,71 @@ public class ContextEvolvingReActAgent extends ReActAgent {
         // Ensure directories exist
         try {
             Files.createDirectories(Paths.get(this.memoryDir));
-        } catch (Exception e) {
+        } catch (IOException e) {
             logger.warn("Failed to create memory directory: {}", e.getMessage());
         }
 
         // Attempt to load existing memories
         loadExistingMemories();
 
-        logger.info("ContextEvolvingReActAgent initialized for user={}, inject_in_context={}",
-                userId, injectMemoriesInContext);
+        logger.info("ContextEvolvingReActAgent initialized for user={}, inject_in_context={}", userId,
+                injectMemoriesInContext);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ContextEvolvingReActAgent.
+     * 
+     * @param card card
+     * @param userId userId
+     * @since 0.1.7
      */
     public ContextEvolvingReActAgent(AgentCard card, String userId) {
         this(card, userId, null, true, "memory_files");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ContextEvolvingReActAgent.
+     * 
+     * @param card card
+     * @param userId userId
+     * @param memoryService memoryService
+     * @since 0.1.7
      */
     public ContextEvolvingReActAgent(AgentCard card, String userId, TaskMemoryService memoryService) {
         this(card, userId, memoryService, true, "memory_files");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ContextEvolvingReActAgent.
+     * 
+     * @param card card
+     * @param userId userId
+     * @param memoryService memoryService
+     * @param injectMemoriesInContext injectMemoriesInContext
+     * @since 0.1.7
      */
-    public ContextEvolvingReActAgent(
-            AgentCard card,
-            String userId,
-            TaskMemoryService memoryService,
+    public ContextEvolvingReActAgent(AgentCard card, String userId, TaskMemoryService memoryService,
             boolean injectMemoriesInContext) {
         this(card, userId, memoryService, injectMemoriesInContext, "memory_files");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ContextEvolvingReActAgent.
+     * 
+     * @param card card
+     * @param userId userId
+     * @param injectMemoriesInContext injectMemoriesInContext
+     * @since 0.1.7
      */
     public ContextEvolvingReActAgent(AgentCard card, String userId, boolean injectMemoriesInContext) {
         this(card, userId, null, injectMemoriesInContext, "memory_files");
     }
 
+    /**
+     * loadExistingMemories.
+     * 
+     * @since 0.1.7
+     */
     private void loadExistingMemories() {
         try {
             String summaryAlgo = getConfig("SUMMARY_ALGO", "RB");
@@ -155,10 +178,15 @@ public class ContextEvolvingReActAgent extends ReActAgent {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object invoke(Object inputs, Session session) {
         try {
             Map<String, Object> inputMap;
@@ -187,9 +215,8 @@ public class ContextEvolvingReActAgent extends ReActAgent {
                 return super.invoke(inputs, session);
             }
 
-            String retrievalQuery = inputMap.containsKey("retrieval_query")
-                    ? String.valueOf(inputMap.get("retrieval_query"))
-                    : query;
+            String retrievalQuery =
+                inputMap.containsKey("retrieval_query") ? String.valueOf(inputMap.get("retrieval_query")) : query;
 
             logger.debug("Retrieving memories for query: {}", retrievalQuery);
 
@@ -221,8 +248,8 @@ public class ContextEvolvingReActAgent extends ReActAgent {
             Map<String, Object> augmentedInput = new HashMap<>(inputMap);
             if (memoriesUsed > 0 && memoryString != null && !memoryString.isEmpty()) {
                 if (injectMemoriesInContext) {
-                    String memoryContext = "Some Related Experience to help you complete the task:\n"
-                            + memoryString + "\n";
+                    String memoryContext =
+                        "Some Related Experience to help you complete the task:\n" + memoryString + "\n";
                     augmentedInput.put("query", "Task:\n" + query + "\n\n" + memoryContext);
                 } else {
                     augmentedInput.put("memory_context", memoryString);
@@ -252,6 +279,10 @@ public class ContextEvolvingReActAgent extends ReActAgent {
 
     /**
      * Format a list of messages into a clean trajectory string.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
      */
     public String formatTrajectory(List<Object> messages) {
         List<String> transcript = new ArrayList<>();
@@ -259,7 +290,7 @@ public class ContextEvolvingReActAgent extends ReActAgent {
         for (Object msg : messages) {
             if (msg instanceof UserMessage) {
                 String content = ((UserMessage) msg).getContentAsString();
-                
+
                 // Remove injected prompts
                 if (content.contains("Let's carefully re-examine the previous trajectory")) {
                     content = content.split("Let's carefully re-examine the previous trajectory")[0];
@@ -284,6 +315,8 @@ public class ContextEvolvingReActAgent extends ReActAgent {
                 }
             } else if (msg instanceof ToolMessage) {
                 transcript.add("OBSERVATION: " + ((ToolMessage) msg).getContentAsString());
+            } else {
+                // no-op
             }
         }
 
@@ -292,6 +325,9 @@ public class ContextEvolvingReActAgent extends ReActAgent {
 
     /**
      * Add a tool to this agent and register it with the resource manager.
+     * 
+     * @param tool tool
+     * @since 0.1.7
      */
     public void addTool(Tool tool) {
         if (tool == null) {
@@ -303,6 +339,9 @@ public class ContextEvolvingReActAgent extends ReActAgent {
 
     /**
      * Add multiple tools to this agent.
+     * 
+     * @param tools tools
+     * @since 0.1.7
      */
     public void addTools(List<? extends Tool> tools) {
         if (tools == null) {
@@ -313,23 +352,32 @@ public class ContextEvolvingReActAgent extends ReActAgent {
         }
     }
 
+    /**
+     * tryRegisterTool.
+     * 
+     * @param tool tool
+     * @since 0.1.7
+     */
     private void tryRegisterTool(Tool tool) {
         try {
             Class<?> runnerClass = Class.forName("com.openjiuwen.core.runner.Runner");
             Object resourceMgr = runnerClass.getMethod("resourceMgr").invoke(null);
-            resourceMgr.getClass()
-                .getMethod("addTool", Tool.class, Object.class)
-                .invoke(resourceMgr, tool, getCard().getId());
+            resourceMgr.getClass().getMethod("addTool", Tool.class, Object.class).invoke(resourceMgr, tool,
+                    getCard().getId());
         } catch (ClassNotFoundException | LinkageError e) {
             logger.debug("Runner runtime is unavailable; skipping resource-manager registration for {}",
-                tool.getCard().getId());
-        } catch (Exception e) {
+                    tool.getCard().getId());
+        } catch (ReflectiveOperationException e) {
             throw new IllegalStateException("Failed to register tool " + tool.getCard().getId(), e);
         }
     }
 
     /**
      * Summarize trajectory based on feedback and save to JSON.
+     * 
+     * @param params params
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<Map<String, Object>> summarizeTrajectories(SummarizeTrajectoriesInput params) {
         return CompletableFuture.supplyAsync(() -> {
@@ -379,20 +427,14 @@ public class ContextEvolvingReActAgent extends ReActAgent {
                     }
                 }
 
-                Map<String, Object> summaryResult = memoryService.summarize(
-                        userId,
-                        params.getMattsMode(),
-                        params.getQuery(),
-                        trajectories,
-                        labels,
-                        scores
-                ).join();
+                Map<String, Object> summaryResult = memoryService
+                        .summarize(userId, params.getMattsMode(), params.getQuery(), trajectories, labels, scores)
+                        .join();
 
                 // Save memories to file
                 saveMemoriesToFile(summaryResult);
 
                 return summaryResult;
-
             } catch (Exception e) {
                 logger.error("Failed to learn from feedback: {}", e.getMessage());
                 return null;
@@ -400,6 +442,12 @@ public class ContextEvolvingReActAgent extends ReActAgent {
         });
     }
 
+    /**
+     * saveMemoriesToFile.
+     * 
+     * @param summaryResult summaryResult
+     * @since 0.1.7
+     */
     private void saveMemoriesToFile(Map<String, Object> summaryResult) {
         try {
             String summaryAlgo = getConfig("SUMMARY_ALGO", "RB");
@@ -426,43 +474,70 @@ public class ContextEvolvingReActAgent extends ReActAgent {
         }
     }
 
+    /**
+     * convertToBoolean.
+     * 
+     * @param feedback feedback
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean convertToBoolean(Object feedback) {
         if (feedback instanceof Boolean) {
             return (Boolean) feedback;
         }
         String fLower = feedback.toString().toLowerCase(java.util.Locale.ROOT);
-        return fLower.contains("success") || fLower.contains("helpful")
-                || fLower.contains("positive") || fLower.contains("good");
+        return fLower.contains("success") || fLower.contains("helpful") || fLower.contains("positive")
+                || fLower.contains("good");
     }
 
+    /**
+     * getConfig.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private String getConfig(String key, String defaultValue) {
         return Config.getString(key, defaultValue);
     }
 
     // Getters
     /**
-     * Auto-generated for codecheck compliance.
+     * getUserId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getUserId() {
         return userId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMemoryService.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TaskMemoryService getMemoryService() {
         return memoryService;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isInjectMemoriesInContext.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isInjectMemoriesInContext() {
         return injectMemoriesInContext;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMemoryDir.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getMemoryDir() {
         return memoryDir;
@@ -470,6 +545,10 @@ public class ContextEvolvingReActAgent extends ReActAgent {
 
     /**
      * Mirrors Python's {@code create_memory_agent_config()} helper.
+     * 
+     * @param params params
+     * @return the result
+     * @since 0.1.7
      */
     public static ReActAgentConfig createMemoryAgentConfig(MemoryAgentConfigInput params) {
         String defaultSystemPrompt = "You are a helpful assistant with access to a memory system. "
@@ -477,20 +556,12 @@ public class ContextEvolvingReActAgent extends ReActAgent {
                 + "your responses. Always provide accurate, helpful answers based on both "
                 + "your knowledge and any retrieved memories.";
 
-        List<Map<String, String>> promptTemplate = List.of(Map.of(
-                "role", "system",
-                "content", params.getSystemPrompt() != null ? params.getSystemPrompt() : defaultSystemPrompt
-        ));
+        List<Map<String, String>> promptTemplate = List.of(Map.of("role", "system", "content",
+                params.getSystemPrompt() != null ? params.getSystemPrompt() : defaultSystemPrompt));
 
         return ReActAgentConfig.builder().build()
-                .configureModelClient(
-                        params.getModelProvider(),
-                        params.getApiKey(),
-                        params.getApiBase(),
-                        params.getModelName(),
-                        false
-                )
-                .configurePromptTemplate(promptTemplate)
-                .configureMaxIterations(params.getMaxIterations());
+                .configureModelClient(params.getModelProvider(), params.getApiKey(), params.getApiBase(),
+                        params.getModelName(), false)
+                .configurePromptTemplate(promptTemplate).configureMaxIterations(params.getMaxIterations());
     }
 }

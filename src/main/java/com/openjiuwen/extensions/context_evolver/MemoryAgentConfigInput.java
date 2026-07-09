@@ -6,11 +6,12 @@ package com.openjiuwen.extensions.context_evolver;
 
 /**
  * Input parameters for create_memory_agent_config function.
- *
- * <p>Mirrors Python's {@code openjiuwen.extensions.context_evolver.context_evolving_react_agent.MemoryAgentConfigInput}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.extensions.context_evolver.context_evolving_react_agent.MemoryAgentConfigInput}.
+ * 
+ * @since 0.1.7
  */
 public class MemoryAgentConfigInput {
-
     private String modelProvider;
     private String apiKey;
     private String apiBase;
@@ -19,13 +20,21 @@ public class MemoryAgentConfigInput {
     private int maxIterations = 5;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MemoryAgentConfigInput.
+     * 
+     * @since 0.1.7
      */
     public MemoryAgentConfigInput() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MemoryAgentConfigInput.
+     * 
+     * @param modelProvider modelProvider
+     * @param apiKey apiKey
+     * @param apiBase apiBase
+     * @param modelName modelName
+     * @since 0.1.7
      */
     public MemoryAgentConfigInput(String modelProvider, String apiKey, String apiBase, String modelName) {
         this.modelProvider = modelProvider;
@@ -35,112 +44,154 @@ public class MemoryAgentConfigInput {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MemoryAgentConfigInput.
+     * 
+     * @param modelProvider modelProvider
+     * @param apiKey apiKey
+     * @param apiBase apiBase
+     * @param modelName modelName
+     * @param systemPrompt systemPrompt
+     * @since 0.1.7
      */
-    public MemoryAgentConfigInput(
-            String modelProvider,
-            String apiKey,
-            String apiBase,
-            String modelName,
+    public MemoryAgentConfigInput(String modelProvider, String apiKey, String apiBase, String modelName,
             String systemPrompt) {
         this(modelProvider, apiKey, apiBase, modelName);
         this.systemPrompt = systemPrompt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MemoryAgentConfigInput.
+     * 
+     * @param modelProvider modelProvider
+     * @param apiKey apiKey
+     * @param apiBase apiBase
+     * @param modelName modelName
+     * @param systemPrompt systemPrompt
+     * @param maxIterations maxIterations
+     * @since 0.1.7
      */
-    public MemoryAgentConfigInput(
-            String modelProvider,
-            String apiKey,
-            String apiBase,
-            String modelName,
-            String systemPrompt,
-            int maxIterations) {
+    public MemoryAgentConfigInput(String modelProvider, String apiKey, String apiBase, String modelName,
+            String systemPrompt, int maxIterations) {
         this(modelProvider, apiKey, apiBase, modelName, systemPrompt);
         this.maxIterations = maxIterations;
     }
 
     // Getters and Setters
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelProvider.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getModelProvider() {
         return modelProvider;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setModelProvider.
+     * 
+     * @param modelProvider modelProvider
+     * @since 0.1.7
      */
     public void setModelProvider(String modelProvider) {
         this.modelProvider = modelProvider;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getApiKey.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getApiKey() {
         return apiKey;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setApiKey.
+     * 
+     * @param apiKey apiKey
+     * @since 0.1.7
      */
     public void setApiKey(String apiKey) {
         this.apiKey = apiKey;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getApiBase.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getApiBase() {
         return apiBase;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setApiBase.
+     * 
+     * @param apiBase apiBase
+     * @since 0.1.7
      */
     public void setApiBase(String apiBase) {
         this.apiBase = apiBase;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getModelName() {
         return modelName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setModelName.
+     * 
+     * @param modelName modelName
+     * @since 0.1.7
      */
     public void setModelName(String modelName) {
         this.modelName = modelName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSystemPrompt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSystemPrompt() {
         return systemPrompt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSystemPrompt.
+     * 
+     * @param systemPrompt systemPrompt
+     * @since 0.1.7
      */
     public void setSystemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMaxIterations.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getMaxIterations() {
         return maxIterations;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMaxIterations.
+     * 
+     * @param maxIterations maxIterations
+     * @since 0.1.7
      */
     public void setMaxIterations(int maxIterations) {
         this.maxIterations = maxIterations;

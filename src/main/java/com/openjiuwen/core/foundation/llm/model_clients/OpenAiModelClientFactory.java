@@ -10,21 +10,30 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
 /**
  * Default factory for the OpenAI provider.
+ * 
+ * @since 0.1.7
  */
 public class OpenAiModelClientFactory implements Model.ModelClientFactory {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * providerName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String providerName() {
         return "OpenAI";
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * create.
+     * 
+     * @param modelConfig modelConfig
+     * @param clientConfig clientConfig
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
         return new OpenAiCompatibleModelClient(modelConfig, clientConfig);
     }

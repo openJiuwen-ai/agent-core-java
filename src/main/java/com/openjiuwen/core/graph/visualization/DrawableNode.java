@@ -8,24 +8,34 @@ import java.util.Map;
 
 /**
  * Represents a node in a drawable graph for visualization.
- *
- * <p>Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_node.DrawableNode}.</p>
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_node.DrawableNode}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class DrawableNode {
-
     private final String id;
     private String name;
     private Map<String, Object> metadata;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DrawableNode.
+     * 
+     * @param id id
+     * @since 0.1.7
      */
     public DrawableNode(String id) {
         this.id = id;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DrawableNode.
+     * 
+     * @param id id
+     * @param name name
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public DrawableNode(String id, String name, Map<String, Object> metadata) {
         this.id = id;
@@ -34,35 +44,50 @@ public class DrawableNode {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getId() {
         return id;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setName.
+     * 
+     * @param name name
+     * @since 0.1.7
      */
     public void setName(String name) {
         this.name = name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMetadata() {
         return metadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMetadata.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata;

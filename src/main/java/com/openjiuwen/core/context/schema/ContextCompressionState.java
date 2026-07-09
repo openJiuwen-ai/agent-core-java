@@ -6,6 +6,7 @@ package com.openjiuwen.core.context.schema;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.context.ContextStats;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,6 +16,8 @@ import lombok.NoArgsConstructor;
  * Compression state event payload.
  * <p>
  * Mirrors Python's {@code ContextCompressionState}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -22,7 +25,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ContextCompressionState {
     /**
-     * Auto-generated for codecheck compliance.
+     * CONTEXT_COMPRESSION_STATE_TYPE.
+     * 
+     * @since 0.1.7
      */
     public static final String CONTEXT_COMPRESSION_STATE_TYPE = "context_compression_state";
 
@@ -47,6 +52,11 @@ public class ContextCompressionState {
     private ContextCompressionMetric after;
 
     @Builder.Default
+    /**
+     * ContextStats.
+     * 
+     * @since 0.1.7
+     */
     private ContextStats statistic = new ContextStats();
 
     private ContextCompressionSaved saved;

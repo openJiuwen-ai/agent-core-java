@@ -15,14 +15,14 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Public class EvolutionRecord used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class EvolutionRecord used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class EvolutionRecord {
     private String id;
@@ -36,32 +36,46 @@ public class EvolutionRecord {
     @Builder.Default
     private double score = 0.6d;
     @Builder.Default
+    /**
+     * UsageStats.builder.
+     * 
+     * @since 0.1.7
+     */
     private UsageStats usageStats = UsageStats.builder().build();
     private String skillVersion;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * make.
+     * 
+     * @param source source
+     * @param context context
+     * @param change change
+     * @return the result
+     * @since 0.1.7
      */
     public static EvolutionRecord make(String source, String context, EvolutionPatch change) {
-        return EvolutionRecord.builder()
-                .id("ev_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8))
-                .source(source != null ? source : "unknown")
-                .timestamp(OffsetDateTime.now(ZoneOffset.UTC).toString())
+        return EvolutionRecord.builder().id("ev_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8))
+                .source(source != null ? source : "unknown").timestamp(OffsetDateTime.now(ZoneOffset.UTC).toString())
                 .context(context != null ? context : "")
                 .change(change != null ? change : EvolutionPatch.builder().build())
-                .usageStats(UsageStats.builder().build())
-                .build();
+                .usageStats(UsageStats.builder().build()).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isPending.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isPending() {
         return !isApplied;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> payload = new LinkedHashMap<>();

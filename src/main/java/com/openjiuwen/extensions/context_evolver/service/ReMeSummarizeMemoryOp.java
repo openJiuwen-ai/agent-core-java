@@ -21,21 +21,20 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * ReMeSummarizeMemoryOp
+ *
+ * @since 0.1.7
+ */
 class ReMeSummarizeMemoryOp extends BaseOp {
-
     private final boolean extractBestTraj;
     private final boolean extractWorstTraj;
     private final boolean extractComparativeTraj;
     private final boolean memoryValidation;
     private final boolean memoryDeduplication;
 
-    ReMeSummarizeMemoryOp(
-            boolean extractBestTraj,
-            boolean extractWorstTraj,
-            boolean extractComparativeTraj,
-            boolean memoryValidation,
-            boolean memoryDeduplication
-    ) {
+    ReMeSummarizeMemoryOp(boolean extractBestTraj, boolean extractWorstTraj, boolean extractComparativeTraj,
+            boolean memoryValidation, boolean memoryDeduplication) {
         this.extractBestTraj = extractBestTraj;
         this.extractWorstTraj = extractWorstTraj;
         this.extractComparativeTraj = extractComparativeTraj;
@@ -43,10 +42,14 @@ class ReMeSummarizeMemoryOp extends BaseOp {
         this.memoryDeduplication = memoryDeduplication;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * asyncExecute.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
         List<?> rawTrajectories = context.getList("trajectories");
         if (rawTrajectories == null || rawTrajectories.isEmpty()) {
@@ -141,6 +144,16 @@ class ReMeSummarizeMemoryOp extends BaseOp {
         return CompletableFuture.completedFuture(null);
     }
 
+    /**
+     * buildSuccessMemory.
+     * 
+     * @param userId userId
+     * @param query query
+     * @param trajectory trajectory
+     * @param score score
+     * @return the result
+     * @since 0.1.7
+     */
     private ReMeMemory buildSuccessMemory(String userId, String query, String trajectory, double score) {
         List<String> actionLines = SummaryFlowSupport.actionLines(trajectory);
         List<String> tools = SummaryFlowSupport.toolNames(trajectory);
@@ -155,17 +168,15 @@ class ReMeSummarizeMemoryOp extends BaseOp {
 
         StringBuilder content = new StringBuilder();
         if (!actionLines.isEmpty()) {
-            content.append("Start with ")
-                .append(SummaryFlowSupport.limit(actionLines.get(0), 160))
-                .append(" to gather the authoritative evidence.");
+            content.append("Start with ").append(SummaryFlowSupport.limit(actionLines.get(0), 160))
+                    .append(" to gather the authoritative evidence.");
         }
         if (!observationKeys.isEmpty()) {
             if (content.length() > 0) {
                 content.append(' ');
             }
-            content.append("Use returned fields such as ")
-                .append(String.join(", ", observationKeys))
-                .append(" to ground the answer.");
+            content.append("Use returned fields such as ").append(String.join(", ", observationKeys))
+                    .append(" to ground the answer.");
         }
         String assistantSummary = SummaryFlowSupport.assistantSummary(trajectory);
         if (!assistantSummary.isBlank()) {
@@ -175,24 +186,29 @@ class ReMeSummarizeMemoryOp extends BaseOp {
             content.append("Keep the successful final move concise: ").append(assistantSummary).append('.');
         }
         if (content.length() == 0) {
-            content.append("Preserve the most reusable successful step from the trajectory and reuse it for similar tasks.");
+            content.append(
+                    "Preserve the most reusable successful step from the trajectory and reuse it for similar tasks.");
         }
 
         List<String> tags = new ArrayList<>();
         tags.add("success_pattern");
         tags.addAll(tagify(tools));
         tags.addAll(tagify(observationKeys));
-        return createMemory(
-            userId,
-            whenToUse,
-            content.toString(),
-            clampConfidence(0.55d + Math.max(score, 0.0d) * 0.25d),
-            primaryTool.isBlank() ? "reasoning" : "action",
-            tools,
-            tags
-        );
+        return createMemory(userId, whenToUse, content.toString(),
+                clampConfidence(0.55d + Math.max(score, 0.0d) * 0.25d), primaryTool.isBlank() ? "reasoning" : "action",
+                tools, tags);
     }
 
+    /**
+     * buildFailureMemory.
+     * 
+     * @param userId userId
+     * @param query query
+     * @param trajectory trajectory
+     * @param score score
+     * @return the result
+     * @since 0.1.7
+     */
     private ReMeMemory buildFailureMemory(String userId, String query, String trajectory, double score) {
         List<String> actionLines = SummaryFlowSupport.actionLines(trajectory);
         List<String> tools = SummaryFlowSupport.toolNames(trajectory);
@@ -206,9 +222,8 @@ class ReMeSummarizeMemoryOp extends BaseOp {
 
         StringBuilder content = new StringBuilder();
         if (!actionLines.isEmpty()) {
-            content.append("Do not keep following ")
-                .append(SummaryFlowSupport.limit(actionLines.get(0), 160))
-                .append(" when it fails to surface usable evidence.");
+            content.append("Do not keep following ").append(SummaryFlowSupport.limit(actionLines.get(0), 160))
+                    .append(" when it fails to surface usable evidence.");
         } else {
             content.append("Do not continue a low-scoring trajectory without a verification step.");
         }
@@ -222,23 +237,23 @@ class ReMeSummarizeMemoryOp extends BaseOp {
         tags.add("error_prevention");
         tags.add("failure_analysis");
         tags.addAll(tagify(tools));
-        return createMemory(
-            userId,
-            whenToUse,
-            content.toString(),
-            clampConfidence(0.65d - Math.min(Math.max(score, 0.0d), 0.5d) * 0.1d),
-            primaryTool.isBlank() ? "decision" : "action",
-            tools,
-            tags
-        );
+        return createMemory(userId, whenToUse, content.toString(),
+                clampConfidence(0.65d - Math.min(Math.max(score, 0.0d), 0.5d) * 0.1d),
+                primaryTool.isBlank() ? "decision" : "action", tools, tags);
     }
 
-    private ReMeMemory buildComparativeMemory(
-            String userId,
-            String query,
-            List<String> trajectories,
-            List<Double> scores
-    ) {
+    /**
+     * buildComparativeMemory.
+     * 
+     * @param userId userId
+     * @param query query
+     * @param trajectories trajectories
+     * @param scores scores
+     * @return the result
+     * @since 0.1.7
+     */
+    private ReMeMemory buildComparativeMemory(String userId, String query, List<String> trajectories,
+            List<Double> scores) {
         if (trajectories.size() < 2) {
             return null;
         }
@@ -260,46 +275,41 @@ class ReMeSummarizeMemoryOp extends BaseOp {
 
         String bestTrajectory = trajectories.get(bestIndex);
         String worstTrajectory = trajectories.get(worstIndex);
-        String bestTool = SummaryFlowSupport.firstToolName(
-            SummaryFlowSupport.toolNames(bestTrajectory),
-            SummaryFlowSupport.actionLines(bestTrajectory)
-        );
-        String worstTool = SummaryFlowSupport.firstToolName(
-            SummaryFlowSupport.toolNames(worstTrajectory),
-            SummaryFlowSupport.actionLines(worstTrajectory)
-        );
+        String bestTool = SummaryFlowSupport.firstToolName(SummaryFlowSupport.toolNames(bestTrajectory),
+                SummaryFlowSupport.actionLines(bestTrajectory));
+        String worstTool = SummaryFlowSupport.firstToolName(SummaryFlowSupport.toolNames(worstTrajectory),
+                SummaryFlowSupport.actionLines(worstTrajectory));
         List<String> bestKeys = SummaryFlowSupport.observationKeys(bestTrajectory);
 
         String whenToUse = "When comparing multiple trajectories for: " + fallbackQueryHint(query, bestTrajectory);
-        StringBuilder content = new StringBuilder("Prefer the higher-scoring trajectory because it exposed directly usable evidence earlier.");
+        StringBuilder content = new StringBuilder(
+                "Prefer the higher-scoring trajectory because it exposed directly usable evidence earlier.");
         if (!bestTool.isBlank() || !worstTool.isBlank()) {
             content.append(" The better run relied on ")
-                .append(bestTool.isBlank() ? "a stronger action path" : bestTool)
-                .append(" while the weaker run stalled around ")
-                .append(worstTool.isBlank() ? "a weaker action path" : worstTool)
-                .append('.');
+                    .append(bestTool.isBlank() ? "a stronger action path" : bestTool)
+                    .append(" while the weaker run stalled around ")
+                    .append(worstTool.isBlank() ? "a weaker action path" : worstTool).append('.');
         }
         if (!bestKeys.isEmpty()) {
             content.append(" The stronger run grounded the answer in fields such as ")
-                .append(String.join(", ", bestKeys))
-                .append('.');
+                    .append(String.join(", ", bestKeys)).append('.');
         }
 
         List<String> tags = new ArrayList<>();
         tags.add("comparative_analysis");
         tags.add("success_factors");
         tags.addAll(tagify(List.of(bestTool, worstTool)));
-        return createMemory(
-            userId,
-            whenToUse,
-            content.toString(),
-            0.8d,
-            "decision",
-            List.of(bestTool, worstTool),
-            tags
-        );
+        return createMemory(userId, whenToUse, content.toString(), 0.8d, "decision", List.of(bestTool, worstTool),
+                tags);
     }
 
+    /**
+     * validateMemories.
+     * 
+     * @param memories memories
+     * @return the result
+     * @since 0.1.7
+     */
     private List<ReMeMemory> validateMemories(List<ReMeMemory> memories) {
         List<ReMeMemory> validated = new ArrayList<>();
         for (ReMeMemory memory : memories) {
@@ -320,6 +330,14 @@ class ReMeSummarizeMemoryOp extends BaseOp {
         return validated;
     }
 
+    /**
+     * deduplicateMemories.
+     * 
+     * @param userId userId
+     * @param memories memories
+     * @return the result
+     * @since 0.1.7
+     */
     private List<ReMeMemory> deduplicateMemories(String userId, List<ReMeMemory> memories) {
         Set<String> existingKeys = new LinkedHashSet<>();
         List<List<Double>> existingEmbeddings = new ArrayList<>();
@@ -345,7 +363,8 @@ class ReMeSummarizeMemoryOp extends BaseOp {
             if (!seen.add(key) || existingKeys.contains(key)) {
                 continue;
             }
-            List<Double> embedding = TaskMemoryService.defaultEmbeddingFor(memory.getWhenToUse() + " " + memory.getContent());
+            List<Double> embedding =
+                TaskMemoryService.defaultEmbeddingFor(memory.getWhenToUse() + " " + memory.getContent());
             if (isSimilar(embedding, existingEmbeddings) || isSimilar(embedding, batchEmbeddings)) {
                 continue;
             }
@@ -355,6 +374,14 @@ class ReMeSummarizeMemoryOp extends BaseOp {
         return unique;
     }
 
+    /**
+     * isSimilar.
+     * 
+     * @param embedding embedding
+     * @param candidates candidates
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isSimilar(List<Double> embedding, List<List<Double>> candidates) {
         for (List<Double> candidate : candidates) {
             if (candidate == null || candidate.isEmpty()) {
@@ -367,15 +394,21 @@ class ReMeSummarizeMemoryOp extends BaseOp {
         return false;
     }
 
-    private ReMeMemory createMemory(
-            String userId,
-            String whenToUse,
-            String content,
-            double confidence,
-            String stepType,
-            List<String> toolsUsed,
-            List<String> tags
-    ) {
+    /**
+     * createMemory.
+     * 
+     * @param userId userId
+     * @param whenToUse whenToUse
+     * @param content content
+     * @param confidence confidence
+     * @param stepType stepType
+     * @param toolsUsed toolsUsed
+     * @param tags tags
+     * @return the result
+     * @since 0.1.7
+     */
+    private ReMeMemory createMemory(String userId, String whenToUse, String content, double confidence, String stepType,
+            List<String> toolsUsed, List<String> tags) {
         Instant now = Instant.now();
         ReMeMemoryMetadata metadata = new ReMeMemoryMetadata();
         metadata.setTags(uniqueStrings(tagify(tags), 6));
@@ -396,6 +429,13 @@ class ReMeSummarizeMemoryOp extends BaseOp {
         return memory;
     }
 
+    /**
+     * tagify.
+     * 
+     * @param values values
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> tagify(List<String> values) {
         List<String> normalized = new ArrayList<>();
         if (values == null) {
@@ -413,6 +453,14 @@ class ReMeSummarizeMemoryOp extends BaseOp {
         return normalized;
     }
 
+    /**
+     * uniqueStrings.
+     * 
+     * @param values values
+     * @param limit limit
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> uniqueStrings(List<String> values, int limit) {
         List<String> unique = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
@@ -428,26 +476,44 @@ class ReMeSummarizeMemoryOp extends BaseOp {
         return unique;
     }
 
+    /**
+     * clampConfidence.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private double clampConfidence(double value) {
         return Math.max(0.35d, Math.min(0.95d, value));
     }
 
+    /**
+     * inferDefaultScore.
+     * 
+     * @param trajectory trajectory
+     * @return the result
+     * @since 0.1.7
+     */
     private double inferDefaultScore(String trajectory) {
         Double feedbackScore = SummaryFlowSupport.feedbackScore(trajectory);
         if (feedbackScore != null) {
             return feedbackScore;
         }
         String normalized = " " + SummaryFlowSupport.normalizeForMatch(trajectory) + " ";
-        if (normalized.contains(" failed ")
-            || normalized.contains(" error ")
-            || normalized.contains(" unable ")
-            || normalized.contains(" cannot ")
-            || normalized.contains(" could not ")) {
+        if (normalized.contains(" failed ") || normalized.contains(" error ") || normalized.contains(" unable ")
+                || normalized.contains(" cannot ") || normalized.contains(" could not ")) {
             return 0.0d;
         }
         return 1.0d;
     }
 
+    /**
+     * threshold.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     private double threshold(RuntimeContext context) {
         Object rawThreshold = context.get("threshold");
         if (rawThreshold instanceof Number number) {
@@ -456,6 +522,14 @@ class ReMeSummarizeMemoryOp extends BaseOp {
         return 1.0d;
     }
 
+    /**
+     * fallbackQueryHint.
+     * 
+     * @param query query
+     * @param trajectory trajectory
+     * @return the result
+     * @since 0.1.7
+     */
     private String fallbackQueryHint(String query, String trajectory) {
         String hint = SummaryFlowSupport.queryHint(query);
         if (!hint.isBlank()) {
@@ -465,9 +539,15 @@ class ReMeSummarizeMemoryOp extends BaseOp {
         return summary.isBlank() ? "similar tasks" : summary;
     }
 
+    /**
+     * memoryKey.
+     * 
+     * @param memory memory
+     * @return the result
+     * @since 0.1.7
+     */
     private String memoryKey(ReMeMemory memory) {
-        return SummaryFlowSupport.normalizeForMatch(memory.getWhenToUse())
-            + "|"
-            + SummaryFlowSupport.normalizeForMatch(memory.getContent());
+        return SummaryFlowSupport.normalizeForMatch(memory.getWhenToUse()) + "|"
+                + SummaryFlowSupport.normalizeForMatch(memory.getContent());
     }
 }

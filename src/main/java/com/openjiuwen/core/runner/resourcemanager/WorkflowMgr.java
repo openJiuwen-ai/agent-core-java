@@ -12,18 +12,26 @@ import java.util.function.Supplier;
 /**
  * Manager for Workflow resource providers.
  * Mirrors Python's {@code WorkflowMgr} in {@code resources_manager/workflow_manager.py}.
+ * 
+ * @since 0.1.7
  */
 public class WorkflowMgr extends AbstractManager<Workflow> {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * addWorkflow.
+     * 
+     * @param workflowId workflowId
+     * @param workflow workflow
+     * @since 0.1.7
      */
     public void addWorkflow(String workflowId, Supplier<Workflow> workflow) {
         registerResourceProvider(workflowId, workflow);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addWorkflows.
+     * 
+     * @param workflows workflows
+     * @since 0.1.7
      */
     public void addWorkflows(List<WorkflowEntry> workflows) {
         if (workflows == null || workflows.isEmpty()) {
@@ -35,19 +43,32 @@ public class WorkflowMgr extends AbstractManager<Workflow> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkflow.
+     * 
+     * @param workflowId workflowId
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow getWorkflow(String workflowId) {
         return getResource(workflowId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeWorkflow.
+     * 
+     * @param workflowId workflowId
+     * @return the result
+     * @since 0.1.7
      */
     public Supplier<? extends Workflow> removeWorkflow(String workflowId) {
         return unregisterResourceProvider(workflowId);
     }
 
+    /**
+     * WorkflowEntry.
+     * 
+     * @since 0.1.7
+     */
     public record WorkflowEntry(String id, Supplier<Workflow> provider) {
     }
 }

@@ -11,13 +11,14 @@ import lombok.NoArgsConstructor;
 
 /**
  * Pulsar message queue configuration.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class PulsarConfig {
-
     private String url;
 
     @Builder.Default

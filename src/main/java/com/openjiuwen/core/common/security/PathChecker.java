@@ -13,18 +13,34 @@ import java.util.Set;
  * Path checker — singleton that determines whether a file path is sensitive.
  * <p>
  * Thread-safe singleton using double-checked locking.
+ * 
+ * @since 0.1.7
  */
 public final class PathChecker {
-
     private static volatile PathChecker instance;
 
+    /**
+     * HashSet<>.
+     * 
+     * @since 0.1.7
+     */
     private final Set<String> sensitivePaths = new HashSet<>();
 
+    /**
+     * PathChecker.
+     * 
+     * @since 0.1.7
+     */
     private PathChecker() {
         loadConfig();
     }
 
-    /** Get or create the singleton instance. */
+    /**
+     * Get or create the singleton instance.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static PathChecker getInstance() {
         if (instance == null) {
             synchronized (PathChecker.class) {
@@ -36,6 +52,11 @@ public final class PathChecker {
         return instance;
     }
 
+    /**
+     * loadConfig.
+     * 
+     * @since 0.1.7
+     */
     private void loadConfig() {
         sensitivePaths.clear();
         List<String> paths;
@@ -59,9 +80,10 @@ public final class PathChecker {
 
     /**
      * Check if a path is sensitive.
-     *
+     * 
      * @param path path string to check
      * @return true if path starts with any configured sensitive path
+     * @since 0.1.7
      */
     public boolean checkSensitive(String path) {
         if (path == null || path.isBlank()) {
@@ -80,7 +102,13 @@ public final class PathChecker {
         }
     }
 
-    /** Convenience static method. */
+    /**
+     * Convenience static method.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
     public static boolean isSensitivePath(String path) {
         return getInstance().checkSensitive(path);
     }

@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Data structure for upload file operation.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

@@ -1,4 +1,13 @@
+
 package com.openjiuwen.core.singleagent;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
@@ -43,19 +52,9 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-
 class ReActAgentInterruptRegressionTest {
-
     private static final String TEST_PROVIDER = "SingleAgentInterruptRegression";
     private static final AtomicBoolean FACTORY_REGISTERED = new AtomicBoolean(false);
 
@@ -93,18 +92,14 @@ class ReActAgentInterruptRegressionTest {
         agent.registerRail(new AgentRail() {
             @Override
             public void beforeInvoke(AgentCallbackContext ctx) {
-                ctx.requestForceFinish(Map.of(
-                        "output", "FORCE_FINISHED",
-                        "result_type", "answer"
-                ));
+                ctx.requestForceFinish(Map.of("output", "FORCE_FINISHED", "result_type", "answer"));
             }
         });
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) agent.invoke(
-                Map.of("query", "ignored", "conversation_id", "force-finish-session"),
-                AgentSessionApi.create("force-finish-session", null, agent.getCard())
-        );
+        Map<String, Object> result =
+            (Map<String, Object>) agent.invoke(Map.of("query", "ignored", "conversation_id", "force-finish-session"),
+                    AgentSessionApi.create("force-finish-session", null, agent.getCard()));
 
         assertEquals("FORCE_FINISHED", result.get("output"));
         assertEquals("answer", result.get("result_type"));
@@ -118,10 +113,8 @@ class ReActAgentInterruptRegressionTest {
         agent.getAbilityManager().add(askUserTool.getCard());
         agent.registerRail(new AskUserInterruptRail());
 
-        List<Object> firstTurn = runStream(agent, Map.of(
-                "query", "start interrupt flow",
-                "conversation_id", "interrupt-session"
-        ));
+        List<Object> firstTurn =
+            runStream(agent, Map.of("query", "start interrupt flow", "conversation_id", "interrupt-session"));
 
         OutputSchema interactionChunk = findInteractionChunk(firstTurn);
         assertNotNull(interactionChunk, "first turn should emit an interaction chunk");
@@ -132,11 +125,9 @@ class ReActAgentInterruptRegressionTest {
         resumeInput.update("ask-user-call", "Alice");
 
         AgentSessionApi resumedSession = AgentSessionApi.create("interrupt-session", null, agent.getCard());
-        List<Object> secondTurn = collect(agent.stream(
-                Map.of("query", resumeInput, "conversation_id", "interrupt-session"),
-                resumedSession,
-                List.of(StreamMode.OUTPUT)
-        ));
+        List<Object> secondTurn =
+            collect(agent.stream(Map.of("query", resumeInput, "conversation_id", "interrupt-session"), resumedSession,
+                    List.of(StreamMode.OUTPUT)));
 
         String finalOutput = extractFinalOutput(secondTurn);
         assertTrue(finalOutput.contains("Alice"), "final answer should contain resumed user input");
@@ -151,21 +142,19 @@ class ReActAgentInterruptRegressionTest {
         Model model = Mockito.mock(Model.class);
         try {
             when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
-                    .thenAnswer(invocation -> List.of(
-                            AssistantMessageChunk.builder().content("delta:stream progressively").build(),
-                            AssistantMessageChunk.builder().content("FINAL:stream progressively").build()
-                    ).iterator());
+                    .thenAnswer(invocation -> List
+                            .of(AssistantMessageChunk.builder().content("delta:stream progressively").build(),
+                                    AssistantMessageChunk.builder().content("FINAL:stream progressively").build())
+                            .iterator());
         } catch (Exception ex) {
             throw new RuntimeException(ex);
         }
         agent.setLlm(model);
         AgentSessionApi session = AgentSessionApi.create("streaming-session", null, agent.getCard());
 
-        Iterator<Object> iterator = agent.stream(
-                Map.of("query", "stream progressively", "conversation_id", "streaming-session"),
-                session,
-                List.of(StreamMode.OUTPUT)
-        );
+        Iterator<Object> iterator =
+            agent.stream(Map.of("query", "stream progressively", "conversation_id", "streaming-session"), session,
+                    List.of(StreamMode.OUTPUT));
         List<Object> firstChunks = takeChunks(iterator, 2);
 
         assertThat(firstChunks).isNotEmpty();
@@ -184,51 +173,30 @@ class ReActAgentInterruptRegressionTest {
     }
 
     private ReActAgent newAgent(String agentId) {
-        ReActAgent agent = new ReActAgent(AgentCard.builder()
-                .id(agentId)
-                .name(agentId)
-                .description("interrupt regression agent")
-                .build());
+        ReActAgent agent = new ReActAgent(
+                AgentCard.builder().id(agentId).name(agentId).description("interrupt regression agent").build());
 
         ReActAgentConfig config = ReActAgentConfig.builder()
-                .promptTemplate(List.of(Map.of(
-                        "role", "system",
-                        "content", "You are a testing agent. Call ask_user once, then answer with the tool result."
-                )))
-                .maxIterations(4)
-                .build()
-                .configureModelClient(
-                        TEST_PROVIDER,
-                        "test-key",
-                        "mirror://single-agent-interrupt",
-                        "interrupt-test-model",
-                        false
-                );
+                .promptTemplate(List.of(Map.of("role", "system", "content",
+                        "You are a testing agent. Call ask_user once, then answer with the tool result.")))
+                .maxIterations(4).build().configureModelClient(TEST_PROVIDER, "test-key",
+                        "mirror://single-agent-interrupt", "interrupt-test-model", false);
         agent.configure(config);
         return agent;
     }
 
     private Tool createAskUserTool() {
-        ToolCard card = ToolCard.builder()
-                .id("ask_user_tool")
-                .name("ask_user")
-                .description("collect user input")
-                .inputParams(Map.of(
-                        "type", "object",
-                        "properties", Map.of(
-                                "response", Map.of("type", "string", "description", "user response")
-                        ),
-                        "required", List.of("response")
-                ))
+        ToolCard card = ToolCard.builder().id("ask_user_tool").name("ask_user").description("collect user input")
+                .inputParams(Map.of("type", "object", "properties",
+                        Map.of("response", Map.of("type", "string", "description", "user response")), "required",
+                        List.of("response")))
                 .build();
 
         return new LocalFunction(card, (inputs, kwargs) -> {
             Session session = (Session) kwargs.get("session");
             if (session != null) {
-                session.updateState(Map.of(
-                        "tool_saw_session", Boolean.TRUE,
-                        "tool_session_id", session.getSessionId()
-                ));
+                session.updateState(
+                        Map.of("tool_saw_session", Boolean.TRUE, "tool_session_id", session.getSessionId()));
             }
             String response = String.valueOf(inputs.get("response"));
             return "response=" + response + ",session=" + (session != null ? session.getSessionId() : "null");
@@ -313,11 +281,8 @@ class ReActAgentInterruptRegressionTest {
         @Override
         protected InterruptDecision resolveInterrupt(AgentCallbackContext ctx, ToolCall toolCall, Object userInput) {
             if (userInput == null) {
-                return interrupt(InterruptRequest.builder()
-                        .interruptId(toolCall.getId())
-                        .message("Please provide your name")
-                        .context(Map.of("tool_call_id", toolCall.getId()))
-                        .build());
+                return interrupt(InterruptRequest.builder().interruptId(toolCall.getId())
+                        .message("Please provide your name").context(Map.of("tool_call_id", toolCall.getId())).build());
             }
             String escaped = String.valueOf(userInput).replace("\\", "\\\\").replace("\"", "\\\"");
             return approve("{\"response\":\"" + escaped + "\"}");
@@ -337,84 +302,62 @@ class ReActAgentInterruptRegressionTest {
     }
 
     private static final class InterruptTestModelClient extends BaseModelClient {
-
         private InterruptTestModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
             super(modelConfig, modelClientConfig);
         }
 
         @Override
         public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
-                                       Integer maxTokens, String stop, BaseOutputParser outputParser,
-                                       Float timeout, Map<String, Object> kwargs) {
+                Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             List<BaseMessage> messageList = toMessages(messages);
             String lastToolContent = findLastContent(messageList, "tool");
             if (lastToolContent == null) {
-                return AssistantMessage.builder()
-                        .content("")
-                        .toolCalls(List.of(ToolCall.builder()
-                                .id("ask-user-call")
-                                .name("ask_user")
-                                .arguments("{\"question\":\"Please provide your name\"}")
-                                .build()))
-                        .build();
+                return AssistantMessage.builder().content("").toolCalls(List.of(ToolCall.builder().id("ask-user-call")
+                        .name("ask_user").arguments("{\"question\":\"Please provide your name\"}").build())).build();
             }
             return new AssistantMessage("FINAL:" + lastToolContent);
         }
 
         @Override
         public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
-                                                      String model, Integer maxTokens, String stop,
-                                                      BaseOutputParser outputParser, Float timeout,
-                                                      Map<String, Object> kwargs) {
+                String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             List<BaseMessage> messageList = toMessages(messages);
             String lastToolContent = findLastContent(messageList, "tool");
             if (lastToolContent == null) {
                 String userContent = findLastContent(messageList, "user");
-                return List.of(
-                        AssistantMessageChunk.builder()
-                                .content("delta:" + userContent)
-                                .build(),
-                        AssistantMessageChunk.builder()
-                                .content("")
-                                .toolCalls(List.of(ToolCall.builder()
-                                        .id("ask-user-call")
-                                        .name("ask_user")
-                                        .arguments("{\"question\":\"Please provide your name\"}")
-                                        .build()))
-                                .build()
-                ).iterator();
+                return List.of(AssistantMessageChunk.builder().content("delta:" + userContent).build(),
+                        AssistantMessageChunk.builder().content("")
+                                .toolCalls(List.of(ToolCall.builder().id("ask-user-call").name("ask_user")
+                                        .arguments("{\"question\":\"Please provide your name\"}").build()))
+                                .build())
+                        .iterator();
             }
-            return List.of(
-                    AssistantMessageChunk.builder()
-                            .content("delta:" + lastToolContent)
-                            .build(),
-                    AssistantMessageChunk.builder()
-                            .content("FINAL:" + lastToolContent)
-                            .build()
-            ).iterator();
+            return List.of(AssistantMessageChunk.builder().content("delta:" + lastToolContent).build(),
+                    AssistantMessageChunk.builder().content("FINAL:" + lastToolContent).build()).iterator();
         }
 
         @Override
-        public ImageGenerationResponse generateImage(List<com.openjiuwen.core.foundation.llm.schema.UserMessage> messages,
-                                                     String model, String size, String negativePrompt, int n,
-                                                     boolean promptExtend, boolean watermark, int seed,
-                                                     Map<String, Object> kwargs) {
+        public ImageGenerationResponse generateImage(
+                List<com.openjiuwen.core.foundation.llm.schema.UserMessage> messages, String model, String size,
+                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public AudioGenerationResponse generateSpeech(List<com.openjiuwen.core.foundation.llm.schema.UserMessage> messages,
-                                                      String model, String voice, String languageType,
-                                                      Map<String, Object> kwargs) {
+        public AudioGenerationResponse generateSpeech(
+                List<com.openjiuwen.core.foundation.llm.schema.UserMessage> messages, String model, String voice,
+                String languageType, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public VideoGenerationResponse generateVideo(List<com.openjiuwen.core.foundation.llm.schema.UserMessage> messages,
-                                                     String imgUrl, String audioUrl, String model, String size,
-                                                     String resolution, int duration, boolean promptExtend,
-                                                     boolean watermark, String negativePrompt, Integer seed,
-                                                     Map<String, Object> kwargs) {
+        public VideoGenerationResponse generateVideo(
+                List<com.openjiuwen.core.foundation.llm.schema.UserMessage> messages, String imgUrl, String audioUrl,
+                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 

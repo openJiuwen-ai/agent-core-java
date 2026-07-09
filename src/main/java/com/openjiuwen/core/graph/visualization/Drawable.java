@@ -20,20 +20,25 @@ import java.util.Set;
 
 /**
  * Builds a drawable graph representation of a workflow for visualization purposes.
- *
- * <p>Supports adding nodes (including loop, sub-workflow, and branch components),
+ * <p>
+ * Supports adding nodes (including loop, sub-workflow, and branch components),
  * setting start/end/break nodes, adding edges (regular and conditional), and
- * exporting to Mermaid diagram syntax.</p>
- *
- * <p>Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable.Drawable}.</p>
+ * exporting to Mermaid diagram syntax.
+ * </p>
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable.Drawable}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class Drawable {
-
     private final DrawableGraph graph;
     private final Set<String> loopNodes;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Drawable.
+     * 
+     * @since 0.1.7
      */
     public Drawable() {
         this.graph = new DrawableGraph();
@@ -42,17 +47,19 @@ public class Drawable {
 
     /**
      * Convert a component to a DrawableNode and save it to the graph.
-     *
-     * <p>Handles special component types:
+     * <p>
+     * Handles special component types:
      * <ul>
-     *   <li>{@link LoopComponent} / {@link AdvancedLoopComponent} — creates a subgraph node with the loop's inner graph</li>
-     *   <li>{@link SubWorkflowComponent} — creates a subgraph node with the sub-workflow's graph</li>
-     *   <li>{@link BranchComponent} / {@link IntentDetectionComponent} — creates a node and adds conditional edge</li>
-     *   <li>Other — creates a plain node</li>
+     * <li>{@link LoopComponent} / {@link AdvancedLoopComponent} — creates a subgraph node with the loop's inner
+     * graph</li>
+     * <li>{@link SubWorkflowComponent} — creates a subgraph node with the sub-workflow's graph</li>
+     * <li>{@link BranchComponent} / {@link IntentDetectionComponent} — creates a node and adds conditional edge</li>
+     * <li>Other — creates a plain node</li>
      * </ul>
-     *
-     * @param nodeId    the node identifier
+     * 
+     * @param nodeId the node identifier
      * @param component the component to convert
+     * @since 0.1.7
      */
     public void addNode(String nodeId, ComponentComposable component) {
         if (component instanceof LoopComponent loopComp) {
@@ -83,8 +90,9 @@ public class Drawable {
 
     /**
      * Adds a plain (non-component) node to the graph.
-     *
+     * 
      * @param nodeId the node identifier
+     * @since 0.1.7
      */
     public void addSimpleNode(String nodeId) {
         graph.getNodes().put(nodeId, new DrawableNode(nodeId));
@@ -92,61 +100,60 @@ public class Drawable {
 
     /**
      * Sets the specified node as a start node.
-     *
+     * 
      * @param nodeId the node identifier
-     * @throws RuntimeException if the node does not exist in the graph
+     * @since 0.1.7
      */
     public void setStartNode(String nodeId) {
         if (!graph.getNodes().containsKey(nodeId)) {
-            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_START_NODE_INVALID,
-                    "node_id", nodeId,
-                    "reason", "node '" + nodeId + "' does not exist in the graph");
+            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_START_NODE_INVALID, "node_id", nodeId, "reason",
+                    "node '" + nodeId + "' does not exist in the graph");
         }
         graph.getStartNodes().add(graph.getNodes().get(nodeId));
     }
 
     /**
      * Sets the specified node as an end node.
-     *
+     * 
      * @param nodeId the node identifier
-     * @throws RuntimeException if the node does not exist in the graph
+     * @since 0.1.7
      */
     public void setEndNode(String nodeId) {
         if (!graph.getNodes().containsKey(nodeId)) {
-            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_END_NODE_INVALID,
-                    "node_id", nodeId,
-                    "reason", "node '" + nodeId + "' does not exist in the graph");
+            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_END_NODE_INVALID, "node_id", nodeId, "reason",
+                    "node '" + nodeId + "' does not exist in the graph");
         }
         graph.getEndNodes().add(graph.getNodes().get(nodeId));
     }
 
     /**
      * Sets the specified node as a break node.
-     *
+     * 
      * @param nodeId the node identifier
-     * @throws RuntimeException if the node does not exist in the graph
+     * @since 0.1.7
      */
     public void setBreakNode(String nodeId) {
         if (!graph.getNodes().containsKey(nodeId)) {
-            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_BREAK_NODE_INVALID,
-                    "node_id", nodeId,
-                    "reason", "node '" + nodeId + "' does not exist in the graph");
+            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_BREAK_NODE_INVALID, "node_id", nodeId, "reason",
+                    "node '" + nodeId + "' does not exist in the graph");
         }
         graph.getBreakNodes().add(graph.getNodes().get(nodeId));
     }
 
     /**
      * Adds an edge to the graph.
-     *
-     * <p>For loop nodes, the edge is always conditional.
+     * <p>
+     * For loop nodes, the edge is always conditional.
      * For conditional edges with a {@link BranchRouter}, targets are extracted
-     * from the router's drawable branch information.</p>
-     *
-     * @param source      the source node id
-     * @param target      the target node id (may be null for conditional edges)
+     * from the router's drawable branch information.
+     * </p>
+     * 
+     * @param source the source node id
+     * @param target the target node id (may be null for conditional edges)
      * @param conditional whether this is a conditional (dotted) edge
-     * @param streaming   whether this is a streaming (thick) edge
-     * @param data        optional edge data (may be a {@link BranchRouter} for conditional edges)
+     * @param streaming whether this is a streaming (thick) edge
+     * @param data optional edge data (may be a {@link BranchRouter} for conditional edges)
+     * @since 0.1.7
      */
     public void addEdge(String source, String target, boolean conditional, boolean streaming, Object data) {
         // Loop nodes always get a conditional self-edge
@@ -181,9 +188,10 @@ public class Drawable {
 
     /**
      * Convenience method: add a simple edge from source to target.
-     *
+     * 
      * @param source the source node id
      * @param target the target node id
+     * @since 0.1.7
      */
     public void addEdge(String source, String target) {
         addEdge(source, target, false, false, null);
@@ -191,11 +199,12 @@ public class Drawable {
 
     /**
      * Convert the graph to Mermaid flowchart syntax.
-     *
-     * @param title           the diagram title
-     * @param expandSubgraph  depth of subgraph expansion (0 or false = no expansion, true = full expansion)
+     * 
+     * @param title the diagram title
+     * @param expandSubgraph depth of subgraph expansion (0 or false = no expansion, true = full expansion)
      * @param enableAnimation whether to enable animation properties on streaming links
      * @return the Mermaid flowchart syntax string
+     * @since 0.1.7
      */
     public String toMermaid(String title, int expandSubgraph, boolean enableAnimation) {
         return new MermaidDiagram().toMermaid(graph, title, expandSubgraph, enableAnimation);
@@ -203,8 +212,9 @@ public class Drawable {
 
     /**
      * Convert the graph to Mermaid flowchart syntax with default settings.
-     *
+     * 
      * @return the Mermaid flowchart syntax string
+     * @since 0.1.7
      */
     public String toMermaid() {
         return toMermaid("", 0, false);
@@ -214,10 +224,11 @@ public class Drawable {
      * Convert the graph to Mermaid syntax and render it as PNG bytes via the mermaid.ink service.
      * <p>
      * Mirrors Python's {@code Drawable.to_mermaid_png()}.
-     *
-     * @param title          the diagram title
+     * 
+     * @param title the diagram title
      * @param expandSubgraph depth of subgraph expansion
      * @return PNG image bytes, or empty array if rendering fails
+     * @since 0.1.7
      */
     public byte[] toMermaidPng(String title, int expandSubgraph) {
         String mermaidSyntax = toMermaid(title, expandSubgraph, false);
@@ -231,10 +242,11 @@ public class Drawable {
      * Convert the graph to Mermaid syntax and render it as SVG bytes via the mermaid.ink service.
      * <p>
      * Mirrors Python's {@code Drawable.to_mermaid_svg()}.
-     *
-     * @param title          the diagram title
+     * 
+     * @param title the diagram title
      * @param expandSubgraph depth of subgraph expansion
      * @return SVG image bytes, or empty array if rendering fails
+     * @since 0.1.7
      */
     public byte[] toMermaidSvg(String title, int expandSubgraph) {
         String mermaidSyntax = toMermaid(title, expandSubgraph, true);
@@ -246,8 +258,9 @@ public class Drawable {
 
     /**
      * Gets the underlying drawable graph.
-     *
+     * 
      * @return the drawable graph
+     * @since 0.1.7
      */
     public DrawableGraph getGraph() {
         return graph;
@@ -257,6 +270,9 @@ public class Drawable {
 
     /**
      * If the subgraph has no end nodes, discover them by finding nodes with zero out-degree.
+     * 
+     * @param subgraph subgraph
+     * @since 0.1.7
      */
     private void fillEndNodesIfEmpty(DrawableGraph subgraph) {
         if (!subgraph.getEndNodes().isEmpty()) {
@@ -280,13 +296,15 @@ public class Drawable {
 
     /**
      * Attempt to extract target node names from a callable's return type annotation.
-     *
-     * <p>In Python, this uses {@code get_type_hints} to inspect {@code Literal} return types.
+     * <p>
+     * In Python, this uses {@code get_type_hints} to inspect {@code Literal} return types.
      * In Java, reflection-based extraction of return type literals is not directly available,
-     * so this returns an empty list. Subclasses or callers may override this behavior.</p>
-     *
+     * so this returns an empty list. Subclasses or callers may override this behavior.
+     * </p>
+     * 
      * @param data the callable data
      * @return list of target names extracted from the return type, or empty list
+     * @since 0.1.7
      */
     private List<String> getTargetsFromCallable(Object data) {
         // Java doesn't have Literal type hints like Python.
@@ -299,14 +317,18 @@ public class Drawable {
 
     /**
      * Optional interface for callables that can provide their target node names.
-     *
-     * <p>This replaces Python's runtime type-hint inspection of {@code Literal} return types.</p>
+     * <p>
+     * This replaces Python's runtime type-hint inspection of {@code Literal} return types.
+     * </p>
+     * 
+     * @since 0.1.7
      */
     public interface TargetProvider {
         /**
-         * Gets the list of possible target node names.
-         *
-         * @return the target names
+         * getTargets.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         List<String> getTargets();
     }

@@ -14,19 +14,32 @@ import java.util.Map;
 
 /**
  * Mirrors Python's {@code openjiuwen.dev_tools.prompt_builder.builder.utils}.
+ * 
+ * @since 0.1.7
  */
 public final class PromptTemplateUtils {
-
+    /**
+     * PromptTemplateUtils.
+     * 
+     * @since 0.1.7
+     */
     private PromptTemplateUtils() {
     }
 
-    private static final Map<String, Object> TEMPLATE_MAP = Map.of(
-            "zh-CN", PromptTemplatesZh.class,
-            "en-US", PromptTemplatesEn.class
-    );
+    /**
+     * Map.of.
+     * 
+     * @since 0.1.7
+     */
+    private static final Map<String, Object> TEMPLATE_MAP =
+        Map.of("zh-CN", PromptTemplatesZh.class, "en-US", PromptTemplatesEn.class);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * selectTemplate.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
      */
     public static Object selectTemplate(String language) {
         if (language == null) {
@@ -36,23 +49,31 @@ public final class PromptTemplateUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTemplate.
+     * 
+     * @param templateHolder templateHolder
+     * @param fieldName fieldName
+     * @return the result
+     * @since 0.1.7
      */
     public static PromptTemplate getTemplate(Object templateHolder, String fieldName) {
         try {
-            Class<?> templateClass = templateHolder instanceof Class<?>
-                    ? (Class<?>) templateHolder
-                    : templateHolder.getClass();
+            Class<?> templateClass =
+                templateHolder instanceof Class<?> ? (Class<?>) templateHolder : templateHolder.getClass();
             return (PromptTemplate) templateClass.getField(fieldName).get(null);
         } catch (ReflectiveOperationException exception) {
             throw new IllegalStateException("Failed to read template field: " + fieldName, exception);
         }
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * getStringPrompt.
+     * 
+     * @param prompt prompt
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public static String getStringPrompt(Object prompt) {
         if (prompt instanceof String) {
             return (String) prompt;
@@ -87,17 +108,27 @@ public final class PromptTemplateUtils {
                 }
             }
         }
-        throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR,
-                "error_msg", "Prompt type " + toPythonTypeString(prompt) + " is not supported");
+        throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR, "error_msg",
+                "Prompt type " + toPythonTypeString(prompt) + " is not supported");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTemplateMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> getTemplateMap() {
         return TEMPLATE_MAP;
     }
 
+    /**
+     * toPythonTypeString.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String toPythonTypeString(Object value) {
         if (value == null) {
             return "<class 'NoneType'>";

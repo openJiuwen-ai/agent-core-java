@@ -13,15 +13,20 @@ import java.util.List;
  * Manages the context message buffer, supporting history tracking and size limits.
  * <p>
  * Mirrors Python's {@code ContextMessageBuffer} from {@code context_engine/context/message_buffer.py}.
+ * 
+ * @since 0.1.7
  */
 public class ContextMessageBuffer {
-
     private final Integer maxBufferSize;
     private List<BaseMessage> contextMessages;
     private int historyMessagesSize;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ContextMessageBuffer.
+     * 
+     * @param historyMessages historyMessages
+     * @param maxBufferSize maxBufferSize
+     * @since 0.1.7
      */
     public ContextMessageBuffer(List<BaseMessage> historyMessages, Integer maxBufferSize) {
         this.maxBufferSize = maxBufferSize;
@@ -30,6 +35,9 @@ public class ContextMessageBuffer {
 
     /**
      * Return the effective size of the buffer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int size() {
         if (maxBufferSize != null) {
@@ -40,6 +48,9 @@ public class ContextMessageBuffer {
 
     /**
      * Append messages to the back of the buffer.
+     * 
+     * @param messages messages
+     * @since 0.1.7
      */
     public void addBack(List<BaseMessage> messages) {
         contextMessages.addAll(messages);
@@ -48,10 +59,11 @@ public class ContextMessageBuffer {
 
     /**
      * Get messages from the back of the buffer.
-     *
-     * @param size        number of messages to get; null for all
+     * 
+     * @param size number of messages to get; null for all
      * @param withHistory whether to include history messages
      * @return list of messages
+     * @since 0.1.7
      */
     public List<BaseMessage> getBack(Integer size, boolean withHistory) {
         List<BaseMessage> available;
@@ -78,6 +90,9 @@ public class ContextMessageBuffer {
 
     /**
      * Get all messages from the back.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<BaseMessage> getBack() {
         return getBack(null, true);
@@ -85,10 +100,11 @@ public class ContextMessageBuffer {
 
     /**
      * Pop messages from the back of the buffer.
-     *
-     * @param size        number of messages to pop
+     * 
+     * @param size number of messages to pop
      * @param withHistory whether to also pop from history
      * @return the popped messages
+     * @since 0.1.7
      */
     public List<BaseMessage> popBack(int size, boolean withHistory) {
         return popBack(Integer.valueOf(size), withHistory);
@@ -97,10 +113,11 @@ public class ContextMessageBuffer {
     /**
      * Pop messages from the back of the buffer.
      * Mirrors Python's {@code pop_back(size=None, with_history=True)}.
-     *
-     * @param size        number of messages to pop; {@code null} pops all
+     * 
+     * @param size number of messages to pop; {@code null} pops all
      * @param withHistory whether to also pop from history
      * @return the popped messages
+     * @since 0.1.7
      */
     public List<BaseMessage> popBack(Integer size, boolean withHistory) {
         List<BaseMessage> poppedMessages = getBack(size, withHistory);
@@ -117,9 +134,10 @@ public class ContextMessageBuffer {
 
     /**
      * Replace messages in the buffer.
-     *
-     * @param messages    the new messages
+     * 
+     * @param messages the new messages
      * @param withHistory if true, isReplace entire buffer; if false, only isReplace non-history part
+     * @since 0.1.7
      */
     public void setMessages(List<BaseMessage> messages, boolean withHistory) {
         if (withHistory) {
@@ -127,14 +145,17 @@ public class ContextMessageBuffer {
             historyMessagesSize = 0;
             return;
         }
-        List<BaseMessage> historyMessages = new ArrayList<>(
-                contextMessages.subList(0, Math.min(historyMessagesSize, contextMessages.size())));
+        List<BaseMessage> historyMessages =
+            new ArrayList<>(contextMessages.subList(0, Math.min(historyMessagesSize, contextMessages.size())));
         contextMessages = new ArrayList<>(historyMessages);
         contextMessages.addAll(messages);
     }
 
     /**
      * Rebuild the buffer from a new list of history messages.
+     * 
+     * @param historyMessages historyMessages
+     * @since 0.1.7
      */
     public void rebuild(List<BaseMessage> historyMessages) {
         if (historyMessages == null) {
@@ -150,6 +171,11 @@ public class ContextMessageBuffer {
         }
     }
 
+    /**
+     * ifNeedResize.
+     * 
+     * @since 0.1.7
+     */
     private void ifNeedResize() {
         if (maxBufferSize == null) {
             return;

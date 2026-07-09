@@ -20,30 +20,30 @@ import java.util.List;
 
 /**
  * Public class McpRail used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class McpRail extends DeepAgentRail {
     private final List<Tool> tools = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * priority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int priority() {
         return 95;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * init.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void init(Object agent) {
         if (!(agent instanceof DeepAgent deepAgent) || !tools.isEmpty()) {
             return;
@@ -62,12 +62,12 @@ public class McpRail extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * uninit.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void uninit(Object agent) {
         if (agent instanceof DeepAgent deepAgent) {
             for (Tool tool : tools) {
@@ -78,53 +78,83 @@ public class McpRail extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toolNames.
+     *
+     * @return List<String>
+     * @since 0.1.7
      */
     public java.util.List<String> toolNames() {
         return java.util.List.of("list_mcp_resources", "read_mcp_resource");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registeredToolNames.
+     *
+     * @return List<String>
+     * @since 0.1.7
      */
     public java.util.List<String> registeredToolNames() {
         return tools.stream().map(tool -> tool.getCard().getName()).toList();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * describe.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String describe() {
         return "Register MCP resource tools";
     }
 
+    /**
+     * card.
+     * 
+     * @param name name
+     * @param agent agent
+     * @param language language
+     * @return the result
+     * @since 0.1.7
+     */
     private static ToolCard card(String name, DeepAgent agent, String language) {
         return ToolMetadataRegistry.buildToolCard(name, agent.getCard().getId() + "." + name, language);
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringValue(Object value) {
         return value != null ? String.valueOf(value) : null;
     }
 
     private static class RunnerMcpResourceService implements McpResourceService {
         /**
-         * Auto-generated for codecheck compliance.
+         * listResources.
+         * 
+         * @param serverId serverId
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public List<?> listResources(String serverId) throws Exception {
             return Runner.resourceMgr().listMcpResources(serverId, null, null, TagMatchStrategy.ALL, true);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * readResource.
+         * 
+         * @param serverId serverId
+         * @param uri uri
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public List<?> readResource(String serverId, String uri) throws Exception {
             return Runner.resourceMgr().readMcpResource(serverId, uri);
         }

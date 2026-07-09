@@ -16,6 +16,7 @@ import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
 import com.openjiuwen.core.memory.manage.mem_model.MemoryType;
 import com.openjiuwen.core.memory.manage.mem_model.SummaryUnit;
 import com.openjiuwen.core.memory.manage.mem_model.VariableUnit;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -23,22 +24,30 @@ import java.util.Map;
 
 /**
  * Generates all memory units (variables, summary, fragment) from conversation messages.
+ * 
+ * @since 0.1.7
  */
 public class Generator {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
     private final DataIdManager dataIdGenerator;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Generator.
+     * 
+     * @param dataIdGenerator dataIdGenerator
+     * @since 0.1.7
      */
     public Generator(DataIdManager dataIdGenerator) {
         this.dataIdGenerator = dataIdGenerator;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * genAllMemory.
+     * 
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, List<BaseMemoryUnit>> genAllMemory(Map<String, Object> kwargs) {
         List<BaseMessage> messages = kwargs.get("messages") instanceof List<?> rawMessages
@@ -46,11 +55,9 @@ public class Generator {
                 : List.of();
         AgentMemoryConfig config = kwargs.get("config") instanceof AgentMemoryConfig cfg ? cfg : null;
         @SuppressWarnings("unchecked")
-        Map.Entry<String, Model> model = kwargs.get("base_chat_model") instanceof Map.Entry<?, ?> rawModel
-                && rawModel.getKey() instanceof String
-                && rawModel.getValue() instanceof Model
-                ? (Map.Entry<String, Model>) rawModel
-                : null;
+        Map.Entry<String, Model> model =
+            kwargs.get("base_chat_model") instanceof Map.Entry<?, ?> rawModel && rawModel.getKey() instanceof String
+                    && rawModel.getValue() instanceof Model ? (Map.Entry<String, Model>) rawModel : null;
         String userId = kwargs.get("user_id") instanceof String value ? value : null;
         String scopeId = kwargs.get("scope_id") instanceof String value ? value : null;
         List<BaseMessage> historyMessages = kwargs.get("history_messages") instanceof List<?> rawHistory
@@ -67,21 +74,14 @@ public class Generator {
             return Map.of();
         }
 
-        ExtractMemoryParams extractParams = ExtractMemoryParams.builder()
-                .userId(userId)
-                .scopeId(scopeId)
-                .messages(messages)
-                .historyMessages(historyMessages)
-                .baseChatModel(model)
-                .build();
+        ExtractMemoryParams extractParams = ExtractMemoryParams.builder().userId(userId).scopeId(scopeId)
+                .messages(messages).historyMessages(historyMessages).baseChatModel(model).build();
 
         Map<String, List<BaseMemoryUnit>> allMemoryResults = new HashMap<>();
 
         // Analyze memories
-        MemoryAnalyzerResult analyzeRes = MemoryAnalyzer.analyze(
-                messages, historyMessages, model, config,
-                summaryMaxToken != null ? summaryMaxToken : 128,
-                forbiddenVariables);
+        MemoryAnalyzerResult analyzeRes = MemoryAnalyzer.analyze(messages, historyMessages, model, config,
+                summaryMaxToken != null ? summaryMaxToken : 128, forbiddenVariables);
 
         if (analyzeRes == null) {
             return allMemoryResults;
@@ -101,8 +101,7 @@ public class Generator {
 
         // Process summary data
         if (config.isEnableSummaryMemory()) {
-            SummaryUnit summaryUnit = processSummaryData(
-                    userId, messageMemId, analyzeRes.getSummary(), timestamp);
+            SummaryUnit summaryUnit = processSummaryData(userId, messageMemId, analyzeRes.getSummary(), timestamp);
             String summaryType = summaryUnit.getMemType().getValue();
             allMemoryResults.computeIfAbsent(summaryType, k -> new ArrayList<>()).add(summaryUnit);
         }
@@ -119,8 +118,7 @@ public class Generator {
                 allMemoryResults.computeIfAbsent(memType, k -> new ArrayList<>()).add(unit);
             }
         } catch (Exception e) {
-            MEMORY_LOGGER.warn("[{}] Get conflict info has exception: {}",
-                    LogEventType.MEMORY_PROCESS, e.getMessage());
+            MEMORY_LOGGER.warn("[{}] Get conflict info has exception: {}", LogEventType.MEMORY_PROCESS, e.getMessage());
             return allMemoryResults;
         }
 
@@ -128,14 +126,31 @@ public class Generator {
         return allMemoryResults;
     }
 
-    private List<BaseMemoryUnit> categoriesToMemoryUnit(
-            ExtractMemoryParams params, String messageMemId, String timestamp, AgentMemoryConfig config) {
+    /**
+     * categoriesToMemoryUnit.
+     * 
+     * @param params params
+     * @param messageMemId messageMemId
+     * @param timestamp timestamp
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<BaseMemoryUnit> categoriesToMemoryUnit(ExtractMemoryParams params, String messageMemId,
+            String timestamp, AgentMemoryConfig config) {
         List<BaseMemoryUnit> memoryUnits = new ArrayList<>();
         Map<String, List<Object>> memoryDict = LongTermMemoryExtractor.extractLongTermMemory(params, timestamp);
         memoryUnits.addAll(getFragmentMemoryUnits(params.getUserId(), messageMemId, memoryDict, timestamp, config));
         return memoryUnits;
     }
 
+    /**
+     * processExtractedData.
+     * 
+     * @param variableResults variableResults
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<VariableUnit> processExtractedData(List<VariableResult> variableResults) {
         List<VariableUnit> variableUnits = new ArrayList<>();
         if (variableResults == null) {
@@ -145,27 +160,40 @@ public class Generator {
             if (tmp.getVariableValue() == null || tmp.getVariableValue().isEmpty()) {
                 continue;
             }
-            variableUnits.add(VariableUnit.builder()
-                    .variableName(tmp.getVariableKey())
-                    .variableMem(tmp.getVariableValue())
-                    .build());
+            variableUnits.add(VariableUnit.builder().variableName(tmp.getVariableKey())
+                    .variableMem(tmp.getVariableValue()).build());
         }
         return variableUnits;
     }
 
-    private SummaryUnit processSummaryData(String userId, String messageMemId,
-                                           String summary, String timestamp) {
+    /**
+     * processSummaryData.
+     * 
+     * @param userId userId
+     * @param messageMemId messageMemId
+     * @param summary summary
+     * @param timestamp timestamp
+     * @return the result
+     * @since 0.1.7
+     */
+    private SummaryUnit processSummaryData(String userId, String messageMemId, String summary, String timestamp) {
         String memId = dataIdGenerator.generateNextId(userId);
-        return SummaryUnit.builder()
-                .memId(memId)
-                .summary(summary)
-                .messageMemId(messageMemId)
-                .timestamp(timestamp)
+        return SummaryUnit.builder().memId(memId).summary(summary).messageMemId(messageMemId).timestamp(timestamp)
                 .build();
     }
 
-    private List<FragmentMemoryUnit> getFragmentMemoryUnits(
-            String userId, String messageMemId,
+    /**
+     * getFragmentMemoryUnits.
+     * 
+     * @param userId userId
+     * @param messageMemId messageMemId
+     * @param memoryDict memoryDict
+     * @param timestamp timestamp
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<FragmentMemoryUnit> getFragmentMemoryUnits(String userId, String messageMemId,
             Map<String, List<Object>> memoryDict, String timestamp, AgentMemoryConfig config) {
         List<FragmentMemoryUnit> fragmentUnits = new ArrayList<>();
         if (memoryDict == null) {
@@ -182,18 +210,20 @@ public class Generator {
             for (Object item : entry.getValue()) {
                 String memContent = normalizeFragmentContent(item);
                 String memId = dataIdGenerator.generateNextId(userId);
-                fragmentUnits.add(FragmentMemoryUnit.builder()
-                        .memType(memoryType)
-                        .content(memContent)
-                        .messageMemId(messageMemId)
-                        .timestamp(timestamp)
-                        .memId(memId)
-                        .build());
+                fragmentUnits.add(FragmentMemoryUnit.builder().memType(memoryType).content(memContent)
+                        .messageMemId(messageMemId).timestamp(timestamp).memId(memId).build());
             }
         }
         return fragmentUnits;
     }
 
+    /**
+     * normalizeFragmentContent.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizeFragmentContent(Object item) {
         if (item instanceof String text) {
             return text;

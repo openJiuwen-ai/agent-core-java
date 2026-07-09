@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.retrieval.common.Document;
+
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -15,7 +16,6 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.apache.pdfbox.text.PDFTextStripper;
 
-import javax.imageio.ImageIO;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,15 +24,25 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import javax.imageio.ImageIO;
+
 /**
  * PDF parser with optional image caption extraction.
+ * 
+ * @since 0.1.7
  */
 public class PDFParser extends Parser {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parse.
+     * 
+     * @param doc doc
+     * @param docId docId
+     * @param llmClient llmClient
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options) {
         try {
             String content = parseContent(doc, llmClient, options);
@@ -45,10 +55,16 @@ public class PDFParser extends Parser {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parseContent.
+     * 
+     * @param doc doc
+     * @param llmClient llmClient
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
         Path path = Path.of(doc);
         if (!Files.exists(path)) {
@@ -81,18 +97,30 @@ public class PDFParser extends Parser {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * supports.
+     * 
+     * @param doc doc
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean supports(String doc) {
         return doc != null && doc.toLowerCase(Locale.ROOT).endsWith(".pdf");
     }
 
-    private static void extractImages(PDResources resources,
-                                      int pageNum,
-                                      String fileName,
-                                      List<String> outputPaths) throws IOException {
+    /**
+     * extractImages.
+     * 
+     * @param resources resources
+     * @param pageNum pageNum
+     * @param fileName fileName
+     * @param outputPaths outputPaths
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
+    private static void extractImages(PDResources resources, int pageNum, String fileName, List<String> outputPaths)
+            throws IOException {
         if (resources == null) {
             return;
         }
@@ -113,6 +141,8 @@ public class PDFParser extends Parser {
             } else if (xObject instanceof PDFormXObject form) {
                 extractImages(form.getResources(), pageNum, fileName, outputPaths);
                 imageIndex = outputPaths.size();
+            } else {
+                // no-op
             }
         }
     }

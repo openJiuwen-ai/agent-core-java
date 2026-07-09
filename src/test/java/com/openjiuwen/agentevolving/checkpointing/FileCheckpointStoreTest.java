@@ -1,4 +1,10 @@
+
 package com.openjiuwen.agentevolving.checkpointing;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -10,13 +16,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class FileCheckpointStoreTest {
-
     @TempDir
     Path tempDir;
 
@@ -59,9 +59,7 @@ class FileCheckpointStoreTest {
     void loadCheckpointReadsLegacyCamelCaseFileAndNormalizesKeys() throws IOException {
         FileCheckpointStore store = new FileCheckpointStore(tempDir.toString());
         Path legacyFile = tempDir.resolve("legacy.json");
-        Files.writeString(
-                legacyFile,
-                """
+        Files.writeString(legacyFile, """
                 {
                   "version": "v1",
                   "runId": "legacy_run",
@@ -73,9 +71,7 @@ class FileCheckpointStoreTest {
                   "searcherState": {},
                   "lastMetrics": {"currentEpochScore": 0.61}
                 }
-                """,
-                StandardCharsets.UTF_8
-        );
+                """, StandardCharsets.UTF_8);
 
         EvolveCheckpoint loaded = store.loadCheckpoint(legacyFile.toString());
 
@@ -92,17 +88,13 @@ class FileCheckpointStoreTest {
         String snakePath = store.saveCheckpoint(checkpoint(), "snake_state.json");
 
         Path legacyFile = tempDir.resolve("legacy_state.json");
-        Files.writeString(
-                legacyFile,
-                """
+        Files.writeString(legacyFile, """
                 {
                   "operatorsState": {
                     "op_legacy": {"prompt": "legacy"}
                   }
                 }
-                """,
-                StandardCharsets.UTF_8
-        );
+                """, StandardCharsets.UTF_8);
 
         assertEquals("value", store.loadStateDict(snakePath).get("op_1").get("prompt"));
         assertEquals("legacy", store.loadStateDict(legacyFile.toString()).get("op_legacy").get("prompt"));
@@ -126,16 +118,9 @@ class FileCheckpointStoreTest {
     }
 
     private static EvolveCheckpoint checkpoint() {
-        return EvolveCheckpoint.builder()
-                .version("v1")
-                .runId("run_1")
-                .step(Map.of("epoch", 1, "batch", 2))
-                .best(new LinkedHashMap<>(Map.of("best_score", 0.8)))
-                .seed(42)
-                .operatorsState(Map.of("op_1", Map.of("prompt", "value")))
-                .updaterState(Map.of("step", 3))
-                .searcherState(Map.of())
-                .lastMetrics(new LinkedHashMap<>(Map.of("current_epoch_score", 0.75)))
-                .build();
+        return EvolveCheckpoint.builder().version("v1").runId("run_1").step(Map.of("epoch", 1, "batch", 2))
+                .best(new LinkedHashMap<>(Map.of("best_score", 0.8))).seed(42)
+                .operatorsState(Map.of("op_1", Map.of("prompt", "value"))).updaterState(Map.of("step", 3))
+                .searcherState(Map.of()).lastMetrics(new LinkedHashMap<>(Map.of("current_epoch_score", 0.75))).build();
     }
 }

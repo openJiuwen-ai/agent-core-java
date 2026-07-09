@@ -16,8 +16,8 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.Session;
-import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,19 +30,32 @@ import java.util.Map;
 /**
  * Message handler utility methods for legacy controllers.
  * Mirrors Python's {@code MessageHandlerUtils}.
+ * 
+ * @since 0.1.7
  */
 public final class MessageHandlerUtils {
-
     private static final Logger LOG = LoggerFactory.getLogger(MessageHandlerUtils.class);
 
+    /**
+     * MessageHandlerUtils.
+     * 
+     * @since 0.1.7
+     */
     private MessageHandlerUtils() {
     }
 
     /**
      * Format LLM inputs by combining system prompt with chat history.
+     * 
+     * @param inputs inputs
+     * @param chatHistory chatHistory
+     * @param promptTemplate promptTemplate
+     * @param keywords keywords
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<BaseMessage> formatLlmInputs(Object inputs, List<BaseMessage> chatHistory,
-                                                     String promptTemplate, Map<String, Object> keywords) {
+    public static List<BaseMessage> formatLlmInputs(Object inputs, List<BaseMessage> chatHistory, String promptTemplate,
+            Map<String, Object> keywords) {
         List<BaseMessage> systemPrompt = new ArrayList<>();
         if (promptTemplate != null && !promptTemplate.isEmpty()) {
             systemPrompt.add(new BaseMessage("system", promptTemplate));
@@ -52,9 +65,14 @@ public final class MessageHandlerUtils {
 
     /**
      * Concatenate system prompt with chat history.
+     * 
+     * @param systemPrompt systemPrompt
+     * @param chatHistory chatHistory
+     * @return the result
+     * @since 0.1.7
      */
     public static List<BaseMessage> concatSystemPromptWithChatHistory(List<BaseMessage> systemPrompt,
-                                                                      List<BaseMessage> chatHistory) {
+            List<BaseMessage> chatHistory) {
         List<BaseMessage> resultMessages = new ArrayList<>();
 
         if (chatHistory == null || chatHistory.isEmpty() || !"system".equals(chatHistory.get(0).getRole())) {
@@ -69,6 +87,11 @@ public final class MessageHandlerUtils {
 
     /**
      * Parse LLM output tool calls into tasks.
+     * 
+     * @param response response
+     * @param agentConfig agentConfig
+     * @return the result
+     * @since 0.1.7
      */
     public static List<Task> parseLlmOutput(AssistantMessage response, Object agentConfig) {
         if (response == null || response.getToolCalls() == null) {
@@ -78,13 +101,14 @@ public final class MessageHandlerUtils {
     }
 
     /**
-     * Create tasks from tool calls.
-     * Mirrors Python's {@code create_tasks_from_tool_calls()}.
+     * createTasksFromToolCalls.
+     * 
+     * @param toolCalls toolCalls
+     * @param agentConfig agentConfig
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static List<Task> createTasksFromToolCalls(List<ToolCall> toolCalls, Object agentConfig) {
         if (toolCalls == null || toolCalls.isEmpty()) {
             return Collections.emptyList();
@@ -97,22 +121,23 @@ public final class MessageHandlerUtils {
             taskInput.setTargetName(toolName);
             taskInput.setArguments(toolCall.getArguments() != null ? toolCall.getArguments() : "{}");
 
-            Task task = Task.builder()
-                    .taskId(toolCall.getId())
-                    .input(taskInput)
-                    .build();
+            Task task = Task.builder().taskId(toolCall.getId()).input(taskInput).build();
             result.add(task);
         }
 
         if (result.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_TOOL_NOT_FOUND,
-                    "error_msg", "failed to create task from tool calls");
+            throw ErrorHelper.buildError(StatusCode.AGENT_TOOL_NOT_FOUND, "error_msg",
+                    "failed to create task from tool calls");
         }
         return result;
     }
 
     /**
      * Check if exec result is an interaction result.
+     * 
+     * @param execResult execResult
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isInteractionResult(Object execResult) {
         if (execResult instanceof Map<?, ?> map) {
@@ -125,6 +150,11 @@ public final class MessageHandlerUtils {
 
     /**
      * Create interrupt result.
+     * 
+     * @param e e
+     * @param toolName toolName
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> createInterruptResult(Exception e, String toolName) {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -136,6 +166,11 @@ public final class MessageHandlerUtils {
 
     /**
      * Validate execution inputs.
+     * 
+     * @param execResult execResult
+     * @param subTaskResult subTaskResult
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean validateExecutionInputs(Object execResult, Object subTaskResult) {
         return execResult != null;
@@ -143,6 +178,12 @@ public final class MessageHandlerUtils {
 
     /**
      * Check whether a user message should be added (avoids duplicates and post-tool msgs).
+     * 
+     * @param query query
+     * @param contextEngine contextEngine
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean shouldAddUserMessage(String query, ContextEngine contextEngine, Session session) {
         ModelContext agentContext = contextEngine.getContext(null, session.getSessionId());
@@ -169,6 +210,11 @@ public final class MessageHandlerUtils {
     /**
      * Add user message to context.
      * Mirrors Python's {@code add_user_message()}.
+     * 
+     * @param query query
+     * @param contextEngine contextEngine
+     * @param session session
+     * @since 0.1.7
      */
     public static void addUserMessage(Object query, ContextEngine contextEngine, Session session) {
         String queryStr = query != null ? String.valueOf(query) : "";
@@ -183,6 +229,11 @@ public final class MessageHandlerUtils {
 
     /**
      * Add AI message to context.
+     * 
+     * @param aiMessage aiMessage
+     * @param contextEngine contextEngine
+     * @param session session
+     * @since 0.1.7
      */
     public static void addAiMessage(AssistantMessage aiMessage, ContextEngine contextEngine, Session session) {
         if (aiMessage != null) {
@@ -195,6 +246,11 @@ public final class MessageHandlerUtils {
 
     /**
      * Add tool result to context.
+     * 
+     * @param event event
+     * @param contextEngine contextEngine
+     * @param session session
+     * @since 0.1.7
      */
     public static void addToolResult(Event event, ContextEngine contextEngine, Session session) {
         if (event == null || event.getContent() == null || event.getContent().getTaskResult() == null) {
@@ -226,6 +282,12 @@ public final class MessageHandlerUtils {
 
     /**
      * Get chat history limited by max rounds.
+     * 
+     * @param contextEngine contextEngine
+     * @param session session
+     * @param maxRounds maxRounds
+     * @return the result
+     * @since 0.1.7
      */
     public static List<BaseMessage> getChatHistory(ContextEngine contextEngine, Session session, int maxRounds) {
         ModelContext agentContext = contextEngine.getContext(null, session.getSessionId());
@@ -245,6 +307,11 @@ public final class MessageHandlerUtils {
 
     /**
      * Filter and validate user input, extract fields by schema.
+     * 
+     * @param schema schema
+     * @param userData userData
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> filterInputs(Map<String, Object> schema, Map<String, Object> userData) {
         if (schema == null || schema.isEmpty()) {

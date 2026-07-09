@@ -12,43 +12,80 @@ import java.util.Map;
 
 /**
  * Memory configuration settings.
+ * 
+ * @since 0.1.7
  */
 public class MemorySettings {
     private String provider = "openai_compatible";
     private String model = "text-embedding-v3";
     private String fallback = "mock";
-    private List<String> sources = new ArrayList<>(List.of("memory", "sessions"));
-    private List<String> extraPaths = new ArrayList<>();
-    private Map<String, Integer> chunking = new LinkedHashMap<>(Map.of("tokens", 256, "overlap", 32));
-    private Map<String, Object> query = new LinkedHashMap<>(Map.of(
-            "max_results", 10,
-            "min_score", 0.3,
-            "hybrid", new LinkedHashMap<>(Map.of(
-                    "enabled", true,
-                    "vectorWeight", 0.7,
-                    "textWeight", 0.3,
-                    "candidateMultiplier", 2.0
-            ))
-    ));
-    private Map<String, Object> store = new LinkedHashMap<>(Map.of(
-            "path", "memory.db",
-            "vector", new LinkedHashMap<>(Map.of("enabled", true)),
-            "fts", new LinkedHashMap<>(Map.of("enabled", true))
-    ));
-    private Map<String, Object> sync = new LinkedHashMap<>(Map.of(
-            "watch", true,
-            "watchDebounceMs", 2000,
-            "onSearch", true,
-            "onSessionStart", true,
-            "intervalMinutes", 0
-    ));
-    private Map<String, Object> cache = new LinkedHashMap<>(Map.of(
-            "enabled", true,
-            "maxEntries", 10000
-    ));
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ArrayList<>.
+     * 
+     * @param "sessions" "sessions"
+     * @since 0.1.7
+     */
+    private List<String> sources = new ArrayList<>(List.of("memory", "sessions"));
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
+    private List<String> extraPaths = new ArrayList<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @param 32 32
+     * @since 0.1.7
+     */
+    private Map<String, Integer> chunking = new LinkedHashMap<>(Map.of("tokens", 256, "overlap", 32));
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @param 2.0 2.0
+     * @since 0.1.7
+     */
+    private Map<String, Object> query =
+        new LinkedHashMap<>(Map.of("max_results", 10, "min_score", 0.3, "hybrid", new LinkedHashMap<>(
+                Map.of("enabled", true, "vectorWeight", 0.7, "textWeight", 0.3, "candidateMultiplier", 2.0))));
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @param true true
+     * @since 0.1.7
+     */
+    private Map<String, Object> store = new LinkedHashMap<>(Map.of("path", "memory.db", "vector",
+            new LinkedHashMap<>(Map.of("enabled", true)), "fts", new LinkedHashMap<>(Map.of("enabled", true))));
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @param 0 0
+     * @since 0.1.7
+     */
+    private Map<String, Object> sync = new LinkedHashMap<>(Map.of("watch", true, "watchDebounceMs", 2000, "onSearch",
+            true, "onSessionStart", true, "intervalMinutes", 0));
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @param 10000 10000
+     * @since 0.1.7
+     */
+    private Map<String, Object> cache = new LinkedHashMap<>(Map.of("enabled", true, "maxEntries", 10000));
+
+    /**
+     * create.
+     * 
+     * @param workspaceDir workspaceDir
+     * @param overrides overrides
+     * @return the result
+     * @since 0.1.7
      */
     public static MemorySettings create(String workspaceDir, Map<String, Object> overrides) {
         MemorySettings settings = new MemorySettings();
@@ -74,7 +111,10 @@ public class MemorySettings {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isMemoryEnabled.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isMemoryEnabled() {
         String envEnabled = System.getenv().getOrDefault("MEMORY_ENABLED", "true").toLowerCase(Locale.ROOT);
@@ -82,140 +122,200 @@ public class MemorySettings {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getProvider.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getProvider() {
         return provider;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setProvider.
+     * 
+     * @param provider provider
+     * @since 0.1.7
      */
     public void setProvider(String provider) {
         this.provider = provider;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModel.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getModel() {
         return model;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setModel.
+     * 
+     * @param model model
+     * @since 0.1.7
      */
     public void setModel(String model) {
         this.model = model;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFallback.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getFallback() {
         return fallback;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setFallback.
+     * 
+     * @param fallback fallback
+     * @since 0.1.7
      */
     public void setFallback(String fallback) {
         this.fallback = fallback;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSources.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getSources() {
         return sources;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSources.
+     * 
+     * @param sources sources
+     * @since 0.1.7
      */
     public void setSources(List<String> sources) {
         this.sources = new ArrayList<>(sources);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtraPaths.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getExtraPaths() {
         return extraPaths;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setExtraPaths.
+     * 
+     * @param extraPaths extraPaths
+     * @since 0.1.7
      */
     public void setExtraPaths(List<String> extraPaths) {
         this.extraPaths = new ArrayList<>(extraPaths);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getChunking.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Integer> getChunking() {
         return chunking;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setChunking.
+     * 
+     * @param chunking chunking
+     * @since 0.1.7
      */
     public void setChunking(Map<String, Integer> chunking) {
         this.chunking = new LinkedHashMap<>(chunking);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getQuery.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getQuery() {
         return query;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setQuery.
+     * 
+     * @param query query
+     * @since 0.1.7
      */
     public void setQuery(Map<String, Object> query) {
         this.query = new LinkedHashMap<>(query);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStore.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getStore() {
         return store;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStore.
+     * 
+     * @param store store
+     * @since 0.1.7
      */
     public void setStore(Map<String, Object> store) {
         this.store = new LinkedHashMap<>(store);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSync.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getSync() {
         return sync;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSync.
+     * 
+     * @param sync sync
+     * @since 0.1.7
      */
     public void setSync(Map<String, Object> sync) {
         this.sync = new LinkedHashMap<>(sync);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCache.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getCache() {
         return cache;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCache.
+     * 
+     * @param cache cache
+     * @since 0.1.7
      */
     public void setCache(Map<String, Object> cache) {
         this.cache = new LinkedHashMap<>(cache);

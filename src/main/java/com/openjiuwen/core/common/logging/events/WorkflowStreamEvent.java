@@ -15,6 +15,8 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code WorkflowStreamEvent} which extends {@code StreamEvent}
  * with workflow-specific fields.
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -27,17 +29,22 @@ public class WorkflowStreamEvent extends StreamEvent {
     private String componentTypeStr;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowStreamEvent.
+     * 
+     * @since 0.1.7
      */
     public WorkflowStreamEvent() {
         super();
         setModuleType(ModuleType.WORKFLOW_COMPONENT);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         super.addFieldsToMap(map);
         putIfNotNull(map, "workflow_id", workflowId);

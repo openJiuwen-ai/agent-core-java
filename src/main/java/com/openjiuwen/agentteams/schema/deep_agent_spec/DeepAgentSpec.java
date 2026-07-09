@@ -7,6 +7,7 @@ package com.openjiuwen.agentteams.schema.deep_agent_spec;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,23 +19,44 @@ import java.util.List;
 /**
  * Fully serializable specification for constructing a DeepAgent.
  * Mirrors Python DeepAgentSpec.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class DeepAgentSpec {
-
     private TeamModelConfig model;
     private AgentCard card;
     private String systemPrompt;
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<ToolCard> tools = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<McpServerConfig> mcps = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<SubAgentSpec> subagents = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<RailSpec> rails = new ArrayList<>();
     @Builder.Default
     private boolean enableTaskLoop = false;

@@ -9,11 +9,14 @@ package com.openjiuwen.core.application.schema;
  * <p>
  * Kept in the application package so application-layer APIs can reference a
  * local type name without diverging from the real runtime model.
+ * 
+ * @since 0.1.7
  */
 public class AgentMemoryConfig extends com.openjiuwen.core.memory.config.AgentMemoryConfig {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentMemoryConfig.
+     * 
+     * @since 0.1.7
      */
     public AgentMemoryConfig() {
         super();

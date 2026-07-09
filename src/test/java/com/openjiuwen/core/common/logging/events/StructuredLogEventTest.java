@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.common.logging.events;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -12,14 +15,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * JUnit 5 tests for structured logging events and EventClassRegistry.
  * Ported from Python: tests/unit_tests/core/common/log/test_structured_log.py
  */
 class StructuredLogEventTest {
-
     // ==========================================================================
     // test_create_agent_event
     // ==========================================================================
@@ -195,19 +195,13 @@ class StructuredLogEventTest {
     @Test
     @DisplayName("All agent event types create AgentEvent instances")
     void testAgentEvents() {
-        LogEventType[] agentTypes = {
-                LogEventType.AGENT_START,
-                LogEventType.AGENT_END,
-                LogEventType.AGENT_INVOKE,
-                LogEventType.AGENT_RESPONSE,
-                LogEventType.AGENT_ERROR,
-        };
+        LogEventType[] agentTypes = {LogEventType.AGENT_START, LogEventType.AGENT_END, LogEventType.AGENT_INVOKE,
+                LogEventType.AGENT_RESPONSE, LogEventType.AGENT_ERROR,};
 
         for (LogEventType eventType : agentTypes) {
             BaseLogEvent event = EventClassRegistry.createEvent(eventType);
             event.setModuleId("agent_123");
-            assertInstanceOf(AgentEvent.class, event,
-                    "Expected AgentEvent for type: " + eventType);
+            assertInstanceOf(AgentEvent.class, event, "Expected AgentEvent for type: " + eventType);
             assertEquals(eventType, event.getEventType());
         }
     }
@@ -298,7 +292,6 @@ class StructuredLogEventTest {
     @Nested
     @DisplayName("Dynamic event registration")
     class DynamicRegistrationTests {
-
         @AfterEach
         void cleanup() {
             // Clean up any custom registrations
@@ -383,7 +376,8 @@ class StructuredLogEventTest {
                 e.setModuleType(ModuleType.LLM);
                 return e;
             });
-            Supplier<? extends BaseLogEvent> customFactory = EventClassRegistry.getFactory("registered_custom_llm_type");
+            Supplier<? extends BaseLogEvent> customFactory =
+                EventClassRegistry.getFactory("registered_custom_llm_type");
             assertNotNull(customFactory);
 
             // Test 4: Unregister and restore default
@@ -404,8 +398,8 @@ class StructuredLogEventTest {
         @Test
         @DisplayName("String matching existing enum value is rejected")
         void testCannotRegisterEnumConflictingString() {
-            IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () ->
-                    EventClassRegistry.register("agent_start", BaseLogEvent::new));
+            IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                    () -> EventClassRegistry.register("agent_start", BaseLogEvent::new));
 
             assertTrue(ex.getMessage().contains("conflicts with predefined enum value"));
         }
@@ -493,7 +487,7 @@ class StructuredLogEventTest {
         assertEquals("<REDACTED>", sanitized.get("messages"));
         assertEquals("<REDACTED>", sanitized.get("response_content"));
         assertEquals("<REDACTED>", sanitized.get("query"));
-        assertEquals("llm_gpt4", sanitized.get("module_id"));  // Not sanitized
+        assertEquals("llm_gpt4", sanitized.get("module_id")); // Not sanitized
     }
 
     @Test
@@ -503,8 +497,7 @@ class StructuredLogEventTest {
         event.setModuleId("agent_123");
         event.setMessage("test message");
 
-        Map<String, Object> sanitized = EventSanitizer.sanitizeEventForLogging(event,
-                List.of("message"));
+        Map<String, Object> sanitized = EventSanitizer.sanitizeEventForLogging(event, List.of("message"));
 
         assertEquals("<REDACTED>", sanitized.get("message"));
         assertEquals("agent_123", sanitized.get("module_id"));
@@ -567,7 +560,6 @@ class StructuredLogEventTest {
     @Nested
     @DisplayName("Enum value tests")
     class EnumTests {
-
         @Test
         @DisplayName("LogEventType.fromValue returns correct enum")
         void testLogEventTypeFromValue() {
@@ -613,7 +605,6 @@ class StructuredLogEventTest {
     @Nested
     @DisplayName("BaseLogEvent defaults")
     class BaseLogEventDefaults {
-
         @Test
         @DisplayName("New BaseLogEvent has UUID eventId")
         void testDefaultEventId() {

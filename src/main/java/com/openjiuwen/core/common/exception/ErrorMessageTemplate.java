@@ -10,20 +10,17 @@ import java.util.Set;
 
 /**
  * Generates human-readable error message templates from structured inputs.
- *
- * @param template the message template with {placeholders}
- * @param params   the placeholder names used in the template
+ * @since 0.1.7
  */
 public record ErrorMessageTemplate(String template, Set<String> params) {
-
     /**
-     * Generate an error message template from structured inputs.
-     *
-     * @param scope       the scope (lowercased in output)
-     * @param subject     the subject (lowercased in output)
-     * @param failureType the failure type
-     * @param withReason  whether to append reason placeholder
-     * @return generated template
+     * generate.
+     * @param scope scope
+     * @param subject subject
+     * @param failureType failureType
+     * @param withReason withReason
+     * @return the result
+     * @since 0.1.7
      */
     public static ErrorMessageTemplate generate(String scope, String subject, String failureType, boolean withReason) {
         String scopeLower = scope.toLowerCase(Locale.ROOT);
@@ -59,7 +56,12 @@ public record ErrorMessageTemplate(String template, Set<String> params) {
     }
 
     /**
-     * Overload with withReason defaulting to true.
+     * generate.
+     * @param scope scope
+     * @param subject subject
+     * @param failureType failureType
+     * @return the result
+     * @since 0.1.7
      */
     public static ErrorMessageTemplate generate(String scope, String subject, String failureType) {
         return generate(scope, subject, failureType, true);

@@ -22,8 +22,8 @@ import java.util.Map;
 
 /**
  * Public class GitOperations used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class GitOperations {
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -41,18 +41,34 @@ public class GitOperations {
     private final Map<String, String> gitEnv;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GitOperations.
+     * 
+     * @param workspace workspace
+     * @param remote remote
+     * @param baseBranch baseBranch
+     * @since 0.1.7
      */
     public GitOperations(String workspace, String remote, String baseBranch) {
         this(workspace, remote, baseBranch, "", "openJiuwen", "agent-core", "", "", "", "");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GitOperations.
+     * 
+     * @param workspace workspace
+     * @param remote remote
+     * @param baseBranch baseBranch
+     * @param forkOwner forkOwner
+     * @param upstreamOwner upstreamOwner
+     * @param upstreamRepo upstreamRepo
+     * @param gitcodeUsername gitcodeUsername
+     * @param gitcodeToken gitcodeToken
+     * @param userName userName
+     * @param userEmail userEmail
+     * @since 0.1.7
      */
-    public GitOperations(String workspace, String remote, String baseBranch, String forkOwner,
-                         String upstreamOwner, String upstreamRepo, String gitcodeUsername, String gitcodeToken,
-                         String userName, String userEmail) {
+    public GitOperations(String workspace, String remote, String baseBranch, String forkOwner, String upstreamOwner,
+            String upstreamRepo, String gitcodeUsername, String gitcodeToken, String userName, String userEmail) {
         this.workspace = workspace;
         this.remote = value(remote);
         this.baseBranch = hasText(baseBranch) ? baseBranch : "develop";
@@ -67,14 +83,21 @@ public class GitOperations {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWorkspace.
+     * 
+     * @param workspace workspace
+     * @since 0.1.7
      */
     public void setWorkspace(String workspace) {
         this.workspace = workspace;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * git.
+     * 
+     * @param args args
+     * @return the result
+     * @since 0.1.7
      */
     public GitCommandResult git(String... args) {
         ProcessBuilder builder = new ProcessBuilder(command(args));
@@ -90,13 +113,16 @@ public class GitOperations {
         } catch (IOException ex) {
             return new GitCommandResult(1, ex.getMessage() == null ? "" : ex.getMessage());
         } catch (InterruptedException ex) {
-
             return new GitCommandResult(1, ex.getMessage() == null ? "" : ex.getMessage());
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createBranch.
+     * 
+     * @param branchName branchName
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> createBranch(String branchName) {
         GitCommandResult result = git("checkout", "-b", branchName);
@@ -104,7 +130,10 @@ public class GitOperations {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * collectStatus.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, List<String>> collectStatus() {
         GitCommandResult result = git("status", "--porcelain", "--untracked-files=all");
@@ -142,28 +171,41 @@ public class GitOperations {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listDirtyFiles.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> listDirtyFiles() {
         return collectStatus().get("dirty_files");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * currentBranch.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String currentBranch() {
         return git("rev-parse", "--abbrev-ref", "HEAD").output().trim();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * currentHead.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String currentHead() {
         return git("rev-parse", "HEAD").output().trim();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * diffStat.
+     * 
+     * @param paths paths
+     * @return the result
+     * @since 0.1.7
      */
     public String diffStat(List<String> paths) {
         List<String> args = new ArrayList<>(List.of("diff", "--stat"));
@@ -175,14 +217,21 @@ public class GitOperations {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * diffStat.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String diffStat() {
         return diffStat(List.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * diffNameOnly.
+     * 
+     * @param revision revision
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> diffNameOnly(String revision) {
         GitCommandResult result = git("diff", "--name-only", hasText(revision) ? revision : "HEAD");
@@ -197,35 +246,52 @@ public class GitOperations {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * statusPorcelain.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String statusPorcelain() {
         return git("status", "--porcelain", "--untracked-files=all").output().stripTrailing();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * showLastCommitStat.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String showLastCommitStat() {
         return git("show", "--stat", "--format=fuller", "-1").output().trim();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * discardWorktreeChanges.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean discardWorktreeChanges() {
         return git("checkout", ".").code() == 0;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * diffAgainst.
+     * 
+     * @param revision revision
+     * @return the result
+     * @since 0.1.7
      */
     public String diffAgainst(String revision) {
         return git("diff", revision).output();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * push.
+     * 
+     * @param branchName branchName
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> push(String branchName) {
         GitCommandResult result = git("push", "-u", remote, branchName);
@@ -233,29 +299,28 @@ public class GitOperations {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createPr.
+     * 
+     * @param title title
+     * @param body body
+     * @param headBranch headBranch
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> createPr(String title, String body, String headBranch) {
         if (!hasText(token)) {
             return Map.of("success", false, "error", "missing GitCode token");
         }
         try {
-            String url = "https://api.gitcode.com/api/v5/repos/"
-                    + encode(upstreamOwner) + "/" + encode(upstreamRepo)
+            String url = "https://api.gitcode.com/api/v5/repos/" + encode(upstreamOwner) + "/" + encode(upstreamRepo)
                     + "/pulls?access_token=" + encode(token);
-            String payload = MAPPER.writeValueAsString(Map.of(
-                    "title", value(title),
-                    "head", forkOwner + ":" + value(headBranch),
-                    "base", baseBranch,
-                    "body", value(body)
-            ));
-            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(30))
+            String payload = MAPPER.writeValueAsString(Map.of("title", value(title), "head",
+                    forkOwner + ":" + value(headBranch), "base", baseBranch, "body", value(body)));
+            HttpRequest request = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30))
                     .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8))
-                    .build();
-            HttpResponse<String> response = HttpClient.newHttpClient()
-                    .send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                    .POST(HttpRequest.BodyPublishers.ofString(payload, StandardCharsets.UTF_8)).build();
+            HttpResponse<String> response =
+                HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 return Map.of("success", false, "error", response.body());
             }
@@ -272,7 +337,10 @@ public class GitOperations {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * describeSyncPlan.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> describeSyncPlan() {
         List<String> steps = new ArrayList<>();
@@ -283,26 +351,42 @@ public class GitOperations {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * gitEnv.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, String> gitEnv() {
         return Map.copyOf(gitEnv);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUserName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getUserName() {
         return userName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUserEmail.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getUserEmail() {
         return userEmail;
     }
 
+    /**
+     * command.
+     * 
+     * @param args args
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> command(String... args) {
         List<String> command = new ArrayList<>();
         command.add("git");
@@ -310,27 +394,55 @@ public class GitOperations {
         return command;
     }
 
+    /**
+     * normalizePath.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizePath(String path) {
         return path == null ? "" : path.replace('\\', '/');
     }
 
+    /**
+     * encode.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String encode(String value) {
         return java.net.URLEncoder.encode(value(value), StandardCharsets.UTF_8);
     }
 
+    /**
+     * hasText.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
     }
 
+    /**
+     * value.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String value(String value) {
         return value == null ? "" : value;
     }
 
     /**
- * Public record GitCommandResult used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record GitCommandResult(int code, String output) {
+     * Public record GitCommandResult used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record GitCommandResult(int code, String output) {
     }
 }

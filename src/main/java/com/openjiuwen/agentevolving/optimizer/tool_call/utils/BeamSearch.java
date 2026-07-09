@@ -18,11 +18,12 @@ import java.util.stream.Collectors;
 
 /**
  * Beam search algorithm implementation.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.beam_search.BeamSearch}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.beam_search.BeamSearch}.
+ * 
+ * @since 0.1.7
  */
 public class BeamSearch {
-
     private final Object method;
     private final int beamWidth;
     private final int expandNum;
@@ -38,21 +39,21 @@ public class BeamSearch {
 
     /**
      * Create beam search instance.
-     *
-     * @param method     Search method
-     * @param beamWidth  Beam width
-     * @param expandNum  Number of expansions per node
-     * @param maxDepth   Maximum search depth
+     * 
+     * @param method Search method
+     * @param beamWidth Beam width
+     * @param expandNum Number of expansions per node
+     * @param maxDepth Maximum search depth
      * @param numWorkers Number of parallel workers
-     * @param verbose    Enable verbose logging
-     * @param earlyStop  Enable early stopping
+     * @param verbose Enable verbose logging
+     * @param earlyStop Enable early stopping
      * @param checkValid Check validity of nodes
-     * @param maxScore   Maximum score threshold
-     * @param topK       Number of top results to return
+     * @param maxScore Maximum score threshold
+     * @param topK Number of top results to return
+     * @since 0.1.7
      */
-    public BeamSearch(Object method, int beamWidth, int expandNum, int maxDepth,
-                      int numWorkers, boolean verbose, boolean earlyStop,
-                      boolean checkValid, double maxScore, int topK) {
+    public BeamSearch(Object method, int beamWidth, int expandNum, int maxDepth, int numWorkers, boolean verbose,
+            boolean earlyStop, boolean checkValid, double maxScore, int topK) {
         this.method = method;
         this.beamWidth = beamWidth;
         this.expandNum = expandNum;
@@ -69,9 +70,10 @@ public class BeamSearch {
 
     /**
      * Execute beam search.
-     *
+     * 
      * @param tool Tool to optimize
      * @return List of result histories
+     * @since 0.1.7
      */
     public List<List<Object>> search(Map<String, Object> tool) {
         long startTime = System.currentTimeMillis();
@@ -98,11 +100,8 @@ public class BeamSearch {
 
         for (int depth = 1; depth <= maxDepth; depth++) {
             if (System.currentTimeMillis() - startTime > timeoutMs) {
-                return bestNodes.stream()
-                        .sorted(Comparator.comparingDouble(TreeNode::getScore).reversed())
-                        .limit(topK)
-                        .map(node -> new ArrayList<>(node.getHistory()))
-                        .collect(Collectors.toList());
+                return bestNodes.stream().sorted(Comparator.comparingDouble(TreeNode::getScore).reversed()).limit(topK)
+                        .map(node -> new ArrayList<>(node.getHistory())).collect(Collectors.toList());
             }
 
             if (earlyStop && checkEarlyStop(beamList, maxScore, topK)) {
@@ -114,19 +113,22 @@ public class BeamSearch {
             bestNodes.addAll(beamList);
         }
 
-        return bestNodes.stream()
-                .filter(node -> node.getDepth() > 0)
-                .sorted(Comparator.comparingDouble(TreeNode::getScore).reversed())
-                .limit(topK)
-                .map(node -> new ArrayList<>(node.getHistory()))
-                .collect(Collectors.toList());
+        return bestNodes.stream().filter(node -> node.getDepth() > 0)
+                .sorted(Comparator.comparingDouble(TreeNode::getScore).reversed()).limit(topK)
+                .map(node -> new ArrayList<>(node.getHistory())).collect(Collectors.toList());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * expand.
+     * 
+     * @param beamList beamList
+     * @param tool tool
+     * @param examples examples
+     * @param depth depth
+     * @return the result
+     * @since 0.1.7
      */
-    public List<TreeNode> expand(List<TreeNode> beamList, Map<String, Object> tool,
-                                 List<Object> examples, int depth) {
+    public List<TreeNode> expand(List<TreeNode> beamList, Map<String, Object> tool, List<Object> examples, int depth) {
         List<TreeNode> newBeamList = new ArrayList<>();
         if (numWorkers <= 1) {
             for (TreeNode node : beamList) {
@@ -164,17 +166,25 @@ public class BeamSearch {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * prune.
+     * 
+     * @param beamList beamList
+     * @return the result
+     * @since 0.1.7
      */
     public List<TreeNode> prune(List<TreeNode> beamList) {
-        return beamList.stream()
-                .sorted(Comparator.comparingDouble(TreeNode::getScore).reversed())
-                .limit(beamWidth)
+        return beamList.stream().sorted(Comparator.comparingDouble(TreeNode::getScore).reversed()).limit(beamWidth)
                 .collect(Collectors.toList());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * checkEarlyStop.
+     * 
+     * @param beamList beamList
+     * @param maxScore maxScore
+     * @param k k
+     * @return the result
+     * @since 0.1.7
      */
     public boolean checkEarlyStop(List<TreeNode> beamList, double maxScore, int k) {
         if (beamList.size() < k) {
@@ -189,26 +199,33 @@ public class BeamSearch {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTimeoutMs.
+     * 
+     * @param timeoutMs timeoutMs
+     * @since 0.1.7
      */
     public void setTimeoutMs(long timeoutMs) {
         this.timeoutMs = timeoutMs;
     }
 
-    private TreeNode expandSingleStep(TreeNode node, Map<String, Object> tool,
-                                      List<Object> examples, int depth) {
+    /**
+     * expandSingleStep.
+     * 
+     * @param node node
+     * @param tool tool
+     * @param examples examples
+     * @param depth depth
+     * @return the result
+     * @since 0.1.7
+     */
+    private TreeNode expandSingleStep(TreeNode node, Map<String, Object> tool, List<Object> examples, int depth) {
         for (int retry = 0; retry < numRetry; retry++) {
             StepResult result = step(tool, examples, node.getHistory(), depth);
             if (checkValid && Double.compare(result.score, -1.0d) == 0) {
                 continue;
             }
 
-            TreeNode newNode = new TreeNode(
-                    result.data,
-                    result.score,
-                    result.results,
-                    node.getHistory()
-            );
+            TreeNode newNode = new TreeNode(result.data, result.score, result.results, node.getHistory());
             newNode.setParent(node);
             node.addChild(newNode);
             return newNode;
@@ -216,6 +233,13 @@ public class BeamSearch {
         throw new RuntimeException("Failed to expand node after retries.");
     }
 
+    /**
+     * getExamples.
+     * 
+     * @param tool tool
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> getExamples(Map<String, Object> tool) {
         try {
             java.lang.reflect.Method methodRef = method.getClass().getMethod("getExamples", Map.class);
@@ -224,30 +248,31 @@ public class BeamSearch {
                 return new ArrayList<>(list);
             }
         } catch (Exception ignored) {
+            // Ignore.
         }
-        return null;
+        return java.util.Collections.emptyList();
     }
 
-    private StepResult step(Map<String, Object> tool, List<Object> examples,
-                            List<Object> prevOutputs, int depth) {
+    /**
+     * step.
+     * 
+     * @param tool tool
+     * @param examples examples
+     * @param prevOutputs prevOutputs
+     * @param depth depth
+     * @return the result
+     * @since 0.1.7
+     */
+    private StepResult step(Map<String, Object> tool, List<Object> examples, List<Object> prevOutputs, int depth) {
         try {
             Object rawResult;
             try {
-                java.lang.reflect.Method stepMethod = method.getClass().getMethod(
-                        "step",
-                        Map.class,
-                        List.class,
-                        List.class,
-                        int.class
-                );
+                java.lang.reflect.Method stepMethod =
+                    method.getClass().getMethod("step", Map.class, List.class, List.class, int.class);
                 rawResult = stepMethod.invoke(method, tool, examples, prevOutputs, depth);
             } catch (NoSuchMethodException ignored) {
-                java.lang.reflect.Method stepMethod = method.getClass().getMethod(
-                        "step",
-                        Map.class,
-                        List.class,
-                        int.class
-                );
+                java.lang.reflect.Method stepMethod =
+                    method.getClass().getMethod("step", Map.class, List.class, int.class);
                 rawResult = stepMethod.invoke(method, tool, prevOutputs, depth);
             }
             return toStepResult(rawResult);
@@ -262,6 +287,14 @@ public class BeamSearch {
         }
     }
 
+    /**
+     * toStepResult.
+     * 
+     * @param rawResult rawResult
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private static StepResult toStepResult(Object rawResult) throws Exception {
         if (rawResult instanceof StepResult stepResult) {
             return stepResult;
@@ -279,32 +312,43 @@ public class BeamSearch {
             throw new IllegalArgumentException("Step result score must be numeric.");
         }
 
-        return new StepResult(
-                dataField.get(rawResult),
-                number.doubleValue(),
-                resultsField.get(rawResult)
-        );
+        return new StepResult(dataField.get(rawResult), number.doubleValue(), resultsField.get(rawResult));
     }
 
     /**
      * Step result container.
+     * 
+     * @since 0.1.7
      */
     public static class StepResult {
         /**
-         * Auto-generated for codecheck compliance.
+         * data.
+         * 
+         * @since 0.1.7
          */
         public final Object data;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * score.
+         * 
+         * @since 0.1.7
          */
         public final double score;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * results.
+         * 
+         * @since 0.1.7
          */
         public final Object results;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * StepResult.
+         * 
+         * @param data data
+         * @param score score
+         * @param results results
+         * @since 0.1.7
          */
         public StepResult(Object data, double score, Object results) {
             this.data = data;

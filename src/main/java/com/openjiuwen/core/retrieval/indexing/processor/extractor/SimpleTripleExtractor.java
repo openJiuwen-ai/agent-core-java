@@ -17,16 +17,28 @@ import java.util.regex.Pattern;
 
 /**
  * Lightweight local triple extractor based on sentence tokenization.
+ * 
+ * @since 0.1.7
  */
 public class SimpleTripleExtractor extends Extractor {
-
     private static final Pattern SENTENCE_SPLIT = Pattern.compile("(?<=[.!?。！？])\\s+");
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * extract.
+     * 
+     * @param chunks chunks
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<Triple> extract(List<TextChunk> chunks, Map<String, Object> options) {
         List<Triple> triples = new ArrayList<>();
         if (chunks == null) {
@@ -56,6 +68,15 @@ public class SimpleTripleExtractor extends Extractor {
         return triples;
     }
 
+    /**
+     * serializeTriple.
+     * 
+     * @param subject subject
+     * @param predicate predicate
+     * @param object object
+     * @return the result
+     * @since 0.1.7
+     */
     private static String serializeTriple(String subject, String predicate, String object) {
         try {
             return MAPPER.writeValueAsString(List.of(subject, predicate, object));

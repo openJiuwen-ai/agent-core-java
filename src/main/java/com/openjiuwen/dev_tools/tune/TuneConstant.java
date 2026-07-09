@@ -6,77 +6,103 @@ package com.openjiuwen.dev_tools.tune;
 
 /**
  * Prompt tuning constants.
- *
- * <p>Mirrors Python's {@code TuneConstant} in {@code openjiuwen.dev_tools.tune.base}.
+ * <p>
+ * Mirrors Python's {@code TuneConstant} in {@code openjiuwen.dev_tools.tune.base}.
+ * 
+ * @since 0.1.7
  */
 public final class TuneConstant {
-
     // ========== optimizer parameters default value constant ==========
-
     /**
-     * Default number of examples.
+     * DEFAULT_EXAMPLE_NUM.
+     * 
+     * @since 0.1.7
      */
     public static final int DEFAULT_EXAMPLE_NUM = 1;
 
     /**
-     * Default number of iterations.
+     * DEFAULT_ITERATION_NUM.
+     * 
+     * @since 0.1.7
      */
     public static final int DEFAULT_ITERATION_NUM = 3;
 
     /**
-     * Default maximum number of sampled examples.
+     * DEFAULT_MAX_SAMPLED_EXAMPLE_NUM.
+     * 
+     * @since 0.1.7
      */
     public static final int DEFAULT_MAX_SAMPLED_EXAMPLE_NUM = 10;
 
     /**
-     * Default number of parallel executions.
+     * DEFAULT_PARALLEL_NUM.
+     * 
+     * @since 0.1.7
      */
     public static final int DEFAULT_PARALLEL_NUM = 1;
 
     /**
-     * Default maximum number of sample error cases.
+     * DEFAULT_MAX_NUM_SAMPLE_ERROR_CASES.
+     * 
+     * @since 0.1.7
      */
     public static final int DEFAULT_MAX_NUM_SAMPLE_ERROR_CASES = 10;
 
     /**
-     * Default early stop score.
+     * DEFAULT_EARLY_STOP_SCORE.
+     * 
+     * @since 0.1.7
      */
     public static final double DEFAULT_EARLY_STOP_SCORE = 1.0;
 
     // ========== optimizer parameters threshold constant ==========
 
     /**
-     * Minimum number of iterations.
+     * MIN_ITERATION_NUM.
+     * 
+     * @since 0.1.7
      */
     public static final int MIN_ITERATION_NUM = 1;
 
     /**
-     * Maximum number of iterations.
+     * MAX_ITERATION_NUM.
+     * 
+     * @since 0.1.7
      */
     public static final int MAX_ITERATION_NUM = 20;
 
     /**
-     * Minimum number of parallel executions.
+     * MIN_PARALLEL_NUM.
+     * 
+     * @since 0.1.7
      */
     public static final int MIN_PARALLEL_NUM = 1;
 
     /**
-     * Maximum number of parallel executions.
+     * MAX_PARALLEL_NUM.
+     * 
+     * @since 0.1.7
      */
     public static final int MAX_PARALLEL_NUM = 20;
 
     /**
-     * Minimum number of examples.
+     * MIN_EXAMPLE_NUM.
+     * 
+     * @since 0.1.7
      */
     public static final int MIN_EXAMPLE_NUM = 0;
 
     /**
-     * Maximum number of examples.
+     * MAX_EXAMPLE_NUM.
+     * 
+     * @since 0.1.7
      */
     public static final int MAX_EXAMPLE_NUM = 20;
 
     /**
      * Private constructor to prevent instantiation.
+     * 
+     * @since 0.1.7
      */
     private TuneConstant() {
         throw new UnsupportedOperationException("Constant class cannot be instantiated");

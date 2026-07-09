@@ -1,12 +1,13 @@
-package com.openjiuwen.agentevolving;
 
-import com.openjiuwen.agentevolving.evaluator.metrics.ExactMatchMetric;
-import org.junit.jupiter.api.Test;
+package com.openjiuwen.agentevolving;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class AgentEvolvingExampleSupportTest {
+import com.openjiuwen.agentevolving.evaluator.metrics.ExactMatchMetric;
 
+import org.junit.jupiter.api.Test;
+
+class AgentEvolvingExampleSupportTest {
     @Test
     void shouldExposeCalculatorAndNl2SqlCaseLoaders() {
         assertThat(AgentEvolvingExampleSupport.calculatorCaseLoader().size()).isEqualTo(1);
@@ -19,8 +20,7 @@ class AgentEvolvingExampleSupportTest {
     void shouldExposeExactMatchMetricAndBaselineSummary() {
         ExactMatchMetric metric = AgentEvolvingExampleSupport.exactMatchMetric();
         assertThat(metric.compute("A", "a", java.util.Map.of())).isEqualTo(1.0);
-        assertThat(AgentEvolvingExampleSupport.describeCurrentJavaBaseline())
-                .contains("dataset/evaluator/trainer")
+        assertThat(AgentEvolvingExampleSupport.describeCurrentJavaBaseline()).contains("dataset/evaluator/trainer")
                 .contains("not fully ported");
     }
 }

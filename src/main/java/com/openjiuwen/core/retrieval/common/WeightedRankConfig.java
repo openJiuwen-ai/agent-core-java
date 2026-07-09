@@ -10,24 +10,30 @@ import java.util.Map;
 
 /**
  * Weighted ranker configuration for dense/sparse fusion.
+ * 
+ * @since 0.1.7
  */
 public class WeightedRankConfig extends BaseRankConfig {
-
     private double denseName = 0.15;
     private double denseContent = 0.6;
     private double sparseContent = 0.25;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WeightedRankConfig.
+     * 
+     * @since 0.1.7
      */
     public WeightedRankConfig() {
         super("weighted", false);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getArgs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public RankerArguments getArgs() {
         List<Double> weights = new ArrayList<>();
         if (denseName > 0) {
@@ -43,22 +49,25 @@ public class WeightedRankConfig extends BaseRankConfig {
         if (sum <= 0.0) {
             return new RankerArguments(List.of(), Map.of());
         }
-        List<Object> normalized = weights.stream()
-                .map(weight -> weight / sum)
-                .map(value -> (Object) value)
-                .toList();
+        List<Object> normalized = weights.stream().map(weight -> weight / sum).map(value -> (Object) value).toList();
         return new RankerArguments(normalized, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDenseName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getDenseName() {
         return denseName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDenseName.
+     * 
+     * @param denseName denseName
+     * @since 0.1.7
      */
     public void setDenseName(double denseName) {
         validateWeight(denseName, "denseName");
@@ -66,14 +75,20 @@ public class WeightedRankConfig extends BaseRankConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDenseContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getDenseContent() {
         return denseContent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDenseContent.
+     * 
+     * @param denseContent denseContent
+     * @since 0.1.7
      */
     public void setDenseContent(double denseContent) {
         validateWeight(denseContent, "denseContent");
@@ -81,20 +96,33 @@ public class WeightedRankConfig extends BaseRankConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSparseContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getSparseContent() {
         return sparseContent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSparseContent.
+     * 
+     * @param sparseContent sparseContent
+     * @since 0.1.7
      */
     public void setSparseContent(double sparseContent) {
         validateWeight(sparseContent, "sparseContent");
         this.sparseContent = sparseContent;
     }
 
+    /**
+     * validateWeight.
+     * 
+     * @param weight weight
+     * @param field field
+     * @since 0.1.7
+     */
     private static void validateWeight(double weight, String field) {
         if (weight < 0.0 || weight > 1.0) {
             throw RetrievalExceptions.validation(field + " must be between 0 and 1");

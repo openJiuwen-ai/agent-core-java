@@ -12,33 +12,50 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Stream emitter responsible for pushing stream data to the stream queue.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.stream.emitter.StreamEmitter}.
+ * 
+ * @since 0.1.7
  */
 public class StreamEmitter {
-
     /**
-     * Sentinel value indicating end of stream.
+     * END_FRAME.
+     * 
+     * @since 0.1.7
      */
     public static final String END_FRAME = "all streaming outputs finish";
 
     private final AsyncStreamQueue streamQueue;
+
+    /**
+     * AtomicBoolean.
+     * 
+     * @since 0.1.7
+     */
     private final AtomicBoolean isClosed = new AtomicBoolean(false);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * StreamEmitter.
+     * 
+     * @since 0.1.7
      */
     public StreamEmitter() {
         this.streamQueue = new AsyncStreamQueue();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * StreamEmitter.
+     * 
+     * @param streamQueue streamQueue
+     * @since 0.1.7
      */
     public StreamEmitter(AsyncStreamQueue streamQueue) {
         this.streamQueue = streamQueue;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStreamQueue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AsyncStreamQueue getStreamQueue() {
         return streamQueue;
@@ -46,8 +63,9 @@ public class StreamEmitter {
 
     /**
      * Emit stream data.
-     *
+     * 
      * @param streamData the data to emit
+     * @since 0.1.7
      */
     public void emit(Object streamData) {
         if (isClosed.get()) {
@@ -57,7 +75,10 @@ public class StreamEmitter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isClosed.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isClosed() {
         return isClosed.get();
@@ -65,6 +86,8 @@ public class StreamEmitter {
 
     /**
      * Close the emitter, sending END_FRAME sentinel.
+     * 
+     * @since 0.1.7
      */
     public void close() {
         if (isClosed.compareAndSet(false, true)) {

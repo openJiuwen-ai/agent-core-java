@@ -12,13 +12,14 @@ import lombok.NoArgsConstructor;
 /**
  * Serializable workspace specification.
  * Mirrors Python WorkspaceSpec.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class WorkspaceSpec {
-
     @Builder.Default
     private String rootPath = "./";
     @Builder.Default

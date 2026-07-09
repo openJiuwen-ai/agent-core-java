@@ -5,20 +5,21 @@
 package com.openjiuwen.agentteams.monitor;
 
 import com.openjiuwen.agentteams.schema.events.EventMessage;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Normalized monitor event payload converted from runtime event messages.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-/**
- * Normalized monitor event payload converted from runtime event messages.
- *
- * @since 1.0
- */
 public class MonitorEvent {
     private MonitorEventType eventType;
     private String teamId;
@@ -39,7 +40,12 @@ public class MonitorEvent {
     private String toMember;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromEventMessage.
+     * 
+     * @param message message
+     * @param teamId teamId
+     * @return the result
+     * @since 0.1.7
      */
     public static MonitorEvent fromEventMessage(EventMessage message, String teamId) {
         if (message == null || message.getEventType() == null) {
@@ -68,34 +74,41 @@ public class MonitorEvent {
         if (type == null) {
             return nullValue();
         }
-        java.util.Map<String, Object> payload = message.getPayload() != null
-                ? message.getPayload()
-                : java.util.Map.of();
-        return MonitorEvent.builder()
-                .eventType(type)
-                .teamId(stringValue(payload.get("team_name"), teamId))
-                .memberId(stringValue(payload.get("member_name"), null))
-                .timestamp(System.currentTimeMillis())
+        java.util.Map<String, Object> payload =
+            message.getPayload() != null ? message.getPayload() : java.util.Map.of();
+        return MonitorEvent.builder().eventType(type).teamId(stringValue(payload.get("team_name"), teamId))
+                .memberId(stringValue(payload.get("member_name"), null)).timestamp(System.currentTimeMillis())
                 .name(stringValue(payload.get("display_name"), null))
                 .leaderId(stringValue(payload.get("leader_member_name"), null))
-                .created(longValue(payload.get("created")))
-                .oldStatus(stringValue(payload.get("old_status"), null))
+                .created(longValue(payload.get("created"))).oldStatus(stringValue(payload.get("old_status"), null))
                 .newStatus(stringValue(payload.get("new_status"), null))
-                .reason(stringValue(payload.get("reason"), null))
-                .restartCount(intValue(payload.get("restart_count")))
-                .force(booleanValue(payload.get("force")))
-                .taskId(stringValue(payload.get("task_id"), null))
+                .reason(stringValue(payload.get("reason"), null)).restartCount(intValue(payload.get("restart_count")))
+                .force(booleanValue(payload.get("force"))).taskId(stringValue(payload.get("task_id"), null))
                 .status(stringValue(payload.get("status"), null))
                 .messageId(stringValue(payload.get("message_id"), null))
                 .fromMember(stringValue(payload.get("from_member_name"), null))
-                .toMember(stringValue(payload.get("to_member_name"), null))
-                .build();
+                .toMember(stringValue(payload.get("to_member_name"), null)).build();
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param value value
+     * @param fallback fallback
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringValue(Object value, String fallback) {
         return value != null ? String.valueOf(value) : fallback;
     }
 
+    /**
+     * longValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Long longValue(Object value) {
         if (value instanceof Number number) {
             return number.longValue();
@@ -106,6 +119,13 @@ public class MonitorEvent {
         return nullValue();
     }
 
+    /**
+     * intValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Integer intValue(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -116,6 +136,13 @@ public class MonitorEvent {
         return nullValue();
     }
 
+    /**
+     * booleanValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Boolean booleanValue(Object value) {
         if (value instanceof Boolean boolValue) {
             return boolValue;
@@ -125,8 +152,14 @@ public class MonitorEvent {
         }
         return nullValue();
     }
+
+    /**
+     * nullValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static <T> T nullValue() {
         return null;
     }
-
 }

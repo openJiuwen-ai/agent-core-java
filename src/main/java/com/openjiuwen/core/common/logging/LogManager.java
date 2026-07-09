@@ -11,23 +11,46 @@ import java.util.concurrent.ConcurrentHashMap;
  * Log Manager — provides logger creation, registration, and retrieval.
  * <p>
  * Thread-safe via ConcurrentHashMap. Lazy initialization of individual loggers.
+ * 
+ * @since 0.1.7
  */
 public final class LogManager {
-
     private static final Map<String, LoggerProtocol> LOGGERS = new ConcurrentHashMap<>();
     private static volatile boolean initialized = false;
     private static volatile LoggerFactory defaultLoggerFactory;
 
+    /**
+     * LogManager.
+     * 
+     * @since 0.1.7
+     */
     private LogManager() {
     }
 
-    /** Functional interface for creating loggers from a type name and config. */
+    /**
+     * Functional interface for creating loggers from a type name and config.
+     * 
+     * @since 0.1.7
+     */
     @FunctionalInterface
     public interface LoggerFactory {
+        /**
+         * create.
+         * 
+         * @param logType logType
+         * @param config config
+         * @return the result
+         * @since 0.1.7
+         */
         LoggerProtocol create(String logType, Map<String, Object> config);
     }
 
-    /** Set the default logger factory (e.g., DefaultLogger::new). */
+    /**
+     * Set the default logger factory (e.g., DefaultLogger::new).
+     * 
+     * @param factory factory
+     * @since 0.1.7
+     */
     public static void setDefaultLoggerFactory(LoggerFactory factory) {
         defaultLoggerFactory = factory;
     }
@@ -36,6 +59,8 @@ public final class LogManager {
      * Initialize the logging system. Idempotent — safe to call multiple times.
      * <p>
      * Loads default configuration and creates the standard set of loggers.
+     * 
+     * @since 0.1.7
      */
     public static synchronized void initialize() {
         if (initialized) {
@@ -44,8 +69,7 @@ public final class LogManager {
         if (defaultLoggerFactory == null) {
             try {
                 // Attempt to load DefaultLogger via reflection to avoid hard dependency
-                Class<?> cls = Class.forName(
-                    "com.openjiuwen.core.common.logging.defaults.DefaultLogger");
+                Class<?> cls = Class.forName("com.openjiuwen.core.common.logging.defaults.DefaultLogger");
                 var ctor = cls.getConstructor(String.class, Map.class);
                 defaultLoggerFactory = (logType, config) -> {
                     try {
@@ -54,7 +78,7 @@ public final class LogManager {
                         throw new RuntimeException("Failed to create DefaultLogger", e);
                     }
                 };
-            } catch (Exception e) {
+            } catch (ReflectiveOperationException e) {
                 throw new RuntimeException("No default logger factory set and cannot load DefaultLogger", e);
             }
         }
@@ -72,13 +96,23 @@ public final class LogManager {
         initialized = true;
     }
 
-    /** Register a custom logger for a given log type. */
+    /**
+     * Register a custom logger for a given log type.
+     * 
+     * @param logType logType
+     * @param logger logger
+     * @since 0.1.7
+     */
     public static void registerLogger(String logType, LoggerProtocol logger) {
         LOGGERS.put(logType, logger);
     }
 
     /**
      * Get a logger by type. Creates one on-demand if not present.
+     * 
+     * @param logType logType
+     * @return the result
+     * @since 0.1.7
      */
     public static LoggerProtocol getLogger(String logType) {
         if (!initialized) {
@@ -94,7 +128,12 @@ public final class LogManager {
         });
     }
 
-    /** Get all registered loggers. */
+    /**
+     * Get all registered loggers.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static Map<String, LoggerProtocol> getAllLoggers() {
         if (!initialized) {
             initialize();
@@ -102,7 +141,11 @@ public final class LogManager {
         return Map.copyOf(LOGGERS);
     }
 
-    /** Reset the log manager — primarily for testing. */
+    /**
+     * Reset the log manager — primarily for testing.
+     * 
+     * @since 0.1.7
+     */
     public static synchronized void reset() {
         LOGGERS.clear();
         initialized = false;
@@ -114,15 +157,25 @@ public final class LogManager {
     /**
      * Simple provider interface for log configuration.
      * Override via {@link LogConfigProvider#setProvider} for custom configs.
+     * 
+     * @since 0.1.7
      */
     public static final class LogConfigProvider {
         private static volatile java.util.function.Supplier<Map<String, Map<String, Object>>> provider;
 
+        /**
+         * LogConfigProvider.
+         * 
+         * @since 0.1.7
+         */
         private LogConfigProvider() {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setProvider.
+         * 
+         * @param p p
+         * @since 0.1.7
          */
         public static void setProvider(java.util.function.Supplier<Map<String, Map<String, Object>>> p) {
             provider = p;

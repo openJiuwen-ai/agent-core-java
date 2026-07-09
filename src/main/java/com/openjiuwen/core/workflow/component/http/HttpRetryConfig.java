@@ -15,8 +15,8 @@ import java.util.List;
  * HTTP retry configuration.
  * <p>
  * Mirrors Python's {@code HttpRetryConfig}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -24,6 +24,13 @@ import java.util.List;
 public class HttpRetryConfig {
     private boolean isEnabled = false;
     private int maxRetries = 3;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @param 504 504
+     * @since 0.1.7
+     */
     private List<Integer> retryOnStatusCodes = new ArrayList<>(List.of(429, 500, 502, 503, 504));
     private int retryDelay = 1000; // milliseconds
     private String backoffType = "exponential"; // fixed, exponential, linear

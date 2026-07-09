@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Isolation and naming strategy for sandbox instances.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

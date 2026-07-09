@@ -8,9 +8,10 @@ package com.openjiuwen.core.workflow.component;
  * Defines the execution abilities of a workflow component.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.base.ComponentAbility}.
+ * 
+ * @since 0.1.7
  */
 public enum ComponentAbility {
-    /** Batch invoke: takes full input, returns full output. */
     INVOKE("invoke", "batch in, batch out"),
     /** Streaming output: takes full input, yields chunks. */
     STREAM("stream", "batch in, stream out"),
@@ -28,14 +29,20 @@ public enum ComponentAbility {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAbilityName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getAbilityName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDesc.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDesc() {
         return desc;

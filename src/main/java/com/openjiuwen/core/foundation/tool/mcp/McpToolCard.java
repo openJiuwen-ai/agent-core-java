@@ -7,6 +7,7 @@ package com.openjiuwen.core.foundation.tool.mcp;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.McpToolInfo;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -18,14 +19,14 @@ import java.util.Map;
  * MCP tool card with server identification.
  * <p>
  * Mirrors Python's {@code McpToolCard} model.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class McpToolCard extends ToolCard {
-
-    /** Server name this tool belongs to. */
     @JsonProperty("server_name")
     private String serverName;
 
@@ -34,65 +35,82 @@ public class McpToolCard extends ToolCard {
     private String serverId = "";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toolInfo.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public McpToolInfo toolInfo() {
-        return McpToolInfo.builder()
-                .name(getName())
-                .description(getDescription())
-                .parameters(getInputParams())
-                .serverName(serverName)
-                .build();
+        return McpToolInfo.builder().name(getName()).description(getDescription()).parameters(getInputParams())
+                .serverName(serverName).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getServerName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getServerName() {
         return serverName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setServerName.
+     * 
+     * @param serverName serverName
+     * @since 0.1.7
      */
     public void setServerName(String serverName) {
         this.serverName = serverName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getServerId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getServerId() {
         return serverId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setServerId.
+     * 
+     * @param serverId serverId
+     * @since 0.1.7
      */
     public void setServerId(String serverId) {
         this.serverId = serverId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder extends ToolCard.Builder {
         private String serverName;
         private String serverId = "";
 
         /**
-         * Auto-generated for codecheck compliance.
+         * serverName.
+         * 
+         * @param serverName serverName
+         * @return the result
+         * @since 0.1.7
          */
         public Builder serverName(String serverName) {
             this.serverName = serverName;
@@ -100,7 +118,11 @@ public class McpToolCard extends ToolCard {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * serverId.
+         * 
+         * @param serverId serverId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder serverId(String serverId) {
             this.serverId = serverId;
@@ -108,72 +130,77 @@ public class McpToolCard extends ToolCard {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * id.
+         * 
+         * @param id id
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder id(String id) {
             super.id(id);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder name(String name) {
             super.name(name);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * description.
+         * 
+         * @param description description
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder description(String description) {
             super.description(description);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * inputParams.
+         * 
+         * @param inputParams inputParams
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder inputParams(Map<String, Object> inputParams) {
             super.inputParams(inputParams);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * properties.
+         * 
+         * @param properties properties
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder properties(Map<String, Object> properties) {
             super.properties(properties);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public McpToolCard build() {
             McpToolCard card = new McpToolCard();
             if (id != null) {

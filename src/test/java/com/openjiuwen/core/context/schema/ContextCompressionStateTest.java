@@ -1,20 +1,21 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.context.schema;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.context.ContextStats;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for context compression state schema classes.
  */
 class ContextCompressionStateTest {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @Test
@@ -58,30 +59,14 @@ class ContextCompressionStateTest {
     @Test
     @DisplayName("builder and JSON property names align with Python schema")
     void testStateBuilderAndJsonProperties() throws Exception {
-        ContextCompressionState state = ContextCompressionState.builder()
-                .operationId("op-1")
-                .status("completed")
-                .phase("active_compress")
-                .processor("RoundLevelCompressor")
-                .model("demo-model")
-                .before(ContextCompressionMetric.builder()
-                        .time("2026-05-08T12:00:00.000+08:00")
-                        .messages(10)
-                        .tokens(2000)
-                        .contextPercent(10)
-                        .build())
-                .after(ContextCompressionMetric.builder()
-                        .messages(4)
-                        .tokens(500)
-                        .contextPercent(2)
-                        .build())
+        ContextCompressionState state = ContextCompressionState.builder().operationId("op-1").status("completed")
+                .phase("active_compress").processor("RoundLevelCompressor").model("demo-model")
+                .before(ContextCompressionMetric.builder().time("2026-05-08T12:00:00.000+08:00").messages(10)
+                        .tokens(2000).contextPercent(10).build())
+                .after(ContextCompressionMetric.builder().messages(4).tokens(500).contextPercent(2).build())
                 .statistic(ContextStats.builder().totalMessages(4).totalTokens(500).build())
                 .saved(ContextCompressionSaved.builder().messages(6).tokens(1500).percent(75.0f).build())
-                .durationMs(1234)
-                .contextMax(20000)
-                .summary("compressed")
-                .error("none")
-                .build();
+                .durationMs(1234).contextMax(20000).summary("compressed").error("none").build();
 
         String json = MAPPER.writeValueAsString(state);
 

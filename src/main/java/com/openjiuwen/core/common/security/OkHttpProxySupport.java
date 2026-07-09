@@ -7,6 +7,9 @@ package com.openjiuwen.core.common.security;
 import okhttp3.Credentials;
 import okhttp3.OkHttpClient;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.URI;
@@ -14,23 +17,28 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
  * Applies process proxy environment variables to OkHttp clients.
+ * 
+ * @since 0.1.7
  */
 public final class OkHttpProxySupport {
     private static final Logger LOG = LoggerFactory.getLogger(OkHttpProxySupport.class);
 
+    /**
+     * OkHttpProxySupport.
+     * 
+     * @since 0.1.7
+     */
     private OkHttpProxySupport() {
     }
 
     /**
      * Configure proxy settings from http_proxy/https_proxy for the target URL.
-     *
-     * @param builder   OkHttp client builder
+     * 
+     * @param builder OkHttp client builder
      * @param targetUrl target service URL
+     * @since 0.1.7
      */
     public static void configureFromEnvironment(OkHttpClient.Builder builder, String targetUrl) {
         URI targetUri = parseUri(targetUrl);
@@ -53,13 +61,19 @@ public final class OkHttpProxySupport {
             String[] credentials = decodeCredentials(userInfo);
             String proxyAuthorization = Credentials.basic(credentials[0], credentials[1]);
             builder.proxyAuthenticator((route, response) -> response.request().newBuilder()
-                    .header("Proxy-Authorization", proxyAuthorization)
-                    .build());
+                    .header("Proxy-Authorization", proxyAuthorization).build());
             LOG.debug("Proxy authentication configured for OkHttp, proxyHost={}, proxyPort={}, usernamePresent={}",
                     proxyUri.getHost(), port, !credentials[0].isBlank());
         }
     }
 
+    /**
+     * decodeCredentials.
+     * 
+     * @param userInfo userInfo
+     * @return the result
+     * @since 0.1.7
+     */
     private static String[] decodeCredentials(String userInfo) {
         String[] parts = userInfo.split(":", 2);
         String user = URLDecoder.decode(parts[0], StandardCharsets.UTF_8);
@@ -67,6 +81,13 @@ public final class OkHttpProxySupport {
         return new String[]{user, password};
     }
 
+    /**
+     * selectProxyUri.
+     * 
+     * @param targetScheme targetScheme
+     * @return the result
+     * @since 0.1.7
+     */
     private static URI selectProxyUri(String targetScheme) {
         String proxyValue;
         if ("https".equalsIgnoreCase(targetScheme)) {
@@ -77,6 +98,13 @@ public final class OkHttpProxySupport {
         return parseProxyUri(proxyValue);
     }
 
+    /**
+     * parseProxyUri.
+     * 
+     * @param proxyValue proxyValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static URI parseProxyUri(String proxyValue) {
         if (proxyValue == null || proxyValue.isBlank()) {
             return null;
@@ -88,6 +116,13 @@ public final class OkHttpProxySupport {
         return parseUri(normalized);
     }
 
+    /**
+     * parseUri.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static URI parseUri(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -99,6 +134,13 @@ public final class OkHttpProxySupport {
         }
     }
 
+    /**
+     * proxyPort.
+     * 
+     * @param proxyUri proxyUri
+     * @return the result
+     * @since 0.1.7
+     */
     private static int proxyPort(URI proxyUri) {
         if (proxyUri.getPort() > 0) {
             return proxyUri.getPort();
@@ -112,6 +154,13 @@ public final class OkHttpProxySupport {
         return -1;
     }
 
+    /**
+     * shouldBypassProxy.
+     * 
+     * @param host host
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean shouldBypassProxy(String host) {
         if (host == null || host.isBlank()) {
             return false;
@@ -133,14 +182,27 @@ public final class OkHttpProxySupport {
         return false;
     }
 
+    /**
+     * isLoopbackHost.
+     * 
+     * @param host host
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isLoopbackHost(String host) {
         String normalizedHost = host.toLowerCase(Locale.ROOT);
-        return "localhost".equals(normalizedHost)
-                || "127.0.0.1".equals(normalizedHost)
-                || "::1".equals(normalizedHost)
+        return "localhost".equals(normalizedHost) || "127.0.0.1".equals(normalizedHost) || "::1".equals(normalizedHost)
                 || "[::1]".equals(normalizedHost);
     }
 
+    /**
+     * matchesNoProxy.
+     * 
+     * @param host host
+     * @param pattern pattern
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean matchesNoProxy(String host, String pattern) {
         if (pattern.isBlank() || pattern.contains("/")) {
             return false;
@@ -157,6 +219,13 @@ public final class OkHttpProxySupport {
         return host.equals(pattern);
     }
 
+    /**
+     * firstNonBlankEnv.
+     * 
+     * @param names names
+     * @return the result
+     * @since 0.1.7
+     */
     private static String firstNonBlankEnv(String... names) {
         for (String name : names) {
             String value = System.getenv(name);

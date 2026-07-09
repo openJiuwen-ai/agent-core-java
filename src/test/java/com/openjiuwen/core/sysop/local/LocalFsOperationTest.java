@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.sysop.local;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.BaseFsOperation;
@@ -10,6 +13,7 @@ import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.result.*;
+
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -18,14 +22,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Comprehensive tests for LocalFsOperation.
  * Mirrors Python's test_fs_operation.py test cases.
  */
 class LocalFsOperationTest {
-
     @TempDir
     Path workDir;
 
@@ -33,9 +34,7 @@ class LocalFsOperationTest {
 
     @BeforeEach
     void setUp() {
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .workDir(workDir.toString())
-                .build();
+        LocalWorkConfig config = LocalWorkConfig.builder().workDir(workDir.toString()).build();
         SysOperationCard card = new SysOperationCard();
         card.setId("test_fs_op");
         card.setMode(OperationMode.LOCAL);
@@ -61,12 +60,11 @@ class LocalFsOperationTest {
     @DisplayName("Basic write and read file")
     void testBasicWriteAndRead() {
         String content = "Hello, world!\nLine 2";
-        WriteFileResult wr = fs().writeFile("test_basics.txt", content, "text",
-                false, false, true, null, "utf-8", null);
+        WriteFileResult wr =
+            fs().writeFile("test_basics.txt", content, "text", false, false, true, null, "utf-8", null);
         assertEquals(StatusCode.SUCCESS.getCode(), wr.getCode());
 
-        ReadFileResult rr = fs().readFile("test_basics.txt", "text",
-                null, null, null, "utf-8", 0, null);
+        ReadFileResult rr = fs().readFile("test_basics.txt", "text", null, null, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), rr.getCode());
         assertEquals(content, rr.getData().getContent());
     }
@@ -75,43 +73,36 @@ class LocalFsOperationTest {
     @DisplayName("Write with prependNewline")
     void testWritePrependNewline() {
         // Write initial content
-        fs().writeFile("append.txt", "Initial", "text",
-                false, false, true, null, "utf-8", null);
-        ReadFileResult r1 = fs().readFile("append.txt", "text",
-                null, null, null, "utf-8", 0, null);
+        fs().writeFile("append.txt", "Initial", "text", false, false, true, null, "utf-8", null);
+        ReadFileResult r1 = fs().readFile("append.txt", "text", null, null, null, "utf-8", 0, null);
         assertEquals("Initial", r1.getData().getContent());
 
         // Overwrite with prepend newline
-        fs().writeFile("append.txt", "Appended", "text",
-                true, false, true, null, "utf-8", null);
-        ReadFileResult r2 = fs().readFile("append.txt", "text",
-                null, null, null, "utf-8", 0, null);
+        fs().writeFile("append.txt", "Appended", "text", true, false, true, null, "utf-8", null);
+        ReadFileResult r2 = fs().readFile("append.txt", "text", null, null, null, "utf-8", 0, null);
         assertEquals("\nAppended", r2.getData().getContent());
     }
 
     @Test
     @DisplayName("Write with appendNewline")
     void testWriteAppendNewline() {
-        fs().writeFile("newline.txt", "content", "text",
-                false, true, true, null, "utf-8", null);
-        ReadFileResult rr = fs().readFile("newline.txt", "text",
-                null, null, null, "utf-8", 0, null);
+        fs().writeFile("newline.txt", "content", "text", false, true, true, null, "utf-8", null);
+        ReadFileResult rr = fs().readFile("newline.txt", "text", null, null, null, "utf-8", 0, null);
         assertEquals("content\n", rr.getData().getContent());
     }
 
     @Test
     @DisplayName("Write file with createIfNotExist=false fails for new file")
     void testWriteFileNoCreate() {
-        WriteFileResult wr = fs().writeFile("nonexist.txt", "content", "text",
-                false, false, false, null, "utf-8", null);
+        WriteFileResult wr =
+            fs().writeFile("nonexist.txt", "content", "text", false, false, false, null, "utf-8", null);
         assertNotEquals(StatusCode.SUCCESS.getCode(), wr.getCode());
     }
 
     @Test
     @DisplayName("Read non-existent file returns error")
     void testReadNonExistentFile() {
-        ReadFileResult rr = fs().readFile("nonexistent.txt", "text",
-                null, null, null, "utf-8", 0, null);
+        ReadFileResult rr = fs().readFile("nonexistent.txt", "text", null, null, null, "utf-8", 0, null);
         assertNotEquals(StatusCode.SUCCESS.getCode(), rr.getCode());
     }
 
@@ -123,8 +114,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                10, null, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", 10, null, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals(content, res.getData().getContent());
     }
@@ -135,8 +125,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                5, null, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", 5, null, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals(content, res.getData().getContent());
     }
@@ -147,8 +136,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                3, null, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", 3, null, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         String resultContent = res.getData().getContentAsString();
         assertTrue(resultContent.contains("Line 1"));
@@ -164,22 +152,18 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        List<ReadFileStreamResult> chunks = collectStreamResults(
-                fs().readFileStream("multi.txt", "text", 3, null, null, "utf-8", 0, null));
+        List<ReadFileStreamResult> chunks =
+            collectStreamResults(fs().readFileStream("multi.txt", "text", 3, null, null, "utf-8", 0, null));
         assertEquals(3, chunks.size());
 
         // All but last should have lastChunk=false
         for (int i = 0; i < chunks.size() - 1; i++) {
-            assertFalse(chunks.get(i).getData().isLastChunk(),
-                    "Chunk " + i + " should not be last");
+            assertFalse(chunks.get(i).getData().isLastChunk(), "Chunk " + i + " should not be last");
         }
-        assertTrue(chunks.get(chunks.size() - 1).getData().isLastChunk(),
-                "Last chunk should be marked as last");
+        assertTrue(chunks.get(chunks.size() - 1).getData().isLastChunk(), "Last chunk should be marked as last");
 
         // Verify content
-        String joined = chunks.stream()
-                .map(c -> c.getData().getChunkContentAsString())
-                .reduce("", String::concat);
+        String joined = chunks.stream().map(c -> c.getData().getChunkContentAsString()).reduce("", String::concat);
         assertTrue(joined.contains("Line 1"));
         assertTrue(joined.contains("Line 2"));
         assertTrue(joined.contains("Line 3"));
@@ -194,8 +178,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, 10, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, 10, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals(content, res.getData().getContent());
     }
@@ -206,8 +189,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, 5, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, 5, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals(content, res.getData().getContent());
     }
@@ -218,8 +200,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, 2, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, 2, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals("Line 4\nLine 5", res.getData().getContent());
     }
@@ -229,8 +210,7 @@ class LocalFsOperationTest {
     void testReadTailEmptyFile() throws IOException {
         Files.writeString(workDir.resolve("empty.txt"), "");
 
-        ReadFileResult res = fs().readFile("empty.txt", "text",
-                null, 5, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("empty.txt", "text", null, 5, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals("", res.getData().getContent());
     }
@@ -240,8 +220,7 @@ class LocalFsOperationTest {
     void testReadTailSingleLine() throws IOException {
         Files.writeString(workDir.resolve("single.txt"), "Only one line");
 
-        ReadFileResult res = fs().readFile("single.txt", "text",
-                null, 5, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("single.txt", "text", null, 5, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals("Only one line", res.getData().getContent());
     }
@@ -253,8 +232,8 @@ class LocalFsOperationTest {
         Files.writeString(workDir.resolve("multi.txt"), content);
 
         // Stream tail with more lines
-        List<ReadFileStreamResult> chunks = collectStreamResults(
-                fs().readFileStream("multi.txt", "text", null, 10, null, "utf-8", 0, null));
+        List<ReadFileStreamResult> chunks =
+            collectStreamResults(fs().readFileStream("multi.txt", "text", null, 10, null, "utf-8", 0, null));
         assertEquals(5, chunks.size());
         for (int i = 0; i < chunks.size() - 1; i++) {
             assertFalse(chunks.get(i).getData().isLastChunk());
@@ -262,14 +241,13 @@ class LocalFsOperationTest {
         assertTrue(chunks.get(chunks.size() - 1).getData().isLastChunk());
 
         // Stream tail with fewer lines
-        List<ReadFileStreamResult> tailChunks = collectStreamResults(
-                fs().readFileStream("multi.txt", "text", null, 2, null, "utf-8", 0, null));
+        List<ReadFileStreamResult> tailChunks =
+            collectStreamResults(fs().readFileStream("multi.txt", "text", null, 2, null, "utf-8", 0, null));
         assertEquals(2, tailChunks.size());
         assertFalse(tailChunks.get(0).getData().isLastChunk());
         assertTrue(tailChunks.get(1).getData().isLastChunk());
-        String joinedTail = tailChunks.stream()
-                .map(c -> c.getData().getChunkContentAsString())
-                .reduce("", String::concat);
+        String joinedTail =
+            tailChunks.stream().map(c -> c.getData().getChunkContentAsString()).reduce("", String::concat);
         assertTrue(joinedTail.contains("Line 4"));
         assertTrue(joinedTail.contains("Line 5"));
     }
@@ -282,8 +260,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, null, new int[]{2, 4}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, null, new int[]{2, 4}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         String rc = res.getData().getContentAsString();
         assertTrue(rc.contains("Line 2"));
@@ -299,8 +276,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, null, new int[]{1, 3}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, null, new int[]{1, 3}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         String rc = res.getData().getContentAsString();
         assertTrue(rc.contains("Line 1"));
@@ -315,8 +291,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, null, new int[]{4, 5}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, null, new int[]{4, 5}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals("Line 4\nLine 5", res.getData().getContent());
     }
@@ -327,8 +302,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, null, new int[]{4, 2}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, null, new int[]{4, 2}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals("", res.getData().getContent());
     }
@@ -339,8 +313,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, null, new int[]{2, 10}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, null, new int[]{2, 10}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         String rc = res.getData().getContentAsString();
         assertTrue(rc.contains("Line 2"));
@@ -354,8 +327,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, null, new int[]{10, 20}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, null, new int[]{10, 20}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals("", res.getData().getContent());
     }
@@ -366,8 +338,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, null, new int[]{3, 3}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, null, new int[]{3, 3}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertTrue(res.getData().getContentAsString().contains("Line 3"));
         assertFalse(res.getData().getContentAsString().contains("Line 2"));
@@ -380,8 +351,7 @@ class LocalFsOperationTest {
         String content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, null, new int[]{5, 5}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, null, new int[]{5, 5}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals("Line 5", res.getData().getContent());
     }
@@ -391,8 +361,7 @@ class LocalFsOperationTest {
     void testReadLineRangeEmptyFile() throws IOException {
         Files.writeString(workDir.resolve("empty.txt"), "");
 
-        ReadFileResult res = fs().readFile("empty.txt", "text",
-                null, null, new int[]{1, 5}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("empty.txt", "text", null, null, new int[]{1, 5}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals("", res.getData().getContent());
     }
@@ -404,8 +373,7 @@ class LocalFsOperationTest {
         Files.writeString(workDir.resolve("multi.txt"), content);
 
         List<ReadFileStreamResult> chunks = collectStreamResults(
-                fs().readFileStream("multi.txt", "text", null, null,
-                        new int[]{2, 4}, "utf-8", 0, null));
+                fs().readFileStream("multi.txt", "text", null, null, new int[]{2, 4}, "utf-8", 0, null));
         assertEquals(3, chunks.size());
         for (int i = 0; i < chunks.size() - 1; i++) {
             assertFalse(chunks.get(i).getData().isLastChunk());
@@ -420,8 +388,7 @@ class LocalFsOperationTest {
         Files.writeString(workDir.resolve("multi.txt"), content);
 
         List<ReadFileStreamResult> chunks = collectStreamResults(
-                fs().readFileStream("multi.txt", "text", null, null,
-                        new int[]{2, 10}, "utf-8", 0, null));
+                fs().readFileStream("multi.txt", "text", null, null, new int[]{2, 10}, "utf-8", 0, null));
         assertEquals(4, chunks.size()); // Lines 2-5
         assertTrue(chunks.get(chunks.size() - 1).getData().isLastChunk());
     }
@@ -431,8 +398,7 @@ class LocalFsOperationTest {
     @Test
     @DisplayName("Path traversal is denied")
     void testPathTraversalDenied() {
-        ReadFileResult res = fs().readFile("../outside.txt", "text",
-                null, null, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("../outside.txt", "text", null, null, null, "utf-8", 0, null);
         assertEquals(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR.getCode(), res.getCode());
         assertTrue(res.getMessage().contains("Access denied") || res.getMessage().contains("traverses outside"),
                 "Error message should mention access denial: " + res.getMessage());
@@ -446,11 +412,8 @@ class LocalFsOperationTest {
         Files.createDirectories(workspace);
         Files.writeString(sandboxRoot.resolve("shared.txt"), "shared");
 
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .workDir(workspace.toString())
-                .sandboxRoot(List.of(sandboxRoot.toString()))
-                .restrictToSandbox(true)
-                .build();
+        LocalWorkConfig config = LocalWorkConfig.builder().workDir(workspace.toString())
+                .sandboxRoot(List.of(sandboxRoot.toString())).restrictToSandbox(true).build();
         SysOperationCard card = new SysOperationCard();
         card.setId("test_fs_sandbox_root");
         card.setMode(OperationMode.LOCAL);
@@ -469,15 +432,13 @@ class LocalFsOperationTest {
     void testReadFileStream() throws IOException {
         Files.writeString(workDir.resolve("stream.txt"), "line1\nline2");
 
-        List<ReadFileStreamResult> chunks = collectStreamResults(
-                fs().readFileStream("stream.txt", "text", null, null, null, "utf-8", 0, null));
+        List<ReadFileStreamResult> chunks =
+            collectStreamResults(fs().readFileStream("stream.txt", "text", null, null, null, "utf-8", 0, null));
         assertTrue(chunks.size() > 0);
         for (ReadFileStreamResult chunk : chunks) {
             assertEquals(StatusCode.SUCCESS.getCode(), chunk.getCode());
         }
-        String joined = chunks.stream()
-                .map(c -> c.getData().getChunkContentAsString())
-                .reduce("", String::concat);
+        String joined = chunks.stream().map(c -> c.getData().getChunkContentAsString()).reduce("", String::concat);
         assertTrue(joined.contains("line1"));
         assertTrue(joined.contains("line2"));
     }
@@ -489,11 +450,11 @@ class LocalFsOperationTest {
     void testHeadAndTailMutuallyExclusive() throws IOException {
         Files.writeString(workDir.resolve("multi.txt"), "line1\nline2\nline3\nline4\nline5");
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                2, 2, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", 2, 2, null, "utf-8", 0, null);
         assertEquals(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR.getCode(), res.getCode());
-        assertTrue(res.getMessage().contains("cannot be specified simultaneously")
-                || res.getMessage().contains("tail and head"),
+        assertTrue(
+                res.getMessage().contains("cannot be specified simultaneously")
+                        || res.getMessage().contains("tail and head"),
                 "Should mention mutually exclusive: " + res.getMessage());
     }
 
@@ -502,11 +463,11 @@ class LocalFsOperationTest {
     void testHeadAndLineRangeMutuallyExclusive() throws IOException {
         Files.writeString(workDir.resolve("multi.txt"), "line1\nline2\nline3\nline4\nline5");
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                2, null, new int[]{2, 4}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", 2, null, new int[]{2, 4}, "utf-8", 0, null);
         assertEquals(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR.getCode(), res.getCode());
-        assertTrue(res.getMessage().contains("cannot be specified simultaneously")
-                || res.getMessage().contains("head and line_range"),
+        assertTrue(
+                res.getMessage().contains("cannot be specified simultaneously")
+                        || res.getMessage().contains("head and line_range"),
                 "Should mention mutually exclusive: " + res.getMessage());
     }
 
@@ -515,11 +476,11 @@ class LocalFsOperationTest {
     void testTailAndLineRangeMutuallyExclusive() throws IOException {
         Files.writeString(workDir.resolve("multi.txt"), "line1\nline2\nline3\nline4\nline5");
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, 2, new int[]{2, 4}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, 2, new int[]{2, 4}, "utf-8", 0, null);
         assertEquals(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR.getCode(), res.getCode());
-        assertTrue(res.getMessage().contains("cannot be specified simultaneously")
-                || res.getMessage().contains("tail and line_range"),
+        assertTrue(
+                res.getMessage().contains("cannot be specified simultaneously")
+                        || res.getMessage().contains("tail and line_range"),
                 "Should mention mutually exclusive: " + res.getMessage());
     }
 
@@ -528,8 +489,8 @@ class LocalFsOperationTest {
     void testStreamMutuallyExclusiveParams() throws IOException {
         Files.writeString(workDir.resolve("multi.txt"), "line1\nline2\nline3\nline4\nline5");
 
-        List<ReadFileStreamResult> chunks = collectStreamResults(
-                fs().readFileStream("multi.txt", "text", 2, 2, null, "utf-8", 0, null));
+        List<ReadFileStreamResult> chunks =
+            collectStreamResults(fs().readFileStream("multi.txt", "text", 2, 2, null, "utf-8", 0, null));
         assertEquals(1, chunks.size());
         assertEquals(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR.getCode(), chunks.get(0).getCode());
     }
@@ -539,8 +500,7 @@ class LocalFsOperationTest {
     void testHeadZeroWithTail() throws IOException {
         Files.writeString(workDir.resolve("multi.txt"), "line1\nline2\nline3\nline4\nline5");
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                0, 2, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", 0, 2, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals("line4\nline5", res.getData().getContent());
     }
@@ -553,8 +513,7 @@ class LocalFsOperationTest {
         String content = "line1\nline2\nline3\nline4\nline5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                0, null, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", 0, null, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals(content, res.getData().getContent());
     }
@@ -565,8 +524,7 @@ class LocalFsOperationTest {
         String content = "line1\nline2\nline3\nline4\nline5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, 0, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, 0, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals(content, res.getData().getContent());
     }
@@ -577,8 +535,7 @@ class LocalFsOperationTest {
         String content = "line1\nline2\nline3\nline4\nline5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, null, new int[]{0, 0}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, null, new int[]{0, 0}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals("", res.getData().getContent());
     }
@@ -589,8 +546,7 @@ class LocalFsOperationTest {
         String content = "line1\nline2\nline3\nline4\nline5";
         Files.writeString(workDir.resolve("multi.txt"), content);
 
-        ReadFileResult res = fs().readFile("multi.txt", "text",
-                null, null, new int[]{1, -1}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("multi.txt", "text", null, null, new int[]{1, -1}, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals("", res.getData().getContent());
     }
@@ -602,8 +558,7 @@ class LocalFsOperationTest {
     void testBinaryModeWithHead() throws IOException {
         Files.writeString(workDir.resolve("test.txt"), "Hello, world!\nLine 2");
 
-        ReadFileResult res = fs().readFile("test.txt", "bytes",
-                2, null, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("test.txt", "bytes", 2, null, null, "utf-8", 0, null);
         assertEquals(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR.getCode(), res.getCode());
         assertTrue(res.getMessage().contains("only supported in text mode"));
     }
@@ -613,8 +568,7 @@ class LocalFsOperationTest {
     void testBinaryModeWithTail() throws IOException {
         Files.writeString(workDir.resolve("test.txt"), "Hello, world!\nLine 2");
 
-        ReadFileResult res = fs().readFile("test.txt", "bytes",
-                null, 2, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("test.txt", "bytes", null, 2, null, "utf-8", 0, null);
         assertEquals(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR.getCode(), res.getCode());
         assertTrue(res.getMessage().contains("only supported in text mode"));
     }
@@ -624,8 +578,7 @@ class LocalFsOperationTest {
     void testBinaryModeWithLineRange() throws IOException {
         Files.writeString(workDir.resolve("test.txt"), "Hello, world!\nLine 2");
 
-        ReadFileResult res = fs().readFile("test.txt", "bytes",
-                null, null, new int[]{1, 2}, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("test.txt", "bytes", null, null, new int[]{1, 2}, "utf-8", 0, null);
         assertEquals(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR.getCode(), res.getCode());
         assertTrue(res.getMessage().contains("only supported in text mode"));
     }
@@ -635,8 +588,8 @@ class LocalFsOperationTest {
     void testStreamBinaryModeWithHead() throws IOException {
         Files.writeString(workDir.resolve("test.txt"), "Hello, world!");
 
-        List<ReadFileStreamResult> chunks = collectStreamResults(
-                fs().readFileStream("test.txt", "bytes", 2, null, null, "utf-8", 0, null));
+        List<ReadFileStreamResult> chunks =
+            collectStreamResults(fs().readFileStream("test.txt", "bytes", 2, null, null, "utf-8", 0, null));
         assertEquals(1, chunks.size());
         assertEquals(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR.getCode(), chunks.get(0).getCode());
         assertTrue(chunks.get(0).getMessage().contains("only supported in text mode"));
@@ -647,8 +600,8 @@ class LocalFsOperationTest {
     void testStreamBinaryModeWithTail() throws IOException {
         Files.writeString(workDir.resolve("test.txt"), "Hello, world!");
 
-        List<ReadFileStreamResult> chunks = collectStreamResults(
-                fs().readFileStream("test.txt", "bytes", null, 2, null, "utf-8", 0, null));
+        List<ReadFileStreamResult> chunks =
+            collectStreamResults(fs().readFileStream("test.txt", "bytes", null, 2, null, "utf-8", 0, null));
         assertEquals(1, chunks.size());
         assertEquals(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR.getCode(), chunks.get(0).getCode());
         assertTrue(chunks.get(0).getMessage().contains("only supported in text mode"));
@@ -660,8 +613,7 @@ class LocalFsOperationTest {
         Files.writeString(workDir.resolve("test.txt"), "Hello, world!");
 
         List<ReadFileStreamResult> chunks = collectStreamResults(
-                fs().readFileStream("test.txt", "bytes", null, null,
-                        new int[]{1, 2}, "utf-8", 0, null));
+                fs().readFileStream("test.txt", "bytes", null, null, new int[]{1, 2}, "utf-8", 0, null));
         assertEquals(1, chunks.size());
         assertEquals(StatusCode.SYS_OPERATION_FS_EXECUTION_ERROR.getCode(), chunks.get(0).getCode());
         assertTrue(chunks.get(0).getMessage().contains("only supported in text mode"));
@@ -675,8 +627,7 @@ class LocalFsOperationTest {
         byte[] binData = new byte[]{0x00, 0x01, 0x02, (byte) 0xFF};
         Files.write(workDir.resolve("test.bin"), binData);
 
-        ReadFileResult res = fs().readFile("test.bin", "bytes",
-                null, null, null, "utf-8", 0, null);
+        ReadFileResult res = fs().readFile("test.bin", "bytes", null, null, null, "utf-8", 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         // Binary read now returns raw byte[] (aligned with Python)
         byte[] rawContent = res.getData().getContentAsBytes();
@@ -692,13 +643,11 @@ class LocalFsOperationTest {
         Files.writeString(workDir.resolve("upload_test.txt"), content);
 
         String absPath = workDir.resolve("upload_test.txt").toString();
-        UploadFileResult uploadRes = fs().uploadFile(absPath, "uploaded.txt",
-                true, true, false, 0, null);
+        UploadFileResult uploadRes = fs().uploadFile(absPath, "uploaded.txt", true, true, false, 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), uploadRes.getCode());
 
         String downloadTarget = workDir.resolve("downloaded.txt").toString();
-        DownloadFileResult downloadRes = fs().downloadFile("uploaded.txt", downloadTarget,
-                true, true, false, 0, null);
+        DownloadFileResult downloadRes = fs().downloadFile("uploaded.txt", downloadTarget, true, true, false, 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), downloadRes.getCode());
 
         String downloadedContent = Files.readString(Path.of(downloadTarget));
@@ -713,8 +662,8 @@ class LocalFsOperationTest {
 
         String absPath = workDir.resolve("stream_upload.txt").toString();
         List<UploadFileStreamResult> uploadChunks = new ArrayList<>();
-        Iterator<UploadFileStreamResult> uit = fs().uploadFileStream(absPath, "stream_uploaded.txt",
-                true, true, false, 0, null);
+        Iterator<UploadFileStreamResult> uit =
+            fs().uploadFileStream(absPath, "stream_uploaded.txt", true, true, false, 0, null);
         while (uit.hasNext()) {
             UploadFileStreamResult chunk = uit.next();
             assertEquals(StatusCode.SUCCESS.getCode(), chunk.getCode());
@@ -724,8 +673,8 @@ class LocalFsOperationTest {
 
         String downloadTarget = workDir.resolve("stream_downloaded.txt").toString();
         List<DownloadFileStreamResult> downloadChunks = new ArrayList<>();
-        Iterator<DownloadFileStreamResult> dit = fs().downloadFileStream("stream_uploaded.txt",
-                downloadTarget, true, true, false, 0, null);
+        Iterator<DownloadFileStreamResult> dit =
+            fs().downloadFileStream("stream_uploaded.txt", downloadTarget, true, true, false, 0, null);
         while (dit.hasNext()) {
             DownloadFileStreamResult chunk = dit.next();
             assertEquals(StatusCode.SUCCESS.getCode(), chunk.getCode());
@@ -743,13 +692,12 @@ class LocalFsOperationTest {
         Files.writeString(workDir.resolve("empty.txt"), "");
 
         String absPath = workDir.resolve("empty.txt").toString();
-        UploadFileResult uploadRes = fs().uploadFile(absPath, "empty_uploaded.txt",
-                true, true, false, 0, null);
+        UploadFileResult uploadRes = fs().uploadFile(absPath, "empty_uploaded.txt", true, true, false, 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), uploadRes.getCode());
 
         String downloadTarget = workDir.resolve("empty_downloaded.txt").toString();
-        DownloadFileResult downloadRes = fs().downloadFile("empty_uploaded.txt",
-                downloadTarget, true, true, false, 0, null);
+        DownloadFileResult downloadRes =
+            fs().downloadFile("empty_uploaded.txt", downloadTarget, true, true, false, 0, null);
         assertEquals(StatusCode.SUCCESS.getCode(), downloadRes.getCode());
 
         String downloadedContent = Files.readString(Path.of(downloadTarget));
@@ -765,8 +713,7 @@ class LocalFsOperationTest {
         Files.createDirectories(workDir.resolve("dir1"));
         Files.writeString(workDir.resolve("dir1").resolve("file2.txt"), "Content 2");
 
-        ListFilesResult res = fs().listFiles(".", false, null,
-                "name", false, null, null);
+        ListFilesResult res = fs().listFiles(".", false, null, "name", false, null, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertTrue(res.getData().getTotalCount() >= 1);
     }
@@ -781,8 +728,7 @@ class LocalFsOperationTest {
         Files.writeString(workDir.resolve("dir1").resolve("subdir1").resolve("file3.txt"), "Content 3");
         Files.writeString(workDir.resolve("dir2").resolve("file4.txt"), "Content 4");
 
-        ListFilesResult res = fs().listFiles(".", true, null,
-                "name", false, null, null);
+        ListFilesResult res = fs().listFiles(".", true, null, "name", false, null, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertTrue(res.getData().getTotalCount() >= 4);
     }
@@ -794,13 +740,11 @@ class LocalFsOperationTest {
         Files.writeString(workDir.resolve("file2.csv"), "Content 2");
         Files.writeString(workDir.resolve("file3.txt"), "Content 3");
 
-        ListFilesResult res = fs().listFiles(".", false, null,
-                "name", false, List.of(".txt"), null);
+        ListFilesResult res = fs().listFiles(".", false, null, "name", false, List.of(".txt"), null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         // Only .txt files should be returned
         for (FileSystemItem item : res.getData().getListItems()) {
-            assertTrue(item.getName().endsWith(".txt"),
-                    "Non-.txt file found: " + item.getName());
+            assertTrue(item.getName().endsWith(".txt"), "Non-.txt file found: " + item.getName());
         }
     }
 
@@ -811,8 +755,7 @@ class LocalFsOperationTest {
         Files.createDirectories(workDir.resolve("dir2"));
         Files.writeString(workDir.resolve("file1.txt"), "Content");
 
-        ListDirsResult res = fs().listDirectories(".", false, null,
-                "name", false, null);
+        ListDirsResult res = fs().listDirectories(".", false, null, "name", false, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertTrue(res.getData().getTotalCount() >= 2);
         for (FileSystemItem item : res.getData().getListItems()) {
@@ -826,8 +769,7 @@ class LocalFsOperationTest {
         Files.createDirectories(workDir.resolve("dir1").resolve("subdir1"));
         Files.createDirectories(workDir.resolve("dir2"));
 
-        ListDirsResult res = fs().listDirectories(".", true, null,
-                "name", false, null);
+        ListDirsResult res = fs().listDirectories(".", true, null, "name", false, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertTrue(res.getData().getTotalCount() >= 3);
     }
@@ -837,8 +779,7 @@ class LocalFsOperationTest {
     void testListFilesEmptyDir() throws IOException {
         Files.createDirectories(workDir.resolve("empty_dir"));
 
-        ListFilesResult res = fs().listFiles("empty_dir", false, null,
-                "name", false, null, null);
+        ListFilesResult res = fs().listFiles("empty_dir", false, null, "name", false, null, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals(0, res.getData().getTotalCount());
     }
@@ -848,8 +789,7 @@ class LocalFsOperationTest {
     void testListDirsEmptyDir() throws IOException {
         Files.createDirectories(workDir.resolve("empty_dir"));
 
-        ListDirsResult res = fs().listDirectories("empty_dir", false, null,
-                "name", false, null);
+        ListDirsResult res = fs().listDirectories("empty_dir", false, null, "name", false, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertEquals(0, res.getData().getTotalCount());
     }
@@ -890,8 +830,7 @@ class LocalFsOperationTest {
 
         SearchFilesResult res = fs().searchFiles(".", "*", List.of("*.csv"));
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        boolean hasCsv = res.getData().getMatchingFiles().stream()
-                .anyMatch(f -> f.getName().endsWith(".csv"));
+        boolean hasCsv = res.getData().getMatchingFiles().stream().anyMatch(f -> f.getName().endsWith(".csv"));
         assertFalse(hasCsv, "CSV files should be excluded");
     }
 
@@ -910,9 +849,8 @@ class LocalFsOperationTest {
     @Test
     @DisplayName("Stream read on non-existent file returns error")
     void testStreamNonExistentFile() {
-        List<ReadFileStreamResult> chunks = collectStreamResults(
-                fs().readFileStream("nonexist.txt", "text",
-                        null, null, null, "utf-8", 0, null));
+        List<ReadFileStreamResult> chunks =
+            collectStreamResults(fs().readFileStream("nonexist.txt", "text", null, null, null, "utf-8", 0, null));
         assertEquals(1, chunks.size());
         assertNotEquals(StatusCode.SUCCESS.getCode(), chunks.get(0).getCode());
     }
@@ -924,8 +862,7 @@ class LocalFsOperationTest {
     void testWriteToDirectory() throws IOException {
         Files.createDirectories(workDir.resolve("mydir"));
 
-        WriteFileResult res = fs().writeFile("mydir", "content", "text",
-                false, false, true, null, "utf-8", null);
+        WriteFileResult res = fs().writeFile("mydir", "content", "text", false, false, true, null, "utf-8", null);
         assertNotEquals(StatusCode.SUCCESS.getCode(), res.getCode());
     }
 }

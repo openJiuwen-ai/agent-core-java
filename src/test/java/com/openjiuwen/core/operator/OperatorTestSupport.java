@@ -1,6 +1,7 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.operator;
 
 import com.openjiuwen.core.session.Session;
@@ -14,12 +15,10 @@ import java.util.Map;
  * Shared test helpers for operator module tests.
  */
 public final class OperatorTestSupport {
-
     private OperatorTestSupport() {
     }
 
     public static final class TrackingSession implements Session {
-
         private final Map<String, Object> state = new LinkedHashMap<>();
         private final List<String> operatorHistory = new ArrayList<>();
         private String currentOperatorId;

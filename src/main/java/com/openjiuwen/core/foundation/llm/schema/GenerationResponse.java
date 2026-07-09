@@ -5,6 +5,7 @@
 package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -14,6 +15,8 @@ import lombok.experimental.SuperBuilder;
  * Base generation response from LLM.
  * <p>
  * Mirrors Python's {@code GenerationResponse} model.
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -21,7 +24,5 @@ import lombok.experimental.SuperBuilder;
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class GenerationResponse {
-
-    /** Model used for generation. */
     private String model;
 }

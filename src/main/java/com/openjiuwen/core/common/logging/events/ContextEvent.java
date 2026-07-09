@@ -10,7 +10,11 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Context operation related event. */
+/**
+ * Context operation related event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -22,17 +26,22 @@ public class ContextEvent extends BaseLogEvent {
     private Integer maxContextSize;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ContextEvent.
+     * 
+     * @since 0.1.7
      */
     public ContextEvent() {
         super();
         setModuleType(ModuleType.CONTEXT);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "message_type", messageType);
         putIfNotNull(map, "message_content", messageContent);

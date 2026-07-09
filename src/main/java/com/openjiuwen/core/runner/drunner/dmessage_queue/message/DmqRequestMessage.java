@@ -6,9 +6,10 @@ package com.openjiuwen.core.runner.drunner.dmessage_queue.message;
 
 /**
  * Distributed request message.
+ * 
+ * @since 0.1.7
  */
 public class DmqRequestMessage extends DmqMessage {
-
     private DMessageType type = DMessageType.INPUT;
 
     private String replyTopic = "";
@@ -24,98 +25,140 @@ public class DmqRequestMessage extends DmqMessage {
     private Double expireAt;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public DMessageType getType() {
         return type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setType.
+     * 
+     * @param type type
+     * @since 0.1.7
      */
     public void setType(DMessageType type) {
         this.type = type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReplyTopic.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getReplyTopic() {
         return replyTopic;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setReplyTopic.
+     * 
+     * @param replyTopic replyTopic
+     * @since 0.1.7
      */
     public void setReplyTopic(String replyTopic) {
         this.replyTopic = replyTopic;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRequestId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getRequestId() {
         return requestId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setRequestId.
+     * 
+     * @param requestId requestId
+     * @since 0.1.7
      */
     public void setRequestId(String requestId) {
         this.requestId = requestId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSenderId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSenderId() {
         return senderId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSenderId.
+     * 
+     * @param senderId senderId
+     * @since 0.1.7
      */
     public void setSenderId(String senderId) {
         this.senderId = senderId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReceiverId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getReceiverId() {
         return receiverId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setReceiverId.
+     * 
+     * @param receiverId receiverId
+     * @since 0.1.7
      */
     public void setReceiverId(String receiverId) {
         this.receiverId = receiverId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isEnableStream.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isEnableStream() {
         return isEnableStream;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEnableStream.
+     * 
+     * @param isEnableStream isEnableStream
+     * @since 0.1.7
      */
     public void setEnableStream(boolean isEnableStream) {
         this.isEnableStream = isEnableStream;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExpireAt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Double getExpireAt() {
         return expireAt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setExpireAt.
+     * 
+     * @param expireAt expireAt
+     * @since 0.1.7
      */
     public void setExpireAt(Double expireAt) {
         this.expireAt = expireAt;

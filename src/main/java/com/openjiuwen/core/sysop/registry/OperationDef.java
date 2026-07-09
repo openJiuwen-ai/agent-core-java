@@ -14,16 +14,23 @@ import java.util.Objects;
  * Definition and factory for an operation.
  * <p>
  * Mirrors Python's {@code OperationDef} dataclass in {@code sys_operation/registry.py}.
+ * 
+ * @since 0.1.7
  */
 public class OperationDef {
-
     private final Class<? extends BaseOperation> cls;
     private final String description;
     private final String name;
     private final OperationMode mode;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OperationDef.
+     * 
+     * @param cls cls
+     * @param name name
+     * @param mode mode
+     * @param description description
+     * @since 0.1.7
      */
     public OperationDef(Class<? extends BaseOperation> cls, String name, OperationMode mode, String description) {
         this.cls = cls;
@@ -37,19 +44,20 @@ public class OperationDef {
      * <p>
      * Tries a 4-arg constructor {@code (String, OperationMode, String, Object)} first,
      * then falls back to a single-arg {@code (Object)} constructor.
-     *
+     * 
      * @param runConfig runtime configuration (LocalWorkConfig or SandboxGatewayConfig)
      * @return the created operation instance
+     * @since 0.1.7
      */
     public BaseOperation createInstance(Object runConfig) {
         // Try 4-arg constructor: (name, mode, description, runConfig)
         try {
-            Constructor<? extends BaseOperation> ctor = cls.getConstructor(
-                    String.class, OperationMode.class, String.class, Object.class);
+            Constructor<? extends BaseOperation> ctor =
+                cls.getConstructor(String.class, OperationMode.class, String.class, Object.class);
             return ctor.newInstance(name, mode, description, runConfig);
         } catch (NoSuchMethodException ignored) {
             // Fall through to single-arg constructor
-        } catch (Exception e) {
+        } catch (ReflectiveOperationException e) {
             throw new RuntimeException("Failed to create operation instance: " + cls.getName(), e);
         }
 
@@ -64,37 +72,53 @@ public class OperationDef {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCls.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Class<? extends BaseOperation> getCls() {
         return cls;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDescription() {
         return description;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public OperationMode getMode() {
         return mode;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * equals.
+     * 
+     * @param o o
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean equals(Object o) {
         if (this == o) {
             return true;
@@ -103,16 +127,17 @@ public class OperationDef {
             return false;
         }
         OperationDef that = (OperationDef) o;
-        return Objects.equals(cls, that.cls)
-                && Objects.equals(name, that.name)
-                && mode == that.mode
+        return Objects.equals(cls, that.cls) && Objects.equals(name, that.name) && mode == that.mode
                 && Objects.equals(description, that.description);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * hashCode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public int hashCode() {
         return Objects.hash(cls, name, mode, description);
     }

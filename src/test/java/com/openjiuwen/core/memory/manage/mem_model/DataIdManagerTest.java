@@ -1,12 +1,12 @@
-package com.openjiuwen.core.memory.manage.mem_model;
 
-import org.junit.jupiter.api.Test;
+package com.openjiuwen.core.memory.manage.mem_model;
 
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class DataIdManagerTest {
+import org.junit.jupiter.api.Test;
 
+class DataIdManagerTest {
     @Test
     void generateNextIdReturnsPythonShapedTwentyFourHexChars() {
         DataIdManager manager = new DataIdManager();

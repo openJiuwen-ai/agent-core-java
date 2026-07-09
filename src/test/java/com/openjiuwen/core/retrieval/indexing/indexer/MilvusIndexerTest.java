@@ -1,30 +1,8 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.indexing.indexer;
-
-import com.google.gson.JsonObject;
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.retrieval.common.BaseCallback;
-import com.openjiuwen.core.retrieval.common.Document;
-import com.openjiuwen.core.retrieval.common.IndexConfig;
-import com.openjiuwen.core.retrieval.common.TextChunk;
-import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
-import com.openjiuwen.core.retrieval.embedding.Embedding;
-import com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore;
-import io.milvus.v2.client.MilvusClientV2;
-import io.milvus.v2.service.collection.request.CreateCollectionReq;
-import io.milvus.v2.service.utility.request.FlushReq;
-import io.milvus.v2.service.vector.request.DeleteReq;
-import io.milvus.v2.service.vector.request.InsertReq;
-import io.milvus.v2.service.vector.request.QueryReq;
-import io.milvus.v2.service.vector.response.DeleteResp;
-import io.milvus.v2.service.vector.response.QueryResp;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -36,8 +14,32 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class MilvusIndexerTest {
+import com.google.gson.JsonObject;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.retrieval.common.BaseCallback;
+import com.openjiuwen.core.retrieval.common.Document;
+import com.openjiuwen.core.retrieval.common.IndexConfig;
+import com.openjiuwen.core.retrieval.common.TextChunk;
+import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
+import com.openjiuwen.core.retrieval.embedding.Embedding;
+import com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore;
 
+import io.milvus.v2.client.MilvusClientV2;
+import io.milvus.v2.service.collection.request.CreateCollectionReq;
+import io.milvus.v2.service.utility.request.FlushReq;
+import io.milvus.v2.service.vector.request.DeleteReq;
+import io.milvus.v2.service.vector.request.InsertReq;
+import io.milvus.v2.service.vector.request.QueryReq;
+import io.milvus.v2.service.vector.response.DeleteResp;
+import io.milvus.v2.service.vector.response.QueryResp;
+
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.util.List;
+import java.util.Map;
+
+class MilvusIndexerTest {
     @Test
     void buildIndexCreatesCollectionAndWritesLogicalChunkFields() {
         MilvusClientV2 client = mock(MilvusClientV2.class);
@@ -49,10 +51,9 @@ class MilvusIndexerTest {
         BaseCallback callback = new BaseCallback();
 
         boolean built = indexer.buildIndex(
-                List.of(TextChunk.fromDocument(new Document("doc-1", "hello world", Map.of("source", "web")), "hello world")),
-                new IndexConfig("kb_chunks", "hybrid"),
-                new FixedEmbedding(),
-                Map.of("callback", callback));
+                List.of(TextChunk.fromDocument(new Document("doc-1", "hello world", Map.of("source", "web")),
+                        "hello world")),
+                new IndexConfig("kb_chunks", "hybrid"), new FixedEmbedding(), Map.of("callback", callback));
 
         assertTrue(built);
         assertEquals(1, callback.getCallCounter());
@@ -80,24 +81,18 @@ class MilvusIndexerTest {
     void buildIndexRejectsDuplicateDocIds() {
         MilvusClientV2 client = mock(MilvusClientV2.class);
         when(client.hasCollection(any())).thenReturn(true);
-        when(client.query(any())).thenReturn(QueryResp.builder()
-                .queryResults(List.of(QueryResp.QueryResult.builder()
-                        .entity(Map.of(
-                                "chunk_id", "chunk-1",
-                                "text", "existing",
-                                "doc_id", "doc-1",
-                                "metadata", Map.of("doc_id", "doc-1")))
-                        .build()))
+        when(client.query(any())).thenReturn(QueryResp
+                .builder().queryResults(List.of(QueryResp.QueryResult.builder().entity(Map.of("chunk_id", "chunk-1",
+                        "text", "existing", "doc_id", "doc-1", "metadata", Map.of("doc_id", "doc-1"))).build()))
                 .build());
 
         MilvusVectorStore store = new MilvusVectorStore(client, new VectorStoreConfig("milvus", "base"), "hybrid");
         MilvusIndexer indexer = new MilvusIndexer(store);
 
-        assertThrows(BaseError.class, () -> indexer.buildIndex(
-                List.of(TextChunk.fromDocument(new Document("doc-1", "duplicate", Map.of()), "duplicate")),
-                new IndexConfig("kb_chunks", "hybrid"),
-                new FixedEmbedding(),
-                Map.of()));
+        assertThrows(BaseError.class,
+                () -> indexer.buildIndex(
+                        List.of(TextChunk.fromDocument(new Document("doc-1", "duplicate", Map.of()), "duplicate")),
+                        new IndexConfig("kb_chunks", "hybrid"), new FixedEmbedding(), Map.of()));
 
         verify(client, never()).insert(any());
     }

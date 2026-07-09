@@ -20,82 +20,84 @@ import java.util.ArrayList;
 
 /**
  * OpenViking memory provider aligned with the current Python provider surface.
- *
- * <p>As of 2026-05-09, OpenViking docs show Python and HTTP-client usage, but no
+ * <p>
+ * As of 2026-05-09, OpenViking docs show Python and HTTP-client usage, but no
  * confirmed official Java SDK artifact on Maven. This class therefore keeps the
  * Java side on a direct HTTP path instead of adding an unverified dependency.
+ * 
+ * @since 0.1.7
  */
 public class OpenVikingMemoryProvider implements MemoryProvider {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static final Map<String, Object> VIKING_SEARCH_SCHEMA = Map.of(
-            "name", "viking_search",
-            "description", "在知识库中进行全域搜索.",
-            "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "query", Map.of("type", "string", "description", "搜索查询词."),
-                            "mode", Map.of("type", "string", "enum", List.of("auto", "fast", "deep")),
-                            "top_k", Map.of("type", "integer", "description", "最大返回结果数。")
-                    ),
-                    "required", List.of("query")
-            )
-    );
+    /**
+     * Map.of.
+     * 
+     * @param "搜索查询词." "搜索查询词."
+     * @since 0.1.7
+     */
+    private static final Map<String, Object> VIKING_SEARCH_SCHEMA =
+        Map.of("name", "viking_search", "description", "在知识库中进行全域搜索.", "parameters",
+                Map.of("type", "object", "properties",
+                        Map.of("query", Map.of("type", "string", "description", "搜索查询词."), "mode",
+                                Map.of("type", "string", "enum", List.of("auto", "fast", "deep")), "top_k",
+                                Map.of("type", "integer", "description", "最大返回结果数。")),
+                        "required", List.of("query")));
 
-    private static final Map<String, Object> VIKING_READ_SCHEMA = Map.of(
-            "name", "viking_read",
-            "description", "读取 viking:// URI 上的内容.",
-            "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "uri", Map.of("type", "string", "description", "要读取的 viking:// URI."),
-                            "detail", Map.of("type", "string", "enum", List.of("abstract", "overview", "full"))
-                    ),
-                    "required", List.of("uri")
-            )
-    );
+    /**
+     * Map.of.
+     * 
+     * @param 上的内容." 上的内容."
+     * @param URI." URI."
+     * @since 0.1.7
+     */
+    private static final Map<String, Object> VIKING_READ_SCHEMA =
+        Map.of("name", "viking_read", "description", "读取 viking:// URI 上的内容.", "parameters",
+                Map.of("type", "object", "properties",
+                        Map.of("uri", Map.of("type", "string", "description", "要读取的 viking:// URI."), "detail",
+                                Map.of("type", "string", "enum", List.of("abstract", "overview", "full"))),
+                        "required", List.of("uri")));
 
-    private static final Map<String, Object> VIKING_BROWSE_SCHEMA = Map.of(
-            "name", "viking_browse",
-            "description", "浏览知识库结构.",
-            "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "action", Map.of("type", "string", "enum", List.of("list", "tree", "stat")),
-                            "path", Map.of("type", "string", "description", "浏览路径。")
-                    ),
-                    "required", List.of("action")
-            )
-    );
+    /**
+     * Map.of.
+     * 
+     * @param "stat" "stat"
+     * @since 0.1.7
+     */
+    private static final Map<String, Object> VIKING_BROWSE_SCHEMA =
+        Map.of("name", "viking_browse", "description", "浏览知识库结构.", "parameters",
+                Map.of("type", "object", "properties",
+                        Map.of("action", Map.of("type", "string", "enum", List.of("list", "tree", "stat")), "path",
+                                Map.of("type", "string", "description", "浏览路径。")),
+                        "required", List.of("action")));
 
-    private static final Map<String, Object> VIKING_REMEMBER_SCHEMA = Map.of(
-            "name", "viking_remember",
-            "description", "显式存储一个事实或偏好.",
-            "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "content", Map.of("type", "string", "description", "要记住的事实."),
-                            "category", Map.of(
-                                    "type", "string",
-                                    "enum", List.of("preference", "entity", "event", "case", "pattern")
-                            )
-                    ),
-                    "required", List.of("content")
-            )
-    );
+    /**
+     * Map.of.
+     * 
+     * @param "要记住的事实." "要记住的事实."
+     * @since 0.1.7
+     */
+    private static final Map<String, Object> VIKING_REMEMBER_SCHEMA =
+        Map.of("name", "viking_remember", "description", "显式存储一个事实或偏好.", "parameters",
+                Map.of("type", "object", "properties",
+                        Map.of("content", Map.of("type", "string", "description", "要记住的事实."), "category",
+                                Map.of("type", "string", "enum",
+                                        List.of("preference", "entity", "event", "case", "pattern"))),
+                        "required", List.of("content")));
 
-    private static final Map<String, Object> VIKING_ADD_RESOURCE_SCHEMA = Map.of(
-            "name", "viking_add_resource",
-            "description", "索引一个 URL 或文档以供后续搜索.",
-            "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "url", Map.of("type", "string", "description", "要索引的 URL 或文件路径."),
-                            "title", Map.of("type", "string", "description", "可选标题.")
-                    ),
-                    "required", List.of("url")
-            )
-    );
+    /**
+     * Map.of.
+     * 
+     * @param 或文档以供后续搜索." 或文档以供后续搜索."
+     * @param 或文件路径." 或文件路径."
+     * @since 0.1.7
+     */
+    private static final Map<String, Object> VIKING_ADD_RESOURCE_SCHEMA =
+        Map.of("name", "viking_add_resource", "description", "索引一个 URL 或文档以供后续搜索.", "parameters",
+                Map.of("type", "object", "properties",
+                        Map.of("url", Map.of("type", "string", "description", "要索引的 URL 或文件路径."), "title",
+                                Map.of("type", "string", "description", "可选标题.")),
+                        "required", List.of("url")));
 
     private String endpoint;
     private String apiKey;
@@ -107,14 +109,23 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
     private final VikingApi api;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OpenVikingMemoryProvider.
+     * 
+     * @since 0.1.7
      */
     public OpenVikingMemoryProvider() {
         this("", "", "default", "default", "hermes", null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OpenVikingMemoryProvider.
+     * 
+     * @param endpoint endpoint
+     * @param apiKey apiKey
+     * @param account account
+     * @param user user
+     * @param agent agent
+     * @since 0.1.7
      */
     public OpenVikingMemoryProvider(String endpoint, String apiKey, String account, String user, String agent) {
         this(endpoint, apiKey, account, user, agent, null);
@@ -131,34 +142,34 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String getName() {
         return "openviking";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAvailable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean isAvailable() {
         return endpoint != null && !endpoint.isBlank();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * initialize.
+     * 
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void initialize(Map<String, Object> kwargs) {
         if (kwargs != null) {
             if (kwargs.get("endpoint") != null) {
@@ -184,29 +195,27 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolSchemas.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Map<String, Object>> getToolSchemas() {
-        return List.of(
-                VIKING_SEARCH_SCHEMA,
-                VIKING_READ_SCHEMA,
-                VIKING_BROWSE_SCHEMA,
-                VIKING_REMEMBER_SCHEMA,
-                VIKING_ADD_RESOURCE_SCHEMA
-        );
+        return List.of(VIKING_SEARCH_SCHEMA, VIKING_READ_SCHEMA, VIKING_BROWSE_SCHEMA, VIKING_REMEMBER_SCHEMA,
+                VIKING_ADD_RESOURCE_SCHEMA);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * handleToolCall.
+     * 
+     * @param toolName toolName
+     * @param args args
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String handleToolCall(String toolName, Map<String, Object> args) throws Exception {
         if (!isInitialized) {
             return MAPPER.writeValueAsString(Map.of("error", "OpenViking not connected"));
@@ -216,9 +225,8 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
             if (query.isBlank()) {
                 return MAPPER.writeValueAsString(Map.of("error", "query is required"));
             }
-            int topK = args != null && args.get("top_k") != null
-                    ? Integer.parseInt(String.valueOf(args.get("top_k")))
-                    : 10;
+            int topK =
+                args != null && args.get("top_k") != null ? Integer.parseInt(String.valueOf(args.get("top_k"))) : 10;
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("query", query);
             String mode = args != null && args.get("mode") != null ? String.valueOf(args.get("mode")) : "auto";
@@ -239,9 +247,8 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
         }
         if ("viking_browse".equals(toolName)) {
             String action = args != null && args.get("action") != null ? String.valueOf(args.get("action")) : "list";
-            String browsePath = args != null && args.get("path") != null
-                    ? String.valueOf(args.get("path"))
-                    : "viking://";
+            String browsePath =
+                args != null && args.get("path") != null ? String.valueOf(args.get("path")) : "viking://";
             return MAPPER.writeValueAsString(api.browse(endpoint, apiKey, account, user, agent, action, browsePath));
         }
         if ("viking_remember".equals(toolName)) {
@@ -252,10 +259,8 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
             String category = args != null && args.get("category") != null ? String.valueOf(args.get("category")) : "";
             String text = category.isBlank() ? "[Remember] " + content : "[Remember — " + category + "] " + content;
             api.appendSessionMessage(endpoint, apiKey, account, user, agent, sessionId, "user", text);
-            return MAPPER.writeValueAsString(Map.of(
-                    "status", "stored",
-                    "message", "Memory recorded. Will be extracted and indexed on session commit."
-            ));
+            return MAPPER.writeValueAsString(Map.of("status", "stored", "message",
+                    "Memory recorded. Will be extracted and indexed on session commit."));
         }
         if ("viking_add_resource".equals(toolName)) {
             String url = args != null && args.get("url") != null ? String.valueOf(args.get("url")) : "";
@@ -273,52 +278,45 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * prefetch.
+     * 
+     * @param query query
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String prefetch(String query, Map<String, Object> kwargs) throws Exception {
         if (query == null || query.isBlank()) {
             return "";
         }
-        List<Map<String, Object>> matched = api.search(
-                endpoint,
-                apiKey,
-                account,
-                user,
-                agent,
-                Map.of("query", query, "top_k", 5)
-        );
+        List<Map<String, Object>> matched =
+            api.search(endpoint, apiKey, account, user, agent, Map.of("query", query, "top_k", 5));
         if (matched.isEmpty()) {
             return "";
         }
         StringBuilder builder = new StringBuilder("## OpenViking Context\n");
         for (Map<String, Object> match : matched) {
-            String score = String.format(
-                    Locale.ROOT,
-                    "%.2f",
-                    Double.parseDouble(String.valueOf(match.getOrDefault("score", 0.0)))
-            );
-            builder.append("- [")
-                    .append(score)
-                    .append("] ")
-                    .append(match.getOrDefault("abstract", match.getOrDefault("content", "")))
-                    .append(" (")
-                    .append(match.get("uri"))
-                    .append(")\n");
+            String score = String.format(Locale.ROOT, "%.2f",
+                    Double.parseDouble(String.valueOf(match.getOrDefault("score", 0.0))));
+            builder.append("- [").append(score).append("] ")
+                    .append(match.getOrDefault("abstract", match.getOrDefault("content", ""))).append(" (")
+                    .append(match.get("uri")).append(")\n");
         }
         return builder.toString().trim();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * syncTurn.
+     * 
+     * @param userMsg userMsg
+     * @param assistantMsg assistantMsg
+     * @param kwargs kwargs
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void syncTurn(String userMsg, String assistantMsg, Map<String, Object> kwargs) throws Exception {
         if (!isInitialized) {
             return;
@@ -335,15 +333,14 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * systemPromptBlock.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String systemPromptBlock() {
-        return "# OpenViking Memory\n\n"
-                + "Use `viking_search` to find knowledge (modes: auto/fast/deep).\n"
+        return "# OpenViking Memory\n\n" + "Use `viking_search` to find knowledge (modes: auto/fast/deep).\n"
                 + "Use `viking_read` to read content at a viking:// URI (levels: abstract/overview/full).\n"
                 + "Use `viking_browse` to navigate the knowledge structure.\n"
                 + "Use `viking_remember` to explicitly store facts.\n"
@@ -351,65 +348,130 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isInitialized.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean isInitialized() {
         return isInitialized;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shutdown.
+     * 
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void shutdown() {
         isInitialized = false;
     }
 
     interface VikingApi {
-        List<Map<String, Object>> search(
-                String endpoint,
-                String apiKey,
-                String account,
-                String user,
-                String agent,
-                Map<String, Object> payload
-        ) throws Exception;
+        /**
+         * search.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param payload payload
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
+        List<Map<String, Object>> search(String endpoint, String apiKey, String account, String user, String agent,
+                Map<String, Object> payload) throws Exception;
 
-        Map<String, Object> read(String endpoint, String apiKey, String account, String user, String agent,
-                                 String uri, String level) throws Exception;
+        /**
+         * read.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param uri uri
+         * @param level level
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
+        Map<String, Object> read(String endpoint, String apiKey, String account, String user, String agent, String uri,
+                String level) throws Exception;
+
+        /**
+         * browse.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param action action
+         * @param browsePath browsePath
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         Map<String, Object> browse(String endpoint, String apiKey, String account, String user, String agent,
-                                   String action, String browsePath) throws Exception;
+                String action, String browsePath) throws Exception;
+
+        /**
+         * appendSessionMessage.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param sessionId sessionId
+         * @param role role
+         * @param content content
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         void appendSessionMessage(String endpoint, String apiKey, String account, String user, String agent,
-                                  String sessionId, String role, String content) throws Exception;
+                String sessionId, String role, String content) throws Exception;
+
+        /**
+         * addResource.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param payload payload
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         Map<String, Object> addResource(String endpoint, String apiKey, String account, String user, String agent,
-                                        Map<String, Object> payload) throws Exception;
+                Map<String, Object> payload) throws Exception;
     }
 
     private static final class DefaultVikingApi implements VikingApi {
         private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * search.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param payload payload
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public List<Map<String, Object>> search(
-                String endpoint,
-                String apiKey,
-                String account,
-                String user,
-                String agent,
-                Map<String, Object> payload
-        ) throws Exception {
+        public List<Map<String, Object>> search(String endpoint, String apiKey, String account, String user,
+                String agent, Map<String, Object> payload) throws Exception {
             Map<String, Object> response = post(endpoint, apiKey, account, user, agent, "/api/v1/search/find", payload);
             Object result = response.get("result");
             if (!(result instanceof Map<?, ?> resultMap)) {
@@ -451,20 +513,27 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
             }
             entries.sort((left, right) -> Double.compare(
                     Double.parseDouble(String.valueOf(right.getOrDefault("score", 0.0))),
-                    Double.parseDouble(String.valueOf(left.getOrDefault("score", 0.0)))
-            ));
+                    Double.parseDouble(String.valueOf(left.getOrDefault("score", 0.0)))));
             return entries;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * read.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param uri uri
+         * @param level level
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Map<String, Object> read(String endpoint, String apiKey, String account, String user, String agent,
-                                        String uri, String level) throws Exception {
+                String uri, String level) throws Exception {
             String path = switch (level) {
                 case "abstract" -> "/api/v1/content/abstract";
                 case "full" -> "/api/v1/content/read";
@@ -482,14 +551,22 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * browse.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param action action
+         * @param browsePath browsePath
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Map<String, Object> browse(String endpoint, String apiKey, String account, String user, String agent,
-                                          String action, String browsePath) throws Exception {
+                String action, String browsePath) throws Exception {
             String path = switch (action) {
                 case "tree" -> "/api/v1/fs/tree";
                 case "stat" -> "/api/v1/fs/stat";
@@ -505,12 +582,11 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
                 for (Object item : items) {
                     if (item instanceof Map<?, ?> raw) {
                         Map<String, Object> typed = castMap(raw);
-                        entries.add(Map.of(
-                                "name", String.valueOf(typed.getOrDefault("rel_path", typed.getOrDefault("name", ""))),
-                                "uri", String.valueOf(typed.getOrDefault("uri", "")),
-                                "type", Boolean.TRUE.equals(typed.get("isDir")) ? "dir" : "file",
-                                "abstract", String.valueOf(typed.getOrDefault("abstract", ""))
-                        ));
+                        entries.add(Map.of("name",
+                                String.valueOf(typed.getOrDefault("rel_path", typed.getOrDefault("name", ""))), "uri",
+                                String.valueOf(typed.getOrDefault("uri", "")), "type",
+                                Boolean.TRUE.equals(typed.get("isDir")) ? "dir" : "file", "abstract",
+                                String.valueOf(typed.getOrDefault("abstract", ""))));
                     }
                 }
             }
@@ -518,47 +594,83 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * appendSessionMessage.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param sessionId sessionId
+         * @param role role
+         * @param content content
+         * @throws Exception Exception
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public void appendSessionMessage(String endpoint, String apiKey, String account, String user, String agent,
-                                         String sessionId, String role, String content) throws Exception {
-            post(endpoint, apiKey, account, user, agent,
-                    "/api/v1/sessions/" + sessionId + "/messages",
+                String sessionId, String role, String content) throws Exception {
+            post(endpoint, apiKey, account, user, agent, "/api/v1/sessions/" + sessionId + "/messages",
                     Map.of("role", role, "content", content));
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * addResource.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param payload payload
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public Map<String, Object> addResource(
-                String endpoint,
-                String apiKey,
-                String account,
-                String user,
-                String agent,
-                Map<String, Object> payload
-        ) throws Exception {
+        public Map<String, Object> addResource(String endpoint, String apiKey, String account, String user,
+                String agent, Map<String, Object> payload) throws Exception {
             return post(endpoint, apiKey, account, user, agent, "/api/v1/resources", payload);
         }
 
+        /**
+         * post.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param path path
+         * @param body body
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         private Map<String, Object> post(String endpoint, String apiKey, String account, String user, String agent,
-                                         String path, Map<String, Object> body) throws Exception {
+                String path, Map<String, Object> body) throws Exception {
             HttpRequest request = requestBuilder(endpoint, apiKey, account, user, agent, path)
                     .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body), StandardCharsets.UTF_8))
                     .build();
             return send(request);
         }
 
+        /**
+         * get.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param path path
+         * @param params params
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         private Map<String, Object> get(String endpoint, String apiKey, String account, String user, String agent,
-                                        String path, Map<String, Object> params) throws Exception {
+                String path, Map<String, Object> params) throws Exception {
             String url = normalizeBase(endpoint) + path;
             if (params != null && !params.isEmpty()) {
                 StringBuilder builder = new StringBuilder(url);
@@ -569,60 +681,77 @@ public class OpenVikingMemoryProvider implements MemoryProvider {
                         builder.append('&');
                     }
                     first = false;
-                    builder.append(entry.getKey())
-                            .append('=')
-                            .append(java.net.URLEncoder.encode(
-                                    String.valueOf(entry.getValue()),
-                                    StandardCharsets.UTF_8
-                            ));
+                    builder.append(entry.getKey()).append('=').append(
+                            java.net.URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
                 }
                 url = builder.toString();
             }
             String pathWithQuery = url.replace(normalizeBase(endpoint), "");
-            HttpRequest request = requestBuilder(endpoint, apiKey, account, user, agent, pathWithQuery)
-                    .GET()
-                    .build();
+            HttpRequest request = requestBuilder(endpoint, apiKey, account, user, agent, pathWithQuery).GET().build();
             return send(request);
         }
 
-        private HttpRequest.Builder requestBuilder(
-                String endpoint,
-                String apiKey,
-                String account,
-                String user,
-                String agent,
-                String path
-        ) {
-            HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(normalizeBase(endpoint) + path))
-                    .timeout(Duration.ofSeconds(30))
-                    .header("Content-Type", "application/json")
-                    .header("X-OpenViking-Account", account)
-                    .header("X-OpenViking-User", user)
-                    .header("X-OpenViking-Agent", agent);
+        /**
+         * requestBuilder.
+         * 
+         * @param endpoint endpoint
+         * @param apiKey apiKey
+         * @param account account
+         * @param user user
+         * @param agent agent
+         * @param path path
+         * @return the result
+         * @since 0.1.7
+         */
+        private HttpRequest.Builder requestBuilder(String endpoint, String apiKey, String account, String user,
+                String agent, String path) {
+            HttpRequest.Builder builder =
+                HttpRequest.newBuilder(URI.create(normalizeBase(endpoint) + path)).timeout(Duration.ofSeconds(30))
+                        .header("Content-Type", "application/json").header("X-OpenViking-Account", account)
+                        .header("X-OpenViking-User", user).header("X-OpenViking-Agent", agent);
             if (apiKey != null && !apiKey.isBlank()) {
                 builder.header("X-API-Key", apiKey);
             }
             return builder;
         }
 
+        /**
+         * send.
+         * 
+         * @param request request
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         private Map<String, Object> send(HttpRequest request) throws Exception {
-            HttpResponse<String> response = httpClient.send(
-                    request,
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
-            );
+            HttpResponse<String> response =
+                httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException(
-                        "OpenViking request failed with status " + response.statusCode() + ": " + response.body()
-                );
+                        "OpenViking request failed with status " + response.statusCode() + ": " + response.body());
             }
             return MAPPER.readValue(response.body(), Map.class);
         }
 
+        /**
+         * normalizeBase.
+         * 
+         * @param endpoint endpoint
+         * @return the result
+         * @since 0.1.7
+         */
         private static String normalizeBase(String endpoint) {
             return endpoint.replaceAll("/+$", "");
         }
 
         @SuppressWarnings("unchecked")
+        /**
+         * castMap.
+         * 
+         * @param source source
+         * @return the result
+         * @since 0.1.7
+         */
         private static Map<String, Object> castMap(Map<?, ?> source) {
             Map<String, Object> result = new LinkedHashMap<>();
             source.forEach((key, value) -> result.put(String.valueOf(key), value));

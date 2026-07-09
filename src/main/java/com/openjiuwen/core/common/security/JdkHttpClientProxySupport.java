@@ -16,16 +16,24 @@ import java.util.Locale;
 
 /**
  * Applies process proxy environment variables to JDK HttpClient builders.
+ * 
+ * @since 0.1.7
  */
 public final class JdkHttpClientProxySupport {
+    /**
+     * JdkHttpClientProxySupport.
+     * 
+     * @since 0.1.7
+     */
     private JdkHttpClientProxySupport() {
     }
 
     /**
      * Configure proxy settings from http_proxy/https_proxy for the target URL.
-     *
-     * @param builder   JDK HttpClient builder
+     * 
+     * @param builder JDK HttpClient builder
      * @param targetUrl target service URL
+     * @since 0.1.7
      */
     public static void configureFromEnvironment(HttpClient.Builder builder, String targetUrl) {
         URI targetUri = parseUri(targetUrl);
@@ -50,17 +58,28 @@ public final class JdkHttpClientProxySupport {
         }
     }
 
+    /**
+     * enableBasicProxyAuthentication.
+     * 
+     * @since 0.1.7
+     */
     private static void enableBasicProxyAuthentication() {
         System.setProperty("jdk.http.auth.tunneling.disabledSchemes", "");
         System.setProperty("jdk.http.auth.proxying.disabledSchemes", "");
     }
 
+    /**
+     * proxyAuthenticator.
+     * 
+     * @param userInfo userInfo
+     * @return the result
+     * @since 0.1.7
+     */
     private static Authenticator proxyAuthenticator(String userInfo) {
         String[] parts = userInfo.split(":", 2);
         String user = URLDecoder.decode(parts[0], StandardCharsets.UTF_8);
-        char[] password = parts.length == 2
-                ? URLDecoder.decode(parts[1], StandardCharsets.UTF_8).toCharArray()
-                : new char[0];
+        char[] password =
+            parts.length == 2 ? URLDecoder.decode(parts[1], StandardCharsets.UTF_8).toCharArray() : new char[0];
         return new Authenticator() {
             @Override
             protected PasswordAuthentication getPasswordAuthentication() {
@@ -72,6 +91,13 @@ public final class JdkHttpClientProxySupport {
         };
     }
 
+    /**
+     * selectProxyUri.
+     * 
+     * @param targetScheme targetScheme
+     * @return the result
+     * @since 0.1.7
+     */
     private static URI selectProxyUri(String targetScheme) {
         String proxyValue;
         if ("https".equalsIgnoreCase(targetScheme)) {
@@ -82,6 +108,13 @@ public final class JdkHttpClientProxySupport {
         return parseProxyUri(proxyValue);
     }
 
+    /**
+     * parseProxyUri.
+     * 
+     * @param proxyValue proxyValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static URI parseProxyUri(String proxyValue) {
         if (proxyValue == null || proxyValue.isBlank()) {
             return null;
@@ -93,6 +126,13 @@ public final class JdkHttpClientProxySupport {
         return parseUri(normalized);
     }
 
+    /**
+     * parseUri.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static URI parseUri(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -104,6 +144,13 @@ public final class JdkHttpClientProxySupport {
         }
     }
 
+    /**
+     * proxyPort.
+     * 
+     * @param proxyUri proxyUri
+     * @return the result
+     * @since 0.1.7
+     */
     private static int proxyPort(URI proxyUri) {
         if (proxyUri.getPort() > 0) {
             return proxyUri.getPort();
@@ -117,6 +164,13 @@ public final class JdkHttpClientProxySupport {
         return -1;
     }
 
+    /**
+     * shouldBypassProxy.
+     * 
+     * @param host host
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean shouldBypassProxy(String host) {
         if (host == null || host.isBlank()) {
             return false;
@@ -138,14 +192,27 @@ public final class JdkHttpClientProxySupport {
         return false;
     }
 
+    /**
+     * isLoopbackHost.
+     * 
+     * @param host host
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isLoopbackHost(String host) {
         String normalizedHost = host.toLowerCase(Locale.ROOT);
-        return "localhost".equals(normalizedHost)
-                || "127.0.0.1".equals(normalizedHost)
-                || "::1".equals(normalizedHost)
+        return "localhost".equals(normalizedHost) || "127.0.0.1".equals(normalizedHost) || "::1".equals(normalizedHost)
                 || "[::1]".equals(normalizedHost);
     }
 
+    /**
+     * matchesNoProxy.
+     * 
+     * @param host host
+     * @param pattern pattern
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean matchesNoProxy(String host, String pattern) {
         if (pattern.isBlank() || pattern.contains("/")) {
             return false;
@@ -162,6 +229,13 @@ public final class JdkHttpClientProxySupport {
         return host.equals(pattern);
     }
 
+    /**
+     * firstNonBlankEnv.
+     * 
+     * @param names names
+     * @return the result
+     * @since 0.1.7
+     */
     private static String firstNonBlankEnv(String... names) {
         for (String name : names) {
             String value = System.getenv(name);

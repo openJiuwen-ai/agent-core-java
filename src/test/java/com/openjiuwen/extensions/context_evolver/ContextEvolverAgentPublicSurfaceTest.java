@@ -1,4 +1,10 @@
+
 package com.openjiuwen.extensions.context_evolver;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
@@ -12,6 +18,7 @@ import com.openjiuwen.extensions.context_evolver.core.file_connector.SafeModelDu
 import com.openjiuwen.extensions.context_evolver.core.schema.VectorNode;
 import com.openjiuwen.extensions.context_evolver.service.TaskMemoryService;
 import com.openjiuwen.extensions.context_evolver.tool.WikipediaTool;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,13 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class ContextEvolverAgentPublicSurfaceTest {
-
     private Map<String, Object> configSnapshot;
 
     @BeforeEach
@@ -49,14 +50,8 @@ class ContextEvolverAgentPublicSurfaceTest {
 
     @Test
     void createMemoryAgentConfigHonorsQuickstartOverrides() {
-        MemoryAgentConfigInput input = new MemoryAgentConfigInput(
-            "OpenAI",
-            "sk-test",
-            "https://api.openai.com/v1",
-            "gpt-5.2",
-            "You are a memory-aware assistant.",
-            7
-        );
+        MemoryAgentConfigInput input = new MemoryAgentConfigInput("OpenAI", "sk-test", "https://api.openai.com/v1",
+                "gpt-5.2", "You are a memory-aware assistant.", 7);
 
         ReActAgentConfig config = ContextEvolvingReActAgent.createMemoryAgentConfig(input);
 
@@ -65,19 +60,12 @@ class ContextEvolverAgentPublicSurfaceTest {
         assertEquals("https://api.openai.com/v1", config.getApiBase());
         assertEquals("gpt-5.2", config.getModelName());
         assertEquals(7, config.getMaxIterations());
-        assertEquals(
-            "You are a memory-aware assistant.",
-            config.getPromptTemplate().get(0).get("content")
-        );
+        assertEquals("You are a memory-aware assistant.", config.getPromptTemplate().get(0).get("content"));
     }
 
     @Test
     void agentHelpersExposeToolRegistrationAndTrajectoryFormatting() {
-        AgentCard card = AgentCard.builder()
-            .id("memory-agent")
-            .name("memory-agent")
-            .description("memory")
-            .build();
+        AgentCard card = AgentCard.builder().id("memory-agent").name("memory-agent").description("memory").build();
 
         ContextEvolvingReActAgent agent = new ContextEvolvingReActAgent(card, "user-1", true);
         Tool wikipediaTool = WikipediaTool.createWikipediaTool(query -> "Title: Java\nSummary: " + query);
@@ -85,30 +73,20 @@ class ContextEvolverAgentPublicSurfaceTest {
         agent.addTool(wikipediaTool);
 
         assertTrue(agent.isInjectMemoriesInContext());
-        assertTrue(
-            agent.getAbilityManager().listToolInfo().stream()
-                .anyMatch(toolInfo -> "wikipedia_search".equals(toolInfo.getName()))
-        );
+        assertTrue(agent.getAbilityManager().listToolInfo().stream()
+                .anyMatch(toolInfo -> "wikipedia_search".equals(toolInfo.getName())));
 
-        AssistantMessage assistant = AssistantMessage.builder()
-            .content("Need evidence")
-            .toolCalls(List.of(ToolCall.builder()
-                .id("call-1")
-                .name("wikipedia_search")
-                .arguments("{\"query\":\"Java\"}")
-                .build()))
-            .build();
+        AssistantMessage assistant = AssistantMessage.builder().content("Need evidence").toolCalls(List
+                .of(ToolCall.builder().id("call-1").name("wikipedia_search").arguments("{\"query\":\"Java\"}").build()))
+                .build();
 
         String formatted = agent.formatTrajectory(List.of(
-            new UserMessage("Task:\nQuestion\n\nSome Related Experience to help you complete the task:\nCached"),
-            assistant,
-            new ToolMessage("Title: Java", "call-1")
-        ));
+                new UserMessage("Task:\nQuestion\n\nSome Related Experience to help you complete the task:\nCached"),
+                assistant, new ToolMessage("Title: Java", "call-1")));
 
         assertEquals(
-            "USER: Question\nTHOUGHT: Need evidence\nACTION: wikipedia_search({\"query\":\"Java\"})\nOBSERVATION: Title: Java",
-            formatted
-        );
+                "USER: Question\nTHOUGHT: Need evidence\nACTION: wikipedia_search({\"query\":\"Java\"})\nOBSERVATION: Title: Java",
+                formatted);
     }
 
     @Test
@@ -116,27 +94,15 @@ class ContextEvolverAgentPublicSurfaceTest {
         Config.setValue("SUMMARY_ALGO", "ACE");
 
         CapturingTaskMemoryService memoryService = new CapturingTaskMemoryService();
-        AgentCard card = AgentCard.builder()
-            .id("summarizer-agent")
-            .name("summarizer-agent")
-            .description("summarizer")
-            .build();
+        AgentCard card =
+            AgentCard.builder().id("summarizer-agent").name("summarizer-agent").description("summarizer").build();
 
-        ContextEvolvingReActAgent agent = new ContextEvolvingReActAgent(
-            card,
-            "demo-user",
-            memoryService,
-            true,
-            tempDir.toString()
-        );
+        ContextEvolvingReActAgent agent =
+            new ContextEvolvingReActAgent(card, "demo-user", memoryService, true, tempDir.toString());
 
-        SummarizeTrajectoriesInput input = new SummarizeTrajectoriesInput(
-            "How should I write Java docs?",
-            List.of("first trajectory", "second trajectory"),
-            "sequential",
-            List.of("harmful", "helpful"),
-            List.of(1, 9)
-        );
+        SummarizeTrajectoriesInput input = new SummarizeTrajectoriesInput("How should I write Java docs?",
+                List.of("first trajectory", "second trajectory"), "sequential", List.of("harmful", "helpful"),
+                List.of(1, 9));
 
         Map<String, Object> result = agent.summarizeTrajectories(input).join();
 
@@ -165,9 +131,7 @@ class ContextEvolverAgentPublicSurfaceTest {
         Object result = wikipediaTool.invoke(Map.of("query", "Java"));
         assertEquals("Title: Java\nSummary: Java", result);
 
-        Path sourceRoot = Path.of(
-            "src", "main", "java", "com", "openjiuwen", "extensions", "context_evolver"
-        );
+        Path sourceRoot = Path.of("src", "main", "java", "com", "openjiuwen", "extensions", "context_evolver");
 
         String envExample = Files.readString(sourceRoot.resolve(".env.example"), StandardCharsets.UTF_8);
         String configYaml = Files.readString(sourceRoot.resolve("config.yaml"), StandardCharsets.UTF_8);
@@ -188,23 +152,14 @@ class ContextEvolverAgentPublicSurfaceTest {
         }
 
         @Override
-        public CompletableFuture<Map<String, Object>> summarize(
-                String userId,
-                String matts,
-                String query,
-                List<?> trajectories,
-                List<Boolean> labels,
-                List<? extends Number> scores) {
+        public CompletableFuture<Map<String, Object>> summarize(String userId, String matts, String query,
+                List<?> trajectories, List<Boolean> labels, List<? extends Number> scores) {
             lastTrajectories = List.copyOf(trajectories);
             lastLabels = labels != null ? List.copyOf(labels) : List.of();
             lastScores = scores != null ? List.copyOf(scores) : List.of();
 
-            VectorNode node = new VectorNode(
-                "memory-1",
-                "cache docs examples",
-                List.of(1.0d, 0.0d),
-                Map.of("workspace_id", userId, "type", "ace_memory", "content", "cache docs examples")
-            );
+            VectorNode node = new VectorNode("memory-1", "cache docs examples", List.of(1.0d, 0.0d),
+                    Map.of("workspace_id", userId, "type", "ace_memory", "content", "cache docs examples"));
             getVectorStore().asyncUpsert(node).join();
 
             Map<String, Object> response = new LinkedHashMap<>();

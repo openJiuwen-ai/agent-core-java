@@ -12,18 +12,22 @@ import java.time.Duration;
 
 /**
  * HTTPX-style connector pool backed by JDK HttpClient.
+ * 
+ * @since 0.1.7
  */
 public class HttpXConnectorPool extends ConnectorPool {
     private final HttpClient client;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HttpXConnectorPool.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public HttpXConnectorPool(HttpXConnectorPoolConfig config) {
         super(config);
-        HttpClient.Builder builder = HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .version(HttpClient.Version.HTTP_1_1);
+        HttpClient.Builder builder =
+            HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL).version(HttpClient.Version.HTTP_1_1);
         if (config.getKeepaliveTimeout() != null) {
             builder.connectTimeout(Duration.ofMillis(Math.max(1L, Math.round(config.getKeepaliveTimeout() * 1000))));
         }
@@ -42,23 +46,22 @@ public class HttpXConnectorPool extends ConnectorPool {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * doClose.
+     * 
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected void doClose() {
         // JDK HttpClient does not expose an explicit close hook.
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * conn.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public HttpClient conn() {
         return client;
     }

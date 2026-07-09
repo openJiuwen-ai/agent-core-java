@@ -12,37 +12,87 @@ import lombok.NoArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Public class CommitFacts used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class CommitFacts used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class CommitFacts {
     @Builder.Default
     private String branchName = "";
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> taskDeclaredFiles = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> preexistingDirtyFiles = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> currentDirtyFiles = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> trackedModifiedFiles = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> untrackedFiles = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> editedFiles = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> allowedFiles = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> derivedTestFiles = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> legacyRelatedTestFiles = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> verifyRelatedFiles = new ArrayList<>();
     @Builder.Default
     private String diffStat = "";

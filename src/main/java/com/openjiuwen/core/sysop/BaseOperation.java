@@ -25,9 +25,15 @@ import java.util.Map;
  * Base class for all system operations (file, code, shell, etc.).
  * <p>
  * Mirrors Python's {@code BaseOperation} in {@code sys_operation/base.py}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseOperation {
-
+    /**
+     * logger.
+     * 
+     * @since 0.1.7
+     */
     protected static final LoggerProtocol logger = Loggers.SYS_OPERATION;
 
     private final String name;
@@ -37,11 +43,12 @@ public abstract class BaseOperation {
 
     /**
      * Create a base operation.
-     *
-     * @param name        operation name
-     * @param mode        operation mode (LOCAL or SANDBOX)
+     * 
+     * @param name operation name
+     * @param mode operation mode (LOCAL or SANDBOX)
      * @param description human-readable description
-     * @param runConfig   runtime configuration (LocalWorkConfig or SandboxGatewayConfig)
+     * @param runConfig runtime configuration (LocalWorkConfig or SandboxGatewayConfig)
+     * @since 0.1.7
      */
     protected BaseOperation(String name, OperationMode mode, String description, Object runConfig) {
         this.name = name;
@@ -51,21 +58,30 @@ public abstract class BaseOperation {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public OperationMode getMode() {
         return mode;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDescription() {
         return description;
@@ -73,6 +89,9 @@ public abstract class BaseOperation {
 
     /**
      * Get the run configuration as LocalWorkConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected LocalWorkConfig getLocalConfig() {
         return (LocalWorkConfig) runConfig;
@@ -80,13 +99,19 @@ public abstract class BaseOperation {
 
     /**
      * Get the run configuration as SandboxGatewayConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected SandboxGatewayConfig getSandboxConfig() {
         return (SandboxGatewayConfig) runConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRunConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected Object getRunConfig() {
         return runConfig;
@@ -94,29 +119,33 @@ public abstract class BaseOperation {
 
     /**
      * Retrieve a list of tool cards describing available operations.
-     *
+     * 
      * @return list of ToolCard objects
+     * @since 0.1.7
      */
     public abstract List<ToolCard> listTools();
 
     /**
      * Generate tool cards for the specified method names using reflection.
-     *
+     * 
      * @param methodNames list of public method names to expose as tools
      * @return list of ToolCard objects
+     * @since 0.1.7
      */
     protected List<ToolCard> generateToolCards(List<String> methodNames) {
-        return methodNames.stream()
-                .map(this::findMethod)
-                .filter(method -> method != null)
-                .map(method -> (ToolCard) ToolCard.builder()
-                        .name(method.getName())
-                        .description(humanize(method.getName()))
-                        .inputParams(buildInputSchema(method))
-                        .build())
+        return methodNames.stream().map(this::findMethod).filter(method -> method != null)
+                .map(method -> (ToolCard) ToolCard.builder().name(method.getName())
+                        .description(humanize(method.getName())).inputParams(buildInputSchema(method)).build())
                 .toList();
     }
 
+    /**
+     * findMethod.
+     * 
+     * @param methodName methodName
+     * @return the result
+     * @since 0.1.7
+     */
     private Method findMethod(String methodName) {
         for (Method method : getClass().getMethods()) {
             if (method.getName().equals(methodName) && method.getDeclaringClass() != Object.class) {
@@ -126,6 +155,13 @@ public abstract class BaseOperation {
         return null;
     }
 
+    /**
+     * buildInputSchema.
+     * 
+     * @param method method
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> buildInputSchema(Method method) {
         Map<String, Object> schema = new LinkedHashMap<>();
         Map<String, Object> properties = new LinkedHashMap<>();
@@ -137,6 +173,13 @@ public abstract class BaseOperation {
         return schema;
     }
 
+    /**
+     * buildParameterSchema.
+     * 
+     * @param parameter parameter
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> buildParameterSchema(Parameter parameter) {
         Map<String, Object> schema = new LinkedHashMap<>();
         Class<?> parameterType = parameter.getType();
@@ -146,13 +189,12 @@ public abstract class BaseOperation {
             schema.put("type", "string");
         } else if (parameterType == boolean.class || parameterType == Boolean.class) {
             schema.put("type", "boolean");
-        } else if (parameterType == int.class || parameterType == Integer.class
-                || parameterType == long.class || parameterType == Long.class
-                || parameterType == short.class || parameterType == Short.class
+        } else if (parameterType == int.class || parameterType == Integer.class || parameterType == long.class
+                || parameterType == Long.class || parameterType == short.class || parameterType == Short.class
                 || parameterType == byte.class || parameterType == Byte.class) {
             schema.put("type", "integer");
-        } else if (parameterType == float.class || parameterType == Float.class
-                || parameterType == double.class || parameterType == Double.class) {
+        } else if (parameterType == float.class || parameterType == Float.class || parameterType == double.class
+                || parameterType == Double.class) {
             schema.put("type", "number");
         } else if (parameterType.isEnum()) {
             schema.put("type", "string");
@@ -172,6 +214,14 @@ public abstract class BaseOperation {
         return schema;
     }
 
+    /**
+     * buildArrayItemSchema.
+     * 
+     * @param parameterType parameterType
+     * @param genericType genericType
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> buildArrayItemSchema(Class<?> parameterType, Type genericType) {
         Map<String, Object> items = new LinkedHashMap<>();
         Class<?> itemType = Object.class;
@@ -185,13 +235,12 @@ public abstract class BaseOperation {
 
         if (itemType == String.class || itemType == char.class || itemType == Character.class) {
             items.put("type", "string");
-        } else if (itemType == int.class || itemType == Integer.class
-                || itemType == long.class || itemType == Long.class
-                || itemType == short.class || itemType == Short.class
+        } else if (itemType == int.class || itemType == Integer.class || itemType == long.class
+                || itemType == Long.class || itemType == short.class || itemType == Short.class
                 || itemType == byte.class || itemType == Byte.class) {
             items.put("type", "integer");
-        } else if (itemType == float.class || itemType == Float.class
-                || itemType == double.class || itemType == Double.class) {
+        } else if (itemType == float.class || itemType == Float.class || itemType == double.class
+                || itemType == Double.class) {
             items.put("type", "number");
         } else if (itemType == boolean.class || itemType == Boolean.class) {
             items.put("type", "boolean");
@@ -201,6 +250,13 @@ public abstract class BaseOperation {
         return items;
     }
 
+    /**
+     * humanize.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private String humanize(String value) {
         if (value == null || value.isBlank()) {
             return "";
@@ -210,19 +266,14 @@ public abstract class BaseOperation {
     }
 
     /**
-     * Safely convert an object to a Map representation, similar to Python's model_dump().
-     * Returns a default value if conversion fails.
-     * <p>
-     * Mirrors Python's {@code _safe_model_dump(obj, default=None)} in {@code BaseOperation}.
-     *
-     * @param obj          the object to convert
-     * @param defaultValue default return value when conversion fails (null defaults to {"error": "model_dump failed"})
-     * @return Map representation of the object, or defaultValue on failure
+     * safeModelDump.
+     * 
+     * @param obj obj
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected static Map<String, Object> safeModelDump(Object obj, Map<String, Object> defaultValue) {
         if (defaultValue == null) {
             defaultValue = Map.of("error", "model_dump failed");
@@ -238,8 +289,7 @@ public abstract class BaseOperation {
             Map<String, Object> result = new LinkedHashMap<>();
             for (java.lang.reflect.Method method : obj.getClass().getMethods()) {
                 String methodName = method.getName();
-                if (method.getParameterCount() == 0
-                        && method.getDeclaringClass() != Object.class
+                if (method.getParameterCount() == 0 && method.getDeclaringClass() != Object.class
                         && (methodName.startsWith("get") || methodName.startsWith("is"))) {
                     String fieldName;
                     if (methodName.startsWith("get") && methodName.length() > 3) {
@@ -261,20 +311,17 @@ public abstract class BaseOperation {
 
     /**
      * Create a SysOperationEvent for logging.
-     *
-     * @param eventType       type of the system operation event
-     * @param methodName      name of the method being logged
-     * @param methodParams    parameters isPassed to the method
-     * @param methodResult    results returned by the method
+     * 
+     * @param eventType type of the system operation event
+     * @param methodName name of the method being logged
+     * @param methodParams parameters isPassed to the method
+     * @param methodResult results returned by the method
      * @param methodExecTimeMs execution time in milliseconds
      * @return created SysOperationEvent, or null
+     * @since 0.1.7
      */
-    protected SysOperationEvent createSysOperationEvent(
-            LogEventType eventType,
-            String methodName,
-            Map<String, Object> methodParams,
-            Map<String, Object> methodResult,
-            Double methodExecTimeMs) {
+    protected SysOperationEvent createSysOperationEvent(LogEventType eventType, String methodName,
+            Map<String, Object> methodParams, Map<String, Object> methodResult, Double methodExecTimeMs) {
         return createSysOperationEvent(eventType, methodName, methodParams, methodResult, methodExecTimeMs, null);
     }
 
@@ -283,21 +330,18 @@ public abstract class BaseOperation {
      * <p>
      * Mirrors Python's {@code _create_sys_operation_event(..., **kwargs)}.
      * The {@code extras} map carries additional arbitrary parameters similar to Python's kwargs.
-     *
-     * @param eventType       type of the system operation event
-     * @param methodName      name of the method being logged
-     * @param methodParams    parameters isPassed to the method
-     * @param methodResult    results returned by the method
+     * 
+     * @param eventType type of the system operation event
+     * @param methodName name of the method being logged
+     * @param methodParams parameters isPassed to the method
+     * @param methodResult results returned by the method
      * @param methodExecTimeMs execution time in milliseconds
-     * @param extras          additional key-value pairs (mirrors Python's **kwargs)
+     * @param extras additional key-value pairs (mirrors Python's **kwargs)
      * @return created SysOperationEvent, or null
+     * @since 0.1.7
      */
-    protected SysOperationEvent createSysOperationEvent(
-            LogEventType eventType,
-            String methodName,
-            Map<String, Object> methodParams,
-            Map<String, Object> methodResult,
-            Double methodExecTimeMs,
+    protected SysOperationEvent createSysOperationEvent(LogEventType eventType, String methodName,
+            Map<String, Object> methodParams, Map<String, Object> methodResult, Double methodExecTimeMs,
             Map<String, Object> extras) {
         String moduleId = "sys_operation";
         String moduleName = "sys_operation";
@@ -311,17 +355,9 @@ public abstract class BaseOperation {
             }
         }
 
-        return SysOperationEvent.builder()
-                .eventType(eventType)
-                .moduleId(moduleId)
-                .moduleName(moduleName)
-                .operationName(name)
-                .operationMode(mode != null ? mode.getValue() : null)
-                .operationDesc(description)
-                .methodName(methodName)
-                .methodParams(methodParams)
-                .methodResult(methodResult)
-                .methodExecTimeMs(methodExecTimeMs)
-                .build();
+        return SysOperationEvent.builder().eventType(eventType).moduleId(moduleId).moduleName(moduleName)
+                .operationName(name).operationMode(mode != null ? mode.getValue() : null).operationDesc(description)
+                .methodName(methodName).methodParams(methodParams).methodResult(methodResult)
+                .methodExecTimeMs(methodExecTimeMs).build();
     }
 }

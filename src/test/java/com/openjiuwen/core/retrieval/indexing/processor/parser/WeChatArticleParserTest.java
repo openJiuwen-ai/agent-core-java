@@ -1,22 +1,23 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
-
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.retrieval.common.Document;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class WeChatArticleParserTest {
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.retrieval.common.Document;
 
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+
+class WeChatArticleParserTest {
     @Test
     void supportsOnlyWechatArticleUrls() {
         WeChatArticleParser parser = new WeChatArticleParser();
@@ -50,7 +51,6 @@ class WeChatArticleParserTest {
     }
 
     private static final class TestWechatParser extends WeChatArticleParser {
-
         private final String html;
 
         private TestWechatParser(String html) {

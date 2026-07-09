@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.controller;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.controller.modules.TaskFilter;
 import com.openjiuwen.core.controller.modules.TaskManager;
@@ -23,14 +26,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Unit tests for TaskManager.
  * Translated from Python tests/unit_tests/core/controller/test_task_manager.py
  */
 class TaskManagerTest {
-
     private TaskManager taskManager;
     private Task sampleTask;
     private List<Task> sampleTasks;
@@ -43,15 +43,13 @@ class TaskManagerTest {
 
         sampleTask = createTask("session1", "task1", "test_task", "Test task", 1, TaskStatus.SUBMITTED);
 
-        sampleTasks = List.of(
-                createTask("session1", "task1", "test_task", "Task 1", 1, TaskStatus.SUBMITTED),
+        sampleTasks = List.of(createTask("session1", "task1", "test_task", "Task 1", 1, TaskStatus.SUBMITTED),
                 createTask("session1", "task2", "test_task", "Task 2", 2, TaskStatus.WORKING),
-                createTask("session2", "task3", "test_task", "Task 3", 1, TaskStatus.COMPLETED)
-        );
+                createTask("session2", "task3", "test_task", "Task 3", 1, TaskStatus.COMPLETED));
     }
 
-    private Task createTask(String sessionId, String taskId, String taskType,
-                            String description, int priority, TaskStatus status) {
+    private Task createTask(String sessionId, String taskId, String taskType, String description, int priority,
+            TaskStatus status) {
         Task task = new Task(sessionId, taskId, taskType);
         task.setDescription(description);
         task.setPriority(priority);
@@ -64,7 +62,6 @@ class TaskManagerTest {
     @Nested
     @DisplayName("Add Task Tests")
     class AddTaskTests {
-
         @Test
         @DisplayName("test adding a single task")
         void testAddSingleTask() {
@@ -85,8 +82,8 @@ class TaskManagerTest {
         @Test
         @DisplayName("test adding a task with a parent task")
         void testAddTaskWithParent() {
-            Task parentTask = createTask("session1", "parent_task", "test_task",
-                    "Parent task", 1, TaskStatus.SUBMITTED);
+            Task parentTask =
+                createTask("session1", "parent_task", "test_task", "Parent task", 1, TaskStatus.SUBMITTED);
             taskManager.addTask(parentTask);
 
             sampleTask.setParentTaskId("parent_task");
@@ -101,8 +98,7 @@ class TaskManagerTest {
         @DisplayName("test adding duplicate task throws exception")
         void testAddDuplicateTaskThrows() {
             taskManager.addTask(sampleTask);
-            Task duplicate = createTask("session1", "task1", "test_task",
-                    "Duplicate", 1, TaskStatus.SUBMITTED);
+            Task duplicate = createTask("session1", "task1", "test_task", "Duplicate", 1, TaskStatus.SUBMITTED);
             assertThrows(Exception.class, () -> taskManager.addTask(duplicate));
         }
     }
@@ -112,7 +108,6 @@ class TaskManagerTest {
     @Nested
     @DisplayName("Get Task Tests")
     class GetTaskTests {
-
         @Test
         @DisplayName("test getting a task by ID")
         void testGetTaskById() {
@@ -145,8 +140,7 @@ class TaskManagerTest {
         @DisplayName("test getting tasks by priority")
         void testGetTaskByPriority() {
             taskManager.addTask(sampleTasks);
-            List<Task> result = taskManager.getTask(
-                    TaskFilter.builder().priority(1).build());
+            List<Task> result = taskManager.getTask(TaskFilter.builder().priority(1).build());
             assertEquals(2, result.size());
             assertTrue(result.stream().allMatch(t -> t.getPriority() == 1));
         }
@@ -165,8 +159,7 @@ class TaskManagerTest {
         void testGetTaskByUserId() {
             sampleTask.setMetadata(Map.of("user_id", "user1"));
             taskManager.addTask(sampleTask);
-            List<Task> result = taskManager.getTask(
-                    TaskFilter.builder().userId("user1").build());
+            List<Task> result = taskManager.getTask(TaskFilter.builder().userId("user1").build());
             assertEquals(1, result.size());
             assertEquals("task1", result.get(0).getTaskId());
         }
@@ -175,8 +168,7 @@ class TaskManagerTest {
         @DisplayName("test getting root tasks")
         void testGetRootTasks() {
             taskManager.addTask(sampleTasks);
-            Task childTask = createTask("session1", "child_task", "test_task",
-                    "Child task", 1, TaskStatus.SUBMITTED);
+            Task childTask = createTask("session1", "child_task", "test_task", "Child task", 1, TaskStatus.SUBMITTED);
             childTask.setParentTaskId("task1");
             taskManager.addTask(childTask);
 
@@ -197,8 +189,7 @@ class TaskManagerTest {
 
             taskManager.addTask(List.of(parent, child1, child2));
 
-            List<Task> result = taskManager.getTask(
-                    TaskFilter.builder().taskId("parent").withChildren(true).build());
+            List<Task> result = taskManager.getTask(TaskFilter.builder().taskId("parent").withChildren(true).build());
             assertEquals(3, result.size());
             Set<String> ids = result.stream().map(Task::getTaskId).collect(Collectors.toSet());
             assertEquals(Set.of("parent", "child1", "child2"), ids);
@@ -215,8 +206,7 @@ class TaskManagerTest {
 
             taskManager.addTask(List.of(parent, child, grandchild));
 
-            List<Task> result = taskManager.getTask(
-                    TaskFilter.builder().taskId("parent").withChildren(true).build());
+            List<Task> result = taskManager.getTask(TaskFilter.builder().taskId("parent").withChildren(true).build());
             assertEquals(3, result.size());
             Set<String> ids = result.stream().map(Task::getTaskId).collect(Collectors.toSet());
             assertEquals(Set.of("parent", "child", "grandchild"), ids);
@@ -234,8 +224,7 @@ class TaskManagerTest {
         @DisplayName("test that get_task raises error for 'highest' priority")
         void testGetTaskHighestPriorityError() {
             taskManager.addTask(sampleTasks);
-            assertThrows(Exception.class, () ->
-                    taskManager.getTask(TaskFilter.byHighestPriority()));
+            assertThrows(Exception.class, () -> taskManager.getTask(TaskFilter.byHighestPriority()));
         }
     }
 
@@ -244,7 +233,6 @@ class TaskManagerTest {
     @Nested
     @DisplayName("Pop Task Tests")
     class PopTaskTests {
-
         @Test
         @DisplayName("test popping a task by ID")
         void testPopTaskById() {
@@ -285,7 +273,6 @@ class TaskManagerTest {
     @Nested
     @DisplayName("Update Task Tests")
     class UpdateTaskTests {
-
         @Test
         @DisplayName("test updating a task")
         void testUpdateTask() {
@@ -313,7 +300,6 @@ class TaskManagerTest {
     @Nested
     @DisplayName("Remove Task Tests")
     class RemoveTaskTests {
-
         @Test
         @DisplayName("test removing a task by ID")
         void testRemoveTaskById() {
@@ -331,8 +317,7 @@ class TaskManagerTest {
             child.setParentTaskId("parent");
             taskManager.addTask(List.of(parent, child));
 
-            taskManager.removeTask(
-                    TaskFilter.builder().taskId("parent").withChildren(true).build());
+            taskManager.removeTask(TaskFilter.builder().taskId("parent").withChildren(true).build());
             List<Task> remaining = taskManager.getTask(null);
             assertTrue(remaining.isEmpty());
         }
@@ -367,8 +352,7 @@ class TaskManagerTest {
         @DisplayName("test that remove_task raises error for 'highest' priority")
         void testRemoveTaskHighestPriorityError() {
             taskManager.addTask(sampleTasks);
-            assertThrows(Exception.class, () ->
-                    taskManager.removeTask(TaskFilter.byHighestPriority()));
+            assertThrows(Exception.class, () -> taskManager.removeTask(TaskFilter.byHighestPriority()));
         }
     }
 
@@ -377,7 +361,6 @@ class TaskManagerTest {
     @Nested
     @DisplayName("Get Child Task Tests")
     class GetChildTaskTests {
-
         @Test
         @DisplayName("test getting child tasks")
         void testGetChildTask() {
@@ -416,7 +399,6 @@ class TaskManagerTest {
     @Nested
     @DisplayName("Update Task Status Tests")
     class UpdateTaskStatusTests {
-
         @Test
         @DisplayName("test updating task status")
         void testUpdateTaskStatus() {
@@ -434,8 +416,7 @@ class TaskManagerTest {
             child.setParentTaskId("parent");
 
             taskManager.addTask(List.of(parent, child));
-            taskManager.updateTaskStatus(
-                    List.of("parent"), TaskStatus.WORKING, true, false, null);
+            taskManager.updateTaskStatus(List.of("parent"), TaskStatus.WORKING, true, false, null);
 
             List<Task> pResult = taskManager.getTask(TaskFilter.byTaskId("parent"));
             List<Task> cResult = taskManager.getTask(TaskFilter.byTaskId("child"));
@@ -453,13 +434,11 @@ class TaskManagerTest {
             grandchild.setParentTaskId("child");
 
             taskManager.addTask(List.of(parent, child, grandchild));
-            taskManager.updateTaskStatus(
-                    List.of("parent"), TaskStatus.WORKING, true, true, null);
+            taskManager.updateTaskStatus(List.of("parent"), TaskStatus.WORKING, true, true, null);
 
             for (String id : List.of("parent", "child", "grandchild")) {
                 List<Task> r = taskManager.getTask(TaskFilter.byTaskId(id));
-                assertEquals(TaskStatus.WORKING, r.get(0).getStatus(),
-                        id + " should have WORKING status");
+                assertEquals(TaskStatus.WORKING, r.get(0).getStatus(), id + " should have WORKING status");
             }
         }
 
@@ -479,7 +458,6 @@ class TaskManagerTest {
     @Nested
     @DisplayName("Set Priority Tests")
     class SetPriorityTests {
-
         @Test
         @DisplayName("test setting task priority")
         void testSetPriority() {
@@ -519,8 +497,7 @@ class TaskManagerTest {
 
             for (String id : List.of("parent", "child", "grandchild")) {
                 List<Task> r = taskManager.getTask(TaskFilter.byTaskId(id));
-                assertEquals(5, r.get(0).getPriority(),
-                        id + " should have priority 5");
+                assertEquals(5, r.get(0).getPriority(), id + " should have priority 5");
             }
         }
     }
@@ -530,7 +507,6 @@ class TaskManagerTest {
     @Nested
     @DisplayName("State Management Tests")
     class StateManagementTests {
-
         @Test
         @DisplayName("test getting task manager state")
         void testGetState() {
@@ -592,7 +568,6 @@ class TaskManagerTest {
     @Nested
     @DisplayName("Parallel Operations Tests")
     class ParallelOperationsTests {
-
         @Test
         @DisplayName("test adding tasks concurrently")
         void testParallelAddTasks() throws Exception {
@@ -603,8 +578,8 @@ class TaskManagerTest {
             for (int i = 0; i < numTasks; i++) {
                 final int idx = i;
                 futures.add(executor.submit(() -> {
-                    Task task = createTask("session" + (idx % 5), "task_" + idx,
-                            "test_task", "Task " + idx, idx % 10, TaskStatus.SUBMITTED);
+                    Task task = createTask("session" + (idx % 5), "task_" + idx, "test_task", "Task " + idx, idx % 10,
+                            TaskStatus.SUBMITTED);
                     taskManager.addTask(task);
                 }));
             }
@@ -654,12 +629,9 @@ class TaskManagerTest {
             }
             executor.shutdown();
 
-            assertEquals(TaskStatus.WORKING,
-                    taskManager.getTask(TaskFilter.byTaskId("task1")).get(0).getStatus());
-            assertEquals(TaskStatus.COMPLETED,
-                    taskManager.getTask(TaskFilter.byTaskId("task2")).get(0).getStatus());
-            assertEquals(TaskStatus.FAILED,
-                    taskManager.getTask(TaskFilter.byTaskId("task3")).get(0).getStatus());
+            assertEquals(TaskStatus.WORKING, taskManager.getTask(TaskFilter.byTaskId("task1")).get(0).getStatus());
+            assertEquals(TaskStatus.COMPLETED, taskManager.getTask(TaskFilter.byTaskId("task2")).get(0).getStatus());
+            assertEquals(TaskStatus.FAILED, taskManager.getTask(TaskFilter.byTaskId("task3")).get(0).getStatus());
         }
 
         @Test
@@ -697,8 +669,7 @@ class TaskManagerTest {
             int numTasks = 30;
             // First add all tasks
             for (int i = 0; i < numTasks; i++) {
-                Task task = createTask("session1", "task_" + i, "test_task",
-                        "Task " + i, i % 5, TaskStatus.SUBMITTED);
+                Task task = createTask("session1", "task_" + i, "test_task", "Task " + i, i % 5, TaskStatus.SUBMITTED);
                 taskManager.addTask(task);
             }
 
@@ -707,8 +678,7 @@ class TaskManagerTest {
             List<Future<?>> futures = new ArrayList<>();
             for (int i = 0; i < numTasks; i += 2) {
                 final String taskId = "task_" + i;
-                futures.add(executor.submit(() ->
-                        taskManager.removeTask(TaskFilter.byTaskId(taskId))));
+                futures.add(executor.submit(() -> taskManager.removeTask(TaskFilter.byTaskId(taskId))));
             }
 
             for (Future<?> f : futures) {
@@ -747,16 +717,14 @@ class TaskManagerTest {
         void testParallelPopOperations() throws Exception {
             // Add many tasks
             for (int i = 0; i < 20; i++) {
-                Task task = createTask("session1", "task_" + i, "test_task",
-                        "Task " + i, i % 5, TaskStatus.SUBMITTED);
+                Task task = createTask("session1", "task_" + i, "test_task", "Task " + i, i % 5, TaskStatus.SUBMITTED);
                 taskManager.addTask(task);
             }
 
             ExecutorService executor = Executors.newFixedThreadPool(5);
             List<Future<List<Task>>> futures = new ArrayList<>();
             for (int i = 0; i < 5; i++) {
-                futures.add(executor.submit(() ->
-                        taskManager.popTask(TaskFilter.byHighestPriority())));
+                futures.add(executor.submit(() -> taskManager.popTask(TaskFilter.byHighestPriority())));
             }
 
             List<Task> allPopped = new ArrayList<>();
@@ -806,8 +774,8 @@ class TaskManagerTest {
                     // Get tasks
                     taskManager.getTask(TaskFilter.bySessionId("session1"));
                     // Add a new task
-                    Task newTask = createTask("session1", "new_task_" + idx,
-                            "test_task", "New task", 5, TaskStatus.SUBMITTED);
+                    Task newTask =
+                        createTask("session1", "new_task_" + idx, "test_task", "New task", 5, TaskStatus.SUBMITTED);
                     taskManager.addTask(newTask);
                 }));
             }

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.common.logging.defaults;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.LoggingUtils;
@@ -11,6 +12,7 @@ import com.openjiuwen.core.common.logging.events.BaseLogEvent;
 import com.openjiuwen.core.common.logging.events.EventClassRegistry;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.common.logging.events.LogLevel;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -28,24 +30,35 @@ import java.util.logging.LogRecord;
  * <p>
  * Implements {@link LoggerProtocol} providing:
  * <ul>
- *   <li>Console and file output (configured via Logback)</li>
- *   <li>Structured event logging via JSON serialization</li>
- *   <li>MDC-based context injection (trace_id, log_type)</li>
- *   <li>Control character sanitization</li>
+ * <li>Console and file output (configured via Logback)</li>
+ * <li>Structured event logging via JSON serialization</li>
+ * <li>MDC-based context injection (trace_id, log_type)</li>
+ * <li>Control character sanitization</li>
  * </ul>
+ * 
+ * @since 0.1.7
  */
 public class DefaultLogger implements LoggerProtocol {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final String logType;
     private Map<String, Object> config;
     private final Logger slf4jLogger;
     private final java.util.logging.Logger julLogger;
+
+    /**
+     * CopyOnWriteArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<Filter> filters = new CopyOnWriteArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DefaultLogger.
+     * 
+     * @param logType logType
+     * @param config config
+     * @since 0.1.7
      */
     public DefaultLogger(String logType, Map<String, Object> config) {
         this.logType = logType;
@@ -58,10 +71,14 @@ public class DefaultLogger implements LoggerProtocol {
 
     // ==================== LoggerProtocol Implementation ====================
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * debug.
+     * 
+     * @param msg msg
+     * @param args args
+     * @since 0.1.7
      */
+    @Override
     public void debug(String msg, Object... args) {
         if (slf4jLogger.isDebugEnabled()) {
             setMdc();
@@ -71,10 +88,14 @@ public class DefaultLogger implements LoggerProtocol {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * info.
+     * 
+     * @param msg msg
+     * @param args args
+     * @since 0.1.7
      */
+    @Override
     public void info(String msg, Object... args) {
         if (slf4jLogger.isInfoEnabled()) {
             setMdc();
@@ -84,10 +105,14 @@ public class DefaultLogger implements LoggerProtocol {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * warning.
+     * 
+     * @param msg msg
+     * @param args args
+     * @since 0.1.7
      */
+    @Override
     public void warning(String msg, Object... args) {
         if (slf4jLogger.isWarnEnabled()) {
             setMdc();
@@ -97,10 +122,14 @@ public class DefaultLogger implements LoggerProtocol {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * error.
+     * 
+     * @param msg msg
+     * @param args args
+     * @since 0.1.7
      */
+    @Override
     public void error(String msg, Object... args) {
         if (slf4jLogger.isErrorEnabled()) {
             setMdc();
@@ -110,10 +139,14 @@ public class DefaultLogger implements LoggerProtocol {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * critical.
+     * 
+     * @param msg msg
+     * @param args args
+     * @since 0.1.7
      */
+    @Override
     public void critical(String msg, Object... args) {
         // SLF4J has no CRITICAL level; use ERROR
         if (slf4jLogger.isErrorEnabled()) {
@@ -124,10 +157,15 @@ public class DefaultLogger implements LoggerProtocol {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * exception.
+     * 
+     * @param msg msg
+     * @param t t
+     * @param args args
+     * @since 0.1.7
      */
+    @Override
     public void exception(String msg, Throwable t, Object... args) {
         setMdc();
         slf4jLogger.error(sanitize(msg), t);
@@ -135,10 +173,15 @@ public class DefaultLogger implements LoggerProtocol {
         clearMdc();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * log.
+     * 
+     * @param level level
+     * @param msg msg
+     * @param args args
+     * @since 0.1.7
      */
+    @Override
     public void log(int level, String msg, Object... args) {
         // Map numeric levels to SLF4J methods
         if (level >= 40) {
@@ -152,10 +195,13 @@ public class DefaultLogger implements LoggerProtocol {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * setLevel.
+     * 
+     * @param level level
+     * @since 0.1.7
      */
+    @Override
     public void setLevel(int level) {
         julLogger.setLevel(toJulLevel(level));
         if (slf4jLogger instanceof ch.qos.logback.classic.Logger logbackLogger) {
@@ -163,66 +209,87 @@ public class DefaultLogger implements LoggerProtocol {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addHandler.
+     * 
+     * @param handler handler
+     * @since 0.1.7
      */
+    @Override
     public void addHandler(Handler handler) {
         if (handler != null) {
             julLogger.addHandler(handler);
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * removeHandler.
+     * 
+     * @param handler handler
+     * @since 0.1.7
      */
+    @Override
     public void removeHandler(Handler handler) {
         if (handler != null) {
             julLogger.removeHandler(handler);
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFilter.
+     * 
+     * @param filter filter
+     * @since 0.1.7
      */
+    @Override
     public void addFilter(Filter filter) {
         if (filter != null) {
             filters.add(filter);
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * removeFilter.
+     * 
+     * @param filter filter
+     * @since 0.1.7
      */
+    @Override
     public void removeFilter(Filter filter) {
         if (filter != null) {
             filters.remove(filter);
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * logger.
+     *
+     * @return Logger
+     * @since 0.1.7
      */
+    @Override
     public java.util.logging.Logger logger() {
         return julLogger;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> getConfig() {
         return config;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * reconfigure.
+     * 
+     * @param newConfig newConfig
+     * @since 0.1.7
      */
+    @Override
     public void reconfigure(Map<String, Object> newConfig) {
         this.config = newConfig != null ? Map.copyOf(newConfig) : Map.of();
     }
@@ -231,6 +298,11 @@ public class DefaultLogger implements LoggerProtocol {
 
     /**
      * Log a structured event. Serializes the event to JSON and logs at the appropriate level.
+     * 
+     * @param msg msg
+     * @param eventType eventType
+     * @param event event
+     * @since 0.1.7
      */
     public void logEvent(String msg, LogEventType eventType, BaseLogEvent event) {
         if (event == null && eventType == null) {
@@ -253,7 +325,7 @@ public class DefaultLogger implements LoggerProtocol {
         String json;
         try {
             json = OBJECT_MAPPER.writeValueAsString(eventObj.toMap());
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             json = eventObj.toMap().toString();
         }
 
@@ -266,18 +338,35 @@ public class DefaultLogger implements LoggerProtocol {
         }
     }
 
-    // ==================== Internal ====================
-
+    /**
+     * setMdc.
+     * 
+     * @since 0.1.7
+     */
     private void setMdc() {
         MDC.put("trace_id", LoggingUtils.getSessionId());
         MDC.put("log_type", logType);
     }
 
+    /**
+     * clearMdc.
+     * 
+     * @since 0.1.7
+     */
     private void clearMdc() {
         MDC.remove("trace_id");
         MDC.remove("log_type");
     }
 
+    /**
+     * publishToJul.
+     * 
+     * @param level level
+     * @param msg msg
+     * @param throwable throwable
+     * @param args args
+     * @since 0.1.7
+     */
     private void publishToJul(Level level, String msg, Throwable throwable, Object... args) {
         String formatted = sanitize(formatMessage(msg, args));
         LogRecord record = new LogRecord(level, formatted);
@@ -286,6 +375,13 @@ public class DefaultLogger implements LoggerProtocol {
         julLogger.log(record);
     }
 
+    /**
+     * toJulLevel.
+     * 
+     * @param level level
+     * @return the result
+     * @since 0.1.7
+     */
     private static Level toJulLevel(int level) {
         if (level >= 50) {
             return Level.SEVERE;
@@ -299,6 +395,13 @@ public class DefaultLogger implements LoggerProtocol {
         return Level.FINE;
     }
 
+    /**
+     * toLogbackLevel.
+     * 
+     * @param level level
+     * @return Level
+     * @since 0.1.7
+     */
     private static ch.qos.logback.classic.Level toLogbackLevel(int level) {
         if (level >= 50) {
             return ch.qos.logback.classic.Level.ERROR;
@@ -312,6 +415,14 @@ public class DefaultLogger implements LoggerProtocol {
         return ch.qos.logback.classic.Level.DEBUG;
     }
 
+    /**
+     * formatMessage.
+     * 
+     * @param msg msg
+     * @param args args
+     * @return the result
+     * @since 0.1.7
+     */
     private static String formatMessage(String msg, Object... args) {
         if (msg == null || args == null || args.length == 0) {
             return msg;
@@ -325,6 +436,10 @@ public class DefaultLogger implements LoggerProtocol {
 
     /**
      * Sanitize control characters in log messages.
+     * 
+     * @param msg msg
+     * @return the result
+     * @since 0.1.7
      */
     private static String sanitize(String msg) {
         if (msg == null) {

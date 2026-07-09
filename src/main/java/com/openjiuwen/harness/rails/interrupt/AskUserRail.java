@@ -12,30 +12,33 @@ import java.util.List;
 
 /**
  * Public class AskUserRail used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class AskUserRail extends BaseInterruptRail {
     /**
-     * Auto-generated for codecheck compliance.
+     * AskUserRail.
+     * 
+     * @since 0.1.7
      */
     public AskUserRail() {
         super(List.of("ask_user"));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveInterrupt.
+     * 
+     * @param ctx ctx
+     * @param toolCall toolCall
+     * @param userInput userInput
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected InterruptDecision resolveInterrupt(AgentCallbackContext ctx, ToolCall toolCall, Object userInput) {
         if (userInput != null) {
             return approve();
         }
-        return interrupt(InterruptRequest.builder()
-                .message("ask_user")
-                .build());
+        return interrupt(InterruptRequest.builder().message("ask_user").build());
     }
 }

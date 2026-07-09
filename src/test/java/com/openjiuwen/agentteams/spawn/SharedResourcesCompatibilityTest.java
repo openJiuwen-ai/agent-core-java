@@ -1,21 +1,20 @@
+
 package com.openjiuwen.agentteams.spawn;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.agentteams.tools.database.DatabaseConfig;
 import com.openjiuwen.agentteams.tools.database.DatabaseType;
 import com.openjiuwen.agentteams.tools.database.TeamDatabase;
 import com.openjiuwen.core.multiagent.runtime.TeamRuntime;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 public class SharedResourcesCompatibilityTest {
-
     @AfterEach
     void cleanup() {
         SharedResources.cleanupSharedResources();
@@ -25,14 +24,10 @@ public class SharedResourcesCompatibilityTest {
     void sharedDbShouldReuseSameNonMemoryConfig() {
         SharedResources.cleanupSharedResources();
 
-        DatabaseConfig cfg1 = DatabaseConfig.builder()
-                .dbType(DatabaseType.SQLITE)
-                .connectionString("team_data/team.db")
-                .build();
-        DatabaseConfig cfg2 = DatabaseConfig.builder()
-                .dbType(DatabaseType.SQLITE)
-                .connectionString("team_data/team.db")
-                .build();
+        DatabaseConfig cfg1 =
+            DatabaseConfig.builder().dbType(DatabaseType.SQLITE).connectionString("team_data/team.db").build();
+        DatabaseConfig cfg2 =
+            DatabaseConfig.builder().dbType(DatabaseType.SQLITE).connectionString("team_data/team.db").build();
 
         TeamDatabase db1 = SharedResources.getSharedDb(cfg1);
         TeamDatabase db2 = SharedResources.getSharedDb(cfg2);
@@ -44,14 +39,10 @@ public class SharedResourcesCompatibilityTest {
     void sharedDbShouldDistinguishDbTypeWithSameConnection() {
         SharedResources.cleanupSharedResources();
 
-        DatabaseConfig sqliteCfg = DatabaseConfig.builder()
-                .dbType(DatabaseType.SQLITE)
-                .connectionString("shared-conn")
-                .build();
-        DatabaseConfig postgresqlCfg = DatabaseConfig.builder()
-                .dbType(DatabaseType.POSTGRESQL)
-                .connectionString("shared-conn")
-                .build();
+        DatabaseConfig sqliteCfg =
+            DatabaseConfig.builder().dbType(DatabaseType.SQLITE).connectionString("shared-conn").build();
+        DatabaseConfig postgresqlCfg =
+            DatabaseConfig.builder().dbType(DatabaseType.POSTGRESQL).connectionString("shared-conn").build();
 
         TeamDatabase sqliteDb = SharedResources.getSharedDb(sqliteCfg);
         TeamDatabase postgresqlDb = SharedResources.getSharedDb(postgresqlCfg);

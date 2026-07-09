@@ -20,28 +20,38 @@ import java.util.Map;
 
 /**
  * Backward-compatible facade mirroring Python's {@code WorkflowController}.
+ * 
+ * @since 0.1.7
  */
 public class WorkflowController {
-
     private WorkflowAgentConfig agentConfig;
     private ContextEngine contextEngine;
     private WorkflowEventHandler eventHandler;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowController.
+     * 
+     * @since 0.1.7
      */
     public WorkflowController() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowController.
+     * 
+     * @param config config
+     * @param contextEngine contextEngine
+     * @since 0.1.7
      */
     public WorkflowController(WorkflowAgentConfig config, ContextEngine contextEngine) {
         configure(config, contextEngine);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setupFromAgent.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     public void setupFromAgent(WorkflowAgent agent) {
         if (agent == null) {
@@ -52,7 +62,12 @@ public class WorkflowController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * handleEvent.
+     * 
+     * @param event event
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> handleEvent(Event event, AgentSessionApi session) {
         ensureConfigured();
@@ -60,7 +75,12 @@ public class WorkflowController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * intentDetection.
+     * 
+     * @param event event
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public WorkflowIntent intentDetection(Event event, AgentSessionApi session) {
         ensureConfigured();
@@ -68,7 +88,13 @@ public class WorkflowController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * execTask.
+     * 
+     * @param event event
+     * @param task task
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> execTask(Event event, Task task, AgentSessionApi session) {
         ensureConfigured();
@@ -80,7 +106,12 @@ public class WorkflowController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * interruptTask.
+     * 
+     * @param task task
+     * @param session session
+     * @param interactionData interactionData
+     * @since 0.1.7
      */
     public void interruptTask(Task task, AgentSessionApi session, List<Object> interactionData) {
         ensureConfigured();
@@ -88,7 +119,11 @@ public class WorkflowController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createMessage.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     public Event createMessage(Map<String, Object> inputs) {
         Map<String, Object> normalized = new LinkedHashMap<>();
@@ -103,41 +138,68 @@ public class WorkflowController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public WorkflowAgentConfig getAgentConfig() {
         return agentConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContextEngine.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ContextEngine getContextEngine() {
         return contextEngine;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEventHandler.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public WorkflowEventHandler getEventHandler() {
         ensureConfigured();
         return eventHandler;
     }
 
+    /**
+     * configure.
+     * 
+     * @param config config
+     * @param contextEngine contextEngine
+     * @since 0.1.7
+     */
     private void configure(WorkflowAgentConfig config, ContextEngine contextEngine) {
         this.agentConfig = config;
-        this.contextEngine = contextEngine != null
-                ? contextEngine
-                : new ContextEngine(ContextEngineConfig.builder().build());
+        this.contextEngine =
+            contextEngine != null ? contextEngine : new ContextEngine(ContextEngineConfig.builder().build());
         this.eventHandler = config != null ? new WorkflowEventHandler(config, this.contextEngine) : null;
     }
 
+    /**
+     * ensureConfigured.
+     * 
+     * @since 0.1.7
+     */
     private void ensureConfigured() {
         if (eventHandler == null) {
             throw new IllegalStateException("WorkflowController is not configured with agent config");
         }
     }
 
+    /**
+     * resolveWorkflow.
+     * 
+     * @param task task
+     * @return the result
+     * @since 0.1.7
+     */
     private WorkflowSchema resolveWorkflow(Task task) {
         if (task == null || agentConfig == null || agentConfig.getWorkflows() == null) {
             return null;

@@ -10,22 +10,35 @@ import java.util.regex.Pattern;
 /**
  * Safe slug validation (no path traversal, length limits) and deterministic
  * branch/path derivation for worktrees.
- *
- * <p>Mirrors Python worktree/slug.py.</p>
+ * <p>
+ * Mirrors Python worktree/slug.py.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public final class SlugValidator {
-
-    /** Valid slug segment: letters, digits, dots, underscores, dashes. */
     private static final Pattern VALID_SLUG_SEGMENT = Pattern.compile("^[a-zA-Z0-9._\\-]+$");
 
-    /** Maximum length of a slug. */
+    /**
+     * MAX_SLUG_LENGTH.
+     * 
+     * @since 0.1.7
+     */
     public static final int MAX_SLUG_LENGTH = 64;
 
+    /**
+     * SlugValidator.
+     * 
+     * @since 0.1.7
+     */
     private SlugValidator() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validateSlug.
+     * 
+     * @param slug slug
+     * @since 0.1.7
      */
     public static void validateSlug(String slug) {
         if (slug == null || slug.isBlank()) {
@@ -38,19 +51,21 @@ public final class SlugValidator {
         String[] segments = slug.split("/", -1);
         for (String segment : segments) {
             if (".".equals(segment) || "..".equals(segment)) {
-                throw new IllegalArgumentException(
-                        "Slug contains path traversal segment '" + segment + "': " + slug);
+                throw new IllegalArgumentException("Slug contains path traversal segment '" + segment + "': " + slug);
             }
             if (!VALID_SLUG_SEGMENT.matcher(segment).matches()) {
-                throw new IllegalArgumentException(
-                        "Slug segment '" + segment + "' contains invalid characters. "
-                                + "Allowed: letters, digits, dots, underscores, dashes.");
+                throw new IllegalArgumentException("Slug segment '" + segment + "' contains invalid characters. "
+                        + "Allowed: letters, digits, dots, underscores, dashes.");
             }
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * worktreeBranchName.
+     * 
+     * @param slug slug
+     * @return the result
+     * @since 0.1.7
      */
     public static String worktreeBranchName(String slug) {
         validateSlug(slug);
@@ -58,7 +73,12 @@ public final class SlugValidator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * worktreePathFor.
+     * 
+     * @param baseDir baseDir
+     * @param slug slug
+     * @return the result
+     * @since 0.1.7
      */
     public static String worktreePathFor(Path baseDir, String slug) {
         validateSlug(slug);
@@ -66,7 +86,11 @@ public final class SlugValidator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * worktreesDir.
+     * 
+     * @param baseDir baseDir
+     * @return the result
+     * @since 0.1.7
      */
     public static String worktreesDir(Path baseDir) {
         return baseDir.resolve(".worktrees").toString();

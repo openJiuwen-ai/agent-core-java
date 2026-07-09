@@ -11,9 +11,10 @@ import java.util.Map;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.io_schema.ACERetrievedMemory}.
+ * 
+ * @since 0.1.7
  */
 public class ACERetrievedMemory {
-
     private String id;
     private String section;
     private String content;
@@ -22,14 +23,24 @@ public class ACERetrievedMemory {
     private int neutral;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ACERetrievedMemory.
+     * 
+     * @since 0.1.7
      */
     public ACERetrievedMemory() {
         // Default constructor
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ACERetrievedMemory.
+     * 
+     * @param id id
+     * @param section section
+     * @param content content
+     * @param helpful helpful
+     * @param harmful harmful
+     * @param neutral neutral
+     * @since 0.1.7
      */
     public ACERetrievedMemory(String id, String section, String content, int helpful, int harmful, int neutral) {
         this.id = id;
@@ -41,7 +52,10 @@ public class ACERetrievedMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -55,63 +69,85 @@ public class ACERetrievedMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromVectorNode.
+     * 
+     * @param node node
+     * @return the result
+     * @since 0.1.7
      */
     public static ACERetrievedMemory fromVectorNode(VectorNode node) {
         return fromMap(node.getMetadata());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromMap.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public static ACERetrievedMemory fromMap(Map<String, Object> data) {
-        return new ACERetrievedMemory(
-            SchemaUtils.stringValue(data.get("id"), ""),
-            SchemaUtils.stringValue(data.get("section"), "general"),
-            SchemaUtils.stringValue(data.get("content"), ""),
-            SchemaUtils.intValue(data.get("helpful"), 0),
-            SchemaUtils.intValue(data.get("harmful"), 0),
-            SchemaUtils.intValue(data.get("neutral"), 0)
-        );
+        return new ACERetrievedMemory(SchemaUtils.stringValue(data.get("id"), ""),
+                SchemaUtils.stringValue(data.get("section"), "general"),
+                SchemaUtils.stringValue(data.get("content"), ""), SchemaUtils.intValue(data.get("helpful"), 0),
+                SchemaUtils.intValue(data.get("harmful"), 0), SchemaUtils.intValue(data.get("neutral"), 0));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getId() {
         return id;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSection.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSection() {
         return section;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getContent() {
         return content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getHelpful.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getHelpful() {
         return helpful;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getHarmful.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getHarmful() {
         return harmful;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNeutral.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getNeutral() {
         return neutral;

@@ -6,22 +6,24 @@ package com.openjiuwen.core.common.exception;
 
 /**
  * A fully-specified status code entry generated from a {@link StatusCodeTemplate}.
- *
- * @param name    the enum member name
- * @param code    the integer status code
- * @param message the error message template
+ * @since 0.1.7
  */
 public record StatusCodeSpec(String name, int code, String message) {
-
     /**
-     * Create a spec by combining a template with a concrete code value.
+     * fromTemplate.
+     * @param template template
+     * @param code code
+     * @return the result
+     * @since 0.1.7
      */
     public static StatusCodeSpec fromTemplate(StatusCodeTemplate template, int code) {
         return new StatusCodeSpec(template.name(), code, template.messageTemplate());
     }
 
     /**
-     * Render as a Java enum member declaration string (for codegen).
+     * renderEnumMember.
+     * @return the result
+     * @since 0.1.7
      */
     public String renderEnumMember() {
         return "    " + name + "(" + code + ", \"" + message + "\")";

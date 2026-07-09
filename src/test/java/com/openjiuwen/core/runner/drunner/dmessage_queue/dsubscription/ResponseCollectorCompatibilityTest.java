@@ -1,18 +1,19 @@
+
 package com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqResponseMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.ResultType;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.Iterator;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.TimeoutException;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class ResponseCollectorCompatibilityTest {
-
     @Test
     void collectorShouldReturnSingleResultAndClose() throws Exception {
         ResponseCollector collector = new ResponseCollector("m-1", "remote-1", null, 5.0);
@@ -50,12 +51,10 @@ class ResponseCollectorCompatibilityTest {
         ResponseCollector collector = new ResponseCollector("m-3", "remote-1", null, 5.0);
         collector.close(CancelReason.QUEUE_FULL);
 
-        assertThatThrownBy(() -> collector.result(0.1))
-                .isInstanceOf(CancellationException.class);
+        assertThatThrownBy(() -> collector.result(0.1)).isInstanceOf(CancellationException.class);
 
         ResponseCollector ttlCollector = new ResponseCollector("m-4", "remote-1", null, 0.01);
-        assertThatThrownBy(() -> ttlCollector.result(0.1))
-                .isInstanceOf(TimeoutException.class);
+        assertThatThrownBy(() -> ttlCollector.result(0.1)).isInstanceOf(TimeoutException.class);
     }
 
     @Test
@@ -68,8 +67,7 @@ class ResponseCollectorCompatibilityTest {
         response.setLastChunk(true);
         collector.putMessage(response);
 
-        assertThatThrownBy(() -> collector.result(1.0))
-                .isInstanceOf(IllegalStateException.class)
+        assertThatThrownBy(() -> collector.result(1.0)).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("boom");
     }
 }

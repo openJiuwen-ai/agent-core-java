@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.harness_config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
@@ -20,35 +21,60 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Auto-generated for codecheck compliance.
+ * HarnessConfigLoader.
+ * 
+ * @since 0.1.7
  */
 public final class HarnessConfigLoader {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern TEMPLATE = Pattern.compile("\\{\\{\\s*(\\w+)\\s*\\}\\}");
 
+    /**
+     * HarnessConfigLoader.
+     * 
+     * @since 0.1.7
+     */
     private HarnessConfigLoader() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * load.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
      */
     public static ResolvedHarnessConfig load(String path) {
         return load(Path.of(path), Map.of(), null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * load.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
      */
     public static ResolvedHarnessConfig load(Path path) {
         return load(path, Map.of(), null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * load.
+     * 
+     * @param path path
+     * @param params params
+     * @param workspaceRoot workspaceRoot
+     * @return the result
+     * @since 0.1.7
      */
-    public static ResolvedHarnessConfig load(Path path,
-                                             Map<String, Object> params,
-                                             Path workspaceRoot) {
+    public static ResolvedHarnessConfig load(Path path, Map<String, Object> params, Path workspaceRoot) {
         Path resolvedPath = path.toAbsolutePath().normalize();
         if (!Files.exists(resolvedPath)) {
             throw new IllegalArgumentException("HarnessConfig file not found: " + resolvedPath);
@@ -63,30 +89,28 @@ public final class HarnessConfigLoader {
             throw new UncheckedIOException(ex);
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException(
-                    "HarnessConfig validation failed in '" + resolvedPath + "': " + ex.getMessage(),
-                    ex
-            );
+                    "HarnessConfig validation failed in '" + resolvedPath + "': " + ex.getMessage(), ex);
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolve.
+     * 
+     * @param config config
+     * @param sourcePath sourcePath
+     * @param params params
+     * @param workspaceRoot workspaceRoot
+     * @return the result
+     * @since 0.1.7
      */
-    public static ResolvedHarnessConfig resolve(HarnessConfig config,
-                                                Path sourcePath,
-                                                Map<String, Object> params,
-                                                Path workspaceRoot) {
+    public static ResolvedHarnessConfig resolve(HarnessConfig config, Path sourcePath, Map<String, Object> params,
+            Path workspaceRoot) {
         Objects.requireNonNull(config, "config");
-        Path normalizedSource = sourcePath == null
-                ? Path.of(".").toAbsolutePath().normalize()
-                : sourcePath.toAbsolutePath().normalize();
+        Path normalizedSource =
+            sourcePath == null ? Path.of(".").toAbsolutePath().normalize() : sourcePath.toAbsolutePath().normalize();
         Map<String, Object> effectiveParams = new LinkedHashMap<>(params == null ? Map.of() : params);
-        effectiveParams.putIfAbsent(
-                "workspace_root",
-                String.valueOf(workspaceRoot != null
-                        ? workspaceRoot.toAbsolutePath().normalize()
-                        : normalizedSource.getParent())
-        );
+        effectiveParams.putIfAbsent("workspace_root", String.valueOf(
+                workspaceRoot != null ? workspaceRoot.toAbsolutePath().normalize() : normalizedSource.getParent()));
 
         String language = config.getLanguage() == null || config.getLanguage().isBlank() ? "cn" : config.getLanguage();
         String systemPrompt = null;
@@ -102,11 +126,8 @@ public final class HarnessConfigLoader {
                 } else if ("identity".equals(section.getName())) {
                     systemPrompt = pickLanguage(rendered, language);
                 } else {
-                    extraSections.add(new ResolvedSection(
-                            section.getName(),
-                            section.getPriority() != null ? section.getPriority() : 30,
-                            rendered
-                    ));
+                    extraSections.add(new ResolvedSection(section.getName(),
+                            section.getPriority() != null ? section.getPriority() : 30, rendered));
                 }
             }
         }
@@ -114,6 +135,13 @@ public final class HarnessConfigLoader {
         return new ResolvedHarnessConfig(config, systemPrompt, extraSections, fileSections, normalizedSource);
     }
 
+    /**
+     * castMap.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> castMap(Map<?, ?> raw) {
         Map<String, Object> converted = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : raw.entrySet()) {
@@ -124,6 +152,13 @@ public final class HarnessConfigLoader {
         return converted;
     }
 
+    /**
+     * normalizeContent.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, String> normalizeContent(Object content) {
         if (content == null) {
             return Map.of();
@@ -143,6 +178,14 @@ public final class HarnessConfigLoader {
         return Map.of("cn", String.valueOf(content), "en", String.valueOf(content));
     }
 
+    /**
+     * renderAll.
+     * 
+     * @param content content
+     * @param params params
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, String> renderAll(Map<String, String> content, Map<String, Object> params) {
         Map<String, String> rendered = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : content.entrySet()) {
@@ -151,6 +194,14 @@ public final class HarnessConfigLoader {
         return rendered;
     }
 
+    /**
+     * renderTemplate.
+     * 
+     * @param text text
+     * @param params params
+     * @return the result
+     * @since 0.1.7
+     */
     private static String renderTemplate(String text, Map<String, Object> params) {
         if (text == null || !text.contains("{{")) {
             return text;
@@ -160,15 +211,21 @@ public final class HarnessConfigLoader {
         while (matcher.find()) {
             String key = matcher.group(1);
             Object value = params.get(key);
-            matcher.appendReplacement(
-                    sb,
-                    Matcher.quoteReplacement(value != null ? String.valueOf(value) : matcher.group(0))
-            );
+            matcher.appendReplacement(sb,
+                    Matcher.quoteReplacement(value != null ? String.valueOf(value) : matcher.group(0)));
         }
         matcher.appendTail(sb);
         return sb.toString();
     }
 
+    /**
+     * pickLanguage.
+     * 
+     * @param content content
+     * @param language language
+     * @return the result
+     * @since 0.1.7
+     */
     private static String pickLanguage(Map<String, String> content, String language) {
         if (content == null || content.isEmpty()) {
             return null;

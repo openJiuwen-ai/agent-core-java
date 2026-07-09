@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -20,14 +21,15 @@ import java.util.Map;
  * Base model information — a simplified configuration used by higher-level components.
  * <p>
  * Mirrors Python's {@code BaseModelInfo} model.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class BaseModelInfo {
-
     private static final String GREATER_THAN_ZERO_MESSAGE =
-            "Input should be greater than 0 [type=greater_than, input_value=%d, input_type=int]";
+        "Input should be greater than 0 [type=greater_than, input_value=%d, input_type=int]";
 
     @JsonProperty("api_key")
     private String apiKey = "";
@@ -51,32 +53,41 @@ public class BaseModelInfo {
     private boolean verifySsl = true;
     @JsonProperty("ssl_cert")
     private String sslCert;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, String> headers = new LinkedHashMap<>();
 
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> extraFields = new HashMap<>();
 
     /**
-     * Creates a BaseModelInfo with the specified configuration.
-     *
-     * @param apiKey      the API key for authentication
-     * @param apiBase     the base URL for API requests
-     * @param modelName   the model name to use
-     * @param temperature the sampling temperature
-     * @param topP        the top-p sampling parameter
-     * @param streaming   whether to enable streaming
-     * @param timeout     the request timeout in seconds
-     * @param verifySsl   whether to verify SSL certificates
-     * @param sslCert     the SSL certificate path
-     * @param headers     additional HTTP headers
-     * @param extraFields additional extra fields
+     * BaseModelInfo.
+     * 
+     * @param apiKey apiKey
+     * @param apiBase apiBase
+     * @param modelName modelName
+     * @param temperature temperature
+     * @param topP topP
+     * @param streaming streaming
+     * @param timeout timeout
+     * @param verifySsl verifySsl
+     * @param sslCert sslCert
+     * @param headers headers
+     * @param extraFields extraFields
+     * @since 0.1.7
      */
     @Builder
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public BaseModelInfo(String apiKey, String apiBase, String modelName, Double temperature, Double topP,
-                         Boolean streaming, Integer timeout, Boolean verifySsl, String sslCert,
-                         Map<String, String> headers, Map<String, Object> extraFields) {
+            Boolean streaming, Integer timeout, Boolean verifySsl, String sslCert, Map<String, String> headers,
+            Map<String, Object> extraFields) {
         this.apiKey = apiKey == null ? "" : apiKey;
         this.apiBase = apiBase;
         this.modelName = modelName == null ? "" : modelName;
@@ -90,18 +101,25 @@ public class BaseModelInfo {
         this.extraFields = extraFields == null ? new HashMap<>() : new HashMap<>(extraFields);
     }
 
-    @JsonAnyGetter
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtraFields.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonAnyGetter
     public Map<String, Object> getExtraFields() {
         return extraFields;
     }
 
-    @JsonAnySetter
     /**
-     * Auto-generated for codecheck compliance.
+     * setExtraField.
+     * 
+     * @param key key
+     * @param value value
+     * @since 0.1.7
      */
+    @JsonAnySetter
     public void setExtraField(String key, Object value) {
         if (extraFields == null) {
             extraFields = new HashMap<>();
@@ -111,8 +129,9 @@ public class BaseModelInfo {
 
     /**
      * Sets the request timeout.
-     *
+     * 
      * @param timeout the timeout in seconds, must be greater than 0
+     * @since 0.1.7
      */
     public void setTimeout(int timeout) {
         this.timeout = validatePositive(timeout);
@@ -120,8 +139,9 @@ public class BaseModelInfo {
 
     /**
      * Sets the extra fields.
-     *
+     * 
      * @param extraFields the extra fields map
+     * @since 0.1.7
      */
     public void setExtraFields(Map<String, Object> extraFields) {
         this.extraFields = extraFields == null ? new HashMap<>() : new HashMap<>(extraFields);
@@ -129,8 +149,9 @@ public class BaseModelInfo {
 
     /**
      * Gets the HTTP headers.
-     *
+     * 
      * @return a copy of the headers map
+     * @since 0.1.7
      */
     public Map<String, String> getHeaders() {
         return new LinkedHashMap<>(headers);
@@ -138,13 +159,21 @@ public class BaseModelInfo {
 
     /**
      * Sets the HTTP headers.
-     *
+     * 
      * @param headers the headers map
+     * @since 0.1.7
      */
     public void setHeaders(Map<String, String> headers) {
         this.headers = headers == null ? new LinkedHashMap<>() : new LinkedHashMap<>(headers);
     }
 
+    /**
+     * validatePositive.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static int validatePositive(int value) {
         if (value <= 0) {
             throw new IllegalArgumentException(GREATER_THAN_ZERO_MESSAGE.formatted(value));

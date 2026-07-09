@@ -26,9 +26,10 @@ import java.util.concurrent.atomic.AtomicInteger;
  * streaming, and interaction.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.agent.Session}.
+ * 
+ * @since 0.1.7
  */
 public class AgentSessionApi implements Session {
-
     private static final int PRE_DONE = 0x1;
     private static final int POST_DONE = 0x2;
 
@@ -38,15 +39,21 @@ public class AgentSessionApi implements Session {
 
     // preRunDone（bit0）/ postRunDone（bit1）合并成一个 AtomicInteger 位掩码，
     // resetRunState() 才能用一次 CAS 把两个标志一起清零，避免两次 set(false) 之间的中间状态。
+    /**
+     * AtomicInteger.
+     * 
+     * @since 0.1.7
+     */
     private final AtomicInteger runState = new AtomicInteger(0);
     private SimpleAgentInteraction interaction;
 
     /**
      * Create a new AgentSessionApi.
-     *
+     * 
      * @param sessionId the session ID (nullable, auto-generated if absent)
-     * @param envs      environment variables (nullable)
-     * @param card      the agent card (nullable)
+     * @param envs environment variables (nullable)
+     * @param card the agent card (nullable)
+     * @since 0.1.7
      */
     public AgentSessionApi(String sessionId, Map<String, Object> envs, Object card) {
         this(sessionId, envs, card, null);
@@ -54,11 +61,12 @@ public class AgentSessionApi implements Session {
 
     /**
      * Create a new AgentSessionApi with explicit stream modes.
-     *
-     * @param sessionId    the session ID (nullable, auto-generated if absent)
-     * @param envs         environment variables (nullable)
-     * @param card         the agent card (nullable)
-     * @param streamModes  explicit enabled stream modes, null to use defaults
+     * 
+     * @param sessionId the session ID (nullable, auto-generated if absent)
+     * @param envs environment variables (nullable)
+     * @param card the agent card (nullable)
+     * @param streamModes explicit enabled stream modes, null to use defaults
+     * @since 0.1.7
      */
     public AgentSessionApi(String sessionId, Map<String, Object> envs, Object card, List<StreamMode> streamModes) {
         if (sessionId == null) {
@@ -76,42 +84,63 @@ public class AgentSessionApi implements Session {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentSessionApi.
+     * 
+     * @param sessionId sessionId
+     * @param envs envs
+     * @since 0.1.7
      */
     public AgentSessionApi(String sessionId, Map<String, Object> envs) {
         this(sessionId, envs, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentSessionApi.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public AgentSessionApi(String sessionId) {
         this(sessionId, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentSessionApi.
+     * 
+     * @since 0.1.7
      */
     public AgentSessionApi() {
         this(null, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSessionId() {
         return sessionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEnv.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public Object getEnv(String key) {
         return inner.config() != null ? inner.config().getEnv(key) : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEnv.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public Object getEnv(String key, Object defaultValue) {
         Object val = getEnv(key);
@@ -119,109 +148,142 @@ public class AgentSessionApi implements Session {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEnvs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getEnvs() {
         return inner.config() != null ? inner.config().getEnvs() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getAgentId() {
         return inner.agentId();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getAgentName() {
         return inner.agentName();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getAgentDescription() {
         return inner.agentDescription();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateState.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     public void updateState(Map<String, Object> data) {
         inner.state().updateGlobal(data);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public Object getState(Object key) {
         return inner.state().getGlobal(key);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object getState(String key) {
         return getState((Object) key);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * dumpState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> dumpState() {
         return inner.state().dump();
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     /**
-     * Auto-generated for codecheck compliance.
+     * writeStream.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public void writeStream(Object data) {
-        StreamWriter writer = (StreamWriter) inner.streamWriterManager().getOutputWriter();
+        StreamWriter<?> writer = inner.streamWriterManager().getOutputWriter();
         if (writer != null) {
             writer.write(data);
         }
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     /**
-     * Auto-generated for codecheck compliance.
+     * writeCustomStream.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public void writeCustomStream(Map<String, Object> data) {
-        StreamWriter writer = (StreamWriter) inner.streamWriterManager().getCustomWriter();
+        StreamWriter<?> writer = inner.streamWriterManager().getCustomWriter();
         if (writer != null) {
             writer.write(data);
             return;
         }
-        StreamWriter outputWriter = (StreamWriter) inner.streamWriterManager().getOutputWriter();
+        StreamWriter<?> outputWriter = inner.streamWriterManager().getOutputWriter();
         if (outputWriter != null) {
             outputWriter.write(new OutputSchema("custom", 0, data));
         }
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     /**
-     * Auto-generated for codecheck compliance.
+     * writeTraceStream.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public void writeTraceStream(TraceSchema data) {
-        StreamWriter writer = (StreamWriter) inner.streamWriterManager().getTraceWriter();
+        StreamWriter<?> writer = inner.streamWriterManager().getTraceWriter();
         if (writer != null) {
             writer.write(data);
         }
     }
 
     /**
-     * Get stream output as a blocking iterator.
-     *
-     * @deprecated Prefer {@link #streamOutput(java.util.function.Consumer)} when callback-style consumption is easier.
+     * streamIterator.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Deprecated
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Iterator<Object> streamIterator() {
         return inner.streamWriterManager().streamIterator();
     }
@@ -229,8 +291,9 @@ public class AgentSessionApi implements Session {
     /**
      * Consume stream output incrementally via a callback.
      * Each stream item is delivered to the consumer as it arrives.
-     *
+     * 
      * @param consumer callback invoked for each stream item
+     * @since 0.1.7
      */
     public void streamOutput(java.util.function.Consumer<Object> consumer) {
         inner.streamWriterManager().streamOutput(consumer);
@@ -239,8 +302,9 @@ public class AgentSessionApi implements Session {
     /**
      * Pre-run hook: execute checkpointer pre-agent logic.
      * CAS 保证多线程同时调用时只有一个真正执行，其余直接返回。
-     *
+     * 
      * @param inputs the inputs map
+     * @since 0.1.7
      */
     public void preRun(Object inputs) {
         if ((runState.getAndUpdate(s -> s | PRE_DONE) & PRE_DONE) != 0) {
@@ -253,6 +317,8 @@ public class AgentSessionApi implements Session {
      * Post-run hook: close stream and execute checkpointer post-agent logic.
      * CAS 幂等保护同 preRun()——runAgentStreamingAsync 的 doFinally 清理钩子
      * 可能跟迭代线程在不同线程上触发，靠这个保证只执行一次。
+     * 
+     * @since 0.1.7
      */
     public void postRun() {
         if ((runState.getAndUpdate(s -> s | POST_DONE) & POST_DONE) != 0) {
@@ -266,6 +332,8 @@ public class AgentSessionApi implements Session {
 
     /**
      * Reset pre-run and post-run guards so the same session can be reused for another run.
+     * 
+     * @since 0.1.7
      */
     public void resetRunState() {
         runState.set(0);
@@ -273,6 +341,9 @@ public class AgentSessionApi implements Session {
 
     /**
      * Create a workflow session from this agent session.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public WorkflowSessionApi createWorkflowSession() {
         return new WorkflowSessionApi(inner, getSessionId());
@@ -280,6 +351,9 @@ public class AgentSessionApi implements Session {
 
     /**
      * Trigger an interaction.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
     public void interact(Object value) {
         if (interaction == null) {
@@ -290,6 +364,9 @@ public class AgentSessionApi implements Session {
 
     /**
      * Get the underlying internal AgentSession.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AgentSession getInner() {
         return inner;
@@ -297,16 +374,29 @@ public class AgentSessionApi implements Session {
 
     /**
      * Factory method for creating an agent session.
+     * 
+     * @param sessionId sessionId
+     * @param envs envs
+     * @param card card
+     * @return the result
+     * @since 0.1.7
      */
     public static AgentSessionApi create(String sessionId, Map<String, Object> envs, Object card) {
         return new AgentSessionApi(sessionId, envs, card);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * create.
+     * 
+     * @param sessionId sessionId
+     * @param envs envs
+     * @param card card
+     * @param streamModes streamModes
+     * @return the result
+     * @since 0.1.7
      */
     public static AgentSessionApi create(String sessionId, Map<String, Object> envs, Object card,
-                                         List<StreamMode> streamModes) {
+            List<StreamMode> streamModes) {
         return new AgentSessionApi(sessionId, envs, card, streamModes);
     }
 }

@@ -8,17 +8,15 @@ import java.util.Map;
 
 /**
  * Complete configuration for Redis checkpointer.
- *
- * <p>This class provides a structured, type-safe configuration for Redis checkpointer
+ * <p>
+ * This class provides a structured, type-safe configuration for Redis checkpointer
  * with automatic validation and sensible defaults.
- *
- * <p>Mirrors Python's {@code openjiuwen.extensions.checkpointer.redis.checkpointer.RedisCheckpointerConfig}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.extensions.checkpointer.redis.checkpointer.RedisCheckpointerConfig}.
+ * 
+ * @since 0.1.7
  */
 public class RedisCheckpointerConfig {
-
-    /**
-     * Redis connection configuration.
-     */
     private RedisConnectionConfig connection;
 
     /**
@@ -28,14 +26,17 @@ public class RedisCheckpointerConfig {
 
     /**
      * Default constructor.
+     * 
+     * @since 0.1.7
      */
     public RedisCheckpointerConfig() {
     }
 
     /**
      * Constructor with connection config.
-     *
+     * 
      * @param connection Redis connection configuration
+     * @since 0.1.7
      */
     public RedisCheckpointerConfig(RedisConnectionConfig connection) {
         this.connection = connection;
@@ -43,9 +44,10 @@ public class RedisCheckpointerConfig {
 
     /**
      * Constructor with all parameters.
-     *
+     * 
      * @param connection Redis connection configuration
-     * @param ttl        TTL configuration for stored data
+     * @param ttl TTL configuration for stored data
+     * @since 0.1.7
      */
     public RedisCheckpointerConfig(RedisConnectionConfig connection, RedisTTLConfig ttl) {
         this.connection = connection;
@@ -54,9 +56,10 @@ public class RedisCheckpointerConfig {
 
     /**
      * Create from a configuration map.
-     *
+     * 
      * @param config Configuration map
      * @return RedisCheckpointerConfig instance
+     * @since 0.1.7
      */
     public static RedisCheckpointerConfig fromMap(Map<String, Object> config) {
         if (config == null) {
@@ -81,6 +84,8 @@ public class RedisCheckpointerConfig {
 
     /**
      * Validate the configuration.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         if (connection == null) {
@@ -91,28 +96,40 @@ public class RedisCheckpointerConfig {
 
     // Getters and Setters
     /**
-     * Auto-generated for codecheck compliance.
+     * getConnection.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public RedisConnectionConfig getConnection() {
         return connection;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setConnection.
+     * 
+     * @param connection connection
+     * @since 0.1.7
      */
     public void setConnection(RedisConnectionConfig connection) {
         this.connection = connection;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTtl.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public RedisTTLConfig getTtl() {
         return ttl;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTtl.
+     * 
+     * @param ttl ttl
+     * @since 0.1.7
      */
     public void setTtl(RedisTTLConfig ttl) {
         this.ttl = ttl;
@@ -120,8 +137,9 @@ public class RedisCheckpointerConfig {
 
     /**
      * Convert the TTL portion into the storage-facing map contract.
-     *
+     * 
      * @return TTL map or {@code null} when unset
+     * @since 0.1.7
      */
     public Map<String, Object> getTtlMap() {
         return ttl != null ? ttl.toMap() : null;

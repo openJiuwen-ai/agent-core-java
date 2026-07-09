@@ -14,45 +14,38 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Auto-generated for codecheck compliance.
+ * LspToolSupport.
+ * 
+ * @since 0.1.7
  */
 public final class LspToolSupport {
     /**
-     * Auto-generated for codecheck compliance.
+     * SYMBOL_KIND_MAP.
+     * 
+     * @since 0.1.7
      */
-    public static final Map<Integer, String> SYMBOL_KIND_MAP = Map.ofEntries(
-            Map.entry(1, "File"),
-            Map.entry(2, "Module"),
-            Map.entry(3, "Namespace"),
-            Map.entry(4, "Package"),
-            Map.entry(5, "Class"),
-            Map.entry(6, "Method"),
-            Map.entry(7, "Property"),
-            Map.entry(8, "Field"),
-            Map.entry(9, "Constructor"),
-            Map.entry(10, "Enum"),
-            Map.entry(11, "Interface"),
-            Map.entry(12, "Function"),
-            Map.entry(13, "Variable"),
-            Map.entry(14, "Constant"),
-            Map.entry(15, "String"),
-            Map.entry(16, "Number"),
-            Map.entry(17, "Boolean"),
-            Map.entry(18, "Array"),
-            Map.entry(19, "Object"),
-            Map.entry(20, "Key"),
-            Map.entry(21, "Null"),
-            Map.entry(22, "EnumMember"),
-            Map.entry(23, "Struct"),
-            Map.entry(24, "Event"),
-            Map.entry(25, "TypeParameter")
-    );
+    public static final Map<Integer, String> SYMBOL_KIND_MAP =
+        Map.ofEntries(Map.entry(1, "File"), Map.entry(2, "Module"), Map.entry(3, "Namespace"), Map.entry(4, "Package"),
+                Map.entry(5, "Class"), Map.entry(6, "Method"), Map.entry(7, "Property"), Map.entry(8, "Field"),
+                Map.entry(9, "Constructor"), Map.entry(10, "Enum"), Map.entry(11, "Interface"),
+                Map.entry(12, "Function"), Map.entry(13, "Variable"), Map.entry(14, "Constant"),
+                Map.entry(15, "String"), Map.entry(16, "Number"), Map.entry(17, "Boolean"), Map.entry(18, "Array"),
+                Map.entry(19, "Object"), Map.entry(20, "Key"), Map.entry(21, "Null"), Map.entry(22, "EnumMember"),
+                Map.entry(23, "Struct"), Map.entry(24, "Event"), Map.entry(25, "TypeParameter"));
 
+    /**
+     * LspToolSupport.
+     * 
+     * @since 0.1.7
+     */
     private LspToolSupport() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildLspTool.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> buildLspTool() {
         Map<String, Object> operationSchema = new LinkedHashMap<>();
@@ -62,31 +55,26 @@ public final class LspToolSupport {
 
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("operation", operationSchema);
-        properties.put(
-                "file_path",
+        properties.put("file_path",
                 Map.of("type", "string", "description", "File path (absolute or relative to workspace root)."));
         properties.put("line", Map.of("type", "integer", "minimum", 1, "description", "Line number (1-indexed)"));
-        properties.put(
-                "character",
+        properties.put("character",
                 Map.of("type", "integer", "minimum", 1, "description", "Column number (1-indexed)"));
         properties.put("query", Map.of("type", "string", "description", "Search query"));
-        properties.put(
-                "include_declaration",
+        properties.put("include_declaration",
                 Map.of("type", "boolean", "description", "Whether references include declaration"));
 
-        return Map.of(
-                "name", "lsp",
-                "description", "LSP navigation tool.",
-                "input_schema", Map.of(
-                        "type", "object",
-                        "properties", properties,
-                        "required", List.of("operation", "file_path")
-                )
-        );
+        return Map.of("name", "lsp", "description", "LSP navigation tool.", "input_schema",
+                Map.of("type", "object", "properties", properties, "required", List.of("operation", "file_path")));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolvePath.
+     * 
+     * @param filePath filePath
+     * @param workspace workspace
+     * @return the result
+     * @since 0.1.7
      */
     public static String resolvePath(String filePath, Path workspace) {
         if (filePath == null || filePath.isBlank()) {
@@ -103,7 +91,11 @@ public final class LspToolSupport {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * operationToMethod.
+     * 
+     * @param operation operation
+     * @return the result
+     * @since 0.1.7
      */
     public static String operationToMethod(LspOperation operation) {
         return switch (operation) {
@@ -119,7 +111,11 @@ public final class LspToolSupport {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * needsGitignoreFilter.
+     * 
+     * @param operation operation
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean needsGitignoreFilter(LspOperation operation) {
         return switch (operation) {
@@ -129,7 +125,11 @@ public final class LspToolSupport {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatUri.
+     * 
+     * @param uri uri
+     * @return the result
+     * @since 0.1.7
      */
     public static String formatUri(String uri) {
         if (uri == null) {
@@ -140,27 +140,30 @@ public final class LspToolSupport {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatLocation.
+     * 
+     * @param location location
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static String formatLocation(Map<String, Object> location) {
         String uri = formatUri(String.valueOf(location.get("uri")));
-        Map<String, Object> range = location.get("range") instanceof Map<?, ?> rangeMap
-                ? normalizeObjectMap(rangeMap)
-                : Map.of();
-        Map<String, Object> start = range.get("start") instanceof Map<?, ?> startMap
-                ? normalizeObjectMap(startMap)
-                : Map.of();
-        int line = ((Number) start.getOrDefault("line", 0)).intValue() + 1;
-        int character = ((Number) start.getOrDefault("character", 0)).intValue() + 1;
+        Map<String, Object> range =
+            location.get("range") instanceof Map<?, ?> rangeMap ? normalizeObjectMap(rangeMap) : Map.of();
+        Map<String, Object> start =
+            range.get("start") instanceof Map<?, ?> startMap ? normalizeObjectMap(startMap) : Map.of();
+        int line = start.getOrDefault("line", 0) instanceof Number n ? n.intValue() + 1 : 1;
+        int character = start.getOrDefault("character", 0) instanceof Number n ? n.intValue() + 1 : 1;
         return uri + ":" + line + ":" + character;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatGoToDefinition.
+     * 
+     * @param location location
+     * @return the result
+     * @since 0.1.7
      */
     public static String formatGoToDefinition(Map<String, Object> location) {
         if (location == null || location.isEmpty()) {
@@ -170,12 +173,13 @@ public final class LspToolSupport {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatFindReferences.
+     * 
+     * @param locations locations
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static String formatFindReferences(List<Map<String, Object>> locations) {
         if (locations == null || locations.isEmpty()) {
             return "No references found.";
@@ -195,12 +199,13 @@ public final class LspToolSupport {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatDocumentSymbol.
+     * 
+     * @param symbols symbols
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static String formatDocumentSymbol(List<Map<String, Object>> symbols) {
         if (symbols == null || symbols.isEmpty()) {
             return "No symbols found.";
@@ -213,12 +218,19 @@ public final class LspToolSupport {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * appendSymbol.
+     * 
+     * @param builder builder
+     * @param symbol symbol
+     * @param depth depth
+     * @since 0.1.7
+     */
     private static void appendSymbol(StringBuilder builder, Map<String, Object> symbol, int depth) {
         builder.append("  ".repeat(depth))
-                .append(SYMBOL_KIND_MAP.getOrDefault(((Number) symbol.getOrDefault("kind", 0)).intValue(), "Unknown"))
-                .append(": ")
-                .append(symbol.getOrDefault("name", ""))
-                .append('\n');
+                .append(SYMBOL_KIND_MAP
+                        .getOrDefault(symbol.getOrDefault("kind", 0) instanceof Number n ? n.intValue() : 0, "Unknown"))
+                .append(": ").append(symbol.getOrDefault("name", "")).append('\n');
         Object children = symbol.get("children");
         if (children instanceof List<?> list) {
             for (Object child : list) {
@@ -230,28 +242,33 @@ public final class LspToolSupport {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatWorkspaceSymbol.
+     * 
+     * @param symbols symbols
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static String formatWorkspaceSymbol(List<Map<String, Object>> symbols) {
         if (symbols == null || symbols.isEmpty()) {
             return "No symbols found.";
         }
         return symbols.stream()
-                .map(symbol -> SYMBOL_KIND_MAP.getOrDefault(
-                                ((Number) symbol.getOrDefault("kind", 0)).intValue(),
-                                "Unknown")
+                .map(symbol -> SYMBOL_KIND_MAP
+                        .getOrDefault(symbol.getOrDefault("kind", 0) instanceof Number n ? n.intValue() : 0, "Unknown")
                         + ": " + symbol.getOrDefault("name", "")
                         + (symbol.get("containerName") != null && !String.valueOf(symbol.get("containerName")).isBlank()
-                        ? " (" + symbol.get("containerName") + ")" : ""))
+                                ? " (" + symbol.get("containerName") + ")"
+                                : ""))
                 .collect(Collectors.joining("\n"));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatPrepareCallHierarchy.
+     * 
+     * @param items items
+     * @return the result
+     * @since 0.1.7
      */
     public static String formatPrepareCallHierarchy(List<Map<String, Object>> items) {
         if (items == null || items.isEmpty()) {
@@ -262,7 +279,11 @@ public final class LspToolSupport {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatIncomingCalls.
+     * 
+     * @param calls calls
+     * @return the result
+     * @since 0.1.7
      */
     public static String formatIncomingCalls(List<Map<String, Object>> calls) {
         if (calls == null || calls.isEmpty()) {
@@ -272,7 +293,11 @@ public final class LspToolSupport {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatOutgoingCalls.
+     * 
+     * @param calls calls
+     * @return the result
+     * @since 0.1.7
      */
     public static String formatOutgoingCalls(List<Map<String, Object>> calls) {
         if (calls == null || calls.isEmpty()) {
@@ -282,16 +307,18 @@ public final class LspToolSupport {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatResult.
+     * 
+     * @param operation operation
+     * @param result result
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static String formatResult(LspOperation operation, Object result) {
         return switch (operation) {
-            case GO_TO_DEFINITION, GO_TO_IMPLEMENTATION -> formatGoToDefinition(
-                    result instanceof Map<?, ?> map ? normalizeObjectMap(map) : Map.of());
+            case GO_TO_DEFINITION, GO_TO_IMPLEMENTATION ->
+                formatGoToDefinition(result instanceof Map<?, ?> map ? normalizeObjectMap(map) : Map.of());
             case FIND_REFERENCES -> formatFindReferences(normalizeObjectList(result));
             case DOCUMENT_SYMBOL -> formatDocumentSymbol(normalizeObjectList(result));
             case WORKSPACE_SYMBOL -> formatWorkspaceSymbol(normalizeObjectList(result));
@@ -301,6 +328,13 @@ public final class LspToolSupport {
         };
     }
 
+    /**
+     * normalizeObjectMap.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> normalizeObjectMap(Map<?, ?> raw) {
         Map<String, Object> normalized = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : raw.entrySet()) {
@@ -309,6 +343,13 @@ public final class LspToolSupport {
         return normalized;
     }
 
+    /**
+     * normalizeObjectList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Map<String, Object>> normalizeObjectList(Object value) {
         if (!(value instanceof List<?> list)) {
             return List.of();

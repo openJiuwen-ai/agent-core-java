@@ -14,16 +14,17 @@ import com.openjiuwen.core.foundation.tool.mcp.client.StdioClient;
  * <p>
  * Creates MCP clients that communicate with MCP servers via standard input/output
  * streams, typically used for local subprocess-based MCP servers.
- *
- * @since 0.1.12
+ * 
  * @see McpClientProvider
  * @see com.openjiuwen.core.foundation.tool.mcp.client.StdioClient
+ * @since 0.1.7
  */
 public final class StdioMcpClientProvider implements McpClientProvider {
     /**
-     * Returns the Stdio transport type name.
-     *
-     * @return the type name "stdio"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -32,9 +33,10 @@ public final class StdioMcpClientProvider implements McpClientProvider {
 
     /**
      * Creates an MCP client using Stdio transport.
-     *
+     * 
      * @param config the MCP server configuration
      * @return a new StdioClient instance
+     * @since 0.1.7
      */
     @Override
     public McpClient create(McpServerConfig config) {

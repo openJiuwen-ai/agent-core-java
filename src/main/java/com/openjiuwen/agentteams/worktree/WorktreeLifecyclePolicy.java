@@ -6,8 +6,8 @@ package com.openjiuwen.agentteams.worktree;
 
 /**
  * Public enum WorktreeLifecyclePolicy used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum WorktreeLifecyclePolicy {
     AUTO,

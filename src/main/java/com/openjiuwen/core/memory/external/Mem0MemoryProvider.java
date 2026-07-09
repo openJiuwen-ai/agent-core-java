@@ -19,43 +19,54 @@ import java.util.ArrayList;
 
 /**
  * Mem0 memory provider aligned with the current Python provider surface.
- *
- * <p>As of 2026-05-09, the official Mem0 docs expose Python / TypeScript / CLI surfaces,
+ * <p>
+ * As of 2026-05-09, the official Mem0 docs expose Python / TypeScript / CLI surfaces,
  * but do not provide a confirmed official Java SDK on Maven. This class therefore keeps
  * the Java side on a direct REST path instead of adding an unofficial dependency.
+ * 
+ * @since 0.1.7
  */
 public class Mem0MemoryProvider implements MemoryProvider {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static final Map<String, Object> PROFILE_SCHEMA = Map.of(
-            "name", "mem0_profile",
-            "description", "Retrieve all stored memories about the user.",
-            "parameters", Map.of("type", "object", "properties", Map.of(), "required", List.of())
-    );
+    /**
+     * Map.of.
+     * 
+     * @param user." user."
+     * @param Map.of( Map.of(
+     * @since 0.1.7
+     */
+    private static final Map<String, Object> PROFILE_SCHEMA =
+        Map.of("name", "mem0_profile", "description", "Retrieve all stored memories about the user.", "parameters",
+                Map.of("type", "object", "properties", Map.of(), "required", List.of()));
 
-    private static final Map<String, Object> SEARCH_SCHEMA = Map.of(
-            "name", "mem0_search",
-            "description", "Search memories by meaning.",
-            "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "query", Map.of("type", "string", "description", "What to search for."),
-                            "rerank", Map.of("type", "boolean", "description", "Enable reranking."),
-                            "top_k", Map.of("type", "integer", "description", "Max results.")
-                    ),
-                    "required", List.of("query")
-            )
-    );
+    /**
+     * Map.of.
+     * 
+     * @param meaning." meaning."
+     * @param for." for."
+     * @since 0.1.7
+     */
+    private static final Map<String, Object> SEARCH_SCHEMA = Map.of("name", "mem0_search", "description",
+            "Search memories by meaning.", "parameters",
+            Map.of("type", "object", "properties",
+                    Map.of("query", Map.of("type", "string", "description", "What to search for."), "rerank",
+                            Map.of("type", "boolean", "description", "Enable reranking."), "top_k",
+                            Map.of("type", "integer", "description", "Max results.")),
+                    "required", List.of("query")));
 
-    private static final Map<String, Object> CONCLUDE_SCHEMA = Map.of(
-            "name", "mem0_conclude",
-            "description", "Store a durable fact about the user.",
-            "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of("conclusion", Map.of("type", "string", "description", "The fact to store.")),
-                    "required", List.of("conclusion")
-            )
-    );
+    /**
+     * Map.of.
+     * 
+     * @param user." user."
+     * @param store." store."
+     * @since 0.1.7
+     */
+    private static final Map<String, Object> CONCLUDE_SCHEMA =
+        Map.of("name", "mem0_conclude", "description", "Store a durable fact about the user.", "parameters",
+                Map.of("type", "object", "properties",
+                        Map.of("conclusion", Map.of("type", "string", "description", "The fact to store.")), "required",
+                        List.of("conclusion")));
 
     private String apiKey;
     private String userId;
@@ -68,21 +79,29 @@ public class Mem0MemoryProvider implements MemoryProvider {
     private final Mem0Api api;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Mem0MemoryProvider.
+     * 
+     * @since 0.1.7
      */
     public Mem0MemoryProvider() {
         this("", "", "", false, "https://api.mem0.ai", null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Mem0MemoryProvider.
+     * 
+     * @param apiKey apiKey
+     * @param userId userId
+     * @param agentId agentId
+     * @param isRerankEnabled isRerankEnabled
+     * @since 0.1.7
      */
     public Mem0MemoryProvider(String apiKey, String userId, String agentId, boolean isRerankEnabled) {
         this(apiKey, userId, agentId, isRerankEnabled, "https://api.mem0.ai", null);
     }
 
     Mem0MemoryProvider(String apiKey, String userId, String agentId, boolean isRerankEnabled, String baseUrl,
-                       Mem0Api api) {
+            Mem0Api api) {
         this.apiKey = apiKey;
         this.userId = userId;
         this.agentId = agentId;
@@ -92,34 +111,34 @@ public class Mem0MemoryProvider implements MemoryProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String getName() {
         return "mem0";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAvailable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean isAvailable() {
         return apiKey != null && !apiKey.isBlank();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * initialize.
+     * 
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void initialize(Map<String, Object> kwargs) {
         if (kwargs != null) {
             if (kwargs.get("api_key") != null) {
@@ -141,90 +160,69 @@ public class Mem0MemoryProvider implements MemoryProvider {
         if (!isAvailable()) {
             throw new IllegalArgumentException("Mem0 API key is required. Provide api_key in provider initialization.");
         }
-            isInitialized = true;
+        isInitialized = true;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolSchemas.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Map<String, Object>> getToolSchemas() {
         return List.of(PROFILE_SCHEMA, SEARCH_SCHEMA, CONCLUDE_SCHEMA);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * handleToolCall.
+     * 
+     * @param toolName toolName
+     * @param args args
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String handleToolCall(String toolName, Map<String, Object> args) throws Exception {
         if (isBreakerOpen()) {
             return MAPPER.writeValueAsString(
-                    Map.of(
-                            "error",
-                            "Mem0 API temporarily unavailable (multiple consecutive failures). "
-                                    + "Will retry automatically."
-                    )
-            );
+                    Map.of("error", "Mem0 API temporarily unavailable (multiple consecutive failures). "
+                            + "Will retry automatically."));
         }
         if ("mem0_profile".equals(toolName)) {
             List<Map<String, Object>> items = api.getAllMemories(baseUrl, apiKey, readFilters());
             recordSuccess();
             String result = items.isEmpty()
                     ? "No memories stored yet."
-                    : String.join(
-                            "\n",
-                            items.stream()
-                                    .map(item -> String.valueOf(item.getOrDefault("memory", "")))
-                                    .toList()
-                    );
-            return MAPPER.writeValueAsString(Map.of(
-                    "result", result,
-                    "count", items.size()
-            ));
+                    : String.join("\n",
+                            items.stream().map(item -> String.valueOf(item.getOrDefault("memory", ""))).toList());
+            return MAPPER.writeValueAsString(Map.of("result", result, "count", items.size()));
         }
         if ("mem0_search".equals(toolName)) {
             String query = args != null && args.get("query") != null ? String.valueOf(args.get("query")) : "";
             if (query.isBlank()) {
                 return MAPPER.writeValueAsString(Map.of("error", "Missing required parameter: query"));
             }
-            int topK = args != null && args.get("top_k") != null
-                    ? Integer.parseInt(String.valueOf(args.get("top_k")))
-                    : 10;
+            int topK =
+                args != null && args.get("top_k") != null ? Integer.parseInt(String.valueOf(args.get("top_k"))) : 10;
             topK = Math.min(topK, 50);
             boolean isRerankEnabledForRequest = args != null && args.get("rerank") != null
                     ? Boolean.parseBoolean(String.valueOf(args.get("rerank")))
                     : false;
-            List<Map<String, Object>> payload = api.searchMemories(
-                    baseUrl,
-                    apiKey,
-                    query,
-                    readFilters(),
-                    isRerankEnabledForRequest,
-                    topK
-            );
+            List<Map<String, Object>> payload =
+                api.searchMemories(baseUrl, apiKey, query, readFilters(), isRerankEnabledForRequest, topK);
             recordSuccess();
             return MAPPER.writeValueAsString(Map.of("results", payload, "count", payload.size()));
         }
         if ("mem0_conclude".equals(toolName)) {
-            String conclusion = args != null && args.get("conclusion") != null
-                    ? String.valueOf(args.get("conclusion"))
-                    : "";
+            String conclusion =
+                args != null && args.get("conclusion") != null ? String.valueOf(args.get("conclusion")) : "";
             if (conclusion.isBlank()) {
                 return MAPPER.writeValueAsString(Map.of("error", "Missing required parameter: conclusion"));
             }
-            api.addMemories(
-                    baseUrl,
-                    apiKey,
-                    List.of(Map.of("role", "user", "content", conclusion)),
-                    writeFilters(),
-                    false
-            );
+            api.addMemories(baseUrl, apiKey, List.of(Map.of("role", "user", "content", conclusion)), writeFilters(),
+                    false);
             recordSuccess();
             return MAPPER.writeValueAsString(Map.of("result", "Fact stored."));
         }
@@ -233,31 +231,27 @@ public class Mem0MemoryProvider implements MemoryProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * prefetch.
+     * 
+     * @param query query
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String prefetch(String query, Map<String, Object> kwargs) throws Exception {
         if (query == null || query.isBlank() || isBreakerOpen()) {
             return "";
         }
-        int topK = kwargs != null && kwargs.get("top_k") != null
-                ? Integer.parseInt(String.valueOf(kwargs.get("top_k")))
-                : 5;
+        int topK =
+            kwargs != null && kwargs.get("top_k") != null ? Integer.parseInt(String.valueOf(kwargs.get("top_k"))) : 5;
         topK = Math.min(topK, 50);
         boolean isRerankEnabledForRequest = kwargs != null && kwargs.get("rerank") != null
                 ? Boolean.parseBoolean(String.valueOf(kwargs.get("rerank")))
                 : isRerankEnabled;
-        List<Map<String, Object>> matched = api.searchMemories(
-                baseUrl,
-                apiKey,
-                query,
-                readFilters(),
-                isRerankEnabledForRequest,
-                topK
-        );
+        List<Map<String, Object>> matched =
+            api.searchMemories(baseUrl, apiKey, query, readFilters(), isRerankEnabledForRequest, topK);
         if (matched.isEmpty()) {
             recordSuccess();
             return "";
@@ -271,63 +265,63 @@ public class Mem0MemoryProvider implements MemoryProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * syncTurn.
+     * 
+     * @param userMsg userMsg
+     * @param assistantMsg assistantMsg
+     * @param kwargs kwargs
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void syncTurn(String userMsg, String assistantMsg, Map<String, Object> kwargs) throws Exception {
         if (isBreakerOpen() || userMsg == null || userMsg.isBlank() || assistantMsg == null || assistantMsg.isBlank()) {
             return;
         }
-        api.addMemories(
-                baseUrl,
-                apiKey,
-                List.of(
-                        Map.of("role", "user", "content", userMsg),
-                        Map.of("role", "assistant", "content", assistantMsg)
-                ),
-                writeFilters(),
-                true
-        );
+        api.addMemories(baseUrl, apiKey, List.of(Map.of("role", "user", "content", userMsg),
+                Map.of("role", "assistant", "content", assistantMsg)), writeFilters(), true);
         recordSuccess();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * systemPromptBlock.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String systemPromptBlock() {
         return "# Mem0 Memory\nActive. User: " + userId + ".\n"
                 + "Use mem0_search to find memories, mem0_conclude to store facts, mem0_profile for a full overview.";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isInitialized.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean isInitialized() {
         return isInitialized;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shutdown.
+     * 
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void shutdown() {
         isInitialized = false;
     }
 
+    /**
+     * isBreakerOpen.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isBreakerOpen() {
         if (consecutiveFailures < 5) {
             return false;
@@ -340,11 +334,21 @@ public class Mem0MemoryProvider implements MemoryProvider {
         return true;
     }
 
+    /**
+     * recordSuccess.
+     * 
+     * @since 0.1.7
+     */
     private void recordSuccess() {
         consecutiveFailures = 0;
         breakerOpenUntilMillis = 0L;
     }
 
+    /**
+     * recordFailure.
+     * 
+     * @since 0.1.7
+     */
     private void recordFailure() {
         consecutiveFailures += 1;
         if (consecutiveFailures >= 5) {
@@ -352,6 +356,12 @@ public class Mem0MemoryProvider implements MemoryProvider {
         }
     }
 
+    /**
+     * readFilters.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> readFilters() {
         Map<String, Object> filters = new LinkedHashMap<>();
         if (userId != null && !userId.isBlank()) {
@@ -363,6 +373,12 @@ public class Mem0MemoryProvider implements MemoryProvider {
         return filters;
     }
 
+    /**
+     * writeFilters.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> writeFilters() {
         Map<String, Object> filters = new LinkedHashMap<>();
         if (userId != null && !userId.isBlank()) {
@@ -375,40 +391,66 @@ public class Mem0MemoryProvider implements MemoryProvider {
     }
 
     interface Mem0Api {
-        List<Map<String, Object>> getAllMemories(
-                String baseUrl,
-                String apiKey,
-                Map<String, Object> filters
-        ) throws Exception;
+        /**
+         * getAllMemories.
+         * 
+         * @param baseUrl baseUrl
+         * @param apiKey apiKey
+         * @param filters filters
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
+        List<Map<String, Object>> getAllMemories(String baseUrl, String apiKey, Map<String, Object> filters)
+                throws Exception;
 
-        List<Map<String, Object>> searchMemories(
-                String baseUrl,
-                String apiKey,
-                String query,
-                Map<String, Object> filters,
-                boolean isRerankEnabled,
-                int topK
-        ) throws Exception;
+        /**
+         * searchMemories.
+         * 
+         * @param baseUrl baseUrl
+         * @param apiKey apiKey
+         * @param query query
+         * @param filters filters
+         * @param isRerankEnabled isRerankEnabled
+         * @param topK topK
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
+        List<Map<String, Object>> searchMemories(String baseUrl, String apiKey, String query,
+                Map<String, Object> filters, boolean isRerankEnabled, int topK) throws Exception;
 
-        void addMemories(String baseUrl, String apiKey, List<Map<String, Object>> messages,
-                Map<String, Object> scope, boolean shouldInfer) throws Exception;
+        /**
+         * addMemories.
+         * 
+         * @param baseUrl baseUrl
+         * @param apiKey apiKey
+         * @param messages messages
+         * @param scope scope
+         * @param shouldInfer shouldInfer
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
+        void addMemories(String baseUrl, String apiKey, List<Map<String, Object>> messages, Map<String, Object> scope,
+                boolean shouldInfer) throws Exception;
     }
 
     private static final class DefaultMem0Api implements Mem0Api {
         private final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getAllMemories.
+         * 
+         * @param baseUrl baseUrl
+         * @param apiKey apiKey
+         * @param filters filters
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public List<Map<String, Object>> getAllMemories(
-                String baseUrl,
-                String apiKey,
-                Map<String, Object> filters
-        ) throws Exception {
+        public List<Map<String, Object>> getAllMemories(String baseUrl, String apiKey, Map<String, Object> filters)
+                throws Exception {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("filters", filters);
             Map<String, Object> response = postJson(baseUrl, "/v3/memories/", apiKey, payload);
@@ -426,20 +468,21 @@ public class Mem0MemoryProvider implements MemoryProvider {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * searchMemories.
+         * 
+         * @param baseUrl baseUrl
+         * @param apiKey apiKey
+         * @param query query
+         * @param filters filters
+         * @param isRerankEnabled isRerankEnabled
+         * @param topK topK
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public List<Map<String, Object>> searchMemories(
-                String baseUrl,
-                String apiKey,
-                String query,
-                Map<String, Object> filters,
-                boolean isRerankEnabled,
-                int topK
-        ) throws Exception {
+        public List<Map<String, Object>> searchMemories(String baseUrl, String apiKey, String query,
+                Map<String, Object> filters, boolean isRerankEnabled, int topK) throws Exception {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("query", query);
             payload.put("filters", filters);
@@ -460,50 +503,62 @@ public class Mem0MemoryProvider implements MemoryProvider {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * addMemories.
+         * 
+         * @param baseUrl baseUrl
+         * @param apiKey apiKey
+         * @param messages messages
+         * @param scope scope
+         * @param shouldInfer shouldInfer
+         * @throws Exception Exception
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public void addMemories(String baseUrl, String apiKey, List<Map<String, Object>> messages,
-                                Map<String, Object> scope, boolean shouldInfer) throws Exception {
+                Map<String, Object> scope, boolean shouldInfer) throws Exception {
             Map<String, Object> payload = new LinkedHashMap<>(scope);
             payload.put("messages", messages);
             payload.put("infer", shouldInfer);
             postJson(baseUrl, "/v3/memories/add/", apiKey, payload);
         }
 
-        private Map<String, Object> postJson(
-                String baseUrl,
-                String path,
-                String apiKey,
-                Map<String, Object> body
-        ) throws Exception {
-            String normalizedBase = (baseUrl == null || baseUrl.isBlank())
-                    ? "https://api.mem0.ai"
-                    : baseUrl.replaceAll("/+$", "");
+        /**
+         * postJson.
+         * 
+         * @param baseUrl baseUrl
+         * @param path path
+         * @param apiKey apiKey
+         * @param body body
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
+        private Map<String, Object> postJson(String baseUrl, String path, String apiKey, Map<String, Object> body)
+                throws Exception {
+            String normalizedBase =
+                (baseUrl == null || baseUrl.isBlank()) ? "https://api.mem0.ai" : baseUrl.replaceAll("/+$", "");
             String requestBody = MAPPER.writeValueAsString(body);
             HttpRequest request = HttpRequest.newBuilder(URI.create(normalizedBase + path))
-                    .timeout(Duration.ofSeconds(30))
-                    .header("Authorization", "Token " + apiKey)
-                    .header("Accept", "application/json")
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
-                    .build();
-            HttpResponse<String> response = httpClient.send(
-                    request,
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
-            );
+                    .timeout(Duration.ofSeconds(30)).header("Authorization", "Token " + apiKey)
+                    .header("Accept", "application/json").header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8)).build();
+            HttpResponse<String> response =
+                httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException(
-                        "Mem0 request failed with status " + response.statusCode() + ": " + response.body()
-                );
+                        "Mem0 request failed with status " + response.statusCode() + ": " + response.body());
             }
             return MAPPER.readValue(response.body(), Map.class);
         }
 
         @SuppressWarnings("unchecked")
+        /**
+         * castMap.
+         * 
+         * @param source source
+         * @return the result
+         * @since 0.1.7
+         */
         private static Map<String, Object> castMap(Map<?, ?> source) {
             Map<String, Object> result = new LinkedHashMap<>();
             source.forEach((key, value) -> result.put(String.valueOf(key), value));

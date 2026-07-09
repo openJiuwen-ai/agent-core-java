@@ -12,6 +12,7 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.dev_tools.prompt_builder.BasePromptBuilder;
 import com.openjiuwen.dev_tools.tune.EvaluatedCase;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,26 +26,52 @@ import java.util.regex.Pattern;
 
 /**
  * Mirrors Python's {@code openjiuwen.dev_tools.prompt_builder.builder.badcase_prompt_builder.BadCasePromptBuilder}.
+ * 
+ * @since 0.1.7
  */
 public class BadCasePromptBuilder extends BasePromptBuilder {
-
     private static final Logger log = LoggerFactory.getLogger(BadCasePromptBuilder.class);
     private static final int MAX_CASES_LIMIT = 10;
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern INTENT_TAG_PATTERN =
+        Pattern.compile("<intent>((?:(?!<intent>).)*?)</intent>", Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern SUMMARY_TAG_PATTERN =
+        Pattern.compile("<summary>((?:(?!</summary>).)*?)</summary>", Pattern.DOTALL);
 
     private Object template;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BadCasePromptBuilder.
+     * 
+     * @param modelConfig modelConfig
+     * @param modelClientConfig modelClientConfig
+     * @since 0.1.7
      */
     public BadCasePromptBuilder(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         super(modelConfig, modelClientConfig);
         this.template = PromptTemplateUtils.selectTemplate("zh-CN");
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * build.
+     * 
+     * @param prompt prompt
+     * @param args args
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public CompletableFuture<String> build(Object prompt, Object... args) {
         return UnwrappedCompletableFuture.supplyAsync(() -> {
             try {
@@ -55,7 +82,8 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
                 this.template = PromptTemplateUtils.selectTemplate(language);
                 String promptStr = PromptTemplateUtils.getStringPrompt(prompt);
                 List<Object> messages = formatBadCaseTemplate(promptStr, cases).get();
-                AssistantMessage response = model.invoke(messages, null, null, null, null, null, null, null, null, null);
+                AssistantMessage response =
+                    model.invoke(messages, null, null, null, null, null, null, null, null, null);
                 return response != null ? response.getContentAsString() : null;
             } catch (Exception exception) {
                 log.error("Error building bad case template", exception);
@@ -64,10 +92,15 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
         });
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * streamBuild.
+     * 
+     * @param prompt prompt
+     * @param args args
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public CompletableFuture<String> streamBuild(Object prompt, Object... args) {
         return UnwrappedCompletableFuture.supplyAsync(() -> {
             try {
@@ -93,13 +126,20 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
         });
     }
 
+    /**
+     * formatBadCaseTemplate.
+     * 
+     * @param prompt prompt
+     * @param cases cases
+     * @return the result
+     * @since 0.1.7
+     */
     private CompletableFuture<List<Object>> formatBadCaseTemplate(String prompt, List<EvaluatedCase> cases) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 String feedback = getFeedbackFromBadCase(prompt, cases).get();
-                PromptTemplate badCaseOptimizeTemplate = PromptTemplateUtils.getTemplate(
-                        template,
-                        "PROMPT_BAD_CASE_OPTIMIZE_TEMPLATE");
+                PromptTemplate badCaseOptimizeTemplate =
+                    PromptTemplateUtils.getTemplate(template, "PROMPT_BAD_CASE_OPTIMIZE_TEMPLATE");
                 Map<String, Object> formatParams = new HashMap<>();
                 formatParams.put("original_prompt", prompt);
                 formatParams.put("feedback", feedback);
@@ -110,19 +150,27 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
         });
     }
 
+    /**
+     * getFeedbackFromBadCase.
+     * 
+     * @param prompt prompt
+     * @param cases cases
+     * @return the result
+     * @since 0.1.7
+     */
     private CompletableFuture<String> getFeedbackFromBadCase(String prompt, List<EvaluatedCase> cases) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 validateInput(prompt, cases);
                 String badCaseString = buildBadCaseString(cases);
-                PromptTemplate analyzeTemplate = PromptTemplateUtils.getTemplate(
-                        template,
-                        "PROMPT_BAD_CASE_ANALYZE_TEMPLATE");
+                PromptTemplate analyzeTemplate =
+                    PromptTemplateUtils.getTemplate(template, "PROMPT_BAD_CASE_ANALYZE_TEMPLATE");
                 Map<String, Object> formatParams = new HashMap<>();
                 formatParams.put("original_prompt", prompt);
                 formatParams.put("bad_cases", badCaseString);
                 List<Object> messages = new ArrayList<>(analyzeTemplate.format(formatParams).toMessages());
-                AssistantMessage response = model.invoke(messages, null, null, null, null, null, null, null, null, null);
+                AssistantMessage response =
+                    model.invoke(messages, null, null, null, null, null, null, null, null, null);
                 return parseFeedbackSummary(response);
             } catch (Exception exception) {
                 throw new RuntimeException(exception);
@@ -130,11 +178,17 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
         });
     }
 
+    /**
+     * parseFeedbackSummary.
+     * 
+     * @param response response
+     * @return the result
+     * @since 0.1.7
+     */
     private String parseFeedbackSummary(AssistantMessage response) {
         String content = response.getContentAsString();
 
-        Pattern intentPattern = Pattern.compile("<intent>((?:(?!<intent>).)*?)</intent>", Pattern.DOTALL);
-        Matcher intentMatcher = intentPattern.matcher(content);
+        Matcher intentMatcher = INTENT_TAG_PATTERN.matcher(content);
         while (intentMatcher.find()) {
             String intentText = intentMatcher.group(1).trim();
             if ("false".equalsIgnoreCase(intentText)) {
@@ -142,8 +196,7 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
             }
         }
 
-        Pattern summaryPattern = Pattern.compile("<summary>((?:(?!</summary>).)*?)</summary>", Pattern.DOTALL);
-        Matcher summaryMatcher = summaryPattern.matcher(content);
+        Matcher summaryMatcher = SUMMARY_TAG_PATTERN.matcher(content);
         String parseSummary = content;
         if (summaryMatcher.find()) {
             parseSummary = summaryMatcher.group(1).trim();
@@ -151,6 +204,13 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
         return parseSummary;
     }
 
+    /**
+     * buildBadCaseString.
+     * 
+     * @param cases cases
+     * @return the result
+     * @since 0.1.7
+     */
     private String buildBadCaseString(List<EvaluatedCase> cases) {
         PromptTemplate badCaseTemplate = PromptTemplateUtils.getTemplate(template, "FORMAT_BAD_CASE_TEMPLATE");
         StringBuilder sb = new StringBuilder();
@@ -170,22 +230,29 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
         return sb.toString();
     }
 
+    /**
+     * validateInput.
+     * 
+     * @param prompt prompt
+     * @param cases cases
+     * @since 0.1.7
+     */
     private void validateInput(String prompt, List<EvaluatedCase> cases) {
         if (prompt == null) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR,
-                    "error_msg", "prompt cannot be None");
+            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_FEEDBACK_TEMPLATE_EXECUTION_ERROR, "error_msg",
+                    "prompt cannot be None");
         }
         if (prompt.trim().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR,
-                    "error_msg", "prompt cannot be empty");
+            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR, "error_msg",
+                    "prompt cannot be empty");
         }
         if (cases == null || cases.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR,
-                    "error_msg", "The cases cannot be empty");
+            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR, "error_msg",
+                    "The cases cannot be empty");
         }
         if (cases.size() > MAX_CASES_LIMIT) {
-            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR,
-                    "error_msg", "The number of cases cannot exceed " + MAX_CASES_LIMIT);
+            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR, "error_msg",
+                    "The number of cases cannot exceed " + MAX_CASES_LIMIT);
         }
     }
 }

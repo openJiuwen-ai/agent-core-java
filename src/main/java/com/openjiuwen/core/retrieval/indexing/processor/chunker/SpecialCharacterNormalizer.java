@@ -6,30 +6,42 @@ package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
 /**
  * Replaces control characters with spaces.
+ * 
+ * @since 0.1.7
  */
 public class SpecialCharacterNormalizer implements TextPreprocessor {
     private final String charsToRemove;
     private final java.util.Map<String, String> charsToReplace;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SpecialCharacterNormalizer.
+     * 
+     * @since 0.1.7
      */
     public SpecialCharacterNormalizer() {
         this("", java.util.Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SpecialCharacterNormalizer.
+     * 
+     * @param charsToRemove charsToRemove
+     * @param charsToReplace charsToReplace
+     * @since 0.1.7
      */
     public SpecialCharacterNormalizer(String charsToRemove, java.util.Map<String, String> charsToReplace) {
         this.charsToRemove = charsToRemove != null ? charsToRemove : "";
         this.charsToReplace = charsToReplace != null ? java.util.Map.copyOf(charsToReplace) : java.util.Map.of();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * process.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String process(String text) {
         if (text == null) {
             return null;
@@ -48,14 +60,20 @@ public class SpecialCharacterNormalizer implements TextPreprocessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCharsToRemove.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCharsToRemove() {
         return charsToRemove;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCharsToReplace.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public java.util.Map<String, String> getCharsToReplace() {
         return charsToReplace;

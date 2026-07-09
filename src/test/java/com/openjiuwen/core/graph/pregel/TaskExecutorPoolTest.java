@@ -1,19 +1,18 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.graph.pregel;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link TaskExecutorPool} — concurrent task execution with FIRST_EXCEPTION semantics.
@@ -21,13 +20,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * Ported from Python's {@code test_task.py :: TestTaskExecutorPool}.
  */
 class TaskExecutorPoolTest {
-
     // ---------- Runtime exception test ----------
-
     @Nested
     @DisplayName("TaskExecutorPool exception handling")
     class ExceptionHandlingTests {
-
         @Test
         @DisplayName("Runtime exception: B fails, A cancelled, C succeeds")
         void testPoolRuntimeException() throws Exception {
@@ -76,8 +72,7 @@ class TaskExecutorPoolTest {
             // C succeeds
             assertFalse(pool.getFailed().containsKey("C"));
             // C's messages should be collected
-            boolean cMessageFound = pool.getSucceedMessages().stream()
-                    .anyMatch(m -> "C".equals(m.getSender()));
+            boolean cMessageFound = pool.getSucceedMessages().stream().anyMatch(m -> "C".equals(m.getSender()));
             assertTrue(cMessageFound, "C's success messages should be collected");
         }
 
@@ -140,14 +135,14 @@ class TaskExecutorPoolTest {
     @Nested
     @DisplayName("TaskExecutorPool clear and cancel")
     class ClearCancelTests {
-
         @Test
         @DisplayName("clear resets all collections")
         void testClear() throws Exception {
             PregelConfig config = new PregelConfig();
             config.setParentNs("root");
 
-            Runnable taskSimple = () -> {};
+            Runnable taskSimple = () -> {
+            };
             PregelNode node = new PregelNode("A", taskSimple, List.of(new StaticRouter(List.of("B"))));
 
             TaskExecutorPool pool = new TaskExecutorPool(config);
@@ -174,7 +169,6 @@ class TaskExecutorPoolTest {
     @Nested
     @DisplayName("NodeTask invocation")
     class NodeTaskInvocationTests {
-
         @Test
         @DisplayName("Runnable node function executes successfully")
         void testRunnableNodeFunc() throws Exception {

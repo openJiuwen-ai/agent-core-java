@@ -12,9 +12,10 @@ import java.util.Map;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.io_schema.ACEMemory}.
+ * 
+ * @since 0.1.7
  */
 public class ACEMemory {
-
     private String workspaceId = "default";
     private String id;
     private String section;
@@ -26,7 +27,9 @@ public class ACEMemory {
     private Instant updatedAt;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ACEMemory.
+     * 
+     * @since 0.1.7
      */
     public ACEMemory() {
         this.createdAt = Instant.now();
@@ -34,7 +37,12 @@ public class ACEMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ACEMemory.
+     * 
+     * @param id id
+     * @param section section
+     * @param content content
+     * @since 0.1.7
      */
     public ACEMemory(String id, String section, String content) {
         this();
@@ -44,7 +52,12 @@ public class ACEMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateId.
+     * 
+     * @param section section
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
     public static String generateId(String section, String content) {
         String normalizedSection = section != null && !section.isBlank() ? section : "general";
@@ -52,7 +65,10 @@ public class ACEMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toVectorNode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public VectorNode toVectorNode() {
         Map<String, Object> metadata = new LinkedHashMap<>();
@@ -70,14 +86,20 @@ public class ACEMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toRetrievedMemory.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ACERetrievedMemory toRetrievedMemory() {
         return new ACERetrievedMemory(id, section, content, helpful, harmful, neutral);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -94,14 +116,22 @@ public class ACEMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromVectorNode.
+     * 
+     * @param node node
+     * @return the result
+     * @since 0.1.7
      */
     public static ACEMemory fromVectorNode(VectorNode node) {
         return fromMap(node.getMetadata());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromMap.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public static ACEMemory fromMap(Map<String, Object> data) {
         ACEMemory memory = new ACEMemory();
@@ -118,126 +148,180 @@ public class ACEMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkspaceId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getWorkspaceId() {
         return workspaceId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWorkspaceId.
+     * 
+     * @param workspaceId workspaceId
+     * @since 0.1.7
      */
     public void setWorkspaceId(String workspaceId) {
         this.workspaceId = workspaceId != null && !workspaceId.isBlank() ? workspaceId : "default";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getId() {
         return id;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setId.
+     * 
+     * @param id id
+     * @since 0.1.7
      */
     public void setId(String id) {
         this.id = id;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSection.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSection() {
         return section;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSection.
+     * 
+     * @param section section
+     * @since 0.1.7
      */
     public void setSection(String section) {
         this.section = section != null && !section.isBlank() ? section : "general";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getContent() {
         return content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setContent.
+     * 
+     * @param content content
+     * @since 0.1.7
      */
     public void setContent(String content) {
         this.content = content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getHelpful.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getHelpful() {
         return helpful;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setHelpful.
+     * 
+     * @param helpful helpful
+     * @since 0.1.7
      */
     public void setHelpful(int helpful) {
         this.helpful = helpful;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getHarmful.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getHarmful() {
         return harmful;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setHarmful.
+     * 
+     * @param harmful harmful
+     * @since 0.1.7
      */
     public void setHarmful(int harmful) {
         this.harmful = harmful;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNeutral.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getNeutral() {
         return neutral;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setNeutral.
+     * 
+     * @param neutral neutral
+     * @since 0.1.7
      */
     public void setNeutral(int neutral) {
         this.neutral = neutral;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCreatedAt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Instant getCreatedAt() {
         return createdAt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCreatedAt.
+     * 
+     * @param createdAt createdAt
+     * @since 0.1.7
      */
     public void setCreatedAt(Instant createdAt) {
         this.createdAt = createdAt != null ? createdAt : Instant.now();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUpdatedAt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Instant getUpdatedAt() {
         return updatedAt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setUpdatedAt.
+     * 
+     * @param updatedAt updatedAt
+     * @since 0.1.7
      */
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt != null ? updatedAt : Instant.now();

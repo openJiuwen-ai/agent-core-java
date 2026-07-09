@@ -13,26 +13,32 @@ import java.util.function.Function;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.router.ConditionalRouter}.
  * The selector returns either a single node name or a list of node names.
+ * 
+ * @since 0.1.7
  */
 public class ConditionalRouter implements IRouter {
-
     private final Function<Object, Object> selector;
 
     /**
      * Create a conditional router.
-     *
+     * 
      * @param selector function that takes optional state and returns
-     *                 a String (single target) or List&lt;String&gt; (multiple targets)
+     *            a String (single target) or List&lt;String&gt; (multiple targets)
+     * @since 0.1.7
      */
     public ConditionalRouter(Function<Object, Object> selector) {
         this.selector = selector;
     }
 
+    /**
+     * dispatch.
+     * 
+     * @param sourceNode sourceNode
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Message> dispatch(String sourceNode) {
         Object result = selector.apply(null);
         List<String> targets;

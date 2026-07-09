@@ -10,20 +10,27 @@ import com.openjiuwen.harness.workspace.Workspace;
 
 /**
  * Runtime context for coding lite memory tools.
+ * 
+ * @since 0.1.7
  */
 public class CodingMemoryToolContext extends LiteMemoryToolContextBase {
     private final String codingMemoryDir;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CodingMemoryToolContext.
+     * 
+     * @param workspace workspace
+     * @param settings settings
+     * @param agentId agentId
+     * @param embeddingConfig embeddingConfig
+     * @param sysOperation sysOperation
+     * @param manager manager
+     * @param codingMemoryDir codingMemoryDir
+     * @since 0.1.7
      */
-    public CodingMemoryToolContext(Workspace workspace,
-                                   MemorySettings settings,
-                                   String agentId,
-                                   EmbeddingConfig embeddingConfig,
-                                   SysOperation sysOperation,
-                                   MemoryIndexManager manager,
-                                   String codingMemoryDir) {
+    public CodingMemoryToolContext(Workspace workspace, MemorySettings settings, String agentId,
+            EmbeddingConfig embeddingConfig, SysOperation sysOperation, MemoryIndexManager manager,
+            String codingMemoryDir) {
         this.workspace = workspace;
         this.settings = settings;
         this.agentId = agentId;
@@ -35,7 +42,10 @@ public class CodingMemoryToolContext extends LiteMemoryToolContextBase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCodingMemoryDir.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCodingMemoryDir() {
         return codingMemoryDir;

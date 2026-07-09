@@ -13,13 +13,17 @@ import java.util.Optional;
 
 /**
  * Playwright MCP client that delegates to SSE or stdio depending on the configured server path.
+ * 
+ * @since 0.1.7
  */
 public class PlaywrightClient implements McpClient {
-
     private final McpClient delegate;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PlaywrightClient.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public PlaywrightClient(McpServerConfig config) {
         if (config.getServerPath() != null && config.getServerPath().startsWith("http")) {
@@ -29,50 +33,82 @@ public class PlaywrightClient implements McpClient {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * connect.
+     * 
+     * @param retryTimes retryTimes
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public boolean connect(int retryTimes, float timeout) throws Exception {
         return delegate.connect(retryTimes, timeout);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * disconnect.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public boolean disconnect(float timeout) throws Exception {
         return delegate.disconnect(timeout);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * listTools.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public List<Object> listTools(float timeout) throws Exception {
         return delegate.listTools(timeout);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * callTool.
+     * 
+     * @param toolName toolName
+     * @param arguments arguments
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
         return delegate.callTool(toolName, arguments, timeout);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolInfo.
+     * 
+     * @param toolName toolName
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public Optional<Object> getToolInfo(String toolName, float timeout) throws Exception {
         return delegate.getToolInfo(toolName, timeout);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getServerPath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getServerPath() {
         return delegate.getServerPath();
     }

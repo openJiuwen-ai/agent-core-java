@@ -16,15 +16,25 @@ import java.util.Map;
 
 /**
  * Shared helpers for the context_evolver schema DTOs.
+ * 
+ * @since 0.1.7
  */
 public final class SchemaUtils {
-
+    /**
+     * SchemaUtils.
+     * 
+     * @since 0.1.7
+     */
     private SchemaUtils() {
         // Utility class
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * md5Hex.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static String md5Hex(String value) {
         String input = value != null ? value : "";
@@ -42,14 +52,24 @@ public final class SchemaUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stringValue.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public static String stringValue(Object value, String defaultValue) {
         return value != null ? String.valueOf(value) : defaultValue;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * intValue.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public static int intValue(Object value, int defaultValue) {
         if (value instanceof Number number) {
@@ -66,7 +86,12 @@ public final class SchemaUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * doubleValue.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public static double doubleValue(Object value, double defaultValue) {
         if (value instanceof Number number) {
@@ -83,7 +108,11 @@ public final class SchemaUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * booleanValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static Boolean booleanValue(Object value) {
         if (value instanceof Boolean booleanValue) {
@@ -96,7 +125,12 @@ public final class SchemaUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * instantValue.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public static Instant instantValue(Object value, Instant defaultValue) {
         if (value instanceof Instant instant) {
@@ -113,7 +147,11 @@ public final class SchemaUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * mapValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> mapValue(Object value) {
         if (!(value instanceof Map<?, ?> rawMap)) {
@@ -130,7 +168,11 @@ public final class SchemaUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stringListValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static List<String> stringListValue(Object value) {
         List<String> result = new ArrayList<>();
@@ -145,7 +187,11 @@ public final class SchemaUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toPayload.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static Object toPayload(Object value) {
         if (value == null) {
@@ -202,7 +248,11 @@ public final class SchemaUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toPayloadMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> toPayloadMap(Object value) {
         Object payload = toPayload(value);

@@ -13,16 +13,28 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Auto-generated for codecheck compliance.
+ * ModelPoolEntries.
+ * 
+ * @since 0.1.7
  */
 public final class ModelPoolEntries {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    /**
+     * ModelPoolEntries.
+     * 
+     * @since 0.1.7
+     */
     private ModelPoolEntries() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * inheritPoolIds.
+     * 
+     * @param currentPool currentPool
+     * @param newPool newPool
+     * @return the result
+     * @since 0.1.7
      */
     public static List<ModelPoolEntry> inheritPoolIds(List<ModelPoolEntry> currentPool, List<ModelPoolEntry> newPool) {
         Map<String, List<ModelPoolEntry>> oldBySignature = new LinkedHashMap<>();
@@ -44,6 +56,13 @@ public final class ModelPoolEntries {
         return result;
     }
 
+    /**
+     * entrySignature.
+     * 
+     * @param entry entry
+     * @return the result
+     * @since 0.1.7
+     */
     private static String entrySignature(ModelPoolEntry entry) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("provider", entry.getProvider());

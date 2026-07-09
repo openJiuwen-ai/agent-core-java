@@ -26,8 +26,8 @@ import java.util.Set;
 
 /**
  * Public class TeamDatabase used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class TeamDatabase {
     private static final String TEAM_TASK_PREFIX = "team_task_";
@@ -36,39 +36,79 @@ public class TeamDatabase {
     private static final String MESSAGE_READ_STATUS_PREFIX = "message_read_status_";
 
     private final DatabaseConfig config;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, TeamRecord> teams = new LinkedHashMap<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, MemberRecord> members = new LinkedHashMap<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, SessionTables> sessions = new LinkedHashMap<>();
+
+    /**
+     * HashSet<>.
+     * 
+     * @since 0.1.7
+     */
     private final Set<String> droppedSessionIds = new HashSet<>();
     private Connection sqliteConnection;
     private boolean isInitialized;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * team.
+     * 
+     * @since 0.1.7
      */
     public final TeamDao team = new TeamDao();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * member.
+     * 
+     * @since 0.1.7
      */
     public final MemberDao member = new MemberDao();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * message.
+     * 
+     * @since 0.1.7
      */
     public final MessageDao message = new MessageDao();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * task.
+     * 
+     * @since 0.1.7
      */
     public final TaskDao task = new TaskDao();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamDatabase.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public TeamDatabase(DatabaseConfig config) {
         this.config = config != null ? config : DatabaseConfig.builder().build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * initialize.
+     * 
+     * @since 0.1.7
      */
     public void initialize() {
         if (isInitialized) {
@@ -85,7 +125,9 @@ public class TeamDatabase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @since 0.1.7
      */
     public void close() {
         closeSqliteIfNeeded();
@@ -97,21 +139,31 @@ public class TeamDatabase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public DatabaseConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentTime.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static long getCurrentTime() {
         return System.currentTimeMillis();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTeamMessages.
+     * 
+     * @param teamName teamName
+     * @return the result
+     * @since 0.1.7
      */
     public List<MessageRecord> getTeamMessages(String teamName) {
         ensureInitialized();
@@ -119,32 +171,55 @@ public class TeamDatabase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTeamTasks.
+     * 
+     * @param teamName teamName
+     * @return the result
+     * @since 0.1.7
      */
     public List<TaskRecord> getTeamTasks(String teamName) {
         return getTeamTasks(teamName, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTeamTasks.
+     * 
+     * @param teamName teamName
+     * @param status status
+     * @return the result
+     * @since 0.1.7
      */
     public List<TaskRecord> getTeamTasks(String teamName, String status) {
         ensureInitialized();
         return task.getTeamTasks(teamName, status);
     }
 
+    /**
+     * ensureInitialized.
+     * 
+     * @since 0.1.7
+     */
     private void ensureInitialized() {
         if (!isInitialized) {
             throw new IllegalStateException("TeamDatabase is not initialized");
         }
     }
 
+    /**
+     * isSqlite.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isSqlite() {
         return config.getDbType() == DatabaseType.SQLITE;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * normalizedJdbcConnectionString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String normalizedJdbcConnectionString() {
         DatabaseType dbType = config.getDbType();
@@ -162,9 +237,8 @@ public class TeamDatabase {
             if (connectionString.startsWith("postgresql://")) {
                 return "jdbc:postgresql://" + connectionString.substring("postgresql://".length());
             }
-            throw new IllegalArgumentException(
-                    "PostgreSQL connectionString must use postgresql://, postgres://, "
-                            + "or jdbc:postgresql:// scheme");
+            throw new IllegalArgumentException("PostgreSQL connectionString must use postgresql://, postgres://, "
+                    + "or jdbc:postgresql:// scheme");
         }
         if (dbType == DatabaseType.MYSQL) {
             if (connectionString.isBlank()) {
@@ -181,6 +255,11 @@ public class TeamDatabase {
         return connectionString;
     }
 
+    /**
+     * rejectUnsupportedPersistentBackend.
+     * 
+     * @since 0.1.7
+     */
     private void rejectUnsupportedPersistentBackend() {
         DatabaseType dbType = config.getDbType();
         if (dbType == DatabaseType.POSTGRESQL || dbType == DatabaseType.MYSQL) {
@@ -190,6 +269,11 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * initializeSqliteIfNeeded.
+     * 
+     * @since 0.1.7
+     */
     private void initializeSqliteIfNeeded() {
         if (!isSqlite()) {
             return;
@@ -223,6 +307,12 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * createStaticSqliteTables.
+     * 
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private void createStaticSqliteTables() throws SQLException {
         try (Statement statement = sqliteConnection.createStatement()) {
             statement.executeUpdate("""
@@ -256,6 +346,11 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * loadStaticRowsIfNeeded.
+     * 
+     * @since 0.1.7
+     */
     private void loadStaticRowsIfNeeded() {
         if (!isSqlite()) {
             return;
@@ -268,15 +363,11 @@ public class TeamDatabase {
                     FROM team_info
                     """)) {
                 while (result.next()) {
-                    TeamRecord teamRecord = TeamRecord.builder()
-                            .teamName(result.getString("team_name"))
+                    TeamRecord teamRecord = TeamRecord.builder().teamName(result.getString("team_name"))
                             .displayName(result.getString("display_name"))
-                            .leaderMemberName(result.getString("leader_member_name"))
-                            .desc(result.getString("desc"))
-                            .prompt(result.getString("prompt"))
-                            .created(result.getLong("created"))
-                            .updatedAt(result.getLong("updated_at"))
-                            .build();
+                            .leaderMemberName(result.getString("leader_member_name")).desc(result.getString("desc"))
+                            .prompt(result.getString("prompt")).created(result.getLong("created"))
+                            .updatedAt(result.getLong("updated_at")).build();
                     teams.put(teamRecord.getTeamName(), teamRecord);
                 }
             }
@@ -286,18 +377,12 @@ public class TeamDatabase {
                     FROM team_member
                     """)) {
                 while (result.next()) {
-                    MemberRecord memberRecord = MemberRecord.builder()
-                            .memberName(result.getString("member_name"))
-                            .teamName(result.getString("team_name"))
-                            .displayName(result.getString("display_name"))
-                            .agentCard(result.getString("agent_card"))
-                            .status(result.getString("status"))
-                            .desc(result.getString("desc"))
-                            .executionStatus(result.getString("execution_status"))
-                            .mode(result.getString("mode"))
-                            .prompt(result.getString("prompt"))
-                            .modelRefJson(result.getString("model_ref_json"))
-                            .updatedAt(result.getLong("updated_at"))
+                    MemberRecord memberRecord = MemberRecord.builder().memberName(result.getString("member_name"))
+                            .teamName(result.getString("team_name")).displayName(result.getString("display_name"))
+                            .agentCard(result.getString("agent_card")).status(result.getString("status"))
+                            .desc(result.getString("desc")).executionStatus(result.getString("execution_status"))
+                            .mode(result.getString("mode")).prompt(result.getString("prompt"))
+                            .modelRefJson(result.getString("model_ref_json")).updatedAt(result.getLong("updated_at"))
                             .build();
                     members.put(memberRecord.getTeamName() + "::" + memberRecord.getMemberName(), memberRecord);
                 }
@@ -307,6 +392,11 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * closeSqliteIfNeeded.
+     * 
+     * @since 0.1.7
+     */
     private void closeSqliteIfNeeded() {
         if (sqliteConnection == null) {
             return;
@@ -321,7 +411,10 @@ public class TeamDatabase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createCurSessionTables.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean createCurSessionTables() {
         ensureInitialized();
@@ -337,7 +430,10 @@ public class TeamDatabase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * dropCurSessionTables.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> dropCurSessionTables() {
         ensureInitialized();
@@ -346,7 +442,11 @@ public class TeamDatabase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * dropSessionTablesById.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> dropSessionTablesById(String sessionId) {
         ensureInitialized();
@@ -364,7 +464,10 @@ public class TeamDatabase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * cleanupAllRuntimeState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public RuntimeCleanupResult cleanupAllRuntimeState() {
         ensureInitialized();
@@ -379,14 +482,15 @@ public class TeamDatabase {
         teams.clear();
         members.clear();
         cleanupSqliteAllRuntimeStateIfNeeded(deletedTables);
-        return RuntimeCleanupResult.builder()
-                .deletedTables(deletedTables)
-                .clearedTables(List.of("team_info", "team_member"))
-                .build();
+        return RuntimeCleanupResult.builder().deletedTables(deletedTables)
+                .clearedTables(List.of("team_info", "team_member")).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * activeDynamicTables.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> activeDynamicTables() {
         ensureInitialized();
@@ -399,6 +503,12 @@ public class TeamDatabase {
         return tableNames;
     }
 
+    /**
+     * createSqliteSessionTablesIfNeeded.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
+     */
     private void createSqliteSessionTablesIfNeeded(String sessionId) {
         if (!isSqlite() || sessionId == null || sessionId.isBlank()) {
             return;
@@ -458,6 +568,12 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * loadSqliteSessionRowsIfNeeded.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
+     */
     private void loadSqliteSessionRowsIfNeeded(String sessionId) {
         if (!isSqlite() || sessionId == null || sessionId.isBlank()) {
             return;
@@ -473,15 +589,10 @@ public class TeamDatabase {
                     FROM %s
                     """.formatted(taskTableName(sessionId)))) {
                 while (result.next()) {
-                    TaskRecord taskRecord = TaskRecord.builder()
-                            .taskId(result.getString("task_id"))
-                            .teamName(result.getString("team_name"))
-                            .title(result.getString("title"))
-                            .content(result.getString("content"))
-                            .status(result.getString("status"))
-                            .assignee(result.getString("assignee"))
-                            .updatedAt(result.getLong("updated_at"))
-                            .build();
+                    TaskRecord taskRecord = TaskRecord.builder().taskId(result.getString("task_id"))
+                            .teamName(result.getString("team_name")).title(result.getString("title"))
+                            .content(result.getString("content")).status(result.getString("status"))
+                            .assignee(result.getString("assignee")).updatedAt(result.getLong("updated_at")).build();
                     tables.tasks.put(taskRecord.getTaskId(), taskRecord);
                 }
             }
@@ -503,16 +614,12 @@ public class TeamDatabase {
                     FROM %s
                     """.formatted(messageTableName(sessionId)))) {
                 while (result.next()) {
-                    MessageRecord messageRecord = MessageRecord.builder()
-                            .messageId(result.getString("message_id"))
+                    MessageRecord messageRecord = MessageRecord.builder().messageId(result.getString("message_id"))
                             .teamName(result.getString("team_name"))
                             .fromMemberName(result.getString("from_member_name"))
-                            .toMemberName(result.getString("to_member_name"))
-                            .content(result.getString("content"))
-                            .timestamp(result.getLong("timestamp"))
-                            .broadcast(result.getInt("broadcast") != 0)
-                            .isRead(result.getInt("is_read") != 0)
-                            .build();
+                            .toMemberName(result.getString("to_member_name")).content(result.getString("content"))
+                            .timestamp(result.getLong("timestamp")).broadcast(result.getInt("broadcast") != 0)
+                            .isRead(result.getInt("is_read") != 0).build();
                     tables.messages.put(messageRecord.getMessageId(), messageRecord);
                 }
             }
@@ -521,10 +628,8 @@ public class TeamDatabase {
                     FROM %s
                     """.formatted(readStatusTableName(sessionId)))) {
                 while (result.next()) {
-                    tables.broadcastReadAt.put(
-                            result.getString("team_name") + "::" + result.getString("member_name"),
-                            result.getLong("read_at")
-                    );
+                    tables.broadcastReadAt.put(result.getString("team_name") + "::" + result.getString("member_name"),
+                            result.getLong("read_at"));
                 }
             }
         } catch (SQLException e) {
@@ -532,6 +637,13 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * dropSqliteTablesIfNeeded.
+     * 
+     * @param tableNames tableNames
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean dropSqliteTablesIfNeeded(List<String> tableNames) {
         if (!isSqlite()) {
             return false;
@@ -550,9 +662,17 @@ public class TeamDatabase {
         return isDropped;
     }
 
+    /**
+     * sqliteTableExists.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private boolean sqliteTableExists(String tableName) throws SQLException {
-        try (PreparedStatement statement = sqliteConnection.prepareStatement(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name=?")) {
+        try (PreparedStatement statement =
+            sqliteConnection.prepareStatement("SELECT name FROM sqlite_master WHERE type='table' AND name=?")) {
             statement.setString(1, tableName);
             try (ResultSet result = statement.executeQuery()) {
                 return result.next();
@@ -560,20 +680,24 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * cleanupSqliteAllRuntimeStateIfNeeded.
+     * 
+     * @param deletedTables deletedTables
+     * @since 0.1.7
+     */
     private void cleanupSqliteAllRuntimeStateIfNeeded(List<String> deletedTables) {
         if (!isSqlite()) {
             return;
         }
         try (Statement statement = sqliteConnection.createStatement()) {
             List<String> dynamicTables = new ArrayList<>();
-            try (ResultSet result = statement.executeQuery(
-                    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")) {
+            try (ResultSet result =
+                statement.executeQuery("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")) {
                 while (result.next()) {
                     String table = result.getString("name");
-                    if (table.startsWith(TEAM_TASK_DEPENDENCY_PREFIX)
-                            || table.startsWith(TEAM_TASK_PREFIX)
-                            || table.startsWith(TEAM_MESSAGE_PREFIX)
-                            || table.startsWith(MESSAGE_READ_STATUS_PREFIX)) {
+                    if (table.startsWith(TEAM_TASK_DEPENDENCY_PREFIX) || table.startsWith(TEAM_TASK_PREFIX)
+                            || table.startsWith(TEAM_MESSAGE_PREFIX) || table.startsWith(MESSAGE_READ_STATUS_PREFIX)) {
                         dynamicTables.add(table);
                     }
                 }
@@ -591,22 +715,55 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * taskTableName.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
+     */
     private String taskTableName(String sessionId) {
         return TEAM_TASK_PREFIX + sanitizeSessionIdForTable(sessionId);
     }
 
+    /**
+     * dependencyTableName.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
+     */
     private String dependencyTableName(String sessionId) {
         return TEAM_TASK_DEPENDENCY_PREFIX + sanitizeSessionIdForTable(sessionId);
     }
 
+    /**
+     * messageTableName.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
+     */
     private String messageTableName(String sessionId) {
         return TEAM_MESSAGE_PREFIX + sanitizeSessionIdForTable(sessionId);
     }
 
+    /**
+     * readStatusTableName.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
+     */
     private String readStatusTableName(String sessionId) {
         return MESSAGE_READ_STATUS_PREFIX + sanitizeSessionIdForTable(sessionId);
     }
 
+    /**
+     * flushStaticRowsIfNeeded.
+     * 
+     * @since 0.1.7
+     */
     private void flushStaticRowsIfNeeded() {
         if (!isSqlite()) {
             return;
@@ -625,6 +782,12 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * upsertSqliteTeam.
+     * 
+     * @param teamRecord teamRecord
+     * @since 0.1.7
+     */
     private void upsertSqliteTeam(TeamRecord teamRecord) {
         if (!isSqlite() || teamRecord == null) {
             return;
@@ -647,6 +810,12 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * upsertSqliteMember.
+     * 
+     * @param memberRecord memberRecord
+     * @since 0.1.7
+     */
     private void upsertSqliteMember(MemberRecord memberRecord) {
         if (!isSqlite() || memberRecord == null) {
             return;
@@ -674,6 +843,11 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * flushCurrentSessionRowsIfNeeded.
+     * 
+     * @since 0.1.7
+     */
     private void flushCurrentSessionRowsIfNeeded() {
         if (!isSqlite()) {
             return;
@@ -713,6 +887,11 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * flushAllLoadedSessionRowsIfNeeded.
+     * 
+     * @since 0.1.7
+     */
     private void flushAllLoadedSessionRowsIfNeeded() {
         if (!isSqlite()) {
             return;
@@ -727,6 +906,13 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * insertSqliteTask.
+     * 
+     * @param sessionId sessionId
+     * @param taskRecord taskRecord
+     * @since 0.1.7
+     */
     private void insertSqliteTask(String sessionId, TaskRecord taskRecord) {
         try (PreparedStatement statement = sqliteConnection.prepareStatement("""
                 INSERT INTO %s (task_id, team_name, title, content, status, assignee, updated_at)
@@ -745,6 +931,14 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * insertSqliteDependency.
+     * 
+     * @param sessionId sessionId
+     * @param taskRecord taskRecord
+     * @param dependencyId dependencyId
+     * @since 0.1.7
+     */
     private void insertSqliteDependency(String sessionId, TaskRecord taskRecord, String dependencyId) {
         TaskRecord dependency = sessions.get(sessionId).tasks.get(dependencyId);
         boolean isResolved = dependency != null
@@ -763,6 +957,13 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * insertSqliteMessage.
+     * 
+     * @param sessionId sessionId
+     * @param messageRecord messageRecord
+     * @since 0.1.7
+     */
     private void insertSqliteMessage(String sessionId, MessageRecord messageRecord) {
         try (PreparedStatement statement = sqliteConnection.prepareStatement("""
                 INSERT INTO %s
@@ -783,6 +984,14 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * insertSqliteReadStatus.
+     * 
+     * @param sessionId sessionId
+     * @param key key
+     * @param readAt readAt
+     * @since 0.1.7
+     */
     private void insertSqliteReadStatus(String sessionId, String key, Long readAt) {
         String[] parts = key.split("::", 2);
         if (parts.length != 2) {
@@ -802,23 +1011,27 @@ public class TeamDatabase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * sessionTableNames.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public static List<String> sessionTableNames(String sessionId) {
         if (sessionId == null || sessionId.isBlank()) {
             return List.of();
         }
         String suffix = sanitizeSessionIdForTable(sessionId);
-        return List.of(
-                TEAM_TASK_PREFIX + suffix,
-                TEAM_TASK_DEPENDENCY_PREFIX + suffix,
-                TEAM_MESSAGE_PREFIX + suffix,
-                MESSAGE_READ_STATUS_PREFIX + suffix
-        );
+        return List.of(TEAM_TASK_PREFIX + suffix, TEAM_TASK_DEPENDENCY_PREFIX + suffix, TEAM_MESSAGE_PREFIX + suffix,
+                MESSAGE_READ_STATUS_PREFIX + suffix);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * sanitizeSessionIdForTable.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public static String sanitizeSessionIdForTable(String sessionId) {
         String sanitizedSessionId = sessionId != null ? sessionId : "";
@@ -835,17 +1048,35 @@ public class TeamDatabase {
         }
     }
 
+    /**
+     * currentSessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String currentSessionId() {
         // Use a shared global key so all agents in the same process
         // see the same tasks/messages regardless of thread-local state.
         return "_global_";
     }
 
+    /**
+     * currentSessionTables.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private SessionTables currentSessionTables() {
         String sessionId = currentSessionId();
         return sessions.computeIfAbsent(sessionId, ignored -> new SessionTables());
     }
 
+    /**
+     * clearDynamicRowsForTeam.
+     * 
+     * @param teamName teamName
+     * @since 0.1.7
+     */
     private void clearDynamicRowsForTeam(String teamName) {
         for (SessionTables tables : sessions.values()) {
             tables.messages.entrySet().removeIf(entry -> teamName.equals(entry.getValue().getTeamName()));
@@ -856,51 +1087,71 @@ public class TeamDatabase {
 
     private static final class SessionTables {
         private final Map<String, MessageRecord> messages = new LinkedHashMap<>();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, Long> broadcastReadAt = new LinkedHashMap<>();
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private final Map<String, TaskRecord> tasks = new LinkedHashMap<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamDao.
+     * 
+     * @since 0.1.7
      */
     public final class TeamDao {
         /**
-         * Auto-generated for codecheck compliance.
+         * createTeam.
+         * 
+         * @param teamName teamName
+         * @param displayName displayName
+         * @param leaderMemberName leaderMemberName
+         * @return the result
+         * @since 0.1.7
          */
         public boolean createTeam(String teamName, String displayName, String leaderMemberName) {
             return createTeam(teamName, displayName, leaderMemberName, null, null);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * createTeam.
+         * 
+         * @param teamName teamName
+         * @param displayName displayName
+         * @param leaderMemberName leaderMemberName
+         * @param desc desc
+         * @param prompt prompt
+         * @return the result
+         * @since 0.1.7
          */
-        public boolean createTeam(
-                String teamName,
-                String displayName,
-                String leaderMemberName,
-                String desc,
-                String prompt
-        ) {
+        public boolean createTeam(String teamName, String displayName, String leaderMemberName, String desc,
+                String prompt) {
             ensureInitialized();
             if (teams.containsKey(teamName)) {
                 return false;
             }
             long now = getCurrentTime();
-            teams.put(teamName, TeamRecord.builder()
-                    .teamName(teamName)
-                    .displayName(displayName)
-                    .leaderMemberName(leaderMemberName)
-                    .desc(desc)
-                    .prompt(prompt)
-                    .created(now)
-                    .updatedAt(now)
-                    .build());
+            teams.put(teamName, TeamRecord.builder().teamName(teamName).displayName(displayName)
+                    .leaderMemberName(leaderMemberName).desc(desc).prompt(prompt).created(now).updatedAt(now).build());
             flushStaticRowsIfNeeded();
             return true;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTeam.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
          */
         public TeamRecord getTeam(String teamName) {
             ensureInitialized();
@@ -908,7 +1159,11 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTeamUpdatedAt.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
          */
         public long getTeamUpdatedAt(String teamName) {
             ensureInitialized();
@@ -917,7 +1172,11 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * deleteTeam.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
          */
         public boolean deleteTeam(String teamName) {
             ensureInitialized();
@@ -933,49 +1192,50 @@ public class TeamDatabase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MemberDao.
+     * 
+     * @since 0.1.7
      */
     public final class MemberDao {
         /**
-         * Auto-generated for codecheck compliance.
+         * createMember.
+         * 
+         * @param memberName memberName
+         * @param teamName teamName
+         * @param displayName displayName
+         * @param agentCard agentCard
+         * @param status status
+         * @param desc desc
+         * @param executionStatus executionStatus
+         * @param mode mode
+         * @param prompt prompt
+         * @param modelRefJson modelRefJson
+         * @return the result
+         * @since 0.1.7
          */
-        public boolean createMember(
-                String memberName,
-                String teamName,
-                String displayName,
-                String agentCard,
-                String status,
-                String desc,
-                String executionStatus,
-                String mode,
-                String prompt,
-                String modelRefJson
-        ) {
+        public boolean createMember(String memberName, String teamName, String displayName, String agentCard,
+                String status, String desc, String executionStatus, String mode, String prompt, String modelRefJson) {
             ensureInitialized();
             String key = teamName + "::" + memberName;
             if (members.containsKey(key)) {
                 return false;
             }
             long updatedAt = nextMemberUpdatedAt(teamName);
-            members.put(key, MemberRecord.builder()
-                    .memberName(memberName)
-                    .teamName(teamName)
-                    .displayName(displayName)
-                    .agentCard(agentCard)
-                    .status(status)
-                    .desc(desc)
-                    .executionStatus(executionStatus)
-                    .mode(mode)
-                    .prompt(prompt)
-                    .modelRefJson(modelRefJson)
-                    .updatedAt(updatedAt)
-                    .build());
+            members.put(key,
+                    MemberRecord.builder().memberName(memberName).teamName(teamName).displayName(displayName)
+                            .agentCard(agentCard).status(status).desc(desc).executionStatus(executionStatus).mode(mode)
+                            .prompt(prompt).modelRefJson(modelRefJson).updatedAt(updatedAt).build());
             flushStaticRowsIfNeeded();
             return true;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMember.
+         * 
+         * @param memberName memberName
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
          */
         public MemberRecord getMember(String memberName, String teamName) {
             ensureInitialized();
@@ -983,37 +1243,51 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTeamMembers.
+         * 
+         * @param teamName teamName
+         * @param status status
+         * @return the result
+         * @since 0.1.7
          */
         public List<MemberRecord> getTeamMembers(String teamName, String status) {
             ensureInitialized();
-            return members.values().stream()
-                    .filter(member -> teamName.equals(member.getTeamName()))
-                    .filter(member -> status == null || status.equals(member.getStatus()))
-                    .toList();
+            return members.values().stream().filter(member -> teamName.equals(member.getTeamName()))
+                    .filter(member -> status == null || status.equals(member.getStatus())).toList();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTeamMembers.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
          */
         public List<MemberRecord> getTeamMembers(String teamName) {
             return getTeamMembers(teamName, null);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMembersMaxUpdatedAt.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
          */
         public long getMembersMaxUpdatedAt(String teamName) {
             ensureInitialized();
-            return members.values().stream()
-                    .filter(member -> teamName.equals(member.getTeamName()))
-                    .mapToLong(MemberRecord::getUpdatedAt)
-                    .max()
-                    .orElse(0L);
+            return members.values().stream().filter(member -> teamName.equals(member.getTeamName()))
+                    .mapToLong(MemberRecord::getUpdatedAt).max().orElse(0L);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * updateMemberStatus.
+         * 
+         * @param memberName memberName
+         * @param teamName teamName
+         * @param status status
+         * @return the result
+         * @since 0.1.7
          */
         public boolean updateMemberStatus(String memberName, String teamName, String status) {
             ensureInitialized();
@@ -1028,7 +1302,13 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * updateMemberExecutionStatus.
+         * 
+         * @param memberName memberName
+         * @param teamName teamName
+         * @param executionStatus executionStatus
+         * @return the result
+         * @since 0.1.7
          */
         public boolean updateMemberExecutionStatus(String memberName, String teamName, String executionStatus) {
             ensureInitialized();
@@ -1042,6 +1322,13 @@ public class TeamDatabase {
             return true;
         }
 
+        /**
+         * nextMemberUpdatedAt.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
+         */
         private long nextMemberUpdatedAt(String teamName) {
             long now = getCurrentTime();
             long maxUpdatedAt = getMembersMaxUpdatedAt(teamName);
@@ -1050,11 +1337,17 @@ public class TeamDatabase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MessageDao.
+     * 
+     * @since 0.1.7
      */
     public final class MessageDao {
         /**
-         * Auto-generated for codecheck compliance.
+         * getMessage.
+         * 
+         * @param messageId messageId
+         * @return the result
+         * @since 0.1.7
          */
         public MessageRecord getMessage(String messageId) {
             ensureInitialized();
@@ -1062,87 +1355,114 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * createMessage.
+         * 
+         * @param messageId messageId
+         * @param teamName teamName
+         * @param fromMemberName fromMemberName
+         * @param content content
+         * @param toMemberName toMemberName
+         * @param broadcast broadcast
+         * @param isRead isRead
+         * @return the result
+         * @since 0.1.7
          */
         public boolean createMessage(String messageId, String teamName, String fromMemberName, String content,
-                                     String toMemberName, boolean broadcast, boolean isRead) {
+                String toMemberName, boolean broadcast, boolean isRead) {
             return createMessage(messageId, teamName, fromMemberName, content, toMemberName, broadcast, isRead, null);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * createMessage.
+         * 
+         * @param messageId messageId
+         * @param teamName teamName
+         * @param fromMemberName fromMemberName
+         * @param content content
+         * @param toMemberName toMemberName
+         * @param broadcast broadcast
+         * @param isRead isRead
+         * @param timestamp timestamp
+         * @return the result
+         * @since 0.1.7
          */
         public boolean createMessage(String messageId, String teamName, String fromMemberName, String content,
-                                     String toMemberName, boolean broadcast, boolean isRead, Long timestamp) {
+                String toMemberName, boolean broadcast, boolean isRead, Long timestamp) {
             ensureInitialized();
             SessionTables tables = currentSessionTables();
             Map<String, MessageRecord> messages = tables.messages;
             if (messages.containsKey(messageId)) {
                 return false;
             }
-            messages.put(messageId, MessageRecord.builder()
-                    .messageId(messageId)
-                    .teamName(teamName)
-                    .fromMemberName(fromMemberName)
-                    .toMemberName(toMemberName)
-                    .content(content)
-                    .timestamp(timestamp != null ? timestamp : getCurrentTime())
-                    .broadcast(broadcast)
-                    .isRead(isRead)
-                    .build());
+            messages.put(messageId,
+                    MessageRecord.builder().messageId(messageId).teamName(teamName).fromMemberName(fromMemberName)
+                            .toMemberName(toMemberName).content(content)
+                            .timestamp(timestamp != null ? timestamp : getCurrentTime()).broadcast(broadcast)
+                            .isRead(isRead).build());
             flushCurrentSessionRowsIfNeeded();
             return true;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMessages.
+         * 
+         * @param teamName teamName
+         * @param toMemberName toMemberName
+         * @param isUnreadOnly isUnreadOnly
+         * @param fromMemberName fromMemberName
+         * @return the result
+         * @since 0.1.7
          */
-        public List<MessageRecord> getMessages(
-                String teamName,
-                String toMemberName,
-                boolean isUnreadOnly,
-                String fromMemberName
-        ) {
+        public List<MessageRecord> getMessages(String teamName, String toMemberName, boolean isUnreadOnly,
+                String fromMemberName) {
             ensureInitialized();
             return currentSessionTables().messages.values().stream()
-                    .filter(message -> teamName.equals(message.getTeamName()))
-                    .filter(message -> !message.isBroadcast())
+                    .filter(message -> teamName.equals(message.getTeamName())).filter(message -> !message.isBroadcast())
                     .filter(message -> toMemberName.equals(message.getToMemberName()))
                     .filter(message -> fromMemberName == null || fromMemberName.equals(message.getFromMemberName()))
-                    .filter(message -> !isUnreadOnly || !message.isRead())
-                    .toList();
+                    .filter(message -> !isUnreadOnly || !message.isRead()).toList();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getBroadcastMessages.
+         * 
+         * @param teamName teamName
+         * @param memberName memberName
+         * @param isUnreadOnly isUnreadOnly
+         * @param fromMemberName fromMemberName
+         * @return the result
+         * @since 0.1.7
          */
-        public List<MessageRecord> getBroadcastMessages(
-                String teamName,
-                String memberName,
-                boolean isUnreadOnly,
-                String fromMemberName
-        ) {
+        public List<MessageRecord> getBroadcastMessages(String teamName, String memberName, boolean isUnreadOnly,
+                String fromMemberName) {
             ensureInitialized();
             SessionTables tables = currentSessionTables();
             Long readAt = tables.broadcastReadAt.get(teamName + "::" + memberName);
-            return tables.messages.values().stream()
-                    .filter(message -> teamName.equals(message.getTeamName()))
+            return tables.messages.values().stream().filter(message -> teamName.equals(message.getTeamName()))
                     .filter(MessageRecord::isBroadcast)
                     .filter(message -> !memberName.equals(message.getFromMemberName()))
                     .filter(message -> fromMemberName == null || fromMemberName.equals(message.getFromMemberName()))
-                    .filter(message -> !isUnreadOnly || readAt == null || message.getTimestamp() > readAt)
-                    .toList();
+                    .filter(message -> !isUnreadOnly || readAt == null || message.getTimestamp() > readAt).toList();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * markMessageRead.
+         * 
+         * @param messageId messageId
+         * @return the result
+         * @since 0.1.7
          */
         public boolean markMessageRead(String messageId) {
             return markMessageRead(messageId, null);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * markMessageRead.
+         * 
+         * @param messageId messageId
+         * @param memberName memberName
+         * @return the result
+         * @since 0.1.7
          */
         public boolean markMessageRead(String messageId, String memberName) {
             ensureInitialized();
@@ -1168,26 +1488,37 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTeamMessages.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
          */
         public List<MessageRecord> getTeamMessages(String teamName) {
             return getTeamMessages(teamName, null);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTeamMessages.
+         * 
+         * @param teamName teamName
+         * @param broadcast broadcast
+         * @return the result
+         * @since 0.1.7
          */
         public List<MessageRecord> getTeamMessages(String teamName, Boolean broadcast) {
             ensureInitialized();
             return currentSessionTables().messages.values().stream()
                     .filter(message -> teamName.equals(message.getTeamName()))
                     .filter(message -> broadcast == null || message.isBroadcast() == broadcast)
-                    .sorted((left, right) -> Long.compare(left.getTimestamp(), right.getTimestamp()))
-                    .toList();
+                    .sorted((left, right) -> Long.compare(left.getTimestamp(), right.getTimestamp())).toList();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * clearTeamMessages.
+         * 
+         * @param teamName teamName
+         * @since 0.1.7
          */
         public void clearTeamMessages(String teamName) {
             ensureInitialized();
@@ -1198,11 +1529,21 @@ public class TeamDatabase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskDao.
+     * 
+     * @since 0.1.7
      */
     public final class TaskDao {
         /**
-         * Auto-generated for codecheck compliance.
+         * createTask.
+         * 
+         * @param taskId taskId
+         * @param teamName teamName
+         * @param title title
+         * @param content content
+         * @param status status
+         * @return the result
+         * @since 0.1.7
          */
         public boolean createTask(String taskId, String teamName, String title, String content, String status) {
             ensureInitialized();
@@ -1210,20 +1551,19 @@ public class TeamDatabase {
             if (tasks.containsKey(taskId)) {
                 return false;
             }
-            tasks.put(taskId, TaskRecord.builder()
-                    .taskId(taskId)
-                    .teamName(teamName)
-                    .title(title)
-                    .content(content)
-                    .status(status)
-                    .updatedAt(getCurrentTime())
-                    .build());
+            tasks.put(taskId, TaskRecord.builder().taskId(taskId).teamName(teamName).title(title).content(content)
+                    .status(status).updatedAt(getCurrentTime()).build());
             flushCurrentSessionRowsIfNeeded();
             return true;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * addDependency.
+         * 
+         * @param taskId taskId
+         * @param dependsOnTaskId dependsOnTaskId
+         * @return the result
+         * @since 0.1.7
          */
         public boolean addDependency(String taskId, String dependsOnTaskId) {
             Map<String, TaskRecord> tasks = currentSessionTables().tasks;
@@ -1232,17 +1572,20 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * addTaskWithBidirectionalDependencies.
+         * 
+         * @param taskId taskId
+         * @param teamName teamName
+         * @param title title
+         * @param content content
+         * @param status status
+         * @param dependencies dependencies
+         * @param dependentTaskIds dependentTaskIds
+         * @return the result
+         * @since 0.1.7
          */
-        public boolean addTaskWithBidirectionalDependencies(
-                String taskId,
-                String teamName,
-                String title,
-                String content,
-                String status,
-                List<String> dependencies,
-                List<String> dependentTaskIds
-        ) {
+        public boolean addTaskWithBidirectionalDependencies(String taskId, String teamName, String title,
+                String content, String status, List<String> dependencies, List<String> dependentTaskIds) {
             ensureInitialized();
             Map<String, TaskRecord> tasks = currentSessionTables().tasks;
             if (tasks.containsKey(taskId)) {
@@ -1270,14 +1613,8 @@ public class TeamDatabase {
                     previousDependencies.put(taskRecord.getTaskId(), new ArrayList<>(taskRecord.getDependencies()));
                 }
             }
-            TaskRecord staged = TaskRecord.builder()
-                    .taskId(taskId)
-                    .teamName(teamName)
-                    .title(title)
-                    .content(content)
-                    .status(status)
-                    .updatedAt(getCurrentTime())
-                    .build();
+            TaskRecord staged = TaskRecord.builder().taskId(taskId).teamName(teamName).title(title).content(content)
+                    .status(status).updatedAt(getCurrentTime()).build();
             tasks.put(taskId, staged);
             List<List<String>> edges = new ArrayList<>();
             for (String dependency : dependencies != null ? dependencies : List.<String>of()) {
@@ -1304,7 +1641,12 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * mutateDependencyGraph.
+         * 
+         * @param teamName teamName
+         * @param addEdges addEdges
+         * @return the result
+         * @since 0.1.7
          */
         public GraphMutationResult mutateDependencyGraph(String teamName, List<List<String>> addEdges) {
             ensureInitialized();
@@ -1339,9 +1681,8 @@ public class TeamDatabase {
                     return GraphMutationResult.fail("Dependency edge crosses team boundary");
                 }
                 if (List.of("claimed", "completed", "cancelled", "plan_approved").contains(taskRecord.getStatus())) {
-                    return GraphMutationResult.fail(
-                            "Cannot add dependency to " + taskId + " in terminal or executing status: "
-                                    + taskRecord.getStatus());
+                    return GraphMutationResult.fail("Cannot add dependency to " + taskId
+                            + " in terminal or executing status: " + taskRecord.getStatus());
                 }
             }
 
@@ -1386,7 +1727,13 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * updateTask.
+         * 
+         * @param taskId taskId
+         * @param title title
+         * @param content content
+         * @return the result
+         * @since 0.1.7
          */
         public boolean updateTask(String taskId, String title, String content) {
             ensureInitialized();
@@ -1409,7 +1756,12 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * updateTaskStatus.
+         * 
+         * @param taskId taskId
+         * @param status status
+         * @return the result
+         * @since 0.1.7
          */
         public boolean updateTaskStatus(String taskId, String status) {
             ensureInitialized();
@@ -1431,7 +1783,11 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTask.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public TaskRecord getTask(String taskId) {
             ensureInitialized();
@@ -1439,37 +1795,52 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTeamTasks.
+         * 
+         * @param teamName teamName
+         * @param status status
+         * @return the result
+         * @since 0.1.7
          */
         public List<TaskRecord> getTeamTasks(String teamName, String status) {
             ensureInitialized();
-            return currentSessionTables().tasks.values().stream()
-                    .filter(task -> teamName.equals(task.getTeamName()))
-                    .filter(task -> status == null || status.equals(task.getStatus()))
-                    .toList();
+            return currentSessionTables().tasks.values().stream().filter(task -> teamName.equals(task.getTeamName()))
+                    .filter(task -> status == null || status.equals(task.getStatus())).toList();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTasksByAssignee.
+         * 
+         * @param teamName teamName
+         * @param assignee assignee
+         * @param status status
+         * @return the result
+         * @since 0.1.7
          */
         public List<TaskRecord> getTasksByAssignee(String teamName, String assignee, String status) {
             ensureInitialized();
-            return currentSessionTables().tasks.values().stream()
-                    .filter(task -> teamName.equals(task.getTeamName()))
+            return currentSessionTables().tasks.values().stream().filter(task -> teamName.equals(task.getTeamName()))
                     .filter(task -> assignee == null || assignee.equals(task.getAssignee()))
-                    .filter(task -> status == null || status.equals(task.getStatus()))
-                    .toList();
+                    .filter(task -> status == null || status.equals(task.getStatus())).toList();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTasksByAssignee.
+         * 
+         * @param teamName teamName
+         * @param assignee assignee
+         * @return the result
+         * @since 0.1.7
          */
         public List<TaskRecord> getTasksByAssignee(String teamName, String assignee) {
             return getTasksByAssignee(teamName, assignee, null);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * clearTeamTasks.
+         * 
+         * @param teamName teamName
+         * @since 0.1.7
          */
         public void clearTeamTasks(String teamName) {
             ensureInitialized();
@@ -1477,14 +1848,18 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * claimTask.
+         * 
+         * @param taskId taskId
+         * @param assignee assignee
+         * @return the result
+         * @since 0.1.7
          */
         public boolean claimTask(String taskId, String assignee) {
             ensureInitialized();
             Map<String, TaskRecord> tasks = currentSessionTables().tasks;
             TaskRecord taskRecord = tasks.get(taskId);
-            if (taskRecord == null
-                    || "claimed".equals(taskRecord.getStatus())
+            if (taskRecord == null || "claimed".equals(taskRecord.getStatus())
                     || "completed".equals(taskRecord.getStatus())) {
                 return false;
             }
@@ -1496,14 +1871,22 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * completeTask.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public boolean completeTask(String taskId) {
             return completeTaskResult(taskId) != null;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * completeTaskResult.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public TaskMutationResult completeTaskResult(String taskId) {
             ensureInitialized();
@@ -1519,14 +1902,15 @@ public class TeamDatabase {
             taskRecord.setUpdatedAt(getCurrentTime());
             List<TaskRecord> unblocked = refreshBlockedTasks(taskRecord.getTeamName());
             flushCurrentSessionRowsIfNeeded();
-            return TaskMutationResult.builder()
-                    .task(taskRecord)
-                    .unblockedTasks(unblocked)
-                    .build();
+            return TaskMutationResult.builder().task(taskRecord).unblockedTasks(unblocked).build();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * approvePlanTask.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public boolean approvePlanTask(String taskId) {
             ensureInitialized();
@@ -1542,21 +1926,28 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * cancelTask.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public boolean cancelTask(String taskId) {
             return cancelTaskResult(taskId) != null;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * cancelTaskResult.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public TaskMutationResult cancelTaskResult(String taskId) {
             ensureInitialized();
             Map<String, TaskRecord> tasks = currentSessionTables().tasks;
             TaskRecord taskRecord = tasks.get(taskId);
-            if (taskRecord == null
-                    || "completed".equals(taskRecord.getStatus())
+            if (taskRecord == null || "completed".equals(taskRecord.getStatus())
                     || "cancelled".equals(taskRecord.getStatus())) {
                 return null;
             }
@@ -1564,14 +1955,15 @@ public class TeamDatabase {
             taskRecord.setUpdatedAt(getCurrentTime());
             List<TaskRecord> unblocked = refreshBlockedTasks(taskRecord.getTeamName());
             flushCurrentSessionRowsIfNeeded();
-            return TaskMutationResult.builder()
-                    .task(taskRecord)
-                    .unblockedTasks(unblocked)
-                    .build();
+            return TaskMutationResult.builder().task(taskRecord).unblockedTasks(unblocked).build();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * cancelAllTasks.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
          */
         public List<TaskRecord> cancelAllTasks(String teamName) {
             TaskMutationResult result = cancelAllTasksResult(teamName);
@@ -1579,7 +1971,11 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * cancelAllTasksResult.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
          */
         public TaskMutationResult cancelAllTasksResult(String teamName) {
             ensureInitialized();
@@ -1596,19 +1992,21 @@ public class TeamDatabase {
                 taskRecord.setUpdatedAt(getCurrentTime());
                 cancelled.add(taskRecord);
             }
-            List<TaskRecord> unblocked = refreshBlockedTasks(teamName).stream()
-                    .filter(task -> cancelled.stream()
-                            .noneMatch(cancelledTask -> cancelledTask.getTaskId().equals(task.getTaskId())))
-                    .toList();
+            List<TaskRecord> unblocked =
+                refreshBlockedTasks(teamName).stream()
+                        .filter(task -> cancelled.stream()
+                                .noneMatch(cancelledTask -> cancelledTask.getTaskId().equals(task.getTaskId())))
+                        .toList();
             flushCurrentSessionRowsIfNeeded();
-            return TaskMutationResult.builder()
-                    .cancelledTasks(cancelled)
-                    .unblockedTasks(unblocked)
-                    .build();
+            return TaskMutationResult.builder().cancelledTasks(cancelled).unblockedTasks(unblocked).build();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * resetTask.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public boolean resetTask(String taskId) {
             ensureInitialized();
@@ -1626,7 +2024,12 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * assignTask.
+         * 
+         * @param taskId taskId
+         * @param assignee assignee
+         * @return the result
+         * @since 0.1.7
          */
         public boolean assignTask(String taskId, String assignee) {
             ensureInitialized();
@@ -1645,7 +2048,11 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getDependencies.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public List<String> getDependencies(String taskId) {
             ensureInitialized();
@@ -1654,7 +2061,11 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTaskDependencies.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public List<TaskDependencyRecord> getTaskDependencies(String taskId) {
             ensureInitialized();
@@ -1668,18 +2079,18 @@ public class TeamDatabase {
                 TaskRecord dependency = tasks.get(dependencyId);
                 boolean isResolved = dependency != null
                         && ("completed".equals(dependency.getStatus()) || "cancelled".equals(dependency.getStatus()));
-                dependencies.add(TaskDependencyRecord.builder()
-                        .teamName(taskRecord.getTeamName())
-                        .taskId(taskId)
-                        .dependsOnTaskId(dependencyId)
-                        .isResolved(isResolved)
-                        .build());
+                dependencies.add(TaskDependencyRecord.builder().teamName(taskRecord.getTeamName()).taskId(taskId)
+                        .dependsOnTaskId(dependencyId).isResolved(isResolved).build());
             }
             return dependencies;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * deleteTask.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public boolean deleteTask(String taskId) {
             ensureInitialized();
@@ -1696,7 +2107,11 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getUnresolvedDependenciesCount.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
          */
         public int getUnresolvedDependenciesCount(String taskId) {
             ensureInitialized();
@@ -1717,17 +2132,24 @@ public class TeamDatabase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTasksDependingOn.
+         * 
+         * @param dependsOnTaskId dependsOnTaskId
+         * @return the result
+         * @since 0.1.7
          */
         public List<TaskRecord> getTasksDependingOn(String dependsOnTaskId) {
             ensureInitialized();
             return currentSessionTables().tasks.values().stream()
-                    .filter(taskRecord -> taskRecord.getDependencies().contains(dependsOnTaskId))
-                    .toList();
+                    .filter(taskRecord -> taskRecord.getDependencies().contains(dependsOnTaskId)).toList();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * verifyAndFixTaskConsistency.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
          */
         public List<TaskRecord> verifyAndFixTaskConsistency(String teamName) {
             ensureInitialized();
@@ -1746,6 +2168,13 @@ public class TeamDatabase {
             return refreshed;
         }
 
+        /**
+         * refreshBlockedTasks.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
+         */
         private List<TaskRecord> refreshBlockedTasks(String teamName) {
             Map<String, TaskRecord> tasks = currentSessionTables().tasks;
             List<TaskRecord> refreshed = new ArrayList<>();
@@ -1762,6 +2191,13 @@ public class TeamDatabase {
             return refreshed;
         }
 
+        /**
+         * refreshTaskStatusForDependencies.
+         * 
+         * @param taskRecord taskRecord
+         * @param tasks tasks
+         * @since 0.1.7
+         */
         private void refreshTaskStatusForDependencies(TaskRecord taskRecord, Map<String, TaskRecord> tasks) {
             if (taskRecord.getDependencies().isEmpty()
                     || !"blocked".equals(taskRecord.getStatus()) && !"pending".equals(taskRecord.getStatus())) {
@@ -1779,10 +2215,25 @@ public class TeamDatabase {
             }
         }
 
+        /**
+         * wouldCreateCycle.
+         * 
+         * @param taskId taskId
+         * @param dependsOnTaskId dependsOnTaskId
+         * @return the result
+         * @since 0.1.7
+         */
         private boolean wouldCreateCycle(String taskId, String dependsOnTaskId) {
             return reaches(dependsOnTaskId, taskId, new java.util.HashSet<>(), currentSessionTables().tasks);
         }
 
+        /**
+         * detectCycle.
+         * 
+         * @param adjacency adjacency
+         * @return the result
+         * @since 0.1.7
+         */
         private List<String> detectCycle(Map<String, List<String>> adjacency) {
             java.util.Set<String> visiting = new java.util.LinkedHashSet<>();
             java.util.Set<String> visited = new java.util.HashSet<>();
@@ -1795,13 +2246,19 @@ public class TeamDatabase {
             return List.of();
         }
 
-        private List<String> detectCycleFrom(
-                String node,
-                Map<String, List<String>> adjacency,
-                java.util.Set<String> visiting,
-                java.util.Set<String> visited,
-                List<String> path
-        ) {
+        /**
+         * detectCycleFrom.
+         * 
+         * @param node node
+         * @param adjacency adjacency
+         * @param visiting visiting
+         * @param visited visited
+         * @param path path
+         * @return the result
+         * @since 0.1.7
+         */
+        private List<String> detectCycleFrom(String node, Map<String, List<String>> adjacency,
+                java.util.Set<String> visiting, java.util.Set<String> visited, List<String> path) {
             if (visited.contains(node)) {
                 return List.of();
             }
@@ -1825,6 +2282,14 @@ public class TeamDatabase {
             return List.of();
         }
 
+        /**
+         * isValidTaskTransition.
+         * 
+         * @param current current
+         * @param next next
+         * @return the result
+         * @since 0.1.7
+         */
         private boolean isValidTaskTransition(String current, String next) {
             if (current == null || next == null) {
                 return false;
@@ -1841,12 +2306,18 @@ public class TeamDatabase {
             };
         }
 
-        private boolean reaches(
-                String currentTaskId,
-                String targetTaskId,
-                java.util.Set<String> seen,
-                Map<String, TaskRecord> tasks
-        ) {
+        /**
+         * reaches.
+         * 
+         * @param currentTaskId currentTaskId
+         * @param targetTaskId targetTaskId
+         * @param seen seen
+         * @param tasks tasks
+         * @return the result
+         * @since 0.1.7
+         */
+        private boolean reaches(String currentTaskId, String targetTaskId, java.util.Set<String> seen,
+                Map<String, TaskRecord> tasks) {
             if (currentTaskId.equals(targetTaskId)) {
                 return true;
             }

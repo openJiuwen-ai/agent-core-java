@@ -31,28 +31,53 @@ import java.util.regex.Pattern;
  */
 final class FullCompactProcessorUtil {
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final Pattern CONTENT_PATTERN = Pattern.compile(
-            "\"content\"\\s*:\\s*\"(?<content>(?:[^\"\\\\]|\\\\.)*)\"",
-            Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern CONTENT_PATTERN =
+        Pattern.compile("\"content\"\\s*:\\s*\"(?<content>(?:[^\"\\\\]|\\\\.)*)\"", Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern READ_FILE_PATH_PATTERN = Pattern.compile("\"file_path\"\\s*:\\s*\"([^\"]+)\"");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern READ_FILE_LINE_COUNT_PATTERN = Pattern.compile("\"line_count\"\\s*:\\s*(\\d+)");
 
+    /**
+     * FullCompactProcessorUtil.
+     * 
+     * @since 0.1.7
+     */
     private FullCompactProcessorUtil() {
     }
 
-    record ReinjectedStateBuilderSpec(
-            String name,
-            String label,
-            StateBuilder builder
-    ) {
+    record ReinjectedStateBuilderSpec(String name, String label, StateBuilder builder) {
     }
 
     @FunctionalInterface
     interface StateBuilder {
-        Object build(
-                FullCompactProcessor processor,
-                ModelContext context,
-                List<BaseMessage> messages,
+        /**
+         * build.
+         * 
+         * @param processor processor
+         * @param context context
+         * @param messages messages
+         * @param messagesToKeep messagesToKeep
+         * @return the result
+         * @since 0.1.7
+         */
+        Object build(FullCompactProcessor processor, ModelContext context, List<BaseMessage> messages,
                 List<BaseMessage> messagesToKeep);
     }
 
@@ -75,19 +100,13 @@ final class FullCompactProcessorUtil {
         }
     }
 
-    static String buildPlanReinjectedContent(
-            FullCompactProcessor processor,
-            ModelContext context,
-            List<BaseMessage> messages,
-            List<BaseMessage> messagesToKeep) {
+    static String buildPlanReinjectedContent(FullCompactProcessor processor, ModelContext context,
+            List<BaseMessage> messages, List<BaseMessage> messagesToKeep) {
         return "";
     }
 
-    static List<UserMessage> buildSkillReinjectedContent(
-            FullCompactProcessor processor,
-            ModelContext context,
-            List<BaseMessage> messages,
-            List<BaseMessage> messagesToKeep) {
+    static List<UserMessage> buildSkillReinjectedContent(FullCompactProcessor processor, ModelContext context,
+            List<BaseMessage> messages, List<BaseMessage> messagesToKeep) {
         Set<String> keepSignatures = new LinkedHashSet<>();
         for (BaseMessage message : messagesToKeep) {
             keepSignatures.add(messageSignature(message));
@@ -98,9 +117,8 @@ final class FullCompactProcessorUtil {
         List<List<BaseMessage>> rounds = groupCompletedApiRounds(messages);
         for (int index = rounds.size() - 1; index >= 0; index--) {
             List<BaseMessage> roundMessages = rounds.get(index);
-            List<String> roundSignatures = roundMessages.stream()
-                    .map(FullCompactProcessorUtil::messageSignature)
-                    .toList();
+            List<String> roundSignatures =
+                roundMessages.stream().map(FullCompactProcessorUtil::messageSignature).toList();
             if (seenRoundSignatures.contains(roundSignatures)) {
                 continue;
             }
@@ -121,27 +139,20 @@ final class FullCompactProcessorUtil {
         for (int index = selectedRounds.size() - 1; index >= 0; index--) {
             List<BaseMessage> roundMessages = selectedRounds.get(index);
             String serializedRound = String.join("\n", roundMessages.stream()
-                    .map(message -> "role=" + message.getRole() + ", content=" + messageToText(message))
-                    .toList());
+                    .map(message -> "role=" + message.getRole() + ", content=" + messageToText(message)).toList());
             reinjectedMessages.add(new UserMessage(
                     processor.getStateMarker() + "\n[SKILLS]\n" + processor.truncateStateText(serializedRound)));
         }
         return reinjectedMessages;
     }
 
-    static String buildFileReinjectedContent(
-            FullCompactProcessor processor,
-            ModelContext context,
-            List<BaseMessage> messages,
-            List<BaseMessage> messagesToKeep) {
+    static String buildFileReinjectedContent(FullCompactProcessor processor, ModelContext context,
+            List<BaseMessage> messages, List<BaseMessage> messagesToKeep) {
         return "";
     }
 
-    static String buildTaskStatusReinjectedContent(
-            FullCompactProcessor processor,
-            ModelContext context,
-            List<BaseMessage> messages,
-            List<BaseMessage> messagesToKeep) {
+    static String buildTaskStatusReinjectedContent(FullCompactProcessor processor, ModelContext context,
+            List<BaseMessage> messages, List<BaseMessage> messagesToKeep) {
         Map<String, Object> sessionState = getSessionState(context);
         Object taskStateRaw = sessionState.get("task_state");
         Map<?, ?> taskState = taskStateRaw instanceof Map<?, ?> map ? map : Map.of();
@@ -165,11 +176,8 @@ final class FullCompactProcessorUtil {
         return processor.truncateStateText(String.join("\n", lines));
     }
 
-    static String buildPlanModeReinjectedContent(
-            FullCompactProcessor processor,
-            ModelContext context,
-            List<BaseMessage> messages,
-            List<BaseMessage> messagesToKeep) {
+    static String buildPlanModeReinjectedContent(FullCompactProcessor processor, ModelContext context,
+            List<BaseMessage> messages, List<BaseMessage> messagesToKeep) {
         Map<String, Object> sessionState = getSessionState(context);
         Object planModeRaw = sessionState.get("plan_mode");
         if (!(planModeRaw instanceof Map<?, ?> planMode)) {
@@ -216,9 +224,8 @@ final class FullCompactProcessorUtil {
             if (!(message instanceof AssistantMessage assistantMessage)) {
                 continue;
             }
-            List<ToolCall> toolCalls = assistantMessage.getToolCalls() != null
-                    ? assistantMessage.getToolCalls()
-                    : List.of();
+            List<ToolCall> toolCalls =
+                assistantMessage.getToolCalls() != null ? assistantMessage.getToolCalls() : List.of();
             for (ToolCall toolCall : toolCalls) {
                 String toolName = toolCall.getName() != null ? toolCall.getName() : "";
                 if (!"read_file".equals(toolName)) {
@@ -293,14 +300,14 @@ final class FullCompactProcessorUtil {
         if ("glob".equals(toolName)) {
             String pattern = extractArgumentValue(parsedArguments, argumentsText, List.of("pattern"));
             String path = extractArgumentValue(parsedArguments, argumentsText, List.of("path"));
-            return "glob pattern=" + (!pattern.isBlank() ? pattern : "[unknown]")
-                    + " path=" + (!path.isBlank() ? path : ".");
+            return "glob pattern=" + (!pattern.isBlank() ? pattern : "[unknown]") + " path="
+                    + (!path.isBlank() ? path : ".");
         }
         if ("grep".equals(toolName)) {
             String pattern = extractArgumentValue(parsedArguments, argumentsText, List.of("pattern"));
             String path = extractArgumentValue(parsedArguments, argumentsText, List.of("path", "file_path"));
-            return "grep pattern=" + (!pattern.isBlank() ? pattern : "[unknown]")
-                    + " path=" + (!path.isBlank() ? path : "[unknown]");
+            return "grep pattern=" + (!pattern.isBlank() ? pattern : "[unknown]") + " path="
+                    + (!path.isBlank() ? path : "[unknown]");
         }
         return toolName + " args=" + argumentsText;
     }
@@ -394,47 +401,28 @@ final class FullCompactProcessorUtil {
     }
 
     static BaseMessage copyMessage(BaseMessage message) {
-        Map<String, Object> metadata = message.getMetadata() != null
-                ? new LinkedHashMap<>(message.getMetadata())
-                : null;
+        Map<String, Object> metadata =
+            message.getMetadata() != null ? new LinkedHashMap<>(message.getMetadata()) : null;
         if (message instanceof AssistantMessage assistantMessage) {
-            return AssistantMessage.builder()
-                    .role(assistantMessage.getRole())
-                    .content(assistantMessage.getContent())
-                    .name(assistantMessage.getName())
-                    .metadata(metadata)
+            return AssistantMessage.builder().role(assistantMessage.getRole()).content(assistantMessage.getContent())
+                    .name(assistantMessage.getName()).metadata(metadata)
                     .toolCalls(assistantMessage.getToolCalls() != null
                             ? new ArrayList<>(assistantMessage.getToolCalls())
                             : null)
-                    .usageMetadata(assistantMessage.getUsageMetadata())
-                    .finishReason(assistantMessage.getFinishReason())
+                    .usageMetadata(assistantMessage.getUsageMetadata()).finishReason(assistantMessage.getFinishReason())
                     .parserContent(assistantMessage.getParserContent())
-                    .reasoningContent(assistantMessage.getReasoningContent())
-                    .build();
+                    .reasoningContent(assistantMessage.getReasoningContent()).build();
         }
         if (message instanceof ToolMessage toolMessage) {
-            return ToolMessage.builder()
-                    .role(toolMessage.getRole())
-                    .content(toolMessage.getContent())
-                    .name(toolMessage.getName())
-                    .metadata(metadata)
-                    .toolCallId(toolMessage.getToolCallId())
-                    .build();
+            return ToolMessage.builder().role(toolMessage.getRole()).content(toolMessage.getContent())
+                    .name(toolMessage.getName()).metadata(metadata).toolCallId(toolMessage.getToolCallId()).build();
         }
         if (message instanceof UserMessage) {
-            return UserMessage.builder()
-                    .role(message.getRole())
-                    .content(message.getContent())
-                    .name(message.getName())
-                    .metadata(metadata)
-                    .build();
+            return UserMessage.builder().role(message.getRole()).content(message.getContent()).name(message.getName())
+                    .metadata(metadata).build();
         }
-        return BaseMessage.builder()
-                .role(message.getRole())
-                .content(message.getContent())
-                .name(message.getName())
-                .metadata(metadata)
-                .build();
+        return BaseMessage.builder().role(message.getRole()).content(message.getContent()).name(message.getName())
+                .metadata(metadata).build();
     }
 
     static Session getSessionRef(ModelContext context) {
@@ -444,6 +432,13 @@ final class FullCompactProcessorUtil {
         return null;
     }
 
+    /**
+     * getSessionState.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> getSessionState(ModelContext context) {
         Session session = getSessionRef(context);
         if (session == null) {
@@ -460,6 +455,13 @@ final class FullCompactProcessorUtil {
         return Map.of();
     }
 
+    /**
+     * asInt.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static int asInt(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -474,17 +476,19 @@ final class FullCompactProcessorUtil {
         return 0;
     }
 
+    /**
+     * extractNumericHint.
+     * 
+     * @param toolName toolName
+     * @param resultText resultText
+     * @return the result
+     * @since 0.1.7
+     */
     private static String extractNumericHint(String toolName, String resultText) {
-        Map<String, String> keyByTool = Map.of(
-                "glob", "count",
-                "grep", "count",
-                "edit_file", "replacements",
-                "write_file", "bytes_written");
-        Map<String, String> labelByTool = Map.of(
-                "glob", "matches",
-                "grep", "hits",
-                "edit_file", "replacements",
-                "write_file", "bytes_written");
+        Map<String, String> keyByTool =
+            Map.of("glob", "count", "grep", "count", "edit_file", "replacements", "write_file", "bytes_written");
+        Map<String, String> labelByTool =
+            Map.of("glob", "matches", "grep", "hits", "edit_file", "replacements", "write_file", "bytes_written");
         String key = keyByTool.get(toolName);
         if (key == null) {
             return "";

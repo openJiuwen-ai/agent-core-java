@@ -12,9 +12,10 @@ import java.util.Map;
  * Workflow trace span with workflow/component metadata and stream data.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.tracer.span.TraceWorkflowSpan}.
+ * 
+ * @since 0.1.7
  */
 public class TraceWorkflowSpan extends Span {
-
     private String executionId;
     private List<String> sourceIds;
     private String workflowId;
@@ -32,13 +33,21 @@ public class TraceWorkflowSpan extends Span {
     private List<Object> streamOutputs;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TraceWorkflowSpan.
+     * 
+     * @since 0.1.7
      */
     public TraceWorkflowSpan() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TraceWorkflowSpan.
+     * 
+     * @param traceId traceId
+     * @param invokeId invokeId
+     * @param parentInvokeId parentInvokeId
+     * @param parentNodeId parentNodeId
+     * @since 0.1.7
      */
     public TraceWorkflowSpan(String traceId, String invokeId, String parentInvokeId, String parentNodeId) {
         super(traceId, invokeId, parentInvokeId);
@@ -48,6 +57,9 @@ public class TraceWorkflowSpan extends Span {
 
     /**
      * Append a stream output chunk.
+     * 
+     * @param chunk chunk
+     * @since 0.1.7
      */
     public void appendStreamOutput(Object chunk) {
         if (streamOutputs == null) {
@@ -58,6 +70,9 @@ public class TraceWorkflowSpan extends Span {
 
     /**
      * Append a stream input chunk.
+     * 
+     * @param chunk chunk
+     * @since 0.1.7
      */
     public void appendStreamInput(Object chunk) {
         if (streamInputs == null) {
@@ -66,11 +81,15 @@ public class TraceWorkflowSpan extends Span {
         streamInputs.add(chunk);
     }
 
+    /**
+     * setField.
+     * 
+     * @param fieldName fieldName
+     * @param value value
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected void setField(String fieldName, Object value) {
         switch (fieldName) {
             case "execution_id":
@@ -160,11 +179,14 @@ public class TraceWorkflowSpan extends Span {
         }
     }
 
+    /**
+     * snapshot.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public TraceWorkflowSpan snapshot() {
         TraceWorkflowSpan copy = new TraceWorkflowSpan();
         copyBaseFields(copy);
@@ -178,8 +200,8 @@ public class TraceWorkflowSpan extends Span {
         copy.componentType = componentType;
         copy.loopNodeId = loopNodeId;
         copy.loopIndex = loopIndex;
-        copy.llmInvokeData = llmInvokeData == null ? null
-                : (Map<String, Map<String, Object>>) (Map<?, ?>) deepCopyMap(llmInvokeData);
+        copy.llmInvokeData =
+            llmInvokeData == null ? null : (Map<String, Map<String, Object>>) (Map<?, ?>) deepCopyMap(llmInvokeData);
         copy.parentNodeId = parentNodeId;
         copy.interactiveInputs = deepCopyValue(interactiveInputs);
         copy.streamInputs = streamInputs == null ? null : deepCopyList(streamInputs);
@@ -189,210 +211,300 @@ public class TraceWorkflowSpan extends Span {
 
     // Getters and setters
     /**
-     * Auto-generated for codecheck compliance.
+     * getExecutionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getExecutionId() {
         return executionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setExecutionId.
+     * 
+     * @param executionId executionId
+     * @since 0.1.7
      */
     public void setExecutionId(String executionId) {
         this.executionId = executionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSourceIds.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getSourceIds() {
         return sourceIds;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSourceIds.
+     * 
+     * @param sourceIds sourceIds
+     * @since 0.1.7
      */
     public void setSourceIds(List<String> sourceIds) {
         this.sourceIds = sourceIds;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkflowId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getWorkflowId() {
         return workflowId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWorkflowId.
+     * 
+     * @param workflowId workflowId
+     * @since 0.1.7
      */
     public void setWorkflowId(String workflowId) {
         this.workflowId = workflowId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkflowVersion.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getWorkflowVersion() {
         return workflowVersion;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWorkflowVersion.
+     * 
+     * @param workflowVersion workflowVersion
+     * @since 0.1.7
      */
     public void setWorkflowVersion(String workflowVersion) {
         this.workflowVersion = workflowVersion;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkflowName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getWorkflowName() {
         return workflowName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWorkflowName.
+     * 
+     * @param workflowName workflowName
+     * @since 0.1.7
      */
     public void setWorkflowName(String workflowName) {
         this.workflowName = workflowName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getComponentId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getComponentId() {
         return componentId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setComponentId.
+     * 
+     * @param componentId componentId
+     * @since 0.1.7
      */
     public void setComponentId(String componentId) {
         this.componentId = componentId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getComponentName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getComponentName() {
         return componentName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setComponentName.
+     * 
+     * @param componentName componentName
+     * @since 0.1.7
      */
     public void setComponentName(String componentName) {
         this.componentName = componentName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getComponentType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getComponentType() {
         return componentType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setComponentType.
+     * 
+     * @param componentType componentType
+     * @since 0.1.7
      */
     public void setComponentType(String componentType) {
         this.componentType = componentType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLoopNodeId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getLoopNodeId() {
         return loopNodeId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLoopNodeId.
+     * 
+     * @param loopNodeId loopNodeId
+     * @since 0.1.7
      */
     public void setLoopNodeId(String loopNodeId) {
         this.loopNodeId = loopNodeId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLoopIndex.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getLoopIndex() {
         return loopIndex;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLoopIndex.
+     * 
+     * @param loopIndex loopIndex
+     * @since 0.1.7
      */
     public void setLoopIndex(Integer loopIndex) {
         this.loopIndex = loopIndex;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLlmInvokeData.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Map<String, Object>> getLlmInvokeData() {
         return llmInvokeData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLlmInvokeData.
+     * 
+     * @param llmInvokeData llmInvokeData
+     * @since 0.1.7
      */
     public void setLlmInvokeData(Map<String, Map<String, Object>> llmInvokeData) {
         this.llmInvokeData = llmInvokeData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getParentNodeId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getParentNodeId() {
         return parentNodeId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setParentNodeId.
+     * 
+     * @param parentNodeId parentNodeId
+     * @since 0.1.7
      */
     public void setParentNodeId(String parentNodeId) {
         this.parentNodeId = parentNodeId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInteractiveInputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getInteractiveInputs() {
         return interactiveInputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInteractiveInputs.
+     * 
+     * @param interactiveInputs interactiveInputs
+     * @since 0.1.7
      */
     public void setInteractiveInputs(Object interactiveInputs) {
         this.interactiveInputs = interactiveInputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStreamInputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> getStreamInputs() {
         return streamInputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStreamInputs.
+     * 
+     * @param streamInputs streamInputs
+     * @since 0.1.7
      */
     public void setStreamInputs(List<Object> streamInputs) {
         this.streamInputs = streamInputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStreamOutputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> getStreamOutputs() {
         return streamOutputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStreamOutputs.
+     * 
+     * @param streamOutputs streamOutputs
+     * @since 0.1.7
      */
     public void setStreamOutputs(List<Object> streamOutputs) {
         this.streamOutputs = streamOutputs;

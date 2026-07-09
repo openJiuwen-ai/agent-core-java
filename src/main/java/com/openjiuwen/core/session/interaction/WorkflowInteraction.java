@@ -24,20 +24,31 @@ import java.util.Map;
  * <p>
  * Throws proper {@link GraphInterrupt} with {@link Interrupt} value so the graph engine
  * can recover from the interruption.
+ * 
+ * @since 0.1.7
  */
 public class WorkflowInteraction extends BaseInteraction {
-
     private final String nodeId;
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowInteraction.
+     * 
+     * @param session session
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public WorkflowInteraction(BaseSession session) {
         super(session, getWorkflowInteractiveInput(session));
         this.nodeId = getExecutableId(session);
     }
 
+    /**
+     * getWorkflowInteractiveInput.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object getWorkflowInteractiveInput(BaseSession session) {
         if (!(session.state() instanceof WorkflowStateCollection stateCollection)) {
             return null;
@@ -56,6 +67,13 @@ public class WorkflowInteraction extends BaseInteraction {
         }
     }
 
+    /**
+     * getExecutableId.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static String getExecutableId(BaseSession session) {
         if (session instanceof NodeSession nodeSession) {
             return nodeSession.executableId();
@@ -63,10 +81,14 @@ public class WorkflowInteraction extends BaseInteraction {
         return session.sessionId();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * waitUserInputs.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object waitUserInputs(Object value) {
         Object res = getNextInteractiveInput();
         if (res != null) {
@@ -93,14 +115,17 @@ public class WorkflowInteraction extends BaseInteraction {
         }
 
         // Throw proper GraphInterrupt with recoverable Interrupt value
-        throw new GraphInterruptRuntimeWrapper(
-                new GraphInterrupt(new Interrupt(outputData)));
+        throw new GraphInterruptRuntimeWrapper(new GraphInterrupt(new Interrupt(outputData)));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * userLatestInput.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object userLatestInput(Object value) {
         if (latestInteractiveInputs != null) {
             Object res = latestInteractiveInputs;
@@ -120,19 +145,23 @@ public class WorkflowInteraction extends BaseInteraction {
             }
         }
 
-        throw new GraphInterruptRuntimeWrapper(
-                new GraphInterrupt(new Interrupt(outputData)));
+        throw new GraphInterruptRuntimeWrapper(new GraphInterrupt(new Interrupt(outputData)));
     }
 
     /**
      * Runtime wrapper for {@link GraphInterrupt} so it can be thrown from methods
      * that don't declare checked exceptions.
+     * 
+     * @since 0.1.7
      */
     public static class GraphInterruptRuntimeWrapper extends RuntimeException {
         private final GraphInterrupt graphInterrupt;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * GraphInterruptRuntimeWrapper.
+         * 
+         * @param cause cause
+         * @since 0.1.7
          */
         public GraphInterruptRuntimeWrapper(GraphInterrupt cause) {
             super(cause.getMessage(), cause);
@@ -140,7 +169,10 @@ public class WorkflowInteraction extends BaseInteraction {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getGraphInterrupt.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public GraphInterrupt getGraphInterrupt() {
             return graphInterrupt;

@@ -13,24 +13,37 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Signals when the agent enters its first task-loop iteration.
- *
- * <p>Mirrors Python FirstIterationGate: external code can
+ * <p>
+ * Mirrors Python FirstIterationGate: external code can
  * {@code gate.await()} to block until the agent is actually inside
- * its loop and ready to receive steer / follow_up inputs.</p>
+ * its loop and ready to receive steer / follow_up inputs.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class FirstIterationGate extends DeepAgentRail {
-
     private final AtomicBoolean event = new AtomicBoolean(false);
+
+    /**
+     * CountDownLatch.
+     * 
+     * @since 0.1.7
+     */
     private volatile CountDownLatch latch = new CountDownLatch(1);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * FirstIterationGate.
+     * 
+     * @since 0.1.7
      */
     public FirstIterationGate() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * priority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public int priority() {
@@ -38,28 +51,43 @@ public class FirstIterationGate extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * await.
+     * 
+     * @throws InterruptedException InterruptedException
+     * @since 0.1.7
      */
     public void await() throws InterruptedException {
         latch.await();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * await.
+     * 
+     * @param timeout timeout
+     * @param unit unit
+     * @return the result
+     * @throws InterruptedException InterruptedException
+     * @since 0.1.7
      */
     public boolean await(long timeout, TimeUnit unit) throws InterruptedException {
         return latch.await(timeout, unit);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isReady.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isReady() {
         return event.get();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * beforeModelCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
     public void beforeModelCall(AgentCallbackContext ctx) {
@@ -69,7 +97,9 @@ public class FirstIterationGate extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * reset.
+     * 
+     * @since 0.1.7
      */
     public void reset() {
         event.set(false);

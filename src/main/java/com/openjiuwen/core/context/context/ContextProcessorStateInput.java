@@ -13,21 +13,11 @@ import java.util.List;
  * Input snapshot for building a compression state event.
  * <p>
  * Mirrors Python's {@code ContextProcessorStateInput}.
+ * 
+ * @since 0.1.7
  */
-public record ContextProcessorStateInput(
-        String operationId,
-        String status,
-        String phase,
-        String trigger,
-        ContextProcessor processor,
-        String reason,
-        List<BaseMessage> beforeMessages,
-        List<BaseMessage> afterMessages,
-        double startedAt,
-        Double endedAt,
-        String error,
-        List<Integer> messagesToModify,
-        boolean isForce,
-        Integer contextMax
-) {
+public record ContextProcessorStateInput(String operationId, String status, String phase, String trigger,
+        ContextProcessor processor, String reason, List<BaseMessage> beforeMessages, List<BaseMessage> afterMessages,
+        double startedAt, Double endedAt, String error, List<Integer> messagesToModify, boolean isForce,
+        Integer contextMax) {
 }

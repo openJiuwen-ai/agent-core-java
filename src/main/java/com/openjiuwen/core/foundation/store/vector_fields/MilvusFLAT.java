@@ -12,21 +12,29 @@ import java.util.Map;
  * <p>
  * Performs exact nearest neighbor search without approximation.
  * Highest accuracy but higher memory usage and slower search.
+ * 
+ * @since 0.1.7
  */
 public class MilvusFLAT extends MilvusVectorField {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getIndexType() {
         return "flat";
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toDict.
+     * 
+     * @param stage stage
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> toDict(String stage) {
         return new HashMap<>();
     }

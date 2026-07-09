@@ -15,9 +15,10 @@ import java.util.Map;
  * Base trace span class holding common trace properties.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.tracer.span.Span}.
+ * 
+ * @since 0.1.7
  */
 public class Span {
-
     private String traceId;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
@@ -31,13 +32,20 @@ public class Span {
     private List<Map<String, Object>> onInvokeData;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Span.
+     * 
+     * @since 0.1.7
      */
     public Span() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Span.
+     * 
+     * @param traceId traceId
+     * @param invokeId invokeId
+     * @param parentInvokeId parentInvokeId
+     * @since 0.1.7
      */
     public Span(String traceId, String invokeId, String parentInvokeId) {
         this.traceId = traceId;
@@ -47,6 +55,9 @@ public class Span {
 
     /**
      * Update span attributes from a data map.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     public void update(Map<String, Object> data) {
         if (data == null) {
@@ -59,6 +70,9 @@ public class Span {
 
     /**
      * Append a child invoke ID.
+     * 
+     * @param invokeId invokeId
+     * @since 0.1.7
      */
     public void appendChildInvokeId(String invokeId) {
         if (childInvokesId == null) {
@@ -68,10 +82,14 @@ public class Span {
     }
 
     // -- field setters for reflection-like update --
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * setField.
+     * 
+     * @param name name
+     * @param value value
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     protected void setField(String name, Object value) {
         switch (name) {
             case "start_time":
@@ -122,6 +140,9 @@ public class Span {
 
     /**
      * Create a detached snapshot so previously emitted trace frames are not mutated later.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Span snapshot() {
         Span copy = new Span();
@@ -130,7 +151,10 @@ public class Span {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * copyBaseFields.
+     * 
+     * @param copy copy
+     * @since 0.1.7
      */
     protected void copyBaseFields(Span copy) {
         copy.traceId = traceId;
@@ -146,10 +170,14 @@ public class Span {
         copy.onInvokeData = deepCopyMapList(onInvokeData);
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * deepCopyMap.
+     * 
+     * @param source source
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     protected static Map<String, Object> deepCopyMap(Map<?, ?> source) {
         if (source == null) {
             return null;
@@ -161,10 +189,14 @@ public class Span {
         return copy;
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * deepCopyMapList.
+     * 
+     * @param source source
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     protected static List<Map<String, Object>> deepCopyMapList(List<Map<String, Object>> source) {
         if (source == null) {
             return null;
@@ -177,11 +209,15 @@ public class Span {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deepCopyList.
+     * 
+     * @param source source
+     * @return the result
+     * @since 0.1.7
      */
     protected static List<Object> deepCopyList(List<?> source) {
         if (source == null) {
-            return null;
+            return java.util.Collections.emptyList();
         }
         List<Object> copy = new ArrayList<>(source.size());
         for (Object item : source) {
@@ -191,16 +227,15 @@ public class Span {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deepCopyValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     protected static Object deepCopyValue(Object value) {
-        if (value == null
-                || value instanceof String
-                || value instanceof Number
-                || value instanceof Boolean
-                || value instanceof Character
-                || value instanceof Enum<?>
-                || value instanceof LocalDateTime) {
+        if (value == null || value instanceof String || value instanceof Number || value instanceof Boolean
+                || value instanceof Character || value instanceof Enum<?> || value instanceof LocalDateTime) {
             return value;
         }
         if (value instanceof Span span) {
@@ -226,154 +261,220 @@ public class Span {
     // -- Getters and Setters --
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTraceId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTraceId() {
         return traceId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTraceId.
+     * 
+     * @param traceId traceId
+     * @since 0.1.7
      */
     public void setTraceId(String traceId) {
         this.traceId = traceId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStartTime.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public LocalDateTime getStartTime() {
         return startTime;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStartTime.
+     * 
+     * @param startTime startTime
+     * @since 0.1.7
      */
     public void setStartTime(LocalDateTime startTime) {
         this.startTime = startTime;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEndTime.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public LocalDateTime getEndTime() {
         return endTime;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEndTime.
+     * 
+     * @param endTime endTime
+     * @since 0.1.7
      */
     public void setEndTime(LocalDateTime endTime) {
         this.endTime = endTime;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getInputs() {
         return inputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInputs.
+     * 
+     * @param inputs inputs
+     * @since 0.1.7
      */
     public void setInputs(Object inputs) {
         this.inputs = inputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOutputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getOutputs() {
         return outputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setOutputs.
+     * 
+     * @param outputs outputs
+     * @since 0.1.7
      */
     public void setOutputs(Object outputs) {
         this.outputs = outputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getError.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getError() {
         return error;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setError.
+     * 
+     * @param error error
+     * @since 0.1.7
      */
     public void setError(Map<String, Object> error) {
         this.error = error;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInvokeId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getInvokeId() {
         return invokeId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInvokeId.
+     * 
+     * @param invokeId invokeId
+     * @since 0.1.7
      */
     public void setInvokeId(String invokeId) {
         this.invokeId = invokeId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getParentInvokeId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getParentInvokeId() {
         return parentInvokeId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setParentInvokeId.
+     * 
+     * @param parentInvokeId parentInvokeId
+     * @since 0.1.7
      */
     public void setParentInvokeId(String parentInvokeId) {
         this.parentInvokeId = parentInvokeId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getChildInvokesId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getChildInvokesId() {
         return childInvokesId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setChildInvokesId.
+     * 
+     * @param childInvokesId childInvokesId
+     * @since 0.1.7
      */
     public void setChildInvokesId(List<String> childInvokesId) {
         this.childInvokesId = childInvokesId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStatus.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getStatus() {
         return status;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStatus.
+     * 
+     * @param status status
+     * @since 0.1.7
      */
     public void setStatus(String status) {
         this.status = status;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOnInvokeData.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Map<String, Object>> getOnInvokeData() {
         return onInvokeData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setOnInvokeData.
+     * 
+     * @param onInvokeData onInvokeData
+     * @since 0.1.7
      */
     public void setOnInvokeData(List<Map<String, Object>> onInvokeData) {
         this.onInvokeData = onInvokeData;

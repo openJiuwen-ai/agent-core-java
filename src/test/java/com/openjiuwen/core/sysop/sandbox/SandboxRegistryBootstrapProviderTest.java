@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.sysop.sandbox;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.aio.AioCodeProvider;
@@ -12,15 +15,12 @@ import com.openjiuwen.extensions.sys_operation.sandbox.providers.aio.AioShellPro
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.JiuwenBoxCodeProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.JiuwenBoxFSProvider;
 import com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox.JiuwenBoxShellProvider;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class SandboxRegistryBootstrapProviderTest {
-
     private SandboxEndpoint endpoint;
     private SandboxGatewayConfig config;
 
@@ -30,13 +30,8 @@ class SandboxRegistryBootstrapProviderTest {
         endpoint = Mockito.mock(SandboxEndpoint.class);
         Mockito.when(endpoint.getBaseUrl()).thenReturn("http://localhost:8080");
         Mockito.when(endpoint.getSandboxId()).thenReturn("sbx-test");
-        config = SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .baseUrl("http://localhost:8080")
-                        .sandboxType("aio")
-                        .build())
-                .build();
+        config = SandboxGatewayConfig.builder().launcherConfig(SandboxLauncherConfig.builder()
+                .launcherType("pre_deploy").baseUrl("http://localhost:8080").sandboxType("aio").build()).build();
     }
 
     @Test
@@ -73,7 +68,6 @@ class SandboxRegistryBootstrapProviderTest {
     @Test
     void testUnknownProviderTypeThrows() {
         assertThatThrownBy(() -> SandboxRegistry.createProvider("unknown", "fs", endpoint, config))
-                .isInstanceOf(UnsupportedOperationException.class)
-                .hasMessageContaining("does not support operation");
+                .isInstanceOf(UnsupportedOperationException.class).hasMessageContaining("does not support operation");
     }
 }

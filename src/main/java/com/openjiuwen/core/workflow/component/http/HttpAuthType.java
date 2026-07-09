@@ -8,8 +8,8 @@ package com.openjiuwen.core.workflow.component.http;
  * HTTP authentication type enum.
  * <p>
  * Mirrors Python's {@code HttpAuthType}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 public enum HttpAuthType {
     NONE("none"),
@@ -25,15 +25,22 @@ public enum HttpAuthType {
         this.value = value;
     }
 
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }
 
     /**
      * Convert a string value to the corresponding HttpAuthType enum.
-     *
+     * 
      * @param value the string value to convert
      * @return the corresponding HttpAuthType, or NONE if not found
+     * @since 0.1.7
      */
     public static HttpAuthType fromValue(String value) {
         for (HttpAuthType type : values()) {

@@ -37,14 +37,19 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.LoopComponent}.
  * Implements the {@link LoopComponent} interface for Drawable compatibility.
+ * 
+ * @since 0.1.7
  */
 public class LoopComponentImpl extends WorkflowComponent implements LoopComponent {
-
     private final LoopGroup loopGroup;
     private final Map<String, Object> outputSchema;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LoopComponentImpl.
+     * 
+     * @param loopGroup loopGroup
+     * @param outputSchema outputSchema
+     * @since 0.1.7
      */
     public LoopComponentImpl(LoopGroup loopGroup, Map<String, Object> outputSchema) {
         this.loopGroup = loopGroup;
@@ -52,11 +57,17 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
         loopGroup.checkValidate();
     }
 
+    /**
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         try {
             if (!(inputs instanceof Map)) {
@@ -69,7 +80,6 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
             if (rawInputs == null) {
                 throw new IllegalArgumentException("missing required key " + Constant.INPUTS_KEY);
             }
-
             LoopInput loopInput = LoopInput.fromMap(rawInputs instanceof Map ? (Map<String, Object>) rawInputs : null);
 
             Condition condition;
@@ -77,17 +87,14 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
 
             if (LoopType.ARRAY.getValue().equals(loopType)) {
                 condition = new ArrayConditionInSession(loopInput.getLoopArray());
-
             } else if (LoopType.NUMBER.getValue().equals(loopType)) {
                 int maxLoopLimit = SessionConstants.LOOP_NUMBER_MAX_LIMIT_DEFAULT;
                 Object envLimit = session.getEnv(SessionConstants.LOOP_NUMBER_MAX_LIMIT_KEY);
                 if (envLimit instanceof Number) {
                     maxLoopLimit = ((Number) envLimit).intValue();
                 }
-
-                Integer loopNumber = resolveLoopNumber(rawInputs instanceof Map
-                        ? (Map<String, Object>) rawInputs
-                        : null, loopInput.getLoopNumber());
+                Integer loopNumber = resolveLoopNumber(
+                        rawInputs instanceof Map ? (Map<String, Object>) rawInputs : null, loopInput.getLoopNumber());
                 if (loopNumber == null) {
                     throw new IllegalArgumentException("loop_number variable not found or is None");
                 }
@@ -95,10 +102,8 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
                     throw new IllegalArgumentException("loop_number exceeds maximum limit " + maxLoopLimit);
                 }
                 condition = new NumberConditionInSession(loopNumber);
-
             } else if (LoopType.ALWAYS_TRUE.getValue().equals(loopType)) {
                 condition = new AlwaysTrue();
-
             } else if (LoopType.EXPRESSION.getValue().equals(loopType)) {
                 Object expr = loopInput.getBoolExpression();
                 if (expr instanceof Boolean) {
@@ -107,11 +112,9 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
                 } else {
                     condition = new ExpressionCondition(String.valueOf(expr));
                 }
-
             } else {
                 throw new IllegalArgumentException("invalid loop type '" + loopType + "' for LoopComponent");
             }
-
             OutputCallback outputCallback = new OutputCallback(outputSchema);
             List<com.openjiuwen.core.workflow.component.loop.callback.LoopCallback> callbacks = new ArrayList<>();
             callbacks.add(outputCallback);
@@ -120,15 +123,13 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
                 callbacks.add(new IntermediateLoopVarCallback(loopInput.getIntermediateVar()));
             }
 
-            AdvancedLoopComponentImpl loopComponent = new AdvancedLoopComponentImpl(
-                    loopGroup, condition, loopGroup.getBreakComponents(), callbacks);
-
+            AdvancedLoopComponentImpl loopComponent =
+                new AdvancedLoopComponentImpl(loopGroup, condition, loopGroup.getBreakComponents(), callbacks);
             BaseSession innerSession = session.getInner();
             Map<String, Object> invokeInputs = new LinkedHashMap<>();
             invokeInputs.put(Constant.INPUTS_KEY, Map.of());
             invokeInputs.put(Constant.CONFIG_KEY, inputsMap.get(Constant.CONFIG_KEY));
             return loopComponent.onInvoke(invokeInputs, innerSession);
-
         } catch (RuntimeException e) {
             if (e instanceof com.openjiuwen.core.common.exception.BaseError) {
                 throw e;
@@ -136,39 +137,55 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
             if (containsGraphInterrupt(e)) {
                 throw e;
             }
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_EXECUTION_ERROR,
-                    "comp", session.getComponentId(),
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_EXECUTION_ERROR, "comp", session.getComponentId(),
                     "reason", e.getMessage());
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * graphInvoker.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean graphInvoker() {
         return true;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLoop.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public LoopGroup getLoop() {
         return loopGroup;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getLoopGroup.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public HasDrawable getLoopGroup() {
         return (HasDrawable) loopGroup;
     }
 
+    /**
+     * containsGraphInterrupt.
+     * 
+     * @param throwable throwable
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean containsGraphInterrupt(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {
-            if (current instanceof GraphInterrupt || current instanceof WorkflowInteraction.GraphInterruptRuntimeWrapper) {
+            if (current instanceof GraphInterrupt
+                    || current instanceof WorkflowInteraction.GraphInterruptRuntimeWrapper) {
                 return true;
             }
             current = current.getCause();
@@ -176,11 +193,18 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
         return false;
     }
 
+    /**
+     * resolveLoopNumber.
+     * 
+     * @param rawInputs rawInputs
+     * @param parsedLoopNumber parsedLoopNumber
+     * @return the result
+     * @since 0.1.7
+     */
     private static Integer resolveLoopNumber(Map<String, Object> rawInputs, Integer parsedLoopNumber) {
         if (rawInputs == null || !rawInputs.containsKey("loop_number")) {
             return parsedLoopNumber;
         }
-
         Object rawLoopNumber = rawInputs.get("loop_number");
         if (rawLoopNumber == null) {
             return null;
@@ -194,6 +218,13 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
         throw new IllegalArgumentException("loop_number must be an integer");
     }
 
+    /**
+     * parseIntegralNumber.
+     * 
+     * @param number number
+     * @return the result
+     * @since 0.1.7
+     */
     private static Integer parseIntegralNumber(Number number) {
         if (number instanceof Byte || number instanceof Short || number instanceof Integer || number instanceof Long) {
             return number.intValue();
@@ -201,7 +232,6 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
         if (number instanceof java.math.BigInteger bigInteger) {
             return bigInteger.intValueExact();
         }
-
         BigDecimal decimal = new BigDecimal(number.toString());
         try {
             return decimal.intValueExact();
@@ -210,6 +240,13 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
         }
     }
 
+    /**
+     * parseIntegralString.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     private static Integer parseIntegralString(String text) {
         String trimmed = text == null ? "" : text.trim();
         if (trimmed.isEmpty()) {

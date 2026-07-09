@@ -1,7 +1,12 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.query_rewriter;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.context.context.SessionModelContext;
@@ -11,28 +16,22 @@ import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayDeque;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class QueryRewriterTest {
-
     @Test
     void helperMethodsRepairJsonAndTemplate() {
         assertEquals("a=1 b=2", QueryRewriter.fillTemplate("a={a} b={b}", Map.of("a", "1", "b", "2")));
@@ -58,20 +57,15 @@ class QueryRewriterTest {
 
     @Test
     void contextAwareRewriteSupportsCompressionAndSchemaRepair() {
-        SessionModelContext context = new SessionModelContext(
-                "ctx",
-                "session",
-                ContextEngineConfig.builder().maxContextMessageNum(50).defaultWindowMessageNum(50).build(),
-                List.of(),
-                List.of(),
-                null);
+        SessionModelContext context = new SessionModelContext("ctx", "session",
+                ContextEngineConfig.builder().maxContextMessageNum(50).defaultWindowMessageNum(50).build(), List.of(),
+                List.of(), null);
         context.addMessages(List.of(new UserMessage("你好"), new AssistantMessage("你好！")));
 
-        QueryRewriter rewriter = new QueryRewriter(new QueueLlmClient(
-                "{\"theme\":[\"主题\"],\"summary\":\"摘要\"}",
+        QueryRewriter rewriter = new QueryRewriter(new QueueLlmClient("{\"theme\":[\"主题\"],\"summary\":\"摘要\"}",
                 "{\"before\":\"那运费呢？\",\"intention\":\"咨询\",\"standalone_query\":\"退货运费是谁承担\","
-                        + "\"references\":{},\"missing\":[],\"typo\":\"teh\",\"gibberish\":[],\"from_history\":\"摘要\",}"
-        ), context, 2, "zh");
+                        + "\"references\":{},\"missing\":[],\"typo\":\"teh\",\"gibberish\":[],\"from_history\":\"摘要\",}"),
+                context, 2, "zh");
 
         Map<String, Object> rewritten = rewriter.rewrite("那运费呢？");
 
@@ -91,80 +85,42 @@ class QueryRewriterTest {
         private final Queue<String> responses = new ArrayDeque<>();
 
         private QueueLlmClient(String... responses) {
-            super(
-                    ModelRequestConfig.builder().modelName("test-model").build(),
-                    ModelClientConfig.builder()
-                            .clientProvider("test")
-                            .apiKey("key")
-                            .apiBase("http://localhost")
-                            .verifySsl(false)
-                            .build());
+            super(ModelRequestConfig.builder().modelName("test-model").build(), ModelClientConfig.builder()
+                    .clientProvider("test").apiKey("key").apiBase("http://localhost").verifySsl(false).build());
             this.responses.addAll(List.of(responses));
         }
 
         @Override
-        public AssistantMessage invoke(Object messages,
-                                       Object tools,
-                                       Float temperature,
-                                       Float topP,
-                                       String model,
-                                       Integer maxTokens,
-                                       String stop,
-                                       BaseOutputParser outputParser,
-                                       Float timeout,
-                                       Map<String, Object> kwargs) {
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+                Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             return new AssistantMessage(responses.isEmpty() ? "" : responses.remove());
         }
 
         @Override
-        public Iterator<AssistantMessageChunk> stream(Object messages,
-                                                      Object tools,
-                                                      Float temperature,
-                                                      Float topP,
-                                                      String model,
-                                                      Integer maxTokens,
-                                                      String stop,
-                                                      BaseOutputParser outputParser,
-                                                      Float timeout,
-                                                      Map<String, Object> kwargs) {
+        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+                String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             return List.<AssistantMessageChunk>of().iterator();
         }
 
         @Override
-        public ImageGenerationResponse generateImage(List<UserMessage> messages,
-                                                     String model,
-                                                     String size,
-                                                     String negativePrompt,
-                                                     int n,
-                                                     boolean promptExtend,
-                                                     boolean watermark,
-                                                     int seed,
-                                                     Map<String, Object> kwargs) {
+        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                Map<String, Object> kwargs) {
             return null;
         }
 
         @Override
-        public AudioGenerationResponse generateSpeech(List<UserMessage> messages,
-                                                      String model,
-                                                      String voice,
-                                                      String languageType,
-                                                      Map<String, Object> kwargs) {
+        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+                String languageType, Map<String, Object> kwargs) {
             return null;
         }
 
         @Override
-        public VideoGenerationResponse generateVideo(List<UserMessage> messages,
-                                                     String imgUrl,
-                                                     String audioUrl,
-                                                     String model,
-                                                     String size,
-                                                     String resolution,
-                                                     int duration,
-                                                     boolean promptExtend,
-                                                     boolean watermark,
-                                                     String negativePrompt,
-                                                     Integer seed,
-                                                     Map<String, Object> kwargs) {
+        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             return null;
         }
     }

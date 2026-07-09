@@ -22,9 +22,10 @@ import java.util.regex.Pattern;
  * Variable class for processing string-type placeholders.
  * <p>
  * Mirrors Python's {@code TextableVariable}.
+ * 
+ * @since 0.1.7
  */
 public class TextableVariable extends Variable {
-
     private static final Logger LOG = LoggerFactory.getLogger(TextableVariable.class);
 
     private final String text;
@@ -34,11 +35,12 @@ public class TextableVariable extends Variable {
 
     /**
      * Construct a new TextableVariable.
-     *
-     * @param text   the template text containing placeholders
-     * @param name   variable name
+     * 
+     * @param text the template text containing placeholders
+     * @param name variable name
      * @param prefix placeholder prefix (default "{{")
      * @param suffix placeholder suffix (default "}}")
+     * @since 0.1.7
      */
     public TextableVariable(String text, String name, String prefix, String suffix) {
         super(name, List.of());
@@ -47,15 +49,14 @@ public class TextableVariable extends Variable {
         this.suffix = suffix;
 
         // Parse placeholders from text
-        Pattern pattern = Pattern.compile(
-                Pattern.quote(prefix) + "([^{}]*?)" + Pattern.quote(suffix));
+        Pattern pattern = Pattern.compile(Pattern.quote(prefix) + "([^{}]*?)" + Pattern.quote(suffix));
         LinkedHashSet<String> uniquePlaceholders = new LinkedHashSet<>();
         Matcher matcher = pattern.matcher(text);
         while (matcher.find()) {
             String placeholder = matcher.group(1).strip();
             if (placeholder.isEmpty()) {
-                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
-                        "error_msg", "placeholders cannot be empty string");
+                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED, "error_msg",
+                        "placeholders cannot be empty string");
             }
             uniquePlaceholders.add(placeholder);
         }
@@ -70,10 +71,13 @@ public class TextableVariable extends Variable {
         this.inputKeys = new ArrayList<>(keys);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * update.
+     * 
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
+    @Override
     public void update(Map<String, Object> kwargs) {
         String formattedText = this.text;
         for (String placeholder : placeholders) {
@@ -84,18 +88,17 @@ public class TextableVariable extends Variable {
                         val = m.get(node);
                     } else {
                         // Attempt reflection as a last resort
-                        var field = val.getClass().getMethod(
-                                "get" + node.substring(0, 1).toUpperCase(Locale.ROOT) + node.substring(1));
+                        var field = val.getClass()
+                                .getMethod("get" + node.substring(0, 1).toUpperCase(Locale.ROOT) + node.substring(1));
                         val = field.invoke(val);
                     }
                 }
             } catch (Exception e) {
-                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
-                        "error_msg", "error parsing the placeholder `" + placeholder + "`");
+                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED, "error_msg",
+                        "error parsing the placeholder `" + placeholder + "`");
             }
             if (!(val instanceof String || val instanceof Number || val instanceof Boolean)) {
-                LOG.info("Converting non-string value to String via toString(). " +
-                        "Placeholder: {}", placeholder);
+                LOG.info("Converting non-string value to String via toString(). " + "Placeholder: {}", placeholder);
             }
             String placeholderStr = prefix + placeholder + suffix;
             formattedText = formattedText.replace(placeholderStr, String.valueOf(val));

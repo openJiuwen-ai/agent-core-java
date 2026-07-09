@@ -29,13 +29,15 @@ import java.util.Map;
 
 /**
  * Controller-based Agent implementation.
- *
- * <p>Agent implementation built on top of Controller, used to handle complex
+ * <p>
+ * Agent implementation built on top of Controller, used to handle complex
  * event-driven tasks. Supports advanced features such as task scheduling and
- * event handling.</p>
+ * event handling.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class ControllerAgent extends BaseAgent {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private ControllerConfig config;
@@ -43,24 +45,39 @@ public class ControllerAgent extends BaseAgent {
     private ContextEngine contextEngine;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ControllerAgent.
+     * 
+     * @param card card
+     * @param controller controller
+     * @since 0.1.7
      */
     public ControllerAgent(AgentCard card, Controller controller) {
         this(card, controller, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ControllerAgent.
+     * 
+     * @param card card
+     * @param controller controller
+     * @param config config
+     * @since 0.1.7
      */
     public ControllerAgent(AgentCard card, Controller controller, ControllerConfig config) {
         this(card, controller, config, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ControllerAgent.
+     * 
+     * @param card card
+     * @param controller controller
+     * @param config config
+     * @param contextEngineConfig contextEngineConfig
+     * @since 0.1.7
      */
     protected ControllerAgent(AgentCard card, Controller controller, ControllerConfig config,
-                              ContextEngineConfig contextEngineConfig) {
+            ContextEngineConfig contextEngineConfig) {
         super(card);
         this.config = config != null ? config : new ControllerConfig();
         this.contextEngine = new ContextEngine(
@@ -69,19 +86,23 @@ public class ControllerAgent extends BaseAgent {
         initializeController();
     }
 
+    /**
+     * initializeController.
+     * 
+     * @since 0.1.7
+     */
     private void initializeController() {
-        controller.init(
-                getCard(),
-                config,
-                getAbilityManager(),
-                contextEngine
-        );
+        controller.init(getCard(), config, getAbilityManager(), contextEngine);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * configure.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public BaseAgent configure(Object config) {
         if (config instanceof ControllerConfig cc) {
             this.config = cc;
@@ -92,23 +113,32 @@ public class ControllerAgent extends BaseAgent {
         return this;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getController.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Controller getController() {
         return controller;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContextEngine.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ContextEngine getContextEngine() {
         return contextEngine;
@@ -116,8 +146,9 @@ public class ControllerAgent extends BaseAgent {
 
     /**
      * Release session resources.
-     *
+     * 
      * @param sessionId session ID
+     * @since 0.1.7
      */
     public void releaseSession(String sessionId) {
         if (controller != null && controller.getEventQueue() != null) {
@@ -128,6 +159,10 @@ public class ControllerAgent extends BaseAgent {
 
     /**
      * Convert a Session to AgentSessionApi.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     private AgentSessionApi toAgentSession(Session session) {
         if (session instanceof AgentSessionApi asa) {
@@ -136,23 +171,23 @@ public class ControllerAgent extends BaseAgent {
         return AgentSessionApi.create(session.getSessionId(), null, getCard());
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public ControllerOutput invoke(Object inputs, Session session) {
         if (controller == null) {
-            throw new RuntimeException(
-                    this.getClass().getSimpleName() + " has no controller, "
-                            + "subclass should create controller before invocation"
-            );
+            throw new RuntimeException(this.getClass().getSimpleName() + " has no controller, "
+                    + "subclass should create controller before invocation");
         }
 
         if (session == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", "session is required"
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg", "session is required");
         }
 
         InputEvent inputEvent = InputEvent.fromUserInput(inputs);
@@ -164,29 +199,27 @@ public class ControllerAgent extends BaseAgent {
             throw e;
         } catch (RuntimeException e) {
             Loggers.AGENT.error("ControllerAgent invoke error: " + e.getMessage());
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", e.getMessage()
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg", e.getMessage());
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param streamModes streamModes
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
         if (controller == null) {
-            throw new RuntimeException(
-                    this.getClass().getSimpleName() + " has no controller"
-            );
+            throw new RuntimeException(this.getClass().getSimpleName() + " has no controller");
         }
 
         if (session == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", "session is required"
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg", "session is required");
         }
 
         InputEvent inputEvent = InputEvent.fromUserInput(inputs);
@@ -199,20 +232,25 @@ public class ControllerAgent extends BaseAgent {
             throw e;
         } catch (RuntimeException e) {
             Loggers.AGENT.error("ControllerAgent stream error: " + e.getMessage());
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", e.getMessage()
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg", e.getMessage());
         }
     }
 
+    /**
+     * mergeControllerConfig.
+     * 
+     * @param configMap configMap
+     * @return the result
+     * @since 0.1.7
+     */
     private ControllerConfig mergeControllerConfig(Map<?, ?> configMap) {
         ControllerConfig merged = new ControllerConfig();
         copyControllerConfig(this.config, merged);
 
         try {
             Map<String, PropertyDescriptor> descriptors = new java.util.HashMap<>();
-            for (PropertyDescriptor descriptor : Introspector.getBeanInfo(ControllerConfig.class).getPropertyDescriptors()) {
+            for (PropertyDescriptor descriptor : Introspector.getBeanInfo(ControllerConfig.class)
+                    .getPropertyDescriptors()) {
                 descriptors.put(descriptor.getName(), descriptor);
             }
 
@@ -236,6 +274,13 @@ public class ControllerAgent extends BaseAgent {
         return merged;
     }
 
+    /**
+     * copyControllerConfig.
+     * 
+     * @param source source
+     * @param target target
+     * @since 0.1.7
+     */
     private static void copyControllerConfig(ControllerConfig source, ControllerConfig target) {
         if (source == null) {
             return;

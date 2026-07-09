@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.graph.pregel;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -10,21 +13,16 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for {@link ChannelManager}, {@link TriggerChannel}, and {@link BarrierChannel}.
  * <p>
  * Ported from Python's {@code test_channel.py :: TestChannelManager}.
  */
 class ChannelTest {
-
     // ---------- TriggerChannel reset ----------
-
     @Nested
     @DisplayName("TriggerChannel reset after consume")
     class TriggerChannelResetTests {
-
         @Test
         @DisplayName("TriggerChannel correctly resets Ready state after consume")
         void testTriggerChannelReset() {
@@ -80,7 +78,6 @@ class ChannelTest {
     @Nested
     @DisplayName("BarrierChannel lifecycle")
     class BarrierChannelLifecycleTests {
-
         @Test
         @DisplayName("Waiting -> Partial -> All arrived (Ready) -> Consumed (Reset) -> Waiting again")
         void testBarrierLifecycle() {
@@ -154,7 +151,6 @@ class ChannelTest {
     @Nested
     @DisplayName("Channel snapshot and restore")
     class SnapshotRestoreTests {
-
         @Test
         @DisplayName("TriggerChannel snapshot and restore")
         void testTriggerChannelSnapshotRestore() {
@@ -226,7 +222,6 @@ class ChannelTest {
     @Nested
     @DisplayName("ChannelManager buffer operations")
     class BufferTests {
-
         @Test
         @DisplayName("isEmpty reflects buffer state")
         void testIsEmpty() {
@@ -268,7 +263,6 @@ class ChannelTest {
     @Nested
     @DisplayName("Message types")
     class MessageTests {
-
         @Test
         @DisplayName("TriggerMessage carries sender and target")
         void testTriggerMessage() {

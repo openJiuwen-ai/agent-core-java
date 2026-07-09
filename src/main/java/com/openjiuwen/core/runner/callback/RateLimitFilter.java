@@ -14,22 +14,38 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * Prevents callbacks from executing too frequently within a time window.
  * Thread-safe implementation.
+ * 
+ * @since 0.1.7
  */
 public class RateLimitFilter extends EventFilter {
-
     private final int maxCalls;
     private final double timeWindow;
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Deque<Double>> callTimes = new ConcurrentHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RateLimitFilter.
+     * 
+     * @param maxCalls maxCalls
+     * @param timeWindow timeWindow
+     * @since 0.1.7
      */
     public RateLimitFilter(int maxCalls, double timeWindow) {
         this(maxCalls, timeWindow, "RateLimit");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RateLimitFilter.
+     * 
+     * @param maxCalls maxCalls
+     * @param timeWindow timeWindow
+     * @param name name
+     * @since 0.1.7
      */
     public RateLimitFilter(int maxCalls, double timeWindow, String name) {
         super(name);
@@ -37,12 +53,19 @@ public class RateLimitFilter extends EventFilter {
         this.timeWindow = timeWindow;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * filter.
+     * 
+     * @param event event
+     * @param callback callback
+     * @param args args
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
-    public synchronized FilterResult filter(String event, CallbackInfo callback,
-                                             Object[] args, Map<String, Object> kwargs) {
+    @Override
+    public synchronized FilterResult filter(String event, CallbackInfo callback, Object[] args,
+            Map<String, Object> kwargs) {
         double currentTime = System.currentTimeMillis() / 1000.0;
         String key = event + ":" + callback.getCallbackDisplayName();
 
@@ -55,8 +78,7 @@ public class RateLimitFilter extends EventFilter {
 
         // Check rate limit
         if (times.size() >= maxCalls) {
-            return FilterResult.skipResult(
-                    "Rate limit exceeded: " + maxCalls + " calls per " + timeWindow + "s");
+            return FilterResult.skipResult("Rate limit exceeded: " + maxCalls + " calls per " + timeWindow + "s");
         }
 
         // Record this call

@@ -11,30 +11,38 @@ import java.util.Map;
  * <p>
  * Supported data types:
  * <ul>
- *   <li>{@link TextDataFrame} - text data</li>
- *   <li>{@link FileDataFrame} - file data (bytes or URI)</li>
- *   <li>{@link JsonDataFrame} - JSON format data</li>
+ * <li>{@link TextDataFrame} - text data</li>
+ * <li>{@link FileDataFrame} - file data (bytes or URI)</li>
+ * <li>{@link JsonDataFrame} - JSON format data</li>
  * </ul>
  * <p>
  * Mirrors Python's {@code DataFrame = Union[TextDataFrame, FileDataFrame, JsonDataFrame]}.
+ * 
+ * @since 0.1.7
  */
 public sealed interface DataFrame permits DataFrame.TextDataFrame, DataFrame.FileDataFrame, DataFrame.JsonDataFrame {
-
     /**
-     * Get the data frame type.
-     *
-     * @return one of "text", "file", "json"
+     * getType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     String getType();
 
     /**
      * Text data frame.
+     * 
+     * @param text text
+     * @since 0.1.7
      */
     record TextDataFrame(String text) implements DataFrame {
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * getType.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public String getType() {
             return "text";
         }
@@ -42,18 +50,31 @@ public sealed interface DataFrame permits DataFrame.TextDataFrame, DataFrame.Fil
 
     /**
      * File data frame supporting both bytes and URI.
+     * 
+     * @param name name
+     * @param mimeType mimeType
+     * @param bytes bytes
+     * @param uri uri
+     * @since 0.1.7
      */
     record FileDataFrame(String name, String mimeType, byte[] bytes, String uri) implements DataFrame {
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * getType.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public String getType() {
             return "file";
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * FileDataFrame.
+         * 
+         * @param name name
+         * @param mimeType mimeType
+         * @since 0.1.7
          */
         public FileDataFrame(String name, String mimeType) {
             this(name, mimeType, null, null);
@@ -62,12 +83,18 @@ public sealed interface DataFrame permits DataFrame.TextDataFrame, DataFrame.Fil
 
     /**
      * JSON format data frame.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     record JsonDataFrame(Map<String, Object> data) implements DataFrame {
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * getType.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public String getType() {
             return "json";
         }

@@ -11,18 +11,19 @@ import java.util.Map;
 /**
  * Helpers for building JSON-schema-like tool input definitions.
  *
- * @since 0.1.12
+ * @since 0.1.7
  */
 final class ToolSchemaSupport {
+    /**
+     * ToolSchemaSupport.
+     * 
+     * @since 0.1.7
+     */
     private ToolSchemaSupport() {
     }
 
     static Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
-        return Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", required
-        );
+        return Map.of("type", "object", "properties", properties, "required", required);
     }
 
     static Map<String, Object> properties(Object[] entries) {
@@ -41,18 +42,11 @@ final class ToolSchemaSupport {
     }
 
     static Map<String, Object> property(String type, String description) {
-        return Map.of(
-                "type", type,
-                "description", description
-        );
+        return Map.of("type", type, "description", description);
     }
 
     static Map<String, Object> enumProperty(String type, List<String> values, String description) {
-        return Map.of(
-                "type", type,
-                "enum", values,
-                "description", description
-        );
+        return Map.of("type", type, "enum", values, "description", description);
     }
 
     static String localized(String language, String cn, String en) {

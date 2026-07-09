@@ -13,11 +13,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Auto-generated for codecheck compliance.
+ * PlanAgentFactory.
+ * 
+ * @since 0.1.7
  */
 public final class PlanAgentFactory {
     /**
-     * Auto-generated for codecheck compliance.
+     * PLAN_AGENT_SYSTEM_PROMPT_CN.
+     * 
+     * @since 0.1.7
      */
     public static final String PLAN_AGENT_SYSTEM_PROMPT_CN = """
             你是架构设计与规划专家，基于提供的代码探索背景和用户需求，设计清晰、可执行的实现方案。
@@ -47,7 +51,9 @@ public final class PlanAgentFactory {
             """;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PLAN_AGENT_SYSTEM_PROMPT_EN.
+     * 
+     * @since 0.1.7
      */
     public static final String PLAN_AGENT_SYSTEM_PROMPT_EN = """
             You are a software architect and planning specialist. Your role is to design a clear, actionable
@@ -82,80 +88,76 @@ public final class PlanAgentFactory {
             """;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PLAN_AGENT_DESCRIPTION_EN.
+     * 
+     * @since 0.1.7
      */
     public static final String PLAN_AGENT_DESCRIPTION_EN = "Architecture design specialist. Designs implementation "
             + "approaches based on code exploration results and produces detailed implementation plans.";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * PLAN_AGENT_DESCRIPTION_CN.
+     * 
+     * @since 0.1.7
      */
     public static final String PLAN_AGENT_DESCRIPTION_CN = "架构设计专家。基于代码探索结果设计实现方案，生成详细的实现计划。";
 
+    /**
+     * PlanAgentFactory.
+     * 
+     * @since 0.1.7
+     */
     private PlanAgentFactory() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildPlanAgentConfig.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
      */
     public static SubAgentConfig buildPlanAgentConfig(String language) {
         return buildPlanAgentConfig(language, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildPlanAgentConfig.
+     * 
+     * @param language language
+     * @param factoryKwargs factoryKwargs
+     * @return the result
+     * @since 0.1.7
      */
     public static SubAgentConfig buildPlanAgentConfig(String language, Map<String, Object> factoryKwargs) {
         String isResolved = language != null ? language : "cn";
         Map<String, Object> kwargs = SubAgentFactoryKwargsSupport.copy(factoryKwargs);
         SubAgentConfig config = SubAgentConfig.builder()
-                .agentCard(SubAgentFactoryKwargsSupport.resolveAgentCard(
-                        kwargs,
-                        "plan_agent",
-                        "en".equals(isResolved) ? PLAN_AGENT_DESCRIPTION_EN : PLAN_AGENT_DESCRIPTION_CN
-                ))
-                .systemPrompt(SubAgentFactoryKwargsSupport.systemPrompt(
-                        kwargs,
-                        "en".equals(isResolved) ? PLAN_AGENT_SYSTEM_PROMPT_EN : PLAN_AGENT_SYSTEM_PROMPT_CN
-                ))
-                .language(isResolved)
-                .maxIterations(SubAgentFactoryKwargsSupport.maxIterations(kwargs, 25))
-                .factoryName("plan_agent")
-                .executionMode("ephemeral")
-                .role("planning")
-                .metadata(Map.of(
-                        "readonly", true,
-                        "write_tools_forbidden", true,
-                        "allowed_shell_intent", "read_only",
-                        "requires_critical_files", true,
-                        "critical_files_min", 3,
-                        "critical_files_max", 5,
-                        "forbidden_operations", List.of(
-                                "write_file",
-                                "edit_file",
-                                "mkdir",
-                                "touch",
-                                "rm",
-                                "cp",
-                                "mv",
-                                "git add",
-                                "git commit",
-                                "install_dependencies",
-                                "shell_redirection"
-                        )
-                ))
+                .agentCard(SubAgentFactoryKwargsSupport.resolveAgentCard(kwargs, "plan_agent",
+                        "en".equals(isResolved) ? PLAN_AGENT_DESCRIPTION_EN : PLAN_AGENT_DESCRIPTION_CN))
+                .systemPrompt(SubAgentFactoryKwargsSupport.systemPrompt(kwargs,
+                        "en".equals(isResolved) ? PLAN_AGENT_SYSTEM_PROMPT_EN : PLAN_AGENT_SYSTEM_PROMPT_CN))
+                .language(isResolved).maxIterations(SubAgentFactoryKwargsSupport.maxIterations(kwargs, 25))
+                .factoryName("plan_agent").executionMode("ephemeral").role("planning")
+                .metadata(Map.of("readonly", true, "write_tools_forbidden", true, "allowed_shell_intent", "read_only",
+                        "requires_critical_files", true, "critical_files_min", 3, "critical_files_max", 5,
+                        "forbidden_operations",
+                        List.of("write_file", "edit_file", "mkdir", "touch", "rm", "cp", "mv", "git add", "git commit",
+                                "install_dependencies", "shell_redirection")))
                 .rails(SubAgentRailMergeSupport.mergeRails(
-                        List.of(new SysOperationRail(), new com.openjiuwen.harness.rails.SecurityRail(true)),
-                        kwargs
-                ))
-                .restrictToWorkDir(false)
-                .factoryKwargs(kwargs)
-                .build();
+                        List.of(new SysOperationRail(), new com.openjiuwen.harness.rails.SecurityRail(true)), kwargs))
+                .restrictToWorkDir(false).factoryKwargs(kwargs).build();
         SubAgentFactoryKwargsSupport.applyCommonOverrides(config, kwargs);
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createPlanAgent.
+     * 
+     * @param language language
+     * @param workspace workspace
+     * @return the result
+     * @since 0.1.7
      */
     public static DeepAgent createPlanAgent(String language, Workspace workspace) {
         SubAgentConfig spec = buildPlanAgentConfig(language);

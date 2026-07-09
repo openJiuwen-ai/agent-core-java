@@ -9,7 +9,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,15 +20,13 @@ import java.util.Map;
  * message routing.
  * <p>
  * Mirrors Python's {@code EventDrivenGroupCard} in {@code multi_agent/schema/group_card.py}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class EventDrivenGroupCard extends GroupCard {
-
-    /**
-     * Subscription mapping: {agent_id: [topic1, topic2, ...]}.
-     */
     private Map<String, List<String>> subscriptions = new HashMap<>();
 }

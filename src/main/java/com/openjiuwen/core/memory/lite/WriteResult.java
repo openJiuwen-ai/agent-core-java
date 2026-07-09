@@ -12,19 +12,32 @@ import java.util.Map;
 
 /**
  * Result of a memory write operation.
+ * 
+ * @since 0.1.7
  */
 public class WriteResult {
     private final boolean isSuccess;
     private final String path;
     private final WriteMode mode;
     private boolean isConflictDetected;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> conflictingFiles = new ArrayList<>();
     private String note;
     private String error;
     private String type;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WriteResult.
+     * 
+     * @param isSuccess isSuccess
+     * @param path path
+     * @param mode mode
+     * @since 0.1.7
      */
     public WriteResult(boolean isSuccess, String path, WriteMode mode) {
         this.isSuccess = isSuccess;
@@ -33,7 +46,11 @@ public class WriteResult {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * conflictDetected.
+     * 
+     * @param isConflictDetected isConflictDetected
+     * @return the result
+     * @since 0.1.7
      */
     public WriteResult conflictDetected(boolean isConflictDetected) {
         this.isConflictDetected = isConflictDetected;
@@ -41,7 +58,11 @@ public class WriteResult {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * conflictingFiles.
+     * 
+     * @param conflictingFiles conflictingFiles
+     * @return the result
+     * @since 0.1.7
      */
     public WriteResult conflictingFiles(List<String> conflictingFiles) {
         this.conflictingFiles = new ArrayList<>(conflictingFiles);
@@ -49,7 +70,11 @@ public class WriteResult {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * note.
+     * 
+     * @param note note
+     * @return the result
+     * @since 0.1.7
      */
     public WriteResult note(String note) {
         this.note = note;
@@ -57,7 +82,11 @@ public class WriteResult {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * error.
+     * 
+     * @param error error
+     * @return the result
+     * @since 0.1.7
      */
     public WriteResult error(String error) {
         this.error = error;
@@ -65,7 +94,11 @@ public class WriteResult {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * type.
+     * 
+     * @param type type
+     * @return the result
+     * @since 0.1.7
      */
     public WriteResult type(String type) {
         this.type = type;
@@ -73,7 +106,10 @@ public class WriteResult {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> result = new LinkedHashMap<>();

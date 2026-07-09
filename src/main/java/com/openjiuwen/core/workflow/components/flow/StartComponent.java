@@ -10,6 +10,8 @@ import com.openjiuwen.core.workflow.component.Start;
  * Alias for {@link Start} — entry point component of the workflow.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.start_comp.Start}.
+ * 
+ * @since 0.1.7
  */
 public class StartComponent extends Start {
 }

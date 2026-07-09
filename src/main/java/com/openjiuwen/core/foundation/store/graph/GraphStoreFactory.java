@@ -15,10 +15,17 @@ import java.util.concurrent.locks.ReentrantLock;
  * <p>
  * Mirrors Python's {@code GraphStoreFactory}. Thread-safe registration and creation
  * of graph store backends.
+ * 
+ * @since 0.1.7
  */
 public final class GraphStoreFactory {
-
     private static final Map<String, Class<? extends GraphStore>> CLASS_MAP = new ConcurrentHashMap<>();
+
+    /**
+     * ReentrantLock.
+     * 
+     * @since 0.1.7
+     */
     private static final ReentrantLock LOCK = new ReentrantLock();
 
     static {
@@ -26,18 +33,22 @@ public final class GraphStoreFactory {
         CLASS_MAP.put("in_memory", InMemoryGraphStore.class);
     }
 
+    /**
+     * GraphStoreFactory.
+     * 
+     * @since 0.1.7
+     */
     private GraphStoreFactory() {
         throw new UnsupportedOperationException("GraphStoreFactory should not be instantiated");
     }
 
     /**
      * Register a graph store backend.
-     *
-     * @param name    name for the backend
+     * 
+     * @param name name for the backend
      * @param backend class implementing GraphStore
-     * @param force   whether to force register even if name already exists
-     * @throws IllegalArgumentException if name is empty
-     * @throws IllegalStateException    if name already registered and force=false
+     * @param force whether to force register even if name already exists
+     * @since 0.1.7
      */
     public static void registerBackend(String name, Class<? extends GraphStore> backend, boolean force) {
         LOCK.lock();
@@ -58,6 +69,10 @@ public final class GraphStoreFactory {
 
     /**
      * Register a graph store backend (no force).
+     * 
+     * @param name name
+     * @param backend backend
+     * @since 0.1.7
      */
     public static void registerBackend(String name, Class<? extends GraphStore> backend) {
         registerBackend(name, backend, false);
@@ -65,11 +80,11 @@ public final class GraphStoreFactory {
 
     /**
      * Fetch a GraphStore instance by configuration.
-     *
-     * @param config      database configuration
+     * 
+     * @param config database configuration
      * @param backendName optional override for backend choice in config
      * @return instance of graph store
-     * @throws IllegalArgumentException if backend type not registered
+     * @since 0.1.7
      */
     public static GraphStore fromConfig(GraphConfig config, String backendName) {
         LOCK.lock();
@@ -86,7 +101,7 @@ public final class GraphStoreFactory {
                     return graphStore;
                 }
                 throw new IllegalStateException("fromConfig did not return a GraphStore for backend: " + name);
-            } catch (ReflectiveOperationException | SecurityException e) {
+            } catch (Exception e) {
                 throw new RuntimeException("Failed to create GraphStore from config for backend: " + name, e);
             }
         } finally {
@@ -96,6 +111,10 @@ public final class GraphStoreFactory {
 
     /**
      * Fetch a GraphStore instance by configuration using config's default backend.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public static GraphStore fromConfig(GraphConfig config) {
         return fromConfig(config, null);

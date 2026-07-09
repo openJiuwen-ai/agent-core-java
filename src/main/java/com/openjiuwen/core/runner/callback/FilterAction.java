@@ -6,9 +6,10 @@ package com.openjiuwen.core.runner.callback;
 
 /**
  * Actions that filters can return to control callback execution.
+ * 
+ * @since 0.1.7
  */
 public enum FilterAction {
-    /** Continue with callback execution. */
     CONTINUE("continue"),
     /** Stop the entire event processing. */
     STOP("stop"),
@@ -24,7 +25,10 @@ public enum FilterAction {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

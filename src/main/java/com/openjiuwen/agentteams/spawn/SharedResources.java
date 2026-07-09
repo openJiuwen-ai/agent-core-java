@@ -17,25 +17,42 @@ import java.util.function.Function;
 
 /**
  * Process-global shared runtime and database resources for agent teams.
- *
- * <p>This is the first Java parity slice for Python {@code spawn/shared_resources.py}: one shared
+ * <p>
+ * This is the first Java parity slice for Python {@code spawn/shared_resources.py}: one shared
  * runtime per process, one shared in-memory database singleton, and one shared database instance
- * per normalized dbType plus connection string.</p>
+ * per normalized dbType plus connection string.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public final class SharedResources {
     private static final Object LOCK = new Object();
 
     private static TeamRuntime runtime;
     private static TeamDatabase memoryDb;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, TeamDatabase> DB_INSTANCES = new LinkedHashMap<>();
     private static Function<DatabaseConfig, TeamDatabase> databaseFactory = TeamDatabase::new;
     private static Function<String, TeamRuntime> runtimeFactory = TeamRuntime::new;
 
+    /**
+     * SharedResources.
+     * 
+     * @since 0.1.7
+     */
     private SharedResources() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSharedRuntime.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static TeamRuntime getSharedRuntime() {
         synchronized (LOCK) {
@@ -47,7 +64,11 @@ public final class SharedResources {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSharedDb.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public static TeamDatabase getSharedDb(DatabaseConfig config) {
         DatabaseConfig effectiveConfig = config != null ? config : DatabaseConfig.builder().build();
@@ -64,7 +85,9 @@ public final class SharedResources {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * cleanupSharedResources.
+     * 
+     * @since 0.1.7
      */
     public static void cleanupSharedResources() {
         synchronized (LOCK) {
@@ -89,10 +112,15 @@ public final class SharedResources {
         }
     }
 
+    /**
+     * buildDbKey.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     private static String buildDbKey(DatabaseConfig config) {
-        String dbType = config.getDbType() != null
-                ? config.getDbType().name().toLowerCase(Locale.ROOT)
-                : "sqlite";
+        String dbType = config.getDbType() != null ? config.getDbType().name().toLowerCase(Locale.ROOT) : "sqlite";
         String connectionString = config.getConnectionString() != null ? config.getConnectionString() : "";
         return dbType + "::" + connectionString;
     }

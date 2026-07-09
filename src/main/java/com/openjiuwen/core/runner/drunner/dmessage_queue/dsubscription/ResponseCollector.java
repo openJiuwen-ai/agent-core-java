@@ -24,9 +24,10 @@ import java.util.concurrent.TimeoutException;
 /**
  * Collects responses for one distributed request.
  * Supports cancellation, expiration, and queue-full detection.
+ * 
+ * @since 0.1.7
  */
 public class ResponseCollector {
-
     private static final Logger logger = LoggerFactory.getLogger(ResponseCollector.class);
     private static final int MAX_QUEUE_SIZE = 10_000;
     private static final ScheduledExecutorService TTL_SCHEDULER;
@@ -37,13 +38,23 @@ public class ResponseCollector {
         TTL_SCHEDULER = exec;
     }
 
-    /** Sentinel value placed in the queue to signal cancellation/expiration. */
+    /**
+     * Sentinel value placed in the queue to signal cancellation/expiration.
+     * 
+     * @since 0.1.7
+     */
     private static final DmqResponseMessage CANCEL_SENTINEL = new DmqResponseMessage();
 
     private final String messageId;
     private final String receiverId;
     private final String requestId;
     private final double ttlSeconds;
+
+    /**
+     * LinkedBlockingQueue<>.
+     * 
+     * @since 0.1.7
+     */
     private final BlockingQueue<DmqResponseMessage> queue = new LinkedBlockingQueue<>(MAX_QUEUE_SIZE);
 
     private volatile boolean cancelled;
@@ -52,7 +63,13 @@ public class ResponseCollector {
     private final ScheduledFuture<?> expireTask;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ResponseCollector.
+     * 
+     * @param messageId messageId
+     * @param receiverId receiverId
+     * @param requestId requestId
+     * @param ttlSeconds ttlSeconds
+     * @since 0.1.7
      */
     public ResponseCollector(String messageId, String receiverId, String requestId, Double ttlSeconds) {
         this.messageId = messageId;
@@ -73,6 +90,9 @@ public class ResponseCollector {
 
     /**
      * Whether this collector has been cancelled.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isCancelled() {
         return cancelled;
@@ -80,6 +100,9 @@ public class ResponseCollector {
 
     /**
      * Whether this collector has expired due to TTL.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isExpired() {
         return expired;
@@ -87,6 +110,9 @@ public class ResponseCollector {
 
     /**
      * Whether this collector is still active (not cancelled and not expired).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isActive() {
         return !cancelled && !expired;
@@ -94,6 +120,9 @@ public class ResponseCollector {
 
     /**
      * Receive a message from the reply topic.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     public void putMessage(DmqResponseMessage message) {
         if (!isActive()) {
@@ -108,6 +137,11 @@ public class ResponseCollector {
 
     /**
      * Wait for a single result.
+     * 
+     * @param timeoutSeconds timeoutSeconds
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public Object result(Double timeoutSeconds) throws Exception {
         double effectiveTimeout = timeoutSeconds != null ? timeoutSeconds : ttlSeconds;
@@ -134,17 +168,17 @@ public class ResponseCollector {
 
     /**
      * Stream results as an iterator.
+     * 
+     * @param timeoutSeconds timeoutSeconds
+     * @return the result
+     * @since 0.1.7
      */
     public Iterator<Object> stream(Double timeoutSeconds) {
         double effectiveTimeout = timeoutSeconds != null ? timeoutSeconds : ttlSeconds;
         return new Iterator<>() {
             private Object next;
             private boolean done;
-
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public boolean hasNext() {
                 if (done) {
                     return false;
@@ -166,8 +200,7 @@ public class ResponseCollector {
                     expired = true;
                     logger.warn("[Collector:{}] stream timeout ({:.1f}s)", messageId, effectiveTimeout);
                     close(CancelReason.FINISH);
-                    throw new RuntimeException(
-                            new TimeoutException("Collector(" + messageId + ") stream timeout"));
+                    throw new RuntimeException(new TimeoutException("Collector(" + messageId + ") stream timeout"));
                 } catch (Exception e) {
                     close(CancelReason.FINISH);
                     throw new RuntimeException("Failed to read distributed stream response", e);
@@ -175,9 +208,6 @@ public class ResponseCollector {
             }
 
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Object next() {
                 if (!hasNext()) {
                     throw new NoSuchElementException();
@@ -191,10 +221,10 @@ public class ResponseCollector {
 
     /**
      * Check a polled message for cancel/error signals.
-     *
-     * @throws CancellationException if the message is a cancel sentinel
-     * @throws TimeoutException      if cancel reason is TTL_EXPIRE
-     * @throws IllegalStateException if the remote returned an error
+     * 
+     * @param message message
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public void checkMessage(DmqResponseMessage message) throws Exception {
         if (message == CANCEL_SENTINEL) {
@@ -208,13 +238,14 @@ public class ResponseCollector {
             }
         }
         if (message.getResultType() == ResultType.ERROR) {
-            throw new IllegalStateException(
-                    "Remote error " + message.getErrorCode() + ": " + message.getErrorMsg());
+            throw new IllegalStateException("Remote error " + message.getErrorCode() + ": " + message.getErrorMsg());
         }
     }
 
     /**
      * Close with default reason (RUNNER_STOPPED).
+     * 
+     * @since 0.1.7
      */
     public void close() {
         close(CancelReason.RUNNER_STOPPED);
@@ -222,6 +253,9 @@ public class ResponseCollector {
 
     /**
      * Active cancellation (including queue full, system shutdown, normal finish).
+     * 
+     * @param reason reason
+     * @since 0.1.7
      */
     public void close(CancelReason reason) {
         if (cancelled) {
@@ -243,6 +277,14 @@ public class ResponseCollector {
         }
     }
 
+    /**
+     * poll.
+     * 
+     * @param timeoutSeconds timeoutSeconds
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private DmqResponseMessage poll(double timeoutSeconds) throws Exception {
         DmqResponseMessage message = queue.poll((long) (timeoutSeconds * 1000), TimeUnit.MILLISECONDS);
         if (message == null) {
@@ -252,10 +294,21 @@ public class ResponseCollector {
         return message;
     }
 
+    /**
+     * cleanupQueue.
+     * 
+     * @since 0.1.7
+     */
     private void cleanupQueue() {
         queue.clear();
     }
 
+    /**
+     * wakeWaiters.
+     * 
+     * @param reason reason
+     * @since 0.1.7
+     */
     private void wakeWaiters(CancelReason reason) {
         this.cancelReason = reason;
         queue.offer(CANCEL_SENTINEL);

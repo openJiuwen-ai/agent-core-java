@@ -8,9 +8,10 @@ package com.openjiuwen.core.runner.base;
  * Strategy for updating resource tags.
  * <p>
  * Mirrors Python's {@code TagUpdateStrategy}.
+ * 
+ * @since 0.1.7
  */
 public enum TagUpdateStrategy {
-    /** Merge new tags with existing tags. */
     MERGE("merge"),
     /** Replace all existing tags with new tags. */
     REPLACE("isReplace");
@@ -22,7 +23,10 @@ public enum TagUpdateStrategy {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

@@ -12,6 +12,8 @@ import lombok.experimental.SuperBuilder;
 
 /**
  * Summary memory unit.
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -23,10 +25,13 @@ public class SummaryUnit extends BaseMemoryUnit {
     private String messageMemId;
     private String timestamp;
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getMemType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public MemoryType getMemType() {
         return MemoryType.SUMMARY;
     }

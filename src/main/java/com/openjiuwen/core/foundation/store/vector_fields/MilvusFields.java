@@ -8,14 +8,24 @@ import com.openjiuwen.spi.store.vector.CollectionSchema;
 
 /**
  * Milvus-compatible field helpers.
+ * 
+ * @since 0.1.7
  */
 public final class MilvusFields {
-
+    /**
+     * MilvusFields.
+     * 
+     * @since 0.1.7
+     */
     private MilvusFields() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * defaultSchema.
+     * 
+     * @param dimension dimension
+     * @return the result
+     * @since 0.1.7
      */
     public static CollectionSchema defaultSchema(int dimension) {
         return BaseVectorFields.defaultSchema("embedding", dimension);
