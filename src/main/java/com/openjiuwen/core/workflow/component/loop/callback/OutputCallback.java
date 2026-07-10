@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.workflow.component.loop.callback;
 
+import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.session.utils.SessionUtils;
@@ -104,6 +105,10 @@ public class OutputCallback extends LoopCallback {
             if (pathParts.length > 0) {
                 String nodeId = WorkflowSessionSupport.componentId(session);
                 if (pathParts[0].equals(nodeId)) {
+                    if (pathParts.length == 2 && Constant.INDEX.equals(pathParts[1])) {
+                        WorkflowStateCollection state = WorkflowSessionSupport.stateCollection(session);
+                        return state == null ? null : state.get(Constant.INDEX);
+                    }
                     return WorkflowSessionSupport.getGlobalState(session, refStr);
                 }
             }

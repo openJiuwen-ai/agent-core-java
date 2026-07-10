@@ -160,6 +160,9 @@ final class LoopRuntime {
                 index = 0;
                 continue;
             }
+            if (isInternalLoopState(key, entry.getValue())) {
+                continue;
+            }
             normalized.put(key, entry.getValue());
         }
         if (index != null || outputMap.containsKey(Constant.INDEX)) {
@@ -185,6 +188,9 @@ final class LoopRuntime {
                     normalized.put(key, entry.getValue());
                     hasInteractiveBodyOutput = true;
                 }
+                continue;
+            }
+            if (isInternalLoopState(key, entry.getValue())) {
                 continue;
             }
             if (Constant.INDEX.equals(key)) {
@@ -214,10 +220,20 @@ final class LoopRuntime {
                 continue;
             }
             Object value = entry.getValue();
+            if (isInternalLoopState(key, value)) {
+                continue;
+            }
             if (value instanceof List<?> list) {
                 normalized.put(key, new java.util.ArrayList<>(list));
             }
         }
+    }
+
+    private static boolean isInternalLoopState(String key, Object value) {
+        return "loop".equals(key)
+                && value instanceof Map<?, ?> valueMap
+                && valueMap.size() == 1
+                && valueMap.containsKey(Constant.INDEX);
     }
 
     private static boolean isLoopBodyNode(String key, LoopGroup loopGroup) {
