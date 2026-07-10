@@ -87,6 +87,7 @@ public class Workflow {
 
     private final WorkflowCard card;
     private final BaseWorkflow internal;
+    private final boolean defaultCard;
     private String endCompId = "";
     private boolean isStreaming = false;
 
@@ -99,6 +100,7 @@ public class Workflow {
     }
 
     private Workflow(WorkflowCard card, Integer workflowMaxNestingDepth) {
+        this.defaultCard = card == null;
         this.card = card != null ? card : defaultWorkflowCard();
         WorkflowConfig workflowConfig = new WorkflowConfig(this.card);
         if (workflowMaxNestingDepth != null) {
@@ -475,6 +477,12 @@ public class Workflow {
     @SuppressWarnings("unchecked")
     public WorkflowOutput invoke(Object inputs, Object session, ModelContext context,
                                  boolean isSub, boolean skipInputsValidate) {
+        return invoke(inputs, session, context, isSub, skipInputsValidate, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    public WorkflowOutput invoke(Object inputs, Object session, ModelContext context,
+                                 boolean isSub, boolean skipInputsValidate, List<StreamMode> streamModes) {
         DecoratorFramework framework = callbackFramework;
         WorkflowCallInput request = prepareWorkflowCall(
                 framework,
@@ -482,7 +490,7 @@ public class Workflow {
                 inputs,
                 session,
                 context,
-                null,
+                streamModes,
                 isSub,
                 skipInputsValidate);
         inputs = request.inputs();
@@ -498,11 +506,13 @@ public class Workflow {
                     WorkflowExecutionState.COMPLETED);
             return finishWorkflowInvoke(framework, output);
         }
+        boolean implicitDefaultSession = session == null && defaultCard;
+        session = defaultWorkflowSessionIfMissing(session);
         validateSession(session);
         Object validatedInputs = validateInputs(inputs, skipInputsValidate);
         final Object executionInputs = validatedInputs;
         final ModelContext executionContext = context;
-        WorkflowRuntimeSession workflowSession = createWorkflowSession(session, List.of(StreamMode.OUTPUT));
+        WorkflowRuntimeSession workflowSession = createWorkflowSession(session, streamModes);
         long executeTimeoutMs = resolveTimeoutMillis(workflowSession, SessionConstants.WORKFLOW_EXECUTE_TIMEOUT);
 
         try {
@@ -518,14 +528,27 @@ public class Workflow {
                         closeStreamEmitter(workflowSession);
                     }
                     List<Object> outputChunks = collectOutputChunks(workflowSession);
-                    if (isInterrupted(executionResult, outputChunks)) {
+                    List<Object> visibleOutputChunks = visibleOutputChunks(outputChunks);
+                    if (isInterrupted(executionResult, visibleOutputChunks)) {
                         return new WorkflowOutput(
-                                resolveInterruptedOutputChunks(workflowSession, executionResult, outputChunks),
+                                resolveInterruptedOutputChunks(workflowSession, executionResult, visibleOutputChunks),
                                 WorkflowExecutionState.INPUT_REQUIRED);
                     }
-                    Object result = isStreaming
-                            ? stableCompletedOutputChunks(outputChunks)
-                            : WorkflowSessionSupport.getOutputs(workflowSession, endCompId);
+                    Object result;
+                    if (containsCustomSchema(visibleOutputChunks)) {
+                        Object finalResult = WorkflowSessionSupport.getOutputs(workflowSession, endCompId);
+                        finalResult = normalizeImplicitDefaultWorkflowResult(finalResult, implicitDefaultSession);
+                        finalResult = normalizeInteractiveLoopEnvelopeIndexes(finalResult);
+                        List<Object> completedChunks = new ArrayList<>(visibleOutputChunks);
+                        completedChunks.add(new OutputSchema("workflow_final", 0, finalResult));
+                        result = completedChunks;
+                    } else {
+                        result = isStreaming
+                                ? stableCompletedOutputChunks(visibleOutputChunks)
+                                : WorkflowSessionSupport.getOutputs(workflowSession, endCompId);
+                        result = normalizeImplicitDefaultWorkflowResult(result, implicitDefaultSession);
+                        result = normalizeInteractiveLoopEnvelopeIndexes(result);
+                    }
                     return new WorkflowOutput(result, WorkflowExecutionState.COMPLETED);
                 } catch (Exception e) {
                     throw wrapWorkflowException(e);
@@ -549,6 +572,62 @@ public class Workflow {
      */
     public WorkflowOutput invoke(Object inputs, Object session, Object context) {
         return invoke(inputs, session, unwrapContext(context), false);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object normalizeImplicitDefaultWorkflowResult(Object result, boolean implicitDefaultSession) {
+        if (!implicitDefaultSession || !(result instanceof Map<?, ?> resultMap)
+                || resultMap.size() != 1 || !resultMap.containsKey("output")) {
+            return result;
+        }
+        Object output = resultMap.get("output");
+        if (output instanceof Map<?, ?> outputMap) {
+            Map<String, Object> normalized = new LinkedHashMap<>();
+            outputMap.forEach((key, value) -> normalized.put(String.valueOf(key), value));
+            return normalized;
+        }
+        return output;
+    }
+
+    private static Object normalizeInteractiveLoopEnvelopeIndexes(Object value) {
+        if (value instanceof List<?> list) {
+            List<Object> normalized = new ArrayList<>();
+            for (Object item : list) {
+                normalized.add(normalizeInteractiveLoopEnvelopeIndexes(item));
+            }
+            return normalized;
+        }
+        if (!(value instanceof Map<?, ?> map)) {
+            return value;
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            normalized.put(String.valueOf(entry.getKey()), normalizeInteractiveLoopEnvelopeIndexes(entry.getValue()));
+        }
+        Object loopEnvelope = normalized.get("loop");
+        int listSize = largestDirectListSize(normalized);
+        if (listSize >= 0 && loopEnvelope instanceof Map<?, ?> loopEnvelopeMap
+                && loopEnvelopeMap.get("loop") instanceof Map<?, ?> innerLoopMap
+                && innerLoopMap.containsKey(Constant.INDEX)) {
+            Map<String, Object> innerLoop = new LinkedHashMap<>();
+            innerLoopMap.forEach((key, item) -> innerLoop.put(String.valueOf(key), item));
+            innerLoop.put(Constant.INDEX, listSize);
+            Map<String, Object> outerLoop = new LinkedHashMap<>();
+            loopEnvelopeMap.forEach((key, item) -> outerLoop.put(String.valueOf(key), item));
+            outerLoop.put("loop", innerLoop);
+            normalized.put("loop", outerLoop);
+        }
+        return normalized;
+    }
+
+    private static int largestDirectListSize(Map<String, Object> map) {
+        int largest = -1;
+        for (Object item : map.values()) {
+            if (item instanceof List<?> list) {
+                largest = Math.max(largest, list.size());
+            }
+        }
+        return largest;
     }
 
     /**
@@ -596,6 +675,7 @@ public class Workflow {
         if (isSub) {
             return finishWorkflowStream(framework, streamSubWorkflow(inputs, session, context));
         }
+        session = defaultWorkflowSessionIfMissing(session);
         validateSession(session);
         Object validatedInputs = validateInputs(inputs, skipInputsValidate);
         final Object executionInputs = validatedInputs;
@@ -1367,7 +1447,11 @@ public class Workflow {
 
         @Override
         public void preWorkflowExecute(BaseSession session, Object inputs) {
-            delegate.preWorkflowExecute(session, inputs);
+            Object effectiveInputs = inputs;
+            if (inputs instanceof Map<?, ?> map && map.get(Constant.INPUTS_KEY) instanceof InteractiveInput interactiveInput) {
+                effectiveInputs = interactiveInput;
+            }
+            delegate.preWorkflowExecute(session, effectiveInputs);
         }
 
         @Override
@@ -1515,6 +1599,23 @@ public class Workflow {
         return workflowSession.runtimeStreamWriterManager().collectStreamOutput();
     }
 
+    private static List<Object> visibleOutputChunks(List<Object> outputChunks) {
+        if (outputChunks == null || outputChunks.isEmpty()) {
+            return List.of();
+        }
+        List<Object> visible = new ArrayList<>();
+        for (Object chunk : outputChunks) {
+            if (chunk instanceof OutputSchema || chunk instanceof CustomSchema) {
+                visible.add(chunk);
+            }
+        }
+        return visible;
+    }
+
+    private static boolean containsCustomSchema(List<Object> outputChunks) {
+        return outputChunks != null && outputChunks.stream().anyMatch(CustomSchema.class::isInstance);
+    }
+
     private static List<Object> stableCompletedOutputChunks(List<Object> outputChunks) {
         if (outputChunks == null || outputChunks.isEmpty()) {
             return List.of();
@@ -1646,8 +1747,8 @@ public class Workflow {
         List<Object> interruptChunks = extractInterruptOutputChunks(executionResult);
         if (outputChunks != null && !outputChunks.isEmpty()) {
             if (interruptChunks.isEmpty()) {
-                return restoreInteractionOutputValues(workflowSession,
-                        appendRememberedInteractionOutputs(workflowSession, outputChunks));
+                return prioritizeInteractionChunks(restoreInteractionOutputValues(workflowSession,
+                        appendRememberedInteractionOutputs(workflowSession, outputChunks)));
             }
             List<Object> merged = new ArrayList<>(outputChunks);
             for (Object interruptChunk : interruptChunks) {
@@ -1655,14 +1756,52 @@ public class Workflow {
                     merged.add(interruptChunk);
                 }
             }
-            return restoreInteractionOutputValues(workflowSession,
-                    appendRememberedInteractionOutputs(workflowSession, merged));
+            return prioritizeInteractionChunks(restoreInteractionOutputValues(workflowSession,
+                    appendRememberedInteractionOutputs(workflowSession, merged)));
         }
         if (!interruptChunks.isEmpty()) {
-            return restoreInteractionOutputValues(workflowSession,
-                    appendRememberedInteractionOutputs(workflowSession, interruptChunks));
+            return prioritizeInteractionChunks(restoreInteractionOutputValues(workflowSession,
+                    appendRememberedInteractionOutputs(workflowSession, interruptChunks)));
         }
-        return appendRememberedInteractionOutputs(workflowSession, outputChunks != null ? outputChunks : List.of());
+        return prioritizeInteractionChunks(
+                appendRememberedInteractionOutputs(workflowSession, outputChunks != null ? outputChunks : List.of()));
+    }
+
+    private static List<Object> prioritizeInteractionChunks(List<Object> chunks) {
+        if (chunks == null || chunks.size() < 2) {
+            return chunks;
+        }
+        if (containsVisibleStreamOutput(chunks)) {
+            return chunks;
+        }
+        List<Object> interactions = new ArrayList<>();
+        List<Object> others = new ArrayList<>();
+        for (Object chunk : chunks) {
+            if (chunk instanceof OutputSchema outputSchema && Constant.INTERACTION.equals(outputSchema.getType())) {
+                interactions.add(chunk);
+            } else {
+                others.add(chunk);
+            }
+        }
+        if (interactions.isEmpty()) {
+            return chunks;
+        }
+        interactions.addAll(others);
+        return interactions;
+    }
+
+    private static boolean containsVisibleStreamOutput(List<Object> chunks) {
+        for (Object chunk : chunks) {
+            if (chunk instanceof CustomSchema) {
+                return true;
+            }
+            if (chunk instanceof OutputSchema outputSchema
+                    && !Constant.INTERACTION.equals(outputSchema.getType())
+                    && !"workflow_final".equals(outputSchema.getType())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<Object> appendRememberedInteractionOutputs(
@@ -1682,6 +1821,9 @@ public class Workflow {
             if (id != null) {
                 seenIds.add(id);
             }
+        }
+        if (!seenIds.isEmpty()) {
+            return merged;
         }
         for (Object item : iterable) {
             String id = interactionOutputId(item);
@@ -1806,12 +1948,14 @@ public class Workflow {
                 Object recoveredValue = interactionOutput.getValue() == null
                         ? recoverInteractionValue(workflowSession, interactionOutput.getId())
                         : interactionOutput.getValue();
-                if (recoveredValue != null || interactionOutput.getClass() != InteractionOutput.class) {
+                int recoveredIndex = recoverInteractionOutputIndex(workflowSession, outputSchema, interactionOutput);
+                if (recoveredValue != null || recoveredIndex != outputSchema.getIndex()
+                        || interactionOutput.getClass() != InteractionOutput.class) {
                     InteractionOutput restoredPayload = new InteractionOutput(
                             interactionOutput.getId(),
                             recoveredValue);
                     restoredPayload.getMetadata().putAll(interactionOutput.getMetadata());
-                    restored.add(new OutputSchema(outputSchema.getType(), outputSchema.getIndex(), restoredPayload));
+                    restored.add(new OutputSchema(outputSchema.getType(), recoveredIndex, restoredPayload));
                     changed = true;
                     continue;
                 }
@@ -1819,6 +1963,31 @@ public class Workflow {
             restored.add(chunk);
         }
         return changed ? restored : outputChunks;
+    }
+
+    private int recoverInteractionOutputIndex(
+            WorkflowRuntimeSession workflowSession,
+            OutputSchema outputSchema,
+            InteractionOutput interactionOutput) {
+        if (workflowSession == null || interactionOutput == null || interactionOutput.getId() == null) {
+            return outputSchema.getIndex();
+        }
+        Object remembered = rememberedInteractionOutputs(workflowSession);
+        if (!(remembered instanceof Iterable<?> iterable)) {
+            return outputSchema.getIndex();
+        }
+        Set<Object> distinctValues = new LinkedHashSet<>();
+        for (Object item : iterable) {
+            if (item instanceof OutputSchema rememberedSchema
+                    && Constant.INTERACTION.equals(rememberedSchema.getType())
+                    && rememberedSchema.getPayload() instanceof InteractionOutput rememberedOutput
+                    && interactionOutput.getId().equals(rememberedOutput.getId())) {
+                distinctValues.add(rememberedOutput.getValue());
+            }
+        }
+        return !distinctValues.isEmpty()
+                ? Math.max(outputSchema.getIndex(), distinctValues.size() - 1)
+                : outputSchema.getIndex();
     }
 
     private Object recoverInteractionValue(WorkflowRuntimeSession workflowSession, String interactionId) {
@@ -2022,6 +2191,13 @@ public class Workflow {
         throw ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTE_SESSION_INVALID,
                 "reason", "session is required for workflow execution",
                 "workflow", workflowCardString());
+    }
+
+    private Object defaultWorkflowSessionIfMissing(Object session) {
+        if (session != null) {
+            return session;
+        }
+        return WorkflowSessionApi.create(null, card.getId(), null);
     }
 
     private Object validateInputs(Object inputs, boolean skipInputsValidate) {

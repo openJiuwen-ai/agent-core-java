@@ -52,7 +52,7 @@ public class WorkflowAgent extends ControllerAgent {
         WorkflowAgentConfig checked = Objects.requireNonNull(agentConfig, "agentConfig");
         if (checked.getControllerType() != ControllerType.WORKFLOW_CONTROLLER) {
             throw new UnsupportedOperationException(
-                    "WorkflowAgent requires WorkflowController (WORKFLOW_CONTROLLER), got " + checked.getControllerType()
+                    "WorkflowAgent requires WORKFLOW_CONTROLLER, got " + checked.getControllerType()
             );
         }
         return checked;

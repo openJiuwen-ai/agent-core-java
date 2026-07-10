@@ -5,6 +5,7 @@
 package com.openjiuwen.core.session.interaction;
 
 import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.graph.pregel.Interrupt;
 import com.openjiuwen.core.session.BaseSession;
@@ -16,7 +17,10 @@ import com.openjiuwen.core.workflow.internal.WorkflowSessionSupport;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Workflow component interaction helper.
@@ -27,25 +31,32 @@ import java.util.Map;
 public class WorkflowInteraction extends BaseInteraction {
 
     private static final String RECENT_OUTPUTS_KEY = "__workflow_interaction_outputs__";
+    private static final String OUTPUT_INDICES_KEY = "__workflow_interaction_output_indices__";
+    private static final String INPUT_HISTORY_KEY = "__workflow_interaction_input_history__";
 
     private final String nodeId;
 
     public WorkflowInteraction(BaseSession session) {
         super(session, popWorkflowInteractiveInput(session));
         this.nodeId = executableId(session);
+        this.interactiveInputs = mergeRememberedInputs(session, nodeId, interactiveInputs);
+        if (interactiveInputs != null && !interactiveInputs.isEmpty()) {
+            this.latestInteractiveInputs = interactiveInputs.get(interactiveInputs.size() - 1);
+        }
     }
 
     @Override
     public Object waitUserInputs(Object value) {
         Object result = getNextInteractiveInput();
         if (result != null) {
+            rememberConsumedInput(result);
             return result;
         }
         if (session != null && session.state() instanceof WorkflowStateCollection stateCollection) {
             stateCollection.commitCmp();
         }
         InteractionOutput payload = new InteractionOutput(nodeId, value);
-        OutputSchema output = new OutputSchema(Constant.INTERACTION, index, payload);
+        OutputSchema output = new OutputSchema(Constant.INTERACTION, nextOutputIndex(), payload);
         writeOutput(output);
         throwGraphInterrupt(output);
         return null;
@@ -58,7 +69,10 @@ public class WorkflowInteraction extends BaseInteraction {
             latestInteractiveInputs = null;
             return result;
         }
-        OutputSchema writtenOutput = new OutputSchema(Constant.INTERACTION, index, new InteractionOutput(nodeId, value));
+        OutputSchema writtenOutput = new OutputSchema(
+                Constant.INTERACTION,
+                nextOutputIndex(),
+                new InteractionOutput(nodeId, value));
         writeOutput(writtenOutput);
         throwGraphInterrupt(writtenOutput);
         return null;
@@ -75,10 +89,46 @@ public class WorkflowInteraction extends BaseInteraction {
         return interactiveInput;
     }
 
+    private int nextOutputIndex() {
+        return Math.max(index, rememberedOutputIndex(session, nodeId));
+    }
+
+    private void rememberConsumedInput(Object value) {
+        if (session == null || nodeId == null || session.state() == null) {
+            return;
+        }
+        synchronized (session) {
+            SessionStateAccess state = session.state();
+            Map<String, Object> history = inputHistory(state.getGlobal(INPUT_HISTORY_KEY));
+            ArrayList<Object> values = history.get(nodeId) instanceof Iterable<?> iterable
+                    ? iterableToList(iterable)
+                    : new ArrayList<>();
+            if (!values.contains(value)) {
+                values.add(value);
+            }
+            history.put(nodeId, values);
+            state.updateGlobal(Map.of(INPUT_HISTORY_KEY, history));
+            if (state instanceof WorkflowCommitState workflowState) {
+                workflowState.commit();
+            }
+        }
+    }
+
     private void writeOutput(OutputSchema output) {
         rememberOutput(output);
         Object writerManager = session == null ? null : session.streamWriterManager();
         if (writerManager == null) {
+            return;
+        }
+        if (writerManager instanceof Vertex.VertexStreamWriterManager vertexWriterManager
+                && vertexWriterManager.getOutputWriter() != null) {
+            try {
+                vertexWriterManager.getOutputWriter().write(output);
+            } catch (RuntimeException runtimeException) {
+                throw runtimeException;
+            } catch (Exception exception) {
+                throw new IllegalStateException(exception);
+            }
             return;
         }
         try {
@@ -115,8 +165,14 @@ public class WorkflowInteraction extends BaseInteraction {
         synchronized (targetSession) {
             SessionStateAccess state = targetSession.state();
             if (state != null) {
+                Map<String, Object> update = new LinkedHashMap<>();
                 ArrayList<Object> globalOutputs = appendOutput(state.getGlobal(RECENT_OUTPUTS_KEY), output);
-                state.updateGlobal(Map.of(RECENT_OUTPUTS_KEY, globalOutputs));
+                update.put(RECENT_OUTPUTS_KEY, globalOutputs);
+                update.put(OUTPUT_INDICES_KEY, outputIndices(globalOutputs));
+                state.updateGlobal(update);
+                if (state instanceof WorkflowCommitState workflowState) {
+                    workflowState.commit();
+                }
             }
         }
     }
@@ -130,6 +186,87 @@ public class WorkflowInteraction extends BaseInteraction {
         }
         outputs.add(output);
         return outputs;
+    }
+
+    private static Map<String, Object> outputIndices(Iterable<?> outputs) {
+        Map<String, Set<Object>> valuesById = new LinkedHashMap<>();
+        for (Object item : outputs) {
+            if (!(item instanceof OutputSchema outputSchema)
+                    || !Constant.INTERACTION.equals(outputSchema.getType())
+                    || !(outputSchema.getPayload() instanceof InteractionOutput interactionOutput)
+                    || interactionOutput.getId() == null) {
+                continue;
+            }
+            valuesById.computeIfAbsent(interactionOutput.getId(), ignored -> new LinkedHashSet<>())
+                    .add(interactionOutput.getValue());
+        }
+        Map<String, Object> indices = new LinkedHashMap<>();
+        for (Map.Entry<String, Set<Object>> entry : valuesById.entrySet()) {
+            indices.put(entry.getKey(), entry.getValue().size());
+        }
+        return indices;
+    }
+
+    private static ArrayList<Object> mergeRememberedInputs(
+            BaseSession session,
+            String nodeId,
+            java.util.List<Object> currentInputs) {
+        ArrayList<Object> merged = new ArrayList<>();
+        if (session != null && nodeId != null && session.state() != null) {
+            Object existing = session.state().getGlobal(INPUT_HISTORY_KEY);
+            Map<String, Object> history = inputHistory(existing);
+            if (history.get(nodeId) instanceof Iterable<?> iterable) {
+                merged.addAll(iterableToList(iterable));
+            }
+        }
+        if (currentInputs != null) {
+            for (Object item : currentInputs) {
+                if (!merged.contains(item)) {
+                    merged.add(item);
+                }
+            }
+        }
+        return merged.isEmpty() ? currentInputs == null ? null : new ArrayList<>(currentInputs) : merged;
+    }
+
+    private static Map<String, Object> inputHistory(Object existing) {
+        Map<String, Object> history = new LinkedHashMap<>();
+        if (existing instanceof Map<?, ?> existingMap) {
+            for (Map.Entry<?, ?> entry : existingMap.entrySet()) {
+                history.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return history;
+    }
+
+    private static ArrayList<Object> iterableToList(Iterable<?> iterable) {
+        ArrayList<Object> result = new ArrayList<>();
+        for (Object item : iterable) {
+            result.add(item);
+        }
+        return result;
+    }
+
+    private static int rememberedOutputIndex(BaseSession session, String nodeId) {
+        if (session == null || nodeId == null || session.state() == null) {
+            return 0;
+        }
+        Object existing = session.state().getGlobal(OUTPUT_INDICES_KEY);
+        if (!(existing instanceof Map<?, ?> indexMap)) {
+            return 0;
+        }
+        Object value = indexMap.get(nodeId);
+        if (value instanceof Number number) {
+            return Math.max(0, number.intValue());
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Math.max(0, Integer.parseInt(text));
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        return 0;
     }
 
     private static String executableId(BaseSession session) {

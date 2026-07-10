@@ -25,12 +25,14 @@ public final class WorkflowSessionSupport {
     }
 
     public static WorkflowCommitState workflowState(BaseSession session) {
-        Object state = session instanceof GraphSession graphSession ? graphSession.state() : null;
+        Object state = session instanceof GraphSession graphSession ? graphSession.state()
+                : session == null ? null : session.state();
         return state instanceof WorkflowCommitState commitState ? commitState : null;
     }
 
     public static WorkflowStateCollection stateCollection(BaseSession session) {
-        Object state = session instanceof GraphSession graphSession ? graphSession.state() : null;
+        Object state = session instanceof GraphSession graphSession ? graphSession.state()
+                : session == null ? null : session.state();
         return state instanceof WorkflowStateCollection stateCollection ? stateCollection : null;
     }
 

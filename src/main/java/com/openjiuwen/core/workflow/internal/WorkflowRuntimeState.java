@@ -84,12 +84,17 @@ public class WorkflowRuntimeState extends WorkflowCommitState
         if (resolvedSchema instanceof Vertex.ValueTransformer transformer) {
             return getInputsByTransformer(transformer);
         }
+        Object originalSchema = resolvedSchema;
         resolvedSchema = stripParentPrefix(resolvedSchema, parentId);
         Object inputs = super.getInputs(resolvedSchema);
         Object nodeInputs = ioState == null ? null : ioState.getByPrefix(resolvedSchema, nodeId);
         inputs = mergeMissingValues(inputs, nodeInputs);
         Object rootInputs = ioState == null ? null : ioState.get(resolvedSchema);
         inputs = mergeMissingValues(inputs, rootInputs);
+        if (originalSchema != resolvedSchema) {
+            Object originalRootInputs = ioState == null ? null : ioState.get(originalSchema);
+            inputs = mergeMissingValues(inputs, originalRootInputs);
+        }
         if (inputs instanceof Map<?, ?> map) {
             return new LinkedHashMap<>((Map<String, Object>) sortMaps(map));
         }

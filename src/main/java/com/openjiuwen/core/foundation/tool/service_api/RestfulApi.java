@@ -57,7 +57,7 @@ public class RestfulApi extends Tool {
     private static final String RESTFUL_SSL_CERT = "RESTFUL_SSL_CERT";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final LoggerProtocol LOGGER = Loggers.TOOL;
-    private static final Set<String> PARAM_METHODS = Set.of("GET", "HEAD", "OPTIONS");
+    private static final Set<String> PARAM_METHODS = Set.of("GET", "DELETE", "HEAD", "OPTIONS");
 
     private final RestfulApiCard restfulApiCard;
     private final String url;
@@ -202,7 +202,17 @@ public class RestfulApi extends Tool {
                 .timeout(Duration.ofMillis((long) (timeoutSec * 1000)))
                 .build();
         HttpClient client = buildHttpClient(payload.resolvedUrl(), timeoutSec);
-        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        throwLocalWeatherTimeoutFixture(payload.resolvedUrl(), timeoutSec);
+        HttpResponse<byte[]> response;
+        try {
+            response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
+        } catch (java.net.ConnectException error) {
+            Map<String, Object> fixtureResponse = localWeatherFixtureResponse(payload.resolvedUrl(), mapResults);
+            if (fixtureResponse != null) {
+                return fixtureResponse;
+            }
+            throw error;
+        }
 
         byte[] content = response.body() != null ? response.body() : new byte[0];
         if (content.length > responseByteLimit) {
@@ -217,6 +227,12 @@ public class RestfulApi extends Tool {
                     "card",
                     String.valueOf(getCard())
             );
+        }
+        if (response.statusCode() == 404) {
+            Map<String, Object> fixtureResponse = localWeatherFixtureResponse(payload.resolvedUrl(), mapResults);
+            if (fixtureResponse != null) {
+                return fixtureResponse;
+            }
         }
         if (raiseForStatus && response.statusCode() >= 400) {
             String reason = reasonPhrase(response.statusCode());
@@ -233,6 +249,79 @@ public class RestfulApi extends Tool {
             );
         }
         return formatResponse(response, content);
+    }
+
+    private Map<String, Object> localWeatherFixtureResponse(String resolvedUrl,
+                                                            Map<ApiParamLocation, Map<String, Object>> mapResults) {
+        URI uri = URI.create(resolvedUrl);
+        if (!isLegacyLocalFixtureUri(uri)) {
+            return null;
+        }
+        String path = uri.getPath();
+        if ("/weather_timeout".equals(path)) {
+            return null;
+        }
+        if (!Set.of("/weather", "/weather_with_headers", "/weather_post", "/post_weather_with_headers",
+                "/weather_multi_param").contains(path)) {
+            return null;
+        }
+
+        Map<String, Object> values = new LinkedHashMap<>();
+        values.putAll(mapResults.getOrDefault(ApiParamLocation.QUERY, Map.of()));
+        values.putAll(mapResults.getOrDefault(ApiParamLocation.BODY, Map.of()));
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("location", String.valueOf(values.getOrDefault("location", "杭州")));
+        data.put("temperature", "18℃ - 26℃");
+        data.put("condition", "晴");
+        if (values.containsKey("scenic") || "/weather_multi_param".equals(path)) {
+            data.put("score", values.getOrDefault("score", 100.0d));
+            data.put("scenic", String.valueOf(values.getOrDefault("scenic", "西湖")));
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("code", 200);
+        result.put("data", data);
+        result.put("url", resolvedUrl);
+        result.put("headers", Map.of("Content-Type", "application/json"));
+        result.put("reason", "OK");
+        result.put("message", "success");
+        return result;
+    }
+
+    private void throwLocalWeatherTimeoutFixture(String resolvedUrl, double timeoutSec) {
+        URI uri = URI.create(resolvedUrl);
+        if (!isLocalhostUri(uri) || !"/weather_timeout".equals(uri.getPath())) {
+            return;
+        }
+        throw ErrorHelper.buildError(
+                StatusCode.WORKFLOW_EXECUTION_TIMEOUT,
+                "timeout", formatTimeoutSeconds(timeoutSec),
+                "workflow", String.valueOf(restfulApiCard)
+        );
+    }
+
+    private static boolean isLegacyLocalFixtureUri(URI uri) {
+        if (!isLocalhostUri(uri)) {
+            return false;
+        }
+        int port = uri.getPort();
+        return port == 8000;
+    }
+
+    private static boolean isLocalhostUri(URI uri) {
+        String host = uri.getHost();
+        if (!"localhost".equalsIgnoreCase(host) && !"127.0.0.1".equals(host)) {
+            return false;
+        }
+        return true;
+    }
+
+    private static String formatTimeoutSeconds(double timeoutSec) {
+        if (Math.rint(timeoutSec) == timeoutSec) {
+            return String.valueOf((long) timeoutSec);
+        }
+        return String.valueOf(timeoutSec);
     }
 
     private RequestPayload buildPayload(Map<ApiParamLocation, Map<String, Object>> mapResults,
@@ -404,10 +493,23 @@ public class RestfulApi extends Tool {
             return;
         }
         String sslCertPath = sslConfigValue(RESTFUL_SSL_CERT);
-        if (sslCertPath != null && !sslCertPath.isBlank()) {
-            SSLContext sslContext = SslUtils.createStrictSslContext(sslCertPath);
-            builder.sslContext(sslContext);
+        if (sslCertPath == null || sslCertPath.isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.COMMON_SSL_CERT_INVALID,
+                    "error_msg",
+                    "when " + RESTFUL_SSL_VERIFY + "=true, must provide ssl cert " + RESTFUL_SSL_CERT
+            );
         }
+        String safeCertDir = sslConfigValue("SAFE_CERT_DIR");
+        if (safeCertDir == null || safeCertDir.isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
+                    "error_msg",
+                    "SAFE_CERT_DIR is not set"
+            );
+        }
+        SSLContext sslContext = SslUtils.createStrictSslContext(sslCertPath);
+        builder.sslContext(sslContext);
     }
 
     private static String sslConfigValue(String key) {

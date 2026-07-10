@@ -11,6 +11,11 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowChunk;
+import com.openjiuwen.core.workflow.WorkflowOutput;
+import com.openjiuwen.core.workflow.component.loop.LoopGroup;
+import com.openjiuwen.core.workflow.components.flow.EndComponent;
+import com.openjiuwen.core.workflow.components.flow.StartComponent;
+import com.openjiuwen.core.workflow.components.flow.loop.LoopComponent;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -100,6 +105,25 @@ public class SubWorkflowComponentPythonParityTest {
                 .isEqualTo("transform_stream_1transform_stream_2transform_stream_3");
     }
 
+    @Test
+    void subWorkflowPreservesNestedLoopListOutputs() {
+        Workflow mainWorkflow = new Workflow();
+        mainWorkflow.setStartComp("start", new StartComponent(), Map.of("var1", "${var1}"), null);
+        mainWorkflow.addWorkflowComp("sub_workflow_comp",
+                new com.openjiuwen.core.workflow.components.flow.SubWorkflowComponent(loopingSubWorkflow()),
+                Map.of("var1", "${start.var1}"), null);
+        mainWorkflow.setEndComp("end", new EndComponent(), Map.of("end_out", "${sub_workflow_comp}"), null);
+        mainWorkflow.addConnection("start", "sub_workflow_comp");
+        mainWorkflow.addConnection("sub_workflow_comp", "end");
+
+        WorkflowOutput output = mainWorkflow.invoke(Map.of("var1", 4), workflowSession(), null);
+
+        Map<String, Object> endOut = toMap(toMap(toMap(output.getResult()).get("output")).get("end_out"));
+        Map<String, Object> subWorkflowOutput = toMap(endOut.get("output"));
+        Map<String, Object> subOut = toMap(subWorkflowOutput.get("sub_out"));
+        assertThat(subOut.get("l_out1")).isEqualTo(List.of(10, 11, 12, 13));
+    }
+
     private static Workflow createNestingWorkflow(int subWorkflowDepth, Integer workflowMaxNestingDepth) {
         Workflow workflow = workflowMaxNestingDepth == null ? new Workflow() : new Workflow(workflowMaxNestingDepth);
         workflow.setStartComp("start", new Start(), Map.of());
@@ -148,6 +172,23 @@ public class SubWorkflowComponentPythonParityTest {
         subWorkflow.addConnection("sub_start", "custom");
         subWorkflow.addStreamConnection("custom", "custom1");
         subWorkflow.addStreamConnection("custom1", "sub_end");
+        return subWorkflow;
+    }
+
+    private static Workflow loopingSubWorkflow() {
+        Workflow subWorkflow = new Workflow();
+        subWorkflow.setStartComp("sub_start", new StartComponent(), Map.of("var1", "${var1}"), null);
+
+        LoopGroup loopGroup = new LoopGroup();
+        loopGroup.addWorkflowComp("loop_1", new AddTenComponent(), Map.of("source", "${loop1.index}"));
+        loopGroup.startNodes(List.of("loop_1"));
+        loopGroup.endNodes(List.of("loop_1"));
+
+        subWorkflow.addWorkflowComp("loop1", new LoopComponent(loopGroup, Map.of("l_out1", "${loop_1.result}")),
+                Map.of("loop_type", "number", "loop_number", "${sub_start.var1}"), null);
+        subWorkflow.setEndComp("sub_end", new EndComponent(), Map.of("sub_out", "${loop1}"), null);
+        subWorkflow.addConnection("sub_start", "loop1");
+        subWorkflow.addConnection("loop1", "sub_end");
         return subWorkflow;
     }
 
@@ -218,6 +259,16 @@ public class SubWorkflowComponentPythonParityTest {
             Map<String, Object> output = new LinkedHashMap<>();
             output.put("consumed_result", inputMap.get("result"));
             return output;
+        }
+    }
+
+    private static final class AddTenComponent extends com.openjiuwen.core.workflow.WorkflowComponent<Object, Object> {
+        @Override
+        public Object invoke(Object inputs, BaseSession session, ModelContext context) {
+            Object source = inputs instanceof Map<?, ?> map ? map.get("source") : null;
+            int number = source == null ? 0
+                    : source instanceof Number value ? value.intValue() : Integer.parseInt(String.valueOf(source));
+            return Map.of("result", number + 10);
         }
     }
 

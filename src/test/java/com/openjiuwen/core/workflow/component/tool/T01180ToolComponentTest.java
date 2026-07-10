@@ -97,37 +97,38 @@ class T01180ToolComponentTest {
 
     @Test
     void restfulApiResultMapsHttpCodeAndData() {
-        RestfulStub tool = new RestfulStub(Map.of(
+        Map<String, Object> response = Map.of(
                 "code", "201",
                 "data", Map.of("id", 9),
                 "message", "created"
-        ));
+        );
+        RestfulStub tool = new RestfulStub(response);
 
         Map<?, ?> output = invokeWithTool(tool, Map.of("payload", true));
 
         assertEquals(StatusCode.SUCCESS.getCode(), output.get("errCode"));
         assertEquals("created", output.get("errMessage"));
-        assertEquals(Map.of("id", 9), output.get("data"));
+        assertEquals(response, output.get("data"));
         assertEquals(Map.of("payload", true), tool.lastInputs);
     }
 
     @Test
-    void restfulApiResultUnwrapsFormattedResponseData() {
+    void restfulApiResultPreservesFormattedResponseEnvelope() {
         Map<String, Object> weather = Map.of("location", "杭州", "condition", "晴");
-        RestfulStub tool = new RestfulStub(Map.of(
+        Map<String, Object> response = Map.of(
                 "code", 200,
                 "data", weather,
                 "url", "http://localhost:8000/weather?location=%E6%9D%AD%E5%B7%9E",
                 "headers", Map.of("content-type", "application/json"),
                 "reason", "OK",
-                "message", "success"
-        ));
+                "message", "success");
+        RestfulStub tool = new RestfulStub(response);
 
         Map<?, ?> output = invokeWithTool(tool, Map.of("location", "杭州"));
 
         assertEquals(StatusCode.SUCCESS.getCode(), output.get("errCode"));
         assertEquals("", output.get("errMessage"));
-        assertEquals(weather, output.get("data"));
+        assertEquals(response, output.get("data"));
     }
 
     @Test

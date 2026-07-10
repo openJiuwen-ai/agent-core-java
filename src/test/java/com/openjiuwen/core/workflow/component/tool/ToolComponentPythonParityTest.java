@@ -66,7 +66,13 @@ class ToolComponentPythonParityTest {
                 null));
 
         assertThat(result.get("error_code")).isEqualTo(0);
-        assertThat(result.get("data")).isEqualTo(Map.of());
+        assertThat(result.get("data")).isEqualTo(linkedMap(
+                "code", 200,
+                "data", Map.of(),
+                "url", "http://127.0.0.1:9000/weather",
+                "headers", Map.of("content-type", "application/json"),
+                "reason", "OK",
+                "message", "success"));
     }
 
     @Test

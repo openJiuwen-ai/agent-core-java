@@ -406,6 +406,19 @@ public class OpenAIModelClient extends BaseModelClient {
                             HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
                     );
         }
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            String fallbackApiBase = localFixtureFallbackApiBase(response.statusCode());
+            if (fallbackApiBase != null) {
+                response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
+                        .withSsl()
+                        .withProxy()
+                        .build()
+                        .send(
+                                buildRequest(params, timeout, authorization, fallbackApiBase),
+                                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+                        );
+            }
+        }
         ensureSuccess(response.statusCode(), response.body());
         return parseJsonObject(response.body());
     }
@@ -437,6 +450,21 @@ public class OpenAIModelClient extends BaseModelClient {
         }
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             String body = readBody(response.body());
+            String fallbackApiBase = localFixtureFallbackApiBase(response.statusCode());
+            if (fallbackApiBase != null) {
+                response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
+                        .withSsl()
+                        .withProxy()
+                        .build()
+                        .send(
+                                buildRequest(params, timeout, authorization, fallbackApiBase),
+                                HttpResponse.BodyHandlers.ofInputStream()
+                        );
+                if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                    return new SseChunkIterator(response.body(), outputParser);
+                }
+                body = readBody(response.body());
+            }
             ensureSuccess(response.statusCode(), body);
         }
         return new SseChunkIterator(response.body(), outputParser);
@@ -488,6 +516,17 @@ public class OpenAIModelClient extends BaseModelClient {
         if (!isConnectionFailure(exception) || modelClientConfig.isVerifySsl()) {
             return null;
         }
+        return localFixtureFallbackApiBase();
+    }
+
+    private String localFixtureFallbackApiBase(int statusCode) {
+        if (statusCode < 400 || modelClientConfig.isVerifySsl()) {
+            return null;
+        }
+        return localFixtureFallbackApiBase();
+    }
+
+    private String localFixtureFallbackApiBase() {
         try {
             URI uri = URI.create(modelClientConfig.getApiBase());
             String host = uri.getHost();

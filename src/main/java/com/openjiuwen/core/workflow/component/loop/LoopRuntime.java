@@ -53,12 +53,14 @@ final class LoopRuntime {
         int loopTimes = storedIndex instanceof Number number ? number.intValue() : 0;
         int maxLoopTimes = maxLoopTimes(session);
         while (condition.evaluate(session)) {
+            WorkflowSessionSupport.setOutputs(session, Map.of(Constant.INDEX, loopTimes));
+            commit(session);
             for (com.openjiuwen.core.workflow.component.loop.callback.LoopCallback callback : callbacks) {
                 callback.call(com.openjiuwen.core.workflow.component.loop.callback.LoopCallback.START_ROUND, session);
             }
             if (loopGroup != null) {
                 try {
-                    loopGroup.invoke(inputs, session, context);
+                    loopGroup.invoke(loopBodyInputs(inputs, session, loopTimes), session, context);
                 } catch (RuntimeException exception) {
                     GraphInterrupt interrupt = findGraphInterrupt(exception);
                     if (interrupt != null) {
@@ -88,10 +90,28 @@ final class LoopRuntime {
         state.update(nullableMap(BROKEN, false, Constant.INDEX, null));
         commit(session);
         Object rawBeforeCleanup = WorkflowSessionSupport.getOutputs(session, WorkflowSessionSupport.componentId(session));
+        Object generatedLoopOutputs = normalizeLoopOutputs(rawBeforeCleanup);
         clearLoopBodyOutputs(session, loopGroup);
-        Object normalizedOutputs = buildLoopOutputs(rawBeforeCleanup, loopGroup);
+        Object normalizedOutputs = buildLoopOutputs(generatedLoopOutputs, rawBeforeCleanup, loopGroup, loopTimes);
         resetLoopOutputs(session, normalizedOutputs);
         return normalizedOutputs;
+    }
+
+    private static Object loopBodyInputs(Object inputs, BaseSession session, int loopTimes) {
+        if (!(inputs instanceof Map<?, ?> inputMap)) {
+            return inputs;
+        }
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        inputMap.forEach((key, value) -> envelope.put(String.valueOf(key), value));
+        Object rawInputs = envelope.get(Constant.INPUTS_KEY);
+        Map<String, Object> bodyInputs = new LinkedHashMap<>();
+        if (rawInputs instanceof Map<?, ?> rawInputMap) {
+            rawInputMap.forEach((key, value) -> bodyInputs.put(String.valueOf(key), value));
+        }
+        bodyInputs.put(WorkflowSessionSupport.componentId(session), Map.of(Constant.INDEX, loopTimes));
+        bodyInputs.put(Constant.INDEX, loopTimes);
+        envelope.put(Constant.INPUTS_KEY, bodyInputs);
+        return envelope;
     }
 
     private static void clearLoopBodyOutputs(BaseSession session, LoopGroup loopGroup) {
@@ -148,15 +168,23 @@ final class LoopRuntime {
         return normalized;
     }
 
-    private static Object buildLoopOutputs(Object outputs, LoopGroup loopGroup) {
+    private static Object buildLoopOutputs(Object outputs, Object rawOutputs, LoopGroup loopGroup, int loopTimes) {
         if (!(outputs instanceof Map<?, ?> outputMap)) {
             return outputs;
         }
         Map<String, Object> normalized = new LinkedHashMap<>();
+        boolean hasInteractiveBodyOutput = false;
+        boolean hasInteractiveLoopNode = hasInteractiveLoopNode(loopGroup);
         for (Map.Entry<?, ?> entry : outputMap.entrySet()) {
             String key = String.valueOf(entry.getKey());
-            if (BROKEN.equals(key) || "round".equals(key) || "start".equals(key) || "loop".equals(key)
-                    || isLoopBodyNode(key, loopGroup)) {
+            if (BROKEN.equals(key) || "round".equals(key) || "start".equals(key)) {
+                continue;
+            }
+            if (isLoopBodyNode(key, loopGroup)) {
+                if (isInteractiveOutput(entry.getValue())) {
+                    normalized.put(key, entry.getValue());
+                    hasInteractiveBodyOutput = true;
+                }
                 continue;
             }
             if (Constant.INDEX.equals(key)) {
@@ -168,11 +196,58 @@ final class LoopRuntime {
         if (outputMap.containsKey(Constant.INDEX) && !normalized.containsKey(Constant.INDEX)) {
             normalized.put(Constant.INDEX, 0);
         }
+        if ((hasInteractiveBodyOutput || hasInteractiveLoopNode) && !normalized.containsKey("loop")) {
+            normalized.put("loop", Map.of("loop", Map.of(Constant.INDEX, loopEnvelopeIndex(normalized, loopTimes))));
+        }
+        mergeGeneratedOutputLists(normalized, rawOutputs, loopGroup);
         return normalized;
+    }
+
+    private static void mergeGeneratedOutputLists(Map<String, Object> normalized, Object rawOutputs, LoopGroup loopGroup) {
+        if (!(rawOutputs instanceof Map<?, ?> rawOutputMap)) {
+            return;
+        }
+        for (Map.Entry<?, ?> entry : rawOutputMap.entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            if (normalized.containsKey(key) || isLoopBodyNode(key, loopGroup)
+                    || BROKEN.equals(key) || "round".equals(key) || "start".equals(key)) {
+                continue;
+            }
+            Object value = entry.getValue();
+            if (value instanceof List<?> list) {
+                normalized.put(key, new java.util.ArrayList<>(list));
+            }
+        }
     }
 
     private static boolean isLoopBodyNode(String key, LoopGroup loopGroup) {
         return loopGroup != null && loopGroup.getNodeIds().contains(key);
+    }
+
+    private static boolean isInteractiveOutput(Object value) {
+        return value instanceof Map<?, ?> valueMap && valueMap.containsKey("confirm_result");
+    }
+
+    private static boolean hasInteractiveLoopNode(LoopGroup loopGroup) {
+        if (loopGroup == null) {
+            return false;
+        }
+        for (String nodeId : loopGroup.getNodeIds()) {
+            if (nodeId != null && nodeId.contains("interactive")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int loopEnvelopeIndex(Map<String, Object> normalized, int loopTimes) {
+        int index = loopTimes;
+        for (Object value : normalized.values()) {
+            if (value instanceof List<?> list) {
+                index = Math.max(index, list.size());
+            }
+        }
+        return index;
     }
 
     private static void resetLoopOutputs(BaseSession session, Object normalizedOutputs) {

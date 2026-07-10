@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.multiagent.legacy;
 
+import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.session.AgentSessionApi;
 
 import java.lang.reflect.InvocationTargetException;
@@ -63,7 +64,8 @@ public class ControllerGroup {
             if (agent == null) {
                 continue;
             }
-            lastResult = invokeAgent(agent, Map.of("query", event.getPayload()), session);
+            lastResult = Map.of("output", normalizeAgentPayload(
+                    invokeAgent(agent, Map.of("query", event.getPayload()), session)));
         }
         return lastResult == null ? Map.of("output", Map.of()) : lastResult;
     }
@@ -87,5 +89,52 @@ public class ControllerGroup {
             }
             throw new IllegalStateException(cause);
         }
+    }
+
+    private static Object normalizeAgentPayload(Object result) {
+        Object normalized = result;
+        if (result instanceof CompletionStage<?> stage) {
+            normalized = result instanceof Map<?, ?> ? result : stage.toCompletableFuture().join();
+        }
+        if (normalized instanceof ControllerOutput controllerOutput) {
+            Map<String, Object> dataMap = controllerOutput.getDataAsMap();
+            if (dataMap != null) {
+                return unwrapSingleOutputMap(dataMap);
+            }
+            return controllerOutput.getData();
+        }
+        if (normalized instanceof Map<?, ?> resultMap) {
+            return unwrapSingleOutputMap(stringKeyMap(resultMap));
+        }
+        return normalized;
+    }
+
+    private static Object unwrapSingleOutputMap(Map<String, Object> resultMap) {
+        Object output = resultMap.get("output");
+        if ("answer".equals(resultMap.get("result_type")) && output != null) {
+            return unwrapOutputValue(output);
+        }
+        if (resultMap.size() == 1 && output instanceof Map<?, ?> outputMap) {
+            return unwrapSingleOutputMap(stringKeyMap(outputMap));
+        }
+        return resultMap;
+    }
+
+    private static Object unwrapOutputValue(Object output) {
+        if (output instanceof com.openjiuwen.core.workflow.WorkflowOutput workflowOutput) {
+            return unwrapOutputValue(workflowOutput.getResult());
+        }
+        if (output instanceof Map<?, ?> outputMap) {
+            return unwrapSingleOutputMap(stringKeyMap(outputMap));
+        }
+        return output;
+    }
+
+    private static Map<String, Object> stringKeyMap(Map<?, ?> source) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : source.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return result;
     }
 }
