@@ -115,7 +115,38 @@ class T01180ToolComponentTest {
     }
 
     @Test
-    void restfulApiResultPreservesFormattedResponseEnvelope() {
+    void restfulApiResultDefaultsMissingMessageToEmpty() {
+        Map<String, Object> response = Map.of(
+                "code", 200,
+                "data", Map.of("id", 9)
+        );
+        RestfulStub tool = new RestfulStub(response);
+
+        Map<?, ?> output = invokeWithTool(tool, Map.of());
+
+        assertEquals(StatusCode.SUCCESS.getCode(), output.get("errCode"));
+        assertEquals("", output.get("errMessage"));
+        assertEquals(Map.of("id", 9), output.get("data"));
+    }
+
+    @Test
+    void restfulApiResultPreservesNonSuccessMessage() {
+        Map<String, Object> response = Map.of(
+                "code", 503,
+                "data", Map.of("retryable", true),
+                "message", "service unavailable"
+        );
+        RestfulStub tool = new RestfulStub(response);
+
+        Map<?, ?> output = invokeWithTool(tool, Map.of());
+
+        assertEquals(StatusCode.TOOL_EXECUTION_ERROR.getCode(), output.get("errCode"));
+        assertEquals("service unavailable", output.get("errMessage"));
+        assertEquals(Map.of("retryable", true), output.get("data"));
+    }
+
+    @Test
+    void restfulApiResultProjectsFormattedResponseDataAtNestedDepth() {
         Map<String, Object> weather = Map.of("location", "杭州", "condition", "晴");
         Map<String, Object> response = Map.of(
                 "code", 200,
@@ -129,8 +160,8 @@ class T01180ToolComponentTest {
         Map<?, ?> output = invokeWithTool(tool, Map.of("location", "杭州"), nestedWorkflowSession());
 
         assertEquals(StatusCode.SUCCESS.getCode(), output.get("errCode"));
-        assertEquals("", output.get("errMessage"));
-        assertEquals(response, output.get("data"));
+        assertEquals("success", output.get("errMessage"));
+        assertEquals(weather, output.get("data"));
     }
 
     @Test

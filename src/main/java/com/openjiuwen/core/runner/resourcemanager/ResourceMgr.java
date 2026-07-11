@@ -1015,10 +1015,15 @@ public class ResourceMgr {
                                         Collection<String> tag, TagMatchStrategy tagMatchStrategy,
                                         boolean skipIfTagNotExists, StatusCode errorCode) {
         if (serverIds != null) {
-            if (serverIds.isEmpty()) {
-                throw buildError(errorCode, "server_config", String.valueOf(serverIds), "reason", "server_id is empty");
+            if (serverIds.isEmpty() || serverIds.stream().anyMatch(id -> id == null || id.isEmpty())) {
+                throw buildError(errorCode, "server_id", String.valueOf(serverIds), "reason", "server_id is empty");
             }
-            validateResourceIds(serverIds, "mcp server");
+            try {
+                validateResourceIds(serverIds, "mcp server");
+            } catch (BaseError error) {
+                throw buildError(errorCode, "server_id", String.valueOf(serverIds),
+                        "reason", error.getMessage());
+            }
             return new ServerIdLookup(new ArrayList<>(serverIds), true);
         }
 
@@ -1027,7 +1032,7 @@ public class ResourceMgr {
             ids.addAll(findResourcesByTags(tag == null ? List.of(ResourceManagerBase.GLOBAL) : tag,
                     tagMatchStrategy, skipIfTagNotExists));
         } else {
-            if (serverNames.isEmpty()) {
+            if (serverNames.isEmpty() || serverNames.stream().anyMatch(name -> name == null || name.isEmpty())) {
                 throw buildError(errorCode, "server_id", null, "reason", "server_name is empty");
             }
             for (String serverName : serverNames) {

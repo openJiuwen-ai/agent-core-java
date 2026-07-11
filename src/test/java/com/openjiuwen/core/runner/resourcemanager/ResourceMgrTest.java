@@ -514,6 +514,49 @@ class ResourceMgrTest {
     }
 
     @Test
+    void getMcpToolInfosUsesMcpErrorContractForEmptyServerId() {
+        ResourceMgr manager = new ResourceMgr();
+
+        BaseError error = assertThrows(BaseError.class,
+                () -> manager.getMcpToolInfos(null, "", null, null,
+                        com.openjiuwen.core.runner.base.TagMatchStrategy.ALL, false, false));
+
+        assertEquals(StatusCode.RESOURCE_MCP_TOOL_GET_ERROR, error.getStatus());
+    }
+
+    @Test
+    void getMcpToolUsesMcpErrorContractForInvalidServerId() {
+        ResourceMgr manager = new ResourceMgr();
+
+        BaseError error = assertThrows(BaseError.class,
+                () -> manager.getMcpTool(null, "   ", null, null,
+                        com.openjiuwen.core.runner.base.TagMatchStrategy.ALL, false));
+
+        assertEquals(StatusCode.RESOURCE_MCP_TOOL_GET_ERROR, error.getStatus());
+    }
+
+    @Test
+    void getMcpToolInfosUsesMcpErrorContractForEmptyServerName() {
+        ResourceMgr manager = new ResourceMgr();
+
+        BaseError error = assertThrows(BaseError.class,
+                () -> manager.getMcpToolInfos(null, null, "", null,
+                        com.openjiuwen.core.runner.base.TagMatchStrategy.ALL, false, false));
+
+        assertEquals(StatusCode.RESOURCE_MCP_TOOL_GET_ERROR, error.getStatus());
+    }
+
+    @Test
+    void getMcpToolInfosReturnsEmptyForUnknownServerName() {
+        ResourceMgr manager = new ResourceMgr();
+
+        List<ToolInfo> result = manager.getMcpToolInfos(null, null, "missing-server", null,
+                com.openjiuwen.core.runner.base.TagMatchStrategy.ALL, false, false);
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
     void mcpResourceOperationsUseTimeoutAwareClientMethods() {
         ResourceMgr manager = new ResourceMgr();
         TimeoutOnlyMcpClient client = new TimeoutOnlyMcpClient();

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent;
 
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -19,6 +20,9 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Handler;
+import java.util.logging.LogRecord;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -234,6 +238,54 @@ class AbilityManagerTest {
     }
 
     @Test
+    void executeResolvedToolLogsScalarResultOnceWithoutChangingExecutionResult() {
+        AtomicInteger invocations = new AtomicInteger();
+        Double expected = 30.0D;
+        Tool tool = resultTool("sum", expected, invocations);
+        ToolCall call = ToolCall.builder().id("call-sum").name("sum").arguments("{}").build();
+        RecordingHandler handler = new RecordingHandler();
+        Loggers.TOOL.addHandler(handler);
+        try {
+            List<AbilityManager.ExecutionResult> results = new AbilityManager().executeResolvedTool(tool, call);
+
+            assertEquals(1, invocations.get());
+            assertSame(expected, results.get(0).result());
+            assertEquals("30.0", results.get(0).toolMessage().getContent());
+            assertEquals(List.of("Tool result: 30.0"), handler.messages);
+        } finally {
+            Loggers.TOOL.removeHandler(handler);
+        }
+    }
+
+    @Test
+    void executeResolvedToolLogsRestEnvelopeWithoutChangingReturnedEnvelope() {
+        AtomicInteger invocations = new AtomicInteger();
+        Map<String, Object> weather = new LinkedHashMap<>();
+        weather.put("location", "杭州");
+        weather.put("temperature", "18℃ - 26℃");
+        weather.put("condition", "晴");
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("code", 200);
+        envelope.put("data", weather);
+        envelope.put("message", "success");
+        Tool tool = resultTool("weather", envelope, invocations);
+        ToolCall call = ToolCall.builder().id("call-weather").name("weather").arguments("{}").build();
+        RecordingHandler handler = new RecordingHandler();
+        Loggers.TOOL.addHandler(handler);
+        try {
+            List<AbilityManager.ExecutionResult> results = new AbilityManager().executeResolvedTool(tool, call);
+
+            assertEquals(1, invocations.get());
+            assertSame(envelope, results.get(0).result());
+            String content = AbilityManager.buildToolMessageContent(envelope);
+            assertEquals(content, results.get(0).toolMessage().getContent());
+            assertEquals(List.of("Tool result: " + content), handler.messages);
+        } finally {
+            Loggers.TOOL.removeHandler(handler);
+        }
+    }
+
+    @Test
     void buildToolMessageContentMirrorsPythonDataAndErrorRules() {
         Map<String, Object> contentData = new LinkedHashMap<>();
         contentData.put("content", null);
@@ -271,6 +323,21 @@ class AbilityManagerTest {
         return new ToolCard(id, name, name + " description", Map.of("type", "object"));
     }
 
+    private static Tool resultTool(String name, Object result, AtomicInteger invocations) {
+        return new Tool(ToolCard.builder()
+                .id(name)
+                .name(name)
+                .description(name)
+                .inputParams(Map.of("type", "object"))
+                .build()) {
+            @Override
+            public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) {
+                invocations.incrementAndGet();
+                return result;
+            }
+        };
+    }
+
     private static final class EchoTool extends Tool {
         private String invokedText;
 
@@ -300,6 +367,23 @@ class AbilityManagerTest {
         @Override
         protected List<ToolInfo> loadMcpToolInfos(McpServerConfig mcpServer) {
             return mcpToolInfos;
+        }
+    }
+
+    private static final class RecordingHandler extends Handler {
+        private final List<String> messages = new java.util.ArrayList<>();
+
+        @Override
+        public void publish(LogRecord record) {
+            messages.add(record.getMessage());
+        }
+
+        @Override
+        public void flush() {
+        }
+
+        @Override
+        public void close() {
         }
     }
 }

@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
@@ -250,13 +251,22 @@ public class AbilityManager {
         Map<String, Object> inputs = parsedArguments instanceof Map<?, ?> map ? stringObjectMap(map) : Map.of();
         try {
             Object result = tool.invoke(inputs, Map.of());
-            ToolMessage message = new ToolMessage(buildToolMessageContent(result), toolCall.getId(),
-                    toolCall.getName());
+            String content = buildToolMessageContent(result);
+            logSuccessfulToolResult(content);
+            ToolMessage message = new ToolMessage(content, toolCall.getId(), toolCall.getName());
             return List.of(new ExecutionResult(result, message));
         } catch (Exception exception) {
             String messageText = "Ability execution error: " + exception.getMessage();
             ToolMessage message = new ToolMessage(messageText, toolCall.getId(), toolCall.getName());
             return List.of(new ExecutionResult(null, message));
+        }
+    }
+
+    private static void logSuccessfulToolResult(String content) {
+        try {
+            Loggers.TOOL.info("Tool result: {}", content);
+        } catch (RuntimeException ignored) {
+            // Result logging is observational and must not change tool execution semantics.
         }
     }
 
