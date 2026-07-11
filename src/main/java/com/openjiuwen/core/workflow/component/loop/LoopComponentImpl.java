@@ -120,6 +120,10 @@ public class LoopComponentImpl extends WorkflowComponent implements LoopComponen
             if (interrupt != null) {
                 return LoopRuntime.sneakyThrow(interrupt);
             }
+            BaseError nestedBaseError = LoopRuntime.findBaseError(exception);
+            if (nestedBaseError != null) {
+                throw nestedBaseError;
+            }
             throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_EXECUTION_ERROR,
                     "reason", normalizeExceptionMessage(exception),
                     "comp", WorkflowSessionSupport.componentId(session));

@@ -52,7 +52,7 @@ public class TemplateBatchProcessor {
             Map<String, Object> frame = frames.next();
             Object data = frame.get("data");
             if (data != null) {
-                answer.append(data);
+                answer.append(TemplateUtils.stringifyTemplateValue(data));
             }
         }
         return answer.toString();

@@ -90,7 +90,7 @@ public class WorkflowInteraction extends BaseInteraction {
     }
 
     private int nextOutputIndex() {
-        return Math.max(index, rememberedOutputIndex(session, nodeId));
+        return Math.max(index, rememberedInputIndex(session, nodeId));
     }
 
     private void rememberConsumedInput(Object value) {
@@ -247,26 +247,23 @@ public class WorkflowInteraction extends BaseInteraction {
         return result;
     }
 
-    private static int rememberedOutputIndex(BaseSession session, String nodeId) {
+    private static int rememberedInputIndex(BaseSession session, String nodeId) {
         if (session == null || nodeId == null || session.state() == null) {
             return 0;
         }
-        Object existing = session.state().getGlobal(OUTPUT_INDICES_KEY);
-        if (!(existing instanceof Map<?, ?> indexMap)) {
+        Object existing = session.state().getGlobal(INPUT_HISTORY_KEY);
+        if (!(existing instanceof Map<?, ?> inputHistory)) {
             return 0;
         }
-        Object value = indexMap.get(nodeId);
-        if (value instanceof Number number) {
-            return Math.max(0, number.intValue());
+        Object consumedInputs = inputHistory.get(nodeId);
+        if (!(consumedInputs instanceof Iterable<?> iterable)) {
+            return 0;
         }
-        if (value instanceof String text && !text.isBlank()) {
-            try {
-                return Math.max(0, Integer.parseInt(text));
-            } catch (NumberFormatException ignored) {
-                return 0;
-            }
+        int consumedInputCount = 0;
+        for (Object ignored : iterable) {
+            consumedInputCount++;
         }
-        return 0;
+        return consumedInputCount;
     }
 
     private static String executableId(BaseSession session) {

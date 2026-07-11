@@ -18,9 +18,12 @@ import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.workflow.internal.WorkflowRuntimeSession;
+import com.openjiuwen.core.workflow.internal.WorkflowRuntimeState;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -227,6 +230,78 @@ class WorkflowWithInterruptMissingTest {
     }
 
     @Test
+    void testRecoveredInteractionIndexUsesConsumedInputsPerComponent() throws Exception {
+        WorkflowRuntimeState state = WorkflowRuntimeState.create();
+        state.updateGlobal(Map.of(
+                "__workflow_interaction_outputs__", List.of(
+                        new OutputSchema(Constant.INTERACTION, 0, new InteractionOutput("a", "first-a")),
+                        new OutputSchema(Constant.INTERACTION, 0, new InteractionOutput("b", "first-b")),
+                        new OutputSchema(Constant.INTERACTION, 0, new InteractionOutput("b", "retried-b"))),
+                "__workflow_interaction_input_history__", Map.of("a", List.of("answer-a"))));
+        state.commit();
+        WorkflowRuntimeSession session = new WorkflowRuntimeSession(
+                "interaction-index-workflow", null, "interaction-index-session", state, null);
+        Workflow workflow = new Workflow();
+
+        assertThat(recoverInteractionIndex(workflow, session,
+                new OutputSchema(Constant.INTERACTION, 0, new InteractionOutput("b", "retried-b"))))
+                .isZero();
+        assertThat(recoverInteractionIndex(workflow, session,
+                new OutputSchema(Constant.INTERACTION, 0, new InteractionOutput("a", "next-a"))))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void testInteractionDedupUsesSemanticEventIdentity() throws Exception {
+        InteractionOutput firstPayload = new InteractionOutput("node", Map.of("answer", "yes"));
+        firstPayload.getMetadata().put("round", 1);
+        InteractionOutput duplicatePayload = new InteractionOutput("node", Map.of("answer", "yes"));
+        duplicatePayload.getMetadata().put("round", 1);
+        List<Object> chunks = List.of(
+                new OutputSchema(Constant.INTERACTION, 0, firstPayload),
+                new OutputSchema(Constant.INTERACTION, 0, duplicatePayload),
+                new OutputSchema(Constant.INTERACTION, 1,
+                        new InteractionOutput("node", Map.of("answer", "yes"))),
+                new OutputSchema(Constant.INTERACTION, 0,
+                        new InteractionOutput("node", Map.of("answer", "no"))));
+
+        List<Object> deduplicated = deduplicateInteractionChunks(chunks);
+
+        assertThat(deduplicated).containsExactly(chunks.get(0), chunks.get(2), chunks.get(3));
+    }
+
+    @Test
+    void testSubWorkflowDuplicateEndEnvelopeIsNormalizedOnStateRead() {
+        WorkflowRuntimeState state = WorkflowRuntimeState.create("", "consumer");
+        Map<String, Object> publicEndResult = Map.of("result", 42);
+        Map<String, Object> duplicatedEnvelope = linkedMap(
+                "end", publicEndResult,
+                "output", publicEndResult);
+        duplicatedEnvelope.put("__sub_workflow_public_output__", true);
+        Map<String, Object> builtInEndEnvelope = linkedMap(
+                "end", Map.of("output", publicEndResult),
+                "output", publicEndResult);
+        state.getIoState().updateById("sub", Map.of(
+                "sub", duplicatedEnvelope,
+                "official", builtInEndEnvelope));
+        state.getIoState().commit("sub");
+
+        Map<String, Object> inputs = state.getInputs(Map.of(
+                "custom", "${sub}",
+                "official", "${official}"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> custom = (Map<String, Object>) inputs.get("custom");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> official = (Map<String, Object>) inputs.get("official");
+
+        assertThat(custom)
+                .containsEntry("end", publicEndResult)
+                .containsEntry("result", 42)
+                .doesNotContainKey("output");
+        assertThat(official).containsEntry("output", publicEndResult);
+    }
+
+    @Test
     void testWorkflowWithBranch() {
         BranchRouter smallRouter = new BranchRouter();
         smallRouter.addBranch(() -> true, "b", "1");
@@ -405,6 +480,26 @@ class WorkflowWithInterruptMissingTest {
 
     private static OutputSchema question(String id, int index) {
         return new OutputSchema(Constant.INTERACTION, index, new InteractionOutput(id, QUESTION));
+    }
+
+    private static int recoverInteractionIndex(
+            Workflow workflow,
+            WorkflowRuntimeSession session,
+            OutputSchema output) throws Exception {
+        Method method = Workflow.class.getDeclaredMethod(
+                "recoverInteractionOutputIndex",
+                WorkflowRuntimeSession.class,
+                OutputSchema.class,
+                InteractionOutput.class);
+        method.setAccessible(true);
+        return (int) method.invoke(workflow, session, output, output.getPayload());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> deduplicateInteractionChunks(List<Object> chunks) throws Exception {
+        Method method = Workflow.class.getDeclaredMethod("deduplicateInteractionChunks", List.class);
+        method.setAccessible(true);
+        return (List<Object>) method.invoke(null, chunks);
     }
 
     private static InteractiveInput answer(String id, Object value) {

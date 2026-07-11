@@ -14,12 +14,16 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Mirrors Python's duck-typed workflow session access in
  * {@code openjiuwen/core/workflow/workflow.py}.
  */
 public final class WorkflowSessionSupport {
+
+    private static final Set<String> FAILED_EXECUTIONS = ConcurrentHashMap.newKeySet();
 
     private WorkflowSessionSupport() {
     }
@@ -147,6 +151,52 @@ public final class WorkflowSessionSupport {
         }
         WorkflowStateCollection state = stateCollection(session);
         return state != null ? state.getGlobal(key) : null;
+    }
+
+    /**
+     * Marks the current runtime state after the outer workflow has failed while
+     * sibling components may still be finishing.
+     *
+     * @param session workflow runtime session
+     */
+    public static void markExecutionFailed(BaseSession session) {
+        String executionKey = executionKey(session);
+        if (executionKey != null) {
+            FAILED_EXECUTIONS.add(executionKey);
+        }
+    }
+
+    /**
+     * Returns whether the outer workflow failure has already been observed by
+     * this in-memory runtime state.
+     *
+     * @param session workflow runtime session
+     * @return true when a sibling failure has ended the outer invocation
+     */
+    public static boolean executionFailed(BaseSession session) {
+        String executionKey = executionKey(session);
+        return executionKey != null && FAILED_EXECUTIONS.contains(executionKey);
+    }
+
+    /**
+     * Clears the transient failure marker at the start of a new workflow
+     * invocation. A completed Loop handoff, when present, remains independently
+     * available for one recovery call.
+     *
+     * @param session workflow runtime session
+     */
+    public static void clearExecutionFailed(BaseSession session) {
+        String executionKey = executionKey(session);
+        if (executionKey != null) {
+            FAILED_EXECUTIONS.remove(executionKey);
+        }
+    }
+
+    private static String executionKey(BaseSession session) {
+        if (session == null || session.sessionId() == null || session.workflowId() == null) {
+            return null;
+        }
+        return session.sessionId() + '\u0000' + session.workflowId();
     }
 
     public static String componentId(BaseSession session) {

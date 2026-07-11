@@ -25,6 +25,8 @@ import java.util.Map;
 public class WorkflowRuntimeState extends WorkflowCommitState
         implements Vertex.VertexState, CompiledGraph.WorkflowState {
 
+    private static final String SUB_WORKFLOW_PUBLIC_OUTPUT_KEY = "__sub_workflow_public_output__";
+
     public WorkflowRuntimeState(
             CommitStateLike ioState,
             CommitStateLike globalState,
@@ -95,6 +97,7 @@ public class WorkflowRuntimeState extends WorkflowCommitState
             Object originalRootInputs = ioState == null ? null : ioState.get(originalSchema);
             inputs = mergeMissingValues(inputs, originalRootInputs);
         }
+        inputs = normalizeSubWorkflowValues(inputs);
         if (inputs instanceof Map<?, ?> map) {
             return new LinkedHashMap<>((Map<String, Object>) sortMaps(map));
         }
@@ -134,16 +137,65 @@ public class WorkflowRuntimeState extends WorkflowCommitState
 
     @Override
     public void setOutputs(Map<String, Object> outputs) {
-        super.setOutputs(outputs);
+        super.setOutputs(normalizeSubWorkflowOutputs(outputs));
+    }
+
+    private static Map<String, Object> normalizeSubWorkflowOutputs(Map<String, Object> outputs) {
+        if (outputs == null || (!Boolean.TRUE.equals(outputs.get(SUB_WORKFLOW_PUBLIC_OUTPUT_KEY))
+                && !hasDuplicatedPublicOutput(outputs))) {
+            return outputs;
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : outputs.entrySet()) {
+            if (!SUB_WORKFLOW_PUBLIC_OUTPUT_KEY.equals(entry.getKey()) && !"output".equals(entry.getKey())) {
+                normalized.put(entry.getKey(), entry.getValue());
+            }
+        }
+        Object publicOutput = outputs.get("output");
+        if (publicOutput instanceof Map<?, ?> publicOutputMap) {
+            for (Map.Entry<?, ?> entry : publicOutputMap.entrySet()) {
+                normalized.putIfAbsent(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return normalized;
+    }
+
+    private static boolean hasDuplicatedPublicOutput(Map<String, Object> outputs) {
+        Object publicOutput = outputs.get("output");
+        if (!(publicOutput instanceof Map<?, ?>)) {
+            return false;
+        }
+        for (Map.Entry<String, Object> entry : outputs.entrySet()) {
+            if (!"output".equals(entry.getKey())
+                    && !SUB_WORKFLOW_PUBLIC_OUTPUT_KEY.equals(entry.getKey())
+                    && publicOutput.equals(entry.getValue())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static Object normalizeSubWorkflowValues(Object value) {
+        if (value instanceof List<?> list) {
+            return list.stream().map(WorkflowRuntimeState::normalizeSubWorkflowValues).toList();
+        }
+        if (!(value instanceof Map<?, ?> valueMap)) {
+            return value;
+        }
+        Map<String, Object> normalizedChildren = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : valueMap.entrySet()) {
+            normalizedChildren.put(String.valueOf(entry.getKey()), normalizeSubWorkflowValues(entry.getValue()));
+        }
+        return normalizeSubWorkflowOutputs(normalizedChildren);
     }
 
     @Override
     public Object getOutputs(String targetNodeId) {
         Object outputs = super.getOutputs(targetNodeId);
         if (outputs != null || targetNodeId == null || nodeId == null || nodeId.isBlank()) {
-            return outputs;
+            return normalizeSubWorkflowValues(outputs);
         }
-        return ioState == null ? null : ioState.getByPrefix(targetNodeId, nodeId);
+        return normalizeSubWorkflowValues(ioState == null ? null : ioState.getByPrefix(targetNodeId, nodeId));
     }
 
     @Override

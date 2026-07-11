@@ -83,6 +83,8 @@ public class Workflow {
     private static final ExecutorService STREAM_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
     private static final long SUB_WORKFLOW_STREAM_DRAIN_TIMEOUT_MS = 1000L;
     private static final String WORKFLOW_INTERACTION_OUTPUTS_KEY = "__workflow_interaction_outputs__";
+    private static final String WORKFLOW_INTERACTION_INPUT_HISTORY_KEY = "__workflow_interaction_input_history__";
+    private static final String SUB_WORKFLOW_PUBLIC_OUTPUT_KEY = "__sub_workflow_public_output__";
     private static DecoratorFramework callbackFramework;
 
     private final WorkflowCard card;
@@ -90,6 +92,7 @@ public class Workflow {
     private final boolean defaultCard;
     private String endCompId = "";
     private boolean isStreaming = false;
+    private boolean subWorkflowEndUsesOutputEnvelope;
 
     public Workflow(WorkflowCard card) {
         this(card, null);
@@ -344,6 +347,8 @@ public class Workflow {
             Object streamOutputsSchema,
             String responseMode) {
 
+        this.subWorkflowEndUsesOutputEnvelope = usesBuiltInEndOutputEnvelope(component);
+
         List<ComponentAbility> compAbility = new ArrayList<>();
         boolean waitForAll = false;
 
@@ -551,6 +556,7 @@ public class Workflow {
                     }
                     return new WorkflowOutput(result, WorkflowExecutionState.COMPLETED);
                 } catch (Exception e) {
+                    WorkflowSessionSupport.markExecutionFailed(workflowSession);
                     throw wrapWorkflowException(e);
                 }
             }, executeTimeoutMs));
@@ -694,6 +700,7 @@ public class Workflow {
         AtomicReference<Object> finalPayload = new AtomicReference<>();
         AtomicReference<RuntimeException> executionError = new AtomicReference<>();
         AtomicBoolean executionTimedOut = new AtomicBoolean(false);
+        AtomicBoolean executionCompleted = new AtomicBoolean(false);
         AtomicBoolean terminated = new AtomicBoolean(false);
         AsyncStreamQueue streamQueue = workflowSession.runtimeStreamWriterManager() != null
                 ? workflowSession.runtimeStreamWriterManager().getStreamEmitter().getStreamQueue()
@@ -706,7 +713,9 @@ public class Workflow {
                 finishStreamActorsAfterGraph(workflowSession, graphResult);
                 writeInterruptedOutputChunks(workflowSession, graphResult);
                 finalPayload.set(resolveFinalStreamPayload(workflowSession));
+                executionCompleted.set(!isInterrupted(graphResult, List.of()));
             } catch (Exception e) {
+                WorkflowSessionSupport.markExecutionFailed(workflowSession);
                 executionError.set(wrapWorkflowException(e));
             } finally {
                 try {
@@ -724,7 +733,7 @@ public class Workflow {
             private boolean done = false;
             private boolean streamClosed = false;
             private WorkflowChunk nextChunk;
-            private final Set<String> seenInteractionIds = new LinkedHashSet<>();
+            private final Set<InteractionEventKey> seenInteractionEvents = new LinkedHashSet<>();
             private List<WorkflowChunk> rememberedInteractionChunks;
             private int rememberedInteractionIndex = 0;
 
@@ -796,27 +805,31 @@ public class Workflow {
                 }
                 Loggers.SESSION.debug("Stream data received, dataType={}", data.getClass().getSimpleName());
                 WorkflowChunk chunk = streamDataToWorkflowChunk(data);
-                rememberInteractionId(chunk);
+                if (!rememberInteractionEvent(chunk)) {
+                    return fetchNextChunk();
+                }
                 return chunk;
             }
 
             private WorkflowChunk nextRememberedInteractionChunk() {
+                if (executionCompleted.get()) {
+                    return null;
+                }
                 if (rememberedInteractionChunks == null) {
-                    rememberedInteractionChunks = rememberedInteractionOutputChunks(workflowSession, seenInteractionIds);
+                    rememberedInteractionChunks = rememberedInteractionOutputChunks(
+                            workflowSession, seenInteractionEvents);
                 }
                 if (rememberedInteractionIndex >= rememberedInteractionChunks.size()) {
                     return null;
                 }
                 WorkflowChunk chunk = rememberedInteractionChunks.get(rememberedInteractionIndex++);
-                rememberInteractionId(chunk);
+                rememberInteractionEvent(chunk);
                 return chunk;
             }
 
-            private void rememberInteractionId(Object chunk) {
-                String id = interactionOutputId(chunk);
-                if (id != null) {
-                    seenInteractionIds.add(id);
-                }
+            private boolean rememberInteractionEvent(Object chunk) {
+                InteractionEventKey eventKey = interactionEventKey(chunk);
+                return eventKey == null || seenInteractionEvents.add(eventKey);
             }
 
             private Object receiveNextChunk() {
@@ -1230,6 +1243,14 @@ public class Workflow {
     @SuppressWarnings("unchecked")
     public Object invokeSubWorkflow(Object inputs, Object session, ModelContext context, Object config) {
         WorkflowRuntimeSession subSession = createSubWorkflowSession(session);
+        return invokeSubWorkflowSerial(inputs, subSession, context, config);
+    }
+
+    private Object invokeSubWorkflowSerial(
+            Object inputs,
+            WorkflowRuntimeSession subSession,
+            ModelContext context,
+            Object config) {
         try {
             Object graphResult = executeCompiledGraph(inputs != null ? inputs : Map.of(), subSession, context, config);
             finishStreamActorsAfterGraph(subSession, graphResult);
@@ -1241,9 +1262,13 @@ public class Workflow {
                 }
             }
             Object outputs = WorkflowSessionSupport.getOutputs(subSession, endCompId);
+            if (!subWorkflowEndUsesOutputEnvelope) {
+                outputs = normalizeSubWorkflowResult(outputs);
+            }
             clearSubWorkflowCheckpoint(subSession, config);
             return outputs;
         } catch (Exception e) {
+            WorkflowSessionSupport.markExecutionFailed(subSession);
             throw wrapWorkflowException(e);
         } finally {
             resetGraphExecutionState();
@@ -1264,6 +1289,49 @@ public class Workflow {
             return toWorkflowChunks(list).iterator();
         }
         return Collections.emptyIterator();
+    }
+
+    private Object normalizeSubWorkflowResult(Object outputs) {
+        if (!(outputs instanceof Map<?, ?> outputMap)) {
+            return outputs;
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : outputMap.entrySet()) {
+            if (!"output".equals(String.valueOf(entry.getKey()))) {
+                normalized.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        Map<String, Object> publicOutput = new LinkedHashMap<>();
+        Object outputEnvelope = outputMap.get("output");
+        if (outputEnvelope instanceof Map<?, ?> outputEnvelopeMap) {
+            outputEnvelopeMap.forEach((key, value) -> publicOutput.put(String.valueOf(key), value));
+        } else {
+            outputMap.forEach((key, value) -> publicOutput.put(String.valueOf(key), value));
+        }
+        publicOutput.forEach(normalized::putIfAbsent);
+        normalized.putIfAbsent(endCompId, publicOutput);
+        normalized.put("output", publicOutput);
+        normalized.put(SUB_WORKFLOW_PUBLIC_OUTPUT_KEY, true);
+        return normalized;
+    }
+
+    private static boolean usesBuiltInEndOutputEnvelope(ComponentComposable component) {
+        if (!(component instanceof com.openjiuwen.core.workflow.component.End)) {
+            return false;
+        }
+        try {
+            Method modernInvoke = component.getClass().getMethod(
+                    "invoke", Object.class, BaseSession.class, ModelContext.class);
+            Method legacyInvoke = component.getClass().getMethod(
+                    "invoke",
+                    Object.class,
+                    com.openjiuwen.core.session.NodeSessionApi.class,
+                    com.openjiuwen.core.context.ModelContext.class);
+            return modernInvoke.getDeclaringClass() == com.openjiuwen.core.workflow.component.End.class
+                    && legacyInvoke.getDeclaringClass() == ComponentExecutable.class;
+        } catch (NoSuchMethodException exception) {
+            return false;
+        }
     }
 
     private static void clearSubWorkflowCheckpoint(WorkflowRuntimeSession session, Object config) {
@@ -1412,6 +1480,7 @@ public class Workflow {
             workflowSession.setStreamWriterManager(new StreamWriterManager(new StreamEmitter(), streamModes));
         }
         workflowSession.setActorManager(buildActorManager(workflowSession, false));
+        WorkflowSessionSupport.clearExecutionFailed(workflowSession);
         return workflowSession;
     }
 
@@ -1495,6 +1564,7 @@ public class Workflow {
         subSession.setCheckpointer(resolveGraphCheckpointer(session, innerSession));
         subSession.setActorManager(buildActorManager(subSession, true));
         subSession.config().addWorkflowConfig(card.getId(), internal.getConfig());
+        WorkflowSessionSupport.clearExecutionFailed(subSession);
         return subSession;
     }
 
@@ -1745,26 +1815,30 @@ public class Workflow {
             Object executionResult,
             List<Object> outputChunks) {
         List<Object> interruptChunks = extractInterruptOutputChunks(executionResult);
-        if (outputChunks != null && !outputChunks.isEmpty()) {
-            if (interruptChunks.isEmpty()) {
-                return prioritizeInteractionChunks(restoreInteractionOutputValues(workflowSession,
-                        appendRememberedInteractionOutputs(workflowSession, outputChunks)));
-            }
-            List<Object> merged = new ArrayList<>(outputChunks);
-            for (Object interruptChunk : interruptChunks) {
-                if (!merged.contains(interruptChunk)) {
-                    merged.add(interruptChunk);
-                }
-            }
-            return prioritizeInteractionChunks(restoreInteractionOutputValues(workflowSession,
-                    appendRememberedInteractionOutputs(workflowSession, merged)));
+        List<Object> merged = new ArrayList<>();
+        if (outputChunks != null) {
+            merged.addAll(outputChunks);
         }
-        if (!interruptChunks.isEmpty()) {
-            return prioritizeInteractionChunks(restoreInteractionOutputValues(workflowSession,
-                    appendRememberedInteractionOutputs(workflowSession, interruptChunks)));
+        merged.addAll(interruptChunks);
+        List<Object> restored = restoreInteractionOutputValues(
+                workflowSession, appendRememberedInteractionOutputs(workflowSession, merged));
+        return prioritizeInteractionChunks(deduplicateInteractionChunks(restored));
+    }
+
+    private static List<Object> deduplicateInteractionChunks(List<Object> chunks) {
+        if (chunks == null || chunks.size() < 2) {
+            return chunks;
         }
-        return prioritizeInteractionChunks(
-                appendRememberedInteractionOutputs(workflowSession, outputChunks != null ? outputChunks : List.of()));
+        List<Object> deduplicated = new ArrayList<>(chunks.size());
+        Set<InteractionEventKey> seen = new LinkedHashSet<>();
+        for (Object chunk : chunks) {
+            InteractionEventKey eventKey = interactionEventKey(chunk);
+            if (eventKey != null && !seen.add(eventKey)) {
+                continue;
+            }
+            deduplicated.add(chunk);
+        }
+        return deduplicated.size() == chunks.size() ? chunks : deduplicated;
     }
 
     private static List<Object> prioritizeInteractionChunks(List<Object> chunks) {
@@ -1815,22 +1889,12 @@ public class Workflow {
             return outputChunks;
         }
         List<Object> merged = new ArrayList<>(outputChunks);
-        Set<String> seenIds = new LinkedHashSet<>();
         for (Object chunk : outputChunks) {
-            String id = interactionOutputId(chunk);
-            if (id != null) {
-                seenIds.add(id);
+            if (interactionEventKey(chunk) != null) {
+                return merged;
             }
-        }
-        if (!seenIds.isEmpty()) {
-            return merged;
         }
         for (Object item : iterable) {
-            String id = interactionOutputId(item);
-            if (id == null || seenIds.contains(id)) {
-                continue;
-            }
-            seenIds.add(id);
             merged.add(item);
         }
         return merged;
@@ -1838,7 +1902,7 @@ public class Workflow {
 
     private List<WorkflowChunk> rememberedInteractionOutputChunks(
             WorkflowRuntimeSession workflowSession,
-            Set<String> seenIds) {
+            Set<InteractionEventKey> seenEvents) {
         if (workflowSession == null || workflowSession.state() == null) {
             return List.of();
         }
@@ -1846,13 +1910,17 @@ public class Workflow {
         if (!(remembered instanceof Iterable<?> iterable)) {
             return List.of();
         }
+        if (!seenEvents.isEmpty()) {
+            return List.of();
+        }
         List<WorkflowChunk> chunks = new ArrayList<>();
         for (Object item : iterable) {
-            String id = interactionOutputId(item);
-            if (id == null || seenIds.contains(id) || !(item instanceof WorkflowChunk workflowChunk)) {
+            InteractionEventKey eventKey = interactionEventKey(item);
+            if (eventKey == null || seenEvents.contains(eventKey)
+                    || !(item instanceof WorkflowChunk workflowChunk)) {
                 continue;
             }
-            seenIds.add(id);
+            seenEvents.add(eventKey);
             chunks.add(workflowChunk);
         }
         return chunks;
@@ -1887,13 +1955,44 @@ public class Workflow {
     }
 
     private static String interactionOutputId(Object chunk) {
+        InteractionEventKey eventKey = interactionEventKey(chunk);
+        return eventKey == null ? null : eventKey.id();
+    }
+
+    private static InteractionEventKey interactionEventKey(Object chunk) {
         if (!(chunk instanceof OutputSchema outputSchema)
-                || !Constant.INTERACTION.equals(outputSchema.getType())
-                || !(outputSchema.getPayload() instanceof InteractionOutput interactionOutput)
-                || interactionOutput.getId() == null) {
+                || !Constant.INTERACTION.equals(outputSchema.getType())) {
             return null;
         }
-        return interactionOutput.getId();
+        Object payload = outputSchema.getPayload();
+        if (payload instanceof InteractionOutput interactionOutput && interactionOutput.getId() != null) {
+            return new InteractionEventKey(
+                    outputSchema.getType(),
+                    outputSchema.getIndex(),
+                    interactionOutput.getId(),
+                    semanticEventValue(interactionOutput.getValue()),
+                    semanticEventValue(interactionOutput.getMetadata()));
+        }
+        if (payload instanceof Map<?, ?> payloadMap && payloadMap.get("id") != null) {
+            return new InteractionEventKey(
+                    outputSchema.getType(),
+                    outputSchema.getIndex(),
+                    String.valueOf(payloadMap.get("id")),
+                    semanticEventValue(payloadMap.get("value")),
+                    semanticEventValue(payloadMap.get("metadata")));
+        }
+        return null;
+    }
+
+    private static Object semanticEventValue(Object value) {
+        try {
+            return OBJECT_MAPPER.valueToTree(value);
+        } catch (IllegalArgumentException exception) {
+            return String.valueOf(value);
+        }
+    }
+
+    private record InteractionEventKey(String type, int index, String id, Object value, Object metadata) {
     }
 
     @SuppressWarnings("unchecked")
@@ -1972,22 +2071,19 @@ public class Workflow {
         if (workflowSession == null || interactionOutput == null || interactionOutput.getId() == null) {
             return outputSchema.getIndex();
         }
-        Object remembered = rememberedInteractionOutputs(workflowSession);
-        if (!(remembered instanceof Iterable<?> iterable)) {
+        Object remembered = workflowSession.state().getGlobal(WORKFLOW_INTERACTION_INPUT_HISTORY_KEY);
+        if (!(remembered instanceof Map<?, ?> inputHistory)) {
             return outputSchema.getIndex();
         }
-        Set<Object> distinctValues = new LinkedHashSet<>();
-        for (Object item : iterable) {
-            if (item instanceof OutputSchema rememberedSchema
-                    && Constant.INTERACTION.equals(rememberedSchema.getType())
-                    && rememberedSchema.getPayload() instanceof InteractionOutput rememberedOutput
-                    && interactionOutput.getId().equals(rememberedOutput.getId())) {
-                distinctValues.add(rememberedOutput.getValue());
-            }
+        Object consumedInputs = inputHistory.get(interactionOutput.getId());
+        if (!(consumedInputs instanceof Iterable<?> iterable)) {
+            return outputSchema.getIndex();
         }
-        return !distinctValues.isEmpty()
-                ? Math.max(outputSchema.getIndex(), distinctValues.size() - 1)
-                : outputSchema.getIndex();
+        int consumedInputCount = 0;
+        for (Object ignored : iterable) {
+            consumedInputCount++;
+        }
+        return Math.max(outputSchema.getIndex(), consumedInputCount);
     }
 
     private Object recoverInteractionValue(WorkflowRuntimeSession workflowSession, String interactionId) {

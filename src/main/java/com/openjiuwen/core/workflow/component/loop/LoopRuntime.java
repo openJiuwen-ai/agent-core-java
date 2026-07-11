@@ -5,6 +5,7 @@
 package com.openjiuwen.core.workflow.component.loop;
 
 import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.session.BaseSession;
@@ -18,10 +19,15 @@ import com.openjiuwen.core.workflow.internal.WorkflowSessionSupport;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 final class LoopRuntime {
 
     static final String BROKEN = "_broken";
+    private static final String COMPLETED = "__loop_completed__";
+    private static final String COMPLETED_RESULT = "__loop_completed_result__";
+    private static final ConcurrentHashMap<String, InvocationGate> INVOCATION_GATES = new ConcurrentHashMap<>();
 
     private LoopRuntime() {
     }
@@ -32,9 +38,58 @@ final class LoopRuntime {
                          Object inputs,
                          BaseSession session,
                          ModelContext context) {
+        String gateKey = invocationGateKey(session);
+        InvocationGate gate = INVOCATION_GATES.compute(gateKey, (key, current) -> {
+            InvocationGate selected = current == null ? new InvocationGate() : current;
+            selected.users++;
+            return selected;
+        });
+        gate.lock.lock();
+        try {
+            if (gate.hasCompletedResult) {
+                gate.completedResultConsumed = true;
+                resetLoopOutputs(session, gate.completedResult);
+                return gate.completedResult;
+            }
+            Object result = invokeSerial(condition, loopGroup, callbacks, inputs, session, context);
+            gate.completedResult = result;
+            gate.hasCompletedResult = true;
+            gate.retainCompletedResult = WorkflowSessionSupport.executionFailed(session);
+            return result;
+        } finally {
+            gate.lock.unlock();
+            if (gate.hasCompletedResult && WorkflowSessionSupport.executionFailed(session)) {
+                gate.retainCompletedResult = true;
+            }
+            INVOCATION_GATES.computeIfPresent(gateKey, (key, current) -> {
+                if (current != gate) {
+                    return current;
+                }
+                current.users--;
+                if (current.users != 0) {
+                    return current;
+                }
+                return current.hasCompletedResult
+                        && current.retainCompletedResult
+                        && !current.completedResultConsumed
+                        ? current
+                        : null;
+            });
+        }
+    }
+
+    private static Object invokeSerial(Condition condition,
+                                       LoopGroup loopGroup,
+                                       List<com.openjiuwen.core.workflow.component.loop.callback.LoopCallback> callbacks,
+                                       Object inputs,
+                                       BaseSession session,
+                                       ModelContext context) {
         WorkflowStateCollection state = WorkflowSessionSupport.stateCollection(session);
         if (state == null) {
             return null;
+        }
+        if (Boolean.TRUE.equals(state.get(COMPLETED))) {
+            return state.get(COMPLETED_RESULT);
         }
         Object storedIndex = state.get(Constant.INDEX);
         boolean firstLoop = storedIndex == null;
@@ -92,8 +147,13 @@ final class LoopRuntime {
         Object rawBeforeCleanup = WorkflowSessionSupport.getOutputs(session, WorkflowSessionSupport.componentId(session));
         Object generatedLoopOutputs = normalizeLoopOutputs(rawBeforeCleanup);
         clearLoopBodyOutputs(session, loopGroup);
-        Object normalizedOutputs = buildLoopOutputs(generatedLoopOutputs, rawBeforeCleanup, loopGroup, loopTimes);
+        Object normalizedOutputs = buildLoopOutputs(generatedLoopOutputs, rawBeforeCleanup, loopGroup);
         resetLoopOutputs(session, normalizedOutputs);
+        Map<String, Object> completedState = new LinkedHashMap<>();
+        completedState.put(COMPLETED, true);
+        completedState.put(COMPLETED_RESULT, normalizedOutputs);
+        state.update(completedState);
+        commit(session);
         return normalizedOutputs;
     }
 
@@ -171,23 +231,17 @@ final class LoopRuntime {
         return normalized;
     }
 
-    private static Object buildLoopOutputs(Object outputs, Object rawOutputs, LoopGroup loopGroup, int loopTimes) {
+    private static Object buildLoopOutputs(Object outputs, Object rawOutputs, LoopGroup loopGroup) {
         if (!(outputs instanceof Map<?, ?> outputMap)) {
             return outputs;
         }
         Map<String, Object> normalized = new LinkedHashMap<>();
-        boolean hasInteractiveBodyOutput = false;
-        boolean hasInteractiveLoopNode = hasInteractiveLoopNode(loopGroup);
         for (Map.Entry<?, ?> entry : outputMap.entrySet()) {
             String key = String.valueOf(entry.getKey());
             if (BROKEN.equals(key) || "round".equals(key) || "start".equals(key)) {
                 continue;
             }
             if (isLoopBodyNode(key, loopGroup)) {
-                if (isInteractiveOutput(entry.getValue())) {
-                    normalized.put(key, entry.getValue());
-                    hasInteractiveBodyOutput = true;
-                }
                 continue;
             }
             if (isInternalLoopState(key, entry.getValue())) {
@@ -201,9 +255,6 @@ final class LoopRuntime {
         }
         if (outputMap.containsKey(Constant.INDEX) && !normalized.containsKey(Constant.INDEX)) {
             normalized.put(Constant.INDEX, 0);
-        }
-        if ((hasInteractiveBodyOutput || hasInteractiveLoopNode) && !normalized.containsKey("loop")) {
-            normalized.put("loop", Map.of("loop", Map.of(Constant.INDEX, loopEnvelopeIndex(normalized, loopTimes))));
         }
         mergeGeneratedOutputLists(normalized, rawOutputs, loopGroup);
         return normalized;
@@ -230,40 +281,27 @@ final class LoopRuntime {
     }
 
     private static boolean isInternalLoopState(String key, Object value) {
-        return "loop".equals(key)
-                && value instanceof Map<?, ?> valueMap
-                && valueMap.size() == 1
-                && valueMap.containsKey(Constant.INDEX);
+        return "loop".equals(key) && isOnlyLoopIndexEnvelope(value);
+    }
+
+    private static boolean isOnlyLoopIndexEnvelope(Object value) {
+        if (!(value instanceof Map<?, ?> valueMap)) {
+            return false;
+        }
+        if (valueMap.isEmpty()) {
+            return true;
+        }
+        if (valueMap.size() != 1) {
+            return false;
+        }
+        if (valueMap.containsKey(Constant.INDEX)) {
+            return true;
+        }
+        return valueMap.containsKey("loop") && isOnlyLoopIndexEnvelope(valueMap.get("loop"));
     }
 
     private static boolean isLoopBodyNode(String key, LoopGroup loopGroup) {
         return loopGroup != null && loopGroup.getNodeIds().contains(key);
-    }
-
-    private static boolean isInteractiveOutput(Object value) {
-        return value instanceof Map<?, ?> valueMap && valueMap.containsKey("confirm_result");
-    }
-
-    private static boolean hasInteractiveLoopNode(LoopGroup loopGroup) {
-        if (loopGroup == null) {
-            return false;
-        }
-        for (String nodeId : loopGroup.getNodeIds()) {
-            if (nodeId != null && nodeId.contains("interactive")) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static int loopEnvelopeIndex(Map<String, Object> normalized, int loopTimes) {
-        int index = loopTimes;
-        for (Object value : normalized.values()) {
-            if (value instanceof List<?> list) {
-                index = Math.max(index, list.size());
-            }
-        }
-        return index;
     }
 
     private static void resetLoopOutputs(BaseSession session, Object normalizedOutputs) {
@@ -339,6 +377,38 @@ final class LoopRuntime {
             current = current.getCause();
         }
         return null;
+    }
+
+    static BaseError findBaseError(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof BaseError baseError) {
+                return baseError;
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    private static String invocationGateKey(BaseSession session) {
+        if (session == null) {
+            return "null-session";
+        }
+        String sessionId = session.sessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            sessionId = "session@" + System.identityHashCode(session);
+        }
+        return sessionId + '\u0000' + session.workflowId() + '\u0000'
+                + WorkflowSessionSupport.componentId(session);
+    }
+
+    private static final class InvocationGate {
+        private final ReentrantLock lock = new ReentrantLock();
+        private int users;
+        private boolean hasCompletedResult;
+        private boolean retainCompletedResult;
+        private boolean completedResultConsumed;
+        private Object completedResult;
     }
 
     @SuppressWarnings("unchecked")

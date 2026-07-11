@@ -11,7 +11,9 @@ import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.service_api.RestfulApi;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.workflow.ComponentExecutable;
+import com.openjiuwen.core.workflow.internal.WorkflowRuntimeSession;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -54,7 +56,7 @@ public class ToolExecutable extends ComponentExecutable {
             Object rawResponse = tool.invoke(toolInputs, Map.of(
                     "skip_inputs_validate", false,
                     "skip_none_value", true));
-            response = postProcessToolResult(rawResponse);
+            response = postProcessToolResult(rawResponse, session);
         } catch (Exception e) {
             if (e instanceof BaseError be) {
                 if (be.getStatus() == StatusCode.WORKFLOW_EXECUTION_TIMEOUT) {
@@ -89,12 +91,15 @@ public class ToolExecutable extends ComponentExecutable {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> postProcessToolResult(Object toolResult) {
+    private Map<String, Object> postProcessToolResult(Object toolResult, BaseSession session) {
         Map<String, Object> result = new LinkedHashMap<>();
 
         if (tool instanceof RestfulApi) {
             Map<String, Object> trMap = (toolResult instanceof Map) ? (Map<String, Object>) toolResult : Map.of();
-            result.put(ToolComponentOutput.RESTFUL_DATA, new LinkedHashMap<>(trMap));
+            Object responseData = preserveRestResponseEnvelope(session)
+                    ? new LinkedHashMap<>(trMap)
+                    : trMap.getOrDefault(ToolComponentOutput.RESTFUL_DATA, "");
+            result.put(ToolComponentOutput.RESTFUL_DATA, responseData);
             int code = parseErrorCode(trMap.getOrDefault("code", DEFAULT_EXCEPTION_ERROR_CODE));
             result.put(ToolComponentOutput.ERR_CODE,
                     (200 <= code && code < 300) ? StatusCode.SUCCESS.getCode()
@@ -116,6 +121,29 @@ public class ToolExecutable extends ComponentExecutable {
             result.put(ToolComponentOutput.RESTFUL_DATA, toolResult);
         }
         return result;
+    }
+
+    /**
+     * Top-level REST tool components follow Python 0.1.14 and expose the parsed
+     * response body. Nested component graphs retain the transport envelope so
+     * loop/sub-workflow collection does not discard HTTP metadata that legacy
+     * Java composite workflows already expose.
+     */
+    private static boolean preserveRestResponseEnvelope(BaseSession session) {
+        if (session == null) {
+            return false;
+        }
+        BaseSession effectiveSession = session instanceof NodeSessionApi nodeSession
+                ? nodeSession.getInner()
+                : session;
+        if (effectiveSession.workflowNestingDepth() > 0) {
+            return true;
+        }
+        if (effectiveSession instanceof WorkflowRuntimeSession runtimeSession) {
+            String parentId = runtimeSession.parentId();
+            return parentId != null && !parentId.isBlank();
+        }
+        return false;
     }
 
     private static int parseErrorCode(Object rawCode) {

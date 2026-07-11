@@ -11,6 +11,8 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.service_api.RestfulApi;
 import com.openjiuwen.core.foundation.tool.service_api.RestfulApiCard;
 import com.openjiuwen.core.graph.Executable;
+import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.NodeSessionApi;
 
 import org.junit.jupiter.api.Test;
 
@@ -108,7 +110,7 @@ class T01180ToolComponentTest {
 
         assertEquals(StatusCode.SUCCESS.getCode(), output.get("errCode"));
         assertEquals("created", output.get("errMessage"));
-        assertEquals(response, output.get("data"));
+        assertEquals(Map.of("id", 9), output.get("data"));
         assertEquals(Map.of("payload", true), tool.lastInputs);
     }
 
@@ -124,7 +126,7 @@ class T01180ToolComponentTest {
                 "message", "success");
         RestfulStub tool = new RestfulStub(response);
 
-        Map<?, ?> output = invokeWithTool(tool, Map.of("location", "杭州"));
+        Map<?, ?> output = invokeWithTool(tool, Map.of("location", "杭州"), nestedWorkflowSession());
 
         assertEquals(StatusCode.SUCCESS.getCode(), output.get("errCode"));
         assertEquals("", output.get("errMessage"));
@@ -155,8 +157,22 @@ class T01180ToolComponentTest {
     }
 
     private static Map<?, ?> invokeWithTool(Tool tool, Map<String, Object> inputs) {
+        return invokeWithTool(tool, inputs, null);
+    }
+
+    private static Map<?, ?> invokeWithTool(Tool tool, Map<String, Object> inputs, BaseSession session) {
         ToolExecutable executable = new ToolExecutable(new ToolComponentConfig()).setTool(tool);
-        return assertInstanceOf(Map.class, executable.invoke(inputs, null, null));
+        return assertInstanceOf(Map.class, executable.invoke(inputs, session, null));
+    }
+
+    private static BaseSession nestedWorkflowSession() {
+        BaseSession inner = new BaseSession() {
+            @Override
+            public int workflowNestingDepth() {
+                return 1;
+            }
+        };
+        return new NodeSessionApi(inner);
     }
 
     private static ToolCard card(String id) {

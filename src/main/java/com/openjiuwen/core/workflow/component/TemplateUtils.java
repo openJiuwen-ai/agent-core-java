@@ -6,7 +6,6 @@ package com.openjiuwen.core.workflow.component;
 
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -110,84 +109,7 @@ public class TemplateUtils {
         if (value instanceof String text) {
             return text;
         }
-        return javaStyleString(value);
-    }
-
-    private static String javaStyleString(Object value) {
-        if (value == null) {
-            return "None";
-        }
-        if (value instanceof String text) {
-            return text;
-        }
-        if (value instanceof Map<?, ?> map) {
-            List<Map.Entry<?, ?>> entries = new ArrayList<>(map.entrySet());
-            entries.sort((left, right) -> compareTemplateKeys(left.getKey(), right.getKey()));
-            StringBuilder builder = new StringBuilder("{");
-            Iterator<Map.Entry<?, ?>> iterator = entries.iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<?, ?> entry = iterator.next();
-                builder.append(String.valueOf(entry.getKey())).append("=")
-                        .append(javaStyleString(entry.getValue()));
-                if (iterator.hasNext()) {
-                    builder.append(", ");
-                }
-            }
-            return builder.append("}").toString();
-        }
-        if (value instanceof Iterable<?> iterable) {
-            StringBuilder builder = new StringBuilder("[");
-            Iterator<?> iterator = iterable.iterator();
-            while (iterator.hasNext()) {
-                builder.append(javaStyleString(iterator.next()));
-                if (iterator.hasNext()) {
-                    builder.append(", ");
-                }
-            }
-            return builder.append("]").toString();
-        }
-        return String.valueOf(value);
-    }
-
-    private static int compareTemplateKeys(Object left, Object right) {
-        String leftKey = String.valueOf(left);
-        String rightKey = String.valueOf(right);
-        int leftPriority = templateKeyPriority(leftKey);
-        int rightPriority = templateKeyPriority(rightKey);
-        if (leftPriority != rightPriority) {
-            return Integer.compare(leftPriority, rightPriority);
-        }
-        if (leftPriority < Integer.MAX_VALUE) {
-            return 0;
-        }
-        if ("l_item".equals(leftKey) && !"l_item".equals(rightKey)) {
-            return -1;
-        }
-        if (!"l_item".equals(leftKey) && "l_item".equals(rightKey)) {
-            return 1;
-        }
-        if ("l_index".equals(leftKey) && !"l_index".equals(rightKey)) {
-            return 1;
-        }
-        if (!"l_index".equals(leftKey) && "l_index".equals(rightKey)) {
-            return -1;
-        }
-        if ("index".equals(leftKey) && !"index".equals(rightKey)) {
-            return 1;
-        }
-        if (!"index".equals(leftKey) && "index".equals(rightKey)) {
-            return -1;
-        }
-        return leftKey.compareTo(rightKey);
-    }
-
-    private static int templateKeyPriority(String key) {
-        return switch (key) {
-            case "arr" -> 10;
-            case "k1" -> 20;
-            case "dict" -> 30;
-            default -> Integer.MAX_VALUE;
-        };
+        return pythonRepr(value);
     }
 
     private static String pythonRepr(Object value) {
@@ -195,18 +117,20 @@ public class TemplateUtils {
             return "None";
         }
         if (value instanceof String text) {
-            return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+            return pythonStringRepr(text);
+        }
+        if (value instanceof Character character) {
+            return pythonStringRepr(String.valueOf(character));
         }
         if (value instanceof Boolean bool) {
             return bool ? "True" : "False";
         }
         if (value instanceof Map<?, ?> map) {
-            Map<?, ?> ordered = map instanceof LinkedHashMap<?, ?> ? map : new LinkedHashMap<>(map);
             StringBuilder builder = new StringBuilder("{");
-            Iterator<? extends Map.Entry<?, ?>> iterator = ordered.entrySet().iterator();
+            Iterator<? extends Map.Entry<?, ?>> iterator = map.entrySet().iterator();
             while (iterator.hasNext()) {
                 Map.Entry<?, ?> entry = iterator.next();
-                builder.append(pythonRepr(String.valueOf(entry.getKey()))).append(": ")
+                builder.append(pythonRepr(entry.getKey())).append(": ")
                         .append(pythonRepr(entry.getValue()));
                 if (iterator.hasNext()) {
                     builder.append(", ");
@@ -224,6 +148,57 @@ public class TemplateUtils {
                 }
             }
             return builder.append("]").toString();
+        }
+        if (value.getClass().isArray()) {
+            StringBuilder builder = new StringBuilder("[");
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int index = 0; index < length; index++) {
+                if (index > 0) {
+                    builder.append(", ");
+                }
+                builder.append(pythonRepr(java.lang.reflect.Array.get(value, index)));
+            }
+            return builder.append("]").toString();
+        }
+        if (value instanceof Double number) {
+            return pythonFloatingPointRepr(number);
+        }
+        if (value instanceof Float number) {
+            return pythonFloatingPointRepr(number.doubleValue());
+        }
+        return String.valueOf(value);
+    }
+
+    private static String pythonStringRepr(String value) {
+        char quote = value.indexOf('\'') >= 0 && value.indexOf('"') < 0 ? '"' : '\'';
+        StringBuilder builder = new StringBuilder(value.length() + 2).append(quote);
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (character == '\\' || character == quote) {
+                builder.append('\\').append(character);
+                continue;
+            }
+            switch (character) {
+                case '\n' -> builder.append("\\n");
+                case '\r' -> builder.append("\\r");
+                case '\t' -> builder.append("\\t");
+                case '\b' -> builder.append("\\b");
+                case '\f' -> builder.append("\\f");
+                default -> builder.append(character);
+            }
+        }
+        return builder.append(quote).toString();
+    }
+
+    private static String pythonFloatingPointRepr(double value) {
+        if (Double.isNaN(value)) {
+            return "nan";
+        }
+        if (value == Double.POSITIVE_INFINITY) {
+            return "inf";
+        }
+        if (value == Double.NEGATIVE_INFINITY) {
+            return "-inf";
         }
         return String.valueOf(value);
     }
