@@ -72,6 +72,25 @@ public class WorkflowRuntimeState extends WorkflowCommitState
     }
 
     @Override
+    public void setState(Map<String, Object> state) {
+        if (state == null) {
+            return;
+        }
+        Object incomingIoState = state.get(IO_STATE_KEY);
+        Object currentIoState = ioState == null ? null : ioState.getState();
+        if (incomingIoState instanceof Map<?, ?> incomingMap
+                && currentIoState instanceof Map<?, ?> currentMap
+                && currentMap.equals(incomingMap)) {
+            // A value-equivalent state rewrite must not erase Python's observable insertion order.
+            Map<String, Object> orderPreservedState = new LinkedHashMap<>(state);
+            orderPreservedState.put(IO_STATE_KEY, preserveInsertionOrder(currentMap, incomingMap));
+            super.setState(orderPreservedState);
+            return;
+        }
+        super.setState(state);
+    }
+
+    @Override
     public Map<String, Object> getInputsByTransformer(Vertex.ValueTransformer transformer) {
         if (transformer == null) {
             return Map.of();
@@ -80,7 +99,6 @@ public class WorkflowRuntimeState extends WorkflowCommitState
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public Map<String, Object> getInputs(Object schema) {
         Object resolvedSchema = unwrapSchema(schema);
         if (resolvedSchema instanceof Vertex.ValueTransformer transformer) {
@@ -99,7 +117,7 @@ public class WorkflowRuntimeState extends WorkflowCommitState
         }
         inputs = normalizeSubWorkflowValues(inputs);
         if (inputs instanceof Map<?, ?> map) {
-            return new LinkedHashMap<>((Map<String, Object>) sortMaps(map));
+            return sortRootMap(map);
         }
         return Map.of();
     }
@@ -311,21 +329,43 @@ public class WorkflowRuntimeState extends WorkflowCommitState
         return primary;
     }
 
-    private static Object sortMaps(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            Map<String, Object> sorted = new LinkedHashMap<>();
-            List<Map.Entry<?, ?>> entries = new java.util.ArrayList<>(map.entrySet());
-            boolean reverseNumberedInputs = shouldReverseNumberedInputs(map);
-            entries.sort((left, right) -> compareKeys(left.getKey(), right.getKey(), reverseNumberedInputs));
-            for (Map.Entry<?, ?> entry : entries) {
-                sorted.put(String.valueOf(entry.getKey()), sortMaps(entry.getValue()));
+    private static Map<String, Object> sortRootMap(Map<?, ?> map) {
+        Map<String, Object> sorted = new LinkedHashMap<>();
+        List<Map.Entry<?, ?>> entries = new java.util.ArrayList<>(map.entrySet());
+        boolean reverseNumberedInputs = shouldReverseNumberedInputs(map);
+        entries.sort((left, right) -> compareKeys(left.getKey(), right.getKey(), reverseNumberedInputs));
+        for (Map.Entry<?, ?> entry : entries) {
+            sorted.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return sorted;
+    }
+
+    private static Object preserveInsertionOrder(Object current, Object incoming) {
+        if (current instanceof Map<?, ?> currentMap && incoming instanceof Map<?, ?> incomingMap) {
+            Map<String, Object> preserved = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> entry : currentMap.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                if (incomingMap.containsKey(key)) {
+                    preserved.put(key, preserveInsertionOrder(entry.getValue(), incomingMap.get(key)));
+                }
             }
-            return sorted;
+            for (Map.Entry<?, ?> entry : incomingMap.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                if (!preserved.containsKey(key)) {
+                    preserved.put(key, entry.getValue());
+                }
+            }
+            return preserved;
         }
-        if (value instanceof List<?> list) {
-            return list.stream().map(WorkflowRuntimeState::sortMaps).toList();
+        if (current instanceof List<?> currentList && incoming instanceof List<?> incomingList
+                && currentList.size() == incomingList.size()) {
+            List<Object> preserved = new java.util.ArrayList<>(incomingList.size());
+            for (int index = 0; index < incomingList.size(); index++) {
+                preserved.add(preserveInsertionOrder(currentList.get(index), incomingList.get(index)));
+            }
+            return preserved;
         }
-        return value;
+        return incoming;
     }
 
     private static int compareKeys(Object left, Object right, boolean reverseNumberedInputs) {
