@@ -9,7 +9,6 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.graph.visualization.DrawableBranchRouter;
 import com.openjiuwen.core.graph.Router;
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.workflow.condition.Condition;
 
 import java.lang.reflect.Field;
@@ -21,7 +20,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 
@@ -216,7 +214,6 @@ public class BranchRouter implements Function<Object, Object>, Router {
     }
 
     private List<String> route(BaseSession routeSession) {
-        normalizeSessionMapOrdering(routeSession);
         if (reportTrace) {
             traceComponentBegin(routeSession);
             traceComponentInputs(routeSession, branchTracePayload(routeSession));
@@ -294,42 +291,6 @@ public class BranchRouter implements Function<Object, Object>, Router {
             }
         }
         return null;
-    }
-
-    @SuppressWarnings("unchecked")
-    private void normalizeSessionMapOrdering(BaseSession routeSession) {
-        if (routeSession == null || routeSession.state() == null) {
-            return;
-        }
-        SessionStateAccess state = routeSession.state();
-        Map<String, Object> stateData = state.getState();
-        if (stateData == null || stateData.isEmpty()) {
-            return;
-        }
-        Object normalized = normalizeMapOrdering(stateData);
-        if (normalized instanceof Map<?, ?> normalizedMap) {
-            state.setState((Map<String, Object>) normalizedMap);
-        }
-    }
-
-    private Object normalizeMapOrdering(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            Map<String, Object> sorted = new LinkedHashMap<>();
-            TreeMap<String, Object> ordered = new TreeMap<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                ordered.put(String.valueOf(entry.getKey()), normalizeMapOrdering(entry.getValue()));
-            }
-            sorted.putAll(ordered);
-            return sorted;
-        }
-        if (value instanceof List<?> list) {
-            List<Object> normalized = new ArrayList<>(list.size());
-            for (Object item : list) {
-                normalized.add(normalizeMapOrdering(item));
-            }
-            return normalized;
-        }
-        return value;
     }
 
     private BaseSession resolveInnerSession(Object candidate) {

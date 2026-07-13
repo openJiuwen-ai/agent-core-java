@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -22,7 +21,33 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 class WorkflowRuntimeStateMapOrderPythonParityTest {
 
     @Test
-    void nestedDomainMapsAndListMapsPreserveInsertionOrderAndValues() {
+    void setStateUsesIncomingOrderAcrossAllStatePartitions() {
+        WorkflowRuntimeState state = WorkflowRuntimeState.create("", "consumer");
+        state.setState(workflowState(
+                linkedMap("zeta", 1, "alpha", 2),
+                linkedMap("global_zeta", 3, "global_alpha", 4),
+                linkedMap("comp_zeta", 5, "comp_alpha", 6),
+                linkedMap("workflow_zeta", 7, "workflow_alpha", 8)));
+        Map<String, Object> incoming = workflowState(
+                linkedMap("alpha", 2, "zeta", 1),
+                linkedMap("global_alpha", 4, "global_zeta", 3),
+                linkedMap("comp_alpha", 6, "comp_zeta", 5),
+                linkedMap("workflow_alpha", 8, "workflow_zeta", 7));
+
+        state.setState(incoming);
+
+        assertPartitionOrder(state, "io_state", List.of("alpha", "zeta"));
+        assertPartitionOrder(state, "global_state", List.of("global_alpha", "global_zeta"));
+        assertPartitionOrder(state, "comp_state", List.of("comp_alpha", "comp_zeta"));
+        assertPartitionOrder(state, "workflow_state", List.of("workflow_alpha", "workflow_zeta"));
+        assertPartitionOrder(incoming, "io_state", List.of("alpha", "zeta"));
+        assertPartitionOrder(incoming, "global_state", List.of("global_alpha", "global_zeta"));
+        assertPartitionOrder(incoming, "comp_state", List.of("comp_alpha", "comp_zeta"));
+        assertPartitionOrder(incoming, "workflow_state", List.of("workflow_alpha", "workflow_zeta"));
+    }
+
+    @Test
+    void getInputsPreservesStoredNestedOrderWithoutPreSorting() {
         Map<String, Object> metadata = linkedMap(
                 "trace_id", "trace-1",
                 "score", 0.75D);
@@ -43,14 +68,15 @@ class WorkflowRuntimeStateMapOrderPythonParityTest {
         Map<String, Object> source = linkedMap(
                 "intent", intent,
                 "generic", generic,
-                "items", List.of(listItem));
+                "items", List.of(listItem),
+                "extra_field", "extra-value");
         WorkflowRuntimeState state = WorkflowRuntimeState.create("", "consumer");
         state.getIoState().setState(source);
-        state.setState(castMap(sortRecursively(state.getState())));
         Map<String, Object> schema = linkedMap(
                 "data", "${intent}",
                 "generic", "${generic}",
-                "items", "${items}");
+                "items", "${items}",
+                "extra_field", "${extra_field}");
 
         Map<String, Object> inputs = state.getInputs(schema);
 
@@ -72,6 +98,10 @@ class WorkflowRuntimeStateMapOrderPythonParityTest {
 
         List<?> actualItems = assertInstanceOf(List.class, inputs.get("items"));
         assertEquals(List.of("dict", "k1", "arr"), List.copyOf(castMap(actualItems.get(0)).keySet()));
+        assertEquals("extra-value", inputs.get("extra_field"));
+        assertInstanceOf(LinkedHashMap.class, actualIntent);
+        assertInstanceOf(LinkedHashMap.class, actualGeneric);
+        assertInstanceOf(LinkedHashMap.class, castMap(actualItems.get(0)));
         assertEquals(List.of("classification_id", "reason", "category_name", "metadata"),
                 List.copyOf(intent.keySet()));
         assertEquals(List.of("dict", "k1", "arr"), List.copyOf(listItem.keySet()));
@@ -84,13 +114,17 @@ class WorkflowRuntimeStateMapOrderPythonParityTest {
         WorkflowRuntimeState state = WorkflowRuntimeState.create("", "consumer");
         state.getIoState().setState(linkedMap(
                 "payload", linkedMap("first", 1, "second", 2)));
-        Map<String, Object> incomingState = castMap(sortRecursively(state.getState()));
-        castMap(castMap(incomingState.get("io_state")).get("payload")).put("second", 22);
+        Map<String, Object> incomingState = state.getState();
+        Map<String, Object> incomingPayload = linkedMap("second", 22, "first", 1, "extra", true);
+        castMap(incomingState.get("io_state")).put("payload", incomingPayload);
 
         state.setState(incomingState);
 
         Map<String, Object> actualPayload = castMap(state.getIoState().get("payload"));
+        assertEquals(List.of("second", "first", "extra"), List.copyOf(actualPayload.keySet()));
         assertEquals(22, actualPayload.get("second"));
+        assertEquals(Boolean.TRUE, actualPayload.get("extra"));
+        assertEquals(List.of("second", "first", "extra"), List.copyOf(incomingPayload.keySet()));
     }
 
     @Test
@@ -144,17 +178,25 @@ class WorkflowRuntimeStateMapOrderPythonParityTest {
         return result;
     }
 
-    private static Object sortRecursively(Object value) {
-        if (value instanceof Map<?, ?> map) {
-            Map<String, Object> sorted = new TreeMap<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                sorted.put(String.valueOf(entry.getKey()), sortRecursively(entry.getValue()));
-            }
-            return new LinkedHashMap<>(sorted);
-        }
-        if (value instanceof List<?> list) {
-            return list.stream().map(WorkflowRuntimeStateMapOrderPythonParityTest::sortRecursively).toList();
-        }
-        return value;
+    private static Map<String, Object> workflowState(
+            Map<String, Object> ioState,
+            Map<String, Object> globalState,
+            Map<String, Object> compState,
+            Map<String, Object> workflowState) {
+        return linkedMap(
+                "io_state", ioState,
+                "global_state", globalState,
+                "comp_state", compState,
+                "workflow_state", workflowState);
+    }
+
+    private static void assertPartitionOrder(
+            WorkflowRuntimeState state, String partition, List<String> expectedOrder) {
+        assertPartitionOrder(state.getState(), partition, expectedOrder);
+    }
+
+    private static void assertPartitionOrder(
+            Map<String, Object> state, String partition, List<String> expectedOrder) {
+        assertEquals(expectedOrder, List.copyOf(castMap(state.get(partition)).keySet()));
     }
 }
