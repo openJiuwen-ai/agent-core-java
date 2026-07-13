@@ -20,8 +20,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -199,84 +199,15 @@ public class IntentDetectionExecutable extends ComponentExecutable {
             AssistantMessage llmOutput = llm.invoke(llmInputs).toCompletableFuture().join();
             return llmOutput.getContent() != null ? llmOutput.getContent().toString() : "";
         } catch (Exception e) {
-            String fallback = localFixtureFallback(currentInputs);
-            if (fallback != null) {
-                return fallback;
-            }
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED,
-                    "error_msg", "failed to invoke llm: " + e.getMessage());
+            Throwable cause = e instanceof CompletionException && e.getCause() != null ? e.getCause() : e;
+            throw ErrorHelper.buildError(
+                    StatusCode.COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED,
+                    null,
+                    null,
+                    cause,
+                    Map.of("error_msg", "failed to invoke llm and get result")
+            );
         }
-    }
-
-    private String localFixtureFallback(Map<String, Object> currentInputs) {
-        if (!isLocalJiuwenFixtureEndpoint()) {
-            return null;
-        }
-
-        String input = String.valueOf(currentInputs.getOrDefault("input", ""));
-        if (input.contains("没有class")) {
-            return "{\"reason\":\"missing class\"}";
-        }
-
-        if (input.contains("没有reason")) {
-            return "{\"class\":\"" + inferFixtureIntentClass(input) + "\"}";
-        }
-        if (input.contains("test_intent_detect_component_025")) {
-            return "{\"class\":\"" + inferFixtureIntentClass(input) + "\",\"reason\":\"local fixture fallback\"}";
-        }
-
-        String intentClass = inferIntentClass(input);
-        return "{\"class\":\"" + intentClass + "\",\"reason\":\"local fixture fallback\"}";
-    }
-
-    private boolean isLocalJiuwenFixtureEndpoint() {
-        if (config.getModelClientConfig() == null || config.getModelClientConfig().getApiBase() == null) {
-            return false;
-        }
-        String apiBase = config.getModelClientConfig().getApiBase().toLowerCase(Locale.ROOT);
-        return apiBase.contains("127.0.0.1:8088") || apiBase.contains("localhost:8088");
-    }
-
-    private String inferIntentClass(String input) {
-        String normalizedInput = input == null ? "" : input;
-        List<String> names = config.getCategoryNameList();
-        for (int i = names.size() - 1; i >= 1; i--) {
-            if (matchesCategory(normalizedInput, names.get(i))) {
-                return defaultConfig.getCategoryList().get(i);
-            }
-        }
-        return defaultConfig.getDefaultClass();
-    }
-
-    private String inferFixtureIntentClass(String input) {
-        String inferredClass = inferIntentClass(input);
-        if (!defaultConfig.getDefaultClass().equals(inferredClass)) {
-            return inferredClass;
-        }
-        List<String> names = config.getCategoryNameList();
-        for (int i = names.size() - 1; i >= 1; i--) {
-            String name = names.get(i);
-            if (name != null && (name.contains("天气") || name.contains("温度"))) {
-                return defaultConfig.getCategoryList().get(i);
-            }
-        }
-        return names.size() > 1 ? defaultConfig.getCategoryList().get(names.size() - 1)
-                : defaultConfig.getDefaultClass();
-    }
-
-    private boolean matchesCategory(String input, String categoryName) {
-        if (categoryName == null || categoryName.isEmpty()) {
-            return false;
-        }
-        if (input.contains(categoryName)) {
-            return true;
-        }
-        for (String keyword : List.of("天气", "景点", "温度")) {
-            if (categoryName.contains(keyword) && input.contains(keyword)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void writeUserMessageToContext(Map<String, Object> inputs, ModelContext context) {
