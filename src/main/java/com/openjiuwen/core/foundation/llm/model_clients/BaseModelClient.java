@@ -402,7 +402,7 @@ public abstract class BaseModelClient implements Model.ModelClient {
                     resolvedOptions.getStop(),
                     resolvedOptions.getOutputParser(),
                     resolvedOptions.getTimeout(),
-                    resolvedOptions.getExtraFields()
+                    invocationExtraFields(resolvedOptions)
             ));
         } catch (Exception exception) {
             return CompletableFuture.failedFuture(exception);
@@ -434,11 +434,22 @@ public abstract class BaseModelClient implements Model.ModelClient {
                     resolvedOptions.getStop(),
                     resolvedOptions.getOutputParser(),
                     resolvedOptions.getTimeout(),
-                    resolvedOptions.getExtraFields()
+                    invocationExtraFields(resolvedOptions)
             );
         } catch (Exception exception) {
             throw new IllegalStateException(exception);
         }
+    }
+
+    /**
+     * Returns provider-specific keyword arguments for one invocation.
+     *
+     * <p>The default implementation returns a mutable copy so providers can add private values
+     * without changing caller-owned options.</p>
+     */
+    protected Map<String, Object> invocationExtraFields(ModelInvokeOptions options) {
+        Map<String, Object> extraFields = options.getExtraFields();
+        return extraFields == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extraFields);
     }
 
     public abstract ImageGenerationResponse generateImage(List<UserMessage> messages,

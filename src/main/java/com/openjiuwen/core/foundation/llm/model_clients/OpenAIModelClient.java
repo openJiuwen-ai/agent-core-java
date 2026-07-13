@@ -11,6 +11,8 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.HeadersHelper;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.ModelRetryListener;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -64,8 +66,11 @@ public class OpenAIModelClient extends BaseModelClient {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
     private static final String CONTENT_TYPE = "application/json";
+    private static final String RETRY_COUNT_HEADER = "X-Stainless-Retry-Count";
+    private static final String RETRY_LISTENER_KWARG = "__openjiuwen_retry_listener";
 
     private final HttpClient httpClient;
+    private final OpenAIRetryingHttpClient retryingHttpClient;
     private final Map<String, String> baseHeaders;
 
     static {
@@ -81,6 +86,7 @@ public class OpenAIModelClient extends BaseModelClient {
     public OpenAIModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         super(modelConfig, modelClientConfig);
         this.httpClient = createHttpClient(modelClientConfig);
+        this.retryingHttpClient = new OpenAIRetryingHttpClient(modelClientConfig.getMaxRetries());
         this.baseHeaders = HeadersHelper.buildBaseHeaders(modelClientConfig.getCustomHeaders());
     }
 
@@ -102,6 +108,15 @@ public class OpenAIModelClient extends BaseModelClient {
     @Override
     protected String getClientName() {
         return "OpenAI client";
+    }
+
+    @Override
+    protected Map<String, Object> invocationExtraFields(ModelInvokeOptions options) {
+        Map<String, Object> fields = super.invocationExtraFields(options);
+        if (options.getRetryListener() != null) {
+            fields.put(RETRY_LISTENER_KWARG, options.getRetryListener());
+        }
+        return fields;
     }
 
     static Map<String, String> buildRequestHeaders(
@@ -186,6 +201,7 @@ public class OpenAIModelClient extends BaseModelClient {
                                    Float timeout,
                                    Map<String, Object> kwargs) throws Exception {
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
+        ModelRetryListener retryListener = popRetryListener(effectiveKwargs);
         Object tracerRecordData = popTracerRecordData(effectiveKwargs);
         Map<String, ?> requestCustomHeaders = popRequestCustomHeaders(effectiveKwargs);
         Map<String, Object> params = buildPreparedParams(
@@ -209,7 +225,7 @@ public class OpenAIModelClient extends BaseModelClient {
                             "timeout", timeout != null ? timeout : modelClientConfig.getTimeout(),
                             "max_retries", modelClientConfig.getMaxRetries()
                     ));
-            Map<String, Object> responseData = postJson(params, timeout, authorization);
+            Map<String, Object> responseData = postJson(params, timeout, authorization, retryListener);
             Loggers.LLM.info("OpenAI API response received. {}", Map.of("response", responseData));
             AssistantMessage assistantMessage = parseResponse(responseData, outputParser);
             recordTracerData(tracerRecordData, "llm_response", assistantMessage);
@@ -238,6 +254,7 @@ public class OpenAIModelClient extends BaseModelClient {
                                                   Float timeout,
                                                   Map<String, Object> kwargs) throws Exception {
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
+        ModelRetryListener retryListener = popRetryListener(effectiveKwargs);
         Object tracerRecordData = popTracerRecordData(effectiveKwargs);
         Map<String, ?> requestCustomHeaders = popRequestCustomHeaders(effectiveKwargs);
         Map<String, Object> params = buildPreparedParams(
@@ -257,7 +274,7 @@ public class OpenAIModelClient extends BaseModelClient {
 
         try {
             return tracingIterator(
-                    streamChunks(params, outputParser, timeout, authorization),
+                    streamChunks(params, outputParser, timeout, authorization, retryListener),
                     tracerRecordData
             );
         } catch (Exception exception) {
@@ -385,11 +402,38 @@ public class OpenAIModelClient extends BaseModelClient {
     private Map<String, Object> postJson(
             Map<String, Object> params,
             Float timeout,
-            String authorization) throws Exception {
+            String authorization,
+            ModelRetryListener retryListener) throws Exception {
+        PreparedRequest preparedRequest = prepareRequest(params, timeout, authorization);
+        HttpResponse<String> response = retryingHttpClient.send(retryCount ->
+                sendStringAttempt(preparedRequest, retryCount), retryListener);
+        ensureSuccess(response.statusCode(), response.body());
+        return parseJsonObject(response.body());
+    }
+
+    private Iterator<AssistantMessageChunk> streamChunks(
+            Map<String, Object> params,
+            BaseOutputParser outputParser,
+            Float timeout,
+            String authorization,
+            ModelRetryListener retryListener) throws Exception {
+        PreparedRequest preparedRequest = prepareRequest(params, timeout, authorization);
+        HttpResponse<InputStream> response = retryingHttpClient.send(retryCount ->
+                sendStreamAttempt(preparedRequest, retryCount), retryListener);
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            String body = readBody(response.body());
+            ensureSuccess(response.statusCode(), body);
+        }
+        return new SseChunkIterator(response.body(), outputParser);
+    }
+
+    private HttpResponse<String> sendStringAttempt(
+            PreparedRequest preparedRequest,
+            int retryCount) throws IOException, InterruptedException {
         HttpResponse<String> response;
         try {
             response = httpClient.send(
-                    buildRequest(params, timeout, authorization),
+                    buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
             );
         } catch (IOException exception) {
@@ -402,7 +446,7 @@ public class OpenAIModelClient extends BaseModelClient {
                     .withProxy()
                     .build()
                     .send(
-                            buildRequest(params, timeout, authorization, fallbackApiBase),
+                            buildRequest(preparedRequest, fallbackApiBase, retryCount),
                             HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
                     );
         }
@@ -414,24 +458,21 @@ public class OpenAIModelClient extends BaseModelClient {
                         .withProxy()
                         .build()
                         .send(
-                                buildRequest(params, timeout, authorization, fallbackApiBase),
+                                buildRequest(preparedRequest, fallbackApiBase, retryCount),
                                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
                         );
             }
         }
-        ensureSuccess(response.statusCode(), response.body());
-        return parseJsonObject(response.body());
+        return response;
     }
 
-    private Iterator<AssistantMessageChunk> streamChunks(
-            Map<String, Object> params,
-            BaseOutputParser outputParser,
-            Float timeout,
-            String authorization) throws Exception {
+    private HttpResponse<InputStream> sendStreamAttempt(
+            PreparedRequest preparedRequest,
+            int retryCount) throws IOException, InterruptedException {
         HttpResponse<InputStream> response;
         try {
             response = httpClient.send(
-                    buildRequest(params, timeout, authorization),
+                    buildRequest(preparedRequest, modelClientConfig.getApiBase(), retryCount),
                     HttpResponse.BodyHandlers.ofInputStream()
             );
         } catch (IOException exception) {
@@ -444,30 +485,25 @@ public class OpenAIModelClient extends BaseModelClient {
                     .withProxy()
                     .build()
                     .send(
-                            buildRequest(params, timeout, authorization, fallbackApiBase),
+                            buildRequest(preparedRequest, fallbackApiBase, retryCount),
                             HttpResponse.BodyHandlers.ofInputStream()
                     );
         }
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            String body = readBody(response.body());
             String fallbackApiBase = localFixtureFallbackApiBase(response.statusCode());
             if (fallbackApiBase != null) {
+                readBody(response.body());
                 response = ModelHttpClients.builder(modelClientConfig, fallbackApiBase)
                         .withSsl()
                         .withProxy()
                         .build()
                         .send(
-                                buildRequest(params, timeout, authorization, fallbackApiBase),
+                                buildRequest(preparedRequest, fallbackApiBase, retryCount),
                                 HttpResponse.BodyHandlers.ofInputStream()
                         );
-                if (response.statusCode() >= 200 && response.statusCode() < 300) {
-                    return new SseChunkIterator(response.body(), outputParser);
-                }
-                body = readBody(response.body());
             }
-            ensureSuccess(response.statusCode(), body);
         }
-        return new SseChunkIterator(response.body(), outputParser);
+        return response;
     }
 
     private Iterator<AssistantMessageChunk> tracingIterator(
@@ -479,37 +515,51 @@ public class OpenAIModelClient extends BaseModelClient {
         return new TracingChunkIterator(chunks, tracerRecordData);
     }
 
-    private HttpRequest buildRequest(
+    private PreparedRequest prepareRequest(
             Map<String, Object> params,
             Float timeout,
             String authorization) throws JsonProcessingException {
-        return buildRequest(params, timeout, authorization, modelClientConfig.getApiBase());
-    }
-
-    private HttpRequest buildRequest(
-            Map<String, Object> params,
-            Float timeout,
-            String authorization,
-            String apiBase) throws JsonProcessingException {
-        Map<String, Object> body = requestBodyParams(params);
-        String bodyJson = OBJECT_MAPPER.writeValueAsString(body);
+        String bodyJson = OBJECT_MAPPER.writeValueAsString(requestBodyParams(params));
         String effectiveAuthorization = authorization != null
                 ? authorization
                 : "Bearer " + modelClientConfig.getApiKey();
         validateAuthorizationHeader(effectiveAuthorization);
+        return new PreparedRequest(
+                bodyJson,
+                timeoutDuration(timeout),
+                effectiveAuthorization,
+                extractExtraHeaders(params.get("extra_headers")));
+    }
 
+    private HttpRequest buildRequest(
+            PreparedRequest preparedRequest,
+            String apiBase,
+            int retryCount) {
         HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create(trimTrailingSlash(apiBase) + CHAT_COMPLETIONS_PATH))
-                .timeout(timeoutDuration(timeout))
+                .timeout(preparedRequest.timeout())
                 .header("Content-Type", CONTENT_TYPE)
-                .header("Authorization", effectiveAuthorization)
-                .POST(HttpRequest.BodyPublishers.ofString(bodyJson, StandardCharsets.UTF_8));
+                .header("Authorization", preparedRequest.authorization())
+                .POST(HttpRequest.BodyPublishers.ofString(preparedRequest.bodyJson(), StandardCharsets.UTF_8));
 
-        Map<String, String> extraHeaders = extractExtraHeaders(params.get("extra_headers"));
-        for (Map.Entry<String, String> entry : extraHeaders.entrySet()) {
+        if (!containsHeader(preparedRequest.extraHeaders(), RETRY_COUNT_HEADER)) {
+            builder.header(RETRY_COUNT_HEADER, String.valueOf(retryCount));
+        }
+        for (Map.Entry<String, String> entry : preparedRequest.extraHeaders().entrySet()) {
             builder.setHeader(entry.getKey(), entry.getValue());
         }
         return builder.build();
+    }
+
+    private static boolean containsHeader(Map<String, String> headers, String name) {
+        return headers.keySet().stream().anyMatch(header -> header.equalsIgnoreCase(name));
+    }
+
+    private record PreparedRequest(
+            String bodyJson,
+            Duration timeout,
+            String authorization,
+            Map<String, String> extraHeaders) {
     }
 
     private String localFixtureFallbackApiBase(IOException exception) {
@@ -616,6 +666,17 @@ public class OpenAIModelClient extends BaseModelClient {
             tracer = kwargs.remove("tracerRecordData");
         }
         return tracer;
+    }
+
+    private ModelRetryListener popRetryListener(Map<String, Object> kwargs) {
+        Object listener = kwargs.remove(RETRY_LISTENER_KWARG);
+        if (listener == null) {
+            return null;
+        }
+        if (listener instanceof ModelRetryListener retryListener) {
+            return retryListener;
+        }
+        throw new IllegalArgumentException(RETRY_LISTENER_KWARG + " must be a ModelRetryListener");
     }
 
     @SuppressWarnings("unchecked")

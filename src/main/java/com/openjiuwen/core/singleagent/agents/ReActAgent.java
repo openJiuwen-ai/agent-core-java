@@ -12,6 +12,7 @@ import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -305,11 +306,19 @@ public class ReActAgent extends BaseAgent {
             extraFields.put("top_logprobs", config.getLlmTopLogprobs());
         }
 
-        ModelInvokeOptions options = ModelInvokeOptions.builder()
+        ModelInvokeOptions.ModelInvokeOptionsBuilder optionsBuilder = ModelInvokeOptions.builder()
                 .model(config.getModelName())
                 .tools(tools)
-                .extraFields(extraFields)
-                .build();
+                .extraFields(extraFields);
+        if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && ctx.getSession() != null) {
+            AgentSessionApi session = ctx.getSession();
+            optionsBuilder.retryListener(event -> session.writeStream(new OutputSchema(
+                    "model_retry",
+                    nextStreamIndex(ctx),
+                    modelRetryPayload(event)
+            )));
+        }
+        ModelInvokeOptions options = optionsBuilder.build();
 
         if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
             AssistantMessage aiMessage = model.invoke(messages, options).toCompletableFuture().join();
@@ -1361,6 +1370,22 @@ public class ReActAgent extends BaseAgent {
     private int nextStreamIndex(AgentCallbackContext ctx) {
         int[] ref = streamIndexRef(ctx);
         return ref[0]++;
+    }
+
+    private static Map<String, Object> modelRetryPayload(ModelRetryEvent event) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("retry_count", event.retryCount());
+        payload.put("max_retries", event.maxRetries());
+        payload.put("delay_ms", event.delay() == null ? 0L : event.delay().toMillis());
+        payload.put("delay_source", event.delaySource());
+        payload.put("message", "模型请求失败，正在进行第 %d/%d 次重试"
+                .formatted(event.retryCount(), event.maxRetries()));
+        if (event.statusCode() != null) {
+            payload.put("status_code", event.statusCode());
+        } else if (event.exceptionType() != null) {
+            payload.put("exception_type", event.exceptionType());
+        }
+        return payload;
     }
 
     private void ensureToolCallIds(List<ToolCall> toolCalls) {

@@ -38,6 +38,8 @@ public class ModelInvokeOptions {
 
     Float timeout;
 
+    ModelRetryListener retryListener;
+
     @Builder.Default
     Map<String, Object> extraFields = new LinkedHashMap<>();
 }

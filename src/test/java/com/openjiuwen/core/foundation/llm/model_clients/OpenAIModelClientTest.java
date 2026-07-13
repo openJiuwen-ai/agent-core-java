@@ -6,6 +6,10 @@ package com.openjiuwen.core.foundation.llm.model_clients;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -14,6 +18,7 @@ import com.openjiuwen.core.foundation.llm.schema.ModelHttpVersion;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ProviderType;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
@@ -33,9 +38,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -140,6 +147,180 @@ class OpenAIModelClientTest {
             assertThat(toolCall.getId()).isEqualTo("call-1");
             assertThat(toolCall.getName()).isEqualTo("lookup");
             assertThat(toolCall.getIndex()).isEqualTo(0);
+        }
+    }
+
+    @Test
+    void invokeRetriesServerErrorWithEquivalentRebuiltRequest() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "ok")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(
+                response(500, "{\"error\":\"retry\"}"),
+                response(200, success))) {
+            OpenAIModelClient client = client(server.baseUrl(), 1, Map.of("X-Base", "base"));
+            Map<String, Object> kwargs = new LinkedHashMap<>();
+            kwargs.put("extra_body", Map.of("guided_choice", "A"));
+            kwargs.put("custom_headers", Map.of("X-Trace", "trace-1"));
+
+            AssistantMessage message = client.invoke(
+                    "hello", null, null, null, null, null, null, null, null, kwargs);
+
+            assertThat(message.getContent()).isEqualTo("ok");
+            assertThat(server.requests).hasSize(2);
+            assertThat(server.requests).extracting(request -> request.uri).containsOnly("/chat/completions");
+            assertThat(server.requests.get(0).body).isEqualTo(server.requests.get(1).body)
+                    .containsEntry("guided_choice", "A");
+            assertThat(server.requests).allSatisfy(request -> {
+                assertThat(header(request.headers, "Authorization")).isEqualTo("Bearer sk-test");
+                assertThat(header(request.headers, "X-Base")).isEqualTo("base");
+                assertThat(header(request.headers, "X-Trace")).isEqualTo("trace-1");
+            });
+            assertThat(header(server.requests.get(0).headers, "X-Stainless-Retry-Count")).isEqualTo("0");
+            assertThat(header(server.requests.get(1).headers, "X-Stainless-Retry-Count")).isEqualTo("1");
+        }
+    }
+
+    @Test
+    void streamRetriesRateLimitBeforeReturningSseIterator() throws Exception {
+        String sse = "data: " + json(Map.of("choices", List.of(Map.of(
+                "delta", Map.of("content", "ok"), "finish_reason", "stop")))) + "\n\ndata: [DONE]\n\n";
+        try (MockOpenAiServer server = new MockOpenAiServer(
+                response(429, "{\"error\":\"retry\"}"),
+                response(200, sse, "text/event-stream"))) {
+            List<AssistantMessageChunk> chunks = iteratorToList(client(server.baseUrl(), 1, Map.of()).stream(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+
+            assertThat(chunks).singleElement().extracting(AssistantMessageChunk::getContent).isEqualTo("ok");
+            assertThat(server.requests).hasSize(2);
+            assertThat(header(server.requests.get(0).headers, "X-Stainless-Retry-Count")).isEqualTo("0");
+            assertThat(header(server.requests.get(1).headers, "X-Stainless-Retry-Count")).isEqualTo("1");
+        }
+    }
+
+    @Test
+    void invokeOptionListenerReceivesRetryWithoutPollutingRequestBody() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "ok")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(
+                response(500, "{\"error\":\"retry\"}"), response(200, success))) {
+            List<ModelRetryEvent> events = new ArrayList<>();
+            ModelInvokeOptions options = ModelInvokeOptions.builder()
+                    .retryListener(events::add)
+                    .extraFields(new LinkedHashMap<>(Map.of("request_tag", "visible")))
+                    .build();
+
+            AssistantMessage message = client(server.baseUrl(), 1, Map.of())
+                    .invoke(List.of(new UserMessage("hello")), options)
+                    .toCompletableFuture()
+                    .get(5, TimeUnit.SECONDS);
+
+            assertThat(message.getContent()).isEqualTo("ok");
+            assertThat(events).singleElement().satisfies(event -> {
+                assertThat(event.retryCount()).isEqualTo(1);
+                assertThat(event.statusCode()).isEqualTo(500);
+            });
+            assertThat(server.requests).hasSize(2).allSatisfy(request -> assertThat(request.body)
+                    .containsEntry("request_tag", "visible")
+                    .doesNotContainKeys("__openjiuwen_retry_listener", "retry_listener", "retryListener"));
+        }
+    }
+
+    @Test
+    void streamOptionListenerReceivesRetryWithoutPollutingRequestBody() throws Exception {
+        String sse = "data: " + json(Map.of("choices", List.of(Map.of(
+                "delta", Map.of("content", "ok"), "finish_reason", "stop")))) + "\n\ndata: [DONE]\n\n";
+        try (MockOpenAiServer server = new MockOpenAiServer(
+                response(429, "{\"error\":\"retry\"}"), response(200, sse, "text/event-stream"))) {
+            List<ModelRetryEvent> events = new ArrayList<>();
+            ModelInvokeOptions options = ModelInvokeOptions.builder().retryListener(events::add).build();
+
+            List<AssistantMessageChunk> chunks = iteratorToList(client(server.baseUrl(), 1, Map.of())
+                    .stream(List.of(new UserMessage("hello")), options));
+
+            assertThat(chunks).singleElement().extracting(AssistantMessageChunk::getContent).isEqualTo("ok");
+            assertThat(events).singleElement().satisfies(event -> {
+                assertThat(event.retryCount()).isEqualTo(1);
+                assertThat(event.statusCode()).isEqualTo(429);
+            });
+            assertThat(server.requests).hasSize(2).allSatisfy(request -> assertThat(request.body)
+                    .doesNotContainKeys("__openjiuwen_retry_listener", "retry_listener", "retryListener"));
+        }
+    }
+
+    @Test
+    void typedInvokeWithoutListenerKeepsExistingBehavior() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "ok")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(success)) {
+            AssistantMessage message = client(server.baseUrl())
+                    .invoke(List.of(new UserMessage("hello")), ModelInvokeOptions.builder().build())
+                    .toCompletableFuture()
+                    .get(5, TimeUnit.SECONDS);
+
+            assertThat(message.getContent()).isEqualTo("ok");
+            assertThat(server.requests).singleElement().satisfies(request -> assertThat(request.body)
+                    .doesNotContainKeys("__openjiuwen_retry_listener", "retry_listener", "retryListener"));
+        }
+    }
+
+    @Test
+    void maxRetriesZeroKeepsFinalNonSuccessExceptionMapping() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "unused")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(
+                response(500, "{\"error\":\"final\"}"), response(200, success))) {
+            OpenAIModelClient client = client(server.baseUrl(), 0, Map.of());
+
+            assertThatThrownBy(() -> client.invoke(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()))
+                    .isInstanceOf(BaseError.class)
+                    .satisfies(error -> assertThat(((BaseError) error).getStatus())
+                            .isEqualTo(StatusCode.MODEL_CALL_FAILED))
+                    .hasMessageContaining("HTTP 500")
+                    .hasMessageContaining("final");
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
+    @Test
+    void customRetryCountHeaderIsPreservedCaseInsensitively() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "ok")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(
+                response(500, "{\"error\":\"retry\"}"), response(200, success))) {
+            OpenAIModelClient client = client(server.baseUrl(), 1,
+                    Map.of("x-sTaInLeSs-rEtRy-CoUnT", "caller-value"));
+
+            client.invoke("hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>());
+
+            assertThat(server.requests).hasSize(2).allSatisfy(request ->
+                    assertThat(header(request.headers, "X-Stainless-Retry-Count")).isEqualTo("caller-value"));
+        }
+    }
+
+    @Test
+    void successfulSseResponseIsNotReplayedAfterEarlyEof() throws Exception {
+        String partialSse = "data: " + json(Map.of("choices", List.of(Map.of(
+                "delta", Map.of("content", "partial"), "finish_reason", "null")))) + "\n\n";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(200, partialSse, "text/event-stream"))) {
+            List<AssistantMessageChunk> chunks = iteratorToList(client(server.baseUrl(), 1, Map.of()).stream(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+
+            assertThat(chunks).singleElement().extracting(AssistantMessageChunk::getContent).isEqualTo("partial");
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
+    @Test
+    void localFixtureFallbackStaysInsideOneRetryAttempt() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "ok")))));
+        try (MockOpenAiServer primary = new MockOpenAiServer(8088,
+                response(500, "{\"error\":\"primary\"}"), response(500, "{\"error\":\"primary\"}"));
+             MockOpenAiServer fallback = new MockOpenAiServer(8090,
+                     response(500, "{\"error\":\"fallback\"}"), response(200, success))) {
+            AssistantMessage message = client(primary.baseUrl(), 1, Map.of()).invoke(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>());
+
+            assertThat(message.getContent()).isEqualTo("ok");
+            assertThat(primary.requests).hasSize(2);
+            assertThat(fallback.requests).hasSize(2);
+            assertThat(header(fallback.requests.get(0).headers, "X-Stainless-Retry-Count")).isEqualTo("0");
+            assertThat(header(fallback.requests.get(1).headers, "X-Stainless-Retry-Count")).isEqualTo("1");
         }
     }
 
@@ -513,6 +694,10 @@ class OpenAIModelClientTest {
     }
 
     private static OpenAIModelClient client(String apiBase) {
+        return client(apiBase, 3, Map.of("X-Base", "base"));
+    }
+
+    private static OpenAIModelClient client(String apiBase, int maxRetries, Map<String, Object> customHeaders) {
         return new OpenAIModelClient(
                 ModelRequestConfig.builder().modelName("gpt-test").build(),
                 ModelClientConfig.builder()
@@ -520,7 +705,8 @@ class OpenAIModelClientTest {
                         .apiKey("sk-test")
                         .apiBase(apiBase)
                         .verifySsl(false)
-                        .customHeaders(Map.of("X-Base", "base"))
+                        .maxRetries(maxRetries)
+                        .customHeaders(customHeaders)
                         .build());
     }
 
@@ -588,6 +774,14 @@ class OpenAIModelClientTest {
         return null;
     }
 
+    private static PlannedResponse response(int status, String body) {
+        return response(status, body, "application/json");
+    }
+
+    private static PlannedResponse response(int status, String body, String contentType) {
+        return new PlannedResponse(status, body, contentType);
+    }
+
     private static final class RecordingTracer implements Consumer<Map<String, Object>> {
         private final List<Map<String, Object>> records = new ArrayList<>();
 
@@ -619,13 +813,23 @@ class OpenAIModelClientTest {
      */
     private static final class MockOpenAiServer implements AutoCloseable {
         private final HttpServer server;
-        private final String responseBody;
+        private final List<PlannedResponse> responses;
+        private final AtomicInteger responseIndex = new AtomicInteger();
+        private final List<RecordedRequest> requests = new ArrayList<>();
         private Map<String, Object> lastBody;
         private Map<String, String> lastHeaders;
 
         private MockOpenAiServer(String responseBody) throws IOException {
-            this.responseBody = responseBody;
-            this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+            this(response(200, responseBody));
+        }
+
+        private MockOpenAiServer(PlannedResponse... responses) throws IOException {
+            this(0, responses);
+        }
+
+        private MockOpenAiServer(int port, PlannedResponse... responses) throws IOException {
+            this.responses = List.of(responses);
+            this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 0);
             this.server.createContext("/chat/completions", this::handle);
             this.server.start();
         }
@@ -644,9 +848,15 @@ class OpenAIModelClientTest {
                     lastHeaders.put(name, values.get(0));
                 }
             });
-            byte[] bytes = responseBody.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, bytes.length);
+            requests.add(new RecordedRequest(exchange.getRequestURI().toString(), lastBody, lastHeaders));
+            int index = Math.min(responseIndex.getAndIncrement(), responses.size() - 1);
+            PlannedResponse response = responses.get(index);
+            byte[] bytes = response.body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", response.contentType);
+            if (response.status == 429 || response.status >= 500) {
+                exchange.getResponseHeaders().add("retry-after-ms", "1");
+            }
+            exchange.sendResponseHeaders(response.status, bytes.length);
             exchange.getResponseBody().write(bytes);
             exchange.close();
         }
@@ -655,6 +865,12 @@ class OpenAIModelClientTest {
         public void close() {
             server.stop(0);
         }
+    }
+
+    private record PlannedResponse(int status, String body, String contentType) {
+    }
+
+    private record RecordedRequest(String uri, Map<String, Object> body, Map<String, String> headers) {
     }
 
     private static final class DelayedSseServer implements AutoCloseable {

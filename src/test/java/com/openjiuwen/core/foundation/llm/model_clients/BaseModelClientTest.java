@@ -5,6 +5,7 @@
 package com.openjiuwen.core.foundation.llm.model_clients;
 
 import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -244,6 +245,21 @@ class BaseModelClientTest {
                 List.of(details.inputCost(), details.outputCost(), details.totalCost()));
     }
 
+    @Test
+    void typedInvokeAndStreamUseProviderExtraFieldExtensionWithoutForwardingListenerByDefault() {
+        TestModelClient client = new TestModelClient(requestConfig(), validClientConfig(), true);
+        ModelInvokeOptions options = ModelInvokeOptions.builder()
+                .retryListener(event -> { })
+                .extraFields(new LinkedHashMap<>(Map.of("caller_field", "value")))
+                .build();
+
+        client.invoke(List.of(new UserMessage("hello")), options).toCompletableFuture().join();
+        assertEquals(Map.of("caller_field", "value", "provider_field", "private"), client.lastKwargs);
+
+        client.stream(List.of(new UserMessage("hello")), options);
+        assertEquals(Map.of("caller_field", "value", "provider_field", "private"), client.lastKwargs);
+    }
+
     private static ModelRequestConfig requestConfig() {
         return ModelRequestConfig.builder().modelName("test-model").build();
     }
@@ -263,8 +279,28 @@ class BaseModelClientTest {
      */
     private static final class TestModelClient extends BaseModelClient {
 
+        private final boolean addProviderField;
+        private Map<String, Object> lastKwargs;
+
         private TestModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
+            this(modelConfig, modelClientConfig, false);
+        }
+
+        private TestModelClient(
+                ModelRequestConfig modelConfig,
+                ModelClientConfig modelClientConfig,
+                boolean addProviderField) {
             super(modelConfig, modelClientConfig);
+            this.addProviderField = addProviderField;
+        }
+
+        @Override
+        protected Map<String, Object> invocationExtraFields(ModelInvokeOptions options) {
+            Map<String, Object> fields = super.invocationExtraFields(options);
+            if (addProviderField) {
+                fields.put("provider_field", "private");
+            }
+            return fields;
         }
 
         private Map<String, Object> requestParams(
@@ -291,6 +327,7 @@ class BaseModelClientTest {
                                        BaseOutputParser outputParser,
                                        Float timeout,
                                        Map<String, Object> kwargs) {
+            lastKwargs = new LinkedHashMap<>(kwargs);
             return AssistantMessage.builder().content("").build();
         }
 
@@ -305,6 +342,7 @@ class BaseModelClientTest {
                                                       BaseOutputParser outputParser,
                                                       Float timeout,
                                                       Map<String, Object> kwargs) {
+            lastKwargs = new LinkedHashMap<>(kwargs);
             return List.<AssistantMessageChunk>of().iterator();
         }
 
