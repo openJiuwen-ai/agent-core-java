@@ -1,0 +1,18 @@
+# Dependencies: 开发-测试并行团队依赖配置
+
+skills: []  # 本团队不依赖外部 skill，纯代码生成
+
+tools:
+  - name: python3
+    source: local
+    required: true
+    purpose: "运行功能代码和测试代码"
+    roles:
+      - developer
+      - tester
+
+# 全局依赖说明
+global_dependencies:
+  description: "本团队只需 python3 即可运行，无外部 skill 依赖"
+  fallback_mode: "若 python3 不可用，团队无法运行（required: true）"
+  community_enrichment: "可选：从社区找代码审查、格式化等 skill 增强 leader 的整合能力"

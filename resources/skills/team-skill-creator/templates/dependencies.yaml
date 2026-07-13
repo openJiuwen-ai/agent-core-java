@@ -1,0 +1,24 @@
+# Dependencies: <团队名>依赖配置
+
+skills:
+  - name: <skill-name>           # 外部 skill 名
+    source: local                # 来源
+    required: false              # false 表示缺失时降级，true 表示必需
+    purpose: "<这个 skill 干什么>"
+    roles:                       # 哪些角色用
+      - <role-name>
+
+tools:
+  - name: python3
+    source: local
+    required: true               # 工具类一般 required: true
+    purpose: "<用途>"
+    roles:
+      - <role-1>
+      - <role-2>
+
+# 全局依赖说明
+global_dependencies:
+  description: "<团队整体依赖说明>"
+  fallback_mode: "<缺失依赖时的降级模式>"
+  community_enrichment: "<建议从社区找什么 skill>"
