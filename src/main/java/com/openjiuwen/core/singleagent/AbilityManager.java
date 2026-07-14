@@ -252,7 +252,7 @@ public class AbilityManager {
         try {
             Object result = tool.invoke(inputs, Map.of());
             String content = buildToolMessageContent(result);
-            logSuccessfulToolResult(content);
+            logSuccessfulToolResult(toolCall.getName(), result);
             ToolMessage message = new ToolMessage(content, toolCall.getId(), toolCall.getName());
             return List.of(new ExecutionResult(result, message));
         } catch (Exception exception) {
@@ -262,12 +262,26 @@ public class AbilityManager {
         }
     }
 
-    private static void logSuccessfulToolResult(String content) {
+    private static void logSuccessfulToolResult(String toolName, Object result) {
         try {
-            Loggers.TOOL.info("Tool result: {}", content);
+            StringBuilder message = new StringBuilder("event=react_tool_result tool_name=")
+                    .append(safeLogText(toolName))
+                    .append(" status=success");
+            if (result != null) {
+                message.append(" result_type=").append(result.getClass().getSimpleName());
+            }
+            Loggers.TOOL.debug(message.toString());
         } catch (RuntimeException ignored) {
             // Result logging is observational and must not change tool execution semantics.
         }
+    }
+
+    private static String safeLogText(Object value) {
+        if (value == null) {
+            return "?";
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? "?" : text;
     }
 
     public static String buildToolMessageContent(Object result) {
