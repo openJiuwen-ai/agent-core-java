@@ -47,6 +47,14 @@ public class KnowledgeBaseConfig {
     @Builder.Default
     private boolean useCaptionForImages = false;
 
+    public KnowledgeBaseConfig(String kbId) {
+        this(kbId, "hybrid", false, 512, 50, false);
+    }
+
+    public KnowledgeBaseConfig(String kbId, String indexType, boolean useGraph, int chunkSize, int chunkOverlap) {
+        this(kbId, indexType, useGraph, chunkSize, chunkOverlap, false);
+    }
+
     public KnowledgeBaseConfig(
             String kbId,
             String indexType,
@@ -63,11 +71,32 @@ public class KnowledgeBaseConfig {
         this.useCaptionForImages = useCaptionForImages;
     }
 
+    public void validate() {
+        if (kbId == null) {
+            throw new IllegalArgumentException("kb_id is required");
+        }
+        setIndexType(indexType);
+        if (chunkSize <= 0) {
+            throw new IllegalArgumentException("chunk_size must be positive");
+        }
+        if (chunkOverlap < 0) {
+            throw new IllegalArgumentException("chunk_overlap must be non-negative");
+        }
+    }
+
+    public String getKbId() {
+        return kbId;
+    }
+
     public void setKbId(String kbId) {
         if (kbId == null) {
             throw new IllegalArgumentException("kb_id is required");
         }
         this.kbId = kbId;
+    }
+
+    public String getIndexType() {
+        return indexType;
     }
 
     public void setIndexType(String indexType) {
@@ -76,5 +105,29 @@ public class KnowledgeBaseConfig {
             throw new IllegalArgumentException("index_type must be one of hybrid, bm25, vector");
         }
         this.indexType = value;
+    }
+
+    public boolean isUseGraph() {
+        return useGraph;
+    }
+
+    public void setUseGraph(boolean useGraph) {
+        this.useGraph = useGraph;
+    }
+
+    public int getChunkSize() {
+        return chunkSize;
+    }
+
+    public void setChunkSize(int chunkSize) {
+        this.chunkSize = chunkSize;
+    }
+
+    public int getChunkOverlap() {
+        return chunkOverlap;
+    }
+
+    public void setChunkOverlap(int chunkOverlap) {
+        this.chunkOverlap = chunkOverlap;
     }
 }

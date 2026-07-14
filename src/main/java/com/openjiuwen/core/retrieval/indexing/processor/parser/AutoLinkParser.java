@@ -87,7 +87,7 @@ public class AutoLinkParser extends Parser {
     }
 
     @Override
-    public CompletableFuture<List<Document>> parse(
+    public CompletableFuture<List<Document>> parseAsync(
             String doc,
             String docId,
             BaseModelClient llmClient,
@@ -144,7 +144,7 @@ public class AutoLinkParser extends Parser {
                 return CompletableFuture.failedFuture(ex);
             }
             LOGGER.debug("AutoLinkParser delegating to {}", delegate.getClass().getSimpleName());
-            return delegate.parse(doc, docId, null, options);
+            return delegate.parseAsync(doc, docId, null, options);
         }
 
         private Parser resolveParser() {

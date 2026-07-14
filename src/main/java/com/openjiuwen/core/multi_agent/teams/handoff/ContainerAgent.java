@@ -12,6 +12,7 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -216,6 +217,10 @@ public class ContainerAgent extends BaseAgent implements CommunicableAgent {
     @Override
     public BaseAgent configure(Object config) {
         return this;
+    }
+
+    public CompletionStage<Object> invoke(HandoffRequest inputs, Session session) {
+        return invoke((Object) inputs, (AgentSessionApi) session);
     }
 
     @Override

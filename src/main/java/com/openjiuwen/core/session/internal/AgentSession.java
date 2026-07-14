@@ -5,6 +5,7 @@
 package com.openjiuwen.core.session.internal;
 
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.callback.CallbackManager;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.config.Config;
@@ -38,6 +39,11 @@ public class AgentSession extends BaseSession {
     private final Tracer tracer = new Tracer();
     private final Checkpointer checkpointer;
     private final TraceAgentSpan agentSpan;
+    private final CallbackManager callbackManager = new CallbackManager();
+
+    public AgentSession(String sessionId) {
+        this(sessionId, null, null, null, null);
+    }
 
     public AgentSession(String sessionId, Config config, Object card, StreamWriterManager streamWriterManager) {
         this(sessionId, config, null, card, streamWriterManager);
@@ -86,6 +92,11 @@ public class AgentSession extends BaseSession {
         return checkpointer;
     }
 
+    @Override
+    public CallbackManager callbackManager() {
+        return callbackManager;
+    }
+
     public TraceAgentSpan span() {
         return agentSpan;
     }
@@ -100,7 +111,7 @@ public class AgentSession extends BaseSession {
                 "",
                 State.DEFAULT_NODE_ID
         );
-        return new WorkflowSession(null, this, sessionId, workflowState, null);
+        return new WorkflowSession(null, this, sessionId, workflowState, (Object) null);
     }
 
     public String agentId() {

@@ -337,6 +337,14 @@ public class TeamAgent implements CoordinationKernel.KernelHost {
     }
 
     public TeamAgent configure(
+            com.openjiuwen.agent_teams.schema.TeamAgentSpec spec,
+            TeamRuntimeContext context,
+            MemberRuntime memberRuntime
+    ) {
+        return configure(spec == null ? null : spec.toConfiguratorSpec(), context, memberRuntime);
+    }
+
+    public TeamAgent configure(
             TeamAgentSpec spec,
             TeamRuntimeContext context,
             MemberRuntime memberRuntime
@@ -350,6 +358,14 @@ public class TeamAgent implements CoordinationKernel.KernelHost {
         return configure(spec, context, null);
     }
 
+    public TeamAgent configure(com.openjiuwen.agent_teams.schema.TeamAgentSpec spec, TeamRuntimeContext context) {
+        return configure(spec, context, null);
+    }
+
+    public void setupInfra(com.openjiuwen.agent_teams.schema.TeamAgentSpec spec, TeamRuntimeContext ctx) {
+        setupInfra(spec == null ? null : spec.toConfiguratorSpec(), ctx);
+    }
+
     public void setupInfra(TeamAgentSpec spec, TeamRuntimeContext ctx) {
         configurator.setupInfra(
                 spec,
@@ -358,6 +374,14 @@ public class TeamAgent implements CoordinationKernel.KernelHost {
                 (LifecycleCallback) this::markTeamCleaned,
                 (LifecycleCallback) this::markTeamBuilt
         );
+    }
+
+    public void setupAgent(
+            com.openjiuwen.agent_teams.schema.TeamAgentSpec spec,
+            TeamRuntimeContext ctx,
+            MemberRuntime memberRuntime
+    ) {
+        setupAgent(spec == null ? null : spec.toConfiguratorSpec(), ctx, memberRuntime);
     }
 
     public void setupAgent(
@@ -375,6 +399,14 @@ public class TeamAgent implements CoordinationKernel.KernelHost {
 
     public DeepAgentSpec resolveAgentSpec(TeamAgentSpec spec, TeamRole role, String memberName) {
         return AgentConfigurator.resolveAgentSpec(spec, role, memberName);
+    }
+
+    public DeepAgentSpec resolveAgentSpec(
+            com.openjiuwen.agent_teams.schema.TeamAgentSpec spec,
+            TeamRole role,
+            String memberName
+    ) {
+        return resolveAgentSpec(spec == null ? null : spec.toConfiguratorSpec(), role, memberName);
     }
 
     public void updateModelPool(List<?> newPool) {
@@ -412,6 +444,10 @@ public class TeamAgent implements CoordinationKernel.KernelHost {
                     "TeamAgent.humanAgentSay requires a configured team backend"));
         }
         return gateway.humanAgentSay(content, to, sender);
+    }
+
+    public CompletionStage<DeliverResult> directFromUser(String to, String content) {
+        return humanAgentSay(content, to, "user");
     }
 
     public CompletionStage<List<Object>> stream(

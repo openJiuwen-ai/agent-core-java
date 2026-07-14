@@ -68,6 +68,14 @@ public class CallbackChain {
         return errorHandlers;
     }
 
+    public boolean hasRollbackHandler(Function<Map<String, Object>, Object> callback) {
+        return rollbackHandlers.containsKey(callback);
+    }
+
+    public boolean hasErrorHandler(Function<Map<String, Object>, Object> callback) {
+        return errorHandlers.containsKey(callback);
+    }
+
     public void add(CallbackInfo callbackInfo) {
         add(callbackInfo, null, null);
     }
@@ -121,10 +129,9 @@ public class CallbackChain {
             for (int attempt = 0; attempt <= callbackInfo.getMaxRetries(); attempt++) {
                 try {
                     Map<String, Object> kwargs = buildInvocationKwargs(context);
-                    Object rawResult = callback.apply(kwargs);
-                    Object resolvedResult = awaitResult(rawResult, callbackInfo.getTimeout());
+                    Object resolvedResult = invokeCallback(callback, kwargs, callbackInfo.getTimeout());
 
-                    ProcessOutcome outcome = processResult(resolvedResult, executedCallbacks, context);
+                    ProcessOutcome outcome = processResult(resolvedResult, callbackInfo, executedCallbacks, context);
                     if (outcome.retryCurrent()) {
                         continue;
                     }
@@ -220,6 +227,7 @@ public class CallbackChain {
 
     private ProcessOutcome processResult(
             Object resolvedResult,
+            CallbackInfo callbackInfo,
             List<Function<Map<String, Object>, Object>> executedCallbacks,
             ChainContext context
     ) {
@@ -240,16 +248,30 @@ public class CallbackChain {
             return new ProcessOutcome(true, null);
         }
         if (chainResult.getAction() == ChainAction.ROLLBACK) {
+            Function<Map<String, Object>, Object> callback = callbackInfo.getCallback();
             rollback(executedCallbacks, context);
             return new ProcessOutcome(false, ChainResult.builder()
                     .action(ChainAction.ROLLBACK)
                     .context(context)
                     .error(chainResult.getError())
-                    .build());
+                .build());
         }
 
-        context.getResults().add(chainResult.getResult());
+        Function<Map<String, Object>, Object> callback = callbackInfo.getCallback();
+        if (shouldRecordChainResult(callbackInfo, callback)) {
+            context.getResults().add(chainResult.getResult());
+        }
         return new ProcessOutcome(false, null);
+    }
+
+    private boolean shouldRecordChainResult(
+            CallbackInfo callbackInfo,
+            Function<Map<String, Object>, Object> callback
+    ) {
+        if (callbackInfo.getCallbackName() == null || callbackInfo.getCallbackName().isEmpty()) {
+            return true;
+        }
+        return hasRollbackHandler(callback) || hasErrorHandler(callback);
     }
 
     private void rollback(List<Function<Map<String, Object>, Object>> executedCallbacks, ChainContext context) {
@@ -284,6 +306,26 @@ public class CallbackChain {
             throw normalizeException(executionError);
         } catch (CompletionException completionError) {
             throw normalizeException(completionError);
+        }
+    }
+
+    private static Object invokeCallback(
+            Function<Map<String, Object>, Object> callback,
+            Map<String, Object> kwargs,
+            Double timeoutSeconds
+    ) throws Exception {
+        if (timeoutSeconds == null || timeoutSeconds <= 0) {
+            return awaitResult(callback.apply(kwargs), null);
+        }
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor();
+        java.util.concurrent.Future<Object> future = executor.submit(() -> awaitResult(callback.apply(kwargs), null));
+        try {
+            return future.get((long) (timeoutSeconds * 1000L), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException timeoutError) {
+            future.cancel(true);
+            throw timeoutError;
+        } finally {
+            executor.shutdownNow();
         }
     }
 

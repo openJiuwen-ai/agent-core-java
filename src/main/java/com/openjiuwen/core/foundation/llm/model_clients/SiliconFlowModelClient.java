@@ -27,6 +27,7 @@ import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -40,6 +41,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 
@@ -258,7 +260,8 @@ public class SiliconFlowModelClient extends BaseModelClient {
             Object parserContent = null;
             if (!accumulatedContent.isEmpty()) {
                 try {
-                    Object parsedResult = outputParser.parse(accumulatedContent.toString()).join();
+                    Object parsedResult = outputParser.<CompletableFuture<Object>>parse(
+                            accumulatedContent.toString()).join();
                     if (parsedResult != null) {
                         parserContent = parsedResult;
                         accumulatedContent.setLength(0);
@@ -363,7 +366,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
     }
 
     protected HttpResult postJson(Map<String, Object> payload, Float timeout) throws Exception {
-        UrlUtils.checkUrlIsValid(modelClientConfig.getApiBase());
+        validateApiBaseUrl();
         String apiUrl = resolveApiUrl();
         HttpRequest request = requestBuilder(apiUrl, payload, timeout).build();
         HttpResponse<String> response = createHttpClient(apiUrl)
@@ -375,6 +378,23 @@ public class SiliconFlowModelClient extends BaseModelClient {
         HttpResult result = postJson(payload, timeout);
         List<String> lines = result.body() == null ? List.of() : result.body().lines().toList();
         return new HttpStreamResult(result.statusCode(), lines, result.body());
+    }
+
+    protected void validateApiBaseUrl() {
+        String apiBase = modelClientConfig.getApiBase();
+        if (modelClientConfig.isVerifySsl() || !isLoopbackApiBase(apiBase)) {
+            UrlUtils.checkUrlIsValid(apiBase);
+        }
+    }
+
+    private static boolean isLoopbackApiBase(String apiBase) {
+        try {
+            URI uri = URI.create(apiBase);
+            String host = uri.getHost();
+            return host != null && InetAddress.getByName(host).isLoopbackAddress();
+        } catch (RuntimeException | java.net.UnknownHostException exception) {
+            return false;
+        }
     }
 
     String resolveApiUrl() {
@@ -471,7 +491,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
             return null;
         }
         try {
-            Object parserContent = parser.parse(content).join();
+            Object parserContent = parser.<CompletableFuture<Object>>parse(content).join();
             Loggers.LLM.info("Parser parse success. {}", Map.of("parser_content", parserContent));
             return parserContent;
         } catch (RuntimeException exception) {

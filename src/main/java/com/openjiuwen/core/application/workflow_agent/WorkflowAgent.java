@@ -14,6 +14,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 /**
@@ -26,6 +27,11 @@ public class WorkflowAgent extends ControllerAgent {
 
     public WorkflowAgent(WorkflowAgentConfig agentConfig) {
         super(requireWorkflowController(agentConfig), new WorkflowController());
+    }
+
+    @Override
+    protected com.openjiuwen.core.context_engine.ContextEngine createContextEngine() {
+        return new com.openjiuwen.core.context.ContextEngine();
     }
 
     @Override
@@ -46,7 +52,7 @@ public class WorkflowAgent extends ControllerAgent {
         WorkflowAgentConfig checked = Objects.requireNonNull(agentConfig, "agentConfig");
         if (checked.getControllerType() != ControllerType.WORKFLOW_CONTROLLER) {
             throw new UnsupportedOperationException(
-                    "WorkflowAgent requires WorkflowController, got " + checked.getControllerType()
+                    "WorkflowAgent requires WORKFLOW_CONTROLLER, got " + checked.getControllerType()
             );
         }
         return checked;

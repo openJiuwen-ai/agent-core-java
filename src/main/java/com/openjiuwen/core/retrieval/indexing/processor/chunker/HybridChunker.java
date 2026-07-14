@@ -57,7 +57,7 @@ public class HybridChunker extends Chunker {
         return chunks;
     }
 
-    private static boolean defaultNoSplit(Document document) {
+    public static boolean defaultNoSplit(Document document) {
         Object sourceType = document.getMetadata().get("source_type");
         return "row".equals(sourceType) || "column".equals(sourceType);
     }

@@ -29,14 +29,24 @@ import java.util.concurrent.ExecutionException;
 public class McpTool extends Tool {
 
     private final Object mcpClient;
+    private final float operationTimeout;
+
+    public McpTool(McpClient mcpClient, McpToolCard toolInfo) {
+        this((Object) mcpClient, toolInfo, McpBase.NO_TIMEOUT);
+    }
 
     public McpTool(Object mcpClient, McpToolCard toolInfo) {
+        this(mcpClient, toolInfo, McpBase.NO_TIMEOUT);
+    }
+
+    public McpTool(Object mcpClient, McpToolCard toolInfo, float operationTimeout) {
         super(toolInfo);
         if (mcpClient == null) {
             throw ErrorHelper.buildError(StatusCode.TOOL_MCP_CLIENT_NOT_SUPPORTED,
                     "card", String.valueOf(getCard()));
         }
         this.mcpClient = mcpClient;
+        this.operationTimeout = operationTimeout;
     }
 
     public Object getMcpClient() {
@@ -65,7 +75,7 @@ public class McpTool extends Tool {
                 }
                 triggerCallback(ToolCallEvents.TOOL_PARSE_FINISHED, parseFinishedKwargs(arguments));
             }
-            Object result = awaitIfNeeded(callTool(arguments));
+            Object result = awaitIfNeeded(callTool(arguments, operationTimeout(kwargs)));
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("result", result);
             return payload;
@@ -78,28 +88,80 @@ public class McpTool extends Tool {
         }
     }
 
-    private Object callTool(Map<String, Object> arguments) throws Exception {
+    private Object callTool(Map<String, Object> arguments, float timeout) throws Exception {
         String toolName = getCard().getName();
+        Method twoArgumentMethod = null;
         for (Method method : mcpClient.getClass().getMethods()) {
             if (!("callTool".equals(method.getName()) || "call_tool".equals(method.getName()))) {
                 continue;
             }
-            try {
-                if (method.getParameterCount() == 2) {
-                    return method.invoke(mcpClient, toolName, arguments);
-                }
-                if (method.getParameterCount() == 3) {
-                    return method.invoke(mcpClient, toolName, arguments, McpBase.NO_TIMEOUT);
-                }
-            } catch (InvocationTargetException error) {
-                Throwable cause = error.getCause();
-                if (cause instanceof Exception exception) {
-                    throw exception;
-                }
-                throw new RuntimeException(Objects.requireNonNullElse(cause, error));
+            if (method.getParameterCount() == 3) {
+                return invokeCallToolMethod(method, toolName, arguments, timeoutArgument(method, timeout));
+            }
+            if (method.getParameterCount() == 2) {
+                twoArgumentMethod = method;
             }
         }
+        if (twoArgumentMethod != null) {
+            return invokeCallToolMethod(twoArgumentMethod, toolName, arguments);
+        }
         throw new NoSuchMethodException("callTool(String, Map) or call_tool(String, Map)");
+    }
+
+    private Object invokeCallToolMethod(Method method, String toolName, Map<String, Object> arguments,
+                                        Object... extraArguments) throws Exception {
+        Object[] args = new Object[2 + extraArguments.length];
+        args[0] = toolName;
+        args[1] = arguments;
+        System.arraycopy(extraArguments, 0, args, 2, extraArguments.length);
+        try {
+            method.setAccessible(true);
+            return method.invoke(mcpClient, args);
+        } catch (InvocationTargetException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof Exception exception) {
+                throw exception;
+            }
+            throw new RuntimeException(Objects.requireNonNullElse(cause, error));
+        }
+    }
+
+    private float operationTimeout(Map<String, Object> kwargs) {
+        Object value = first(kwargs, "operation_timeout", "operationTimeout", "timeout");
+        if (value == null) {
+            return operationTimeout;
+        }
+        if (value instanceof Number number) {
+            return number.floatValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Float.parseFloat(text.trim());
+            } catch (NumberFormatException ignored) {
+                return operationTimeout;
+            }
+        }
+        return operationTimeout;
+    }
+
+    private static Object first(Map<String, Object> values, String... keys) {
+        if (values == null || values.isEmpty()) {
+            return null;
+        }
+        for (String key : keys) {
+            if (values.containsKey(key)) {
+                return values.get(key);
+            }
+        }
+        return null;
+    }
+
+    private static Object timeoutArgument(Method method, float timeout) {
+        Class<?> type = method.getParameterTypes()[2];
+        if (type == double.class || type == Double.class) {
+            return (double) timeout;
+        }
+        return timeout;
     }
 
     private Map<String, Object> parseStartedKwargs(Map<String, Object> inputs, Map<String, Object> inputParams) {

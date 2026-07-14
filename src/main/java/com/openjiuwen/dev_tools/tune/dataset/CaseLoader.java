@@ -13,7 +13,6 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.logging.Logger;
 
 /**
@@ -29,8 +28,12 @@ public class CaseLoader implements Iterable<Case> {
 
     private final List<Case> cases;
 
+    public CaseLoader() {
+        this(List.of());
+    }
+
     public CaseLoader(List<Case> cases) {
-        this.cases = Objects.requireNonNull(cases, "cases");
+        this.cases = new ArrayList<>(cases == null ? List.of() : cases);
         assignCaseId();
     }
 
@@ -43,7 +46,7 @@ public class CaseLoader implements Iterable<Case> {
     }
 
     public List<Case> getCases() {
-        return cases;
+        return Collections.unmodifiableList(cases);
     }
 
     public List<Case> get_cases() {

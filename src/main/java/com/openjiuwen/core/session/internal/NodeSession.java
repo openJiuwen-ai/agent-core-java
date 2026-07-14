@@ -5,8 +5,9 @@
 package com.openjiuwen.core.session.internal;
 
 import com.openjiuwen.core.session.BaseSession;
-import com.openjiuwen.core.session.config.SessionConfigAccess;
-import com.openjiuwen.core.session.state.SessionStateAccess;
+import com.openjiuwen.core.session.callback.CallbackManager;
+import com.openjiuwen.core.session.config.Config;
+import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.workflow.WorkflowConfig;
@@ -27,7 +28,7 @@ public class NodeSession extends BaseSession {
     private final String nodeType;
     private final String parentId;
     private final String executableId;
-    private final SessionStateAccess state;
+    private final State state;
     private final String workflowId;
     private final String mainWorkflowId;
     private final int workflowNestingDepth;
@@ -106,12 +107,12 @@ public class NodeSession extends BaseSession {
     }
 
     @Override
-    public SessionConfigAccess config() {
+    public Config config() {
         return parentSession == null ? super.config() : parentSession.config();
     }
 
     @Override
-    public SessionStateAccess state() {
+    public State state() {
         return state;
     }
 
@@ -137,7 +138,7 @@ public class NodeSession extends BaseSession {
     }
 
     @Override
-    public Object callbackManager() {
+    public CallbackManager callbackManager() {
         return parentSession == null ? null : parentSession.callbackManager();
     }
 

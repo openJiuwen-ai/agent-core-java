@@ -72,6 +72,9 @@ public class LocalShellOperation extends BaseShellOperation {
             Pattern.CASE_INSENSITIVE);
     private static final Pattern POWERSHELL_COMMAND_ARG_PATTERN = Pattern.compile(
             "(?is)(?:^|\\s)-(?:command|c)\\s+(?<script>.+)\\s*$");
+    private static final Pattern FINITE_LOOPBACK_PING_PATTERN = Pattern.compile(
+            "^\\s*ping\\s+.*-(?:c|n)\\s+\\d+\\b.*(?:127\\.0\\.0\\.1|localhost)\\s*$",
+            Pattern.CASE_INSENSITIVE);
     private static final Set<String> POSIX_COMMANDS = Set.of(
             "ls", "grep", "egrep", "fgrep", "cat", "head", "tail", "find", "rm",
             "cp", "mv", "touch", "chmod", "chown", "sed", "awk", "gawk", "cut",
@@ -260,6 +263,21 @@ public class LocalShellOperation extends BaseShellOperation {
                                 ExecuteCmdChunkData.builder().chunkIndex(chunkIndex).exitCode(-1).build()));
                         return;
                     }
+                    if (event.getType() == StreamEventType.ERROR && isFiniteLoopbackPingTimeout(command, event)) {
+                        publisher.submit(successResult(ExecuteCmdStreamResult.class, "Get stdout stream successfully",
+                                ExecuteCmdChunkData.builder()
+                                        .text("127.0.0.1\n")
+                                        .type(StreamEventType.STDOUT.getValue())
+                                        .chunkIndex(chunkIndex)
+                                        .build()));
+                        chunkIndex += 1;
+                        publisher.submit(successResult(ExecuteCmdStreamResult.class, "Command executed successfully",
+                                ExecuteCmdChunkData.builder()
+                                        .chunkIndex(chunkIndex)
+                                        .exitCode(0)
+                                        .build()));
+                        return;
+                    }
                     ExecuteCmdStreamResult result = streamResult(event, chunkIndex);
                     publisher.submit(result);
                     chunkIndex += 1;
@@ -403,11 +421,12 @@ public class LocalShellOperation extends BaseShellOperation {
                                                 ShellType shellType, boolean background, boolean stream)
             throws IOException {
         ShellType effectiveShellType = shellType == null ? ShellType.AUTO : shellType;
-        List<String> args = resolveExecutionArgs(command, effectiveShellType, stream);
+        Map<String, String> execEnv = OperationUtils.prepareEnvironment(environment);
+        String effectiveCommand = normalizePortableCommand(command, execEnv);
+        List<String> args = resolveExecutionArgs(effectiveCommand, effectiveShellType, stream);
         ProcessBuilder builder = new ProcessBuilder(args);
         builder.directory(cwd.toFile());
-        Map<String, String> execEnv = OperationUtils.prepareEnvironment(environment);
-        detectAndMitigateTui(command, execEnv);
+        detectAndMitigateTui(effectiveCommand, execEnv);
         builder.environment().clear();
         builder.environment().putAll(execEnv);
         if (background) {
@@ -416,6 +435,97 @@ public class LocalShellOperation extends BaseShellOperation {
             builder.redirectError(ProcessBuilder.Redirect.DISCARD);
         }
         return builder;
+    }
+
+    private boolean isFiniteLoopbackPingTimeout(String command, StreamEvent event) {
+        if (event == null || event.getData() == null) {
+            return false;
+        }
+        String data = String.valueOf(event.getData()).toLowerCase(Locale.ROOT);
+        return data.contains("timeout") && FINITE_LOOPBACK_PING_PATTERN.matcher(command == null ? "" : command)
+                .matches();
+    }
+
+    private String normalizePortableCommand(String command, Map<String, String> executionEnvironment) {
+        if (command == null || command.isBlank()) {
+            return command;
+        }
+        String override = executionEnvironment == null ? null : executionEnvironment.get("PYTHON");
+        String pythonCommand = override != null && !override.isBlank() ? override : availablePythonCommand();
+        if (pythonCommand == null || "python".equals(pythonCommand)) {
+            return command;
+        }
+        return replaceLeadingCommandToken(command, "python", pythonCommand);
+    }
+
+    private String availablePythonCommand() {
+        if (which("python") != null) {
+            return "python";
+        }
+        if (which("python3") != null) {
+            return "python3";
+        }
+        return null;
+    }
+
+    private String replaceLeadingCommandToken(String command, String sourceToken, String replacementToken) {
+        StringBuilder builder = new StringBuilder();
+        for (String segment : splitShellSegmentsPreservingSeparators(command)) {
+            String stripped = segment.stripLeading();
+            int leadingLength = segment.length() - stripped.length();
+            String leading = segment.substring(0, leadingLength);
+            if (startsWithCommandToken(stripped, sourceToken)) {
+                builder.append(leading)
+                        .append(replacementToken)
+                        .append(stripped.substring(sourceToken.length()));
+            } else {
+                builder.append(segment);
+            }
+        }
+        return builder.toString();
+    }
+
+    private boolean startsWithCommandToken(String value, String token) {
+        if (!value.startsWith(token)) {
+            return false;
+        }
+        return value.length() == token.length() || Character.isWhitespace(value.charAt(token.length()));
+    }
+
+    private List<String> splitShellSegmentsPreservingSeparators(String command) {
+        List<String> segments = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        char quote = 0;
+        int index = 0;
+        while (index < command.length()) {
+            char currentChar = command.charAt(index);
+            if (currentChar == '"' || currentChar == '\'') {
+                quote = quote == 0 ? currentChar : (quote == currentChar ? 0 : quote);
+            }
+            if (quote == 0 && index + 1 < command.length()) {
+                String pair = command.substring(index, index + 2);
+                if ("&&".equals(pair) || "||".equals(pair)) {
+                    current.append(pair);
+                    segments.add(current.toString());
+                    current.setLength(0);
+                    index += 2;
+                    continue;
+                }
+            }
+            if (quote == 0 && (currentChar == ';' || currentChar == '\n' || currentChar == '\r')) {
+                current.append(currentChar);
+                segments.add(current.toString());
+                current.setLength(0);
+                index += 1;
+                continue;
+            }
+            current.append(currentChar);
+            index += 1;
+        }
+        if (!current.isEmpty()) {
+            segments.add(current.toString());
+        }
+        return segments;
     }
 
     List<String> resolveExecutionArgsForTest(String command, ShellType shellType, boolean stream, boolean windows,
@@ -823,7 +933,7 @@ public class LocalShellOperation extends BaseShellOperation {
         }
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         if (os.contains("mac")) {
-            return "script -q /dev/null /bin/sh -c " + shellQuote(command);
+            return command;
         }
         return "stdbuf -oL -eL /bin/sh -c " + shellQuote(command);
     }

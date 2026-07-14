@@ -104,7 +104,7 @@ class HttpClientTest {
         assertThat(Clients.typedExportNames()).contains("SessionConfig", "get_http_session_manager");
         assertThat(Clients.sessionConfigClass()).isEqualTo(SessionConfig.class);
         assertThat(Clients.getHttpSessionManager()).isSameAs(HttpSessionManager.getHttpSessionManager());
-        assertThat(Clients.futureTypedExportNames()).containsExactly("HttpXConnectorPoolConfig");
+        assertThat(Clients.futureTypedExportNames()).isEmpty();
     }
 
     @Test

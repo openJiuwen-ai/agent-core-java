@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.clients.ClientRegistry;
 import com.openjiuwen.core.context_engine.context.KVCacheManager;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -67,7 +68,15 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
      */
     @FunctionalInterface
     public interface ModelClientFactory {
-        ModelClient create(ModelClientConfig modelClientConfig, ModelRequestConfig modelConfig);
+        ModelClient create(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig);
+
+        default String providerName() {
+            return null;
+        }
+
+        default ModelClient create(ModelClientConfig modelClientConfig, ModelRequestConfig modelConfig) {
+            return create(modelConfig, modelClientConfig);
+        }
     }
 
     /**
@@ -149,6 +158,8 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
 
     private static final Map<String, ModelInvoker> INVOKERS = new LinkedHashMap<>();
     private static final Map<String, ModelClientFactory> CLIENT_FACTORIES = new LinkedHashMap<>();
+    @SuppressWarnings("unused")
+    private static final Map<String, ModelClientFactory> FACTORY_REGISTRY = CLIENT_FACTORIES;
 
     private static DecoratorFramework callbackFramework;
 
@@ -193,6 +204,7 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
         }
         removeProviderRegistration(CLIENT_FACTORIES, provider);
         INVOKERS.put(provider, invoker);
+        exposeProviderToClientRegistry(provider);
     }
 
     public static void registerClientFactory(String provider, ModelClientFactory factory) {
@@ -205,6 +217,18 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
         }
         removeProviderRegistration(INVOKERS, provider);
         CLIENT_FACTORIES.put(provider, factory);
+        exposeProviderToClientRegistry(provider);
+    }
+
+    public static void registerFactory(ModelClientFactory factory) {
+        if (factory == null || factory.providerName() == null || factory.providerName().isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MODEL_SERVICE_CONFIG_ERROR,
+                    "error_msg",
+                    "model client factory provider name is required"
+            );
+        }
+        registerClientFactory(factory.providerName(), factory);
     }
 
     public static void setCallbackFramework(DecoratorFramework framework) {
@@ -269,6 +293,23 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
         CompletionStage<AssistantMessage> result = client.invoke(request.messages(), request.options());
         return result.thenApply(message -> transformOutput(LLMCallEvents.LLM_INVOKE_OUTPUT, request, message,
                 AssistantMessage.class));
+    }
+
+    public AssistantMessage invoke(List<? extends BaseMessage> messages, List<?> tools, Float temperature, Float topP,
+                                   Integer maxTokens, String stop, String model, BaseOutputParser outputParser,
+                                   Float timeout, Map<String, Object> kwargs) {
+        ModelInvokeOptions options = ModelInvokeOptions.builder()
+                .tools(tools)
+                .temperature(temperature)
+                .topP(topP)
+                .maxTokens(maxTokens)
+                .stop(stop)
+                .model(model)
+                .outputParser(outputParser)
+                .timeout(timeout)
+                .extraFields(copyMap(kwargs))
+                .build();
+        return invoke(toBaseMessages(messages), options).toCompletableFuture().join();
     }
 
     public Iterator<AssistantMessageChunk> stream(String message) {
@@ -381,11 +422,18 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
 
     private static ModelClient createModelClient(ModelClientConfig clientConfig, ModelRequestConfig modelConfig) {
         String provider = clientConfig.getClientProvider();
-        if (provider == null || provider.isBlank()) {
+        if (provider == null) {
             throw ErrorHelper.buildError(
                     StatusCode.MODEL_SERVICE_CONFIG_ERROR,
                     "error_msg",
                     "model client config client_provider is none"
+            );
+        }
+        if (provider.isBlank()) {
+            throw ErrorHelper.buildError(
+                    StatusCode.MODEL_PROVIDER_INVALID,
+                    "error_msg",
+                    "unavailable model provider: " + provider + ",and available providers are: " + availableProviders()
             );
         }
         ModelClientFactory factory = resolveFactory(provider);
@@ -396,7 +444,12 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
         if (invoker != null) {
             return new InvokerBackedModelClient(invoker, modelConfig, clientConfig);
         }
-        Object builtinClient = ModelClients.builtinModelClient(provider, clientConfig, modelConfig);
+        Object fallbackClient = ModelClients.createModelClient(clientConfig, modelConfig);
+        return normalizeModelClient(fallbackClient);
+    }
+
+    private static ModelClient normalizeModelClient(Object clientCandidate) {
+        Object builtinClient = clientCandidate;
         if (builtinClient instanceof ModelClient modelClient) {
             return modelClient;
         }
@@ -406,7 +459,8 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
         throw ErrorHelper.buildError(
                 StatusCode.MODEL_PROVIDER_INVALID,
                 "error_msg",
-                "unavailable model provider: " + provider + ",and available providers are: " + availableProviders()
+                "model client factory returned unsupported client type: "
+                        + (builtinClient == null ? "null" : builtinClient.getClass().getName())
         );
     }
 
@@ -448,6 +502,26 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
         providers.addAll(INVOKERS.keySet());
         providers.addAll(ModelClients.builtinProviderNames());
         return providers;
+    }
+
+    private static void exposeProviderToClientRegistry(String provider) {
+        ClientRegistry registry = ClientRegistry.getClientRegistry();
+        if (registry.isRegistered(provider, "llm")) {
+            return;
+        }
+        registry.registerClient(provider, "llm", kwargs -> {
+            ModelRequestConfig modelRequestConfig = (ModelRequestConfig) kwargs.get("model_config");
+            ModelClientConfig clientConfig = (ModelClientConfig) kwargs.get("model_client_config");
+            ModelClientFactory factory = resolveFactory(provider);
+            if (factory != null) {
+                return factory.create(modelRequestConfig, clientConfig);
+            }
+            ModelInvoker invoker = resolveInvoker(provider);
+            if (invoker != null) {
+                return new InvokerBackedModelClient(invoker, modelRequestConfig, clientConfig);
+            }
+            throw new IllegalArgumentException("unavailable model provider: " + provider);
+        });
     }
 
     private InvocationRequest prepareInvokeRequest(List<BaseMessage> messages, ModelInvokeOptions options,
@@ -541,6 +615,10 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
 
     private static List<BaseMessage> safeMessages(List<BaseMessage> messages) {
         return messages == null ? List.of() : List.copyOf(messages);
+    }
+
+    private static List<BaseMessage> toBaseMessages(List<? extends BaseMessage> messages) {
+        return messages == null ? List.of() : new ArrayList<>(messages);
     }
 
     private static List<UserMessage> safeUserMessages(List<UserMessage> messages) {
@@ -728,6 +806,11 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
             } catch (Exception exception) {
                 return CompletableFuture.failedFuture(exception);
             }
+        }
+
+        @Override
+        public boolean supportsKvCacheRelease() {
+            return delegate.supportsKvCacheRelease();
         }
     }
 

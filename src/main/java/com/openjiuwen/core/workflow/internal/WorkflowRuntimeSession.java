@@ -12,6 +12,7 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
+import com.openjiuwen.core.session.tracer.Tracer;
 import com.openjiuwen.core.workflow.CompIOConfig;
 import com.openjiuwen.core.workflow.NodeSpec;
 import com.openjiuwen.core.workflow.SchemaOrTransformer;
@@ -45,7 +46,7 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
     private StreamWriterManager streamWriterManager;
     private ActorManager actorManager;
     private CompiledGraph.GraphCheckpointer checkpointer;
-    private final Vertex.VertexTraceSink tracer = new Vertex.VertexTraceSink() {
+    private Vertex.VertexTraceSink tracer = new Vertex.VertexTraceSink() {
     };
 
     public WorkflowRuntimeSession(String workflowId, BaseSession parent, String sessionId,
@@ -73,7 +74,9 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
         this.callbackManager = callbackManager;
         this.parentId = parentId != null ? parentId : "";
         this.executableId = executableId != null ? executableId : "";
-        String stateNodeId = this.executableId.isBlank() ? WorkflowRuntimeState.DEFAULT_NODE_ID : this.executableId;
+        String stateNodeId = this.parentId.isBlank()
+                ? WorkflowRuntimeState.DEFAULT_NODE_ID
+                : this.executableId.isBlank() ? WorkflowRuntimeState.DEFAULT_NODE_ID : this.executableId;
         this.state = WorkflowRuntimeState.from(state, this.parentId, stateNodeId);
         this.subGraph = subGraph;
         this.nodeId = nodeId != null ? nodeId : "";
@@ -170,6 +173,11 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
         return nodeType;
     }
 
+    @Override
+    public void setNodeType(String nodeType) {
+        this.nodeType = nodeType != null ? nodeType : "";
+    }
+
     public String mainWorkflowId() {
         return mainWorkflowId;
     }
@@ -226,7 +234,10 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
 
     @Override
     public Vertex.VertexStreamWriterManager streamWriterManager() {
-        return streamWriterManager == null ? null : new StreamWriterManagerAdapter(streamWriterManager);
+        return streamWriterManager == null ? null : new StreamWriterManagerAdapter(
+                streamWriterManager,
+                parentStreamWriterManager(),
+                isInvokeStreamBridgeEnabled());
     }
 
     public StreamWriterManager runtimeStreamWriterManager() {
@@ -235,10 +246,36 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
 
     public void setStreamWriterManager(StreamWriterManager streamWriterManager) {
         this.streamWriterManager = streamWriterManager;
+        if (!(parent instanceof WorkflowRuntimeSession) && streamWriterManager != null) {
+            Tracer runtimeTracer = new Tracer();
+            runtimeTracer.init(streamWriterManager);
+            this.tracer = runtimeTracer;
+        }
+    }
+
+    private boolean isInvokeStreamBridgeEnabled() {
+        return streamWriterManager != null
+                && streamWriterManager.getEnabledModes().size() == 1
+                && streamWriterManager.getEnabledModes().contains(
+                com.openjiuwen.core.session.stream.StreamMode.OUTPUT);
+    }
+
+    private StreamWriterManager parentStreamWriterManager() {
+        BaseSession current = parent;
+        while (current instanceof WorkflowRuntimeSession runtimeSession) {
+            current = runtimeSession.parent();
+        }
+        if (current == null) {
+            return null;
+        }
+        return current.streamWriterManager();
     }
 
     @Override
     public Vertex.VertexTraceSink tracer() {
+        if (parent instanceof WorkflowRuntimeSession runtimeSession) {
+            return runtimeSession.tracer();
+        }
         return tracer;
     }
 
@@ -337,14 +374,60 @@ public class WorkflowRuntimeSession extends Vertex.VertexSession
 
     private static final class StreamWriterManagerAdapter implements Vertex.VertexStreamWriterManager {
         private final StreamWriterManager delegate;
+        private final StreamWriterManager parentDelegate;
+        private final boolean bridgeToParent;
 
-        private StreamWriterManagerAdapter(StreamWriterManager delegate) {
+        private StreamWriterManagerAdapter(StreamWriterManager delegate,
+                                           StreamWriterManager parentDelegate,
+                                           boolean bridgeToParent) {
             this.delegate = delegate;
+            this.parentDelegate = parentDelegate;
+            this.bridgeToParent = bridgeToParent && parentDelegate != null;
         }
 
         @Override
         public Vertex.VertexStreamWriter getOutputWriter() {
-            return data -> delegate.getOutputWriter().write(data);
+            return data -> {
+                com.openjiuwen.core.session.stream.StreamWriter<?> writer = delegate.getOutputWriter();
+                if (writer != null) {
+                    writeStreamData(writer, data);
+                }
+                if (bridgeToParent && parentDelegate.getOutputWriter() != null) {
+                    writeStreamData(parentDelegate.getOutputWriter(), data);
+                }
+            };
+        }
+
+        public Vertex.VertexStreamWriter getCustomWriter() {
+            return data -> {
+                com.openjiuwen.core.session.stream.StreamWriter<?> writer = delegate.getCustomWriter();
+                if (writer != null) {
+                    writeStreamData(writer, data);
+                    return;
+                }
+                if (!delegate.getStreamEmitter().isClosed()) {
+                    delegate.getStreamEmitter().emit(toCustomSchema(data));
+                }
+                if (bridgeToParent && parentDelegate.getCustomWriter() != null) {
+                    writeStreamData(parentDelegate.getCustomWriter(), data);
+                }
+            };
+        }
+
+        @SuppressWarnings({"rawtypes", "unchecked"})
+        private static void writeStreamData(com.openjiuwen.core.session.stream.StreamWriter writer, Object data) {
+            writer.write(data);
+        }
+
+        @SuppressWarnings("unchecked")
+        private static com.openjiuwen.core.session.stream.CustomSchema toCustomSchema(Object data) {
+            if (data instanceof com.openjiuwen.core.session.stream.CustomSchema customSchema) {
+                return customSchema;
+            }
+            if (data instanceof Map<?, ?> map) {
+                return new com.openjiuwen.core.session.stream.CustomSchema((Map<String, Object>) map);
+            }
+            return new com.openjiuwen.core.session.stream.CustomSchema(Map.of("value", data));
         }
     }
 }

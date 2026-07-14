@@ -29,12 +29,12 @@ public abstract class Tool {
 
     private final ToolCard card;
 
-    protected Tool(ToolCard card) {
+    public Tool(ToolCard card) {
         if (card == null) {
             throw toolCardInvalid(null, "card is None");
         }
         if (card.getId() == null || card.getId().isEmpty()) {
-            throw toolCardInvalid(card, "card is is None or empty");
+            throw toolCardInvalid(card, "card id is None or empty");
         }
         this.card = card;
     }

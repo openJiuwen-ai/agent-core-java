@@ -12,6 +12,7 @@ import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -24,6 +25,7 @@ import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentSessionLifecycle;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -304,11 +306,19 @@ public class ReActAgent extends BaseAgent {
             extraFields.put("top_logprobs", config.getLlmTopLogprobs());
         }
 
-        ModelInvokeOptions options = ModelInvokeOptions.builder()
+        ModelInvokeOptions.ModelInvokeOptionsBuilder optionsBuilder = ModelInvokeOptions.builder()
                 .model(config.getModelName())
                 .tools(tools)
-                .extraFields(extraFields)
-                .build();
+                .extraFields(extraFields);
+        if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && ctx.getSession() != null) {
+            AgentSessionApi session = ctx.getSession();
+            optionsBuilder.retryListener(event -> session.writeStream(new OutputSchema(
+                    "model_retry",
+                    nextStreamIndex(ctx),
+                    modelRetryPayload(event)
+            )));
+        }
+        ModelInvokeOptions options = optionsBuilder.build();
 
         if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
             AssistantMessage aiMessage = model.invoke(messages, options).toCompletableFuture().join();
@@ -1096,6 +1106,11 @@ public class ReActAgent extends BaseAgent {
         return invoke(inputs, session, Map.of());
     }
 
+    @Override
+    public Object invoke(Object inputs, Session session) {
+        return invoke(inputs, (AgentSessionApi) session).toCompletableFuture().join();
+    }
+
     public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session, Map<String, Object> kwargs) {
         if (!(inputs instanceof Map<?, ?>) && !(inputs instanceof String)) {
             CompletableFuture<Object> failed = new CompletableFuture<>();
@@ -1357,6 +1372,22 @@ public class ReActAgent extends BaseAgent {
         return ref[0]++;
     }
 
+    private static Map<String, Object> modelRetryPayload(ModelRetryEvent event) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("retry_count", event.retryCount());
+        payload.put("max_retries", event.maxRetries());
+        payload.put("delay_ms", event.delay() == null ? 0L : event.delay().toMillis());
+        payload.put("delay_source", event.delaySource());
+        payload.put("message", "模型请求失败，正在进行第 %d/%d 次重试"
+                .formatted(event.retryCount(), event.maxRetries()));
+        if (event.statusCode() != null) {
+            payload.put("status_code", event.statusCode());
+        } else if (event.exceptionType() != null) {
+            payload.put("exception_type", event.exceptionType());
+        }
+        return payload;
+    }
+
     private void ensureToolCallIds(List<ToolCall> toolCalls) {
         if (toolCalls == null || toolCalls.isEmpty()) {
             return;
@@ -1545,6 +1576,11 @@ public class ReActAgent extends BaseAgent {
             }
         }
         return finalSession.streamIterator();
+    }
+
+    @Override
+    public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+        return stream(inputs, (AgentSessionApi) session, streamModes);
     }
 
     private void runStreamingInvoke(Object inputs, AgentSessionApi finalSession,

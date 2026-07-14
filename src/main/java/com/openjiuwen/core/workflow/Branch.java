@@ -4,9 +4,12 @@
 
 package com.openjiuwen.core.workflow;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.utils.SessionUtils;
+import com.openjiuwen.core.workflow.condition.Condition;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.InvocationTargetException;
@@ -35,6 +38,10 @@ public final class Branch {
 
     public Branch(BooleanSupplier condition, List<String> target, String branchId) {
         this(new CallableBranchCondition(condition), target, branchId);
+    }
+
+    public Branch(Condition condition, List<String> target, String branchId) {
+        this(new ConditionBranchCondition(condition), target, branchId);
     }
 
     public Branch(BranchCondition condition, List<String> target, String branchId) {
@@ -95,6 +102,33 @@ public final class Branch {
     }
 
     /**
+     * Mirrors Python's direct {@code Condition} branch adaptation in
+     * {@code openjiuwen/core/workflow/components/flow/branch_router.py}.
+     */
+    public static final class ConditionBranchCondition implements BranchCondition {
+        private final Condition condition;
+
+        public ConditionBranchCondition(Condition condition) {
+            this.condition = Objects.requireNonNull(condition, "condition");
+        }
+
+        @Override
+        public boolean evaluate(BaseSession session) {
+            try {
+                return condition.evaluate(session);
+            } catch (RuntimeException exception) {
+                Object result = condition.doInvoke(Map.of(), session);
+                return result instanceof Boolean bool && bool;
+            }
+        }
+
+        @Override
+        public Object traceInfo(BaseSession session) {
+            return condition.traceInfo(session);
+        }
+    }
+
+    /**
      * Mirrors Python's string-to-{@code ExpressionCondition} adaptation in
      * {@code openjiuwen/core/workflow/components/flow/branch_router.py}.
      */
@@ -144,13 +178,27 @@ final class BranchExpressionEvaluator {
     static Map<String, Object> inputs(String expression, BaseSession session) {
         java.util.LinkedHashMap<String, Object> result = new java.util.LinkedHashMap<>();
         for (String path : placeholderPaths(expression)) {
-            result.put("${" + path + "}", SessionValueResolver.resolve(session, path).orElse(null));
+            result.put("${" + path + "}", traceInputValue(session, path));
         }
         return result;
     }
 
+    private static Object traceInputValue(BaseSession session, String path) {
+        try {
+            return SessionValueResolver.resolve(session, path).orElse(null);
+        } catch (BaseError error) {
+            if (error.getStatus() == StatusCode.EXPRESSION_EVAL_ERROR) {
+                return null;
+            }
+            throw error;
+        } catch (IndexOutOfBoundsException error) {
+            return null;
+        }
+    }
+
     private static boolean evaluateOr(String expression, BaseSession session) {
-        for (String part : splitTopLevel(expression, "or")) {
+        String value = stripOuterParens(normalizeOperators(expression.trim()));
+        for (String part : splitTopLevel(value, "or")) {
             if (evaluateAnd(part, session)) {
                 return true;
             }
@@ -159,7 +207,8 @@ final class BranchExpressionEvaluator {
     }
 
     private static boolean evaluateAnd(String expression, BaseSession session) {
-        for (String part : splitTopLevel(expression, "and")) {
+        String value = stripOuterParens(normalizeOperators(expression.trim()));
+        for (String part : splitTopLevel(value, "and")) {
             if (!evaluateAtom(part, session)) {
                 return false;
             }
@@ -169,6 +218,12 @@ final class BranchExpressionEvaluator {
 
     private static boolean evaluateAtom(String expression, BaseSession session) {
         String value = stripOuterParens(normalizeOperators(expression.trim()));
+        if (splitTopLevel(value, "or").size() > 1) {
+            return evaluateOr(value, session);
+        }
+        if (splitTopLevel(value, "and").size() > 1) {
+            return evaluateAnd(value, session);
+        }
         if (value.startsWith("not ")) {
             return !evaluateAtom(value.substring(4), session);
         }
@@ -183,6 +238,12 @@ final class BranchExpressionEvaluator {
         }
         if (startsWithFunction(value, "is_not_empty")) {
             return !isEmpty(resolveValue(functionArgument(value), session));
+        }
+        if (value.endsWith(" is_empty")) {
+            return isEmpty(resolveValue(value.substring(0, value.length() - " is_empty".length()), session));
+        }
+        if (value.endsWith(" is_not_empty")) {
+            return !isEmpty(resolveValue(value.substring(0, value.length() - " is_not_empty".length()), session));
         }
         String[] comparison = findComparison(value);
         if (comparison != null) {
@@ -203,8 +264,28 @@ final class BranchExpressionEvaluator {
 
     private static Object resolveValue(String rawToken, BaseSession session) {
         String token = stripOuterParens(rawToken.trim());
+        Object placeholderValue = resolvePlainPlaceholder(token, session);
+        if (placeholderValue != UnresolvedValue.INSTANCE) {
+            return placeholderValue;
+        }
+        String[] lowPrecedence = splitArithmetic(token, List.of("+", "-"));
+        if (lowPrecedence != null) {
+            return arithmetic(resolveValue(lowPrecedence[0], session), resolveValue(lowPrecedence[2], session),
+                    lowPrecedence[1]);
+        }
+        String[] highPrecedence = splitArithmetic(token, List.of("//", "*", "/", "%"));
+        if (highPrecedence != null) {
+            return arithmetic(resolveValue(highPrecedence[0], session), resolveValue(highPrecedence[2], session),
+                    highPrecedence[1]);
+        }
         if (startsWithFunction(token, "length") || startsWithFunction(token, "len")) {
             return collectionLength(resolveValue(functionArgument(token), session));
+        }
+        if ("[]".equals(token)) {
+            return List.of();
+        }
+        if ("{}".equals(token)) {
+            return Map.of();
         }
         if (token.startsWith("${")) {
             int close = token.indexOf('}');
@@ -236,10 +317,71 @@ final class BranchExpressionEvaluator {
         }
     }
 
-    private static Object applySubscripts(Object value, String suffix) {
+    private static Object resolvePlainPlaceholder(String token, BaseSession session) {
+        if (!token.startsWith("${")) {
+            return UnresolvedValue.INSTANCE;
+        }
+        int close = token.indexOf('}');
+        if (close <= 1) {
+            return UnresolvedValue.INSTANCE;
+        }
+        String suffix = token.substring(close + 1).trim();
+        if (!suffix.isEmpty() && !suffix.startsWith("[") && !suffix.startsWith(".")) {
+            return UnresolvedValue.INSTANCE;
+        }
+        Object value = SessionValueResolver.resolve(session, token.substring(2, close)).orElse(null);
+        return applySubscripts(value, suffix);
+    }
+
+    private static Object arithmetic(Object left, Object right, String operator) {
+        if ("+".equals(operator)) {
+            if (left instanceof CharSequence || right instanceof CharSequence) {
+                return String.valueOf(left) + right;
+            }
+            if (left instanceof List<?> leftList && right instanceof List<?> rightList) {
+                List<Object> combined = new ArrayList<>(leftList);
+                combined.addAll(rightList);
+                return combined;
+            }
+        }
+        if (!(left instanceof Number leftNumber) || !(right instanceof Number rightNumber)) {
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                    "error_msg", "cannot perform arithmetic on non-numeric types");
+        }
+        double leftValue = leftNumber.doubleValue();
+        double rightValue = rightNumber.doubleValue();
+        return switch (operator) {
+            case "+" -> leftValue + rightValue;
+            case "-" -> leftValue - rightValue;
+            case "*" -> leftValue * rightValue;
+            case "/" -> {
+                if (rightValue == 0D) {
+                    throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg", "division by zero");
+                }
+                yield leftValue / rightValue;
+            }
+            case "//" -> {
+                if (rightValue == 0D) {
+                    throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg", "division by zero");
+                }
+                yield Math.floor(leftValue / rightValue);
+            }
+            case "%" -> leftValue % rightValue;
+            default -> throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
+                    "error_msg", "unsupported operator: " + operator);
+        };
+    }
+
+    static Object applySubscripts(Object value, String suffix) {
         String rest = suffix == null ? "" : suffix.trim();
         Object current = value;
         while (!rest.isEmpty()) {
+            if (rest.startsWith(".")) {
+                int end = nextPathBoundary(rest, 1);
+                current = subscript(current, rest.substring(1, end));
+                rest = rest.substring(end).trim();
+                continue;
+            }
             if (!rest.startsWith("[")) {
                 throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
                         "error_msg", "unsupported expression suffix: " + rest);
@@ -255,6 +397,14 @@ final class BranchExpressionEvaluator {
             rest = rest.substring(close + 1).trim();
         }
         return current;
+    }
+
+    private static int nextPathBoundary(String value, int start) {
+        int index = start;
+        while (index < value.length() && value.charAt(index) != '.' && value.charAt(index) != '[') {
+            index++;
+        }
+        return index;
     }
 
     private static Object parseSubscriptKey(String token) {
@@ -277,16 +427,23 @@ final class BranchExpressionEvaluator {
             return map.get(key);
         }
         if (value instanceof List<?> list && key instanceof Number number) {
-            return list.get(number.intValue());
+            int index = normalizeIndex(number.intValue(), list.size());
+            return list.get(index);
         }
         if (value.getClass().isArray() && key instanceof Number number) {
-            return Array.get(value, number.intValue());
+            int index = normalizeIndex(number.intValue(), Array.getLength(value));
+            return Array.get(value, index);
         }
         if (value instanceof CharSequence text && key instanceof Number number) {
-            return String.valueOf(text.charAt(number.intValue()));
+            int index = normalizeIndex(number.intValue(), text.length());
+            return String.valueOf(text.charAt(index));
         }
         throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
                 "error_msg", "object is not subscriptable");
+    }
+
+    private static int normalizeIndex(int index, int size) {
+        return index < 0 ? size + index : index;
     }
 
     private static String[] findComparison(String expression) {
@@ -402,7 +559,7 @@ final class BranchExpressionEvaluator {
     private static int collectionLength(Object value) {
         if (value == null || value instanceof Number || value instanceof Boolean) {
             throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                    "error_msg", "object has no len()");
+                    "error_msg", "object of type '" + pythonTypeName(value) + "' has no len()");
         }
         if (value instanceof CharSequence text) {
             return text.length();
@@ -417,7 +574,23 @@ final class BranchExpressionEvaluator {
             return Array.getLength(value);
         }
         throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                "error_msg", "object has no len()");
+                "error_msg", "object of type '" + pythonTypeName(value) + "' has no len()");
+    }
+
+    private static String pythonTypeName(Object value) {
+        if (value == null) {
+            return "NoneType";
+        }
+        if (value instanceof Boolean) {
+            return "Boolean";
+        }
+        if (value instanceof Integer || value instanceof Long || value instanceof Short || value instanceof Byte) {
+            return value.getClass().getSimpleName();
+        }
+        if (value instanceof Float || value instanceof Double) {
+            return value.getClass().getSimpleName();
+        }
+        return value.getClass().getSimpleName();
     }
 
     private static boolean startsWithFunction(String expression, String functionName) {
@@ -518,6 +691,90 @@ final class BranchExpressionEvaluator {
         return -1;
     }
 
+    private static String[] splitArithmetic(String expression, List<String> operators) {
+        ArithmeticSplit split = findArithmeticSplit(expression, operators);
+        if (split == null) {
+            return null;
+        }
+        return new String[] {
+                expression.substring(0, split.index()).trim(),
+                split.operator(),
+                expression.substring(split.index() + split.operator().length()).trim()
+        };
+    }
+
+    private static ArithmeticSplit findArithmeticSplit(String expression, List<String> operators) {
+        int depth = 0;
+        char quote = 0;
+        for (int i = expression.length() - 1; i >= 0; i--) {
+            char ch = expression.charAt(i);
+            if (quote != 0) {
+                if (ch == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (ch == '\'' || ch == '"') {
+                quote = ch;
+                continue;
+            }
+            if (ch == ')') {
+                depth++;
+                continue;
+            }
+            if (ch == '(') {
+                depth--;
+                continue;
+            }
+            if (depth != 0 || isUnarySign(expression, i)) {
+                continue;
+            }
+            for (String operator : operators) {
+                int start = i - operator.length() + 1;
+                if (start >= 0 && expression.startsWith(operator, start) && isArithmeticBoundary(expression, start,
+                        operator)) {
+                    return new ArithmeticSplit(start, operator);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static boolean isUnarySign(String expression, int index) {
+        char ch = expression.charAt(index);
+        if (ch != '+' && ch != '-') {
+            return false;
+        }
+        int previous = index - 1;
+        while (previous >= 0 && Character.isWhitespace(expression.charAt(previous))) {
+            previous--;
+        }
+        return previous < 0 || "(+-*/%<>=!".indexOf(expression.charAt(previous)) >= 0;
+    }
+
+    private static boolean isArithmeticBoundary(String expression, int start, String operator) {
+        if ("*".equals(operator) && (isAdjacentOperator(expression, start, -1, '*')
+                || isAdjacentOperator(expression, start, 1, '*'))) {
+            return false;
+        }
+        if ("/".equals(operator) && isAdjacentOperator(expression, start, 1, '/')) {
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean isAdjacentOperator(String expression, int start, int offset, char operator) {
+        int index = start + offset;
+        return index >= 0 && index < expression.length() && expression.charAt(index) == operator;
+    }
+
+    private record ArithmeticSplit(int index, String operator) {
+    }
+
+    private enum UnresolvedValue {
+        INSTANCE
+    }
+
     private static List<String> placeholderPaths(String expression) {
         List<String> result = new ArrayList<>();
         if (expression == null) {
@@ -559,20 +816,39 @@ final class SessionValueResolver {
         }
         Optional<Object> state = invokeNoArg(session, "state");
         if (state.isPresent()) {
-            return invokeAccessor(state.get(), path);
+            Optional<Object> stateValue = invokeAccessor(state.get(), path);
+            if (stateValue.isPresent()) {
+                return stateValue;
+            }
+            Optional<Object> dumpedValue = resolveFromStateDump(state.get(), path);
+            if (dumpedValue.isPresent()) {
+                return dumpedValue;
+            }
+        }
+        return resolveWithSubscripts(session, path);
+    }
+
+    private static Optional<Object> invokeAccessor(Object target, String path) {
+        for (String methodName : List.of("get_global", "getGlobal", "getGlobalState", "get")) {
+            Optional<Method> method = findPathAccessor(target, methodName);
+            if (method.isEmpty()) {
+                continue;
+            }
+            try {
+                return Optional.ofNullable(method.get().invoke(target, path));
+            } catch (IllegalAccessException | InvocationTargetException ignored) {
+                return Optional.empty();
+            }
         }
         return Optional.empty();
     }
 
-    private static Optional<Object> invokeAccessor(Object target, String path) {
-        for (String methodName : List.of("get_global", "getGlobal", "get")) {
+    private static Optional<Method> findPathAccessor(Object target, String methodName) {
+        for (Class<?> parameterType : List.of(String.class, Object.class)) {
             try {
-                Method method = target.getClass().getMethod(methodName, String.class);
-                return Optional.ofNullable(method.invoke(target, path));
+                return Optional.of(target.getClass().getMethod(methodName, parameterType));
             } catch (NoSuchMethodException ignored) {
-                // Try the next Python/Java naming convention.
-            } catch (IllegalAccessException | InvocationTargetException ignored) {
-                return Optional.empty();
+                // Try the next common path parameter type.
             }
         }
         return Optional.empty();
@@ -585,5 +861,62 @@ final class SessionValueResolver {
         } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException ignored) {
             return Optional.empty();
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Optional<Object> resolveFromStateDump(Object state, String path) {
+        Optional<Object> stateMap = invokeNoArg(state, "getState");
+        if (stateMap.isEmpty()) {
+            stateMap = invokeNoArg(state, "dump");
+        }
+        if (stateMap.isEmpty() || !(stateMap.get() instanceof Map<?, ?> map)) {
+            return Optional.empty();
+        }
+        for (String partition : List.of("io_state", "global_state", "comp_state", "workflow_state")) {
+            Object value = map.get(partition);
+            if (value instanceof Map<?, ?> partitionMap) {
+                Object resolved = SessionUtils.getValueByNestedPath(path, (Map<String, Object>) partitionMap);
+                if (resolved != null) {
+                    return Optional.of(resolved);
+                }
+            }
+        }
+        Object resolved = SessionUtils.getValueByNestedPath(path, (Map<String, Object>) map);
+        return Optional.ofNullable(resolved);
+    }
+
+    private static Optional<Object> resolveWithSubscripts(BaseSession session, String path) {
+        List<String> prefixes = pathPrefixes(path);
+        Optional<Object> state = invokeNoArg(session, "state");
+        for (String prefix : prefixes) {
+            Optional<Object> value = invokeAccessor(session, prefix);
+            if (value.isEmpty() && state.isPresent()) {
+                value = invokeAccessor(state.get(), prefix);
+            }
+            if (value.isPresent()) {
+                return Optional.ofNullable(BranchExpressionEvaluator.applySubscripts(value.get(),
+                        path.substring(prefix.length())));
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static List<String> pathPrefixes(String path) {
+        List<String> result = new ArrayList<>();
+        int index = path.length();
+        while (index > 0) {
+            char previous = path.charAt(index - 1);
+            if (previous == ']' || Character.isJavaIdentifierPart(previous)) {
+                result.add(path.substring(0, index));
+            }
+            int nextDot = path.lastIndexOf('.', index - 1);
+            int nextBracket = path.lastIndexOf('[', index - 1);
+            int next = Math.max(nextDot, nextBracket);
+            if (next < 0) {
+                break;
+            }
+            index = next;
+        }
+        return result;
     }
 }

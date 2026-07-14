@@ -25,4 +25,12 @@ public class ModelConfig {
 
     @Builder.Default
     private BaseModelInfo modelInfo = new BaseModelInfo();
+
+    public String modelProvider() {
+        return modelProvider;
+    }
+
+    public BaseModelInfo modelInfo() {
+        return modelInfo;
+    }
 }

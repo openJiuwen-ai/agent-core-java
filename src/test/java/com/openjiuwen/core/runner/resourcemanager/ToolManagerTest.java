@@ -15,6 +15,7 @@ import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,6 +25,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -40,6 +42,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code tests/unit_tests/core/runner/test_tool_manager_mcp_dedup.py}.</p>
  */
 class ToolManagerTest {
+
+    @Test
+    void defaultCreateClientRegistersMcpFactoriesAndNormalizesClientType() throws Exception {
+        McpServerConfig config = McpServerConfig.builder()
+                .serverId("srv-registry-default")
+                .serverName("registry-default")
+                .serverPath("http://127.0.0.1:3001/sse")
+                .clientType("mcp_SSE")
+                .build();
+
+        Method method = ToolManager.class.getDeclaredMethod("defaultCreateClient", McpServerConfig.class);
+        method.setAccessible(true);
+
+        Object client = method.invoke(null, config);
+
+        assertInstanceOf(com.openjiuwen.core.foundation.tool.mcp.client.SseClient.class, client);
+        assertEquals("mcp_SSE", config.getClientType(), "lookup normalization must not mutate user config");
+    }
 
     @Test
     void addGetAndRemoveLocalTool() {
@@ -144,6 +164,86 @@ class ToolManagerTest {
     }
 
     @Test
+    void addToolServerDisconnectsClientWhenToolRefreshFailsAfterConnect() {
+        FakeMcpClient client = new FakeMcpClient(List.of(mcpCard("search")));
+        client.listToolsFailure = new IllegalStateException("tools/list failed");
+        ToolManager manager = new ToolManager(config -> client);
+
+        BaseError error = assertThrows(BaseError.class,
+                () -> manager.addToolServer(serverConfig()).toCompletableFuture().join());
+
+        assertEquals(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, error.getStatus());
+        assertEquals(1, client.connectCount);
+        assertEquals(1, client.disconnectCount);
+        assertTrue(manager.getMcpServerIds("demo").isEmpty());
+        assertTrue(manager.getMcpToolIds("srv-1").isEmpty());
+        assertNull(manager.getMcpTool("search", "srv-1", null));
+    }
+
+    @Test
+    void addToolServerRollsBackPartiallyRegisteredToolsWhenRegistrationFails() {
+        FakeMcpClient client = new FakeMcpClient(List.of(mcpCard("search"), mcpCard("search")));
+        ToolManager manager = new ToolManager(config -> client);
+
+        BaseError error = assertThrows(BaseError.class,
+                () -> manager.addToolServer(serverConfig()).toCompletableFuture().join());
+
+        assertEquals(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, error.getStatus());
+        assertEquals(1, client.disconnectCount);
+        assertNull(manager.getTool("srv-1.demo.search"));
+        assertTrue(manager.getMcpServerIds("demo").isEmpty());
+        assertTrue(manager.getMcpToolIds("srv-1").isEmpty());
+    }
+
+    @Test
+    void addToolServerUsesPositiveOperationTimeoutForMcpLifecycleCalls() {
+        FakeMcpClient client = new FakeMcpClient(List.of(mcpCard("search")));
+        ToolManager manager = new ToolManager(config -> client);
+        McpServerConfig config = serverConfig();
+
+        manager.addToolServer(config).toCompletableFuture().join();
+        assertDoesNotThrow(() -> manager.getMcpTool("search", "srv-1", null).invoke(Map.of()));
+        manager.removeToolServer("srv-1").toCompletableFuture().join();
+
+        assertTrue(client.lastConnectTimeout > 0);
+        assertTrue(client.lastListToolsTimeout > 0);
+        assertTrue(client.lastCallToolTimeout > 0);
+        assertTrue(client.lastDisconnectTimeout > 0);
+    }
+
+    @Test
+    void addToolServerUsesConfiguredOperationTimeoutWhenProvided() {
+        FakeMcpClient client = new FakeMcpClient(List.of(mcpCard("search")));
+        ToolManager manager = new ToolManager(config -> client);
+        McpServerConfig config = new McpServerConfig("srv-timeout", "demo", "http://localhost/mcp", "fake",
+                Map.of("operation_timeout", 2.5D), Map.of(), Map.of());
+
+        manager.addToolServer(config).toCompletableFuture().join();
+        assertDoesNotThrow(() -> manager.getMcpTool("search", "srv-timeout", null).invoke(Map.of()));
+        manager.removeToolServer("srv-timeout").toCompletableFuture().join();
+
+        assertEquals(2.5F, client.lastConnectTimeout);
+        assertEquals(2.5F, client.lastListToolsTimeout);
+        assertEquals(2.5F, client.lastCallToolTimeout);
+        assertEquals(2.5F, client.lastDisconnectTimeout);
+    }
+
+    @Test
+    void refreshToolServerReplacesExistingMcpToolsWhenForced() {
+        FakeMcpClient client = new FakeMcpClient(List.of(mcpCard("search")));
+        ToolManager manager = new ToolManager(config -> client);
+        manager.addToolServer(serverConfig()).toCompletableFuture().join();
+        client.replaceCards(List.of(mcpCard("search"), mcpCard("lookup")));
+
+        List<McpToolCard> refreshed = manager.refreshToolServer("srv-1", false, true).toCompletableFuture().join();
+
+        assertEquals(List.of("search", "lookup"), refreshed.stream().map(McpToolCard::getName).toList());
+        assertEquals(List.of("srv-1.demo.search", "srv-1.demo.lookup"), manager.getMcpToolIds("srv-1"));
+        assertInstanceOf(McpTool.class, manager.getMcpTool("search", "srv-1", null));
+        assertInstanceOf(McpTool.class, manager.getMcpTool("lookup", "srv-1", null));
+    }
+
+    @Test
     void missingToolServerErrorStatusMirrorsPython() {
         ToolManager manager = new ToolManager(config -> new FakeMcpClient(List.of()));
 
@@ -213,13 +313,18 @@ class ToolManagerTest {
      * Mirrors Python's MCP client protocol collaborator in
      * {@code openjiuwen/core/runner/resources_manager/tool_manager.py}.
      */
-    private static final class FakeMcpClient implements McpClient {
-        private final List<Object> cards;
+    public static final class FakeMcpClient implements McpClient {
+        private List<Object> cards;
         private final CountDownLatch connectStarted;
         private final CountDownLatch releaseConnect;
         private int connectCount;
         private int disconnectCount;
         private int listToolsCount;
+        private float lastConnectTimeout = McpServerConfig.NO_TIMEOUT;
+        private float lastDisconnectTimeout = McpServerConfig.NO_TIMEOUT;
+        private float lastListToolsTimeout = McpServerConfig.NO_TIMEOUT;
+        private float lastCallToolTimeout = McpServerConfig.NO_TIMEOUT;
+        private RuntimeException listToolsFailure;
 
         private FakeMcpClient(List<McpToolCard> cards) {
             this(cards, null, null);
@@ -233,9 +338,14 @@ class ToolManagerTest {
             this.releaseConnect = releaseConnect;
         }
 
+        private void replaceCards(List<McpToolCard> cards) {
+            this.cards = List.copyOf(cards);
+        }
+
         @Override
         public boolean connect(int retryTimes, float timeout) throws Exception {
             connectCount++;
+            lastConnectTimeout = timeout;
             if (connectStarted != null && releaseConnect != null) {
                 connectStarted.countDown();
                 if (!releaseConnect.await(1, TimeUnit.SECONDS)) {
@@ -248,17 +358,23 @@ class ToolManagerTest {
         @Override
         public boolean disconnect(float timeout) {
             disconnectCount++;
+            lastDisconnectTimeout = timeout;
             return true;
         }
 
         @Override
         public List<Object> listTools(float timeout) {
             listToolsCount++;
+            lastListToolsTimeout = timeout;
+            if (listToolsFailure != null) {
+                throw listToolsFailure;
+            }
             return cards;
         }
 
         @Override
         public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
+            lastCallToolTimeout = timeout;
             return Map.of("tool", toolName, "arguments", arguments);
         }
 

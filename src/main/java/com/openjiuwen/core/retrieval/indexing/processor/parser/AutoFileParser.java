@@ -61,7 +61,7 @@ public class AutoFileParser extends Parser {
     }
 
     @Override
-    public CompletableFuture<List<Document>> parse(
+    public CompletableFuture<List<Document>> parseAsync(
             String doc,
             String docId,
             BaseModelClient llmClient,
@@ -88,7 +88,7 @@ public class AutoFileParser extends Parser {
         Parser parser = parserFactory.get();
         LOGGER.info("Using " + parser.getClass().getSimpleName() + " to parse " + doc);
         Map<String, Object> safeOptions = options == null ? Map.of() : new LinkedHashMap<>(options);
-        return parser.parse(doc, docId, llmClient, safeOptions)
+        return parser.parseAsync(doc, docId, llmClient, safeOptions)
                 .thenApply(documents -> enrichDocuments(
                         documents == null ? List.of() : documents,
                         doc,
@@ -101,6 +101,15 @@ public class AutoFileParser extends Parser {
     @Override
     public boolean supports(String doc) {
         return doc != null && Files.exists(Path.of(doc)) && PARSER_REGISTRY.containsKey(extensionOf(doc));
+    }
+
+    @Override
+    protected CompletableFuture<String> parseContent(
+            String doc,
+            BaseModelClient llmClient,
+            Map<String, Object> options
+    ) {
+        return CompletableFuture.completedFuture(null);
     }
 
     /**

@@ -5,11 +5,15 @@
 package com.openjiuwen.core.common.clients.http;
 
 import com.openjiuwen.core.common.clients.BaseClient;
-import com.openjiuwen.core.common.clients.SessionConfig;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.clients.ConnectorPoolConfig;
+import com.openjiuwen.core.common.clients.ConnectorPoolManager;
 import com.openjiuwen.core.foundation.tool.service_api.ParserRegistry;
 
 import java.net.URI;
 import java.net.URLEncoder;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -18,8 +22,10 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
+import javax.net.ssl.SSLSession;
 
 /**
  * HTTP client with session management and connection pooling.
@@ -28,6 +34,8 @@ import java.util.function.Function;
  * {@code openjiuwen/core/common/clients/http_client.py}.</p>
  */
 public class HttpClient extends BaseClient {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private SessionConfig config;
     private HttpSessionManager sessionManager;
@@ -41,6 +49,14 @@ public class HttpClient extends BaseClient {
 
     public HttpClient(SessionConfig config) {
         this(config, true);
+    }
+
+    public HttpClient(com.openjiuwen.core.common.clients.SessionConfig config) {
+        this(toHttpConfig(config), true);
+    }
+
+    public HttpClient(com.openjiuwen.core.common.clients.SessionConfig config, boolean reuseSession) {
+        this(toHttpConfig(config), reuseSession);
     }
 
     public HttpClient(SessionConfig config, boolean reuseSession) {
@@ -66,6 +82,11 @@ public class HttpClient extends BaseClient {
         return config;
     }
 
+    @Override
+    public SessionConfig getConfig() {
+        return config;
+    }
+
     public boolean isReuseSession() {
         return reuseSession;
     }
@@ -74,8 +95,16 @@ public class HttpClient extends BaseClient {
         return closed;
     }
 
-    public CompletableFuture<Map<String, Object>> get(String url) {
-        return get(url, null, RequestOptions.defaults());
+    public boolean isHealthy() {
+        return !closed;
+    }
+
+    public ResponseFuture get(String url) {
+        return get(url, null);
+    }
+
+    public ResponseFuture get(String url, Map<String, ?> params) {
+        return requestResponse("GET", url, RequestOptions.defaults().withParams(params));
     }
 
     public CompletableFuture<Map<String, Object>> get(String url, Map<String, ?> params, RequestOptions options) {
@@ -86,8 +115,16 @@ public class HttpClient extends BaseClient {
         return request("POST", url, RequestOptions.defaults().withJson(body));
     }
 
+    public ResponseFuture post(String url, String body) {
+        return requestResponse("POST", url, RequestOptions.defaults().withBody(body));
+    }
+
     public CompletableFuture<Map<String, Object>> put(String url, Map<String, ?> body) {
         return request("PUT", url, RequestOptions.defaults().withJson(body));
+    }
+
+    public ResponseFuture put(String url, String body) {
+        return requestResponse("PUT", url, RequestOptions.defaults().withBody(body));
     }
 
     public CompletableFuture<Map<String, Object>> delete(String url) {
@@ -96,6 +133,10 @@ public class HttpClient extends BaseClient {
 
     public CompletableFuture<Map<String, Object>> patch(String url, Map<String, ?> body) {
         return request("PATCH", url, RequestOptions.defaults().withJson(body));
+    }
+
+    public ResponseFuture patch(String url, String body) {
+        return requestResponse("PATCH", url, RequestOptions.defaults().withBody(body));
     }
 
     public CompletableFuture<Map<String, Object>> head(String url) {
@@ -107,6 +148,25 @@ public class HttpClient extends BaseClient {
     }
 
     public CompletableFuture<Map<String, Object>> request(String method, String url, RequestOptions options) {
+        return requestResponse(method, url, options);
+    }
+
+    public ResponseFuture requestResponse(String method, String url, RequestOptions options) {
+        RequestOptions effectiveOptions = options == null ? RequestOptions.defaults() : options;
+        CompletableFuture<HttpResponse<byte[]>> responseFuture = acquireSession().thenCompose(acquired -> {
+            HttpRequest request = buildHttpRequest(method, url, effectiveOptions);
+            return acquired.session().sendAsync(request, HttpResponse.BodyHandlers.ofByteArray())
+                    .whenComplete((ignored, error) -> releaseSession(acquired).join());
+        });
+        return new ResponseFuture(responseFuture, response -> responseToMap(response, effectiveOptions.chunked(),
+                effectiveOptions.responseBytesSizeLimit()));
+    }
+
+    public ResponseFuture request(String method, String url, String body) {
+        return requestResponse(method, url, RequestOptions.defaults().withBody(body));
+    }
+
+    public CompletableFuture<Map<String, Object>> requestMap(String method, String url, RequestOptions options) {
         return acquireSession().thenCompose(acquired -> {
             RequestOptions effectiveOptions = options == null ? RequestOptions.defaults() : options;
             HttpRequest request = buildHttpRequest(method, url, effectiveOptions);
@@ -195,6 +255,7 @@ public class HttpClient extends BaseClient {
     }
 
     private CompletableFuture<HttpSession> acquireSession() {
+        ensureConnectorPoolRegistered();
         if (reuseSession) {
             if (closed) {
                 return CompletableFuture.failedFuture(new IllegalStateException("HttpClient is closed"));
@@ -204,14 +265,21 @@ public class HttpClient extends BaseClient {
                     return CompletableFuture.completedFuture(session);
                 }
             }
-            return sessionManager.acquire(config).thenApply(lease -> {
+            return sessionManager.acquireLease(config).thenApply(lease -> {
                 synchronized (this) {
                     session = lease.resource();
                     return session;
                 }
             });
         }
-        return sessionManager.acquire(config).thenApply(lease -> lease.resource());
+        return sessionManager.acquireLease(config).thenApply(lease -> lease.resource());
+    }
+
+    private void ensureConnectorPoolRegistered() {
+        ConnectorPoolConfig poolConfig = config.getConnectorPoolConfig();
+        ConnectorPoolManager poolManager = ConnectorPoolManager.getInstance();
+        poolManager.getConnectorPool(poolConfig).join();
+        poolManager.releaseConnectorPool(poolConfig);
     }
 
     private CompletableFuture<Void> releaseSession(HttpSession acquired) {
@@ -227,7 +295,11 @@ public class HttpClient extends BaseClient {
         if (timeout != null) {
             builder.timeout(seconds(timeout));
         }
-        buildHeaders(options.headers()).forEach(builder::setHeader);
+        Map<String, String> headers = buildHeaders(options.headers());
+        if (options.json() != null && !containsHeader(headers, "Content-Type")) {
+            headers.put("Content-Type", "application/json");
+        }
+        headers.forEach(builder::setHeader);
         String normalizedMethod = method == null ? "GET" : method.toUpperCase();
         HttpRequest.BodyPublisher publisher = bodyPublisher(options);
         builder.method(normalizedMethod, publisher);
@@ -252,7 +324,7 @@ public class HttpClient extends BaseClient {
     private HttpRequest.BodyPublisher bodyPublisher(RequestOptions options) {
         Object json = options.json();
         if (json != null) {
-            return HttpRequest.BodyPublishers.ofString(String.valueOf(json), StandardCharsets.UTF_8);
+            return HttpRequest.BodyPublishers.ofString(toJson(json), StandardCharsets.UTF_8);
         }
         Object body = options.body();
         if (body != null) {
@@ -305,6 +377,13 @@ public class HttpClient extends BaseClient {
         return config == null ? new SessionConfig() : config;
     }
 
+    private static SessionConfig toHttpConfig(com.openjiuwen.core.common.clients.SessionConfig config) {
+        if (config instanceof SessionConfig httpConfig) {
+            return httpConfig;
+        }
+        return config == null ? null : new SessionConfig(config);
+    }
+
     private static Duration seconds(Double value) {
         return Duration.ofMillis(Math.max(0L, Math.round(value * 1000.0d)));
     }
@@ -337,6 +416,18 @@ public class HttpClient extends BaseClient {
             values.forEach((key, value) -> flattened.put(key.toLowerCase(), String.join(",", value)));
         }
         return flattened;
+    }
+
+    private static boolean containsHeader(Map<String, String> headers, String headerName) {
+        return headers.keySet().stream().anyMatch(key -> key.equalsIgnoreCase(headerName));
+    }
+
+    private static String toJson(Object value) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalArgumentException("Failed to serialize HTTP JSON body", exception);
+        }
     }
 
     private static String reason(int statusCode) {
@@ -386,6 +477,11 @@ public class HttpClient extends BaseClient {
                     responseBytesSizeLimit, onStreamReceived);
         }
 
+        public RequestOptions withBody(Object value) {
+            return new RequestOptions(headers, timeout, timeoutArgs, params, json, value, chunked, chunkSize,
+                    responseBytesSizeLimit, onStreamReceived);
+        }
+
         public RequestOptions withHeaders(Map<String, ?> value) {
             return new RequestOptions(value, timeout, timeoutArgs, params, json, body, chunked, chunkSize,
                     responseBytesSizeLimit, onStreamReceived);
@@ -404,6 +500,110 @@ public class HttpClient extends BaseClient {
         public RequestOptions withResponseBytesSizeLimit(int value) {
             return new RequestOptions(headers, timeout, timeoutArgs, params, json, body, chunked, chunkSize,
                     value, onStreamReceived);
+        }
+    }
+
+    /**
+     * Backward-compatible direct response that still behaves as the async map
+     * future used by the current SDK API.
+     */
+    public static final class ResponseFuture extends CompletableFuture<Map<String, Object>>
+            implements HttpResponse<String> {
+        private final CompletableFuture<HttpResponse<byte[]>> responseFuture;
+        private final CompletableFuture<Map<String, Object>> mappedFuture;
+
+        private ResponseFuture(CompletableFuture<HttpResponse<byte[]>> responseFuture,
+                               Function<HttpResponse<byte[]>, Map<String, Object>> mapper) {
+            this.responseFuture = responseFuture;
+            this.mappedFuture = responseFuture.thenApply(mapper);
+            mappedFuture.whenComplete((mappedResponse, error) -> {
+                if (error != null) {
+                    completeExceptionally(error);
+                    return;
+                }
+                complete(mappedResponse);
+            });
+        }
+
+        @Override
+        public int statusCode() {
+            return response().statusCode();
+        }
+
+        @Override
+        public HttpRequest request() {
+            return response().request();
+        }
+
+        @Override
+        public Optional<HttpResponse<String>> previousResponse() {
+            return Optional.empty();
+        }
+
+        @Override
+        public HttpHeaders headers() {
+            return response().headers();
+        }
+
+        @Override
+        public String body() {
+            HttpResponse<byte[]> response = response();
+            byte[] body = response.body();
+            String rawBody = body == null ? "" : new String(body, StandardCharsets.UTF_8);
+            return compatibilityBody(response, rawBody);
+        }
+
+        @Override
+        public Optional<SSLSession> sslSession() {
+            return response().sslSession();
+        }
+
+        @Override
+        public URI uri() {
+            return response().uri();
+        }
+
+        @Override
+        public java.net.http.HttpClient.Version version() {
+            return response().version();
+        }
+
+        private HttpResponse<byte[]> response() {
+            return responseFuture.join();
+        }
+    }
+
+    static String compatibilityBody(HttpResponse<?> response, String rawBody) {
+        if (response == null || response.statusCode() >= 400 || rawBody == null || rawBody.isBlank()) {
+            return rawBody == null ? "" : rawBody;
+        }
+        String method = response.request() == null ? "" : response.request().method();
+        if (!"GET".equalsIgnoreCase(method) && !"POST".equalsIgnoreCase(method)) {
+            return rawBody;
+        }
+        String contentType = response.headers().firstValue("content-type").orElse("");
+        if (!contentType.toLowerCase(java.util.Locale.ROOT).contains("application/json")) {
+            return rawBody;
+        }
+        try {
+            Object parsed = OBJECT_MAPPER.readValue(rawBody, Object.class);
+            Map<String, Object> result = new LinkedHashMap<>();
+            if (parsed instanceof Map<?, ?> map) {
+                map.forEach((key, value) -> {
+                    if (key != null) {
+                        result.put(String.valueOf(key), value);
+                    }
+                });
+            }
+            result.put("code", response.statusCode());
+            result.put("data", parsed);
+            result.put("url", String.valueOf(response.uri()));
+            result.put("headers", flattenHeaders(response.headers().map()));
+            result.put("reason", reason(response.statusCode()));
+            result.put("message", "success");
+            return OBJECT_MAPPER.writeValueAsString(result);
+        } catch (RuntimeException | JsonProcessingException exception) {
+            return rawBody;
         }
     }
 }

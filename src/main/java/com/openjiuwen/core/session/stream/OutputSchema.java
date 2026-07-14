@@ -4,46 +4,55 @@
 
 package com.openjiuwen.core.session.stream;
 
+import com.openjiuwen.core.workflow.WorkflowChunk;
+
+import java.util.Map;
+
 /**
  * Mirrors Python's {@code OutputSchema} in
  * {@code openjiuwen/core/session/stream/base.py}.
  */
-public class OutputSchema implements StreamSchema {
-
-    private String type;
-    private int index;
-    private Object payload;
+public class OutputSchema extends WorkflowChunk {
 
     public OutputSchema() {
     }
 
     public OutputSchema(String type, int index, Object payload) {
-        this.type = type;
-        this.index = index;
-        this.payload = payload;
+        super(type, index, payload);
     }
 
-    public String getType() {
-        return type;
+    public static OutputSchema fromMap(Map<String, Object> value) {
+        if (value == null) {
+            return new OutputSchema();
+        }
+        Object typeValue = value.get("type");
+        Object indexValue = value.get("index");
+        return new OutputSchema(
+                typeValue == null ? null : String.valueOf(typeValue),
+                toIndex(indexValue),
+                value.get("payload"));
     }
 
-    public void setType(String type) {
-        this.type = type;
+    private static int toIndex(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Integer.parseInt(text);
+            } catch (NumberFormatException ignored) {
+                return 0;
+            }
+        }
+        return 0;
     }
 
-    public int getIndex() {
-        return index;
-    }
-
-    public void setIndex(int index) {
-        this.index = index;
-    }
-
-    public Object getPayload() {
-        return payload;
-    }
-
-    public void setPayload(Object payload) {
-        this.payload = payload;
+    @Override
+    public String toString() {
+        return "OutputSchema{"
+                + "type='" + getType() + '\''
+                + ", index=" + getIndex()
+                + ", payload=" + getPayload()
+                + '}';
     }
 }

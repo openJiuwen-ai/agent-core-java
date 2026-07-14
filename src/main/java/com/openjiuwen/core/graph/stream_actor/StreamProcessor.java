@@ -165,7 +165,7 @@ public class StreamProcessor {
             }
             for (String inactiveSourceKey : group) {
                 if (!inactiveSourceKey.equals(activeSourceKey)) {
-                    closeQueuesForSource(producerIdFromSourceKey(inactiveSourceKey));
+                    closeQueuesForSourceKey(inactiveSourceKey);
                 }
             }
         }
@@ -180,9 +180,19 @@ public class StreamProcessor {
         }
     }
 
+    private void closeQueuesForSourceKey(String sourceKey) {
+        for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
+            String originPath = SessionUtils.extractOriginKey(entry.getKey());
+            if (isValueFromSource(originPath, producerIdFromSourceKey(sourceKey))) {
+                putEndFrame(sourceKey, entry.getValue());
+            }
+        }
+    }
+
     private void closeQueuesForSourceKey(String sourceId, String sourceKey, Map<String, Set<String>> sourcePathMap) {
         Set<String> handledPaths = sourcePathMap.get(sourceKey);
         if (handledPaths == null || handledPaths.isEmpty()) {
+            closeQueuesForSource(sourceId);
             return;
         }
         for (String path : handledPaths) {
@@ -322,6 +332,16 @@ public class StreamProcessor {
                 continue;
             }
             Set<String> values = new LinkedHashSet<>(group);
+            Set<String> producerIds = new LinkedHashSet<>();
+            for (String value : values) {
+                producerIds.add(producerIdFromSourceKey(value));
+            }
+            if (producerIds.size() == 1 && values.size() > 1) {
+                for (String value : values) {
+                    normalized.add(Collections.unmodifiableSet(new LinkedHashSet<>(List.of(value))));
+                }
+                continue;
+            }
             if (!values.isEmpty()) {
                 normalized.add(Collections.unmodifiableSet(values));
             }

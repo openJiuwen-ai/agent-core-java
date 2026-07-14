@@ -16,6 +16,9 @@ import com.openjiuwen.core.runner.callback.CallbackDecorators;
 import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.WorkflowEvents;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.state.CommitStateLike;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
@@ -54,7 +57,7 @@ import java.util.function.Consumer;
 public class Vertex extends AsyncAtomicNode implements StreamConsumer {
 
     public static final String SUB_WORKFLOW_COMPONENT = "sub_workflow";
-    public static final String INTERACTIVE_INPUT = "interactive_input";
+    public static final String INTERACTIVE_INPUT = Constant.INTERACTIVE_INPUT;
     public static final String END_NODE_STREAM = Constant.END_NODE_STREAM;
     public static final String INPUTS_KEY = "inputs";
     public static final String CONFIG_KEY = "config";
@@ -70,7 +73,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     private static final Executor STREAM_EXECUTOR = VirtualThreadSupport.newThreadPerTaskExecutor();
 
     private final String nodeId;
-    private final Executable<Map<String, Object>, Map<String, Object>> executable;
+    private final Executable<Map<String, Object>, Object> executable;
     private final Executor executor;
     private VertexSession session;
     private Object context;
@@ -87,16 +90,21 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     private boolean hasCall = true;
     private boolean firstInit = true;
 
-    public Vertex(String nodeId, Executable<Map<String, Object>, Map<String, Object>> executable) {
+    public Vertex(String nodeId, Executable<Map<String, Object>, ?> executable) {
         this(nodeId, executable, ForkJoinPool.commonPool());
     }
 
     public Vertex(String nodeId,
-                  Executable<Map<String, Object>, Map<String, Object>> executable,
+                  Executable<Map<String, Object>, ?> executable,
                   Executor executor) {
         this.nodeId = Objects.requireNonNull(nodeId, "nodeId must not be null");
-        this.executable = executable;
+        this.executable = castExecutable(executable);
         this.executor = executor != null ? executor : ForkJoinPool.commonPool();
+    }
+
+    @SuppressWarnings("unchecked")
+    public Executable<Object, Object> getExecutable() {
+        return (Executable<Object, Object>) (Executable<?, ?>) executable;
     }
 
     public boolean init(VertexSession session) {
@@ -106,6 +114,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
     public boolean init(VertexSession session, Map<String, Object> kwargs) {
         VertexSession graphSession = Objects.requireNonNull(session, "session must not be null");
         this.session = graphSession.nodeSession(nodeId);
+        this.session.setNodeType(componentTypeName());
         this.context = kwargs == null ? null : kwargs.get("context");
         this.streamCallTimeoutSeconds = this.session.streamCallTimeoutSeconds();
         this.nodeConfig = this.session.nodeConfig() != null ? this.session.nodeConfig() : new VertexNodeConfig();
@@ -133,44 +142,42 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
 
     public CompletionStage<Map<String, List<String>>> invoke(GraphState state, Map<String, Object> config) {
         CompletableFuture<Map<String, List<String>>> future = new CompletableFuture<>();
-        executor.execute(() -> {
-            try {
-                LOGGER.info("Begin to call batch-in node [{}]", nodeId);
-                if (executable != null && executable.postCommit()) {
-                    atomicInvoke(Map.of("config", safeConfig(config), "session", session))
-                            .toCompletableFuture().join();
-                } else {
-                    call(config).toCompletableFuture().join();
-                }
+        try {
+            LOGGER.info("Begin to call batch-in node [{}]", nodeId);
+            if (executable != null && executable.postCommit()) {
+                atomicInvoke(Map.of("config", safeConfig(config), "session", session))
+                        .toCompletableFuture().join();
+            } else {
+                callBlocking(config);
+            }
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("node_id", nodeId);
+            payload.put("ability", componentAbilities.stream().map(ComponentAbility::name).toList());
+            payload.put("graph_id", safeWorkflowId());
+            payload.put("inputs", state != null ? state : new GraphState());
+            payload.put("outputs", session != null ? session.state().get(nodeId) : null);
+            emitEvent(WorkflowEvents.NODE_EXECUTED, payload);
+            Map<String, List<String>> output = new LinkedHashMap<>();
+            output.put("source_node_id", List.of(nodeId));
+            future.complete(output);
+        } catch (Throwable throwable) {
+            Throwable error = unwrapCompletion(throwable);
+            if (session != null && session.tracer() != null) {
+                traceError(error);
+            }
+            if (!(error instanceof GraphInterrupt)) {
                 Map<String, Object> payload = new LinkedHashMap<>();
                 payload.put("node_id", nodeId);
-                payload.put("ability", componentAbilities.stream().map(ComponentAbility::name).toList());
                 payload.put("graph_id", safeWorkflowId());
-                payload.put("inputs", state != null ? state : new GraphState());
-                payload.put("outputs", session != null ? session.state().get(nodeId) : null);
-                emitEvent(WorkflowEvents.NODE_EXECUTED, payload);
-                Map<String, List<String>> output = new LinkedHashMap<>();
-                output.put("source_node_id", List.of(nodeId));
-                future.complete(output);
-            } catch (Throwable throwable) {
-                Throwable error = unwrapCompletion(throwable);
-                if (session != null && session.tracer() != null) {
-                    traceError(error);
-                }
-                if (!(error instanceof GraphInterrupt)) {
-                    Map<String, Object> payload = new LinkedHashMap<>();
-                    payload.put("node_id", nodeId);
-                    payload.put("graph_id", safeWorkflowId());
-                    payload.put("error", error);
-                    emitEvent(WorkflowEvents.NODE_ERROR, payload);
-                }
-                future.completeExceptionally(error);
-            } finally {
-                callCount += 1;
-                started = false;
-                callStarted = false;
+                payload.put("error", error);
+                emitEvent(WorkflowEvents.NODE_ERROR, payload);
             }
-        });
+            future.completeExceptionally(error);
+        } finally {
+            callCount += 1;
+            started = false;
+            callStarted = false;
+        }
         return future;
     }
 
@@ -286,6 +293,10 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             return future.get(timeoutMillis, TimeUnit.MILLISECONDS);
         } catch (ExecutionException exception) {
             Throwable cause = unwrapCompletion(exception);
+            GraphInterrupt interrupt = findGraphInterrupt(cause);
+            if (interrupt != null) {
+                throw interrupt;
+            }
             if (cause instanceof Exception checked) {
                 throw checked;
             }
@@ -316,7 +327,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                             collectInputs = sanitizeUnexecutedBranchInputs(collectInputs, castSchemaMap(mapSchema));
                         }
                     }
-                    Map<String, Object> result = executable.onCollect(collectInputs, session, context);
+                    Object result = executable.onCollect(collectInputs, session, context);
                     postInvoke(result);
                 }
                 case TRANSFORM -> {
@@ -328,7 +339,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                             transformInputs = sanitizeUnexecutedBranchInputs(transformInputs, castSchemaMap(mapSchema));
                         }
                     }
-                    Iterator<Map<String, Object>> iterator = executable.onTransform(transformInputs, session, context);
+                    Iterator<Object> iterator = executable.onTransform(transformInputs, session, context);
                     postStream(iterator, ComponentAbility.TRANSFORM);
                 }
                 default -> throw new IllegalArgumentException("Unsupported ability: " + ability);
@@ -342,6 +353,11 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             LOGGER.error("Failed to call node [{}] ability [{}]", nodeId, ability.name(), error);
             throw error;
         } catch (Exception exception) {
+            GraphInterrupt interrupt = findGraphInterrupt(exception);
+            if (interrupt != null) {
+                LOGGER.info("Interrupt to call node [{}] ability [{}]", nodeId, ability.name());
+                throw interrupt;
+            }
             LOGGER.error("Failed to call node [{}]'s [{}]", nodeId, ability.name(), exception);
             throw buildError(StatusCode.WORKFLOW_COMPONENT_EXECUTION_ERROR,
                     exception,
@@ -360,7 +376,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             batchInputs = wrapped;
         }
         batchInputs = applyComponentInputCallbacks(WorkflowEvents.COMPONENT_BATCH_INPUT, batchInputs);
-        Map<String, Object> results = executable.onInvoke(batchInputs, session, context);
+        Object results = executable.onInvoke(batchInputs, session, context);
         results = applyComponentOutputCallbacks(WorkflowEvents.COMPONENT_BATCH_OUTPUT, results);
         postInvoke(results);
     }
@@ -374,7 +390,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             batchInputs = wrapped;
         }
         batchInputs = applyComponentInputCallbacks(WorkflowEvents.COMPONENT_BATCH_INPUT, batchInputs);
-        Iterator<Map<String, Object>> iterator = executable.onStream(batchInputs, session, context);
+        Iterator<Object> iterator = executable.onStream(batchInputs, session, context);
         iterator = applyComponentStreamOutputCallbacks(WorkflowEvents.COMPONENT_STREAM_OUTPUT, iterator);
         postStream(iterator, ComponentAbility.STREAM);
     }
@@ -455,20 +471,20 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         return (Map<String, Object>) transformedInputs;
     }
 
-    private Map<String, Object> applyComponentOutputCallbacks(String event, Map<String, Object> result) {
+    private Object applyComponentOutputCallbacks(String event, Object result) {
         DecoratorFramework framework = componentCallbackFramework();
         if (framework == null) {
             return result;
         }
         Object transformed = triggerComponentOutputTransform(framework, event, result);
-        Map<String, Object> effectiveResult = componentResultAsMap(transformed, result);
+        Object effectiveResult = transformed == CallbackDecorators.TRANSFORM_NOOP ? result : transformed;
         trigger(framework, event, new Object[0], resultKwargs(effectiveResult));
         return effectiveResult;
     }
 
-    private Iterator<Map<String, Object>> applyComponentStreamOutputCallbacks(
+    private Iterator<Object> applyComponentStreamOutputCallbacks(
             String event,
-            Iterator<Map<String, Object>> source) {
+            Iterator<Object> source) {
         DecoratorFramework framework = componentCallbackFramework();
         if (framework == null || source == null) {
             return source;
@@ -480,10 +496,10 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             }
 
             @Override
-            public Map<String, Object> next() {
-                Map<String, Object> current = source.next();
+            public Object next() {
+                Object current = source.next();
                 Object transformed = triggerComponentOutputTransform(framework, event, current);
-                Map<String, Object> effectiveCurrent = componentResultAsMap(transformed, current);
+                Object effectiveCurrent = transformed == CallbackDecorators.TRANSFORM_NOOP ? current : transformed;
                 trigger(framework, event, new Object[0], resultKwargs(effectiveCurrent));
                 return effectiveCurrent;
             }
@@ -608,39 +624,43 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         }
     }
 
-    private Map<String, Object> postInvoke(Map<String, Object> results) {
+    private Map<String, Object> postInvoke(Object results) {
         Object outputsSchema = nodeConfig.ioConfigs().outputsSchema();
-        Map<String, Object> normalizedResults = results;
+        Object normalizedResults = results;
         if (outputsSchema instanceof ValueTransformer transformer) {
-            normalizedResults = transformer.apply(results);
+            normalizedResults = transformer.apply(outputAsMap(results));
         } else if (outputsSchema instanceof Map<?, ?> schema && results != null) {
-            Object selected = SessionUtils.getBySchema(schema, results);
-            normalizedResults = castMap(selected);
-            if (!endNode && normalizedResults != null) {
-                normalizedResults = filterNullValues(normalizedResults);
+            normalizedResults = SessionUtils.getBySchema(schema, outputAsMap(results));
+            if (!endNode && normalizedResults instanceof Map<?, ?> selectedMap) {
+                normalizedResults = filterNullValues(castMap(selectedMap));
             }
         }
         boolean endMixMode = endNode && hasCall && hasStreamCall;
-        if (normalizedResults != null && endMixMode) {
-            Object outputs = normalizedResults.get("output");
+        if (normalizedResults instanceof Map<?, ?> resultMap && endMixMode) {
+            Map<String, Object> normalizedMap = castMap(resultMap);
+            Object outputs = normalizedMap.get("output");
             if (outputs != null && !(outputs instanceof List<?>)) {
-                normalizedResults.put("output", new ArrayList<>(List.of(outputs)));
+                normalizedMap.put("output", new ArrayList<>(List.of(outputs)));
             }
             Object oldOutputs = session.state().getOutputs(nodeId);
             if (oldOutputs instanceof Map<?, ?> oldMap
                     && oldMap.get("output") instanceof List<?> oldOutputList
-                    && normalizedResults.get("output") instanceof List<?> newOutputList) {
+                    && normalizedMap.get("output") instanceof List<?> newOutputList) {
                 List<Object> merged = new ArrayList<>(newOutputList);
                 merged.addAll(oldOutputList);
-                normalizedResults.put("output", merged);
+                normalizedMap.put("output", merged);
             }
+            normalizedResults = normalizedMap;
         }
         if (normalizedResults != null) {
-            session.state().setOutputs(normalizedResults);
+            setOutput(normalizedResults);
         }
-        traceComponentOutputs(normalizedResults);
+        Map<String, Object> traceOutputs = normalizedResults instanceof Map<?, ?> map
+                ? castMap(map)
+                : outputAsMap(normalizedResults);
+        traceComponentOutputs(traceOutputs);
         clearInteractive();
-        return normalizedResults;
+        return traceOutputs;
     }
 
     private Map<String, Object> preStream(ComponentAbility ability) throws Exception {
@@ -664,7 +684,7 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         });
     }
 
-    private void postStream(Iterator<Map<String, Object>> resultsIterator, ComponentAbility ability) throws Exception {
+    private void postStream(Iterator<Object> resultsIterator, ComponentAbility ability) throws Exception {
         boolean subGraph = session.subGraph();
         VertexActorManager actorManager = session.actorManager();
         Object outputSchema = nodeConfig.streamIoConfigs().outputsSchema();
@@ -672,17 +692,17 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         int endStreamIndex = 0;
         if (resultsIterator != null) {
             while (resultsIterator.hasNext()) {
-                Map<String, Object> chunk = resultsIterator.next();
+                Object chunk = resultsIterator.next();
                 Object message = outputTransformer == null
                         ? (outputSchema != null
                         ? actorManager.streamTransform().getByDefaultTransformer(chunk, outputSchema)
                         : chunk)
                         : actorManager.streamTransform().getByDefinedTransformer(chunk, outputTransformer);
-                processChunk(message, endNode, endStreamIndex, subGraph, ability);
+                processChunk(message, endNode || isEndComponent(), endStreamIndex, subGraph, ability);
                 endStreamIndex += 1;
             }
         }
-        if (endNode && subGraph) {
+        if ((endNode || isEndComponent()) && subGraph) {
             actorManager.subWorkflowStream().emit(StreamEmitter.END_FRAME);
         } else {
             actorManager.endMessage(nodeId, ability);
@@ -703,9 +723,11 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
                               ComponentAbility ability) throws Exception {
         VertexActorManager actorManager = session.actorManager();
         if (endNodeFlag && !subGraph) {
-            Object streamData = message instanceof StreamSchemaMessage
+            Object streamData = message instanceof OutputSchema
                     ? message
-                    : endNodeStreamData(endStreamIndex, message);
+                    : message instanceof StreamSchemaMessage
+                    ? message
+                    : new OutputSchema(END_NODE_STREAM, endStreamIndex, message);
             traceComponentStreamOutput(streamData);
             VertexStreamWriterManager writerManager = session.streamWriterManager();
             if (writerManager != null && writerManager.getOutputWriter() != null) {
@@ -786,7 +808,9 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
 
     @Override
     public boolean isDone() {
-        return callCount == streamCallCount || callCount == streamCallCount + 1;
+        return callCount == streamCallCount
+                || callCount == streamCallCount + 1
+                || streamCallCount == callCount + 1;
     }
 
     public boolean streamCalled() {
@@ -838,10 +862,14 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             safeErrorCallback.accept(interruptedException);
         } catch (CompletionException completionException) {
             Throwable cause = unwrapCompletion(completionException);
-            error = cause instanceof Exception exception ? exception : new RuntimeException(cause);
+            GraphInterrupt interrupt = findGraphInterrupt(cause);
+            error = interrupt != null
+                    ? interrupt
+                    : cause instanceof Exception exception ? exception : new RuntimeException(cause);
             safeErrorCallback.accept(error);
         } catch (Exception exception) {
-            error = exception;
+            GraphInterrupt interrupt = findGraphInterrupt(exception);
+            error = interrupt != null ? interrupt : exception;
             safeErrorCallback.accept(exception);
         } finally {
             if (error == null) {
@@ -944,6 +972,10 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             throw new RuntimeException(cause);
         }
         if (result instanceof Exception exception) {
+            GraphInterrupt interrupt = findGraphInterrupt(exception);
+            if (interrupt != null) {
+                throw interrupt;
+            }
             throw exception;
         }
     }
@@ -1023,6 +1055,20 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
         return session == null || session.tracer() == null || executable == null || executable.skipTrace();
     }
 
+    private String componentTypeName() {
+        if (executable == null) {
+            return "";
+        }
+        String componentType = executable.componentType();
+        return componentType == null || componentType.isBlank()
+                ? executable.getClass().getSimpleName()
+                : componentType;
+    }
+
+    private boolean isEndComponent() {
+        return executable instanceof com.openjiuwen.core.workflow.component.End;
+    }
+
     private void emitEvent(String event, Map<String, Object> payload) {
         VertexEventSink eventSink = session != null ? session.eventSink() : null;
         if (eventSink != null) {
@@ -1036,6 +1082,11 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
 
     private static boolean nearlyZero(double value) {
         return Math.abs(value) <= 1.0e-9d;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Executable<Map<String, Object>, Object> castExecutable(Executable<Map<String, Object>, ?> executable) {
+        return (Executable<Map<String, Object>, Object>) executable;
     }
 
     private static void signalReady(Runnable readinessSignal, AtomicBoolean readinessSet) {
@@ -1077,6 +1128,56 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
             current = current.getCause();
         }
         return current;
+    }
+
+    private static GraphInterrupt findGraphInterrupt(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof GraphInterrupt interrupt) {
+                return interrupt;
+            }
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    private void setOutput(Object output) {
+        if (output instanceof Map<?, ?> map) {
+            if (session.state() instanceof WorkflowCommitState commitState) {
+                CommitStateLike ioState = commitState.getIoState();
+                if (ioState != null) {
+                    String outputNodeId = effectiveOutputNodeId();
+                    ioState.updateById(outputNodeId, Map.of(outputNodeId, castMap(map)));
+                    ioState.commit(outputNodeId);
+                    return;
+                }
+            }
+            session.state().setOutputs(castMap(map));
+            return;
+        }
+        if (session.state() instanceof WorkflowCommitState commitState) {
+            CommitStateLike ioState = commitState.getIoState();
+            if (ioState != null) {
+                ioState.updateById(nodeId, Map.of(nodeId, output));
+                return;
+            }
+        }
+        session.state().setOutputs(outputAsMap(output));
+    }
+
+    private String effectiveOutputNodeId() {
+        String executableId = session != null ? session.executableId() : null;
+        return executableId == null || executableId.isBlank() ? nodeId : executableId;
+    }
+
+    private static Map<String, Object> outputAsMap(Object value) {
+        if (value == null) {
+            return PYTHON_NONE_MAP;
+        }
+        if (value instanceof Map<?, ?> map) {
+            return castMap(map);
+        }
+        return new LinkedHashMap<>(Map.of("output", value));
     }
 
     @SuppressWarnings("unchecked")
@@ -1132,6 +1233,9 @@ public class Vertex extends AsyncAtomicNode implements StreamConsumer {
 
         public String executableId() {
             return "";
+        }
+
+        public void setNodeType(String nodeType) {
         }
 
         public int streamCallTimeoutSeconds() {

@@ -168,7 +168,10 @@ public class SessionModelContext implements ModelContext {
     @Override
     public CompletionStage<List<BaseMessage>> addMessages(List<BaseMessage> messages) {
         validateMessages(messages);
-        List<BaseMessage> messagesToAdd = ensureContextMessageIds(messages);
+        List<BaseMessage> messagesToAdd = removeAdjacentDuplicateMessages(ensureContextMessageIds(messages));
+        if (messagesToAdd.isEmpty()) {
+            return CompletableFuture.completedFuture(List.of());
+        }
         if (activeCompressionInProgress && processorLock.isLocked()) {
             messageBuffer.addBack(messagesToAdd);
             return CompletableFuture.completedFuture(messagesToAdd);
@@ -543,7 +546,8 @@ public class SessionModelContext implements ModelContext {
         List<Map<String, Object>> activeHistory = historyStart > 0
                 ? new ArrayList<>(history.subList(Math.min(historyStart, history.size()), history.size()))
                 : history;
-        Map<String, Object> state = selectActiveCompressionResultState(activeHistory);
+        Map<String, Object> state = normalizeActiveCompressionResultState(
+                selectActiveCompressionResultState(activeHistory));
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("result", result);
         if (state != null) {
@@ -566,6 +570,56 @@ public class SessionModelContext implements ModelContext {
             }
         }
         return history.isEmpty() ? null : history.get(history.size() - 1);
+    }
+
+    private static Map<String, Object> normalizeActiveCompressionResultState(Map<String, Object> state) {
+        if (state == null) {
+            return null;
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>(state);
+        if (!normalized.containsKey("reason")) {
+            Object summary = normalized.get("summary");
+            if (summary instanceof String text && text.startsWith("Context processor skipped: ")) {
+                normalized.put("reason", text.substring("Context processor skipped: ".length()));
+            }
+        }
+        Object usage = normalized.get("compression_usage");
+        if (usage instanceof Map<?, ?> usageMap) {
+            normalized.put("compression_usage", compactCompressionUsage(usageMap));
+        }
+        return normalized;
+    }
+
+    private static Map<String, Object> compactCompressionUsage(Map<?, ?> usageMap) {
+        Map<String, Object> compact = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : usageMap.entrySet()) {
+            String key = String.valueOf(entry.getKey());
+            Object value = entry.getValue();
+            if (isDefaultCompressionUsageValue(value)) {
+                continue;
+            }
+            compact.put(key, value);
+        }
+        return compact;
+    }
+
+    private static boolean isDefaultCompressionUsageValue(Object value) {
+        if (value == null) {
+            return true;
+        }
+        if (value instanceof Number number) {
+            return Double.compare(number.doubleValue(), 0.0d) == 0;
+        }
+        if (value instanceof String text) {
+            return text.isBlank();
+        }
+        if (value instanceof List<?> list) {
+            return list.isEmpty();
+        }
+        if (value instanceof Map<?, ?> map) {
+            return map.isEmpty();
+        }
+        return false;
     }
 
     private List<ContextProcessorPort> selectProcessors(List<String> processorTypes, boolean compressionOnly) {
@@ -731,6 +785,70 @@ public class SessionModelContext implements ModelContext {
             }
         }
         return ensured;
+    }
+
+    private List<BaseMessage> removeAdjacentDuplicateMessages(List<BaseMessage> messages) {
+        List<BaseMessage> result = new ArrayList<>();
+        BaseMessage previous = lastContextMessage();
+        for (BaseMessage message : messages) {
+            if (isRepeatedQuestionerFeedbackAfterExtraction(previous, message)) {
+                continue;
+            }
+            if (previous != null && previous.equals(message)) {
+                continue;
+            }
+            if (isAssistantMessage(previous) && isAssistantMessage(message)) {
+                if (result.isEmpty()) {
+                    popMessages(1, true);
+                } else {
+                    result.remove(result.size() - 1);
+                }
+            }
+            result.add(message);
+            previous = message;
+        }
+        return result;
+    }
+
+    private boolean isRepeatedQuestionerFeedbackAfterExtraction(BaseMessage previous, BaseMessage message) {
+        if (!isAssistantMessage(previous) || !isUserMessage(message)) {
+            return false;
+        }
+        List<BaseMessage> existing = messageBuffer.getBack(4, true);
+        return existing.size() == 4
+                && isUserMessage(existing.get(0))
+                && isQuestionerPrompt(existing.get(1))
+                && isUserMessage(existing.get(2))
+                && existing.get(2).equals(message)
+                && isJsonObjectContent(previous);
+    }
+
+    private static boolean isAssistantMessage(BaseMessage message) {
+        return message != null && "assistant".equals(message.getRole());
+    }
+
+    private static boolean isUserMessage(BaseMessage message) {
+        return message != null && "user".equals(message.getRole());
+    }
+
+    private static boolean isQuestionerPrompt(BaseMessage message) {
+        if (!isAssistantMessage(message) || !(message.getContent() instanceof String content)) {
+            return false;
+        }
+        return content.contains("请您提供") || content.contains("Please provide");
+    }
+
+    private static boolean isJsonObjectContent(BaseMessage message) {
+        if (!(message != null && message.getContent() instanceof String content)) {
+            return false;
+        }
+        String trimmed = content.trim();
+        return trimmed.startsWith("{") && trimmed.endsWith("}");
+    }
+
+    private BaseMessage lastContextMessage() {
+        List<BaseMessage> existing = messageBuffer.getBack(1, true);
+        return existing.isEmpty() ? null : existing.get(existing.size() - 1);
     }
 
     private static void validateAndFixContextWindow(ContextWindow contextWindow) {

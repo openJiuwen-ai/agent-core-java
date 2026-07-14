@@ -53,6 +53,16 @@ public abstract class Condition extends AtomicNode {
 
     @Override
     protected Object atomicInvokeInternal(Map<String, Object> kwargs) {
+        return doAtomicInvoke(kwargs);
+    }
+
+    /**
+     * 0.1.12-compatible atomic condition body.
+     *
+     * @param kwargs keyword arguments
+     * @return condition result
+     */
+    protected Object doAtomicInvoke(Map<String, Object> kwargs) {
         BaseSession session = (BaseSession) kwargs.get("session");
         WorkflowStateCollection state = WorkflowSessionSupport.stateCollection(session);
         Object inputs;

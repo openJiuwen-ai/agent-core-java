@@ -51,6 +51,15 @@ public class BaseCard {
         return null;
     }
 
+    public BaseCard copy() {
+        return new BaseCard(id, name, description);
+    }
+
+    @Override
+    public String toString() {
+        return "id=" + id + ",name=" + name;
+    }
+
     public String toStr() {
         return "id=" + id + ",name=" + name;
     }

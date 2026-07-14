@@ -40,7 +40,9 @@ import com.openjiuwen.core.runner.spawn.SpawnedProcessHandle;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.AgentTeamSession;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.WorkflowSessionApi;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
@@ -49,12 +51,14 @@ import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 
 import java.util.Iterator;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
+import java.lang.reflect.Method;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -91,6 +95,10 @@ public final class Runner {
         return GLOBAL_RUNNER.pubsub();
     }
 
+    public static LocalMessageQueue pubsub() {
+        return getPubsub();
+    }
+
     public static Object getDistPubsub() {
         return GLOBAL_RUNNER.distPubsub();
     }
@@ -101,6 +109,10 @@ public final class Runner {
 
     public static AsyncCallbackFramework getCallbackFramework() {
         return GLOBAL_RUNNER.callbackFramework();
+    }
+
+    public static AsyncCallbackFramework callbackFramework() {
+        return getCallbackFramework();
     }
 
     public static Object getRootTaskGroup() {
@@ -139,6 +151,12 @@ public final class Runner {
         return runWorkflow(workflow, inputs, session, null, null);
     }
 
+    public static Object runWorkflow(Object workflow, Object inputs, Object session,
+                                     com.openjiuwen.core.context.ModelContext context) {
+        return joinOrThrow(runWorkflow(workflow, inputs, session,
+                com.openjiuwen.core.context.ModelContext.unwrap(context), null));
+    }
+
     public static CompletionStage<Object> runWorkflow(Object workflow, Object inputs, Object session,
                                                       ModelContext context, Map<String, Object> envs) {
         return GLOBAL_RUNNER.runWorkflow(workflow, inputs, session, context, envs);
@@ -167,11 +185,20 @@ public final class Runner {
         return GLOBAL_RUNNER.runAgent(agent, inputs, session, context, envs);
     }
 
+    public static Object runAgent(Object agent, Object inputs, Object session, ModelContext context) {
+        return joinOrThrow(runAgent(agent, inputs, session, context, null));
+    }
+
     public static CompletionStage<Iterator<Object>> runAgentStreaming(Object agent, Object inputs, Object session,
                                                                       ModelContext context,
                                                                       List<StreamMode> streamModes,
                                                                       Map<String, Object> envs) {
         return GLOBAL_RUNNER.runAgentStreaming(agent, inputs, session, context, streamModes, envs);
+    }
+
+    public static Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context,
+                                                     List<StreamMode> streamModes) {
+        return joinOrThrow(runAgentStreaming(agent, inputs, session, context, streamModes, null));
     }
 
     public static CompletionStage<Void> release(String sessionId) {
@@ -201,6 +228,10 @@ public final class Runner {
         return runAgentTeam(agentTeam, inputs, false, false, null, null, null);
     }
 
+    public static Object runAgentTeam(String agentTeam, Object inputs, Object session) {
+        return joinOrThrow(runAgentTeam(agentTeam, inputs, true, false, session, null, null));
+    }
+
     public static CompletionStage<Object> runAgentTeam(Object agentTeam, Object inputs, Object session,
                                                        ModelContext context, Map<String, Object> envs) {
         return runAgentTeam(agentTeam, inputs, false, false, session, context, envs);
@@ -217,6 +248,26 @@ public final class Runner {
 
     public static CompletionStage<Iterator<Object>> runAgentTeamStreaming(Object agentTeam, Object inputs) {
         return runAgentTeamStreaming(agentTeam, inputs, false, false, null, null, null, null, null);
+    }
+
+    public static Iterator<Object> runAgentTeamStreaming(String agentTeam, Object inputs, Object session) {
+        return joinOrThrow(runAgentTeamStreaming(agentTeam, inputs, true, false, session, null, null, null, null));
+    }
+
+    public static Iterator<Object> runAgentTeamStreaming(TeamAgentSpec agentTeam, Map<String, String> inputs,
+                                                         String conversationId) {
+        return runAgentTeamStreaming(
+                agentTeam, inputs, false, false, conversationId, null, null, null, null)
+                .toCompletableFuture()
+                .join();
+    }
+
+    public static Iterator<Object> runAgentTeamStreaming(TeamAgent agentTeam, Map<String, String> inputs,
+                                                         String conversationId) {
+        return runAgentTeamStreaming(
+                agentTeam, inputs, false, true, conversationId, null, null, null, null)
+                .toCompletableFuture()
+                .join();
     }
 
     public static CompletionStage<Iterator<Object>> runAgentTeamStreaming(Object agentTeam, Object inputs,
@@ -274,6 +325,21 @@ public final class Runner {
         CompletableFuture<T> future = new CompletableFuture<>();
         future.completeExceptionally(error);
         return future;
+    }
+
+    private static <T> T joinOrThrow(CompletionStage<T> stage) {
+        try {
+            return stage.toCompletableFuture().join();
+        } catch (CompletionException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            if (cause instanceof Error fatalError) {
+                throw fatalError;
+            }
+            throw error;
+        }
     }
 
     /**
@@ -359,25 +425,25 @@ public final class Runner {
         }
 
         private CompletionStage<Boolean> stop() {
-            return CompletableFuture.supplyAsync(() -> {
-                try {
-                    if (RunnerConfig.getRunnerConfig().isDistributedMode()) {
-                        if (systemReplySub != null) {
-                            systemReplySub.deactivate();
-                            systemReplySub = null;
-                        }
-                        if (distributedMessageQueue != null) {
-                            distributedMessageQueue.stop();
-                            distributedMessageQueue = null;
-                        }
+            try {
+                boolean stopped;
+                if (RunnerConfig.getRunnerConfig().isDistributedMode()) {
+                    if (systemReplySub != null) {
+                        systemReplySub.deactivate();
+                        systemReplySub = null;
                     }
-                    return messageQueue.stop();
-                } finally {
-                    resourceManager.release().toCompletableFuture().join();
-                    releaseConfiguredCheckpointer();
-                    rootTaskGroup = null;
+                    if (distributedMessageQueue != null) {
+                        distributedMessageQueue.stop();
+                        distributedMessageQueue = null;
+                    }
                 }
-            });
+                stopped = messageQueue.stop();
+                return CompletableFuture.completedFuture(stopped);
+            } finally {
+                resourceManager.release().toCompletableFuture().join();
+                releaseConfiguredCheckpointer();
+                rootTaskGroup = null;
+            }
         }
 
         private CompletionStage<Object> runWorkflow(Object workflow, Object inputs, Object session,
@@ -416,7 +482,21 @@ public final class Runner {
                     }
                     return result;
                 }
-                throw new IllegalArgumentException("unsupported agent type: " + prepared.agent());
+                if (prepared.agent() instanceof com.openjiuwen.core.singleagent.legacy.agent.BaseAgent legacyAgent) {
+                    Object result = await(legacyAgent.invoke(asStringObjectMap(inputs), prepared.agentSession()));
+                    if (prepared.agentSessionFacade() != null) {
+                        prepared.agentSessionFacade().postRun();
+                    }
+                    return result;
+                }
+                if (isDuckTypedAgent(prepared.agent())) {
+                    Object result = invokeDuckTypedAgent(prepared.agent(), inputs, prepared.agentSession(), context);
+                    if (prepared.agentSessionFacade() != null) {
+                        prepared.agentSessionFacade().postRun();
+                    }
+                    return result;
+                }
+                throw unsupportedAgent(prepared.agent());
             });
         }
 
@@ -433,12 +513,56 @@ public final class Runner {
                 if (prepared.agent() instanceof BaseAgent baseAgent) {
                     Iterator<Object> iterator = baseAgent.stream(inputs, prepared.agentSession(), effectiveModes);
                     if (prepared.agentSessionFacade() != null) {
-                        prepared.agentSessionFacade().postRun();
+                        iterator = postRunAfterIterator(iterator, prepared.agentSessionFacade());
                     }
                     return iterator;
                 }
-                throw new IllegalArgumentException("unsupported agent type: " + prepared.agent());
+                if (prepared.agent() instanceof com.openjiuwen.core.singleagent.legacy.agent.BaseAgent legacyAgent) {
+                    Iterator<Object> iterator = legacyAgent.stream(
+                            asStringObjectMap(inputs), prepared.agentSession(), effectiveModes);
+                    if (prepared.agentSessionFacade() != null) {
+                        iterator = postRunAfterIterator(iterator, prepared.agentSessionFacade());
+                    }
+                    return iterator;
+                }
+                throw unsupportedAgent(prepared.agent());
             });
+        }
+
+        private static Iterator<Object> postRunAfterIterator(Iterator<Object> delegate, AgentSession session) {
+            return new Iterator<>() {
+                private boolean closed;
+
+                @Override
+                public boolean hasNext() {
+                    boolean hasNext;
+                    try {
+                        hasNext = delegate != null && delegate.hasNext();
+                    } catch (RuntimeException error) {
+                        close();
+                        throw error;
+                    }
+                    if (!hasNext) {
+                        close();
+                    }
+                    return hasNext;
+                }
+
+                @Override
+                public Object next() {
+                    if (!hasNext()) {
+                        throw new NoSuchElementException();
+                    }
+                    return delegate.next();
+                }
+
+                private void close() {
+                    if (!closed) {
+                        session.postRun();
+                        closed = true;
+                    }
+                }
+            };
         }
 
         private CompletionStage<SpawnedProcessHandle> spawnAgent(
@@ -563,18 +687,19 @@ public final class Runner {
             return CompletableFuture.supplyAsync(() -> {
                 BaseTeam team = await(prepareBaseTeam(baseTeam));
                 AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, team.getTeamId());
+                AgentSessionApi executionSession = baseTeamExecutionSession(team, session, teamSession);
                 TeamRuntime runtime = team.getRuntime();
                 teamSession.preRun(inputs instanceof Map<?, ?> values ? copyStringMap(values) : null)
                         .toCompletableFuture()
                         .join();
                 if (runtime != null) {
-                    runtime.bindTeamSession(teamSession);
+                    runtime.bindTeamSession(executionSession);
                 }
                 try {
-                    return await(team.invoke(inputs, teamSession));
+                    return await(team.invoke(inputs, executionSession));
                 } finally {
                     if (runtime != null) {
-                        runtime.unbindTeamSession(teamSession.getSessionId());
+                        runtime.unbindTeamSession(executionSession.getSessionId());
                     }
                     teamSession.postRun();
                 }
@@ -588,23 +713,89 @@ public final class Runner {
             return CompletableFuture.supplyAsync(() -> {
                 BaseTeam team = await(prepareBaseTeam(baseTeam));
                 AgentTeamSessionAdapter teamSession = createAgentTeamSession(session, team.getTeamId());
+                AgentSessionApi executionSession = baseTeamExecutionSession(team, session, teamSession);
                 TeamRuntime runtime = team.getRuntime();
                 teamSession.preRun(inputs instanceof Map<?, ?> values ? copyStringMap(values) : null)
                         .toCompletableFuture()
                         .join();
                 if (runtime != null) {
-                    runtime.bindTeamSession(teamSession);
+                    runtime.bindTeamSession(executionSession);
                 }
                 try {
-                    Stream<Object> stream = team.stream(inputs, teamSession);
-                    return stream == null ? List.<Object>of().iterator() : stream.toList().iterator();
+                    Stream<Object> stream = team.stream(inputs, executionSession);
+                    List<Object> chunks = new ArrayList<>();
+                    boolean legacyTeamSession = executionSession instanceof Session;
+                    if (stream != null) {
+                        if (legacyTeamSession) {
+                            stream.forEach(item -> chunks.add(normalizeLegacyTeamStreamChunk(item)));
+                        } else {
+                            stream.forEach(chunks::add);
+                        }
+                    }
+                    if (legacyTeamSession) {
+                        Session legacySession = (Session) executionSession;
+                        List<Object> legacyChunks = drainLegacySessionStream(legacySession);
+                        legacyChunks.addAll(chunks);
+                        return legacyChunks.iterator();
+                    }
+                    return chunks.iterator();
                 } finally {
                     if (runtime != null) {
-                        runtime.unbindTeamSession(teamSession.getSessionId());
+                        runtime.unbindTeamSession(executionSession.getSessionId());
                     }
                     teamSession.postRun();
                 }
             });
+        }
+
+        private static AgentSessionApi baseTeamExecutionSession(
+                BaseTeam team,
+                Object requestedSession,
+                AgentTeamSessionAdapter teamSession) {
+            if (team instanceof com.openjiuwen.core.multiagent.BaseTeam) {
+                return requestedSession instanceof Session legacySession ? legacySession : new Session();
+            }
+            return teamSession;
+        }
+
+        private static List<Object> drainLegacySessionStream(Session session) {
+            List<Object> chunks = new ArrayList<>();
+            Iterator<Object> iterator = session.streamIterator();
+            while (iterator.hasNext()) {
+                chunks.add(normalizeLegacyTeamStreamChunk(iterator.next()));
+            }
+            return chunks;
+        }
+
+        private static Object normalizeLegacyTeamStreamChunk(Object data) {
+            if (data instanceof OutputSchema) {
+                return data;
+            }
+            if (data instanceof Map<?, ?> map) {
+                if (map.keySet().containsAll(Set.of("type", "index", "payload"))) {
+                    return new OutputSchema(
+                            dataToString(map.get("type")),
+                            dataToInt(map.get("index")),
+                            map.get("payload")
+                    );
+                }
+                return new OutputSchema("message", 0, copyStringMap(map));
+            }
+            return new OutputSchema("message", 0, data);
+        }
+
+        private static String dataToString(Object data) {
+            return data == null ? null : String.valueOf(data);
+        }
+
+        private static int dataToInt(Object data) {
+            if (data instanceof Number number) {
+                return number.intValue();
+            }
+            if (data != null) {
+                return Integer.parseInt(String.valueOf(data));
+            }
+            return 0;
         }
 
         private CompletionStage<DeliverResult> interactAgentTeam(Object payload, String teamName, String sessionId) {
@@ -907,7 +1098,9 @@ public final class Runner {
                     TeamRuntimeManager.AgentTeamSessionView session,
                     String teamName) {
                 if (session instanceof SessionManager.AgentTeamSessionView sessionView) {
-                    return new TeamAgentRuntimeAdapter(this, TeamAgent.recoverFromSession(sessionView, teamName, spec));
+                    return new TeamAgentRuntimeAdapter(
+                            this,
+                            TeamAgent.recoverFromSession(sessionView, teamName, spec.toConfiguratorSpec()));
                 }
                 return build();
             }
@@ -1170,7 +1363,7 @@ public final class Runner {
                 Object resolved = await(resourceManager.getWorkflow(workflowId, workflowSession));
                 if (!(resolved instanceof Workflow workflowInstance)) {
                     throw ErrorHelper.buildError(
-                            StatusCode.WORKFLOW_EXECUTION_ERROR,
+                            StatusCode.RUNNER_RUN_AGENT_ERROR,
                             "workflow", workflowId,
                             "reason", "workflow not exist");
                 }
@@ -1212,6 +1405,10 @@ public final class Runner {
                     agentSession.preRun(inputKwargs(inputs));
                     return new PreparedAgent(baseAgent, agentSession, agentSession);
                 }
+                if (agent instanceof com.openjiuwen.core.singleagent.legacy.agent.BaseAgent legacyAgent) {
+                    agentSession.preRun(inputKwargs(inputs));
+                    return new PreparedAgent(legacyAgent, agentSession, agentSession);
+                }
             }
 
             Map<String, Object> inputMap = asStringObjectMap(inputs);
@@ -1237,12 +1434,22 @@ public final class Runner {
                 agentSession.preRun(inputKwargs(inputs));
                 return new PreparedAgent(baseAgent, agentSession, agentSession);
             }
+            if (resolvedAgent instanceof com.openjiuwen.core.singleagent.legacy.agent.BaseAgent legacyAgent) {
+                AgentSession agentSession = createLegacyAgentSession(legacyAgent, sessionId);
+                agentSession.preRun(inputKwargs(inputs));
+                return new PreparedAgent(legacyAgent, agentSession, agentSession);
+            }
             if (resolvedAgent instanceof RemoteAgent) {
                 inputMap.putIfAbsent(AGENT_CONVERSATION_ID, sessionId);
                 syncStringObjectMap(inputs, inputMap);
                 return new PreparedAgent(resolvedAgent, null, null);
             }
-            throw new IllegalArgumentException("unsupported agent type: " + resolvedAgent);
+            if (isDuckTypedAgent(resolvedAgent)) {
+                AgentSession agentSession = createDuckTypedAgentSession(resolvedAgent, sessionId);
+                agentSession.preRun(inputKwargs(inputs));
+                return new PreparedAgent(resolvedAgent, agentSession, agentSession);
+            }
+            throw unsupportedAgent(resolvedAgent);
         }
 
         private AgentSession createAgentSession(BaseAgent agent, String sessionId) {
@@ -1250,11 +1457,110 @@ public final class Runner {
             return AgentSession.createAgentSession(sessionId, null, card);
         }
 
+        private AgentSession createLegacyAgentSession(
+                com.openjiuwen.core.singleagent.legacy.agent.BaseAgent agent, String sessionId) {
+            AgentCard card = legacyAgentCard(agent);
+            return AgentSession.createAgentSession(sessionId, null, card);
+        }
+
+        private AgentCard legacyAgentCard(com.openjiuwen.core.singleagent.legacy.agent.BaseAgent agent) {
+            Object card = invokeNoArg(agent, "getCard");
+            if (card instanceof AgentCard agentCard) {
+                return agentCard;
+            }
+            Object config = agent == null ? null : agent.getAgentConfig();
+            Object idValue = invokeNoArg(config, "getId");
+            Object descriptionValue = invokeNoArg(config, "getDescription");
+            String id = idValue == null ? "" : String.valueOf(idValue);
+            String description = descriptionValue == null ? "" : String.valueOf(descriptionValue);
+            return new AgentCard(id, id, description);
+        }
+
+        private AgentSession createDuckTypedAgentSession(Object agent, String sessionId) {
+            Object card = invokeNoArg(agent, "getCard");
+            return AgentSession.createAgentSession(sessionId, null, card instanceof AgentCard agentCard ? agentCard : null);
+        }
+
+        private static boolean isDuckTypedAgent(Object agent) {
+            return findArityMethod(agent, "invoke", 3) != null
+                    || findArityMethod(agent, "invoke", 2) != null
+                    || findArityMethod(agent, "invoke", 1) != null;
+        }
+
+        private static Object invokeDuckTypedAgent(Object agent, Object inputs, AgentSessionApi session,
+                                                   ModelContext context) {
+            Method method = findArityMethod(agent, "invoke", 3);
+            Object[] args = new Object[] {inputs, session, context};
+            if (method == null) {
+                method = findArityMethod(agent, "invoke", 2);
+                args = new Object[] {inputs, session};
+            }
+            if (method == null) {
+                method = findArityMethod(agent, "invoke", 1);
+                args = new Object[] {inputs};
+            }
+            if (method == null) {
+                throw unsupportedAgent(agent);
+            }
+            try {
+                method.setAccessible(true);
+                Object value = method.invoke(agent, args);
+                if (value instanceof CompletionStage<?> stage) {
+                    return await(stage);
+                }
+                return value;
+            } catch (ReflectiveOperationException error) {
+                Throwable cause = error instanceof java.lang.reflect.InvocationTargetException invocation
+                        ? invocation.getCause()
+                        : error;
+                if (cause instanceof RuntimeException runtimeException) {
+                    throw runtimeException;
+                }
+                throw new CompletionException(cause);
+            }
+        }
+
+        private static Method findArityMethod(Object target, String name, int arity) {
+            if (target == null) {
+                return null;
+            }
+            for (Method method : target.getClass().getMethods()) {
+                if (method.getName().equals(name) && method.getParameterCount() == arity) {
+                    return method;
+                }
+            }
+            for (Method method : target.getClass().getDeclaredMethods()) {
+                if (method.getName().equals(name) && method.getParameterCount() == arity) {
+                    return method;
+                }
+            }
+            return null;
+        }
+
+        private static Object invokeNoArg(Object target, String methodName) {
+            if (target == null) {
+                return null;
+            }
+            try {
+                Method method = target.getClass().getMethod(methodName);
+                return method.invoke(target);
+            } catch (ReflectiveOperationException ignored) {
+                return null;
+            }
+        }
+
         private RuntimeException missingAgent(String agentId) {
             return ErrorHelper.buildError(
                     StatusCode.RUNNER_RUN_AGENT_ERROR,
                     "agent", agentId,
                     "reason", "agent not exist");
+        }
+
+        private static RuntimeException unsupportedAgent(Object agent) {
+            return ErrorHelper.buildError(
+                    StatusCode.RUNNER_RUN_AGENT_ERROR,
+                    "agent", String.valueOf(agent),
+                    "reason", "unsupported agent type: " + agent);
         }
 
         private void initializeCheckpointer(RunnerConfig config) {

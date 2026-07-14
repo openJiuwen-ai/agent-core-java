@@ -57,6 +57,9 @@ public class ToolExecutable extends ComponentExecutable {
             response = postProcessToolResult(rawResponse);
         } catch (Exception e) {
             if (e instanceof BaseError be) {
+                if (be.getStatus() == StatusCode.WORKFLOW_EXECUTION_TIMEOUT) {
+                    throw be;
+                }
                 response = Map.of(
                         ToolComponentOutput.ERR_MESSAGE, be.getMessage(),
                         ToolComponentOutput.ERR_CODE, be.getCode()
@@ -91,7 +94,8 @@ public class ToolExecutable extends ComponentExecutable {
 
         if (tool instanceof RestfulApi) {
             Map<String, Object> trMap = (toolResult instanceof Map) ? (Map<String, Object>) toolResult : Map.of();
-            result.put(ToolComponentOutput.RESTFUL_DATA, trMap.getOrDefault("data", ""));
+            result.put(ToolComponentOutput.RESTFUL_DATA,
+                    trMap.getOrDefault(ToolComponentOutput.RESTFUL_DATA, ""));
             int code = parseErrorCode(trMap.getOrDefault("code", DEFAULT_EXCEPTION_ERROR_CODE));
             result.put(ToolComponentOutput.ERR_CODE,
                     (200 <= code && code < 300) ? StatusCode.SUCCESS.getCode()

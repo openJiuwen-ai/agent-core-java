@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.workflow.component.resource;
 
+import com.openjiuwen.core.common.async.FutureList;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -233,7 +234,7 @@ class WorkflowWithMemoryMissingTest {
         }
 
         @Override
-        public CompletableFuture<List<MemResult>> searchUserMem(
+        public FutureList<MemResult> searchUserMem(
                 String query,
                 int num,
                 String userId,
@@ -244,13 +245,13 @@ class WorkflowWithMemoryMissingTest {
             searchUserMemNum = num;
             searchUserMemThreshold = threshold;
             if (searchUserMemError != null) {
-                return CompletableFuture.failedFuture(searchUserMemError);
+                return FutureList.fromFuture(CompletableFuture.failedFuture(searchUserMemError));
             }
-            return CompletableFuture.completedFuture(fragmentResults);
+            return FutureList.completed(fragmentResults);
         }
 
         @Override
-        public CompletableFuture<List<MemResult>> searchUserHistorySummary(
+        public FutureList<MemResult> searchUserHistorySummary(
                 String query,
                 int num,
                 String userId,
@@ -258,7 +259,7 @@ class WorkflowWithMemoryMissingTest {
                 double threshold
         ) {
             searchUserHistorySummaryCalled = true;
-            return CompletableFuture.completedFuture(summaryResults);
+            return FutureList.completed(summaryResults);
         }
     }
 

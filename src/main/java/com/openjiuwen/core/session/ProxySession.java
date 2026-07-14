@@ -4,8 +4,9 @@
 
 package com.openjiuwen.core.session;
 
-import com.openjiuwen.core.session.config.SessionConfigAccess;
-import com.openjiuwen.core.session.state.SessionStateAccess;
+import com.openjiuwen.core.session.config.Config;
+import com.openjiuwen.core.session.state.State;
+import com.openjiuwen.core.session.stream.StreamWriterManager;
 
 /**
  * Delegating session used when the backing session is bound after construction.
@@ -34,12 +35,12 @@ public class ProxySession extends BaseSession {
     }
 
     @Override
-    public SessionConfigAccess config() {
+    public Config config() {
         return requireStub().config();
     }
 
     @Override
-    public SessionStateAccess state() {
+    public State state() {
         return requireStub().state();
     }
 
@@ -49,7 +50,7 @@ public class ProxySession extends BaseSession {
     }
 
     @Override
-    public Object streamWriterManager() {
+    public StreamWriterManager streamWriterManager() {
         return requireStub().streamWriterManager();
     }
 

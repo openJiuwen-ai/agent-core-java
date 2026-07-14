@@ -216,7 +216,7 @@ public final class CallbackDecorators {
                     finalKwargs = new HashMap<>(boundArgs.getKwargs());
                     finalKwargs.put("_args", boundArgs.getArgs());
                 } else if (transformed instanceof Map<?, ?> map) {
-                    finalKwargs = (Map<String, Object>) map;
+                    finalKwargs = coerceTransformMap(map);
                 }
             }
 
@@ -358,9 +358,36 @@ public final class CallbackDecorators {
             return finalKwargs;
         }
         if (transformed instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
+            return coerceTransformMap(map);
         }
         throw new IllegalArgumentException("input_transform must return a Map or BoundArgs");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> coerceTransformMap(Map<?, ?> map) {
+        if (!map.containsKey("args") || !map.containsKey("kwargs")) {
+            return (Map<String, Object>) map;
+        }
+        Object kwargsValue = map.get("kwargs");
+        if (!(kwargsValue instanceof Map<?, ?> kwargsMap)) {
+            return (Map<String, Object>) map;
+        }
+        Map<String, Object> finalKwargs = new HashMap<>();
+        kwargsMap.forEach((key, value) -> finalKwargs.put(String.valueOf(key), value));
+        finalKwargs.put("_args", toObjectArray(map.get("args")));
+        return finalKwargs;
+    }
+
+    private static Object[] toObjectArray(Object value) {
+        if (value instanceof Object[] array) {
+            return array.clone();
+        }
+        if (value instanceof Iterable<?> iterable) {
+            List<Object> values = new ArrayList<>();
+            iterable.forEach(values::add);
+            return values.toArray();
+        }
+        return value == null ? new Object[0] : new Object[] {value};
     }
 
     private static Object transformFrameResult(Object result, Function<Object, Object> outputTransform) {
@@ -440,6 +467,9 @@ public final class CallbackDecorators {
     ) {
         Map<String, Object> outKwargs = new HashMap<>();
         outKwargs.put(resultKey, value);
+        if (!DEFAULT_RESULT_KEY.equals(resultKey)) {
+            outKwargs.put(DEFAULT_RESULT_KEY, value);
+        }
         Object transformed = framework.triggerTransform(outputEvent, new Object[0], outKwargs);
         return transformed == TRANSFORM_NOOP ? value : transformed;
     }

@@ -15,10 +15,10 @@ import com.openjiuwen.core.session.state.InMemoryStateLike;
 import com.openjiuwen.core.session.state.SessionStateAccess;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.workflow.internal.WorkflowRuntimeState;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -84,7 +84,29 @@ class InteractionTest {
 
         OutputSchema schema = interruptSchema(interrupt);
         assertEquals(Constant.INTERACTION, schema.getType());
-        assertEquals(Arrays.asList("node-a", null), schema.getPayload());
+        InteractionOutput payload = assertInstanceOf(InteractionOutput.class, schema.getPayload());
+        assertEquals("node-a", payload.getId());
+        assertEquals("question", payload.getValue());
+    }
+
+    @Test
+    void workflowInteractionIndexUsesConsumedInputsPerNode() {
+        WorkflowRuntimeState state = WorkflowRuntimeState.create();
+        state.updateGlobal(Map.of(
+                "__workflow_interaction_output_indices__", Map.of("node-b", 2),
+                "__workflow_interaction_input_history__", Map.of("node-a", List.of("answer-a"))));
+        state.commit();
+
+        WorkflowInteraction nodeAInteraction = new WorkflowInteraction(new TestSession(state, "node-a", null));
+        assertEquals("answer-a", nodeAInteraction.waitUserInputs("previous-a"));
+        OutputSchema nodeA = interruptSchema(assertThrows(GraphInterrupt.class,
+                () -> nodeAInteraction.waitUserInputs("next-a")));
+        OutputSchema nodeB = interruptSchema(assertThrows(GraphInterrupt.class,
+                () -> new WorkflowInteraction(new TestSession(state, "node-b", null))
+                        .waitUserInputs("retried-b")));
+
+        assertEquals(1, nodeA.getIndex());
+        assertEquals(0, nodeB.getIndex());
     }
 
     @Test

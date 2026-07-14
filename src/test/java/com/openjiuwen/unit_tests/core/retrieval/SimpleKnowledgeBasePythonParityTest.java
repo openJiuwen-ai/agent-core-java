@@ -130,7 +130,7 @@ public class SimpleKnowledgeBasePythonParityTest {
         RecordingParser parser = new RecordingParser();
         SimpleKnowledgeBase kb = new SimpleKnowledgeBase(config(), null, null, parser, null, null, null, null, null);
 
-        List<Document> documents = kb.parseFiles(List.of("test1.txt", "test2.txt")).join();
+        List<Document> documents = kb.parseFiles(List.of("test1.txt", "test2.txt"));
 
         assertThat(documents).hasSize(4);
         assertThat(parser.parseCalls).isEqualTo(2);
@@ -147,7 +147,7 @@ public class SimpleKnowledgeBasePythonParityTest {
         parser.fail = true;
         SimpleKnowledgeBase kb = new SimpleKnowledgeBase(config(), null, null, parser, null, null, null, null, null);
 
-        List<Document> documents = kb.parseFiles(List.of("test.txt")).join();
+        List<Document> documents = kb.parseFiles(List.of("test.txt"));
 
         assertThat(documents).isEmpty();
     }
@@ -185,7 +185,7 @@ public class SimpleKnowledgeBasePythonParityTest {
                 new Document("doc_2", "Test document 2")
         );
 
-        List<String> docIds = kb.addDocuments(documents).join();
+        List<String> docIds = kb.addDocuments(documents);
 
         assertThat(docIds).containsExactly("doc_1", "doc_2");
         assertThat(chunker.chunkDocumentsCalls).isEqualTo(1);
@@ -229,14 +229,14 @@ public class SimpleKnowledgeBasePythonParityTest {
                 null
         );
 
-        assertBaseErrorContains(() -> kb.addDocuments(List.of(new Document("Test"))).join(), "Failed to build index");
+        assertBaseErrorContains(() -> kb.addDocuments(List.of(new Document("Test"))), "Failed to build index");
     }
 
     private static void retrieveWithRetriever() {
         RecordingRetriever retriever = new RecordingRetriever(List.of(result("Test result", 0.95d)));
         SimpleKnowledgeBase kb = new SimpleKnowledgeBase(config(), null, null, null, null, null, null, null, retriever);
 
-        List<RetrievalResult> results = kb.retrieve("test query", new RetrievalConfig()).join();
+        List<RetrievalResult> results = kb.retrieve("test query", new RetrievalConfig());
 
         assertThat(results).hasSize(1);
         assertThat(retriever.retrieveCalls).isEqualTo(1);
@@ -260,7 +260,7 @@ public class SimpleKnowledgeBasePythonParityTest {
                 retriever
         );
 
-        List<RetrievalResult> results = kb.retrieve("test query", RetrievalConfig.builder().agentic(true).topK(5).build()).join();
+        List<RetrievalResult> results = kb.retrieve("test query", RetrievalConfig.builder().agentic(true).topK(5).build());
 
         assertThat(results).hasSize(1);
         assertThat(retriever.retrieveCalls).isGreaterThanOrEqualTo(1);
@@ -273,7 +273,7 @@ public class SimpleKnowledgeBasePythonParityTest {
         List<RetrievalResult> results = kb.retrieve(
                 "test query",
                 RetrievalConfig.builder().agentic(false).topK(5).build()
-        ).join();
+        );
 
         assertThat(results).hasSize(1);
         assertThat(retriever.retrieveCalls).isEqualTo(1);
@@ -282,7 +282,7 @@ public class SimpleKnowledgeBasePythonParityTest {
     private static void retrieveWithoutRetrieverOrVectorStore() {
         SimpleKnowledgeBase kb = new SimpleKnowledgeBase(config());
 
-        assertBaseErrorContains(() -> kb.retrieve("test query", new RetrievalConfig()).join(),
+        assertBaseErrorContains(() -> kb.retrieve("test query", new RetrievalConfig()),
                 "vector_store or retriever is required");
     }
 
@@ -290,7 +290,7 @@ public class SimpleKnowledgeBasePythonParityTest {
         RecordingIndexer indexer = new RecordingIndexer("database_name");
         SimpleKnowledgeBase kb = new SimpleKnowledgeBase(config(), null, null, null, null, null, indexer, null, null);
 
-        Boolean result = kb.deleteDocuments(List.of("doc_1", "doc_2")).join();
+        Boolean result = kb.deleteDocuments(List.of("doc_1", "doc_2"));
 
         assertThat(result).isTrue();
         assertThat(indexer.deleteIndexCalls).isEqualTo(2);
@@ -299,7 +299,7 @@ public class SimpleKnowledgeBasePythonParityTest {
     private static void deleteDocumentsWithoutIndexManager() {
         SimpleKnowledgeBase kb = new SimpleKnowledgeBase(config());
 
-        assertBaseErrorContains(() -> kb.deleteDocuments(List.of("doc_1")).join(), "index_manager is required");
+        assertBaseErrorContains(() -> kb.deleteDocuments(List.of("doc_1")), "index_manager is required");
     }
 
     private static void updateDocumentsSuccess() {
@@ -316,7 +316,7 @@ public class SimpleKnowledgeBasePythonParityTest {
                 null
         );
 
-        List<String> docIds = kb.updateDocuments(List.of(new Document("doc_1", "Updated document"))).join();
+        List<String> docIds = kb.updateDocuments(List.of(new Document("doc_1", "Updated document")));
 
         assertThat(docIds).containsExactly("doc_1");
         assertThat(indexer.updateIndexCalls).isEqualTo(1);
@@ -327,7 +327,7 @@ public class SimpleKnowledgeBasePythonParityTest {
         indexer.indexInfo = Map.of("count", 10);
         SimpleKnowledgeBase kb = new SimpleKnowledgeBase(config(), null, null, null, null, null, indexer, null, null);
 
-        Map<String, Object> stats = kb.getStatistics().join();
+        Map<String, Object> stats = kb.getStatistics();
 
         assertThat(stats).containsEntry("kb_id", "test_kb")
                 .containsEntry("index_type", "vector")
@@ -337,7 +337,7 @@ public class SimpleKnowledgeBasePythonParityTest {
     private static void getStatisticsWithoutIndexManager() {
         SimpleKnowledgeBase kb = new SimpleKnowledgeBase(config());
 
-        Map<String, Object> stats = kb.getStatistics().join();
+        Map<String, Object> stats = kb.getStatistics();
 
         assertThat(stats).containsEntry("kb_id", "test_kb")
                 .containsEntry("index_exists", false);
@@ -437,7 +437,7 @@ public class SimpleKnowledgeBasePythonParityTest {
         private boolean fail;
 
         @Override
-        public CompletableFuture<List<Document>> parse(
+        public CompletableFuture<List<Document>> parseAsync(
                 String doc,
                 String docId,
                 BaseModelClient llmClient,
@@ -743,7 +743,7 @@ public class SimpleKnowledgeBasePythonParityTest {
         }
 
         @Override
-        public CompletableFuture<Map<String, Object>> getStatistics() {
+        protected CompletableFuture<Map<String, Object>> getStatisticsAsync() {
             return CompletableFuture.completedFuture(Map.of());
         }
     }

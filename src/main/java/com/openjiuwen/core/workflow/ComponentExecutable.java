@@ -9,6 +9,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.NodeSessionApi;
 
 import java.util.Iterator;
 
@@ -24,25 +25,25 @@ public abstract class ComponentExecutable<I, O> extends Executable<I, O> {
     @Override
     public O onInvoke(I inputs, BaseSession session, Object... kwargs) {
         ensureSession(session, "on_invoke");
-        return invoke(inputs, session, extractContext(kwargs));
+        return invoke(inputs, adaptSession(session, false), adaptContext(extractContext(kwargs)));
     }
 
     @Override
     public Iterator<O> onStream(I inputs, BaseSession session, Object... kwargs) {
         ensureSession(session, "on_stream");
-        return stream(inputs, session, extractContext(kwargs));
+        return stream(inputs, adaptSession(session, false), adaptContext(extractContext(kwargs)));
     }
 
     @Override
     public O onCollect(I inputs, BaseSession session, Object... kwargs) {
         ensureSession(session, "on_collect");
-        return collect(inputs, session, extractContext(kwargs));
+        return collect(inputs, adaptSession(session, true), adaptContext(extractContext(kwargs)));
     }
 
     @Override
     public Iterator<O> onTransform(I inputs, BaseSession session, Object... kwargs) {
         ensureSession(session, "on_transform");
-        return transform(inputs, session, extractContext(kwargs));
+        return transform(inputs, adaptSession(session, true), adaptContext(extractContext(kwargs)));
     }
 
     /**
@@ -54,9 +55,20 @@ public abstract class ComponentExecutable<I, O> extends Executable<I, O> {
      * @return component output
      */
     public O invoke(I inputs, BaseSession session, ModelContext context) {
-        throw missingRequiredMethod("stream",
-                "async def stream(self, inputs: Input, session: Session, "
-                        + "context: ModelContext) -> AsyncIterator[Output]");
+        throw missingRequiredMethod("invoke",
+                "async def invoke(self, inputs: Input, session: Session, context: ModelContext) -> Output");
+    }
+
+    /**
+     * Execute component synchronously with the pre-0.1.14 public session/context wrappers.
+     *
+     * @param inputs component input
+     * @param session current execution session facade
+     * @param context root package model context facade
+     * @return component output
+     */
+    public O invoke(I inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
+        return invoke(inputs, (BaseSession) session, com.openjiuwen.core.context.ModelContext.unwrap(context));
     }
 
     /**
@@ -74,6 +86,18 @@ public abstract class ComponentExecutable<I, O> extends Executable<I, O> {
     }
 
     /**
+     * Execute component with batch input and streaming output through the legacy facade.
+     *
+     * @param inputs component input
+     * @param session current execution session facade
+     * @param context root package model context facade
+     * @return streamed component output
+     */
+    public Iterator<O> stream(I inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
+        return stream(inputs, (BaseSession) session, com.openjiuwen.core.context.ModelContext.unwrap(context));
+    }
+
+    /**
      * Execute component with streaming input but batch output.
      *
      * @param inputs component input
@@ -84,6 +108,18 @@ public abstract class ComponentExecutable<I, O> extends Executable<I, O> {
     public O collect(I inputs, BaseSession session, ModelContext context) {
         throw missingRequiredMethod("collect",
                 "async def collect(self, inputs: Input, session: Session, context: ModelContext) -> Output");
+    }
+
+    /**
+     * Execute component with streaming input and batch output through the legacy facade.
+     *
+     * @param inputs component input
+     * @param session current execution session facade
+     * @param context root package model context facade
+     * @return collected component output
+     */
+    public O collect(I inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
+        return collect(inputs, (BaseSession) session, com.openjiuwen.core.context.ModelContext.unwrap(context));
     }
 
     /**
@@ -98,6 +134,18 @@ public abstract class ComponentExecutable<I, O> extends Executable<I, O> {
         throw missingRequiredMethod("transform",
                 "async def transform(self, inputs: Input, session: Session, "
                         + "context: ModelContext) -> AsyncIterator[Output]");
+    }
+
+    /**
+     * Execute component with streaming input and output through the legacy facade.
+     *
+     * @param inputs component input
+     * @param session current execution session facade
+     * @param context root package model context facade
+     * @return transformed component output
+     */
+    public Iterator<O> transform(I inputs, NodeSessionApi session, com.openjiuwen.core.context.ModelContext context) {
+        return transform(inputs, (BaseSession) session, com.openjiuwen.core.context.ModelContext.unwrap(context));
     }
 
     private void ensureSession(BaseSession session, String methodName) {
@@ -115,8 +163,22 @@ public abstract class ComponentExecutable<I, O> extends Executable<I, O> {
             if (item instanceof ModelContext modelContext) {
                 return modelContext;
             }
+            if (item instanceof com.openjiuwen.core.context.ModelContext modelContext) {
+                return modelContext.unwrap();
+            }
         }
         return null;
+    }
+
+    private NodeSessionApi adaptSession(BaseSession session, boolean streamMode) {
+        if (session instanceof NodeSessionApi nodeSessionApi) {
+            return nodeSessionApi;
+        }
+        return new NodeSessionApi(session, streamMode);
+    }
+
+    private com.openjiuwen.core.context.ModelContext adaptContext(ModelContext context) {
+        return com.openjiuwen.core.context.ModelContext.wrap(context);
     }
 
     private UnsupportedOperationException missingRequiredMethod(String methodName, String signature) {

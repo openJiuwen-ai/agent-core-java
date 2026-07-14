@@ -75,6 +75,13 @@ public class IntentDetectionCompConfig {
         return exampleContent;
     }
 
+    public void setExampleContent(List<String> exampleContent) {
+        this.exampleContent.clear();
+        if (exampleContent != null) {
+            this.exampleContent.addAll(exampleContent);
+        }
+    }
+
     public boolean isEnableHistory() {
         return enableHistory;
     }

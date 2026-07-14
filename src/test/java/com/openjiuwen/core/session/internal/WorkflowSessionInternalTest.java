@@ -78,7 +78,8 @@ class WorkflowSessionInternalTest {
 
     @Test
     void nodeSessionBuildsExecutableIdsAndDelegatesSessionContext() {
-        WorkflowSession root = new WorkflowSession("main-workflow", null, "session-a", null, null);
+        WorkflowSession root =
+                new WorkflowSession("main-workflow", null, "session-a", (WorkflowCommitState) null, (Object) null);
 
         NodeSession node = new NodeSession(root, "node-a", "llm");
         NodeSession child = new NodeSession(node, "node-b", "tool");
@@ -97,7 +98,8 @@ class WorkflowSessionInternalTest {
 
     @Test
     void subWorkflowSessionMirrorsPythonNodeSessionConstructor() {
-        WorkflowSession root = new WorkflowSession("main-workflow", null, "session-a", null, null);
+        WorkflowSession root =
+                new WorkflowSession("main-workflow", null, "session-a", (WorkflowCommitState) null, (Object) null);
         NodeSession node = new NodeSession(root, "node-a", "llm");
 
         SubWorkflowSession subWorkflow = new SubWorkflowSession(node, "sub-workflow");

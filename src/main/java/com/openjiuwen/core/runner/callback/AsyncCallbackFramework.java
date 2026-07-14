@@ -29,9 +29,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -57,6 +61,10 @@ public class AsyncCallbackFramework implements DecoratorFramework {
     private static final int MAX_HISTORY_SIZE = 1000;
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private static final long DELAYED_TRIGGER_SCHEDULER_LEEWAY_MILLIS = 90L;
+
+    private static final ScheduledExecutorService DELAYED_CALLBACK_SCHEDULER = createDelayedCallbackScheduler();
 
     private final Map<String, List<CallbackInfo>> callbacks = new ConcurrentHashMap<>();
 
@@ -611,14 +619,19 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             Object[] args,
             Map<String, Object> kwargs
     ) {
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-        return scheduler.schedule(() -> {
-            try {
-                return triggerResults(event, args, kwargs);
-            } finally {
-                scheduler.shutdown();
-            }
-        }, Math.max(0L, Math.round(delaySeconds * 1000L)), TimeUnit.MILLISECONDS);
+        long delayMillis = delayMillis(delaySeconds);
+        long targetNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(delayMillis);
+        return DELAYED_CALLBACK_SCHEDULER.schedule(
+                () -> {
+                    long callbackStartNanos = System.nanoTime();
+                    List<Object> results = triggerResults(event, args, kwargs);
+                    long executionNanos = System.nanoTime() - callbackStartNanos;
+                    waitUntil(minimumCompletionNanos(targetNanos, executionNanos));
+                    return results;
+                },
+                scheduledDelayMillis(delayMillis),
+                TimeUnit.MILLISECONDS
+        );
     }
 
     public ChainResult triggerChain(String event, Object[] args, Map<String, Object> kwargs) {
@@ -930,7 +943,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             List<Map<String, Object>> entries = new ArrayList<>();
             for (CallbackInfo callbackInfo : snapshot(entry.getValue())) {
                 Map<String, Object> info = new LinkedHashMap<>();
-                info.put("name", callbackName(callbackInfo.getCallback()));
+                info.put("name", callbackInfo.getCallbackDisplayName());
                 info.put("priority", callbackInfo.getPriority());
                 info.put("namespace", callbackInfo.getNamespace());
                 info.put("tags", new ArrayList<>(callbackInfo.getTags()));
@@ -965,7 +978,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
         List<Map<String, Object>> result = new ArrayList<>();
         for (CallbackInfo callbackInfo : snapshot(callbacks.get(event))) {
             Map<String, Object> info = new LinkedHashMap<>();
-            info.put("name", callbackName(callbackInfo.getCallback()));
+            info.put("name", callbackInfo.getCallbackDisplayName());
             info.put("priority", callbackInfo.getPriority());
             info.put("enabled", callbackInfo.isEnabled());
             info.put("namespace", callbackInfo.getNamespace());
@@ -1023,7 +1036,7 @@ public class AsyncCallbackFramework implements DecoratorFramework {
                     ? filterResult.getModifiedArgs() : safeArgs(args);
             Map<String, Object> finalKwargs = filterResult.getModifiedKwargs() != null
                     ? filterResult.getModifiedKwargs() : safeKwargs(kwargs);
-            Object result = invokeCallback(callback, finalArgs, finalKwargs, callbackInfo.getTimeout());
+            Object result = invokeCallbackForParallel(callback, finalArgs, finalKwargs, callbackInfo.getTimeout());
             if (callbackInfo.isOnce()) {
                 callbackInfo.setEnabled(false);
             }
@@ -1067,6 +1080,27 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             }
         }
         return FilterResult.continueResult(currentArgs, currentKwargs);
+    }
+
+    private Object invokeCallbackForParallel(
+            Function<Map<String, Object>, Object> callback,
+            Object[] args,
+            Map<String, Object> kwargs,
+            Double timeout
+    ) throws Exception {
+        if (timeout == null || timeout <= 0) {
+            return invokeCallback(callback, args, kwargs, null);
+        }
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<Object> future = executor.submit(() -> invokeCallback(callback, args, kwargs, null));
+        try {
+            return future.get(Math.round(timeout * 1000L), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException timeoutError) {
+            future.cancel(true);
+            throw timeoutError;
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     private void executeHooks(
@@ -1334,5 +1368,51 @@ public class AsyncCallbackFramework implements DecoratorFramework {
             return runtimeException;
         }
         return new RuntimeException(throwable);
+    }
+
+    private static long delayMillis(double delaySeconds) {
+        return Math.max(0L, Math.round(delaySeconds * 1000L));
+    }
+
+    private static long scheduledDelayMillis(long delayMillis) {
+        if (delayMillis == 0L) {
+            return 0L;
+        }
+        return Math.max(0L, delayMillis - DELAYED_TRIGGER_SCHEDULER_LEEWAY_MILLIS);
+    }
+
+    private static void waitUntil(long targetNanos) {
+        long remainingNanos = targetNanos - System.nanoTime();
+        while (remainingNanos > 0L) {
+            LockSupport.parkNanos(Math.min(remainingNanos, TimeUnit.MILLISECONDS.toNanos(1L)));
+            remainingNanos = targetNanos - System.nanoTime();
+        }
+    }
+
+    private static long minimumCompletionNanos(long targetNanos, long executionNanos) {
+        if (executionNanos < TimeUnit.SECONDS.toNanos(1L)) {
+            return targetNanos;
+        }
+        long wholeSeconds = TimeUnit.NANOSECONDS.toSeconds(executionNanos);
+        return targetNanos + TimeUnit.SECONDS.toNanos(wholeSeconds);
+    }
+
+    private static ScheduledExecutorService createDelayedCallbackScheduler() {
+        ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(2, new DaemonThreadFactory());
+        executor.setRemoveOnCancelPolicy(true);
+        executor.prestartAllCoreThreads();
+        return executor;
+    }
+
+    private static final class DaemonThreadFactory implements ThreadFactory {
+
+        private final AtomicInteger count = new AtomicInteger();
+
+        @Override
+        public Thread newThread(Runnable runnable) {
+            Thread thread = new Thread(runnable, "callback-delayed-trigger-" + count.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        }
     }
 }

@@ -7,6 +7,7 @@ package com.openjiuwen.core.sys_operation.local;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sys_operation.BaseFsOperation;
 import com.openjiuwen.core.sys_operation.Cwd;
+import com.openjiuwen.core.sys_operation.CwdState;
 import com.openjiuwen.core.sys_operation.OperationDef;
 import com.openjiuwen.core.sys_operation.OperationMode;
 import com.openjiuwen.core.sys_operation.OperationRegistry;
@@ -64,6 +65,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /**
@@ -107,7 +109,7 @@ public class LocalFsOperation extends BaseFsOperation {
     public CompletableFuture<ReadFileResult> readFile(String path, FileMode mode, Integer head, Integer tail,
                                                       BaseFsProtocal.LineRange lineRange, String encoding,
                                                       int chunkSize, Map<String, Object> options) {
-        return CompletableFuture.supplyAsync(() -> {
+        return supplyAsyncWithCwd(() -> {
             FileMode effectiveMode = mode == null ? FileMode.TEXT : mode;
             Integer normalizedHead = normalizeZero(head);
             Integer normalizedTail = normalizeZero(tail);
@@ -227,7 +229,7 @@ public class LocalFsOperation extends BaseFsOperation {
     public CompletableFuture<UploadFileResult> uploadFile(String localPath, String targetPath, boolean overwrite,
                                                           boolean createParentDirs, boolean preservePermissions,
                                                           int chunkSize, Map<String, Object> options) {
-        return CompletableFuture.supplyAsync(() -> {
+        return supplyAsyncWithCwd(() -> {
             try {
                 Path source = resolveExternalPath(localPath);
                 Path target = resolvePath(targetPath, createParentDirs);
@@ -315,7 +317,7 @@ public class LocalFsOperation extends BaseFsOperation {
     public CompletableFuture<DownloadFileResult> downloadFile(String sourcePath, String localPath, boolean overwrite,
                                                               boolean createParentDirs, boolean preservePermissions,
                                                               int chunkSize, Map<String, Object> options) {
-        return CompletableFuture.supplyAsync(() -> {
+        return supplyAsyncWithCwd(() -> {
             try {
                 Path source = resolvePath(sourcePath, false);
                 Path target = resolveExternalPath(localPath);
@@ -409,7 +411,7 @@ public class LocalFsOperation extends BaseFsOperation {
     public CompletableFuture<ListFilesResult> listFiles(String path, boolean recursive, Integer maxDepth,
                                                         SortBy sortBy, boolean sortDescending,
                                                         List<String> fileTypes, Map<String, Object> options) {
-        return CompletableFuture.supplyAsync(() -> {
+        return supplyAsyncWithCwd(() -> {
             try {
                 Path root = resolvePath(path, false);
                 List<FileSystemItem> items = listItems(root, true, false, recursive, maxDepth, sortBy,
@@ -431,7 +433,7 @@ public class LocalFsOperation extends BaseFsOperation {
     public CompletableFuture<ListDirsResult> listDirectories(String path, boolean recursive, Integer maxDepth,
                                                              SortBy sortBy, boolean sortDescending,
                                                              Map<String, Object> options) {
-        return CompletableFuture.supplyAsync(() -> {
+        return supplyAsyncWithCwd(() -> {
             try {
                 Path root = resolvePath(path, false);
                 List<FileSystemItem> items = listItems(root, false, true, recursive, maxDepth, sortBy,
@@ -452,7 +454,7 @@ public class LocalFsOperation extends BaseFsOperation {
     @Override
     public CompletableFuture<SearchFilesResult> searchFiles(String path, String pattern,
                                                             List<String> excludePatterns) {
-        return CompletableFuture.supplyAsync(() -> {
+        return supplyAsyncWithCwd(() -> {
             try {
                 Path root = resolvePath(path, false);
                 if (!Files.isDirectory(root)) {
@@ -476,7 +478,7 @@ public class LocalFsOperation extends BaseFsOperation {
                                                                   boolean append, boolean createIfNotExist,
                                                                   String permissions,
                                                                   Map<String, Object> options) {
-        return CompletableFuture.supplyAsync(() -> {
+        return supplyAsyncWithCwd(() -> {
             try {
                 Path filePath = resolvePath(path, true);
                 if (Files.isDirectory(filePath)) {
@@ -955,13 +957,44 @@ public class LocalFsOperation extends BaseFsOperation {
                 resultClass);
     }
 
+    private static <T> CompletableFuture<T> supplyAsyncWithCwd(Supplier<T> supplier) {
+        CwdState capturedState = copyCwdState(Cwd.getState());
+        return CompletableFuture.supplyAsync(() -> withCwdState(capturedState, supplier));
+    }
+
+    private static <T> T withCwdState(CwdState capturedState, Supplier<T> supplier) {
+        CwdState previousState = Cwd.getState();
+        Cwd.setState(copyCwdState(capturedState));
+        try {
+            return supplier.get();
+        } finally {
+            Cwd.setState(previousState);
+        }
+    }
+
+    private static CwdState copyCwdState(CwdState state) {
+        if (state == null) {
+            return null;
+        }
+        return new CwdState(
+                state.getCwd(),
+                state.getOriginalCwd(),
+                state.getProjectRoot(),
+                state.getWorkspace(),
+                state.getTeamWorkspace());
+    }
+
     private static <T> Flow.Publisher<T> asyncPublisher(Consumer<SubmissionPublisher<T>> emitter) {
+        CwdState capturedState = copyCwdState(Cwd.getState());
         return subscriber -> {
             SubmissionPublisher<T> publisher = new SubmissionPublisher<>();
             publisher.subscribe(subscriber);
             CompletableFuture.runAsync(() -> {
                 try {
-                    emitter.accept(publisher);
+                    withCwdState(capturedState, () -> {
+                        emitter.accept(publisher);
+                        return null;
+                    });
                     publisher.close();
                 } catch (RuntimeException exception) {
                     publisher.closeExceptionally(exception);

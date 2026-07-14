@@ -42,6 +42,10 @@ public class MemoryRetrievalCompConfig extends ComponentConfig {
         this.threshold = threshold;
     }
 
+    public MemoryRetrievalCompConfig(LongTermMemory memory, String scopeId, String userId, Double threshold) {
+        this(memory, scopeId, userId, threshold == null ? 0.3d : threshold);
+    }
+
     public static Builder builder() {
         return new Builder();
     }
@@ -78,6 +82,10 @@ public class MemoryRetrievalCompConfig extends ComponentConfig {
         this.threshold = threshold;
     }
 
+    public void setThreshold(Double threshold) {
+        this.threshold = threshold == null ? 0.3d : threshold;
+    }
+
     /**
      * Builder mirroring Python keyword-only construction.
      */
@@ -107,6 +115,11 @@ public class MemoryRetrievalCompConfig extends ComponentConfig {
 
         public Builder threshold(double threshold) {
             this.threshold = threshold;
+            return this;
+        }
+
+        public Builder threshold(Double threshold) {
+            this.threshold = threshold == null ? 0.3d : threshold;
             return this;
         }
 

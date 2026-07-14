@@ -179,7 +179,8 @@ public final class ModelClients {
             throw ErrorHelper.buildError(
                     StatusCode.MODEL_PROVIDER_INVALID,
                     "error_msg",
-                    "Unsupported client_provider: '" + clientConfig.getClientProvider()
+                    "unavailable model provider: " + clientConfig.getClientProvider()
+                            + "; Unsupported client_provider: '" + clientConfig.getClientProvider()
                             + "', Supported types: " + supportedLlmTypes()
             );
         }

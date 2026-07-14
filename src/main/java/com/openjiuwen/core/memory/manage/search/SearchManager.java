@@ -66,6 +66,10 @@ public class SearchManager {
         double threshold = params.getThreshold();
         List<String> searchType = params.getSearchType();
 
+        if (topK <= 0) {
+            return CompletableFuture.completedFuture(List.of());
+        }
+
         Map<String, Object> baseKwargs = copyKwargs(kwargs);
         baseKwargs.put(MEM_TYPES_KEY, searchType);
 
@@ -209,6 +213,9 @@ public class SearchManager {
     private static List<Map<String, Object>> filterByScoreAndLimit(List<Map<String, Object>> result,
                                                                    double threshold,
                                                                    int topK) {
+        if (topK <= 0) {
+            return List.of();
+        }
         if (result.size() > topK) {
             result.sort(Comparator.comparingDouble(SearchManager::requiredScore).reversed());
         }

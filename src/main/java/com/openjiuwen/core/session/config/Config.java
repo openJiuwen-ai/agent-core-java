@@ -184,4 +184,55 @@ public class Config implements SessionConfigAccess, ActorManagerSession.ConfigVi
         }
         return value;
     }
+
+    /**
+     * Compatibility metadata DTO retained for callers compiled against 0.1.12's
+     * nested {@code Config.MetadataLike} API.
+     *
+     * <p>Mirrors Python's {@code MetadataLike} in
+     * {@code openjiuwen/core/session/config/base.py}.</p>
+     */
+    public static class MetadataLike {
+        private String id;
+        private String name;
+        private String event;
+
+        public MetadataLike() {
+        }
+
+        public MetadataLike(String name, String event) {
+            this.name = name;
+            this.event = event;
+        }
+
+        public MetadataLike(String id, String name, String event) {
+            this.id = id;
+            this.name = name;
+            this.event = event;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public String getEvent() {
+            return event;
+        }
+
+        public void setEvent(String event) {
+            this.event = event;
+        }
+    }
 }

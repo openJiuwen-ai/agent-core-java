@@ -36,4 +36,9 @@ public class WorkflowOutput {
     public void setState(WorkflowExecutionState state) {
         this.state = state;
     }
+
+    @Override
+    public String toString() {
+        return "WorkflowOutput{result=" + result + ", state=" + state + "}";
+    }
 }

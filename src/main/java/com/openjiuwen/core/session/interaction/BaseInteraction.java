@@ -59,9 +59,21 @@ public abstract class BaseInteraction {
         if (interactiveInputs != null && index < interactiveInputs.size()) {
             Object result = interactiveInputs.get(index);
             index++;
+            persistRemainingInteractiveInputs();
             return result;
         }
         return null;
+    }
+
+    private void persistRemainingInteractiveInputs() {
+        SessionStateAccess stateAccess = session == null ? null : session.state();
+        if (stateAccess == null || interactiveInputs == null) {
+            return;
+        }
+        List<Object> remainingInputs = index >= interactiveInputs.size()
+                ? List.of()
+                : new ArrayList<>(interactiveInputs.subList(index, interactiveInputs.size()));
+        stateAccess.update(Map.of(Constant.INTERACTIVE_INPUT, remainingInputs));
     }
 
     public Object userLatestInput(Object value) {

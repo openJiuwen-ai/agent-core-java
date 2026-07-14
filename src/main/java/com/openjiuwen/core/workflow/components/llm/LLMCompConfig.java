@@ -23,7 +23,7 @@ public class LLMCompConfig extends com.openjiuwen.core.workflow.component.llm.LL
     public LLMCompConfig(
             ModelRequestConfig modelConfig,
             ModelClientConfig modelClientConfig,
-            List<Map<String, Object>> templateContent,
+            List<? extends Map<String, ?>> templateContent,
             Map<String, Object> responseFormat,
             Map<String, Object> outputConfig) {
         super();
@@ -48,13 +48,13 @@ public class LLMCompConfig extends com.openjiuwen.core.workflow.component.llm.LL
     public static class LLMCompConfigBuilder {
         private ModelRequestConfig modelConfig;
         private ModelClientConfig modelClientConfig;
-        private List<Map<String, Object>> templateContent;
+        private List<? extends Map<String, ?>> templateContent;
         private Map<String, Object> responseFormat;
         private Map<String, Object> outputConfig;
 
         public LLMCompConfigBuilder modelConfig(ModelRequestConfig v) { this.modelConfig = v; return this; }
         public LLMCompConfigBuilder modelClientConfig(ModelClientConfig v) { this.modelClientConfig = v; return this; }
-        public LLMCompConfigBuilder templateContent(List<Map<String, Object>> v) { this.templateContent = v; return this; }
+        public LLMCompConfigBuilder templateContent(List<? extends Map<String, ?>> v) { this.templateContent = v; return this; }
         public LLMCompConfigBuilder responseFormat(Map<String, Object> v) { this.responseFormat = v; return this; }
         public LLMCompConfigBuilder outputConfig(Map<String, Object> v) { this.outputConfig = v; return this; }
 

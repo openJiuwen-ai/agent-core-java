@@ -4,6 +4,8 @@
 
 package com.openjiuwen.unit_tests.core.component;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context_engine.ContextStats;
 import com.openjiuwen.core.context_engine.ContextWindow;
 import com.openjiuwen.core.context_engine.ModelContext;
@@ -31,6 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * <p>Mirrors Python's {@code tests/unit_tests/core/component/test_intent_detection_comp.py}.</p>
@@ -87,6 +90,42 @@ class IntentDetectionComponentMissingTest {
 
         assertThat(output).containsEntry("category_name", "weather");
         assertThat(output).containsEntry("classification_id", 1);
+    }
+
+    @Test
+    void testModelFailureAtLocalEndpointPropagatesFrameworkError() {
+        AtomicInteger invokeCount = new AtomicInteger();
+        Model.registerInvoker("OpenAI", (llmMessages, modelConfig, modelClientConfig, options) -> {
+            invokeCount.incrementAndGet();
+            return CompletableFuture.failedFuture(new IllegalStateException("mock model failure"));
+        });
+        IntentDetectionCompConfig config = config(List.of("查询某地的景点", "查询某地天气"), "zh", false);
+        config.setModelClientConfig(ModelClientConfig.builder()
+                .clientProvider("OpenAI")
+                .apiKey("sk-fake")
+                .apiBase("http://127.0.0.1:8088/v1")
+                .timeout(1)
+                .verifySsl(false)
+                .build());
+        IntentDetectionExecutable executable = executable(config);
+
+        assertThatThrownBy(() -> executable.invoke(
+                        Map.of("query", "查询今天杭州天气意图"),
+                        new TestSession(),
+                        null
+                ))
+                .isInstanceOf(BaseError.class)
+                .satisfies(error -> {
+                    BaseError baseError = (BaseError) error;
+                    assertThat(baseError.getStatus())
+                            .isEqualTo(StatusCode.COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED);
+                    assertThat(baseError.getParams())
+                            .containsEntry("error_msg", "failed to invoke llm and get result");
+                    assertThat(baseError.getCause())
+                            .isInstanceOf(IllegalStateException.class)
+                            .hasMessage("mock model failure");
+                });
+        assertThat(invokeCount).hasValue(1);
     }
 
     @Test

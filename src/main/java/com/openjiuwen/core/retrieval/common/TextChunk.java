@@ -40,7 +40,7 @@ public class TextChunk {
         this(id, text, docId, metadata, null);
     }
 
-    public TextChunk(String id, String text, String docId, Map<String, Object> metadata, List<Double> embedding) {
+    public TextChunk(String id, String text, String docId, Map<String, Object> metadata, List<? extends Number> embedding) {
         if (id == null || text == null || docId == null) {
             throw Document.validation("missing_required_fields", "TextChunk requires id_, text, and doc_id", Map.of());
         }
@@ -48,7 +48,7 @@ public class TextChunk {
         this.text = text;
         this.docId = docId;
         this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
-        this.embedding = embedding == null ? null : new ArrayList<>(embedding);
+        this.embedding = toDoubleList(embedding);
     }
 
     public static TextChunk fromDocument(Document doc, String chunkText) {
@@ -70,6 +70,14 @@ public class TextChunk {
     }
 
     public void setId_(String id) {
+        this.id = id;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
         this.id = id;
     }
 
@@ -109,7 +117,18 @@ public class TextChunk {
         return embedding == null ? null : new ArrayList<>(embedding);
     }
 
-    public void setEmbedding(List<Double> embedding) {
-        this.embedding = embedding == null ? null : new ArrayList<>(embedding);
+    public void setEmbedding(List<? extends Number> embedding) {
+        this.embedding = toDoubleList(embedding);
+    }
+
+    private static List<Double> toDoubleList(List<? extends Number> embedding) {
+        if (embedding == null) {
+            return null;
+        }
+        List<Double> values = new ArrayList<>(embedding.size());
+        for (Number value : embedding) {
+            values.add(value == null ? null : value.doubleValue());
+        }
+        return values;
     }
 }

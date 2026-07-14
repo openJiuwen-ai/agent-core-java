@@ -105,7 +105,7 @@ public class Graph {
      *
      * @return null, matching Python's implicit {@code None}
      */
-    public Map<String, ?> getNodes() {
+    public Map<String, Executable<?, ?>> getNodes() {
         return null;
     }
 }

@@ -9,6 +9,7 @@ import com.openjiuwen.core.context_engine.schema.ContextEngineConfig;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
 import com.openjiuwen.core.controller.schema.Event;
 import com.openjiuwen.core.controller.schema.InputEvent;
+import com.openjiuwen.core.application.schema.LlmAgentConfig;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 
@@ -48,8 +49,12 @@ public class LlmController {
         if (agent == null) {
             throw new IllegalArgumentException("agent is required");
         }
-        Object rawConfig = invokeNoArg(agent, "getAgentConfig");
-        if (!(rawConfig instanceof LegacyReActAgentConfig config)) {
+        Object rawConfig = invokeNoArg(agent, "getTypedAgentConfig");
+        if (!(rawConfig instanceof LegacyReActAgentConfig)) {
+            rawConfig = invokeNoArg(agent, "getAgentConfig");
+        }
+        LegacyReActAgentConfig config = legacyConfig(rawConfig);
+        if (config == null) {
             throw new IllegalArgumentException("agent config must be LegacyReActAgentConfig");
         }
         Object rawContextEngine = invokeNoArg(agent, "getContextEngine");
@@ -131,5 +136,15 @@ public class LlmController {
         } catch (ReflectiveOperationException e) {
             return null;
         }
+    }
+
+    private static LegacyReActAgentConfig legacyConfig(Object rawConfig) {
+        if (rawConfig instanceof LegacyReActAgentConfig legacyConfig) {
+            return legacyConfig;
+        }
+        if (rawConfig instanceof LlmAgentConfig applicationConfig) {
+            return LlmAgent.toLegacyConfig(applicationConfig);
+        }
+        return null;
     }
 }

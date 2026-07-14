@@ -68,13 +68,14 @@ public class TeamMemberSpec {
     }
 
     public static TeamMemberSpec fromConfiguratorSpec(AgentConfigurator.TeamMemberSpec source) {
-        TeamMemberSpec spec = new TeamMemberSpec();
         if (source == null) {
-            return spec;
+            return new TeamMemberSpec();
         }
+        TeamRole role = TeamRole.fromConfiguratorRole(source.getRoleType());
+        TeamMemberSpec spec = role == TeamRole.BRIDGE_AGENT ? new BridgeMemberSpec() : new TeamMemberSpec();
         spec.setMemberName(source.getMemberName());
         spec.setDisplayName(source.getDisplayName());
-        spec.setRoleType(TeamRole.fromConfiguratorRole(source.getRoleType()));
+        spec.setRoleType(role);
         spec.setPersona(source.getPersona());
         spec.setPromptHint(source.getPromptHint());
         spec.setModelName(source.getModelName());

@@ -48,10 +48,13 @@ public class ResourceMgr {
     private AgentTeamManager agentTeamManager;
     private AgentManager agentManager;
     private WorkflowManager workflowManager;
+    private ResourceRegistry resourceRegistry;
+    private ToolMgr toolMgr;
     private ToolManager toolManager;
     private ModelManager modelManager;
     private PromptManager promptManager;
     private SysOperationManager sysOperationManager;
+    private TagMgr tagMgr;
     private TagManager tagManager;
     private Map<String, BaseCard> idToCard;
 
@@ -73,9 +76,23 @@ public class ResourceMgr {
                 card.getId(), ResourceKind.TEAM, agentTeam, card, tag, null));
     }
 
+    public Object addAgentGroup(TeamCard card, Supplier<?> agentTeam, Object tag) {
+        if (card != null && card.getId() != null && tagManager.hasResource(card.getId())) {
+            removeAgentTeam(card.getId());
+        }
+        return addAgentTeam(card, agentTeam, stringCollection(tag)).toCompletableFuture().join();
+    }
+
     public Result<?, ?> removeAgentTeam(String teamId) {
         return singleResult(innerRemoveResources(List.of(teamId), ResourceKind.TEAM, null,
                 TagMatchStrategy.ALL, false));
+    }
+
+    public Object removeAgentGroup(Object tag, Object ignored,
+                                   com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy,
+                                   boolean skipIfTagNotExists) {
+        return innerRemoveResources(null, ResourceKind.TEAM, stringCollection(tag),
+                strategy(tagMatchStrategy), skipIfTagNotExists);
     }
 
     public CompletionStage<Object> getAgentTeam(String teamId) {
@@ -93,6 +110,10 @@ public class ResourceMgr {
 
     public Result<?, ?> addAgent(AgentCard card, Supplier<?> agent) {
         return addAgent(card, agent, null, null);
+    }
+
+    public com.openjiuwen.core.runner.base.Result<AgentCard> addAgent(AgentCard card, Supplier<?> agent, Object tag) {
+        return baseResult(addAgent(card, agent, stringCollection(tag), null));
     }
 
     public Result<?, ?> addAgent(AgentCard card, Supplier<?> agent, Collection<String> tag, String interfaceUrl) {
@@ -134,6 +155,20 @@ public class ResourceMgr {
                 TagMatchStrategy.ALL, false));
     }
 
+    public Object removeAgent(Object agentId, Object tag,
+                              com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy,
+                              boolean skipIfTagNotExists) {
+        if (isLegacyScalarEmptyId(agentId) && skipIfTagNotExists) {
+            return noOpRemovalResults();
+        }
+        Collection<String> ids = stringCollection(agentId);
+        if (ids == null) {
+            return removeAgentsByTag(stringCollection(tag), strategy(tagMatchStrategy), skipIfTagNotExists);
+        }
+        return innerRemoveResources(new ArrayList<>(ids), ResourceKind.AGENT, null, strategy(tagMatchStrategy),
+                skipIfTagNotExists);
+    }
+
     public List<Result<?, ?>> removeAgentsByTag(Collection<String> tag, TagMatchStrategy tagMatchStrategy,
                                                 boolean skipIfTagNotExists) {
         return innerRemoveResources(null, ResourceKind.AGENT, tag, tagMatchStrategy, skipIfTagNotExists);
@@ -147,16 +182,36 @@ public class ResourceMgr {
         return dispatchGet(ResourceKind.AGENT, agentId, null);
     }
 
+    public Object getAgent(String agentId, Object tag,
+                           com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy) {
+        if (agentId != null) {
+            return getAgent(agentId).toCompletableFuture().join();
+        }
+        return getAgentsByTag(stringCollection(tag), strategy(tagMatchStrategy), null).toCompletableFuture().join();
+    }
+
     public CompletionStage<List<Object>> getAgentsByTag(Collection<String> tag, TagMatchStrategy tagMatchStrategy,
                                                         Object session) {
         return innerGetProviderResources(null, ResourceKind.AGENT, tag, tagMatchStrategy, session);
     }
 
     public Result<?, ?> addWorkflow(WorkflowCard card, Supplier<?> workflow) {
-        return addWorkflow(card, workflow, null);
+        return addWorkflowResult(card, workflow, null);
     }
 
-    public Result<?, ?> addWorkflow(WorkflowCard card, Supplier<?> workflow, Collection<String> tag) {
+    public com.openjiuwen.core.runner.base.Result<WorkflowCard> addWorkflow(WorkflowCard card,
+                                                                            Supplier<?> workflow,
+                                                                            Object tag) {
+        return baseResult(addWorkflowResult(card, workflow, stringCollection(tag)));
+    }
+
+    public com.openjiuwen.core.runner.base.Result<WorkflowCard> addWorkflow(WorkflowCard card,
+                                                                            Supplier<?> workflow,
+                                                                            Collection<String> tag) {
+        return baseResult(addWorkflowResult(card, workflow, tag));
+    }
+
+    private Result<?, ?> addWorkflowResult(WorkflowCard card, Supplier<?> workflow, Collection<String> tag) {
         validateResourceCard(card, "workflow", WorkflowCard.class);
         validateResourceId(card.getId(), "workflow");
         validateProvider(workflow, "workflow");
@@ -164,7 +219,17 @@ public class ResourceMgr {
         return innerAddResource(card.getId(), ResourceKind.WORKFLOW, workflow, card, tag, null);
     }
 
-    public List<Result<?, ?>> addWorkflows(List<WorkflowEntry> workflows, Collection<String> tag) {
+    public List<com.openjiuwen.core.runner.base.Result<WorkflowCard>> addWorkflows(List<WorkflowEntry> workflows,
+                                                                                   Object tag) {
+        return baseResultList(addWorkflowsResult(workflows, stringCollection(tag)));
+    }
+
+    public List<com.openjiuwen.core.runner.base.Result<WorkflowCard>> addWorkflows(List<WorkflowEntry> workflows,
+                                                                                   Collection<String> tag) {
+        return baseResultList(addWorkflowsResult(workflows, tag));
+    }
+
+    private List<Result<?, ?>> addWorkflowsResult(List<WorkflowEntry> workflows, Collection<String> tag) {
         validateProviderEntries(workflows, "workflow", WorkflowCard.class);
         validateOptionalTags(tag);
         List<Result<?, ?>> results = new ArrayList<>();
@@ -180,12 +245,35 @@ public class ResourceMgr {
                 TagMatchStrategy.ALL, false));
     }
 
+    public Object removeWorkflow(Object workflowId, Object tag,
+                                 com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy,
+                                 boolean skipIfTagNotExists) {
+        if (isLegacyScalarEmptyId(workflowId) && skipIfTagNotExists) {
+            return noOpRemovalResults();
+        }
+        Collection<String> ids = stringCollection(workflowId);
+        if (ids == null) {
+            return innerRemoveResources(null, ResourceKind.WORKFLOW, stringCollection(tag),
+                    strategy(tagMatchStrategy), skipIfTagNotExists);
+        }
+        return innerRemoveResources(new ArrayList<>(ids), ResourceKind.WORKFLOW, null, strategy(tagMatchStrategy),
+                skipIfTagNotExists);
+    }
+
     public CompletionStage<Object> getWorkflow(String workflowId, Object session) {
         validateResourceId(workflowId, "workflow");
         if (!tagManager.hasResource(workflowId)) {
             return CompletableFuture.completedFuture(null);
         }
         return dispatchGet(ResourceKind.WORKFLOW, workflowId, session);
+    }
+
+    public Object getWorkflow(String workflowId, Object tag,
+                              com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy) {
+        if (workflowId != null) {
+            return getWorkflow(workflowId, null).toCompletableFuture().join();
+        }
+        return getWorkflowsByTag(stringCollection(tag), strategy(tagMatchStrategy), null).toCompletableFuture().join();
     }
 
     public CompletionStage<List<Object>> getWorkflowsByTag(Collection<String> tag, TagMatchStrategy tagMatchStrategy,
@@ -197,11 +285,19 @@ public class ResourceMgr {
         return addTool(tool, null, false);
     }
 
+    public com.openjiuwen.core.runner.base.Result<ToolCard> addTool(Tool tool, Object tag) {
+        return baseResult(addTool(tool, stringCollection(tag), false));
+    }
+
     public Result<?, ?> addTool(Tool tool, Collection<String> tag, boolean refresh) {
         validateTool(tool);
         validateOptionalTags(tag);
         refreshExistingToolIfNeeded(tool, refresh);
         return innerAddResource(tool.getCard().getId(), ResourceKind.TOOL, tool, tool.getCard(), tag, null);
+    }
+
+    public List<com.openjiuwen.core.runner.base.Result<ToolCard>> addTools(List<? extends Tool> tools, Object tag) {
+        return baseResultList(addTools(tools, stringCollection(tag), false));
     }
 
     public List<Result<?, ?>> addTools(List<? extends Tool> tools, Collection<String> tag, boolean refresh) {
@@ -225,6 +321,14 @@ public class ResourceMgr {
         return typedList(result, Tool.class);
     }
 
+    public Object getTool(String toolId, Object tag,
+                          com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy) {
+        if (toolId != null) {
+            return getTool(toolId);
+        }
+        return getToolsByTag(stringCollection(tag), strategy(tagMatchStrategy), null);
+    }
+
     public Result<?, ?> removeTool(String toolId) {
         return singleResult(innerRemoveResources(List.of(toolId), ResourceKind.TOOL, null,
                 TagMatchStrategy.ALL, false));
@@ -238,6 +342,19 @@ public class ResourceMgr {
     public List<Result<?, ?>> removeToolsByTag(Collection<String> tag, TagMatchStrategy tagMatchStrategy,
                                                boolean skipIfTagNotExists) {
         return innerRemoveResources(null, ResourceKind.TOOL, tag, tagMatchStrategy, skipIfTagNotExists);
+    }
+
+    public Object removeTool(Object toolId, Object tag,
+                             com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy,
+                             boolean skipIfTagNotExists) {
+        if (isLegacyScalarEmptyId(toolId) && skipIfTagNotExists) {
+            return noOpRemovalResults();
+        }
+        Collection<String> ids = stringCollection(toolId);
+        if (ids == null) {
+            return removeToolsByTag(stringCollection(tag), strategy(tagMatchStrategy), skipIfTagNotExists);
+        }
+        return removeTools(ids);
     }
 
     public Result<?, ?> addModel(String modelId, Supplier<?> model) {
@@ -400,7 +517,7 @@ public class ResourceMgr {
 
     public List<ToolInfo> getToolInfos(Collection<String> toolIds, Collection<String> toolTypes,
                                        Collection<String> tag, TagMatchStrategy tagMatchStrategy) {
-        ServerIdLookup lookup = findResourceIds(toolIds, tag, tagMatchStrategy, false);
+        ServerIdLookup lookup = findResourceIds(toolIds, tag, tagMatchStrategy, true);
         if (lookup.ids().isEmpty()) {
             return List.of();
         }
@@ -419,8 +536,20 @@ public class ResourceMgr {
         return results;
     }
 
+    public List<ToolInfo> getToolInfos(Object toolIds, Object toolTypes, Object tag,
+                                       com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy) {
+        return getToolInfos(stringCollection(toolIds), stringCollection(toolTypes), stringCollection(tag),
+                strategy(tagMatchStrategy));
+    }
+
     public CompletionStage<Result<?, ?>> addMcpServer(McpServerConfig serverConfig) {
         return addMcpServer(serverConfig, null, null);
+    }
+
+    public List<com.openjiuwen.core.runner.base.Result<String>> addMcpServer(McpServerConfig serverConfig,
+                                                                             Object tag,
+                                                                             Double expiryTime) {
+        return baseResultList(List.of(addOneMcpServer(serverConfig, stringCollection(tag), expiryTime)));
     }
 
     public CompletionStage<Result<?, ?>> addMcpServer(McpServerConfig serverConfig,
@@ -430,6 +559,13 @@ public class ResourceMgr {
         validateOptionalTags(tag);
         validateExpiry(expiryTime);
         return CompletableFuture.completedFuture(addOneMcpServer(serverConfig, tag, expiryTime));
+    }
+
+    public List<com.openjiuwen.core.runner.base.Result<String>> addMcpServer(List<McpServerConfig> serverConfigs,
+                                                                             Object tag,
+                                                                             Double expiryTime) {
+        return baseResultList(addMcpServers(serverConfigs, stringCollection(tag), expiryTime)
+                .toCompletableFuture().join());
     }
 
     public CompletionStage<List<Result<?, ?>>> addMcpServers(List<McpServerConfig> serverConfigs,
@@ -452,6 +588,16 @@ public class ResourceMgr {
         return List.of();
     }
 
+    public List<com.openjiuwen.core.runner.base.Result<String>> removeMcpServer(Object serverIds,
+                                                                                Object serverNames,
+                                                                                Object tag,
+                                                                                com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy,
+                                                                                boolean skipIfTagNotExists) {
+        return baseResultList(removeMcpServer(stringCollection(serverIds), stringCollection(serverNames),
+                stringCollection(tag), strategy(tagMatchStrategy), skipIfTagNotExists, false)
+                .toCompletableFuture().join());
+    }
+
     public CompletionStage<List<Result<?, ?>>> removeMcpServer(Collection<String> serverIds,
                                                                Collection<String> serverNames,
                                                                Collection<String> tag,
@@ -464,19 +610,30 @@ public class ResourceMgr {
         for (String mcpServerId : lookup.ids()) {
             try {
                 tagManager.removeResource(mcpServerId);
-                List<String> toolIds = toolManager.removeToolServer(mcpServerId, true).toCompletableFuture().join();
+                List<String> toolIds = toolMgr.removeToolServer(mcpServerId, true);
                 if (!toolIds.isEmpty()) {
                     innerRemoveResources(toolIds, ResourceKind.TOOL, tag, TagMatchStrategy.ALL, skipIfTagNotExists);
                 }
                 results.add(new Ok<>(mcpServerId));
             } catch (Exception exception) {
                 if (!ignoreException) {
-                    throw exception;
+                    throw unchecked(exception);
                 }
                 results.add(new ErrorResult<>(exception));
             }
         }
         return CompletableFuture.completedFuture(results);
+    }
+
+    public List<Tool> getMcpTool(Object names,
+                                 Object serverIds,
+                                 Object serverNames,
+                                 Object tag,
+                                 com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy,
+                                 boolean skipIfTagNotExists) {
+        return getMcpTool(stringCollection(names), stringCollection(serverIds), stringCollection(serverNames),
+                stringCollection(tag), strategy(tagMatchStrategy), skipIfTagNotExists, false, null)
+                .toCompletableFuture().join();
     }
 
     public CompletionStage<List<Tool>> getMcpTool(Collection<String> names,
@@ -492,21 +649,23 @@ public class ResourceMgr {
         List<Tool> results = new ArrayList<>();
         for (String mcpServerId : lookup.ids()) {
             try {
-                toolManager.refreshToolServer(mcpServerId, true, false).toCompletableFuture().join();
+                toolMgr.refreshToolServer(mcpServerId, true, false);
             } catch (Exception exception) {
                 if (!ignoreException) {
-                    throw exception;
+                    throw unchecked(exception);
                 }
             }
             if (names == null || names.isEmpty()) {
-                List<Tool> tools = toolManager.getMcpTools(mcpServerId, session);
+                List<Tool> tools = session == null ? toolMgr.getMcpTools(mcpServerId)
+                        : toolManager.getMcpTools(mcpServerId, session);
                 if (tools != null) {
                     results.addAll(tools);
                 }
                 continue;
             }
             for (String name : names) {
-                Tool tool = toolManager.getMcpTool(name, mcpServerId, session);
+                Tool tool = session == null ? toolMgr.getMcpTool(name, mcpServerId)
+                        : toolManager.getMcpTool(name, mcpServerId, session);
                 if (lookup.exactMatch() || tool != null) {
                     results.add(tool);
                 }
@@ -527,20 +686,20 @@ public class ResourceMgr {
         List<ToolInfo> results = new ArrayList<>();
         for (String mcpServerId : lookup.ids()) {
             try {
-                toolManager.refreshToolServer(mcpServerId, true, false).toCompletableFuture().join();
+                toolMgr.refreshToolServer(mcpServerId, true, false);
             } catch (Exception exception) {
                 if (!ignoreException) {
-                    throw exception;
+                    throw unchecked(exception);
                 }
             }
             List<String> toolIds = new ArrayList<>();
             if (names == null || names.isEmpty()) {
-                toolIds.addAll(toolManager.getMcpToolIds(mcpServerId));
+                toolIds.addAll(toolMgr.getMcpToolIds(mcpServerId));
             } else {
                 for (String name : names) {
-                    String toolId = toolManager.getMcpToolId(mcpServerId, name);
+                    Object toolId = toolMgr.getMcpToolId(mcpServerId, name);
                     if (toolId != null) {
-                        toolIds.add(toolId);
+                        toolIds.add(String.valueOf(toolId));
                     }
                 }
             }
@@ -556,39 +715,53 @@ public class ResourceMgr {
         return CompletableFuture.completedFuture(results);
     }
 
+    public List<ToolInfo> getMcpToolInfos(Object names,
+                                          Object serverIds,
+                                          Object serverNames,
+                                          Object tag,
+                                          com.openjiuwen.core.runner.base.TagMatchStrategy tagMatchStrategy,
+                                          boolean skipIfTagNotExists,
+                                          boolean ignoreException) {
+        return getMcpToolInfos(stringCollection(names), stringCollection(serverIds), stringCollection(serverNames),
+                stringCollection(tag), strategy(tagMatchStrategy), skipIfTagNotExists, ignoreException)
+                .toCompletableFuture().join();
+    }
+
     public McpServerConfig getMcpServerConfig(String serverId) {
         validateResourceId(serverId, "mcp server");
-        return toolManager.getMcpServerConfig(serverId);
+        return toolMgr.getMcpServerConfig(serverId);
     }
 
     public List<String> getMcpToolIds(String serverId) {
         validateResourceId(serverId, "mcp server");
-        return toolManager.getMcpToolIds(serverId);
+        return toolMgr.getMcpToolIds(serverId);
     }
 
     public Object getMcpClient(String serverId) {
         validateResourceId(serverId, "mcp server");
-        return toolManager.getMcpClient(serverId);
+        return toolMgr.getMcpClient(serverId);
     }
 
     public CompletionStage<Object> listMcpResources(String serverId) {
         validateResourceId(serverId, "mcp server");
-        Object client = toolManager.getMcpClient(serverId);
+        Object client = toolMgr.getMcpClient(serverId);
         if (client == null) {
             throw buildError(StatusCode.RESOURCE_MCP_TOOL_GET_ERROR,
                     "server_id", serverId, "reason", "server not found");
         }
-        return invokeAsync(client, "listResources");
+        return invokeAsync(client, "listResources",
+                ToolManager.operationTimeout(toolMgr.getMcpServerConfig(serverId)));
     }
 
     public CompletionStage<Object> readMcpResource(String serverId, String uri) {
         validateResourceId(serverId, "mcp server");
-        Object client = toolManager.getMcpClient(serverId);
+        Object client = toolMgr.getMcpClient(serverId);
         if (client == null) {
             throw buildError(StatusCode.RESOURCE_MCP_TOOL_GET_ERROR,
                     "server_id", serverId, "reason", "server not found");
         }
-        return invokeAsync(client, "readResource", String.class, uri);
+        return invokeAsync(client, "readResource", uri,
+                ToolManager.operationTimeout(toolMgr.getMcpServerConfig(serverId)));
     }
 
     public List<BaseCard> getResourceByTag(String tag) {
@@ -600,9 +773,7 @@ public class ResourceMgr {
         List<BaseCard> resources = new ArrayList<>();
         for (String resourceId : resourceIds) {
             BaseCard card = idToCard.get(resourceId);
-            if (card != null) {
-                resources.add(card);
-            }
+            resources.add(card);
         }
         return resources;
     }
@@ -614,6 +785,10 @@ public class ResourceMgr {
     public boolean hasTag(String tag) {
         validateTag(tag);
         return tagManager.hasTag(tag);
+    }
+
+    public List<Result<?, ?>> removeTag(String tag, boolean skipIfTagNotExists) {
+        return removeTag(List.of(tag), skipIfTagNotExists);
     }
 
     public List<Result<?, ?>> removeTag(Collection<String> tags, boolean skipIfTagNotExists) {
@@ -629,6 +804,10 @@ public class ResourceMgr {
         return results;
     }
 
+    public Result<?, ?> updateResourceTag(String resourceId, String tag) {
+        return updateResourceTag(resourceId, List.of(tag));
+    }
+
     public Result<?, ?> updateResourceTag(String resourceId, Collection<String> tag) {
         validateResourceId(resourceId, "resource");
         validateTags(tag);
@@ -639,6 +818,10 @@ public class ResourceMgr {
         }
     }
 
+    public Result<?, ?> addResourceTag(String resourceId, String tag) {
+        return addResourceTag(resourceId, List.of(tag));
+    }
+
     public Result<?, ?> addResourceTag(String resourceId, Collection<String> tag) {
         validateResourceId(resourceId, "resource");
         validateTags(tag);
@@ -647,6 +830,10 @@ public class ResourceMgr {
         } catch (Exception exception) {
             return new ErrorResult<>(exception);
         }
+    }
+
+    public Result<?, ?> removeResourceTag(String resourceId, String tag, boolean skipIfTagNotExists) {
+        return removeResourceTag(resourceId, List.of(tag), skipIfTagNotExists);
     }
 
     public Result<?, ?> removeResourceTag(String resourceId, Collection<String> tag, boolean skipIfTagNotExists) {
@@ -661,7 +848,7 @@ public class ResourceMgr {
 
     public List<String> getResourceTag(String resourceId) {
         List<String> tags = tagManager.getResourcesTags(resourceId);
-        return tags.isEmpty() ? null : tags;
+        return tags.isEmpty() && !tagManager.hasResource(resourceId) ? null : tags;
     }
 
     public boolean resourceHasTag(String resourceId, String tag) {
@@ -684,7 +871,7 @@ public class ResourceMgr {
 
     private Result<?, ?> addOneMcpServer(McpServerConfig config, Collection<String> tag, Double expiryTime) {
         try {
-            List<McpToolCard> cards = toolManager.addToolServer(config, expiryTime).toCompletableFuture().join();
+            List<McpToolCard> cards = toolMgr.addToolServer(config, expiryTime);
             Collection<String> effectiveTags = effectiveTags(tag);
             for (McpToolCard card : cards) {
                 idToCard.put(card.getId(), card);
@@ -761,7 +948,7 @@ public class ResourceMgr {
 
     private Object innerGetResources(List<String> resourceIds, ResourceKind resourceType, Collection<String> tag,
                                      TagMatchStrategy tagMatchStrategy, Object session) {
-        ServerIdLookup lookup = findResourceIds(resourceIds, tag, tagMatchStrategy, false);
+        ServerIdLookup lookup = findResourceIds(resourceIds, tag, tagMatchStrategy, true);
         List<Object> results = new ArrayList<>();
         for (String getId : lookup.ids()) {
             Object resource = null;
@@ -790,7 +977,7 @@ public class ResourceMgr {
                                                                     Collection<String> tag,
                                                                     TagMatchStrategy tagMatchStrategy,
                                                                     Object session) {
-        ServerIdLookup lookup = findResourceIds(resourceIds, tag, tagMatchStrategy, false);
+        ServerIdLookup lookup = findResourceIds(resourceIds, tag, tagMatchStrategy, true);
         if (lookup.ids().isEmpty()) {
             return CompletableFuture.completedFuture(List.of());
         }
@@ -828,10 +1015,15 @@ public class ResourceMgr {
                                         Collection<String> tag, TagMatchStrategy tagMatchStrategy,
                                         boolean skipIfTagNotExists, StatusCode errorCode) {
         if (serverIds != null) {
-            if (serverIds.isEmpty()) {
-                throw buildError(errorCode, "server_config", String.valueOf(serverIds), "reason", "server_id is empty");
+            if (serverIds.isEmpty() || serverIds.stream().anyMatch(id -> id == null || id.isEmpty())) {
+                throw buildError(errorCode, "server_id", String.valueOf(serverIds), "reason", "server_id is empty");
             }
-            validateResourceIds(serverIds, "mcp server");
+            try {
+                validateResourceIds(serverIds, "mcp server");
+            } catch (BaseError error) {
+                throw buildError(errorCode, "server_id", String.valueOf(serverIds),
+                        "reason", error.getMessage());
+            }
             return new ServerIdLookup(new ArrayList<>(serverIds), true);
         }
 
@@ -840,11 +1032,11 @@ public class ResourceMgr {
             ids.addAll(findResourcesByTags(tag == null ? List.of(ResourceManagerBase.GLOBAL) : tag,
                     tagMatchStrategy, skipIfTagNotExists));
         } else {
-            if (serverNames.isEmpty()) {
+            if (serverNames.isEmpty() || serverNames.stream().anyMatch(name -> name == null || name.isEmpty())) {
                 throw buildError(errorCode, "server_id", null, "reason", "server_name is empty");
             }
             for (String serverName : serverNames) {
-                ids.addAll(toolManager.getMcpServerIds(serverName));
+                ids.addAll(toolMgr.getMcpServerIds(serverName));
             }
         }
         return new ServerIdLookup(ids, false);
@@ -951,6 +1143,31 @@ public class ResourceMgr {
         return results.isEmpty() ? new Ok<>(null) : results.get(0);
     }
 
+    private static RuntimeException unchecked(Exception exception) {
+        return exception instanceof RuntimeException runtimeException
+                ? runtimeException
+                : new IllegalStateException(exception);
+    }
+
+    private static List<Result<?, ?>> noOpRemovalResults() {
+        return List.of(new Ok<>(null));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> com.openjiuwen.core.runner.base.Result<T> baseResult(Result<?, ?> result) {
+        return (com.openjiuwen.core.runner.base.Result<T>)
+                (com.openjiuwen.core.runner.base.Result<?>) result;
+    }
+
+    private static <T> List<com.openjiuwen.core.runner.base.Result<T>> baseResultList(
+            List<? extends Result<?, ?>> results) {
+        List<com.openjiuwen.core.runner.base.Result<T>> converted = new ArrayList<>();
+        for (Result<?, ?> result : results) {
+            converted.add(baseResult(result));
+        }
+        return converted;
+    }
+
     private static Collection<String> effectiveTags(Collection<String> tags) {
         return tags == null || tags.isEmpty() ? List.of(ResourceManagerBase.GLOBAL) : List.copyOf(tags);
     }
@@ -980,6 +1197,9 @@ public class ResourceMgr {
         LinkedHashSet<String> seen = new LinkedHashSet<>();
         for (String tag : tags) {
             if (tag == null || tag.isEmpty()) {
+                if (tags.size() == 1) {
+                    validateTag(tag);
+                }
                 throw buildError(StatusCode.RESOURCE_TAG_VALUE_INVALID, "tag", String.valueOf(tags),
                         "reason", "has None or empty value");
             }
@@ -1178,8 +1398,57 @@ public class ResourceMgr {
         return results;
     }
 
+    private static TagMatchStrategy strategy(com.openjiuwen.core.runner.base.TagMatchStrategy strategy) {
+        return strategy == null ? TagMatchStrategy.ALL : strategy.toResourceManagerStrategy();
+    }
+
+    private static Collection<String> stringCollection(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Collection<?> collection) {
+            List<String> values = new ArrayList<>();
+            for (Object item : collection) {
+                if (item != null) {
+                    values.add(String.valueOf(item));
+                }
+            }
+            return values;
+        }
+        return List.of(String.valueOf(value));
+    }
+
+    private static boolean isLegacyScalarEmptyId(Object value) {
+        return value instanceof String stringValue && stringValue.isEmpty();
+    }
+
     private static CompletionStage<Object> invokeAsync(Object target, String methodName) {
         return invokeAsync(target, methodName, null, null);
+    }
+
+    private static CompletionStage<Object> invokeAsync(Object target, String methodName, float timeout) {
+        Method method = findMethod(target.getClass(), methodName, float.class);
+        if (method != null) {
+            return invokeAsyncMethod(target, method, timeout);
+        }
+        method = findMethod(target.getClass(), methodName, double.class);
+        if (method != null) {
+            return invokeAsyncMethod(target, method, (double) timeout);
+        }
+        return invokeAsync(target, methodName);
+    }
+
+    private static CompletionStage<Object> invokeAsync(Object target, String methodName, String argument,
+                                                       float timeout) {
+        Method method = findMethod(target.getClass(), methodName, String.class, float.class);
+        if (method != null) {
+            return invokeAsyncMethod(target, method, argument, timeout);
+        }
+        method = findMethod(target.getClass(), methodName, String.class, double.class);
+        if (method != null) {
+            return invokeAsyncMethod(target, method, argument, (double) timeout);
+        }
+        return invokeAsync(target, methodName, String.class, argument);
     }
 
     private static CompletionStage<Object> invokeAsync(Object target, String methodName,
@@ -1198,6 +1467,28 @@ public class ResourceMgr {
             throw new IllegalStateException(cause);
         } catch (ReflectiveOperationException error) {
             throw new IllegalStateException(error);
+        }
+    }
+
+    private static CompletionStage<Object> invokeAsyncMethod(Object target, Method method, Object... args) {
+        try {
+            return CompletableFuture.completedFuture(awaitIfNeeded(method.invoke(target, args)));
+        } catch (InvocationTargetException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException(cause);
+        } catch (ReflectiveOperationException error) {
+            throw new IllegalStateException(error);
+        }
+    }
+
+    private static Method findMethod(Class<?> type, String methodName, Class<?>... parameterTypes) {
+        try {
+            return type.getMethod(methodName, parameterTypes);
+        } catch (NoSuchMethodException ignored) {
+            return null;
         }
     }
 
@@ -1224,14 +1515,17 @@ public class ResourceMgr {
     }
 
     private void resetManagers() {
-        agentTeamManager = new AgentTeamManager();
-        agentManager = new AgentManager();
-        workflowManager = new WorkflowManager();
-        toolManager = new ToolManager();
-        modelManager = new ModelManager();
-        promptManager = new PromptManager();
-        sysOperationManager = new SysOperationManager();
-        tagManager = new TagManager();
+        resourceRegistry = new ResourceRegistry();
+        agentTeamManager = resourceRegistry.agentTeamManager();
+        agentManager = resourceRegistry.agentManager();
+        workflowManager = resourceRegistry.workflowManager();
+        toolMgr = resourceRegistry.tool();
+        toolManager = resourceRegistry.toolManager();
+        modelManager = resourceRegistry.modelManager();
+        promptManager = resourceRegistry.promptManager();
+        sysOperationManager = resourceRegistry.sysOperationManager();
+        tagMgr = new TagMgr();
+        tagManager = tagMgr;
         idToCard = new LinkedHashMap<>();
     }
 

@@ -19,7 +19,7 @@ public class MultiKBRetrievalResult {
     private double score;
     private double rawScore;
     private double rawScoreScaled;
-    private List<Object> kbIds = new ArrayList<>();
+    private List<String> kbIds = new ArrayList<>();
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
     public MultiKBRetrievalResult() {
@@ -30,7 +30,7 @@ public class MultiKBRetrievalResult {
             double score,
             double rawScore,
             double rawScoreScaled,
-            List<Object> kbIds,
+            List<?> kbIds,
             Map<String, Object> metadata
     ) {
         this.text = text;
@@ -73,12 +73,18 @@ public class MultiKBRetrievalResult {
         this.rawScoreScaled = rawScoreScaled;
     }
 
-    public List<Object> getKbIds() {
+    public List<String> getKbIds() {
         return kbIds;
     }
 
-    public void setKbIds(List<Object> kbIds) {
-        this.kbIds = kbIds == null ? new ArrayList<>() : new ArrayList<>(kbIds);
+    public void setKbIds(List<?> kbIds) {
+        this.kbIds = new ArrayList<>();
+        if (kbIds == null) {
+            return;
+        }
+        for (Object kbId : kbIds) {
+            this.kbIds.add(String.valueOf(kbId));
+        }
     }
 
     public Map<String, Object> getMetadata() {

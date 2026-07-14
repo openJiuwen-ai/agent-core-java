@@ -6,7 +6,10 @@ package com.openjiuwen.core.session;
 
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.config.SessionConfigAccess;
+import com.openjiuwen.core.session.callback.CallbackManager;
+import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.SessionStateAccess;
+import com.openjiuwen.core.session.stream.StreamWriterManager;
 
 /**
  * Base session abstraction shared by workflow, agent, and graph runtime sessions.
@@ -18,11 +21,12 @@ public abstract class BaseSession {
 
     private String currentOperatorId;
 
-    public SessionConfigAccess config() {
-        return new Config();
+    @SuppressWarnings("unchecked")
+    public <T extends SessionConfigAccess> T config() {
+        return (T) new Config();
     }
 
-    public SessionStateAccess state() {
+    public <T extends SessionStateAccess> T state() {
         return null;
     }
 
@@ -30,7 +34,7 @@ public abstract class BaseSession {
         return null;
     }
 
-    public Object streamWriterManager() {
+    public <T> T streamWriterManager() {
         return null;
     }
 
@@ -70,7 +74,7 @@ public abstract class BaseSession {
         return null;
     }
 
-    public Object callbackManager() {
+    public <T> T callbackManager() {
         return null;
     }
 
@@ -79,12 +83,14 @@ public abstract class BaseSession {
     }
 
     public Object getState(String key) {
-        return state() == null ? null : state().get(key);
+        State currentState = state();
+        return currentState == null ? null : currentState.get(key);
     }
 
     public void updateState(java.util.Map<String, Object> data) {
-        if (state() != null && data != null) {
-            state().update(data);
+        State currentState = state();
+        if (currentState != null && data != null) {
+            currentState.update(data);
         }
     }
 

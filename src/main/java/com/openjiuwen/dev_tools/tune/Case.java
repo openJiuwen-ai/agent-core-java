@@ -30,8 +30,19 @@ public class Case {
     @JsonProperty("case_id")
     private String caseId;
 
+    public Case() {
+        this.inputs = null;
+        this.label = null;
+        this.tools = null;
+        this.caseId = DEFAULT_CASE_ID;
+    }
+
     public Case(Map<String, Object> inputs, Map<String, Object> label) {
         this(inputs, label, null, DEFAULT_CASE_ID);
+    }
+
+    public Case(Map<String, Object> inputs, Map<String, Object> label, List<ToolInfo> tools) {
+        this(inputs, label, tools, DEFAULT_CASE_ID);
     }
 
     public Case(Map<String, Object> inputs, Map<String, Object> label, List<ToolInfo> tools, String caseId) {
@@ -39,6 +50,10 @@ public class Case {
         setLabel(label);
         setTools(tools);
         this.caseId = caseId == null ? DEFAULT_CASE_ID : caseId;
+    }
+
+    public static Builder builder() {
+        return new Builder();
     }
 
     public static String defaultCaseId() {
@@ -85,5 +100,42 @@ public class Case {
             throw new IllegalArgumentException(fieldName + " must contain at least one item");
         }
         return new LinkedHashMap<>(value);
+    }
+
+    public static final class Builder {
+        private Map<String, Object> inputs;
+        private Map<String, Object> label;
+        private List<ToolInfo> tools;
+        private String caseId;
+
+        private Builder() {
+        }
+
+        public Builder inputs(Map<String, Object> inputs) {
+            this.inputs = inputs;
+            return this;
+        }
+
+        public Builder label(Map<String, Object> label) {
+            this.label = label;
+            return this;
+        }
+
+        public Builder tools(List<ToolInfo> tools) {
+            this.tools = tools;
+            return this;
+        }
+
+        public Builder caseId(String caseId) {
+            this.caseId = caseId;
+            return this;
+        }
+
+        public Case build() {
+            if (inputs == null && label == null && tools == null && caseId == null) {
+                return new Case();
+            }
+            return new Case(inputs, label, tools, caseId);
+        }
     }
 }

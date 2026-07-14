@@ -4,7 +4,6 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
-import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.retrieval.common.Document;
 import com.openjiuwen.core.retrieval.common.TextChunk;
 import org.junit.jupiter.api.Test;
@@ -15,7 +14,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Mirrors Python's {@code TextChunker} behavior in
@@ -35,10 +33,11 @@ class TextChunkerTest {
     }
 
     @Test
-    void initWithTokenUnitWithoutTokenizerRaises() {
-        assertThatThrownBy(() -> new TextChunker(512, 50, "token"))
-                .isInstanceOf(BaseError.class)
-                .hasMessageContaining("requires embed_model with tokenizer or tiktoken");
+    void initWithTokenUnitWithoutTokenizerUsesFallbackTokenizer() {
+        TextChunker chunker = new TextChunker(8, 2, "token");
+
+        assertThat(chunker.getInnerChunker()).isInstanceOf(TokenizerChunker.class);
+        assertThat(chunker.chunkText("The quick brown fox jumps over the lazy dog")).isNotEmpty();
     }
 
     @Test

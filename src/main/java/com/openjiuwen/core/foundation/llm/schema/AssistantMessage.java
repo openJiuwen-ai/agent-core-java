@@ -9,7 +9,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
@@ -17,6 +16,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Mirrors Python's {@code AssistantMessage} in
@@ -26,7 +26,6 @@ import java.util.Map;
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@EqualsAndHashCode(callSuper = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class AssistantMessage extends BaseMessage {
 
@@ -124,6 +123,43 @@ public class AssistantMessage extends BaseMessage {
 
     public Map<String, Object> model_dump() {
         return modelDump();
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof AssistantMessage that) || !super.equals(other)) {
+            return false;
+        }
+        return Objects.equals(toolCalls, that.toolCalls)
+                && Objects.equals(usageMetadata, that.usageMetadata)
+                && Objects.equals(normalizeFinishReason(finishReason), normalizeFinishReason(that.finishReason))
+                && Objects.equals(parserContent, that.parserContent)
+                && Objects.equals(reasoningContent, that.reasoningContent)
+                && Objects.equals(promptTokenIds, that.promptTokenIds)
+                && Objects.equals(completionTokenIds, that.completionTokenIds)
+                && Objects.equals(logprobs, that.logprobs);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(
+                super.hashCode(),
+                toolCalls,
+                usageMetadata,
+                normalizeFinishReason(finishReason),
+                parserContent,
+                reasoningContent,
+                promptTokenIds,
+                completionTokenIds,
+                logprobs
+        );
+    }
+
+    private static String normalizeFinishReason(String value) {
+        return value == null || "null".equals(value) ? null : value;
     }
 
     @SuppressWarnings("unchecked")

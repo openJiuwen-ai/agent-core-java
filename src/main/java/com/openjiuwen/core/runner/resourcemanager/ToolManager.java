@@ -11,12 +11,14 @@ import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.mcp.McpTool;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+import com.openjiuwen.core.foundation.tool.mcp.client.McpClients;
 import com.openjiuwen.core.session.tracer.TracerDecorator;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -29,6 +31,8 @@ import java.util.concurrent.ExecutionException;
  * {@code openjiuwen/core/runner/resources_manager/tool_manager.py}.
  */
 public class ToolManager {
+
+    private static final float DEFAULT_MCP_OPERATION_TIMEOUT_SECONDS = 30.0F;
 
     private final Map<String, Tool> tools = new LinkedHashMap<>();
     private final Map<String, List<String>> mcpServerNameToIds = new LinkedHashMap<>();
@@ -128,8 +132,10 @@ public class ToolManager {
                 return CompletableFuture.completedFuture(cards);
             }
             Object client = createClient(serverConfig);
+            float operationTimeout = operationTimeout(serverConfig);
+            boolean connected = false;
             try {
-                if (!connectClient(client)) {
+                if (!connectClient(client, operationTimeout)) {
                     throw ErrorHelper.buildError(
                             StatusCode.RESOURCE_MCP_SERVER_CONNECTION_ERROR,
                             "server_config",
@@ -138,11 +144,15 @@ public class ToolManager {
                             ""
                     );
                 }
-                List<McpToolCard> results = innerRefreshMcpTools(client, serverConfig, expiryTime);
+                connected = true;
+                List<McpToolCard> results = innerRefreshMcpTools(client, serverConfig, expiryTime, operationTimeout);
                 mcpServerNameToIds.computeIfAbsent(serverConfig.getServerName(), ignored -> new ArrayList<>())
                         .add(serverConfig.getServerId());
                 return CompletableFuture.completedFuture(results);
             } catch (Exception error) {
+                if (connected && !mcpServerResources.containsKey(serverConfig.getServerId())) {
+                    disconnectUnregisteredClient(client, operationTimeout, error);
+                }
                 Map<String, Object> params = new LinkedHashMap<>();
                 params.put("server_config", serverConfig);
                 params.put("reason", error.getMessage());
@@ -189,7 +199,7 @@ public class ToolManager {
             return CompletableFuture.completedFuture(List.of());
         }
         try {
-            disconnectClient(resource.client());
+            disconnectClient(resource.client(), operationTimeout(resource.config()));
         } catch (Exception ignored) {
         } finally {
             innerRemoveMcpTools(resource.toolIds());
@@ -250,7 +260,8 @@ public class ToolManager {
         }
         try {
             return CompletableFuture.completedFuture(
-                    innerRefreshMcpTools(resource.client(), resource.config(), resource.expiryTime()));
+                    innerRefreshMcpTools(resource.client(), resource.config(), resource.expiryTime(),
+                            operationTimeout(resource.config())));
         } catch (Exception error) {
             throw ErrorHelper.buildError(
                     StatusCode.RESOURCE_MCP_SERVER_REFRESH_ERROR,
@@ -265,7 +276,7 @@ public class ToolManager {
     public CompletionStage<Void> release() {
         for (McpServerResource resource : mcpServerResources.values()) {
             try {
-                disconnectClient(resource.client());
+                disconnectClient(resource.client(), operationTimeout(resource.config()));
             } catch (Exception ignored) {
             }
         }
@@ -283,8 +294,9 @@ public class ToolManager {
     }
 
     private static Object defaultCreateClient(McpServerConfig config) {
+        McpClients.registerDefaults();
         return ClientRegistry.getClientRegistry().getClient(
-                config.getClientType(),
+                McpClients.normalizeClientType(config.getClientType()),
                 "mcp",
                 Map.of("config", config)
         );
@@ -292,11 +304,39 @@ public class ToolManager {
 
     private List<McpToolCard> innerRefreshMcpTools(Object client,
                                                    McpServerConfig serverConfig,
-                                                   Double expiryTime) throws Exception {
-        List<McpToolCard> mcpCards = normalizeCards(awaitIfNeeded(invoke(client, "listTools")));
-        for (McpToolCard card : mcpCards) {
-            card.setId(generateMcpToolId(serverConfig.getServerId(), serverConfig.getServerName(), card.getName()));
-            addTool(card.getId(), new McpTool(client, copyCard(card)));
+                                                   Double expiryTime,
+                                                   float operationTimeout) throws Exception {
+        List<McpToolCard> mcpCards = normalizeCards(awaitIfNeeded(
+                invokeWithTimeout(client, "listTools", operationTimeout)));
+        McpServerResource previousResource = mcpServerResources.get(serverConfig.getServerId());
+        List<String> previousToolIds = previousResource == null ? List.of() : previousResource.toolIds();
+        List<String> addedToolIds = new ArrayList<>();
+        Map<String, Tool> replacedTools = new LinkedHashMap<>();
+        LinkedHashSet<String> refreshedToolIds = new LinkedHashSet<>();
+        try {
+            for (McpToolCard card : mcpCards) {
+                card.setId(generateMcpToolId(serverConfig.getServerId(), serverConfig.getServerName(), card.getName()));
+                if (!refreshedToolIds.add(card.getId())) {
+                    throw new IllegalArgumentException("duplicate MCP tool id " + card.getId());
+                }
+                Tool tool = new McpTool(client, copyCard(card), operationTimeout);
+                if (previousToolIds.contains(card.getId()) && tools.containsKey(card.getId())) {
+                    replacedTools.put(card.getId(), tools.get(card.getId()));
+                    tools.put(card.getId(), tool);
+                } else {
+                    addTool(card.getId(), tool);
+                    addedToolIds.add(card.getId());
+                }
+            }
+            for (String previousToolId : previousToolIds) {
+                if (!refreshedToolIds.contains(previousToolId)) {
+                    removeTool(previousToolId);
+                }
+            }
+        } catch (Exception error) {
+            innerRemoveMcpTools(addedToolIds);
+            replacedTools.forEach(tools::put);
+            throw error;
         }
         List<String> mcpIds = mcpCards.stream().map(McpToolCard::getId).toList();
         mcpServerResources.put(serverConfig.getServerId(),
@@ -316,19 +356,63 @@ public class ToolManager {
         }
     }
 
-    private static boolean connectClient(Object client) throws Exception {
-        Object connected = awaitIfNeeded(invoke(client, "connect"));
+    private static boolean connectClient(Object client, float operationTimeout) throws Exception {
+        Object connected = awaitIfNeeded(invokeConnect(client, operationTimeout));
         return Boolean.TRUE.equals(connected);
     }
 
-    private static void disconnectClient(Object client) throws Exception {
-        awaitIfNeeded(invoke(client, "disconnect"));
+    private static void disconnectClient(Object client, float operationTimeout) throws Exception {
+        awaitIfNeeded(invokeWithTimeout(client, "disconnect", operationTimeout));
+    }
+
+    private static void disconnectUnregisteredClient(Object client, float operationTimeout, Exception originalError) {
+        try {
+            disconnectClient(client, operationTimeout);
+        } catch (Exception cleanupError) {
+            originalError.addSuppressed(cleanupError);
+        }
     }
 
     private static Object invoke(Object target, String methodName) throws Exception {
         Method method = target.getClass().getMethod(methodName);
+        return invokeMethod(target, method);
+    }
+
+    private static Object invokeConnect(Object target, float operationTimeout) throws Exception {
+        Method floatMethod = findMethod(target.getClass(), "connect", int.class, float.class);
+        if (floatMethod != null) {
+            return invokeMethod(target, floatMethod, 1, operationTimeout);
+        }
+        Method doubleMethod = findMethod(target.getClass(), "connect", int.class, double.class);
+        if (doubleMethod != null) {
+            return invokeMethod(target, doubleMethod, 1, (double) operationTimeout);
+        }
+        return invoke(target, "connect");
+    }
+
+    private static Object invokeWithTimeout(Object target, String methodName, float operationTimeout) throws Exception {
+        Method floatMethod = findMethod(target.getClass(), methodName, float.class);
+        if (floatMethod != null) {
+            return invokeMethod(target, floatMethod, operationTimeout);
+        }
+        Method doubleMethod = findMethod(target.getClass(), methodName, double.class);
+        if (doubleMethod != null) {
+            return invokeMethod(target, doubleMethod, (double) operationTimeout);
+        }
+        return invoke(target, methodName);
+    }
+
+    private static Method findMethod(Class<?> type, String methodName, Class<?>... parameterTypes) {
         try {
-            return method.invoke(target);
+            return type.getMethod(methodName, parameterTypes);
+        } catch (NoSuchMethodException ignored) {
+            return null;
+        }
+    }
+
+    private static Object invokeMethod(Object target, Method method, Object... args) throws Exception {
+        try {
+            return method.invoke(target, args);
         } catch (InvocationTargetException error) {
             Throwable cause = error.getCause();
             if (cause instanceof Exception exception) {
@@ -336,6 +420,38 @@ public class ToolManager {
             }
             throw new IllegalStateException(cause);
         }
+    }
+
+    static float operationTimeout(McpServerConfig config) {
+        if (config == null || config.getParams() == null || config.getParams().isEmpty()) {
+            return DEFAULT_MCP_OPERATION_TIMEOUT_SECONDS;
+        }
+        Object value = first(config.getParams(), "operation_timeout", "operationTimeout", "timeout");
+        float timeout = floatValue(value, DEFAULT_MCP_OPERATION_TIMEOUT_SECONDS);
+        return timeout > 0.0F ? timeout : DEFAULT_MCP_OPERATION_TIMEOUT_SECONDS;
+    }
+
+    private static Object first(Map<String, Object> values, String... keys) {
+        for (String key : keys) {
+            if (values.containsKey(key)) {
+                return values.get(key);
+            }
+        }
+        return null;
+    }
+
+    private static float floatValue(Object value, float fallback) {
+        if (value instanceof Number number) {
+            return number.floatValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                return Float.parseFloat(text.trim());
+            } catch (NumberFormatException ignored) {
+                return fallback;
+            }
+        }
+        return fallback;
     }
 
     private static Object awaitIfNeeded(Object value) throws Exception {

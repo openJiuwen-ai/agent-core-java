@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.workflow.component.loop;
 
+import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.context_engine.ModelContext;
+import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.workflow.HasDrawable;
 import com.openjiuwen.core.workflow.component.AdvancedLoopComponent;
 import com.openjiuwen.core.workflow.component.WorkflowComponent;
@@ -92,6 +95,23 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
         return true;
     }
 
+    public Executable<?, ?> toExecutable() {
+        return new AdvancedLoopExecutable(this);
+    }
+
+    /**
+     * Python-compatible snake_case bridge for reflected callers.
+     *
+     * @return executable advanced loop component
+     */
+    public Executable<?, ?> to_executable() {
+        return toExecutable();
+    }
+
+    public Object invoke(Object inputs, BaseSession session, ModelContext context) {
+        return null;
+    }
+
     private static Condition alwaysTrueCondition() {
         return new Condition() {
             @Override
@@ -99,5 +119,24 @@ public class AdvancedLoopComponentImpl extends WorkflowComponent implements Adva
                 return true;
             }
         };
+    }
+
+    private static final class AdvancedLoopExecutable extends Executable<Object, Object> {
+
+        private final AdvancedLoopComponentImpl owner;
+
+        private AdvancedLoopExecutable(AdvancedLoopComponentImpl owner) {
+            this.owner = owner;
+        }
+
+        @Override
+        public Object onInvoke(Object inputs, BaseSession session, Object... kwargs) {
+            return owner.invoke(inputs, session, null);
+        }
+
+        @Override
+        public boolean graphInvoker() {
+            return true;
+        }
     }
 }

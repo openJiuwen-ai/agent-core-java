@@ -146,6 +146,17 @@ class McpToolTest {
     }
 
     @Test
+    void invokePassesConfiguredOperationTimeoutToThreeArgumentClient() throws Exception {
+        TimeoutAwareMcpClient client = new TimeoutAwareMcpClient("ok");
+        McpTool tool = new McpTool(client, basicCard(), 2.5F);
+
+        assertThat(tool.invoke(Map.of())).isEqualTo(Map.of("result", "ok"));
+
+        assertThat(client.lastToolName).isEqualTo("lookup");
+        assertThat(client.lastTimeout).isEqualTo(2.5F);
+    }
+
+    @Test
     void invokeWrapsClientErrorsAsMcpExecutionError() {
         FakeMcpClient client = new FakeMcpClient(new IllegalStateException("boom"));
         McpTool tool = new McpTool(client, basicCard());
@@ -212,6 +223,22 @@ class McpToolTest {
             if (response instanceof RuntimeException runtimeException) {
                 throw runtimeException;
             }
+            return response;
+        }
+    }
+
+    public static final class TimeoutAwareMcpClient {
+        private final Object response;
+        private String lastToolName;
+        private float lastTimeout = McpServerConfig.NO_TIMEOUT;
+
+        TimeoutAwareMcpClient(Object response) {
+            this.response = response;
+        }
+
+        public Object callTool(String toolName, Map<String, Object> arguments, float timeout) {
+            this.lastToolName = toolName;
+            this.lastTimeout = timeout;
             return response;
         }
     }

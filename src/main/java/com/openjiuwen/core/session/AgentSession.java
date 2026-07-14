@@ -6,6 +6,7 @@ package com.openjiuwen.core.session;
 
 import com.openjiuwen.core.runner.callback.AsyncCallbackFramework;
 import com.openjiuwen.core.runner.callback.CallbackUtils;
+import com.openjiuwen.core.runner.callback.DecoratorFramework;
 import com.openjiuwen.core.runner.callback.SessionEvents;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.interaction.SimpleAgentInteraction;
@@ -130,7 +131,13 @@ public class AgentSession implements AgentSessionApi, AgentSessionLifecycle {
     @Override
     public void closeStream() {
         inner.streamWriterManager().streamEmitter().close();
-        if (CallbackUtils.getCallbackFramework() instanceof AsyncCallbackFramework framework) {
+        DecoratorFramework callbackFramework;
+        try {
+            callbackFramework = CallbackUtils.getCallbackFramework();
+        } catch (IllegalStateException ignored) {
+            callbackFramework = null;
+        }
+        if (callbackFramework instanceof AsyncCallbackFramework framework) {
             framework.unregisterEvent(sessionId + "write_stream");
         }
     }

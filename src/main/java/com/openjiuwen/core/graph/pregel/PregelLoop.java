@@ -84,11 +84,12 @@ public class PregelLoop {
         try {
             return doRunStep();
         } catch (Exception error) {
-            if (!(error instanceof GraphInterrupt)) {
+            Exception propagated = publicInterruptValue(error);
+            if (!(propagated instanceof GraphInterrupt)) {
                 Loggers.GRAPH.error("Failed to run graph super-step[{}]", step);
             }
-            saveStateOnError(error);
-            throw error;
+            saveStateOnError(propagated);
+            throw propagated;
         }
     }
 
@@ -214,5 +215,13 @@ public class PregelLoop {
 
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private static Exception publicInterruptValue(Exception error) {
+        if (!(error instanceof GraphInterrupt interrupt) || !(interrupt.getValue() instanceof List<?> values)
+                || values.size() <= 1 || values.stream().anyMatch(Interrupt.class::isInstance)) {
+            return error;
+        }
+        return new GraphInterrupt(values.get(0));
     }
 }

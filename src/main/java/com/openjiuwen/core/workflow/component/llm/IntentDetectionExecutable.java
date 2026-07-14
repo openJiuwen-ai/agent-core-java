@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -198,8 +199,14 @@ public class IntentDetectionExecutable extends ComponentExecutable {
             AssistantMessage llmOutput = llm.invoke(llmInputs).toCompletableFuture().join();
             return llmOutput.getContent() != null ? llmOutput.getContent().toString() : "";
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED,
-                    "error_msg", "failed to invoke llm: " + e.getMessage());
+            Throwable cause = e instanceof CompletionException && e.getCause() != null ? e.getCause() : e;
+            throw ErrorHelper.buildError(
+                    StatusCode.COMPONENT_INTENT_DETECTION_INVOKE_CALL_FAILED,
+                    null,
+                    null,
+                    cause,
+                    Map.of("error_msg", "failed to invoke llm and get result")
+            );
         }
     }
 

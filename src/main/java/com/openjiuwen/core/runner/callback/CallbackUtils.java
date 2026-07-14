@@ -4,9 +4,6 @@
 
 package com.openjiuwen.core.runner.callback;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -23,8 +20,7 @@ import java.util.function.Supplier;
  */
 public final class CallbackUtils {
 
-    private static final Supplier<DecoratorFramework> DEFAULT_FRAMEWORK_SUPPLIER =
-            CallbackUtils::resolveRunnerCallbackFramework;
+    private static final Supplier<DecoratorFramework> DEFAULT_FRAMEWORK_SUPPLIER = () -> null;
 
     private static volatile Supplier<DecoratorFramework> frameworkSupplier = DEFAULT_FRAMEWORK_SUPPLIER;
 
@@ -62,64 +58,10 @@ public final class CallbackUtils {
     }
 
     public static void trigger(String event, Map<String, Object> kwargs) {
-        getCallbackFramework().trigger(event, new Object[0], orderedKwargs(kwargs));
-    }
-
-    private static DecoratorFramework resolveRunnerCallbackFramework() {
-        try {
-            Class<?> runnerClass = Class.forName("com.openjiuwen.core.runner.Runner");
-            DecoratorFramework fromMethod = resolveFromMethod(runnerClass);
-            if (fromMethod != null) {
-                return fromMethod;
-            }
-            DecoratorFramework fromField = resolveFromField(runnerClass);
-            if (fromField != null) {
-                return fromField;
-            }
-            throw new IllegalStateException("Runner.callback_framework is not initialized.");
-        } catch (ClassNotFoundException exception) {
-            throw new IllegalStateException("Runner or callback_framework is not initialized.", exception);
-        } catch (ReflectiveOperationException exception) {
-            throw new IllegalStateException("Runner.callback_framework is not accessible.", exception);
+        DecoratorFramework framework = frameworkSupplier.get();
+        if (framework != null) {
+            framework.trigger(event, new Object[0], orderedKwargs(kwargs));
         }
-    }
-
-    private static DecoratorFramework resolveFromMethod(Class<?> runnerClass) throws ReflectiveOperationException {
-        for (String methodName : List.of("getCallbackFramework", "callbackFramework")) {
-            Method method;
-            try {
-                method = runnerClass.getMethod(methodName);
-            } catch (NoSuchMethodException ignored) {
-                continue;
-            }
-            if (!Modifier.isStatic(method.getModifiers())) {
-                continue;
-            }
-            Object value = method.invoke(null);
-            if (value instanceof DecoratorFramework framework) {
-                return framework;
-            }
-        }
-        return null;
-    }
-
-    private static DecoratorFramework resolveFromField(Class<?> runnerClass) throws ReflectiveOperationException {
-        for (String fieldName : List.of("callbackFramework", "callback_framework", "CALLBACK_FRAMEWORK")) {
-            Field field;
-            try {
-                field = runnerClass.getField(fieldName);
-            } catch (NoSuchFieldException ignored) {
-                continue;
-            }
-            if (!Modifier.isStatic(field.getModifiers())) {
-                continue;
-            }
-            Object value = field.get(null);
-            if (value instanceof DecoratorFramework framework) {
-                return framework;
-            }
-        }
-        return null;
     }
 
     private static Map<String, Object> orderedKwargs(Map<String, Object> kwargs) {

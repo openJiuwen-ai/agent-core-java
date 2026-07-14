@@ -329,6 +329,9 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         );
 
         try {
+            if (topK <= 0) {
+                return CompletableFuture.completedFuture(List.of());
+            }
             List<String> memTypes = normalizeMemTypes(kwargs == null ? null : kwargs.get("mem_types"));
             List<BaseMemoryIndex.MemorySearchResult> searchResults = join(memoryIndex.search(
                     userId,

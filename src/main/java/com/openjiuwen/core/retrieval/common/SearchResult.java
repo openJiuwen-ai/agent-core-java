@@ -30,6 +30,10 @@ public class SearchResult {
         this(id, text, null, null);
     }
 
+    public SearchResult(String id, String text, Double score) {
+        this(id, text, score, null);
+    }
+
     public SearchResult(String id, String text, double score, Map<String, Object> metadata) {
         this(id, text, Double.valueOf(score), metadata);
     }
@@ -66,6 +70,13 @@ public class SearchResult {
 
     public void setScore(double score) {
         this.score = score;
+    }
+
+    public void setScore(Double score) {
+        if (score == null) {
+            throw new IllegalArgumentException("score is required");
+        }
+        this.score = score.doubleValue();
     }
 
     public Map<String, Object> getMetadata() {

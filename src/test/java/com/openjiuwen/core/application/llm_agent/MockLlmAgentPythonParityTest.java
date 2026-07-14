@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.application.llm_agent;
 
+import com.openjiuwen.core.common.async.FutureList;
 import com.openjiuwen.core.application.llm_agent.rails.MemoryRail;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
@@ -351,18 +352,18 @@ class MockLlmAgentPythonParityTest {
         private String addSessionId;
 
         @Override
-        public CompletableFuture<List<MemResult>> searchUserMem(
+        public FutureList<MemResult> searchUserMem(
                 String query, int num, String userId, String scopeId, double threshold) {
             searchUserMemCalled = true;
             searchUserMemQuery = query;
             searchUserMemUserId = userId;
-            return CompletableFuture.completedFuture(userMems);
+            return FutureList.completed(userMems);
         }
 
         @Override
-        public CompletableFuture<List<MemResult>> searchUserHistorySummary(
+        public FutureList<MemResult> searchUserHistorySummary(
                 String query, int num, String userId, String scopeId, double threshold) {
-            return CompletableFuture.completedFuture(List.of());
+            return FutureList.completed(List.of());
         }
 
         @Override

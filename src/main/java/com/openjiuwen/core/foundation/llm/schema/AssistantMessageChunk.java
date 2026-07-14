@@ -22,6 +22,10 @@ import java.util.List;
 @EqualsAndHashCode(callSuper = true)
 public class AssistantMessageChunk extends AssistantMessage {
 
+    public AssistantMessageChunk merge(AssistantMessageChunk other) {
+        return merge((Object) other);
+    }
+
     public AssistantMessageChunk merge(Object other) {
         if (!(other instanceof AssistantMessageChunk otherChunk)) {
             throw new IllegalArgumentException("Cannot merge AssistantMessageChunk with " + other);

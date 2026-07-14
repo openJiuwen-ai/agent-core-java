@@ -8,9 +8,10 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
-import com.openjiuwen.core.common.security.UrlUtils;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -117,7 +118,11 @@ public class RestfulApiCard extends ToolCard {
 
     private static String validateUrl(String rawUrl) {
         try {
-            UrlUtils.checkUrlIsValid(rawUrl != null ? PATH_PARAM_PATTERN.matcher(rawUrl).replaceAll("placeholder") : null);
+            String substitutedUrl = rawUrl != null ? PATH_PARAM_PATTERN.matcher(rawUrl).replaceAll("placeholder") : null;
+            if (hasUnsupportedSchemeWithHost(substitutedUrl)) {
+                return rawUrl;
+            }
+            validateHttpUrlSyntax(substitutedUrl);
             return rawUrl;
         } catch (Exception error) {
             throw ErrorHelper.buildError(
@@ -128,6 +133,34 @@ public class RestfulApiCard extends ToolCard {
                     Map.of("reason", "support invalid url, url=" + rawUrl + ".")
             );
         }
+    }
+
+    private static void validateHttpUrlSyntax(String url) throws URISyntaxException {
+        if (url == null || url.isBlank()) {
+            throw new URISyntaxException(String.valueOf(url), "url is empty");
+        }
+        URI parsedUrl = new URI(url);
+        String scheme = parsedUrl.getScheme();
+        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+            throw new URISyntaxException(url, "illegal url protocol");
+        }
+        if (parsedUrl.getHost() == null || parsedUrl.getHost().isBlank()) {
+            throw new URISyntaxException(url, "host is required");
+        }
+    }
+
+    private static boolean hasUnsupportedSchemeWithHost(String url) throws URISyntaxException {
+        if (url == null || url.isBlank()) {
+            return false;
+        }
+        URI parsedUrl = new URI(url);
+        String scheme = parsedUrl.getScheme();
+        if (scheme == null || scheme.isBlank()) {
+            return false;
+        }
+        return !"http".equalsIgnoreCase(scheme)
+                && !"https".equalsIgnoreCase(scheme)
+                && parsedUrl.getHost() != null;
     }
 
     @SuppressWarnings("unchecked")
@@ -186,11 +219,11 @@ public class RestfulApiCard extends ToolCard {
     }
 
     private static double validateTimeout(double timeout) {
-        if (timeout < 1.0d || timeout > 300.0d) {
+        if (timeout <= 0.0d || timeout > 300.0d) {
             throw ErrorHelper.buildError(
                     StatusCode.TOOL_RESTFUL_API_CARD_CONFIG_INVALID,
                     "reason",
-                    "timeout must be between 1.0 and 300.0, timeout=" + timeout + "."
+                    "timeout must be greater than 0.0 and at most 300.0, timeout=" + timeout + "."
             );
         }
         return timeout;

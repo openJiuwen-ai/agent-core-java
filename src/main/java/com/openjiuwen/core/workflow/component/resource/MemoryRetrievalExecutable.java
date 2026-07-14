@@ -6,6 +6,7 @@ package com.openjiuwen.core.workflow.component.resource;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.async.FutureList;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
@@ -225,6 +226,18 @@ public class MemoryRetrievalExecutable extends ComponentExecutable<Object, Map<S
     private static <T> List<T> join(CompletionStage<List<T>> stage) {
         try {
             List<T> result = stage.toCompletableFuture().join();
+            return result == null ? new ArrayList<>() : result;
+        } catch (CompletionException exception) {
+            if (exception.getCause() instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw exception;
+        }
+    }
+
+    private static <T> List<T> join(FutureList<T> futureList) {
+        try {
+            List<T> result = futureList == null ? null : futureList.join();
             return result == null ? new ArrayList<>() : result;
         } catch (CompletionException exception) {
             if (exception.getCause() instanceof RuntimeException runtimeException) {

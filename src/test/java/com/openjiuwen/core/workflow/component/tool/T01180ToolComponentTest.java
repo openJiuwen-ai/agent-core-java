@@ -11,6 +11,8 @@ import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.service_api.RestfulApi;
 import com.openjiuwen.core.foundation.tool.service_api.RestfulApiCard;
 import com.openjiuwen.core.graph.Executable;
+import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.NodeSessionApi;
 
 import org.junit.jupiter.api.Test;
 
@@ -97,11 +99,12 @@ class T01180ToolComponentTest {
 
     @Test
     void restfulApiResultMapsHttpCodeAndData() {
-        RestfulStub tool = new RestfulStub(Map.of(
+        Map<String, Object> response = Map.of(
                 "code", "201",
                 "data", Map.of("id", 9),
                 "message", "created"
-        ));
+        );
+        RestfulStub tool = new RestfulStub(response);
 
         Map<?, ?> output = invokeWithTool(tool, Map.of("payload", true));
 
@@ -109,6 +112,56 @@ class T01180ToolComponentTest {
         assertEquals("created", output.get("errMessage"));
         assertEquals(Map.of("id", 9), output.get("data"));
         assertEquals(Map.of("payload", true), tool.lastInputs);
+    }
+
+    @Test
+    void restfulApiResultDefaultsMissingMessageToEmpty() {
+        Map<String, Object> response = Map.of(
+                "code", 200,
+                "data", Map.of("id", 9)
+        );
+        RestfulStub tool = new RestfulStub(response);
+
+        Map<?, ?> output = invokeWithTool(tool, Map.of());
+
+        assertEquals(StatusCode.SUCCESS.getCode(), output.get("errCode"));
+        assertEquals("", output.get("errMessage"));
+        assertEquals(Map.of("id", 9), output.get("data"));
+    }
+
+    @Test
+    void restfulApiResultPreservesNonSuccessMessage() {
+        Map<String, Object> response = Map.of(
+                "code", 503,
+                "data", Map.of("retryable", true),
+                "message", "service unavailable"
+        );
+        RestfulStub tool = new RestfulStub(response);
+
+        Map<?, ?> output = invokeWithTool(tool, Map.of());
+
+        assertEquals(StatusCode.TOOL_EXECUTION_ERROR.getCode(), output.get("errCode"));
+        assertEquals("service unavailable", output.get("errMessage"));
+        assertEquals(Map.of("retryable", true), output.get("data"));
+    }
+
+    @Test
+    void restfulApiResultProjectsFormattedResponseDataAtNestedDepth() {
+        Map<String, Object> weather = Map.of("location", "杭州", "condition", "晴");
+        Map<String, Object> response = Map.of(
+                "code", 200,
+                "data", weather,
+                "url", "http://localhost:8000/weather?location=%E6%9D%AD%E5%B7%9E",
+                "headers", Map.of("content-type", "application/json"),
+                "reason", "OK",
+                "message", "success");
+        RestfulStub tool = new RestfulStub(response);
+
+        Map<?, ?> output = invokeWithTool(tool, Map.of("location", "杭州"), nestedWorkflowSession());
+
+        assertEquals(StatusCode.SUCCESS.getCode(), output.get("errCode"));
+        assertEquals("success", output.get("errMessage"));
+        assertEquals(weather, output.get("data"));
     }
 
     @Test
@@ -135,8 +188,22 @@ class T01180ToolComponentTest {
     }
 
     private static Map<?, ?> invokeWithTool(Tool tool, Map<String, Object> inputs) {
+        return invokeWithTool(tool, inputs, null);
+    }
+
+    private static Map<?, ?> invokeWithTool(Tool tool, Map<String, Object> inputs, BaseSession session) {
         ToolExecutable executable = new ToolExecutable(new ToolComponentConfig()).setTool(tool);
-        return assertInstanceOf(Map.class, executable.invoke(inputs, null, null));
+        return assertInstanceOf(Map.class, executable.invoke(inputs, session, null));
+    }
+
+    private static BaseSession nestedWorkflowSession() {
+        BaseSession inner = new BaseSession() {
+            @Override
+            public int workflowNestingDepth() {
+                return 1;
+            }
+        };
+        return new NodeSessionApi(inner);
     }
 
     private static ToolCard card(String id) {

@@ -89,6 +89,10 @@ public class TraceWorkflowSpan extends Span {
         streamInputs.add(chunk);
     }
 
+    public void appendStreamInput(Object chunk) {
+        appendStreamInputs(chunk);
+    }
+
     @Override
     @SuppressWarnings("unchecked")
     protected void setField(String fieldName, Object value) {

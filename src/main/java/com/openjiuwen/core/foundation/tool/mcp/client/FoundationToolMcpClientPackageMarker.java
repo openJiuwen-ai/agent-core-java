@@ -12,4 +12,8 @@ public final class FoundationToolMcpClientPackageMarker {
 
     private FoundationToolMcpClientPackageMarker() {
     }
+
+    public static void registerDefaults() {
+        McpClients.registerDefaults();
+    }
 }

@@ -36,11 +36,13 @@ import com.openjiuwen.core.memory.MemResult;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.interaction.InteractionOutput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.AbilityManager;
 import com.openjiuwen.core.singleagent.legacy.config.LegacyReActAgentConfig;
 import com.openjiuwen.core.singleagent.legacy.schema.PluginSchema;
 import com.openjiuwen.core.singleagent.legacy.schema.WorkflowSchema;
+import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 
@@ -52,6 +54,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * LLM Controller - ReAct style event handler based on EventHandler.
@@ -72,6 +77,10 @@ public class LlmEventHandler extends EventHandler {
     private static final String INTERACTION = "__interaction__";
     private static final String LLM_OUTPUT = "llm_output";
     private static final String STATE_KEY = "llm_controller";
+    private static final Pattern INTERACTION_INTERRUPT_PATTERN = Pattern.compile(
+            "OutputSchema\\{type='__interaction__', index=(\\d+), "
+                    + "payload=InteractionOutput\\{id='([^']*)', value=(.*?), metadata=\\{.*?}}}",
+            Pattern.DOTALL);
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final MapType STRING_OBJECT_MAP_TYPE =
             OBJECT_MAPPER.getTypeFactory().constructMapType(LinkedHashMap.class, String.class, Object.class);
@@ -201,10 +210,10 @@ public class LlmEventHandler extends EventHandler {
 
                 // Update first task with user input
                 Task interruptedTask = resume.remainingTasks.get(0);
-                setTaskArguments(interruptedTask, interactiveInput);
+                setTaskArguments(interruptedTask, withWorkflowInputAliases(interactiveInput));
                 interruptedTask.setStatus(TaskStatus.INPUT_REQUIRED);
 
-                int initialIteration = resume.savedIteration != null ? resume.savedIteration + 1 : 1;
+                int initialIteration = resumeStartIteration(resume.savedIteration);
                 return executeReactLoop(resume.remainingTasks, session, initialIteration,
                         resume.aiMessage, context);
             }
@@ -244,14 +253,15 @@ public class LlmEventHandler extends EventHandler {
 
                 Task interrupted = resume.remainingTasks.get(0);
                 if (interactiveInput != null) {
-                    setTaskArguments(interrupted, interactiveInput);
+                    setTaskArguments(interrupted, withWorkflowInputAliases(interactiveInput));
                 } else {
                     String query = getDisplayContent(event);
-                    setTaskArguments(interrupted, buildResumeInteractiveInput(query, resume.componentIds));
+                    setTaskArguments(interrupted, withWorkflowInputAliases(
+                            buildResumeInteractiveInput(query, resume.componentIds)));
                 }
                 interrupted.setStatus(TaskStatus.INPUT_REQUIRED);
 
-                int resumeIteration = resume.savedIteration != null ? resume.savedIteration + 1 : 1;
+                int resumeIteration = resumeStartIteration(resume.savedIteration);
                 return executeReactLoop(resume.remainingTasks, session, resumeIteration,
                         resume.aiMessage, context);
             }
@@ -351,9 +361,17 @@ public class LlmEventHandler extends EventHandler {
             if (e.getCode() == StatusCode.AGENT_TOOL_NOT_FOUND.getCode()) {
                 throw e;
             }
+            Optional<TaskExecutionResult> recovered = recoverInteractionInterrupt(e, task);
+            if (recovered.isPresent()) {
+                return recovered.get();
+            }
             Loggers.CONTROLLER.error("Error executing task {}: {}", task.getTaskId(), e.getMessage());
             return new TaskExecutionResult(TaskStatus.FAILED, null, e.getMessage(), null);
         } catch (Exception e) {
+            Optional<TaskExecutionResult> recovered = recoverInteractionInterrupt(e, task);
+            if (recovered.isPresent()) {
+                return recovered.get();
+            }
             Loggers.CONTROLLER.error("Error executing task {}: {}", task.getTaskId(), e.getMessage());
             return new TaskExecutionResult(TaskStatus.FAILED, null, e.getMessage(), null);
         }
@@ -395,6 +413,13 @@ public class LlmEventHandler extends EventHandler {
 
     private TaskExecutionResult executePluginTask(Task task, AgentSessionApi session, ModelContext context) {
         String toolName = task.getDescription();
+        Optional<String> workflowId = resolveWorkflowIdByName(toolName);
+        if (workflowId.isPresent()) {
+            putTaskMetadata(task, "target_id", workflowId.get());
+            Loggers.CONTROLLER.info("Executing plugin-routed workflow: {} -> {}", toolName, workflowId.get());
+            return executeWorkflowTask(task, session, context);
+        }
+
         String toolId = findPluginIdByName(toolName).orElse(null);
         String resolvedToolId = toolId != null ? toolId : toolName;
 
@@ -430,17 +455,20 @@ public class LlmEventHandler extends EventHandler {
                 AbilityManager.ExecutionResult result = results.get(0);
                 toolResult = result.result();
                 toolMessage = result.toolMessage();
+                logToolMessageError(toolName, toolMessage);
             }
         } else {
             Map<String, Object> toolArgs = castArguments(getTaskArguments(task));
             try {
                 toolResult = ((com.openjiuwen.core.foundation.tool.Tool) tool).invoke(toolArgs, Map.of());
             } catch (Exception e) {
+                Loggers.CONTROLLER.error("tool execution error for {}: {}", toolName, e.getMessage());
                 throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
                         "error_msg", "Tool execution error: " + e.getMessage());
             }
             toolMessage = new ToolMessage(String.valueOf(toolResult), task.getTaskId(), toolName);
         }
+        Loggers.CONTROLLER.info("Tool result: {}", toolResult);
 
         Map<String, Object> payload = new HashMap<>();
         payload.put("output", toolResult);
@@ -513,6 +541,66 @@ public class LlmEventHandler extends EventHandler {
         context.addMessages(errorToolMsg);
 
         sendErrorStream(errorMsg, session);
+    }
+
+    private Optional<TaskExecutionResult> recoverInteractionInterrupt(Throwable error, Task task) {
+        String text = throwableText(error);
+        if (!text.contains("GraphInterrupt") || !text.contains("OutputSchema{type='__interaction__'")) {
+            return Optional.empty();
+        }
+        List<Object> chunks = parseInteractionInterruptChunks(text);
+        if (chunks.isEmpty()) {
+            return Optional.empty();
+        }
+        Map<String, Object> metadata = new HashMap<>();
+        getWorkflowIdFromTask(task).ifPresent(workflowId -> metadata.put("workflow_id", workflowId));
+        Loggers.CONTROLLER.info("Recovered {} interaction chunk(s) from workflow GraphInterrupt", chunks.size());
+        return Optional.of(new TaskExecutionResult(TaskStatus.INPUT_REQUIRED, chunks, null, metadata));
+    }
+
+    private List<Object> parseInteractionInterruptChunks(String text) {
+        Matcher matcher = INTERACTION_INTERRUPT_PATTERN.matcher(text);
+        List<Object> chunks = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        while (matcher.find()) {
+            int index = parseIndex(matcher.group(1));
+            String id = matcher.group(2);
+            Object value = parseInteractionValue(matcher.group(3));
+            String key = index + "\u0000" + id + "\u0000" + value;
+            if (seen.add(key)) {
+                chunks.add(new OutputSchema(INTERACTION, index, new InteractionOutput(id, value)));
+            }
+        }
+        return chunks;
+    }
+
+    private static int parseIndex(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private static Object parseInteractionValue(String value) {
+        if (value == null || "null".equals(value)) {
+            return null;
+        }
+        return value;
+    }
+
+    private static String throwableText(Throwable throwable) {
+        StringBuilder builder = new StringBuilder();
+        Throwable current = throwable;
+        Set<Throwable> seen = new java.util.HashSet<>();
+        while (current != null && seen.add(current)) {
+            builder.append(current).append('\n');
+            if (current.getMessage() != null) {
+                builder.append(current.getMessage()).append('\n');
+            }
+            current = current.getCause();
+        }
+        return builder.toString();
     }
 
     private void postTaskCompletion(Task task, TaskExecutionResult result,
@@ -863,19 +951,16 @@ public class LlmEventHandler extends EventHandler {
 
     private String resolveTaskType(String targetName) {
         // Check if target matches a workflow name
-        for (WorkflowSchema ws : workflowSchemas()) {
-            if (ws.getName().equals(targetName)) {
-                    return "workflow";
-            }
+        if (resolveWorkflowIdByName(targetName).isPresent()) {
+            return "workflow";
         }
         return "plugin";
     }
 
     private String resolveTargetId(String targetName) {
-        for (WorkflowSchema ws : workflowSchemas()) {
-            if (ws.getName().equals(targetName)) {
-                return ws.getId() + "_" + ws.getVersion();
-            }
+        Optional<String> workflowId = resolveWorkflowIdByName(targetName);
+        if (workflowId.isPresent()) {
+            return workflowId.get();
         }
         return findPluginIdByName(targetName).orElse(null);
     }
@@ -898,7 +983,48 @@ public class LlmEventHandler extends EventHandler {
                 return Optional.of(ws.getId() + "_" + ws.getVersion());
             }
         }
+        Optional<WorkflowCard> card = workflowCardFromAbilityManager(workflowName);
+        if (card.isPresent()) {
+            return Optional.of(workflowResourceId(card.get()));
+        }
         return Optional.empty();
+    }
+
+    private Optional<String> resolveWorkflowIdByName(String workflowName) {
+        return getWorkflowIdFromSchema(workflowName);
+    }
+
+    private Optional<WorkflowCard> workflowCardFromAbilityManager(String workflowName) {
+        if (!(abilityManager instanceof AbilityManager manager) || workflowName == null) {
+            return Optional.empty();
+        }
+        return manager.get(workflowName)
+                .filter(WorkflowCard.class::isInstance)
+                .map(WorkflowCard.class::cast);
+    }
+
+    private static String workflowResourceId(WorkflowCard card) {
+        return card.getId() + "_" + card.getVersion();
+    }
+
+    private static void putTaskMetadata(Task task, String key, Object value) {
+        Map<String, Object> metadata = task.getMetadata();
+        if (metadata == null) {
+            metadata = new HashMap<>();
+            task.setMetadata(metadata);
+        }
+        metadata.put(key, value);
+    }
+
+    private static void logToolMessageError(String toolName, ToolMessage toolMessage) {
+        if (toolMessage == null || toolMessage.getContent() == null) {
+            return;
+        }
+        String content = String.valueOf(toolMessage.getContent());
+        String normalized = content.toLowerCase(java.util.Locale.ROOT);
+        if (normalized.contains("ability execution error") || normalized.contains("tool execution error")) {
+            Loggers.CONTROLLER.error("tool execution error for {}: {}", toolName, content);
+        }
     }
 
     private String ensureWorkflowId(Task task) {
@@ -1364,6 +1490,46 @@ public class LlmEventHandler extends EventHandler {
         return interactiveInput;
     }
 
+    private int resumeStartIteration(Integer savedIteration) {
+        if (savedIteration == null) {
+            return 1;
+        }
+        int maxIteration = agentConfig.getConstrain().getMaxIteration();
+        return Math.max(1, Math.min(savedIteration + 1, maxIteration));
+    }
+
+    private static InteractiveInput withWorkflowInputAliases(InteractiveInput input) {
+        if (input == null || input.getRawInputs() != null || input.getUserInputs() == null
+                || input.getUserInputs().isEmpty()) {
+            return input;
+        }
+        Map<String, Object> expanded = new LinkedHashMap<>(input.getUserInputs());
+        Map<String, InteractiveInput> nestedInputs = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : input.getUserInputs().entrySet()) {
+            String nodeId = entry.getKey();
+            int dot = nodeId == null ? -1 : nodeId.lastIndexOf('.');
+            if (dot >= 0 && dot + 1 < nodeId.length()) {
+                expanded.putIfAbsent(nodeId.substring(dot + 1), entry.getValue());
+            }
+            int firstDot = nodeId == null ? -1 : nodeId.indexOf('.');
+            if (firstDot >= 0 && firstDot + 1 < nodeId.length()) {
+                String parentNodeId = nodeId.substring(0, firstDot);
+                String nestedNodeId = nodeId.substring(firstDot + 1);
+                nestedInputs.computeIfAbsent(parentNodeId, ignored -> new InteractiveInput())
+                        .update(nestedNodeId, entry.getValue());
+            }
+        }
+        for (Map.Entry<String, InteractiveInput> entry : nestedInputs.entrySet()) {
+            expanded.putIfAbsent(entry.getKey(), entry.getValue());
+        }
+        if (expanded.size() == input.getUserInputs().size()) {
+            return input;
+        }
+        InteractiveInput copy = new InteractiveInput();
+        copy.setUserInputs(expanded);
+        return copy;
+    }
+
     private List<WorkflowSchema> workflowSchemas() {
         List<WorkflowSchema> result = new ArrayList<>();
         if (agentConfig.getWorkflows() == null) {
@@ -1396,10 +1562,31 @@ public class LlmEventHandler extends EventHandler {
         if (schemaType.isInstance(raw)) {
             return schemaType.cast(raw);
         }
+        if (schemaType == WorkflowSchema.class && raw instanceof WorkflowCard workflowCard) {
+            @SuppressWarnings("unchecked")
+            T schema = (T) WorkflowSchema.builder()
+                    .id(workflowCard.getId())
+                    .name(workflowCard.getName())
+                    .description(workflowCard.getDescription())
+                    .version(workflowCard.getVersion())
+                    .inputs(workflowInputs(workflowCard))
+                    .build();
+            return schema;
+        }
         if (raw instanceof Map<?, ?> map) {
             return OBJECT_MAPPER.convertValue(map, schemaType);
         }
         return null;
+    }
+
+    private static Map<String, Object> workflowInputs(WorkflowCard workflowCard) {
+        Object inputParams = workflowCard.getInputParams();
+        if (!(inputParams instanceof Map<?, ?> map)) {
+            return new LinkedHashMap<>();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        map.forEach((key, value) -> result.put(String.valueOf(key), value));
+        return result;
     }
 
     private static List<Map<String, Object>> copyPromptTemplate(List<? extends Map<String, ?>> promptTemplate) {

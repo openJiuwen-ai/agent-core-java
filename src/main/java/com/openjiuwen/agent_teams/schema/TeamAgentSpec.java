@@ -7,20 +7,20 @@ package com.openjiuwen.agent_teams.schema;
 import com.openjiuwen.agent_teams.AgentTeamPaths;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator;
 import com.openjiuwen.agent_teams.agent.AgentConfigurator.AgentCard;
-import com.openjiuwen.agent_teams.agent.AgentConfigurator.DeepAgentSpec;
-import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamMemberSpec;
-import com.openjiuwen.agent_teams.agent.AgentConfigurator.TeamRole;
 import com.openjiuwen.agent_teams.agent.TeamAgent;
 import com.openjiuwen.agent_teams.constants.TeamConstants;
+import com.openjiuwen.agent_teams.memory.TeamMemoryConfig;
 import com.openjiuwen.agent_teams.messager.MessagerTransportConfig;
 import com.openjiuwen.agent_teams.models.Allocation;
 import com.openjiuwen.agent_teams.models.ModelAllocator;
 import com.openjiuwen.agent_teams.models.ModelAllocators;
 import com.openjiuwen.agent_teams.models.ModelPoolEntry;
 import com.openjiuwen.agent_teams.models.ModelRouterConfig;
+import com.openjiuwen.agent_teams.team_workspace.TeamWorkspaceConfig;
 import com.openjiuwen.agent_teams.tools.database.DatabaseConfig;
 import com.openjiuwen.agent_teams.tools.database.DatabaseType;
 import com.openjiuwen.harness.prompts.HarnessPromptsPackage;
+import com.openjiuwen.harness.tools.worktree.WorktreeConfig;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -36,8 +36,23 @@ import java.util.Set;
  * <p>Mirrors Python's {@code TeamAgentSpec} in
  * {@code openjiuwen/agent_teams/schema/blueprint.py}.</p>
  */
-public class TeamAgentSpec extends AgentConfigurator.TeamAgentSpec {
+public class TeamAgentSpec {
 
+    private Map<String, AgentConfigurator.DeepAgentSpec> agents = new LinkedHashMap<>();
+    private String teamName = "agent_team";
+    private TeamLifecycle lifecycle = TeamLifecycle.TEMPORARY;
+    private String teammateMode = "build_mode";
+    private String spawnMode = "process";
+    private String teamMode;
+    private List<TeamMemberSpec> predefinedMembers = new ArrayList<>();
+    private List<Object> externalCliAgents = new ArrayList<>();
+    private TeamWorkspaceConfig workspace;
+    private WorktreeConfig worktree;
+    private TeamMemoryConfig memory;
+    private Map<String, Object> metadata = new LinkedHashMap<>();
+    private boolean enableHitt;
+    private boolean enableBridge;
+    private boolean exposeHumanAgentsToTeammates;
     private boolean enableTeamPlan;
     private LeaderSpec leader = new LeaderSpec();
     private List<ModelPoolEntry> modelPool = new ArrayList<>();
@@ -48,7 +63,6 @@ public class TeamAgentSpec extends AgentConfigurator.TeamAgentSpec {
     private StorageSpec storage;
 
     public TeamAgentSpec() {
-        super();
     }
 
     public Object resolveDbConfig() {
@@ -72,13 +86,13 @@ public class TeamAgentSpec extends AgentConfigurator.TeamAgentSpec {
         validateHittConsistency();
         validateBridgeConsistency();
 
-        DeepAgentSpec leaderAgent = getAgents().get("leader");
+        AgentConfigurator.DeepAgentSpec leaderAgent = getAgents().get("leader");
         if (leaderAgent == null) {
             throw new IllegalArgumentException("agents dict must contain a 'leader' key");
         }
 
         String resolvedLanguage = HarnessPromptsPackage.resolveLanguage(language);
-        for (DeepAgentSpec roleSpec : getAgents().values()) {
+        for (AgentConfigurator.DeepAgentSpec roleSpec : getAgents().values()) {
             if (roleSpec.getLanguage() == null) {
                 roleSpec.setLanguage(resolvedLanguage);
             }
@@ -94,13 +108,14 @@ public class TeamAgentSpec extends AgentConfigurator.TeamAgentSpec {
             teamStrategy = modelPoolStrategy;
         }
 
+        AgentConfigurator.TeamAgentSpec runtimeSpec = toConfiguratorSpec();
         AgentConfigurator.TeamSpec teamSpec = new AgentConfigurator.TeamSpec(
-                getTeamName(),
-                getTeamName(),
+                teamName,
+                teamName,
                 leader.getMemberName()
         );
         teamSpec.setLanguage(resolvedLanguage);
-        teamSpec.setMetadata(getMetadata());
+        teamSpec.setMetadata(metadata);
         teamSpec.setModelPool(teamPool);
         teamSpec.setModelPoolStrategy(teamStrategy);
 
@@ -114,29 +129,68 @@ public class TeamAgentSpec extends AgentConfigurator.TeamAgentSpec {
         }
 
         AgentConfigurator.TeamRuntimeContext context = new AgentConfigurator.TeamRuntimeContext();
-        context.setRole(TeamRole.LEADER);
+        context.setRole(TeamRole.LEADER.toConfiguratorRole());
         context.setMemberName(leader.getMemberName());
         context.setPersona(leader.getPersona());
         context.setTeamSpec(teamSpec);
         context.setMessagerConfig(messagerConfig);
         context.setDbConfig(dbConfigMap(resolveDbConfig()));
 
-        ModelAllocator modelAllocator = ModelAllocators.buildModelAllocator(this, teamSpec);
+        ModelAllocator modelAllocator = ModelAllocators.buildModelAllocator(runtimeSpec, teamSpec);
         Allocation leaderAllocation = modelAllocator == null ? null : modelAllocator.allocate(leader.getModelName());
         Object leaderMemberModel = leaderAllocation == null ? null : leaderAllocation.toTeamModelConfig();
         context.setMemberModel(leaderMemberModel);
         validateLeaderModelResolved(leaderAgent, leaderAllocation, teamPool, teamStrategy);
 
-        String leaderCardId = getTeamName() + "_" + leader.getMemberName();
+        String leaderCardId = teamName + "_" + leader.getMemberName();
         AgentCard leaderCard = new AgentCard(
                 leaderCardId,
                 leader.getDisplayName(),
-                "Leader of team " + getTeamName()
+                "Leader of team " + teamName
         );
         TeamAgent agent = new TeamAgent(leaderCard);
         agent.attachModelAllocator(modelAllocator, leaderAllocation);
-        agent.configure(this, context);
+        agent.configure(runtimeSpec, context);
         return agent;
+    }
+
+    public AgentConfigurator.TeamAgentSpec toConfiguratorSpec() {
+        AgentConfigurator.TeamAgentSpec spec = new AgentConfigurator.TeamAgentSpec();
+        spec.setAgents(agents);
+        spec.setTeamName(teamName);
+        spec.setLifecycle(lifecycle == null ? TeamLifecycle.TEMPORARY.value() : lifecycle.value());
+        spec.setTeammateMode(teammateMode);
+        spec.setSpawnMode(spawnMode);
+        spec.setTeamMode(teamMode);
+        spec.setPredefinedMembers(predefinedMembers.stream()
+                .map(TeamMemberSpec::toConfiguratorSpec)
+                .toList());
+        spec.setExternalCliAgents(externalCliAgents);
+        spec.setWorkspace(workspace);
+        spec.setWorktree(worktree);
+        spec.setMemory(toConfiguratorMemory(memory));
+        spec.setMetadata(metadata);
+        spec.setEnableHitt(enableHitt);
+        spec.setEnableBridge(enableBridge);
+        spec.setExposeHumanAgentsToTeammates(exposeHumanAgentsToTeammates);
+        spec.setEnableTeamPlan(enableTeamPlan);
+        return spec;
+    }
+
+    private static AgentConfigurator.TeamMemoryConfig toConfiguratorMemory(TeamMemoryConfig source) {
+        if (source == null) {
+            return null;
+        }
+        AgentConfigurator.TeamMemoryConfig config = new AgentConfigurator.TeamMemoryConfig();
+        config.setEnabled(source.isEnabled());
+        config.setSharedMemory(source.isSharedMemory());
+        config.setAutoExtract(source.isAutoExtract());
+        config.setTeamMemoryDir(source.getTeamMemoryDir());
+        config.setParentWorkspacePath(source.getParentWorkspacePath());
+        config.setScenario(source.getScenario());
+        config.setMemberMemoryPromptMode(source.getMemberMemoryPromptMode());
+        config.setTimezoneOffsetHours(source.getTimezoneOffsetHours());
+        return config;
     }
 
     private void normalizeTransportForSpawnMode() {
@@ -222,7 +276,7 @@ public class TeamAgentSpec extends AgentConfigurator.TeamAgentSpec {
     }
 
     private void validateLeaderModelResolved(
-            DeepAgentSpec leaderAgent,
+            AgentConfigurator.DeepAgentSpec leaderAgent,
             Allocation leaderAllocation,
             List<ModelPoolEntry> teamPool,
             String teamStrategy
@@ -277,6 +331,163 @@ public class TeamAgentSpec extends AgentConfigurator.TeamAgentSpec {
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
+    }
+
+    public Map<String, AgentConfigurator.DeepAgentSpec> getAgents() {
+        return agents;
+    }
+
+    public void setAgents(Map<String, ? extends AgentConfigurator.DeepAgentSpec> agents) {
+        this.agents = agents == null ? new LinkedHashMap<>() : new LinkedHashMap<>(agents);
+    }
+
+    public String getTeamName() {
+        return teamName;
+    }
+
+    public void setTeamName(String teamName) {
+        this.teamName = teamName;
+    }
+
+    public TeamLifecycle getLifecycle() {
+        return lifecycle;
+    }
+
+    public void setLifecycle(TeamLifecycle lifecycle) {
+        this.lifecycle = lifecycle == null ? TeamLifecycle.TEMPORARY : lifecycle;
+    }
+
+    public void setLifecycle(String lifecycle) {
+        this.lifecycle = lifecycle == null ? TeamLifecycle.TEMPORARY : TeamLifecycle.fromValue(lifecycle);
+    }
+
+    public String getTeammateMode() {
+        return teammateMode;
+    }
+
+    public void setTeammateMode(String teammateMode) {
+        this.teammateMode = teammateMode;
+    }
+
+    public String getSpawnMode() {
+        return spawnMode;
+    }
+
+    public void setSpawnMode(String spawnMode) {
+        this.spawnMode = spawnMode;
+    }
+
+    public String getTeamMode() {
+        return teamMode;
+    }
+
+    public void setTeamMode(String teamMode) {
+        this.teamMode = teamMode;
+    }
+
+    public List<TeamMemberSpec> getPredefinedMembers() {
+        return new ArrayList<>(predefinedMembers);
+    }
+
+    public void setPredefinedMembers(List<?> predefinedMembers) {
+        this.predefinedMembers = new ArrayList<>();
+        if (predefinedMembers == null) {
+            return;
+        }
+        for (Object member : predefinedMembers) {
+            if (member instanceof TeamMemberSpec schemaMember) {
+                this.predefinedMembers.add(schemaMember);
+            } else if (member instanceof AgentConfigurator.TeamMemberSpec configuratorMember) {
+                this.predefinedMembers.add(TeamMemberSpec.fromConfiguratorSpec(configuratorMember));
+            } else if (member != null) {
+                throw new IllegalArgumentException("predefined_members items must be TeamMemberSpec");
+            }
+        }
+    }
+
+    public List<Object> getExternalCliAgents() {
+        return new ArrayList<>(externalCliAgents);
+    }
+
+    public void setExternalCliAgents(List<Object> externalCliAgents) {
+        this.externalCliAgents = externalCliAgents == null ? new ArrayList<>() : new ArrayList<>(externalCliAgents);
+    }
+
+    public TeamWorkspaceConfig getWorkspace() {
+        return workspace;
+    }
+
+    public void setWorkspace(TeamWorkspaceConfig workspace) {
+        this.workspace = workspace;
+    }
+
+    public WorktreeConfig getWorktree() {
+        return worktree;
+    }
+
+    public void setWorktree(WorktreeConfig worktree) {
+        this.worktree = worktree;
+    }
+
+    public TeamMemoryConfig getMemory() {
+        return memory;
+    }
+
+    public void setMemory(TeamMemoryConfig memory) {
+        this.memory = memory;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return new LinkedHashMap<>(metadata);
+    }
+
+    public void setMetadata(Map<String, Object> metadata) {
+        this.metadata = metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata);
+    }
+
+    public boolean isEnableHitt() {
+        return enableHitt;
+    }
+
+    public void setEnableHitt(boolean enableHitt) {
+        this.enableHitt = enableHitt;
+    }
+
+    public boolean isEnableBridge() {
+        return enableBridge;
+    }
+
+    public void setEnableBridge(boolean enableBridge) {
+        this.enableBridge = enableBridge;
+    }
+
+    public boolean isExposeHumanAgentsToTeammates() {
+        return exposeHumanAgentsToTeammates;
+    }
+
+    public void setExposeHumanAgentsToTeammates(boolean exposeHumanAgentsToTeammates) {
+        this.exposeHumanAgentsToTeammates = exposeHumanAgentsToTeammates;
+    }
+
+    public void injectHumanAgentIfEnabled() {
+        if (!enableHitt) {
+            return;
+        }
+        boolean exists = predefinedMembers.stream()
+                .anyMatch(member -> TeamRole.HUMAN_AGENT == member.getRoleType());
+        if (exists) {
+            return;
+        }
+        TeamMemberSpec humanAgent = new TeamMemberSpec();
+        humanAgent.setMemberName(TeamConstants.HUMAN_AGENT_MEMBER_NAME);
+        humanAgent.setDisplayName("Human Agent");
+        humanAgent.setRoleType(TeamRole.HUMAN_AGENT);
+        predefinedMembers.add(humanAgent);
+    }
+
+    public String resolveLanguage(String defaultLanguage) {
+        return HarnessPromptsPackage.resolveLanguage(
+                language == null || language.isBlank() ? defaultLanguage : language);
     }
 
     public boolean isEnableTeamPlan() {

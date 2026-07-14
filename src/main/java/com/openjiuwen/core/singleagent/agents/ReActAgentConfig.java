@@ -107,12 +107,12 @@ public class ReActAgentConfig {
         return configurePrompt(promptName);
     }
 
-    public ReActAgentConfig configurePromptTemplate(List<Map<String, Object>> promptTemplate) {
+    public ReActAgentConfig configurePromptTemplate(List<? extends Map<String, ?>> promptTemplate) {
         setPromptTemplate(promptTemplate);
         return this;
     }
 
-    public ReActAgentConfig configure_prompt_template(List<Map<String, Object>> promptTemplate) {
+    public ReActAgentConfig configure_prompt_template(List<? extends Map<String, ?>> promptTemplate) {
         return configurePromptTemplate(promptTemplate);
     }
 
@@ -273,7 +273,7 @@ public class ReActAgentConfig {
         return deepCopyPromptTemplate(promptTemplate);
     }
 
-    public void setPromptTemplate(List<Map<String, Object>> promptTemplate) {
+    public void setPromptTemplate(List<? extends Map<String, ?>> promptTemplate) {
         this.promptTemplate = deepCopyPromptTemplate(promptTemplate);
     }
 
@@ -368,10 +368,123 @@ public class ReActAgentConfig {
         return value == null ? "" : value;
     }
 
-    private static List<Map<String, Object>> deepCopyPromptTemplate(List<Map<String, Object>> source) {
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static class Builder {
+        protected final ReActAgentConfig config;
+
+        protected Builder() {
+            this(new ReActAgentConfig());
+        }
+
+        protected Builder(ReActAgentConfig config) {
+            if (config == null) {
+                throw new IllegalArgumentException("config must not be null");
+            }
+            this.config = config;
+        }
+
+        public Builder memScopeId(String memScopeId) {
+            config.setMemScopeId(memScopeId);
+            return this;
+        }
+
+        public Builder modelName(String modelName) {
+            config.setModelName(modelName);
+            return this;
+        }
+
+        public Builder modelProvider(String modelProvider) {
+            config.setModelProvider(modelProvider);
+            return this;
+        }
+
+        public Builder apiKey(String apiKey) {
+            config.setApiKey(apiKey);
+            return this;
+        }
+
+        public Builder apiBase(String apiBase) {
+            config.setApiBase(apiBase);
+            return this;
+        }
+
+        public Builder customHeaders(Map<String, Object> customHeaders) {
+            config.setCustomHeaders(customHeaders);
+            return this;
+        }
+
+        public Builder promptTemplateName(String promptTemplateName) {
+            config.setPromptTemplateName(promptTemplateName);
+            return this;
+        }
+
+        public Builder promptTemplate(List<? extends Map<String, ?>> promptTemplate) {
+            config.setPromptTemplate(promptTemplate);
+            return this;
+        }
+
+        public Builder maxIterations(int maxIterations) {
+            config.setMaxIterations(maxIterations);
+            return this;
+        }
+
+        public Builder llmReturnTokenIds(boolean llmReturnTokenIds) {
+            config.setLlmReturnTokenIds(llmReturnTokenIds);
+            return this;
+        }
+
+        public Builder llmLogprobs(boolean llmLogprobs) {
+            config.setLlmLogprobs(llmLogprobs);
+            return this;
+        }
+
+        public Builder llmTopLogprobs(int llmTopLogprobs) {
+            config.setLlmTopLogprobs(llmTopLogprobs);
+            return this;
+        }
+
+        public Builder modelClientConfig(ModelClientConfig modelClientConfig) {
+            config.setModelClientConfig(modelClientConfig);
+            return this;
+        }
+
+        public Builder modelConfigObj(ModelRequestConfig modelConfigObj) {
+            config.setModelConfigObj(modelConfigObj);
+            return this;
+        }
+
+        public Builder sysOperationId(String sysOperationId) {
+            config.setSysOperationId(sysOperationId);
+            return this;
+        }
+
+        public Builder contextEngineConfig(ContextEngineConfig contextEngineConfig) {
+            config.setContextEngineConfig(contextEngineConfig);
+            return this;
+        }
+
+        public Builder contextProcessors(List<ContextEngine.ProcessorSpec> contextProcessors) {
+            config.setContextProcessors(contextProcessors);
+            return this;
+        }
+
+        public Builder workspace(Object workspace) {
+            config.setWorkspace(workspace);
+            return this;
+        }
+
+        public ReActAgentConfig build() {
+            return config;
+        }
+    }
+
+    private static List<Map<String, Object>> deepCopyPromptTemplate(List<? extends Map<String, ?>> source) {
         List<Map<String, Object>> copy = new ArrayList<>();
         if (source != null) {
-            for (Map<String, Object> message : source) {
+            for (Map<String, ?> message : source) {
                 copy.add(message == null ? new LinkedHashMap<>() : new LinkedHashMap<>(message));
             }
         }

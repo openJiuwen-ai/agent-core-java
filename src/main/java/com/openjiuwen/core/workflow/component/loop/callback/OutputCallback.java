@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.workflow.component.loop.callback;
 
+import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.session.utils.SessionUtils;
@@ -78,7 +79,9 @@ public class OutputCallback extends LoopCallback {
         if (results.size() >= loopTimes) {
             return null;
         }
-        Object roundInputs = WorkflowSessionSupport.getInputs(session, outputsFormat);
+        Object nodeScopedInputs = WorkflowSessionSupport.getNodeScopedInputs(session, outputsFormat);
+        Object fallbackInputs = WorkflowSessionSupport.getInputs(session, outputsFormat);
+        Object roundInputs = mergeMissingValues(nodeScopedInputs, fallbackInputs);
         results.add(roundInputs);
         state.update(Map.of(roundResultRoot, results));
         return null;
@@ -102,14 +105,18 @@ public class OutputCallback extends LoopCallback {
             if (pathParts.length > 0) {
                 String nodeId = WorkflowSessionSupport.componentId(session);
                 if (pathParts[0].equals(nodeId)) {
-                    return valueFromLatestRound(results, root);
+                    if (pathParts.length == 2 && Constant.INDEX.equals(pathParts[1])) {
+                        WorkflowStateCollection state = WorkflowSessionSupport.stateCollection(session);
+                        return state == null ? null : state.get(Constant.INDEX);
+                    }
+                    return WorkflowSessionSupport.getGlobalState(session, refStr);
                 }
             }
         }
 
         List<Object> output = new ArrayList<>();
         for (Object result : results) {
-            output.add(valueFromPath(result, root));
+            output.add(normalizeRoundValue(valueFromPath(result, root), outputFormat));
         }
         return output;
     }
@@ -128,5 +135,41 @@ public class OutputCallback extends LoopCallback {
             data = ((Map<String, Object>) data).get(key);
         }
         return data;
+    }
+
+    private Object normalizeRoundValue(Object value, Object outputFormat) {
+        if (!(outputFormat instanceof String refPath) || !SessionUtils.isRefPath(refPath)
+                || !(value instanceof Map<?, ?> map) || map.size() != 1) {
+            return value;
+        }
+        String refStr = SessionUtils.extractOriginKey(refPath);
+        if (!refStr.contains(".") && map.containsKey(refStr)) {
+            return map.get(refStr);
+        }
+        return value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object mergeMissingValues(Object primary, Object fallback) {
+        if (primary == null) {
+            return fallback;
+        }
+        if (primary instanceof Map<?, ?> primaryMap && fallback instanceof Map<?, ?> fallbackMap) {
+            Map<String, Object> merged = new LinkedHashMap<>((Map<String, Object>) primaryMap);
+            for (Map.Entry<?, ?> entry : fallbackMap.entrySet()) {
+                String key = String.valueOf(entry.getKey());
+                merged.put(key, mergeMissingValues(merged.get(key), entry.getValue()));
+            }
+            return merged;
+        }
+        if (primary instanceof List<?> primaryList && fallback instanceof List<?> fallbackList) {
+            List<Object> merged = new ArrayList<>(primaryList);
+            int size = Math.min(merged.size(), fallbackList.size());
+            for (int index = 0; index < size; index++) {
+                merged.set(index, mergeMissingValues(merged.get(index), fallbackList.get(index)));
+            }
+            return merged;
+        }
+        return primary;
     }
 }

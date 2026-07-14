@@ -119,6 +119,41 @@ class T01167EndComponentTest {
     }
 
     @Test
+    void templateUtilsUsesPythonContainerRepresentationAndInsertionOrder() {
+        Map<String, Object> nested = new LinkedHashMap<>();
+        nested.put("res", "你好");
+        nested.put("info", 789);
+
+        List<Object> values = new ArrayList<>();
+        values.add("Ada");
+        values.add(true);
+        values.add(null);
+        values.add(nested);
+
+        Map<String, Object> container = new LinkedHashMap<>();
+        container.put("message", "can't");
+        container.put("values", values);
+
+        assertEquals("{'res': '你好', 'info': 789}",
+                TemplateUtils.renderTemplate("{{value}}", Map.of("value", nested)));
+        assertEquals("{'message': \"can't\", 'values': ['Ada', True, None, {'res': '你好', 'info': 789}]}",
+                TemplateUtils.renderTemplate("{{value}}", Map.of("value", container)));
+        assertEquals("Ada", TemplateUtils.renderTemplate("{{value}}", Map.of("value", "Ada")));
+    }
+
+    @Test
+    void templateBatchProcessorUsesTheSamePythonContainerRepresentation() {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("res", "你好");
+        value.put("info", 789);
+
+        TemplateBatchProcessor processor = new TemplateBatchProcessor(
+                new TemplateProcessor("{{value}}"), Map.of("value", value));
+
+        assertEquals("{'res': '你好', 'info': 789}", processor.render(null, new TestSession()));
+    }
+
+    @Test
     void simpleTemplateWorkflowRendersResponseEnvelope() {
         End end = new End(Map.of("responseTemplate", "hello:{{end_input}}"));
 

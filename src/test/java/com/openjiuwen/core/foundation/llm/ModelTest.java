@@ -139,10 +139,15 @@ class ModelTest {
         framework.transformedOutput = new AssistantMessage("transformed");
         Model.setCallbackFramework(framework);
         Model model = new Model(client);
+        ModelRetryListener retryListener = event -> { };
 
         AssistantMessage response = model.invoke(
                 List.of(new UserMessage("hello")),
-                ModelInvokeOptions.builder().model("model-a").temperature(0.7f).build()
+                ModelInvokeOptions.builder()
+                        .model("model-a")
+                        .temperature(0.7f)
+                        .retryListener(retryListener)
+                        .build()
         ).toCompletableFuture().join();
 
         assertEquals("transformed", response.getContentAsString());
@@ -154,6 +159,7 @@ class ModelTest {
         ), framework.events);
         assertEquals("model-a", client.invokeOptions.get(0).getModel());
         assertEquals(0.7f, client.invokeOptions.get(0).getTemperature());
+        assertEquals(retryListener, client.invokeOptions.get(0).getRetryListener());
     }
 
     @Test

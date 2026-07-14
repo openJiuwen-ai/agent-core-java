@@ -34,7 +34,7 @@ import java.util.function.Function;
 public final class SslUtils {
 
     private static final long MAX_CERT_SIZE = 1024L * 1024L;
-    private static volatile Function<String, String> envReader = System::getenv;
+    private static volatile Function<String, String> envReader = SslUtils::defaultConfigValue;
 
     private SslUtils() {
     }
@@ -187,7 +187,12 @@ public final class SslUtils {
     }
 
     static void resetEnvReaderForTests() {
-        envReader = System::getenv;
+        envReader = SslUtils::defaultConfigValue;
+    }
+
+    private static String defaultConfigValue(String key) {
+        String propertyValue = System.getProperty(key);
+        return propertyValue != null ? propertyValue : System.getenv(key);
     }
 
     private static X509TrustManager secureLoadTrustManager(Path certPath) throws Exception {

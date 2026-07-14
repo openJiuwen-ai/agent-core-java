@@ -8,6 +8,7 @@ import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
@@ -197,9 +199,41 @@ public abstract class BaseAgent {
         return executeCallbacks(event, inputs, session, context);
     }
 
-    public abstract CompletionStage<Object> invoke(Object inputs, AgentSessionApi session);
+    public CompletionStage<Object> invoke(Object inputs, AgentSessionApi session) {
+        return CompletableFuture.completedFuture(invoke(inputs, (Session) null));
+    }
 
-    public abstract Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes);
+    public Iterator<Object> stream(Object inputs, AgentSessionApi session, List<StreamMode> streamModes) {
+        return stream(inputs, (Session) null, streamModes);
+    }
+
+    public CompletionStage<Object> invoke(Map<?, ?> inputs, Session session) {
+        return legacyInvokeStage(inputs, session);
+    }
+
+    public CompletionStage<Object> invoke(String inputs, Session session) {
+        return legacyInvokeStage(inputs, session);
+    }
+
+    public Object invoke(Object inputs, Session session) {
+        throw new UnsupportedOperationException(getClass().getName() + " does not implement invoke(Object, Session)");
+    }
+
+    public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
+        return List.<Object>of(invoke(inputs, session)).iterator();
+    }
+
+    private CompletionStage<Object> legacyInvokeStage(Object inputs, Session session) {
+        try {
+            Object result = invoke(inputs, (AgentSessionApi) session).toCompletableFuture().join();
+            if (result instanceof Map<?, ?> resultMap) {
+                return new MapViewCompletedStage(resultMap);
+            }
+            return CompletableFuture.completedFuture(result);
+        } catch (RuntimeException exception) {
+            return MapViewCompletedStage.failed(exception);
+        }
+    }
 
     public BaseAgent activateSkill(String skillName, AgentSessionApi session) {
         String normalizedSkillName = normalizeSkillName(skillName);
@@ -408,5 +442,123 @@ public abstract class BaseAgent {
             return null;
         }
         return skillName;
+    }
+
+    private static final class MapViewCompletedStage extends CompletableFuture<Object> implements Map<String, Object> {
+        private final Map<String, Object> delegate = new LinkedHashMap<>();
+
+        private MapViewCompletedStage(Map<?, ?> value) {
+            for (Map.Entry<?, ?> entry : value.entrySet()) {
+                delegate.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            complete(value);
+        }
+
+        private MapViewCompletedStage() {
+        }
+
+        private static MapViewCompletedStage failed(Throwable error) {
+            MapViewCompletedStage stage = new MapViewCompletedStage();
+            stage.completeExceptionally(error);
+            return stage;
+        }
+
+        private void throwIfFailed() {
+            if (isCompletedExceptionally()) {
+                join();
+            }
+        }
+
+        @Override
+        public int size() {
+            throwIfFailed();
+            return delegate.size();
+        }
+
+        @Override
+        public boolean isEmpty() {
+            throwIfFailed();
+            return delegate.isEmpty();
+        }
+
+        @Override
+        public boolean containsKey(Object key) {
+            throwIfFailed();
+            return delegate.containsKey(key);
+        }
+
+        @Override
+        public boolean containsValue(Object value) {
+            throwIfFailed();
+            return delegate.containsValue(value);
+        }
+
+        @Override
+        public Object get(Object key) {
+            throwIfFailed();
+            return delegate.get(key);
+        }
+
+        @Override
+        public Object put(String key, Object value) {
+            throwIfFailed();
+            return delegate.put(key, value);
+        }
+
+        @Override
+        public Object remove(Object key) {
+            throwIfFailed();
+            return delegate.remove(key);
+        }
+
+        @Override
+        public void putAll(Map<? extends String, ?> map) {
+            throwIfFailed();
+            delegate.putAll(map);
+        }
+
+        @Override
+        public void clear() {
+            throwIfFailed();
+            delegate.clear();
+        }
+
+        @Override
+        public Set<String> keySet() {
+            throwIfFailed();
+            return delegate.keySet();
+        }
+
+        @Override
+        public Collection<Object> values() {
+            throwIfFailed();
+            return delegate.values();
+        }
+
+        @Override
+        public Set<Entry<String, Object>> entrySet() {
+            throwIfFailed();
+            return delegate.entrySet();
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            throwIfFailed();
+            return delegate.equals(other);
+        }
+
+        @Override
+        public int hashCode() {
+            throwIfFailed();
+            return delegate.hashCode();
+        }
+
+        @Override
+        public String toString() {
+            if (isCompletedExceptionally()) {
+                return "MapViewCompletedStage[failed]";
+            }
+            return delegate.toString();
+        }
     }
 }

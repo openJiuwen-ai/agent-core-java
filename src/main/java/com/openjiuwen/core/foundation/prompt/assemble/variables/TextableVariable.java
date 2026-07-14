@@ -9,9 +9,12 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.events.LogEventType;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.StringJoiner;
@@ -100,7 +103,7 @@ public class TextableVariable extends Variable {
                 );
             }
             String placeholderText = prefix + placeholder + suffix;
-            formattedText = formattedText.replace(placeholderText, pythonString(value));
+            formattedText = formattedText.replace(placeholderText, pythonString(value, placeholder.contains(".")));
         }
         this.value = formattedText;
         return null;
@@ -161,14 +164,14 @@ public class TextableVariable extends Variable {
         }
     }
 
-    private String pythonString(Object rawValue) {
+    private String pythonString(Object rawValue, boolean nestedPlaceholder) {
         if (rawValue == null) {
             return "None";
         }
-        if (rawValue instanceof Boolean bool) {
+        if (nestedPlaceholder && rawValue instanceof Boolean bool) {
             return Boolean.TRUE.equals(bool) ? "True" : "False";
         }
-        if (rawValue instanceof Map<?, ?> || rawValue instanceof List<?>) {
+        if (usesPythonMessageRepr(rawValue)) {
             return pythonRepr(rawValue);
         }
         return String.valueOf(rawValue);
@@ -177,6 +180,9 @@ public class TextableVariable extends Variable {
     private String pythonRepr(Object rawValue) {
         if (rawValue == null) {
             return "None";
+        }
+        if (rawValue instanceof BaseMessage message) {
+            return pythonRepr(message.modelDump());
         }
         if (rawValue instanceof String text) {
             return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
@@ -199,6 +205,22 @@ public class TextableVariable extends Variable {
             return joiner.toString();
         }
         return String.valueOf(rawValue);
+    }
+
+    private boolean usesPythonMessageRepr(Object rawValue) {
+        if (rawValue instanceof BaseMessage) {
+            return true;
+        }
+        if (rawValue instanceof List<?> list) {
+            return !list.isEmpty() && list.stream().allMatch(this::usesPythonMessageRepr);
+        }
+        if (!(rawValue instanceof Map<?, ?> map)) {
+            return false;
+        }
+        if (map instanceof LinkedHashMap<?, ?> && map.containsKey("role") && map.containsKey("content")) {
+            return true;
+        }
+        return false;
     }
 
     public String getText() {

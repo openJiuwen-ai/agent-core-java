@@ -63,6 +63,10 @@ public class ChromaVectorStore implements VectorStore {
     private final ChromaClientAdapter client;
     private final ChromaCollectionAdapter collection;
 
+    public ChromaVectorStore(VectorStoreConfig config) {
+        this(config, defaultCompatPath(config));
+    }
+
     public ChromaVectorStore(VectorStoreConfig config, String chromaPath) {
         this(config, chromaPath, "content", "embedding", "sparse_vector", "metadata", "document_id");
     }
@@ -171,6 +175,13 @@ public class ChromaVectorStore implements VectorStore {
 
     public ChromaCollectionAdapter getCollection() {
         return collection;
+    }
+
+    private static String defaultCompatPath(VectorStoreConfig config) {
+        String collection = config == null || config.getCollectionName() == null
+                ? "default_collection"
+                : config.getCollectionName();
+        return "memory://" + collection;
     }
 
     public static ChromaClientAdapter createClient(String databaseName,

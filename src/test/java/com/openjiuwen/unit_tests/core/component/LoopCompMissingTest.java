@@ -9,8 +9,11 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.workflow.WorkflowComponent;
+import com.openjiuwen.core.workflow.component.loop.LoopBreakComponent;
 import com.openjiuwen.core.workflow.component.loop.LoopSetVariableComponent;
+import com.openjiuwen.core.workflow.condition.ArrayConditionInSession;
 import com.openjiuwen.core.workflow.condition.NumberConditionInSession;
 import com.openjiuwen.core.workflow.internal.WorkflowRuntimeSession;
 import com.openjiuwen.core.workflow.internal.WorkflowRuntimeState;
@@ -87,6 +90,31 @@ class LoopCompMissingTest {
 
         assertThat(collectedChunks).isNotEmpty();
         assertThat(String.valueOf(collectedChunks)).contains("stream_0").contains("transform_");
+    }
+
+    @Test
+    void testLoopBreakComponentSignalsParentLoopState() {
+        WorkflowRuntimeSession parent = new WorkflowRuntimeSession(
+                "workflow",
+                null,
+                "session",
+                WorkflowRuntimeState.from(InMemoryState.create()),
+                null);
+        WorkflowRuntimeSession breakNodeSession = WorkflowRuntimeSession.nodeSession(parent, "break");
+
+        LoopBreakComponent breakNode = new LoopBreakComponent();
+        Object result = breakNode.invoke(Map.of(), new NodeSessionApi(breakNodeSession), null);
+
+        assertEquals(Map.of(), result);
+        assertThat(parent.state().get("_broken")).isEqualTo(true);
+        assertThat(breakNode.to_executable()).isSameAs(breakNode.toExecutable());
+    }
+
+    @Test
+    void testLoopConditionBoundaries() {
+        assertThat((Boolean) new ArrayConditionInSession(Map.of()).doInvoke(Map.of(), sessionWithIndex(0))).isFalse();
+        assertThat((Boolean) new NumberConditionInSession(1000).doInvoke(Map.of(), sessionWithIndex(999))).isTrue();
+        assertThat((Boolean) new NumberConditionInSession(1000).doInvoke(Map.of(), sessionWithIndex(1000))).isFalse();
     }
 
     private static int addTen(int value) {

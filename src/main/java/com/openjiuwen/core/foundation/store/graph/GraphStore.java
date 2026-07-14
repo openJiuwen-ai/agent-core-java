@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -26,6 +28,10 @@ public interface GraphStore {
     GraphConfig getConfig();
 
     Optional<Semaphore> getSemophore();
+
+    default ExecutorService getEmbedExecutor() {
+        return ForkJoinPool.commonPool();
+    }
 
     Optional<Embedding> getEmbedder();
 
@@ -122,6 +128,20 @@ public interface GraphStore {
                                                                      List<Double> queryEmbedding,
                                                                      Map<String, Object> kwargs);
 
+    default Map<String, List<Map<String, Object>>> search(String query,
+                                                          int k,
+                                                          String collection,
+                                                          BaseRankConfig rankerConfig,
+                                                          int bfsDepth,
+                                                          int bfsK,
+                                                          QueryExpr filterExpr,
+                                                          List<String> outputFields,
+                                                          List<Double> queryEmbedding,
+                                                          Map<String, Object> kwargs) {
+        return search(query, k, collection, rankerConfig, null, bfsDepth, bfsK, filterExpr, outputFields,
+                queryEmbedding, kwargs == null ? Map.of() : kwargs).join();
+    }
+
     void attachEmbedder(Embedding embedder);
 
     void close();
@@ -129,6 +149,10 @@ public interface GraphStore {
     /**
      * Java representation of Python's {@code @classmethod from_config}.
      */
+    static GraphStore fromConfig(GraphConfig config) {
+        return GraphStoreFactory.fromConfig(config);
+    }
+
     @FunctionalInterface
     interface Factory {
 

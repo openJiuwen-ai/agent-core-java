@@ -84,7 +84,7 @@ public class ControllerOutput {
     @SuppressWarnings("unchecked")
     public List<ControllerOutputChunk> getDataAsChunks() {
         if (data instanceof List<?> list
-                && list.stream().allMatch(ControllerOutputChunk.class::isInstance)) {
+                && list.stream().allMatch(OutputSchema.class::isInstance)) {
             return (List<ControllerOutputChunk>) data;
         }
         return null;

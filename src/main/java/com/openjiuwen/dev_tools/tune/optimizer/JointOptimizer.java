@@ -27,11 +27,20 @@ public class JointOptimizer extends BaseOptimizer {
 
     private final InstructionOptimizer instructionOptimizer;
     private final ExampleOptimizer exampleOptimizer;
+    private final ModelRequestConfig modelConfig;
+    private final ModelClientConfig modelClientConfig;
+    private final int numExamples;
     private final BooleanSupplier strategyChooser;
     private boolean optimizeInstruction = true;
 
     public JointOptimizer(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         this(modelConfig, modelClientConfig, null, TuneConstant.DEFAULT_EXAMPLE_NUM);
+    }
+
+    public JointOptimizer(ModelRequestConfig modelConfig,
+                          ModelClientConfig modelClientConfig,
+                          int numExamples) {
+        this(modelConfig, modelClientConfig, null, numExamples);
     }
 
     public JointOptimizer(ModelRequestConfig modelConfig,
@@ -54,6 +63,9 @@ public class JointOptimizer extends BaseOptimizer {
                    int numExamples,
                    BooleanSupplier strategyChooser) {
         this(
+                modelConfig,
+                modelClientConfig,
+                numExamples,
                 new InstructionOptimizer(modelConfig, modelClientConfig),
                 new ExampleOptimizer(modelConfig, modelClientConfig, null, numExamples),
                 parameters,
@@ -65,11 +77,42 @@ public class JointOptimizer extends BaseOptimizer {
                    ExampleOptimizer exampleOptimizer,
                    Map<String, LLMCall> parameters,
                    BooleanSupplier strategyChooser) {
+        this(null,
+                null,
+                exampleOptimizer == null ? TuneConstant.DEFAULT_EXAMPLE_NUM : exampleOptimizer.getNumExamples(),
+                instructionOptimizer,
+                exampleOptimizer,
+                parameters,
+                strategyChooser);
+    }
+
+    private JointOptimizer(ModelRequestConfig modelConfig,
+                           ModelClientConfig modelClientConfig,
+                           int numExamples,
+                           InstructionOptimizer instructionOptimizer,
+                           ExampleOptimizer exampleOptimizer,
+                           Map<String, LLMCall> parameters,
+                           BooleanSupplier strategyChooser) {
         super(null);
+        this.modelConfig = modelConfig;
+        this.modelClientConfig = modelClientConfig;
+        this.numExamples = numExamples;
         this.instructionOptimizer = instructionOptimizer;
         this.exampleOptimizer = exampleOptimizer;
         this.strategyChooser = strategyChooser;
         bindParameter(parameters);
+    }
+
+    public ModelRequestConfig getModelConfig() {
+        return modelConfig;
+    }
+
+    public ModelClientConfig getModelClientConfig() {
+        return modelClientConfig;
+    }
+
+    public int getNumExamples() {
+        return numExamples;
     }
 
     @Override

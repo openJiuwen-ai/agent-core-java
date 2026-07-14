@@ -4,8 +4,10 @@
 
 package com.openjiuwen.core.workflow.component;
 
-import com.openjiuwen.core.session.constants.SessionConstants;
+import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.NodeSessionApi;
+import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.utils.SessionUtils;
 import com.openjiuwen.core.workflow.internal.WorkflowSessionSupport;
 
@@ -13,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -114,7 +117,8 @@ public class TemplateProcessor {
      * In Java the iteration is synchronous via an {@link Iterator}.
      */
     public Iterator<Map<String, Object>> renderStream(Map<String, Object> inputs, BaseSession session) {
-        Map<String, Object> safeInputs = inputs != null ? inputs : Map.of();
+        Map<String, Object> safeInputs = restoreSourceContainerOrder(
+                inputs != null ? inputs : Map.of(), session);
         long waitTimeoutMs = resolveTimeoutMillis(session);
         boolean hasAnyValue = needRender(safeInputs);
 
@@ -208,6 +212,58 @@ public class TemplateProcessor {
                 }
             }
         };
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> restoreSourceContainerOrder(
+            Map<String, Object> inputs, BaseSession session) {
+        BaseSession effectiveSession = session instanceof NodeSessionApi nodeSession
+                ? nodeSession.getInner()
+                : session;
+        if (!(effectiveSession instanceof Vertex.VertexSession vertexSession)) {
+            return inputs;
+        }
+        Object schema = vertexSession.nodeConfig().ioConfigs().inputsSchema();
+        if (schema == null) {
+            return inputs;
+        }
+        Object rawIoState = vertexSession.state().dump().get("io_state");
+        if (!(rawIoState instanceof Map<?, ?> rawMap)) {
+            return inputs;
+        }
+        Object sourceInputs = SessionUtils.getBySchema(schema, (Map<String, Object>) rawMap);
+        Object reordered = reorderContainers(inputs, sourceInputs);
+        return reordered instanceof Map<?, ?> reorderedMap
+                ? (Map<String, Object>) reorderedMap
+                : inputs;
+    }
+
+    private static Object reorderContainers(Object current, Object source) {
+        if (current instanceof Map<?, ?> currentMap && source instanceof Map<?, ?> sourceMap) {
+            Map<Object, Object> reordered = new LinkedHashMap<>();
+            for (Map.Entry<?, ?> sourceEntry : sourceMap.entrySet()) {
+                Object key = sourceEntry.getKey();
+                if (currentMap.containsKey(key)) {
+                    reordered.put(key, reorderContainers(currentMap.get(key), sourceEntry.getValue()));
+                }
+            }
+            for (Map.Entry<?, ?> currentEntry : currentMap.entrySet()) {
+                Object key = currentEntry.getKey();
+                if (!reordered.containsKey(key)) {
+                    reordered.put(key, reorderContainers(currentEntry.getValue(), sourceMap.get(key)));
+                }
+            }
+            return reordered;
+        }
+        if (current instanceof List<?> currentList && source instanceof List<?> sourceList) {
+            List<Object> reordered = new ArrayList<>(currentList.size());
+            for (int index = 0; index < currentList.size(); index++) {
+                Object sourceValue = index < sourceList.size() ? sourceList.get(index) : null;
+                reordered.add(reorderContainers(currentList.get(index), sourceValue));
+            }
+            return reordered;
+        }
+        return current;
     }
 
     private boolean needRender(Object inputs) {

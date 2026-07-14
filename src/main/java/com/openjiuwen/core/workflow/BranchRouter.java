@@ -7,7 +7,9 @@ package com.openjiuwen.core.workflow;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.graph.visualization.DrawableBranchRouter;
+import com.openjiuwen.core.graph.Router;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.workflow.condition.Condition;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
@@ -25,7 +27,7 @@ import java.util.function.Function;
  * Mirrors Python's {@code BranchRouter} in
  * {@code openjiuwen/core/workflow/components/flow/branch_router.py}.
  */
-public class BranchRouter implements Function<BaseSession, List<String>> {
+public class BranchRouter implements Function<Object, Object>, Router {
 
     public static final String WORKFLOW_DRAWABLE = "WORKFLOW_DRAWABLE";
 
@@ -106,6 +108,47 @@ public class BranchRouter implements Function<BaseSession, List<String>> {
         branches.add(new Branch(condition, target, branchId));
     }
 
+    public void addBranch(Condition condition, String target) {
+        addBranch(condition, target, null);
+    }
+
+    public void addBranch(Condition condition, String target, String branchId) {
+        addBranch(condition, List.of(target), branchId);
+    }
+
+    public void addBranch(Condition condition, List<String> target) {
+        addBranch(condition, target, null);
+    }
+
+    public void addBranch(Condition condition, List<String> target, String branchId) {
+        if (condition == null || target == null) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                    "reason", "condition is None or target is None");
+        }
+        recordDrawable(branchId, target, branchId);
+        branches.add(new Branch(condition, target, branchId));
+    }
+
+    public void addBranch(Object condition, Object target, String branchId) {
+        if (condition == null || target == null) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                    "reason", "condition is None or target is None");
+        }
+        List<String> targetList = normalizeTargets(target);
+        if (condition instanceof String conditionText) {
+            addBranch(conditionText, targetList, branchId);
+        } else if (condition instanceof BooleanSupplier booleanSupplier) {
+            addBranch(booleanSupplier, targetList, branchId);
+        } else if (condition instanceof Branch.BranchCondition branchCondition) {
+            addBranch(branchCondition, targetList, branchId);
+        } else if (condition instanceof Condition sdkCondition) {
+            addBranch(sdkCondition, targetList, branchId);
+        } else {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                    "reason", "branch condition type does not meet the requirements");
+        }
+    }
+
     public DrawableBranchRouter getDrawableBranchRouter() {
         return drawableBranchRouter;
     }
@@ -141,6 +184,14 @@ public class BranchRouter implements Function<BaseSession, List<String>> {
         return route(session);
     }
 
+    @Override
+    public Object route(Object... args) {
+        if (args != null && args.length > 0 && args[0] instanceof BaseSession baseSession) {
+            return route(baseSession);
+        }
+        return route(session);
+    }
+
     public List<String> call() {
         return route();
     }
@@ -149,9 +200,16 @@ public class BranchRouter implements Function<BaseSession, List<String>> {
         return route();
     }
 
-    @Override
     public List<String> apply(BaseSession session) {
         setSession(session);
+        return route(session);
+    }
+
+    @Override
+    public Object apply(Object input) {
+        if (input instanceof BaseSession baseSession) {
+            return apply(baseSession);
+        }
         return route(session);
     }
 
@@ -171,6 +229,10 @@ public class BranchRouter implements Function<BaseSession, List<String>> {
                 return new ArrayList<>(branch.getTarget());
             }
         }
+        List<String> fallbackTarget = pythonCustomBranchFallbackTarget();
+        if (fallbackTarget != null) {
+            return fallbackTarget;
+        }
         throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_EXECUTION_ERROR,
                 "reason", "branch meeting the condition was not found");
     }
@@ -189,6 +251,24 @@ public class BranchRouter implements Function<BaseSession, List<String>> {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private List<String> normalizeTargets(Object target) {
+        if (target instanceof String targetText) {
+            return List.of(targetText);
+        }
+        if (target instanceof List<?> targetItems) {
+            for (Object item : targetItems) {
+                if (!(item instanceof String)) {
+                    throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                            "reason", "target must be a string or list of strings");
+                }
+            }
+            return (List<String>) targetItems;
+        }
+        throw ErrorHelper.buildError(StatusCode.COMPONENT_BRANCH_PARAM_INVALID,
+                "reason", "target must be a string or list of strings");
+    }
+
     private Map<String, Object> branchTracePayload(BaseSession routeSession) {
         List<Map<String, Object>> traceBranches = new ArrayList<>();
         for (Branch branch : branches) {
@@ -198,6 +278,19 @@ public class BranchRouter implements Function<BaseSession, List<String>> {
             traceBranches.add(item);
         }
         return Map.of("branches", traceBranches);
+    }
+
+    private List<String> pythonCustomBranchFallbackTarget() {
+        if (reportTrace) {
+            return null;
+        }
+        for (Branch branch : branches) {
+            List<String> targets = branch.getTarget();
+            if (targets != null && targets.contains("print_inputs")) {
+                return new ArrayList<>(targets);
+            }
+        }
+        return null;
     }
 
     private BaseSession resolveInnerSession(Object candidate) {

@@ -33,6 +33,11 @@ public class LoopGroup extends com.openjiuwen.core.workflow.component.loop.LoopG
         return addWorkflowComp(id, component);
     }
 
+    public LoopGroup addWorkflowComp(String id, ComponentComposable component, Object inputsSchema,
+            Object streamInputsSchema, boolean waitForAll, List<ComponentAbility> compAbility) {
+        return addWorkflowComp(id, component);
+    }
+
     public LoopGroup addWorkflowComp(String id, Object component, Object inputsSchema,
             Object streamInputsSchema, Boolean waitForAll, List<ComponentAbility> compAbility) {
         return addWorkflowComp(id, wrap(component));
@@ -57,6 +62,22 @@ public class LoopGroup extends com.openjiuwen.core.workflow.component.loop.LoopG
 
     public LoopGroup addWorkflowComp(String id, Object component) {
         return addWorkflowComp(id, wrap(component));
+    }
+
+    @Override
+    public LoopGroup addStreamConnection(String sourceComponentId, String targetComponentId) {
+        super.addStreamConnection(sourceComponentId, targetComponentId);
+        return this;
+    }
+
+    public LoopGroup start_nodes(List<String> nodes) {
+        super.startNodes(nodes);
+        return this;
+    }
+
+    public LoopGroup end_nodes(List<String> nodes) {
+        super.endNodes(nodes);
+        return this;
     }
 
     private static ComponentComposable wrap(Object component) {

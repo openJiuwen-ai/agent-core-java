@@ -47,7 +47,7 @@ class FeedbackPromptBuilderTest {
         RecordingClient client = new RecordingClient(List.of(new AssistantMessage("general result")), List.of());
         FeedbackPromptBuilder builder = builderWith(client);
 
-        Optional<String> result = builder.build("original prompt", "raw feedback", "general").join();
+        String result = builder.build("original prompt", "raw feedback", "general").join();
 
         assertThat(result).contains("general result");
         assertThat(client.capturedInvokes()).hasSize(1);
@@ -64,7 +64,7 @@ class FeedbackPromptBuilderTest {
         ), List.of());
         FeedbackPromptBuilder builder = builderWith(client);
 
-        Optional<String> result = builder.build("abcdef", "raw feedback", "insert", 3).join();
+        String result = builder.build("abcdef", "raw feedback", "insert", 3).join();
 
         assertThat(result).contains("insert result");
         assertThat(client.capturedInvokes()).hasSize(2);
@@ -81,7 +81,7 @@ class FeedbackPromptBuilderTest {
         ), List.of());
         FeedbackPromptBuilder builder = builderWith(client);
 
-        Optional<String> result = builder.build("abcdef", "raw feedback", "select", 1, 4).join();
+        String result = builder.build("abcdef", "raw feedback", "select", 1, 4).join();
 
         assertThat(result).contains("select result");
         assertThat(client.capturedInvokes()).hasSize(2);
@@ -96,7 +96,7 @@ class FeedbackPromptBuilderTest {
         RecordingClient client = new RecordingClient(List.of(new AssistantMessage("fallback result")), List.of());
         FeedbackPromptBuilder builder = builderWith(client);
 
-        Optional<String> result = builder.build("prompt", "feedback", "unknown-mode").join();
+        String result = builder.build("prompt", "feedback", "unknown-mode").join();
 
         assertThat(result).contains("fallback result");
         assertThat(client.capturedInvokes()).hasSize(1);
@@ -153,7 +153,7 @@ class FeedbackPromptBuilderTest {
         ), List.of());
         FeedbackPromptBuilder builder = builderWith(client);
 
-        Optional<String> result = builder.build("abcdef", "raw feedback", "insert", 3).join();
+        String result = builder.build("abcdef", "raw feedback", "insert", 3).join();
 
         assertThat(result).contains("insert result");
         assertThat(client.capturedInvokes().get(1).get(0).getContentAsString())

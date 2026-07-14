@@ -18,6 +18,7 @@ import java.util.Map;
 public class SysOperationManager {
 
     private final ThreadSafeDict<String, SysOperation> sysOperations = new ThreadSafeDict<>();
+    private final ThreadSafeDict<String, Object> compatibilityOperations = new ThreadSafeDict<>();
     private final Map<String, String> sandboxKeyOwnerMap = new LinkedHashMap<>();
 
     public void addSysOperation(String sysOperationId, SysOperation sysOperationInstance) {
@@ -67,6 +68,9 @@ public class SysOperationManager {
             );
         }
         SysOperation sysOperation = sysOperations.pop(sysOperationId, null);
+        if (sysOperation == null) {
+            compatibilityOperations.pop(sysOperationId, null);
+        }
         if (sysOperation != null && sysOperation.getIsolationKeyTemplate() != null
                 && !sysOperation.getIsolationKeyTemplate().isEmpty()) {
             sandboxKeyOwnerMap.remove(sysOperation.getIsolationKeyTemplate());
@@ -85,6 +89,23 @@ public class SysOperationManager {
             );
         }
         return sysOperations.get(sysOperationId);
+    }
+
+    public void put(String sysOperationId, Object sysOperation) {
+        compatibilityOperations.put(sysOperationId, sysOperation);
+    }
+
+    public boolean contains(String sysOperationId) {
+        return sysOperations.get(sysOperationId) != null || compatibilityOperations.get(sysOperationId) != null;
+    }
+
+    public int size() {
+        return sysOperations.size() + compatibilityOperations.size();
+    }
+
+    public Object get(String sysOperationId) {
+        Object compatibilityValue = compatibilityOperations.get(sysOperationId);
+        return compatibilityValue != null ? compatibilityValue : sysOperations.get(sysOperationId);
     }
 
     Map<String, String> getSandboxKeyOwnerSnapshot() {

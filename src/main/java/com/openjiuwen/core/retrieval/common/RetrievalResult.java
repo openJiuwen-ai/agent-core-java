@@ -27,6 +27,10 @@ public class RetrievalResult {
         this(text, null, null, null, null);
     }
 
+    public RetrievalResult(String text, Double score) {
+        this(text, score, null, null, null);
+    }
+
     public RetrievalResult(String text, double score, Map<String, Object> metadata, String docId, String chunkId) {
         this(text, Double.valueOf(score), metadata, docId, chunkId);
     }
@@ -56,6 +60,13 @@ public class RetrievalResult {
 
     public void setScore(double score) {
         this.score = score;
+    }
+
+    public void setScore(Double score) {
+        if (score == null) {
+            throw new IllegalArgumentException("score is required");
+        }
+        this.score = score.doubleValue();
     }
 
     public Map<String, Object> getMetadata() {

@@ -17,16 +17,23 @@ import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -313,27 +320,44 @@ public class StdioClient implements McpClient {
     }
 
     /**
-     * Content-length framed JSON-RPC stdio session.
+     * Newline-delimited JSON-RPC stdio session with content-length read compatibility.
      *
      * <p>Mirrors Python's stdio MCP session usage in
      * {@code openjiuwen/core/foundation/tool/mcp/client/stdio_client.py}.</p>
      */
     static final class JsonRpcProcessSession implements StdioSession {
         private static final Duration DEFAULT_TERMINATION_WAIT = Duration.ofSeconds(1);
+        static final int STDERR_TAIL_CHARS = 8192;
+        private static final int STDERR_DRAIN_CHARS = 1024;
+        private static final Duration STDERR_DRAIN_JOIN_WAIT = Duration.ofMillis(200);
 
         private final Process process;
         private final BufferedInputStream stdout;
+        private final BufferedInputStream stderr;
         private final BufferedOutputStream stdin;
+        private final Duration terminationWait;
+        private final StringBuilder stderrTail = new StringBuilder();
+        private final Object closeLock = new Object();
         private final AtomicLong requestCounter = new AtomicLong();
+        private final Thread stderrDrainThread;
+        private boolean closed;
 
-        private JsonRpcProcessSession(Process process) {
+        JsonRpcProcessSession(Process process) {
+            this(process, DEFAULT_TERMINATION_WAIT);
+        }
+
+        JsonRpcProcessSession(Process process, Duration terminationWait) {
             this.process = process;
             this.stdout = new BufferedInputStream(process.getInputStream());
+            this.stderr = new BufferedInputStream(process.getErrorStream());
             this.stdin = new BufferedOutputStream(process.getOutputStream());
+            this.terminationWait = terminationWait;
+            this.stderrDrainThread = startStderrDrain();
         }
 
         static JsonRpcProcessSession open(StdioServerParameters parameters) throws IOException {
             ProcessBuilder processBuilder = new ProcessBuilder(commandLine(parameters));
+            processBuilder.redirectErrorStream(false);
             if (!parameters.env().isEmpty()) {
                 processBuilder.environment().putAll(parameters.env());
             }
@@ -350,6 +374,7 @@ public class StdioClient implements McpClient {
                     "clientInfo", Map.of("name", "agent-core-java", "version", "0.1.14"),
                     "capabilities", Map.of()
             ), timeout);
+            notification("notifications/initialized");
         }
 
         @Override
@@ -387,19 +412,102 @@ public class StdioClient implements McpClient {
 
         @Override
         public void close(float timeout) throws Exception {
-            stdin.close();
-            stdout.close();
-            process.destroy();
-            process.waitFor(DEFAULT_TERMINATION_WAIT.toMillis(), TimeUnit.MILLISECONDS);
+            cleanupProcess();
         }
 
         @Override
         public void closeClientFallback() {
-            process.destroy();
+            cleanupProcess();
+        }
+
+        String stderrTail() {
+            synchronized (stderrTail) {
+                return stderrTail.toString();
+            }
+        }
+
+        boolean stderrDrainAlive() {
+            return stderrDrainThread.isAlive();
+        }
+
+        private void cleanupProcess() {
+            synchronized (closeLock) {
+                if (closed) {
+                    return;
+                }
+                closed = true;
+                closeQuietly(stdin);
+                closeQuietly(stdout);
+                process.destroy();
+                if (!waitForExit() && process.isAlive()) {
+                    process.destroyForcibly();
+                    waitForExit();
+                }
+                closeQuietly(stderr);
+                joinStderrDrain();
+            }
+        }
+
+        private boolean waitForExit() {
+            try {
+                return process.waitFor(terminationWait.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return !process.isAlive();
+            }
+        }
+
+        private static void closeQuietly(AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception ignored) {
+                // Best-effort process cleanup should continue after stream close failures.
+            }
+        }
+
+        private void joinStderrDrain() {
+            if (Thread.currentThread() == stderrDrainThread) {
+                return;
+            }
+            try {
+                stderrDrainThread.join(STDERR_DRAIN_JOIN_WAIT.toMillis());
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        private Thread startStderrDrain() {
+            Thread thread = new Thread(this::drainStderr, "stdio-mcp-stderr-drain");
+            thread.setDaemon(true);
+            thread.start();
+            return thread;
+        }
+
+        private void drainStderr() {
+            try (InputStreamReader streamReader =
+                         new InputStreamReader(stderr, StandardCharsets.UTF_8)) {
+                char[] buffer = new char[STDERR_DRAIN_CHARS];
+                int charsRead;
+                while ((charsRead = streamReader.read(buffer)) != -1) {
+                    appendStderrText(buffer, charsRead);
+                }
+            } catch (IOException ignored) {
+                // Stderr is diagnostic-only; lifecycle cleanup should not fail because draining ended.
+            }
+        }
+
+        private void appendStderrText(char[] buffer, int length) {
+            synchronized (stderrTail) {
+                stderrTail.append(buffer, 0, length);
+                int excess = stderrTail.length() - STDERR_TAIL_CHARS;
+                if (excess > 0) {
+                    stderrTail.delete(0, excess);
+                }
+            }
         }
 
         private synchronized Map<String, Object> request(String method, Map<String, Object> requestParams,
-                                                         float timeout) throws Exception {
+                                                          float timeout) throws Exception {
             long requestId = requestCounter.incrementAndGet();
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("jsonrpc", "2.0");
@@ -408,8 +516,70 @@ public class StdioClient implements McpClient {
             body.put("params", requestParams);
             writeFrame(MAPPER.writeValueAsBytes(body));
 
+            if (timeout > 0) {
+                return readResponseWithTimeout(requestId, timeout);
+            }
+            return readResponse(requestId);
+        }
+
+        private synchronized void notification(String method) throws IOException {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("jsonrpc", "2.0");
+            body.put("method", method);
+            writeFrame(MAPPER.writeValueAsBytes(body));
+        }
+
+        private Map<String, Object> readResponseWithTimeout(long requestId, float timeout) throws Exception {
+            ExecutorService executor = Executors.newSingleThreadExecutor(task -> {
+                Thread thread = new Thread(task, "stdio-mcp-response-reader-" + requestId);
+                thread.setDaemon(true);
+                return thread;
+            });
+            Future<Map<String, Object>> response = executor.submit(() -> readResponse(requestId));
+            try {
+                return response.get(timeoutMillis(timeout), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException error) {
+                response.cancel(true);
+                cleanupProcess();
+                throw new IOException("Timed out waiting for stdio MCP response id " + requestId
+                        + diagnosticSuffix(), error);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                response.cancel(true);
+                cleanupProcess();
+                throw new IOException("Interrupted waiting for stdio MCP response id " + requestId
+                        + diagnosticSuffix(), error);
+            } catch (ExecutionException error) {
+                Throwable cause = error.getCause();
+                if (cause instanceof Exception exception) {
+                    throw exception;
+                }
+                throw new RuntimeException(cause != null ? cause : error);
+            } finally {
+                executor.shutdownNow();
+            }
+        }
+
+        private String diagnosticSuffix() {
+            String tail = stderrTail();
+            if (tail == null || tail.isBlank()) {
+                return "";
+            }
+            return "; stderr tail: " + tail;
+        }
+
+        private static long timeoutMillis(float timeout) {
+            return Math.max(1L, (long) Math.ceil(timeout * 1000.0D));
+        }
+
+        private Map<String, Object> readResponse(long requestId) throws IOException {
             while (true) {
                 Map<String, Object> frame = readFrame();
+                Object method = frame.get("method");
+                if (method instanceof String methodName) {
+                    handleServerMessage(frame, methodName);
+                    continue;
+                }
                 Object responseId = frame.get("id");
                 if (!(responseId instanceof Number number) || number.longValue() != requestId) {
                     continue;
@@ -421,48 +591,90 @@ public class StdioClient implements McpClient {
             }
         }
 
+        private void handleServerMessage(Map<String, Object> frame, String method) throws IOException {
+            if (!frame.containsKey("id")) {
+                return;
+            }
+            Object id = frame.get("id");
+            if ("ping".equals(method)) {
+                writeResponse(id, Map.of());
+                return;
+            }
+            writeError(id, -32601, "Method not found: " + method);
+        }
+
+        private void writeResponse(Object id, Map<String, Object> result) throws IOException {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("jsonrpc", "2.0");
+            body.put("id", id);
+            body.put("result", result);
+            writeFrame(MAPPER.writeValueAsBytes(body));
+        }
+
+        private void writeError(Object id, int code, String message) throws IOException {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("jsonrpc", "2.0");
+            body.put("id", id);
+            body.put("error", Map.of("code", code, "message", message));
+            writeFrame(MAPPER.writeValueAsBytes(body));
+        }
+
         private void writeFrame(byte[] jsonBytes) throws IOException {
-            String header = "Content-Length: " + jsonBytes.length + "\r\n\r\n";
-            stdin.write(header.getBytes(StandardCharsets.UTF_8));
             stdin.write(jsonBytes);
+            stdin.write('\n');
             stdin.flush();
         }
 
         private Map<String, Object> readFrame() throws IOException {
+            String line = readLine();
+            while (line.isEmpty()) {
+                line = readLine();
+            }
+            if (!line.toLowerCase(Locale.ROOT).startsWith("content-length:")) {
+                return MAPPER.readValue(line, new TypeReference<>() {
+                });
+            }
+            return readContentLengthFrame(line);
+        }
+
+        private Map<String, Object> readContentLengthFrame(String firstHeaderLine) throws IOException {
             int contentLength = -1;
-            String line;
-            while (!(line = readHeaderLine()).isEmpty()) {
-                String lower = line.toLowerCase();
+            String line = firstHeaderLine;
+            while (!line.isEmpty()) {
+                String lower = line.toLowerCase(Locale.ROOT);
                 if (lower.startsWith("content-length:")) {
                     contentLength = Integer.parseInt(line.substring("content-length:".length()).trim());
                 }
+                line = readLine();
             }
             if (contentLength < 0) {
                 throw new IllegalStateException("Missing Content-Length in stdio MCP response");
             }
             byte[] body = stdout.readNBytes(contentLength);
+            if (body.length != contentLength) {
+                throw new IOException("Stdio MCP response stream closed before reading full body");
+            }
             return MAPPER.readValue(body, new TypeReference<>() {
             });
         }
 
-        private String readHeaderLine() throws IOException {
+        private String readLine() throws IOException {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
             int current;
             while ((current = stdout.read()) != -1) {
-                if (current == '\r') {
-                    int next = stdout.read();
-                    if (next == '\n') {
-                        break;
-                    }
-                    buffer.write(current);
-                    if (next != -1) {
-                        buffer.write(next);
-                    }
-                    continue;
+                if (current == '\n') {
+                    break;
                 }
                 buffer.write(current);
             }
-            return buffer.toString(StandardCharsets.UTF_8);
+            if (current == -1 && buffer.size() == 0) {
+                throw new IOException("Stdio MCP response stream closed");
+            }
+            String line = buffer.toString(StandardCharsets.UTF_8);
+            if (line.endsWith("\r")) {
+                return line.substring(0, line.length() - 1);
+            }
+            return line;
         }
 
         private static List<String> commandLine(StdioServerParameters parameters) {

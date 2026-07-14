@@ -84,26 +84,39 @@ public class VLLMEmbedding extends OpenAIEmbedding {
     }
 
     public CompletableFuture<List<Double>> embedMultimodal(MultimodalDocument document,
-                                                           Map<String, Object> options) {
+                                                            Map<String, Object> options) {
         return embedMultimodal((Object) document, options);
     }
 
     public CompletableFuture<List<Double>> embedMultimodal(Object input,
-                                                           Map<String, Object> options) {
-        return CompletableFuture.supplyAsync(() -> embedMultimodalSync(input, options), executor);
+                                                            Map<String, Object> options) {
+        return CompletableFuture.supplyAsync(() -> embedMultimodalSyncDouble(input, options), executor);
     }
 
     public List<Double> embedMultimodalSync(MultimodalDocument document) {
-        return embedMultimodalSync(document, new LinkedHashMap<>());
+        return embedMultimodalSyncDouble(document, new LinkedHashMap<>());
     }
 
-    public List<Double> embedMultimodalSync(MultimodalDocument document,
-                                            Map<String, Object> options) {
+    public <N extends Number> List<N> embedMultimodalSync(MultimodalDocument document,
+                                                          Map<String, Object> options) {
         return embedMultimodalSync((Object) document, options);
     }
 
-    public List<Double> embedMultimodalSync(Object input,
-                                            Map<String, Object> options) {
+    @SuppressWarnings("unchecked")
+    public <N extends Number> List<N> embedMultimodalSync(Object input,
+                                                          Map<String, Object> options) {
+        if (!(input instanceof MultimodalDocument document)) {
+            throw ErrorHelper.buildError(
+                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+                    "error_msg",
+                    "input provided for multimodal embedding is not a MultimodalDocument"
+            );
+        }
+        Map<String, Object> kwargs = parseMultimodalInput(document, options);
+        return (List<N>) getEmbeddings(null, kwargs).get(0);
+    }
+
+    private List<Double> embedMultimodalSyncDouble(Object input, Map<String, Object> options) {
         if (!(input instanceof MultimodalDocument document)) {
             throw ErrorHelper.buildError(
                     StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
@@ -113,5 +126,18 @@ public class VLLMEmbedding extends OpenAIEmbedding {
         }
         Map<String, Object> kwargs = parseMultimodalInput(document, options);
         return getEmbeddingsSync(null, kwargs).get(0);
+    }
+
+    protected List<List<Float>> getEmbeddings(Object input, Map<String, Object> options) {
+        List<List<Double>> embeddings = getEmbeddingsSync(input, options);
+        List<List<Float>> result = new ArrayList<>(embeddings.size());
+        for (List<Double> embedding : embeddings) {
+            List<Float> row = new ArrayList<>(embedding.size());
+            for (Double value : embedding) {
+                row.add(value == null ? null : value.floatValue());
+            }
+            result.add(row);
+        }
+        return result;
     }
 }

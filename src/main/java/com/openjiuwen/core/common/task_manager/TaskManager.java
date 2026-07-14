@@ -120,6 +120,10 @@ public class TaskManager {
         return new TaskGroupScope();
     }
 
+    public TaskGroupContext createTaskGroup() {
+        return new TaskGroupContext(taskGroup());
+    }
+
     public void cascadeCancel(String taskId) {
         cascadeCancel(taskId, "parent_cancelled");
     }
@@ -540,19 +544,40 @@ public class TaskManager {
     public final class TaskGroupScope implements AutoCloseable {
         private final TaskContext.ContextToken<Object> token;
         private final List<CompletableFuture<?>> trackedFutures = new CopyOnWriteArrayList<>();
+        private final List<Task> trackedTasks = new CopyOnWriteArrayList<>();
+        private volatile boolean cancelled;
 
         private TaskGroupScope() {
             this.token = TaskContext.setTaskGroup(this);
         }
 
         private void track(Task task, CompletableFuture<?> future) {
+            trackedTasks.add(task);
             trackedFutures.add(future);
+        }
+
+        public void cancel() {
+            cancelled = true;
+            List<String> trackedIds = trackedTasks.stream().map(Task::getTaskId).toList();
+            for (Task task : trackedTasks) {
+                String parentTaskId = task.getParentTaskId();
+                if (parentTaskId == null || !trackedIds.contains(parentTaskId)) {
+                    cancelTask(task.getTaskId(), "manual_cancel", null);
+                    cascadeCancel(task.getTaskId(), "parent_cancelled");
+                }
+            }
         }
 
         @Override
         public void close() {
             try {
-                CompletableFuture.allOf(trackedFutures.toArray(CompletableFuture[]::new)).join();
+                try {
+                    CompletableFuture.allOf(trackedFutures.toArray(CompletableFuture[]::new)).join();
+                } catch (CancellationException | CompletionException exception) {
+                    if (!cancelled) {
+                        throw exception;
+                    }
+                }
             } finally {
                 TaskContext.resetTaskGroup(token);
             }

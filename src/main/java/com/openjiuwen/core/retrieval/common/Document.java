@@ -45,6 +45,19 @@ public class Document extends com.openjiuwen.core.foundation.store.base_reranker
         setId(id);
     }
 
+    @Override
+    public void setText(String text) {
+        if (text == null) {
+            throw validation("missing_text", "Document.text is required", Map.of("field", "text"));
+        }
+        super.setText(text);
+    }
+
+    @Override
+    public void setMetadata(Map<String, Object> metadata) {
+        super.setMetadata(metadata == null ? new LinkedHashMap<>() : new LinkedHashMap<>(metadata));
+    }
+
     static ValidationError validation(String errorType, String message, Map<String, Object> context) {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("reason", errorType + ": " + message);

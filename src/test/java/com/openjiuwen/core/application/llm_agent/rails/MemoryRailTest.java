@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.application.llm_agent.rails;
 
+import com.openjiuwen.core.common.async.FutureList;
+import com.openjiuwen.core.common.async.FutureMap;
 import com.openjiuwen.core.common.schema.Param;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.memory.AddMemResult;
@@ -161,32 +163,32 @@ class MemoryRailTest {
         private ZonedDateTime addTimestamp;
 
         @Override
-        public CompletableFuture<Map<String, String>> getVariables(Object names, String userId, String scopeId) {
+        public FutureMap<String, String> getVariables(Object names, String userId, String scopeId) {
             getVariablesCalled = true;
-            return CompletableFuture.completedFuture(new LinkedHashMap<>(variables));
+            return FutureMap.completed(new LinkedHashMap<>(variables));
         }
 
         @Override
-        public CompletableFuture<List<MemResult>> searchUserMem(
+        public FutureList<MemResult> searchUserMem(
                 String query, int num, String userId, String scopeId, double threshold) {
             if (searchError != null) {
-                return CompletableFuture.failedFuture(searchError);
+                return FutureList.fromFuture(CompletableFuture.failedFuture(searchError));
             }
             searchUserMemQuery = query;
             searchUserMemNum = num;
             searchUserMemUserId = userId;
             searchUserMemScopeId = scopeId;
-            return CompletableFuture.completedFuture(userMems);
+            return FutureList.completed(userMems);
         }
 
         @Override
-        public CompletableFuture<List<MemResult>> searchUserHistorySummary(
+        public FutureList<MemResult> searchUserHistorySummary(
                 String query, int num, String userId, String scopeId, double threshold) {
             if (searchError != null) {
-                return CompletableFuture.failedFuture(searchError);
+                return FutureList.fromFuture(CompletableFuture.failedFuture(searchError));
             }
             searchUserHistorySummaryNum = num;
-            return CompletableFuture.completedFuture(summaryMems);
+            return FutureList.completed(summaryMems);
         }
 
         @Override

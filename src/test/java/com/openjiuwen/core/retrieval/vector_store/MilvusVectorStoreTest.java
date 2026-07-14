@@ -238,7 +238,7 @@ class MilvusVectorStoreTest {
         assertThat(store.getSparseVectorField()).isEqualTo("custom_sparse");
         assertThat(store.getMetadataField()).isEqualTo("custom_metadata");
         assertThat(store.getDocIdField()).isEqualTo("custom_doc_id");
-        assertThat(store.getDistanceMetric()).isEqualTo("IP");
+        assertThat(store.getDistanceMetric()).isEqualTo("dot");
         assertThat(store.getConstructConfig())
                 .containsEntry("M", 16)
                 .containsEntry("efConstruction", 200)

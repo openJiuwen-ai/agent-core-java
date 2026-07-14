@@ -9,6 +9,8 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UserConfig;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -32,6 +34,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 /**
  * LLM Model Client abstract base class.
@@ -39,13 +43,14 @@ import java.util.Set;
  * <p>Mirrors Python's {@code BaseModelClient} in
  * {@code openjiuwen/core/foundation/llm/model_clients/base_model_client.py}.</p>
  */
-public abstract class BaseModelClient {
+public abstract class BaseModelClient implements Model.ModelClient {
 
     protected static final String __client_name__ = null;
     public static final String __client_type__ = "llm";
     public static final String CLIENT_TYPE = __client_type__;
 
     private static final Set<String> INTERNAL_REQUEST_PARAMS = Set.of("parser", "output_parser");
+    private static final Set<String> DECIMAL_REQUEST_PARAMS = Set.of("temperature", "top_p");
 
     protected final ModelRequestConfig modelConfig;
     protected final ModelClientConfig modelClientConfig;
@@ -290,19 +295,26 @@ public abstract class BaseModelClient {
         params.put("messages", messagesDict);
         params.put("stream", stream);
 
-        Number finalTemperature = temperature != null ? temperature : modelConfig.getTemperature();
+        Number finalTemperature = normalizeDecimalNumber(temperature != null ? temperature : modelConfig.getTemperature());
         if (finalTemperature != null) {
-            params.put("temperature", finalTemperature.doubleValue());
+            params.put("temperature", finalTemperature);
         }
 
-        Number finalTopP = topP != null ? topP : modelConfig.getTopP();
+        Number finalTopP = normalizeDecimalNumber(topP != null ? topP : modelConfig.getTopP());
         if (finalTopP != null) {
-            params.put("top_p", finalTopP.doubleValue());
+            params.put("top_p", finalTopP);
         }
 
         Integer finalMaxTokens = maxTokens != null ? maxTokens : modelConfig.getMaxTokens();
         if (finalMaxTokens != null) {
             params.put("max_tokens", finalMaxTokens);
+        }
+
+        if (modelConfig.getUser() != null) {
+            params.put("user", modelConfig.getUser());
+        }
+        if (modelConfig.getSeed() != null) {
+            params.put("seed", modelConfig.getSeed());
         }
 
         String finalStop = stop != null ? stop : modelConfig.getStop();
@@ -319,7 +331,7 @@ public abstract class BaseModelClient {
         if (modelConfig.getExtraFields() != null) {
             for (Map.Entry<String, Object> entry : modelConfig.getExtraFields().entrySet()) {
                 if (entry.getValue() != null) {
-                    params.put(entry.getKey(), entry.getValue());
+                    params.put(entry.getKey(), normalizeDecimalRequestParam(entry.getKey(), entry.getValue()));
                 }
             }
         }
@@ -327,7 +339,7 @@ public abstract class BaseModelClient {
         if (kwargs != null) {
             for (Map.Entry<String, Object> entry : kwargs.entrySet()) {
                 if (!INTERNAL_REQUEST_PARAMS.contains(entry.getKey())) {
-                    params.put(entry.getKey(), entry.getValue());
+                    params.put(entry.getKey(), normalizeDecimalRequestParam(entry.getKey(), entry.getValue()));
                 }
             }
         }
@@ -376,6 +388,27 @@ public abstract class BaseModelClient {
                                             Float timeout,
                                             Map<String, Object> kwargs) throws Exception;
 
+    @Override
+    public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+        ModelInvokeOptions resolvedOptions = options == null ? ModelInvokeOptions.builder().build() : options;
+        try {
+            return CompletableFuture.completedFuture(invoke(
+                    messages,
+                    resolvedOptions.getTools(),
+                    resolvedOptions.getTemperature(),
+                    resolvedOptions.getTopP(),
+                    resolvedOptions.getModel(),
+                    resolvedOptions.getMaxTokens(),
+                    resolvedOptions.getStop(),
+                    resolvedOptions.getOutputParser(),
+                    resolvedOptions.getTimeout(),
+                    invocationExtraFields(resolvedOptions)
+            ));
+        } catch (Exception exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
     public abstract Iterator<AssistantMessageChunk> stream(Object messages,
                                                            Object tools,
                                                            Float temperature,
@@ -387,6 +420,38 @@ public abstract class BaseModelClient {
                                                            Float timeout,
                                                            Map<String, Object> kwargs) throws Exception;
 
+    @Override
+    public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+        ModelInvokeOptions resolvedOptions = options == null ? ModelInvokeOptions.builder().build() : options;
+        try {
+            return stream(
+                    messages,
+                    resolvedOptions.getTools(),
+                    resolvedOptions.getTemperature(),
+                    resolvedOptions.getTopP(),
+                    resolvedOptions.getModel(),
+                    resolvedOptions.getMaxTokens(),
+                    resolvedOptions.getStop(),
+                    resolvedOptions.getOutputParser(),
+                    resolvedOptions.getTimeout(),
+                    invocationExtraFields(resolvedOptions)
+            );
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    /**
+     * Returns provider-specific keyword arguments for one invocation.
+     *
+     * <p>The default implementation returns a mutable copy so providers can add private values
+     * without changing caller-owned options.</p>
+     */
+    protected Map<String, Object> invocationExtraFields(ModelInvokeOptions options) {
+        Map<String, Object> extraFields = options.getExtraFields();
+        return extraFields == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extraFields);
+    }
+
     public abstract ImageGenerationResponse generateImage(List<UserMessage> messages,
                                                           String model,
                                                           String size,
@@ -397,11 +462,47 @@ public abstract class BaseModelClient {
                                                           int seed,
                                                           Map<String, Object> kwargs) throws Exception;
 
+    @Override
+    public CompletionStage<ImageGenerationResponse> generateImage(List<UserMessage> messages,
+                                                                  Model.ImageGenerationOptions options) {
+        try {
+            return CompletableFuture.completedFuture(generateImage(
+                    messages,
+                    options.model(),
+                    options.size(),
+                    options.negativePrompt(),
+                    options.n(),
+                    options.promptExtend(),
+                    options.watermark(),
+                    options.seed(),
+                    options.extraFields()
+            ));
+        } catch (Exception exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
     public abstract AudioGenerationResponse generateSpeech(List<UserMessage> messages,
                                                            String model,
                                                            String voice,
                                                            String languageType,
                                                            Map<String, Object> kwargs) throws Exception;
+
+    @Override
+    public CompletionStage<AudioGenerationResponse> generateSpeech(List<UserMessage> messages,
+                                                                   Model.SpeechGenerationOptions options) {
+        try {
+            return CompletableFuture.completedFuture(generateSpeech(
+                    messages,
+                    options.model(),
+                    options.voice(),
+                    options.languageType(),
+                    options.extraFields()
+            ));
+        } catch (Exception exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
 
     public abstract VideoGenerationResponse generateVideo(List<UserMessage> messages,
                                                           String imgUrl,
@@ -415,6 +516,62 @@ public abstract class BaseModelClient {
                                                           String negativePrompt,
                                                           Integer seed,
                                                           Map<String, Object> kwargs) throws Exception;
+
+    @Override
+    public CompletionStage<VideoGenerationResponse> generateVideo(List<UserMessage> messages,
+                                                                  Model.VideoGenerationOptions options) {
+        try {
+            return CompletableFuture.completedFuture(generateVideo(
+                    messages,
+                    options.imgUrl(),
+                    options.audioUrl(),
+                    options.model(),
+                    options.size(),
+                    options.resolution(),
+                    options.duration(),
+                    options.promptExtend(),
+                    options.watermark(),
+                    options.negativePrompt(),
+                    options.seed(),
+                    options.extraFields()
+            ));
+        } catch (Exception exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public Boolean release(String sessionId,
+                           Object messages,
+                           int messagesReleasedIndex,
+                           Object tools,
+                           Integer toolsReleasedIndex,
+                           String model) throws Exception {
+        return false;
+    }
+
+    @Override
+    public CompletionStage<Boolean> release(String sessionId,
+                                            List<BaseMessage> messages,
+                                            Integer messagesReleasedIndex,
+                                            List<ToolInfo> tools,
+                                            Integer toolsReleasedIndex) {
+        try {
+            return CompletableFuture.completedFuture(Boolean.TRUE.equals(release(
+                    sessionId,
+                    messages,
+                    messagesReleasedIndex == null ? 0 : messagesReleasedIndex,
+                    tools,
+                    toolsReleasedIndex,
+                    null
+            )));
+        } catch (Exception exception) {
+            return CompletableFuture.failedFuture(exception);
+        }
+    }
+
+    public boolean supportsKvCacheRelease() {
+        return false;
+    }
 
     private static Object modelDumpIfPresent(Object value) {
         if (value == null) {
@@ -572,6 +729,26 @@ public abstract class BaseModelClient {
             return number.doubleValue();
         }
         return Double.parseDouble(String.valueOf(resolved));
+    }
+
+    private static Object normalizeDecimalRequestParam(String key, Object value) {
+        if (!DECIMAL_REQUEST_PARAMS.contains(key) || !(value instanceof Number number)) {
+            return value;
+        }
+        return normalizeDecimalNumber(number);
+    }
+
+    private static Number normalizeDecimalNumber(Number value) {
+        if (value instanceof Float floatValue) {
+            return Double.valueOf(Float.toString(floatValue));
+        }
+        if (value instanceof Double doubleValue) {
+            float narrowed = doubleValue.floatValue();
+            if (Double.compare((double) narrowed, doubleValue) == 0) {
+                return Double.valueOf(Float.toString(narrowed));
+            }
+        }
+        return value;
     }
 
     /**

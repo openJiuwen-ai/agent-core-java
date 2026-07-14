@@ -11,4 +11,7 @@ package com.openjiuwen.core.singleagent.legacy.config;
  * {@code openjiuwen/core/single_agent/legacy/config.py}.</p>
  */
 public class ReActAgentConfig extends LegacyReActAgentConfig {
+    public ReActAgentConfig() {
+        super();
+    }
 }

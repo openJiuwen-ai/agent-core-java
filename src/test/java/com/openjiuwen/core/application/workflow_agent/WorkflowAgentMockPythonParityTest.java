@@ -12,12 +12,14 @@ import com.openjiuwen.core.controller.modules.EventQueue;
 import com.openjiuwen.core.controller.modules.TaskExecutorDependencies;
 import com.openjiuwen.core.controller.modules.TaskFilter;
 import com.openjiuwen.core.controller.modules.TaskManager;
+import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
 import com.openjiuwen.core.controller.schema.DataFrame;
 import com.openjiuwen.core.controller.schema.EventType;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.controller.schema.Task;
 import com.openjiuwen.core.controller.schema.TaskStatus;
+import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.resourcemanager.ResourceManagerBase;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -41,9 +43,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Mirrors Python's workflow-agent mock tests in
@@ -172,6 +176,110 @@ class WorkflowAgentMockPythonParityTest {
         } finally {
             Runner.resourceMgr().removeWorkflow(workflowKey);
         }
+    }
+
+    @Test
+    void testWorkflowAgentResolvesConfigWorkflowFromResourceManager() {
+        String workflowId = unique("resource_registered_wf");
+        String agentId = unique("resource_registered_agent");
+        String workflowKey = WorkflowKeys.generateWorkflowKey(workflowId, "1.0");
+        WorkflowCard card = workflowCard(workflowId, "Resource Registered WF");
+        WorkflowCard resourceCard = new WorkflowCard(workflowKey, card.getName(), card.getDescription(),
+                card.getVersion(), card.getInputParams());
+        com.openjiuwen.core.application.workflow.WorkflowAgent agent =
+                new com.openjiuwen.core.application.workflow.WorkflowAgent(
+                        com.openjiuwen.core.application.schema.WorkflowAgentConfig.builder()
+                                .id(agentId)
+                                .version("1.0")
+                                .description("resource registered workflow agent")
+                                .workflows(List.of(com.openjiuwen.core.application.schema.WorkflowSchema.builder()
+                                        .id(workflowId)
+                                        .name(card.getName())
+                                        .version("1.0")
+                                        .description(card.getDescription())
+                                        .inputParams(map(card.getInputParams()))
+                                        .build()))
+                                .build());
+        Workflow workflow = new FixedWorkflow(card, Map.of("source", "resource-manager"));
+
+        try {
+            Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, agent.getCard().getId());
+
+            Object result = agent.invoke(Map.of("query", "hello"), new RecordingSession("resource-session"))
+                    .toCompletableFuture()
+                    .join();
+            Map<String, Object> resultMap = ((ControllerOutput) result).getDataAsMap();
+
+            assertThat(resultMap).containsEntry("result_type", "answer");
+            assertThat(resultMap.get("output")).isInstanceOf(WorkflowOutput.class);
+            WorkflowOutput output = (WorkflowOutput) resultMap.get("output");
+            assertThat(output.getState()).isEqualTo(WorkflowExecutionState.COMPLETED);
+            assertThat(output.getResult()).isEqualTo(Map.of("source", "resource-manager"));
+        } finally {
+            Runner.resourceMgr().removeWorkflow(workflowKey);
+        }
+    }
+
+    @Test
+    void testWorkflowAgentRefreshesFacadeConfigWorkflowsRegisteredAfterConstruction() {
+        String workflowId = unique("late_config_wf");
+        String agentId = unique("late_config_agent");
+        String workflowKey = WorkflowKeys.generateWorkflowKey(workflowId, "1.0");
+        WorkflowCard card = workflowCard(workflowId, "Late Config WF");
+        WorkflowCard resourceCard = new WorkflowCard(workflowKey, card.getName(), card.getDescription(),
+                card.getVersion(), card.getInputParams());
+        com.openjiuwen.core.application.workflow.WorkflowAgent agent =
+                new com.openjiuwen.core.application.workflow.WorkflowAgent(
+                        com.openjiuwen.core.application.schema.WorkflowAgentConfig.builder()
+                                .id(agentId)
+                                .version("1.0")
+                                .description("late config workflow agent")
+                                .build());
+        Workflow workflow = new FixedWorkflow(card, Map.of("source", "late-config-resource-manager"));
+
+        try {
+            agent.getAgentConfig().getWorkflows().add(
+                    com.openjiuwen.core.application.schema.WorkflowSchema.builder()
+                            .id(workflowId)
+                            .name(card.getName())
+                            .version("1.0")
+                            .description(card.getDescription())
+                            .inputParams(map(card.getInputParams()))
+                            .build());
+            Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, agent.getCard().getId());
+
+            Object result = agent.invoke(Map.of("query", "hello"), new RecordingSession("late-config-session"))
+                    .toCompletableFuture()
+                    .join();
+            Map<String, Object> resultMap = ((ControllerOutput) result).getDataAsMap();
+
+            assertThat(resultMap).containsEntry("result_type", "answer");
+            WorkflowOutput output = (WorkflowOutput) resultMap.get("output");
+            assertThat(output.getState()).isEqualTo(WorkflowExecutionState.COMPLETED);
+            assertThat(output.getResult()).isEqualTo(Map.of("source", "late-config-resource-manager"));
+        } finally {
+            Runner.resourceMgr().removeWorkflow(workflowKey);
+        }
+    }
+
+    @Test
+    void testWorkflowAgentDirectInvokeFailureStillExposesMapCompatibleStage() {
+        com.openjiuwen.core.application.workflow.WorkflowAgent agent =
+                new com.openjiuwen.core.application.workflow.WorkflowAgent(
+                        com.openjiuwen.core.application.schema.WorkflowAgentConfig.builder()
+                                .id("direct-invoke-map-stage")
+                                .version("1.0")
+                                .description("direct invoke map-compatible failure")
+                                .build());
+        agent.setController(new FailingController());
+
+        Object result = agent.invoke(Map.of("query", "hello"), new RecordingSession("failed-direct-invoke"));
+
+        assertThat(result).isInstanceOf(Map.class);
+        assertThat(result).isInstanceOf(CompletionStage.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resultMap = (Map<String, Object>) result;
+        assertThatThrownBy(() -> resultMap.get("interaction")).isInstanceOf(CompletionException.class);
     }
 
     @Test
@@ -326,6 +434,26 @@ class WorkflowAgentMockPythonParityTest {
                             Map.of("result", inputs.get("query")),
                             WorkflowExecutionState.COMPLETED)
             )));
+        }
+    }
+
+    public static final class FailingController {
+        public CompletionStage<Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
+            return CompletableFuture.failedFuture(new IllegalStateException("controller failed"));
+        }
+    }
+
+    private static final class FixedWorkflow extends Workflow {
+        private final Object result;
+
+        private FixedWorkflow(WorkflowCard card, Object result) {
+            super(card);
+            this.result = result;
+        }
+
+        @Override
+        public WorkflowOutput invoke(Object inputs, Object session, ModelContext context) {
+            return new WorkflowOutput(result, WorkflowExecutionState.COMPLETED);
         }
     }
 

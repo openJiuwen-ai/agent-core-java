@@ -98,7 +98,7 @@ class BadCasePromptBuilderTest {
         ), List.of());
         BadCasePromptBuilder builder = builderWith(client);
 
-        Optional<String> result = builder.build("original prompt", List.of(evaluatedCase()), "en-US").join();
+        String result = builder.build("original prompt", List.of(evaluatedCase()), "en-US").join();
 
         assertThat(result).contains("optimized prompt");
         assertThat(client.capturedInvokes()).hasSize(2);
@@ -117,7 +117,7 @@ class BadCasePromptBuilderTest {
         BadCasePromptBuilder builder = builderWith(client);
         String prompt = "bad_case test prompt";
 
-        Optional<String> response = builder.build(prompt, List.of(pythonEvaluatedCase(), pythonEvaluatedCase())).join();
+        String response = builder.build(prompt, List.of(pythonEvaluatedCase(), pythonEvaluatedCase())).join();
 
         String analyzeTemplateContent = PromptZh.PROMPT_BAD_CASE_ANALYZE_TEMPLATE.toMessages()
                 .get(0)
@@ -178,7 +178,7 @@ class BadCasePromptBuilderTest {
         ), List.of());
         BadCasePromptBuilder builder = builderWith(client);
 
-        Optional<String> result = builder.build(
+        String result = builder.build(
                 com.openjiuwen.core.foundation.prompt.PromptTemplate.builder().content("template prompt").build(),
                 List.of(evaluatedCase())
         ).join();

@@ -37,6 +37,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Inference Affinity (vLLM) API client with cache release support.
@@ -299,7 +300,8 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         }
     }
 
-    public static boolean supportsKvCacheRelease() {
+    @Override
+    public boolean supportsKvCacheRelease() {
         return true;
     }
 
@@ -366,7 +368,8 @@ public class InferenceAffinityModelClient extends BaseModelClient {
             Object parserContent = null;
             if (!accumulatedContent.isEmpty()) {
                 try {
-                    Object parsedResult = outputParser.parse(accumulatedContent.toString()).join();
+                    Object parsedResult = outputParser.<CompletableFuture<Object>>parse(
+                            accumulatedContent.toString()).join();
                     if (parsedResult != null) {
                         parserContent = parsedResult;
                         accumulatedContent.setLength(0);
@@ -566,7 +569,7 @@ public class InferenceAffinityModelClient extends BaseModelClient {
             return null;
         }
         try {
-            return parser.parse(content).join();
+            return parser.<CompletableFuture<Object>>parse(content).join();
         } catch (RuntimeException exception) {
             Loggers.LLM.warning("Parser parse error. {}", exception.getMessage());
             return null;

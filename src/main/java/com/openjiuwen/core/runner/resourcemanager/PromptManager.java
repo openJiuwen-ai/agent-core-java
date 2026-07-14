@@ -17,6 +17,7 @@ import java.util.List;
 public class PromptManager {
 
     private final ThreadSafeDict<String, PromptTemplate> repo = new ThreadSafeDict<>();
+    private final ThreadSafeDict<String, Object> compatibilityRepo = new ThreadSafeDict<>();
 
     public void addPrompt(String templateId, PromptTemplate template) {
         if (templateId == null) {
@@ -38,7 +39,11 @@ public class PromptManager {
     }
 
     public PromptTemplate removePrompt(String templateId) {
-        return repo.pop(templateId, null);
+        PromptTemplate removed = repo.pop(templateId, null);
+        if (removed == null) {
+            compatibilityRepo.pop(templateId, null);
+        }
+        return removed;
     }
 
     public PromptTemplate getPrompt(String templateId) {
@@ -46,6 +51,23 @@ public class PromptManager {
             throw new IllegalArgumentException("template_id is invalid, can not be None");
         }
         return repo.get(templateId);
+    }
+
+    public void put(String templateId, Object template) {
+        compatibilityRepo.put(templateId, template);
+    }
+
+    public boolean contains(String templateId) {
+        return repo.get(templateId) != null || compatibilityRepo.get(templateId) != null;
+    }
+
+    public int size() {
+        return repo.size() + compatibilityRepo.size();
+    }
+
+    public Object get(String templateId) {
+        Object compatibilityValue = compatibilityRepo.get(templateId);
+        return compatibilityValue != null ? compatibilityValue : repo.get(templateId);
     }
 
     /**

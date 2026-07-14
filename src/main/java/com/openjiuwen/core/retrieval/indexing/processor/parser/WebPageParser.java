@@ -97,7 +97,7 @@ public class WebPageParser extends HTMLFileParser {
     }
 
     @Override
-    public CompletableFuture<List<Document>> parse(
+    public CompletableFuture<List<Document>> parseAsync(
             String doc,
             String docId,
             BaseModelClient llmClient,

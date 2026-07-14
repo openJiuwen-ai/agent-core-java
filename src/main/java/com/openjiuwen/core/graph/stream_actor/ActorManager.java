@@ -24,6 +24,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
 /**
@@ -39,7 +40,7 @@ public class ActorManager {
     private final Map<String, List<String>> streamEdges;
     private final Map<String, StreamActor> streams = new LinkedHashMap<>();
     private final StreamTransform streamsTransform = new StreamTransform();
-    private final Map<String, Set<ComponentAbility>> activeProducerIds = new LinkedHashMap<>();
+    private final Map<String, Set<ComponentAbility>> activeProducerIds = new ConcurrentHashMap<>();
     private final Map<String, List<String>> consumerDict;
     private final Map<String, Set<ComponentAbility>> producerAbilities = new LinkedHashMap<>();
     private final Map<String, List<Set<String>>> streamSourceGroups = new LinkedHashMap<>();
@@ -109,7 +110,9 @@ public class ActorManager {
      * @param ability component ability
      */
     public void activeProduceAbility(String producerId, ComponentAbility ability) {
-        Set<ComponentAbility> abilities = activeProducerIds.computeIfAbsent(producerId, ignored -> new LinkedHashSet<>());
+        Set<ComponentAbility> abilities = activeProducerIds.computeIfAbsent(
+                producerId,
+                ignored -> ConcurrentHashMap.newKeySet());
         abilities.add(ability);
     }
 

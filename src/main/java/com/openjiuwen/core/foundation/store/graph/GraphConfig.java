@@ -146,6 +146,10 @@ public class GraphConfig {
         return extras;
     }
 
+    public boolean isWipeAtStartup() {
+        return Boolean.TRUE.equals(extras.get("wipeAtStartup")) || Boolean.TRUE.equals(extras.get("wipe_at_startup"));
+    }
+
     public int getMaxConcurrent() {
         return maxConcurrent;
     }
@@ -257,6 +261,19 @@ public class GraphConfig {
 
         public Builder requestMaxRetries(int requestMaxRetries) {
             this.requestMaxRetries = requestMaxRetries;
+            return this;
+        }
+
+        public Builder wipeAtStartup(boolean wipeAtStartup) {
+            LinkedHashMap<String, Object> nextExtras = new LinkedHashMap<>();
+            if (this.extras instanceof Map<?, ?> extrasMap) {
+                for (Map.Entry<?, ?> entry : extrasMap.entrySet()) {
+                    nextExtras.put((String) entry.getKey(), entry.getValue());
+                }
+            }
+            nextExtras.put("wipeAtStartup", wipeAtStartup);
+            nextExtras.put("wipe_at_startup", wipeAtStartup);
+            this.extras = nextExtras;
             return this;
         }
 

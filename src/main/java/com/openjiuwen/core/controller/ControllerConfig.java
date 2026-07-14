@@ -67,6 +67,13 @@ public class ControllerConfig {
     @JsonProperty("stream_first_frame_timeout")
     private Double streamFirstFrameTimeout = 30.0;
 
+    public ControllerConfig() {
+    }
+
+    public static ControllerConfig defaultConfig() {
+        return new ControllerConfig();
+    }
+
     /**
      * Mirrors Python's {@code DefaultResponse} in
      * {@code openjiuwen/core/controller/config.py}.
@@ -162,6 +169,10 @@ public class ControllerConfig {
         this.eventQueueSize = eventQueueSize;
     }
 
+    public void setEventQueueSize(int eventQueueSize) {
+        setEventQueueSize(Integer.valueOf(eventQueueSize));
+    }
+
     public Double getEventTimeout() {
         return eventTimeout;
     }
@@ -171,6 +182,10 @@ public class ControllerConfig {
             throw new IllegalArgumentException("eventTimeout must be >= 100 or null");
         }
         this.eventTimeout = eventTimeout;
+    }
+
+    public void setEventTimeout(double eventTimeout) {
+        setEventTimeout(Double.valueOf(eventTimeout));
     }
 
     public boolean isEnableIntentRecognition() {

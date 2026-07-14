@@ -77,7 +77,7 @@ public class KnowledgeRetrievalExecutable extends ComponentExecutable<Object, Ob
         RetrievalConfig retrievalConfig = config.getRetrievalConfig();
         List<MultiKBRetrievalResult> retrievalResults;
         try {
-            retrievalResults = SimpleKnowledgeBase.retrieveMultiKbWithSource(
+            retrievalResults = SimpleKnowledgeBase.retrieveMultiKbWithSourceAsync(
                             knowledgeBases,
                             query,
                             retrievalConfig,

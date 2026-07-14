@@ -33,6 +33,7 @@ import java.util.stream.Collectors;
 public class DefaultEvaluator extends BaseEvaluator {
 
     private final Model model;
+    private final String metric;
     private final PromptTemplate metricTemplate;
 
     public DefaultEvaluator(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
@@ -45,9 +46,14 @@ public class DefaultEvaluator extends BaseEvaluator {
 
     DefaultEvaluator(Model model, String metric) {
         this.model = Objects.requireNonNull(model, "model");
+        this.metric = metric == null ? "" : metric;
         Map<String, Object> keywords = new LinkedHashMap<>();
-        keywords.put("user_metrics", metric == null ? "" : metric);
+        keywords.put("user_metrics", this.metric);
         this.metricTemplate = EvaluatorTemplates.LLM_METRIC_TEMPLATE.format(keywords);
+    }
+
+    public String getMetric() {
+        return metric;
     }
 
     @Override

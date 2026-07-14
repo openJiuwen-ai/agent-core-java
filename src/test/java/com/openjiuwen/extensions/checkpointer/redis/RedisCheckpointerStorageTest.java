@@ -340,7 +340,8 @@ class RedisCheckpointerStorageTest {
         redisClient.set("session-1:workflow:workflow-1:workflow_state_blobs_dump_type", "json");
         redisClient.set("session-1:workflow:workflow-1:workflow_state_blobs", "[]".getBytes(StandardCharsets.UTF_8));
 
-        WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        WorkflowSession session =
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         RuntimeException error = assertThrows(RuntimeException.class,
                 () -> checkpointer.preWorkflowExecute(session, new InteractiveInput()));
 
@@ -355,7 +356,7 @@ class RedisCheckpointerStorageTest {
         missingBlobRedis.set("session-1:workflow:workflow-1:workflow_state_blobs_dump_type", "json");
 
         WorkflowSession missingBlobSession =
-                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         RuntimeException missingBlob = assertThrows(RuntimeException.class,
                 () -> missingBlobCheckpointer.preWorkflowExecute(missingBlobSession, new InteractiveInput()));
 
@@ -367,7 +368,7 @@ class RedisCheckpointerStorageTest {
                 "{}".getBytes(StandardCharsets.UTF_8));
 
         WorkflowSession missingDumpTypeSession =
-                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         RuntimeException missingDumpType = assertThrows(RuntimeException.class,
                 () -> missingDumpTypeCheckpointer.preWorkflowExecute(missingDumpTypeSession, new InteractiveInput()));
 
@@ -381,7 +382,8 @@ class RedisCheckpointerStorageTest {
         redisClient.set("session-1:workflow:workflow-1:workflow_update_blobs_dump_type", "json");
         redisClient.set("session-1:workflow:workflow-1:workflow_update_blobs", "[]".getBytes(StandardCharsets.UTF_8));
 
-        WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        WorkflowSession session =
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         RuntimeException error = assertThrows(RuntimeException.class,
                 () -> checkpointer.preWorkflowExecute(session, new InteractiveInput()));
 
@@ -396,7 +398,7 @@ class RedisCheckpointerStorageTest {
         missingBlobRedis.set("session-1:workflow:workflow-1:workflow_update_blobs_dump_type", "json");
 
         WorkflowSession missingBlobSession =
-                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         RuntimeException missingBlob = assertThrows(RuntimeException.class,
                 () -> missingBlobCheckpointer.preWorkflowExecute(missingBlobSession, new InteractiveInput()));
 
@@ -408,7 +410,7 @@ class RedisCheckpointerStorageTest {
                 "{}".getBytes(StandardCharsets.UTF_8));
 
         WorkflowSession missingDumpTypeSession =
-                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         RuntimeException missingDumpType = assertThrows(RuntimeException.class,
                 () -> missingDumpTypeCheckpointer.preWorkflowExecute(missingDumpTypeSession, new InteractiveInput()));
 
@@ -446,7 +448,8 @@ class RedisCheckpointerStorageTest {
         FakeRedisClient redisClient = new FakeRedisClient();
         RedisCheckpointer checkpointer = jsonCheckpointer(redisClient);
 
-        WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        WorkflowSession session =
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         checkpointer.preWorkflowExecute(session, null);
         WorkflowCommitState state = (WorkflowCommitState) session.state();
         state.updateGlobal(Map.of("messages", List.of(new UserMessage("workflow json state"))));
@@ -467,7 +470,8 @@ class RedisCheckpointerStorageTest {
         assertTrue(asText(redisClient.get(updateBlobKey)).contains("workflow json update"));
         assertTrue(asText(redisClient.get(updateBlobKey)).contains("message.assistant"));
 
-        WorkflowSession restored = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        WorkflowSession restored =
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         checkpointer.preWorkflowExecute(restored, new InteractiveInput());
 
         WorkflowCommitState restoredState = (WorkflowCommitState) restored.state();
@@ -487,7 +491,8 @@ class RedisCheckpointerStorageTest {
                 new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
                 Map.of("default_ttl", 1, "refresh_on_read", true, "dump_type", "json"));
 
-        WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        WorkflowSession session =
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         checkpointer.preWorkflowExecute(session, null);
         WorkflowCommitState state = (WorkflowCommitState) session.state();
         state.updateGlobal(Map.of("persisted", "value"));
@@ -504,7 +509,8 @@ class RedisCheckpointerStorageTest {
         checkpointer.postWorkflowExecute(session, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
         assertTrue(checkpointer.sessionExists("session-1"));
 
-        WorkflowSession restored = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        WorkflowSession restored =
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         InteractiveInput inputs = new InteractiveInput();
         inputs.update("ask", Map.of("answer", "done"));
         checkpointer.preWorkflowExecute(restored, inputs);
@@ -530,7 +536,8 @@ class RedisCheckpointerStorageTest {
                 new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
                 Map.of("dump_type", "json"));
 
-        WorkflowSession initial = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        WorkflowSession initial =
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         checkpointer.preWorkflowExecute(initial, null);
         WorkflowCommitState state = (WorkflowCommitState) initial.state();
         state.updateGlobal(Map.of("persisted", "value"));
@@ -542,7 +549,8 @@ class RedisCheckpointerStorageTest {
                 "workflow-1",
                 GraphStoreState.create("workflow-1", 1, Map.of(), List.of(), Map.of(), Map.of()));
 
-        WorkflowSession fresh = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        WorkflowSession fresh =
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         fresh.config().setEnvs(Map.of(SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY, true));
 
         checkpointer.preWorkflowExecute(fresh, null);
@@ -558,14 +566,16 @@ class RedisCheckpointerStorageTest {
                 new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
                 Map.of("dump_type", "json"));
 
-        WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        WorkflowSession session =
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         checkpointer.preWorkflowExecute(session, null);
         WorkflowCommitState state = (WorkflowCommitState) session.state();
         state.updateGlobal(Map.of("persisted", "value"));
         state.commit();
         checkpointer.postWorkflowExecute(session, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
 
-        WorkflowSession resumed = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        WorkflowSession resumed =
+                new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), (Object) null);
         RuntimeException error = assertThrows(RuntimeException.class,
                 () -> checkpointer.preWorkflowExecute(resumed, null));
         assertTrue(error.getMessage().contains("workflow state exists"));

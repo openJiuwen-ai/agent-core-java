@@ -9,12 +9,15 @@ import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.graph.Executable;
 import com.openjiuwen.core.graph.Vertex;
 import com.openjiuwen.core.session.BaseSession;
+import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.workflow.HasDrawable;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -95,8 +98,8 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
                 }
             }
             Object result = subWorkflow.invokeSubWorkflow(
-                    workflowInputs(inputs), session, extractContext(kwargs), workflowConfig(inputs));
-            return normalizeMapOutput(result);
+                    subWorkflowInputs(inputs, session), session, extractContext(kwargs), workflowConfig(inputs));
+            return normalizeComponentOutput(result);
         }
 
         @Override
@@ -105,7 +108,7 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
                 BaseSession session,
                 Object... kwargs) {
             Iterator<WorkflowChunk> chunks = subWorkflow.streamSubWorkflow(
-                    workflowInputs(inputs), session, extractContext(kwargs), workflowConfig(inputs));
+                    subWorkflowInputs(inputs, session), session, extractContext(kwargs), workflowConfig(inputs));
             return new Iterator<>() {
                 @Override
                 public boolean hasNext() {
@@ -155,6 +158,47 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
         return inputs == null ? null : inputs.get(Constant.INPUTS_KEY);
     }
 
+    private static Object subWorkflowInputs(Map<String, Object> inputs, BaseSession session) {
+        InteractiveInput nestedInputs = nestedInteractiveInput(session);
+        Object workflowInputs = workflowInputs(inputs);
+        return workflowInputs != null ? workflowInputs : nestedInputs;
+    }
+
+    private static InteractiveInput nestedInteractiveInput(BaseSession session) {
+        if (session == null || session.state() == null) {
+            return null;
+        }
+        if (session.state() instanceof WorkflowCommitState workflowState) {
+            return findInteractiveInput(workflowState.getWorkflowState(Constant.INTERACTIVE_INPUT));
+        }
+        Object value = session.state().get(Constant.INTERACTIVE_INPUT);
+        return findInteractiveInput(value);
+    }
+
+    private static InteractiveInput findInteractiveInput(Object value) {
+        if (value instanceof InteractiveInput interactiveInput) {
+            return interactiveInput;
+        }
+        if (value instanceof List<?> list) {
+            for (int index = list.size() - 1; index >= 0; index--) {
+                Object item = list.get(index);
+                InteractiveInput interactiveInput = findInteractiveInput(item);
+                if (interactiveInput != null) {
+                    return interactiveInput;
+                }
+            }
+        }
+        if (value instanceof Map<?, ?> map) {
+            for (Object item : map.values()) {
+                InteractiveInput interactiveInput = findInteractiveInput(item);
+                if (interactiveInput != null) {
+                    return interactiveInput;
+                }
+            }
+        }
+        return null;
+    }
+
     private static Object workflowConfig(Map<String, Object> inputs) {
         return inputs == null ? null : inputs.get(Constant.CONFIG_KEY);
     }
@@ -175,6 +219,17 @@ public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWo
             return null;
         }
         return Map.of("output", value);
+    }
+
+    private static Map<String, Object> normalizeComponentOutput(Object value) {
+        Map<String, Object> normalized = normalizeMapOutput(value);
+        if (normalized == null) {
+            return null;
+        }
+        if (normalized.containsKey("output")) {
+            return normalized;
+        }
+        return Map.of("output", normalized);
     }
 
     private static Map<String, Object> toStringObjectMap(Map<?, ?> source) {

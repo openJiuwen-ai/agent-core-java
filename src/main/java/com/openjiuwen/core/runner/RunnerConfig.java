@@ -13,6 +13,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.UUID;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -118,6 +119,18 @@ public class RunnerConfig {
             return GLOBAL_CONFIG.get();
         }
         return config;
+    }
+
+    public static class RunnerConfigBuilder {
+        public RunnerConfigBuilder checkpointerConfig(CheckpointerConfig checkpointerConfig) {
+            this.checkpointerConfig = checkpointerConfig;
+            return this;
+        }
+
+        public RunnerConfigBuilder checkpointerConfig(Map<String, ?> checkpointerConfig) {
+            this.checkpointerConfig = CheckpointerConfig.fromMap(checkpointerConfig);
+            return this;
+        }
     }
 
     private static CheckpointerConfig copyCheckpointerConfig(CheckpointerConfig source) {

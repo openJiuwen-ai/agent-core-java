@@ -6,6 +6,7 @@ package com.openjiuwen.core.retrieval;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.async.FutureList;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
@@ -152,7 +153,7 @@ public class GraphKnowledgeBase extends KnowledgeBase {
 
         GraphRetriever graph = graphRetriever;
         if (graph == null) {
-            if (vectorStore == null) {
+            if (vectorStore == null && (chunkRetriever == null || tripleRetriever == null)) {
                 throw ErrorHelper.buildError(
                         StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
                         "error_msg",
@@ -176,9 +177,10 @@ public class GraphKnowledgeBase extends KnowledgeBase {
                 : graph;
         Map<String, Object> options = optionsFrom(activeConfig, kwargs);
         String mode = retrievalMode();
+        int topK = activeConfig.getTopK() > 0 ? activeConfig.getTopK() : 5;
         return CompletableFuture.completedFuture(activeRetriever.retrieve(
                 query,
-                activeConfig.getTopK(),
+                topK,
                 activeConfig.getScoreThreshold(),
                 mode,
                 options
@@ -232,7 +234,7 @@ public class GraphKnowledgeBase extends KnowledgeBase {
     }
 
     @Override
-    public CompletableFuture<Map<String, Object>> getStatistics() {
+    protected CompletableFuture<Map<String, Object>> getStatisticsAsync() {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("kb_id", config.getKbId());
         stats.put("index_type", config.getIndexType());
@@ -259,7 +261,7 @@ public class GraphKnowledgeBase extends KnowledgeBase {
     }
 
     @Override
-    public CompletableFuture<Void> close() {
+    public CompletableFuture<Void> closeAsync() {
         if (graphRetriever != null) {
             graphRetriever.close();
         }
@@ -269,10 +271,10 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         if (tripleRetriever != null) {
             tripleRetriever.close();
         }
-        return super.close();
+        return super.closeAsync();
     }
 
-    public static CompletableFuture<List<String>> retrieveMultiGraphKb(
+    public static FutureList<String> retrieveMultiGraphKb(
             List<? extends KnowledgeBase> knowledgeBases,
             String query,
             RetrievalConfig config,
@@ -281,13 +283,31 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         return SimpleKnowledgeBase.retrieveMultiKb(knowledgeBases, query, config, topK);
     }
 
-    public static CompletableFuture<List<MultiKBRetrievalResult>> retrieveMultiGraphKbWithSource(
+    public static CompletableFuture<List<String>> retrieveMultiGraphKbAsync(
+            List<? extends KnowledgeBase> knowledgeBases,
+            String query,
+            RetrievalConfig config,
+            Integer topK
+    ) {
+        return SimpleKnowledgeBase.retrieveMultiKbAsync(knowledgeBases, query, config, topK);
+    }
+
+    public static FutureList<MultiKBRetrievalResult> retrieveMultiGraphKbWithSource(
             List<? extends KnowledgeBase> knowledgeBases,
             String query,
             RetrievalConfig config,
             Integer topK
     ) {
         return SimpleKnowledgeBase.retrieveMultiKbWithSource(knowledgeBases, query, config, topK);
+    }
+
+    public static CompletableFuture<List<MultiKBRetrievalResult>> retrieveMultiGraphKbWithSourceAsync(
+            List<? extends KnowledgeBase> knowledgeBases,
+            String query,
+            RetrievalConfig config,
+            Integer topK
+    ) {
+        return SimpleKnowledgeBase.retrieveMultiKbWithSourceAsync(knowledgeBases, query, config, topK);
     }
 
     private CompletableFuture<Void> buildTripleIndex(List<Triple> triples, Map<String, Object> buildOptions) {
