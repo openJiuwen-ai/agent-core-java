@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.singleagent.legacy.react_agent;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
@@ -28,6 +30,7 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -112,6 +115,18 @@ class LegacyReActAgentTest {
                 .stream()
                 .filter(message -> "tool".equals(message.getRole()))
                 .count());
+    }
+
+    @Test
+    void addToolsRejectsEmptyAgentIdLikePythonResourceManager() {
+        LegacyReActAgent agent = new LegacyReActAgent(baseConfig(""));
+        EchoTool tool = new EchoTool("empty-tag-tool-" + UUID.randomUUID());
+
+        BaseError error = assertThrows(BaseError.class, () -> agent.addTools(List.of(tool)));
+
+        assertEquals(StatusCode.RESOURCE_TAG_VALUE_INVALID.getCode(), error.getCode());
+        assertTrue(error.getMessage().contains("tag is invalid, tag="));
+        assertTrue(error.getMessage().contains("is None or empty value"));
     }
 
     @Test
