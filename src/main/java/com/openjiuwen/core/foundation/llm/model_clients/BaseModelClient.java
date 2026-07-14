@@ -448,6 +448,10 @@ public abstract class BaseModelClient implements Model.ModelClient {
      * without changing caller-owned options.</p>
      */
     protected Map<String, Object> invocationExtraFields(ModelInvokeOptions options) {
+        if (!options.getRequestHeaders().isEmpty()) {
+            throw new UnsupportedOperationException(
+                    getClass().getSimpleName() + " does not support request-level headers");
+        }
         Map<String, Object> extraFields = options.getExtraFields();
         return extraFields == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extraFields);
     }

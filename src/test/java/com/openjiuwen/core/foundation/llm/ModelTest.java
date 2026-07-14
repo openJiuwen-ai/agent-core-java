@@ -49,6 +49,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ModelTest {
 
+    private static final String INIT_TEST_PROVIDER = "ModelTestInitProvider";
+    private static final String OVERRIDE_TEST_PROVIDER = "ModelTestOverrideProvider";
+
     @AfterEach
     void tearDown() {
         Model.clearCallbackFramework();
@@ -65,10 +68,10 @@ class ModelTest {
     @Test
     void initModelBuildsConfigsAndDelegatesInvokeThroughRegisteredProvider() {
         RecordingInvoker invoker = new RecordingInvoker(new AssistantMessage("ok"));
-        Model.registerInvoker("OpenAI", invoker);
+        Model.registerInvoker(INIT_TEST_PROVIDER, invoker);
 
         Model model = Model.init_model(
-                "OpenAI",
+                INIT_TEST_PROVIDER,
                 "model-a",
                 "key",
                 "https://example.test",
@@ -85,7 +88,7 @@ class ModelTest {
 
         assertEquals("ok", response.getContentAsString());
         assertEquals("model-a", invoker.modelConfigs.get(0).getModelName());
-        assertEquals("OpenAI", invoker.clientConfigs.get(0).getClientProvider());
+        assertEquals(INIT_TEST_PROVIDER, invoker.clientConfigs.get(0).getClientProvider());
         assertEquals("https://example.test", invoker.clientConfigs.get(0).getApiBase());
         assertEquals("abc", invoker.clientConfigs.get(0).getCustomHeaders().get("x-trace"));
         assertInstanceOf(UserMessage.class, invoker.messages.get(0).get(0));
@@ -93,13 +96,13 @@ class ModelTest {
 
     @Test
     void registerInvokerOverridesExistingClientFactoryForSameProvider() {
-        Model.registerClientFactory("OpenAI", (clientConfig, requestConfig) ->
+        Model.registerClientFactory(OVERRIDE_TEST_PROVIDER, (clientConfig, requestConfig) ->
                 (messages, options) -> CompletableFuture.completedFuture(new AssistantMessage("factory")));
-        Model.registerInvoker("OpenAI", (messages, modelConfig, modelClientConfig, options) ->
+        Model.registerInvoker(OVERRIDE_TEST_PROVIDER, (messages, modelConfig, modelClientConfig, options) ->
                 CompletableFuture.completedFuture(new AssistantMessage("invoker")));
 
         Model model = Model.init_model(
-                "OpenAI",
+                OVERRIDE_TEST_PROVIDER,
                 "model-a",
                 "key",
                 "https://example.test",
@@ -160,6 +163,32 @@ class ModelTest {
         assertEquals("model-a", client.invokeOptions.get(0).getModel());
         assertEquals(0.7f, client.invokeOptions.get(0).getTemperature());
         assertEquals(retryListener, client.invokeOptions.get(0).getRetryListener());
+    }
+
+    @Test
+    void callbackInputTransformPreservesRequestHeadersWithoutExposingThemAsKwargs() {
+        RecordingModelClient client = new RecordingModelClient();
+        RecordingFramework framework = new RecordingFramework();
+        framework.transformedInvokeInput = Map.of("temperature", 0.8f);
+        Model.setCallbackFramework(framework);
+        Model model = new Model(client);
+
+        model.invoke(
+                List.of(new UserMessage("hello")),
+                ModelInvokeOptions.builder()
+                        .temperature(0.7f)
+                        .requestHeaders(Map.of("Authorization", "private-token", "X-Request", "private-value"))
+                        .build()
+        ).toCompletableFuture().join();
+
+        assertEquals(0.8f, client.invokeOptions.get(0).getTemperature());
+        assertEquals(Map.of("Authorization", "private-token", "X-Request", "private-value"),
+                client.invokeOptions.get(0).getRequestHeaders());
+        assertFalse(framework.lastInvokeInputKwargs.containsKey("requestHeaders"));
+        assertFalse(framework.lastInvokeInputKwargs.containsKey("request_headers"));
+        assertFalse(framework.lastInvokeInputKwargs.containsKey("__openjiuwen_request_headers"));
+        assertFalse(framework.lastInvokeInputKwargs.toString().contains("private-token"));
+        assertFalse(framework.lastInvokeInputKwargs.toString().contains("private-value"));
     }
 
     @Test
@@ -381,6 +410,8 @@ class ModelTest {
     private static final class RecordingFramework implements DecoratorFramework {
         private final List<String> events = new ArrayList<>();
         private Object transformedOutput;
+        private Map<String, Object> transformedInvokeInput;
+        private Map<String, Object> lastInvokeInputKwargs;
 
         @Override
         public CallbackInfo registerSync(String event, Function<Map<String, Object>, Object> callback, int priority,
@@ -399,6 +430,12 @@ class ModelTest {
         @Override
         public Object triggerTransform(String event, Object[] args, Map<String, Object> kwargs) {
             events.add("transform:" + event);
+            if (LLMCallEvents.LLM_INVOKE_INPUT.equals(event)) {
+                lastInvokeInputKwargs = new LinkedHashMap<>(kwargs);
+                if (transformedInvokeInput != null) {
+                    return transformedInvokeInput;
+                }
+            }
             if (LLMCallEvents.LLM_INVOKE_OUTPUT.equals(event) && transformedOutput != null) {
                 return transformedOutput;
             }

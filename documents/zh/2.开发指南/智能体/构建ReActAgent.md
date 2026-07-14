@@ -103,9 +103,10 @@ public class ToolFactory {
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.single_agent.schema.AgentCard;
-import com.openjiuwen.core.single_agent.agents.ReActAgentConfig;
-import com.openjiuwen.core.single_agent.agents.ReActAgent;
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
 
 // 准备模型配置
 ModelClientConfig clientConfig = new ModelClientConfig();
@@ -115,7 +116,7 @@ clientConfig.setApiBase(API_BASE);
 clientConfig.setTimeout(30);
 
 ModelRequestConfig requestConfig = new ModelRequestConfig();
-requestConfig.setModel(MODEL_NAME);
+requestConfig.setModelName(MODEL_NAME);
 requestConfig.setTemperature(0.8);
 requestConfig.setTopP(0.9);
 
@@ -140,9 +141,122 @@ reactAgent.getAbilityManager().add(tool.getCard());
 
 // 启动Runner并执行
 Runner.start();
-Object result = reactAgent.invoke(Map.of("query", "查询杭州的天气"));
+Object result = reactAgent.invoke(
+        Map.of("query", "查询杭州的天气"),
+        (Session) null
+).toCompletableFuture().join();
 System.out.println("ReActAgent 最终输出结果：" + result);
 ```
+
+# 动态模型请求头
+
+如果同一个 `ReActAgent` 需要按当前用户、租户或会话获取模型凭证，可以注册 `ModelRequestHeadersRail`。Provider 接收本次模型调用的 `AgentCallbackContext`，并统一返回 `CompletionStage<Map<String, String>>`；实现方可以同步完成，也可以真正异步解析凭证。
+
+`ReActAgent` 会把调用输入中非空的 `run_context` 对象原样放入 `AgentCallbackContext.extra["run_context"]`。下面使用 SDK 的 `RunContext` 类型，并把本次调用的 token 放入其 `extra` Map；Provider 从当前 callback context 解析该值，不依赖全局可变状态：
+
+```java
+import com.openjiuwen.core.singleagent.rail.ModelRequestHeadersProvider;
+import com.openjiuwen.core.singleagent.rail.ModelRequestHeadersRail;
+import com.openjiuwen.core.singleagent.rail.RunContext;
+
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+
+ModelRequestHeadersProvider provider = context -> {
+    Object rawRunContext = context.getExtra().get("run_context");
+    if (!(rawRunContext instanceof RunContext runContext)) {
+        return CompletableFuture.failedFuture(
+                new IllegalStateException("run context is unavailable"));
+    }
+    Object rawToken = runContext.getExtra().get("model_access_token");
+    if (!(rawToken instanceof String token) || token.isBlank()) {
+        return CompletableFuture.failedFuture(
+                new IllegalStateException("model access token is unavailable"));
+    }
+    return CompletableFuture.completedFuture(Map.of(
+            "Authorization", "Bearer " + token,
+            "X-Tenant-Id", "tenant-a"
+    ));
+};
+
+ModelRequestHeadersRail headersRail = new ModelRequestHeadersRail(provider);
+reactAgent.registerRail(headersRail).toCompletableFuture().join();
+```
+
+调用方按下面的输入结构提供 token。`run_context` 的值是 `RunContext`，业务字段放在其 `extra` 中；`query` 和 `run_context` 一起传给同一次 `invoke`：
+
+```java
+import com.openjiuwen.core.session.Session;
+import com.openjiuwen.core.singleagent.rail.RunContext;
+
+import java.util.Map;
+import java.util.Objects;
+
+String requestToken = Objects.requireNonNull(
+        System.getenv("OPENJIUWEN_REQUEST_TOKEN"),
+        "OPENJIUWEN_REQUEST_TOKEN is required");
+
+RunContext runContext = new RunContext();
+runContext.setExtra(Map.of("model_access_token", requestToken));
+
+Map<String, Object> invokeInput = Map.of(
+        "query", "查询杭州的天气",
+        "run_context", runContext
+);
+
+Object resultWithDynamicHeaders = reactAgent.invoke(
+        invokeInput,
+        (Session) null
+).toCompletableFuture().join();
+```
+
+`Authorization` 的 value 是完整请求头值。上例显式拼出 `Bearer `；SDK 不会自动添加该前缀，也可以按网关要求返回 `Basic ...` 或自定义认证方案。
+
+凭证来自远程服务时，可以注入应用自己的异步服务。Provider 原样返回异步链，SDK 会在进入模型调用前等待它完成：
+
+```java
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.ModelRequestHeadersProvider;
+import com.openjiuwen.core.singleagent.rail.ModelRequestHeadersRail;
+
+import java.util.Map;
+import java.util.concurrent.CompletionStage;
+
+public final class DynamicHeadersRegistration {
+    private final TokenService tokenService;
+
+    public DynamicHeadersRegistration(TokenService tokenService) {
+        this.tokenService = tokenService;
+    }
+
+    public void register(ReActAgent agent) {
+        ModelRequestHeadersProvider provider = context -> tokenService.resolve(context)
+                .thenApply(token -> {
+                    if (token == null || token.isBlank()) {
+                        throw new IllegalStateException("model access token is unavailable");
+                    }
+                    return Map.of("Authorization", "Bearer " + token);
+                });
+        agent.registerRail(new ModelRequestHeadersRail(provider))
+                .toCompletableFuture()
+                .join();
+    }
+
+    public interface TokenService {
+        CompletionStage<String> resolve(AgentCallbackContext context);
+    }
+}
+```
+
+运行时与安全规则如下：
+
+- 构造 Rail 时 Provider 为 `null` 会立即抛出 `NullPointerException`；Provider 返回 `null` stage、同步抛出异常、stage 异常完成、返回 `null` / 空 Map，或者返回空白 `Authorization`，都会通过 `AbortError` 终止本次模型调用（fail-closed），不会自动使用静态 `apiKey`。如需备用凭证，Provider 必须自行解析并显式返回备用 `Authorization`。
+- 多个 Rail 的不同 header 会合并；同名 header 按大小写不敏感方式匹配，由后执行的 Rail 覆盖。Rail 按 priority 数值从大到小执行；相同 priority 时按注册顺序执行，先注册的先执行。因此需要覆盖前值的 Rail 应设置更低的 priority，或者在相同 priority 下后注册。
+- Agent 级模型重试的每个 attempt 都会重新执行 `BEFORE_MODEL_CALL` 并再次调用 Provider，便于刷新短期 token。单个 attempt 进入 OpenAI HTTP 重试后使用已复制的同一份请求头快照，不会在每次 HTTP 重试时再次调用 Provider。
+- headers 属于当前 `ModelCallInputs`，进入 `ModelInvokeOptions` 时会被消费并清空；即使后续 before-model Rail 失败、调用异常或取消，也会在 exception / after callback 之前清理，避免旧凭证跨 retry attempt 残留。不同 Agent 调用各自持有请求级 Map，不修改共享模型配置，可并发隔离。
+- 不要记录 Provider 结果或完整 headers。正式请求头不会进入序列化、模型请求体、模型参数日志、tracer 或异常文本；非法 header 会被明确拒绝，OpenAI 正式路径的非 2xx 错误也不会拼接上游响应 body。
+- 当前 OpenAI / OpenRouter 兼容客户端支持正式请求头；未实现该能力的客户端收到非空 headers 时明确失败。直接调用 `Model` 的正式与 legacy 用法、优先级和校验规则见[接入大模型](../基础功能/接入大模型.md#正式入口单次调用动态请求头)。
 
 最终输出结果为：
 

@@ -1,6 +1,6 @@
 # rail
 
-`com.openjiuwen.core.single_agent.rail` 定义单智能体生命周期中的 rail 钩子、回调事件、事件载荷与重试辅助类型。
+`com.openjiuwen.core.singleagent.rail` 定义单智能体生命周期中的 rail 钩子、回调事件、事件载荷与重试辅助类型。
 
 ## 类型
 
@@ -13,11 +13,13 @@
 | [`AgentRail`](./rail/AgentRail.md) | 定义 8 个生命周期 hook、优先级与自动注册工具列表的基类。 |
 | [`EventInputs`](./rail/EventInputs.md) | 所有事件输入载荷的标记接口。 |
 | [`InvokeInputs`](./rail/InvokeInputs.md) | 用于 `BEFORE_INVOKE` / `AFTER_INVOKE` 的输入载荷。 |
-| [`ModelCallInputs`](./rail/ModelCallInputs.md) | 用于模型调用阶段的消息、工具与响应载荷。 |
+| [`ModelCallInputs`](./rail/ModelCallInputs.md) | 用于模型调用阶段的消息、工具、响应以及非序列化请求级 headers 载荷。 |
+| [`ModelRequestHeadersProvider`](./rail/ModelRequestHeadersProvider.md) | 根据当前 `AgentCallbackContext` 返回请求级模型 headers 的函数式接口。 |
+| [`ModelRequestHeadersRail`](./rail/ModelRequestHeadersRail.md) | 在每次模型调用前解析、校验并合并请求级 headers 的 fail-closed Rail。 |
 | [`RailExecutor`](./rail/RailExecutor.md) | 负责包装 rail 生命周期事件并处理重试的执行工具。 |
 | [`RetryRequest`](./rail/RetryRequest.md) | 由异常 rail 产生的重试指令。 |
 | [`ToolCallInputs`](./rail/ToolCallInputs.md) | 用于工具调用阶段的请求与结果载荷。 |
 
 ## 说明
 
-- 相关测试：`AgentCallbackManagerTest`、`AgentCallbackContextTest`、`AgentCallbackEventTest`、`AbilityManagerSupplementTest`、`ReActAgentEvolveTest`、`ReActAgentTest`、`BaseAgentTest`、`DataClassCoverageTest`、`AgentRailTest`、`RailExecutorTest`、`RailDataClassesTest`。
+- 相关测试：`AgentCallbackManagerTest`、`AgentCallbackContextTest`、`AgentCallbackEventTest`、`AbilityManagerSupplementTest`、`ReActAgentEvolveTest`、`ReActAgentTest`、`BaseAgentTest`、`DataClassCoverageTest`、`AgentRailTest`、`RailExecutorTest`、`RailDataClassesTest`、`ModelRequestHeadersRailTest`。

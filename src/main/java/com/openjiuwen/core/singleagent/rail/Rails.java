@@ -59,9 +59,11 @@ public final class Rails {
                 }
                 return operation.execute();
             } catch (CancellationException exception) {
+                clearModelRequestHeaders(context, before);
                 cancelled = true;
                 throw exception;
             } catch (RuntimeException exception) {
+                clearModelRequestHeaders(context, before);
                 exceptionToRaise = exception;
                 context.setException(exception);
                 if (onException != null) {
@@ -87,6 +89,7 @@ public final class Rails {
                 exceptionToRaise = null;
                 attempt++;
             } finally {
+                clearModelRequestHeaders(context, before);
                 if (after != null && !cancelled) {
                     try {
                         context.fire(after);
@@ -97,6 +100,14 @@ public final class Rails {
                     }
                 }
             }
+        }
+    }
+
+    private static void clearModelRequestHeaders(AgentCallbackContext context, AgentCallbackEvent before) {
+        if (before == AgentCallbackEvent.BEFORE_MODEL_CALL
+                && context != null
+                && context.getInputs() instanceof ModelCallInputs modelCallInputs) {
+            modelCallInputs.consumeRequestHeaders();
         }
     }
 

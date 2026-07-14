@@ -25,6 +25,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -250,6 +251,7 @@ class BaseModelClientTest {
         TestModelClient client = new TestModelClient(requestConfig(), validClientConfig(), true);
         ModelInvokeOptions options = ModelInvokeOptions.builder()
                 .retryListener(event -> { })
+                .requestHeaders(Map.of())
                 .extraFields(new LinkedHashMap<>(Map.of("caller_field", "value")))
                 .build();
 
@@ -258,6 +260,40 @@ class BaseModelClientTest {
 
         client.stream(List.of(new UserMessage("hello")), options);
         assertEquals(Map.of("caller_field", "value", "provider_field", "private"), client.lastKwargs);
+    }
+
+    @Test
+    void typedInvokeRejectsUnsupportedRequestHeadersWithoutExposingHeaderData() {
+        TestModelClient client = new TestModelClient(requestConfig(), validClientConfig());
+        ModelInvokeOptions options = ModelInvokeOptions.builder()
+                .requestHeaders(Map.of("X-Private-Key", "private-value"))
+                .build();
+
+        CompletionException error = assertThrows(CompletionException.class,
+                () -> client.invoke(List.of(new UserMessage("hello")), options).toCompletableFuture().join());
+
+        assertTrue(error.getCause() instanceof UnsupportedOperationException);
+        assertTrue(error.getCause().getMessage().contains(
+                "TestModelClient does not support request-level headers"));
+        assertFalse(error.getCause().getMessage().contains("X-Private-Key"));
+        assertFalse(error.getCause().getMessage().contains("private-value"));
+    }
+
+    @Test
+    void typedStreamRejectsUnsupportedRequestHeadersWithoutExposingHeaderData() {
+        TestModelClient client = new TestModelClient(requestConfig(), validClientConfig());
+        ModelInvokeOptions options = ModelInvokeOptions.builder()
+                .requestHeaders(Map.of("X-Private-Key", "private-value"))
+                .build();
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> client.stream(List.of(new UserMessage("hello")), options));
+
+        assertTrue(error.getCause() instanceof UnsupportedOperationException);
+        assertTrue(error.getCause().getMessage().contains(
+                "TestModelClient does not support request-level headers"));
+        assertFalse(error.getCause().getMessage().contains("X-Private-Key"));
+        assertFalse(error.getCause().getMessage().contains("private-value"));
     }
 
     private static ModelRequestConfig requestConfig() {

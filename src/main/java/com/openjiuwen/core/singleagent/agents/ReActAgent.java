@@ -263,8 +263,9 @@ public class ReActAgent extends BaseAgent {
     }
 
     public Object doRailedModelCall(AgentCallbackContext ctx) {
-        Model model = getLlm();
         ModelCallInputs modelInputs = (ModelCallInputs) ctx.getInputs();
+        Map<String, String> requestHeaders = modelInputs.consumeRequestHeaders();
+        Model model = getLlm();
         List<ToolInfo> tools = toolInfoList(modelInputs.getTools());
         boolean enableKvRelease = config.getContextEngineConfig().isEnableKvCacheRelease();
         boolean supportsKvRelease = model.supportsKvCacheRelease();
@@ -309,6 +310,7 @@ public class ReActAgent extends BaseAgent {
         ModelInvokeOptions.ModelInvokeOptionsBuilder optionsBuilder = ModelInvokeOptions.builder()
                 .model(config.getModelName())
                 .tools(tools)
+                .requestHeaders(requestHeaders)
                 .extraFields(extraFields);
         if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && ctx.getSession() != null) {
             AgentSessionApi session = ctx.getSession();
