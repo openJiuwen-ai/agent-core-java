@@ -24,6 +24,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -178,6 +179,26 @@ class ToolManagerTest {
         assertTrue(manager.getMcpServerIds("demo").isEmpty());
         assertTrue(manager.getMcpToolIds("srv-1").isEmpty());
         assertNull(manager.getMcpTool("search", "srv-1", null));
+    }
+
+    @Test
+    void addToolServerReleasesPerServerLockAfterFailure() {
+        FakeMcpClient failingClient = new FakeMcpClient(List.of(mcpCard("search")));
+        failingClient.listToolsFailure = new IllegalStateException("tools/list failed");
+        FakeMcpClient succeedingClient = new FakeMcpClient(List.of(mcpCard("search")));
+        AtomicInteger attempts = new AtomicInteger();
+        ToolManager manager = new ToolManager(config ->
+                attempts.getAndIncrement() == 0 ? failingClient : succeedingClient);
+
+        assertThrows(BaseError.class,
+                () -> manager.addToolServer(serverConfig()).toCompletableFuture().join());
+
+        List<McpToolCard> cards = manager.addToolServer(serverConfig()).toCompletableFuture().join();
+
+        assertEquals(List.of("search"), cards.stream().map(McpToolCard::getName).toList());
+        assertEquals(1, failingClient.disconnectCount);
+        assertEquals(1, succeedingClient.connectCount);
+        assertEquals(List.of("srv-1"), manager.getMcpServerIds("demo"));
     }
 
     @Test
