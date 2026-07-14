@@ -1158,31 +1158,35 @@ public class ReActAgent extends BaseAgent {
 
     public Object innerInvoke(AgentSessionApi session, Object inputs, Object query, boolean needCleanup,
                               String conversationId, Map<String, Object> kwargs) {
-        InvokeInputs invokeInputs = new InvokeInputs();
-        invokeInputs.setQuery(query);
-        invokeInputs.setConversationId(conversationId);
-
-        AgentCallbackContext ctx = new AgentCallbackContext(this);
-        ctx.setInputs(invokeInputs);
-        ctx.setSession(session);
-        boolean streaming = Boolean.TRUE.equals(kwargs.get("_streaming"));
-        ctx.getExtra().put("_streaming", streaming);
-        if (streaming) {
-            ctx.getExtra().put(STREAM_INDEX_REF_KEY, new int[] {0});
-        }
-        if (inputs instanceof Map<?, ?> map) {
-            putExtra(ctx, "user_id", map.get("user_id"));
-            putExtra(ctx, "run_kind", map.get("run_kind"));
-            putExtra(ctx, "run_context", map.get("run_context"));
-            Object steeringQueue = map.get("_steering_queue");
-            if (steeringQueue instanceof Queue<?> queue) {
-                @SuppressWarnings("unchecked")
-                Queue<String> typedQueue = (Queue<String>) queue;
-                ctx.bindSteeringQueue(typedQueue);
-            }
-        }
-
+        boolean iterationFailureLogged = false;
+        boolean streaming = false;
+        boolean initializationComplete = false;
+        AgentCallbackContext ctx = null;
         try {
+            InvokeInputs invokeInputs = new InvokeInputs();
+            invokeInputs.setQuery(query);
+            invokeInputs.setConversationId(conversationId);
+
+            ctx = new AgentCallbackContext(this);
+            ctx.setInputs(invokeInputs);
+            ctx.setSession(session);
+            streaming = Boolean.TRUE.equals(kwargs.get("_streaming"));
+            ctx.getExtra().put("_streaming", streaming);
+            if (streaming) {
+                ctx.getExtra().put(STREAM_INDEX_REF_KEY, new int[] {0});
+            }
+            if (inputs instanceof Map<?, ?> map) {
+                putExtra(ctx, "user_id", map.get("user_id"));
+                putExtra(ctx, "run_kind", map.get("run_kind"));
+                putExtra(ctx, "run_context", map.get("run_context"));
+                Object steeringQueue = map.get("_steering_queue");
+                if (steeringQueue instanceof Queue<?> queue) {
+                    @SuppressWarnings("unchecked")
+                    Queue<String> typedQueue = (Queue<String>) queue;
+                    ctx.bindSteeringQueue(typedQueue);
+                }
+            }
+            initializationComplete = true;
             getAgentCallbackManager().execute(AgentCallbackEvent.BEFORE_INVOKE, ctx).toCompletableFuture().join();
             Object userInput = invokeInputs.getQuery();
             ExternalToolPendingState externalPending = loadExternalToolPendingState(session);
@@ -1254,70 +1258,92 @@ public class ReActAgent extends BaseAgent {
 
             if (invokeInputs.getResult() == null) {
                 for (int iteration = startIteration; iteration < config.getMaxIterations(); iteration++) {
-                    List<String> steering = ctx.drainSteering();
-                    if (!steering.isEmpty()) {
-                        context.addMessages(new UserMessage("[STEERING] " + String.join("\n", steering)))
-                                .toCompletableFuture()
-                                .join();
-                    }
-                    List<ToolInfo> tools = listEffectiveToolInfo(session);
-                    Object modelResult = callModel(ctx, context, tools);
-                    ForceFinishRequest finish = ctx.consumeForceFinish();
-                    if (finish != null) {
-                        contextEngine.saveContexts(session);
-                        invokeInputs.setResult(finish.getResult());
-                        break;
-                    }
-                    if (!(modelResult instanceof AssistantMessage aiMessage)) {
-                        invokeInputs.setResult(modelResult instanceof Map<?, ?> map ? stringObjectMap(map) : Map.of());
-                        break;
-                    }
-                    List<ToolCall> toolCalls = aiMessage.getToolCalls();
-                    ensureToolCallIds(toolCalls);
-                    context.addMessages(copyAssistantMessage(aiMessage)).toCompletableFuture().join();
-                    if (toolCalls == null || toolCalls.isEmpty()) {
-                        if (ctx.hasPendingSteering()) {
-                            continue;
+                    int iterationNumber = iteration + 1;
+                    Loggers.AGENT.info("ReAct iteration {}/{} started",
+                            iterationNumber, config.getMaxIterations());
+                    try {
+                        List<String> steering = ctx.drainSteering();
+                        if (!steering.isEmpty()) {
+                            context.addMessages(new UserMessage("[STEERING] " + String.join("\n", steering)))
+                                    .toCompletableFuture()
+                                    .join();
                         }
-                        contextEngine.saveContexts(session);
-                        invokeInputs.setResult(new LinkedHashMap<>(Map.of(
-                                "output", Objects.toString(aiMessage.getContent(), ""),
-                                "result_type", "answer"
-                        )));
-                        break;
-                    }
-                    writeToolCallOutputs(ctx, session, toolCalls);
-                    if (hasExternalToolCall(toolCalls)) {
-                        ExternalToolPendingState pendingState = new ExternalToolPendingState(
-                                copyAssistantMessage(aiMessage),
+                        List<ToolInfo> tools = listEffectiveToolInfo(session);
+                        Object modelResult = callModel(ctx, context, tools);
+                        ForceFinishRequest finish = ctx.consumeForceFinish();
+                        if (finish != null) {
+                            contextEngine.saveContexts(session);
+                            invokeInputs.setResult(finish.getResult());
+                            break;
+                        }
+                        if (!(modelResult instanceof AssistantMessage aiMessage)) {
+                            invokeInputs.setResult(
+                                    modelResult instanceof Map<?, ?> map ? stringObjectMap(map) : Map.of());
+                            break;
+                        }
+                        List<ToolCall> toolCalls = aiMessage.getToolCalls();
+                        ensureToolCallIds(toolCalls);
+                        context.addMessages(copyAssistantMessage(aiMessage)).toCompletableFuture().join();
+                        if (toolCalls == null || toolCalls.isEmpty()) {
+                            if (ctx.hasPendingSteering()) {
+                                continue;
+                            }
+                            contextEngine.saveContexts(session);
+                            invokeInputs.setResult(new LinkedHashMap<>(Map.of(
+                                    "output", Objects.toString(aiMessage.getContent(), ""),
+                                    "result_type", "answer"
+                            )));
+                            break;
+                        }
+                        writeToolCallOutputs(ctx, session, toolCalls);
+                        if (hasExternalToolCall(toolCalls)) {
+                            ExternalToolPendingState pendingState = new ExternalToolPendingState(
+                                    copyAssistantMessage(aiMessage),
+                                    iteration,
+                                    Objects.toString(ctx.getExtra().get("_original_query"), ""),
+                                    toolCalls,
+                                    externalToolCallRequests(toolCalls)
+                            );
+                            saveExternalToolPendingState(pendingState, session);
+                            contextEngine.saveContexts(session);
+                            writeExternalToolPendingOutput(ctx, session, pendingState);
+                            invokeInputs.setResult(buildExternalToolPendingResult(pendingState));
+                            break;
+                        }
+                        List<AbilityManager.ExecutionResult> results = executeToolCall(
+                                ctx, toolCalls, session, context);
+                        activateSkillsLoadedByToolCalls(toolCalls, results, session);
+                        if (completeToolExecutionTurn(
+                                ctx,
+                                context,
+                                session,
+                                invokeInputs,
+                                toolCalls,
+                                results,
+                                aiMessage,
                                 iteration,
                                 Objects.toString(ctx.getExtra().get("_original_query"), ""),
-                                toolCalls,
-                                externalToolCallRequests(toolCalls)
+                                ToolExecutionTurnOrigin.NORMAL_TOOL_LOOP)) {
+                            break;
+                        }
+                    } catch (RuntimeException exception) {
+                        iterationFailureLogged = true;
+                        Loggers.AGENT.exception(
+                                "ReAct iteration %d/%d failed"
+                                        .formatted(iterationNumber, config.getMaxIterations()),
+                                exception
                         );
-                        saveExternalToolPendingState(pendingState, session);
-                        contextEngine.saveContexts(session);
-                        writeExternalToolPendingOutput(ctx, session, pendingState);
-                        invokeInputs.setResult(buildExternalToolPendingResult(pendingState));
-                        break;
-                    }
-                    List<AbilityManager.ExecutionResult> results = executeToolCall(ctx, toolCalls, session, context);
-                    activateSkillsLoadedByToolCalls(toolCalls, results, session);
-                    if (completeToolExecutionTurn(
-                            ctx,
-                            context,
-                            session,
-                            invokeInputs,
-                            toolCalls,
-                            results,
-                            aiMessage,
-                            iteration,
-                            Objects.toString(ctx.getExtra().get("_original_query"), ""),
-                            ToolExecutionTurnOrigin.NORMAL_TOOL_LOOP)) {
-                        break;
+                        throw exception;
+                    } finally {
+                        Loggers.AGENT.info("ReAct iteration {}/{} ended",
+                                iterationNumber, config.getMaxIterations());
                     }
                 }
                 if (invokeInputs.getResult() == null) {
+                    Loggers.AGENT.error(
+                            "ReActAgent reached max iterations without completion: {}",
+                            config.getMaxIterations()
+                    );
                     contextEngine.saveContexts(session);
                     invokeInputs.setResult(new LinkedHashMap<>(Map.of(
                             "output", "Max iterations reached without completion",
@@ -1338,17 +1364,33 @@ public class ReActAgent extends BaseAgent {
             }
             return result;
         } catch (RuntimeException exception) {
-            if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
-                Map<String, Object> errorResult = buildErrorResult(exception);
-                writeInvokeResultToStreamInternal(errorResult, session, streamIndexRef(ctx));
-                return errorResult;
+            if (!iterationFailureLogged) {
+                Loggers.AGENT.exception("ReActAgent invoke failed", exception);
+            }
+            if (initializationComplete && streaming) {
+                try {
+                    Map<String, Object> errorResult = buildErrorResult(exception);
+                    writeInvokeResultToStreamInternal(errorResult, session, streamIndexRef(ctx));
+                    return errorResult;
+                } catch (RuntimeException streamingErrorHandlingFailure) {
+                    Loggers.AGENT.exception(
+                            "ReActAgent streaming error handling failed",
+                            streamingErrorHandlingFailure
+                    );
+                    throw streamingErrorHandlingFailure;
+                }
             }
             throw exception;
         } finally {
-            if (needCleanup) {
-                contextEngine.saveContexts(session);
-                if (session instanceof AgentSessionLifecycle lifecycle) {
-                    closeStreamAndCommit(lifecycle);
+            if (needCleanup && initializationComplete) {
+                try {
+                    contextEngine.saveContexts(session);
+                    if (session instanceof AgentSessionLifecycle lifecycle) {
+                        closeStreamAndCommit(lifecycle);
+                    }
+                } catch (RuntimeException exception) {
+                    Loggers.AGENT.exception("ReActAgent cleanup failed", exception);
+                    throw exception;
                 }
             }
         }
