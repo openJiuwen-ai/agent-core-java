@@ -17,11 +17,19 @@ import com.openjiuwen.core.workflow.component.SubWorkflowComponent;
 import com.openjiuwen.core.workflow.component.llm.IntentDetectionComponentImpl;
 import com.openjiuwen.core.workflow.component.loop.LoopCallback;
 import com.openjiuwen.core.workflow.component.loop.LoopGroup;
+import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
  * Mirrors Python's {@code test_visualize_workflow} in
  * {@code tests/unit_tests/core/component/test_visualize_workflow.py}.
  */
+@ResourceLock(Resources.SYSTEM_PROPERTIES)
 class WorkflowVisualizationPythonParityTest {
 
     @BeforeEach
@@ -52,6 +61,89 @@ class WorkflowVisualizationPythonParityTest {
                 .contains("(\"end\")")
                 .contains("node_1 --> node_2")
                 .contains("node_2 --> node_3");
+    }
+
+    @Test
+    void renderBinaryDiagramFromConfiguredServer() throws IOException {
+        byte[] png = new byte[] {(byte) 0x89, 0x50, 0x4E, 0x47, 0x01};
+        byte[] svg = "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"
+                .getBytes(StandardCharsets.UTF_8);
+        AtomicInteger pngAttempts = new AtomicInteger();
+        AtomicInteger svgAttempts = new AtomicInteger();
+        AtomicReference<String> pngQuery = new AtomicReference<>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/img/", exchange -> {
+            pngQuery.set(exchange.getRequestURI().getRawQuery());
+            if (pngAttempts.incrementAndGet() < 3) {
+                exchange.sendResponseHeaders(503, -1);
+                exchange.close();
+                return;
+            }
+            exchange.sendResponseHeaders(200, png.length);
+            exchange.getResponseBody().write(png);
+            exchange.close();
+        });
+        server.createContext("/svg/", exchange -> {
+            svgAttempts.incrementAndGet();
+            exchange.sendResponseHeaders(200, svg.length);
+            exchange.getResponseBody().write(svg);
+            exchange.close();
+        });
+        server.start();
+
+        String previousServer = System.getProperty("MERMAID_INK_SERVER");
+        try {
+            System.setProperty(
+                    "MERMAID_INK_SERVER",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/"
+            );
+            Workflow flow = simpleWorkflow();
+
+            assertThat(flow.drawBytes("configured", "png", false)).containsExactly(png);
+            assertThat(flow.drawBytes("configured", "svg", false)).containsExactly(svg);
+            assertThat(svgAttempts).hasValue(2);
+            assertThat(pngAttempts).hasValue(4);
+            assertThat(pngQuery).hasValue("format=png");
+        } finally {
+            restoreSystemProperty("MERMAID_INK_SERVER", previousServer);
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void renderFailureRaisesDrawableErrorAfterRetries() throws IOException {
+        AtomicInteger attempts = new AtomicInteger();
+        byte[] svg = "<svg></svg>".getBytes(StandardCharsets.UTF_8);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/svg/", exchange -> {
+            exchange.sendResponseHeaders(200, svg.length);
+            exchange.getResponseBody().write(svg);
+            exchange.close();
+        });
+        server.createContext("/img/", exchange -> {
+            attempts.incrementAndGet();
+            exchange.sendResponseHeaders(503, -1);
+            exchange.close();
+        });
+        server.start();
+
+        String previousServer = System.getProperty("MERMAID_INK_SERVER");
+        try {
+            System.setProperty(
+                    "MERMAID_INK_SERVER",
+                    "http://127.0.0.1:" + server.getAddress().getPort()
+            );
+            Workflow flow = simpleWorkflow();
+
+            assertBaseError(
+                    StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
+                    () -> flow.drawBytes("unavailable", "png", false)
+            );
+            assertThat(attempts).hasValue(3);
+        } finally {
+            restoreSystemProperty("MERMAID_INK_SERVER", previousServer);
+            server.stop(0);
+        }
     }
 
     @Test
@@ -372,6 +464,14 @@ class WorkflowVisualizationPythonParityTest {
     private static void assertBaseError(StatusCode expected, Runnable action) {
         BaseError error = assertThrows(BaseError.class, action::run);
         assertEquals(expected.getCode(), error.getCode());
+    }
+
+    private static void restoreSystemProperty(String name, String value) {
+        if (value == null) {
+            System.clearProperty(name);
+        } else {
+            System.setProperty(name, value);
+        }
     }
 
     private static class TestComponent extends Executable<Object, Object> implements ComponentComposable {

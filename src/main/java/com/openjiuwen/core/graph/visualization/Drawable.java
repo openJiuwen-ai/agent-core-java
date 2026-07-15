@@ -783,29 +783,37 @@ public class Drawable {
     private static final class MermaidRenderer {
 
         private static final Logger LOGGER = Logger.getLogger(MermaidRenderer.class.getName());
-        private static final String MERMAID_INK_BASE = "https://mermaid.ink";
+        private static final String MERMAID_INK_SERVER = "MERMAID_INK_SERVER";
+        private static final String DEFAULT_MERMAID_INK_SERVER = "https://mermaid.ink";
         private static final Duration TIMEOUT = Duration.ofSeconds(30);
+        private static final Duration RETRY_DELAY = Duration.ofMillis(100);
         private static final int MAX_ATTEMPTS = 3;
 
         private MermaidRenderer() {
         }
 
         private static byte[] renderPng(String mermaidSyntax) {
-            return render(mermaidSyntax, "/img/");
+            render(mermaidSyntax, "/svg/", "");
+            return render(mermaidSyntax, "/img/", "?format=png");
         }
 
         private static byte[] renderSvg(String mermaidSyntax) {
-            return render(mermaidSyntax, "/svg/");
+            byte[] svg = render(mermaidSyntax, "/svg/", "");
+            render(mermaidSyntax, "/img/", "?format=png");
+            return svg;
         }
 
-        private static byte[] render(String mermaidSyntax, String pathPrefix) {
+        private static byte[] render(String mermaidSyntax, String pathPrefix, String query) {
             HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(TIMEOUT)
+                    .followRedirects(HttpClient.Redirect.NORMAL)
                     .build();
             String encoded = Base64.getUrlEncoder()
-                    .withoutPadding()
                     .encodeToString(mermaidSyntax.getBytes(StandardCharsets.UTF_8));
-            URI uri = URI.create(MERMAID_INK_BASE + pathPrefix + encoded);
+            String server = mermaidInkServer();
+            URI uri = URI.create(server + pathPrefix + encoded + query);
+            String lastFailure = "unknown renderer failure";
+            Throwable lastCause = null;
 
             for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
                 try {
@@ -815,44 +823,87 @@ public class Drawable {
                             .GET()
                             .build();
                     HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-                    if (response.statusCode() == 200) {
+                    if (response.statusCode() >= 200 && response.statusCode() < 400) {
                         return response.body();
                     }
+                    lastFailure = "Mermaid rendering returned HTTP status " + response.statusCode();
+                    lastCause = null;
                     LOGGER.log(
                             Level.WARNING,
-                            "Mermaid rendering returned status {0} on attempt {1}",
-                            new Object[] {response.statusCode(), attempt}
+                            "{0} on attempt {1}",
+                            new Object[] {lastFailure, attempt}
                     );
+                    if (!isRetriable(response.statusCode())) {
+                        break;
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    return fallbackBytes(mermaidSyntax, pathPrefix);
+                    throw renderingError(server, "Mermaid rendering was interrupted", e);
                 } catch (Exception e) {
-                    if (attempt >= MAX_ATTEMPTS) {
-                        LOGGER.log(Level.WARNING, "Failed to render Mermaid diagram", e);
-                        return fallbackBytes(mermaidSyntax, pathPrefix);
+                    lastFailure = "Failed to call Mermaid rendering service";
+                    lastCause = e;
+                    if (attempt < MAX_ATTEMPTS) {
+                        LOGGER.log(Level.WARNING, "Retry Mermaid rendering after failure on attempt {0}", attempt);
+                    } else {
+                        LOGGER.log(Level.WARNING, "Mermaid rendering failed on final attempt", e);
                     }
-                    LOGGER.log(Level.WARNING, "Retry Mermaid rendering after failure on attempt {0}", attempt);
+                }
+                if (attempt < MAX_ATTEMPTS) {
+                    waitBeforeRetry(attempt, server);
                 }
             }
-            return fallbackBytes(mermaidSyntax, pathPrefix);
+            throw renderingError(server, lastFailure, lastCause);
         }
 
-        private static byte[] fallbackBytes(String mermaidSyntax, String pathPrefix) {
-            if ("/svg/".equals(pathPrefix)) {
-                String escaped = mermaidSyntax
-                        .replace("&", "&amp;")
-                        .replace("<", "&lt;")
-                        .replace(">", "&gt;");
-                String svg = """
-                        <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="80">
-                          <rect width="100%" height="100%" fill="white"/>
-                          <text x="12" y="24" font-family="monospace" font-size="12">Mermaid render fallback</text>
-                          <text x="12" y="44" font-family="monospace" font-size="10">%s</text>
-                        </svg>
-                        """.formatted(escaped);
-                return svg.getBytes(StandardCharsets.UTF_8);
+        private static String mermaidInkServer() {
+            // The Java-only system property intentionally overrides the Python-compatible environment variable.
+            // This permits embedded applications and isolated tests to select a renderer without mutating process env.
+            String configured = System.getProperty(MERMAID_INK_SERVER);
+            if (configured == null || configured.isBlank()) {
+                configured = System.getenv(MERMAID_INK_SERVER);
             }
-            return new byte[0];
+            if (configured == null || configured.isBlank()) {
+                configured = DEFAULT_MERMAID_INK_SERVER;
+            }
+            String normalized = configured.replaceAll("/+$", "");
+            try {
+                URI uri = URI.create(normalized);
+                String scheme = uri.getScheme();
+                boolean supportedScheme = "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme);
+                if (!uri.isAbsolute() || !supportedScheme || uri.getHost() == null
+                        || uri.getQuery() != null || uri.getFragment() != null) {
+                    throw new IllegalArgumentException(
+                            "renderer URL must be an absolute HTTP(S) URI without query or fragment"
+                    );
+                }
+            } catch (IllegalArgumentException e) {
+                throw renderingError(normalized, "Invalid MERMAID_INK_SERVER configuration", e);
+            }
+            return normalized;
+        }
+
+        private static boolean isRetriable(int statusCode) {
+            return statusCode == 408 || statusCode == 429 || statusCode >= 500;
+        }
+
+        private static void waitBeforeRetry(int attempt, String server) {
+            try {
+                Thread.sleep(RETRY_DELAY.multipliedBy(attempt).toMillis());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw renderingError(server, "Mermaid rendering retry was interrupted", e);
+            }
+        }
+
+        private static RuntimeException renderingError(String server, String reason, Throwable cause) {
+            String detail = reason + ", server=" + server;
+            return ErrorHelper.buildError(
+                    StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
+                    null,
+                    null,
+                    cause,
+                    Map.of("reason", detail)
+            );
         }
     }
 }
