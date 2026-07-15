@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.retrieval.indexing.indexer;
 
+import com.openjiuwen.core.foundation.store.query.QueryExpressions;
 import com.openjiuwen.core.retrieval.common.IndexConfig;
 import com.openjiuwen.core.retrieval.common.TextChunk;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
@@ -59,9 +60,15 @@ public class InMemoryIndexer extends Indexer implements IndexBackendConfig {
     @Override
     public CompletableFuture<Boolean> deleteIndex(String docId, String indexName, Map<String, Object> kwargs) {
         if (docId == null || docId.isBlank()) {
-            return CompletableFuture.completedFuture(Boolean.TRUE);
+            return CompletableFuture.completedFuture(Boolean.FALSE);
         }
-        return vectorStore.delete(List.of(docId), VectorStore.DeleteFilter.none(), kwargs == null ? Map.of() : kwargs);
+        String activeDocIdField = getDocIdField();
+        if (activeDocIdField == null || activeDocIdField.isBlank()) {
+            activeDocIdField = "doc_id";
+        }
+        VectorStore.DeleteFilter filter = VectorStore.DeleteFilter.ofQuery(
+                QueryExpressions.eq(activeDocIdField, docId));
+        return vectorStore.delete(List.of(), filter, kwargs == null ? Map.of() : kwargs);
     }
 
     @Override
