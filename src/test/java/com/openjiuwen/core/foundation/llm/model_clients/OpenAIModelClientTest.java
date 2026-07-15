@@ -542,6 +542,22 @@ class OpenAIModelClientTest {
     }
 
     @Test
+    void invokeParsesReasoningFallbackField() throws Exception {
+        String response = json(Map.of("choices", List.of(Map.of(
+                "message", Map.of(
+                        "content", "answer",
+                        "reasoning", "provider reasoning")))));
+
+        try (MockOpenAiServer server = new MockOpenAiServer(response)) {
+            AssistantMessage message = client(server.baseUrl()).invoke(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>());
+
+            assertThat(message.getContent()).isEqualTo("answer");
+            assertThat(message.getReasoningContent()).isEqualTo("provider reasoning");
+        }
+    }
+
+    @Test
     void invokeRetriesServerErrorWithEquivalentRebuiltRequest() throws Exception {
         String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "ok")))));
         try (MockOpenAiServer server = new MockOpenAiServer(
@@ -792,6 +808,25 @@ class OpenAIModelClientTest {
             assertThat(chunks.get(1).getContent()).isEqualTo("lo");
             assertThat(chunks.get(2).getContent()).isEqualTo("");
             assertThat(chunks.get(2).getUsageMetadata().getTotalTokens()).isEqualTo(4);
+        }
+    }
+
+    @Test
+    void streamParsesReasoningFallbackField() throws Exception {
+        String streamBody = String.join("\n",
+                "data: " + json(Map.of("choices", List.of(Map.of(
+                        "delta", Map.of("reasoning", "provider reasoning"),
+                        "finish_reason", "null")))),
+                "data: [DONE]");
+
+        try (MockOpenAiServer server = new MockOpenAiServer(streamBody)) {
+            List<AssistantMessageChunk> chunks = iteratorToList(client(server.baseUrl()).stream(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+
+            assertThat(chunks).singleElement().satisfies(chunk -> {
+                assertThat(chunk.getContent()).isEqualTo("");
+                assertThat(chunk.getReasoningContent()).isEqualTo("provider reasoning");
+            });
         }
     }
 
