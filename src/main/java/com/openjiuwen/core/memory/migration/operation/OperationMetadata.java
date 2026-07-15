@@ -9,6 +9,8 @@ import lombok.Data;
 
 /**
  * Simple operation metadata.
+ * 
+ * @since 0.1.7
  */
 @Data
 @AllArgsConstructor
@@ -17,7 +19,10 @@ public class OperationMetadata {
     private String description;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OperationMetadata.
+     * 
+     * @param schemaVersion schemaVersion
+     * @since 0.1.7
      */
     public OperationMetadata(int schemaVersion) {
         this.schemaVersion = schemaVersion;

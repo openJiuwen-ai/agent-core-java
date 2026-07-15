@@ -14,18 +14,28 @@ import com.openjiuwen.core.memory.manage.mem_model.*;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Manages summary memory CRUD with encryption and vector storage.
+ * 
+ * @since 0.1.7
  */
 public class SummaryManager extends BaseMemoryManager {
-
     private final UserMemStore memStore;
     private final byte[] cryptoKey;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SummaryManager.
+     * 
+     * @param memStore memStore
+     * @param cryptoKey cryptoKey
+     * @since 0.1.7
      */
     public SummaryManager(UserMemStore memStore, byte[] cryptoKey) {
         this.memStore = memStore;
@@ -33,14 +43,18 @@ public class SummaryManager extends BaseMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addMemories.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memories memories
+     * @param llm llm
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void addMemories(String userId, String scopeId, List<? extends BaseMemoryUnit> memories,
-                             Map.Entry<String, Model> llm, Map<String, Object> kwargs) {
+            Map.Entry<String, Model> llm, Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("add", kwargs);
         @SuppressWarnings("unchecked")
         List<SummaryUnit> summaryUnits = (List<SummaryUnit>) (List<?>) memories;
@@ -48,8 +62,7 @@ public class SummaryManager extends BaseMemoryManager {
         for (SummaryUnit unit : summaryUnits) {
             boolean vectorSuccess = addSummaryToVector(unit, userId, scopeId, semanticStore);
             if (!vectorSuccess) {
-                throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                        "memory_type", "summary",
+                throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type", "summary",
                         "error_msg", "summary add to vector store failed");
             }
             addSummaryToMemStore(userId, scopeId, unit);
@@ -57,14 +70,17 @@ public class SummaryManager extends BaseMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * update.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @param newMemory newMemory
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public void update(String userId, String scopeId, String memId, String newMemory,
-                        Map<String, Object> kwargs) {
+    public void update(String userId, String scopeId, String memId, String newMemory, Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("update", kwargs);
         String time = OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         String encryptedMemory = encryptMemoryIfNeeded(cryptoKey, newMemory);
@@ -79,18 +95,21 @@ public class SummaryManager extends BaseMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * delete.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean delete(String userId, String scopeId, String memId, Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("delete", kwargs);
         Map<String, Object> data = memStore.get(userId, scopeId, memId);
         if (data == null) {
-            MEMORY_LOGGER.error("[{}] Delete summary failed, not found. memId={}",
-                    LogEventType.MEMORY_STORE, memId);
+            MEMORY_LOGGER.error("[{}] Delete summary failed, not found. memId={}", LogEventType.MEMORY_STORE, memId);
             return false;
         }
         memStore.delete(userId, scopeId, memId);
@@ -100,12 +119,15 @@ public class SummaryManager extends BaseMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteByUserId.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean deleteByUserId(String userId, String scopeId, Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("delete", kwargs);
         List<Map<String, Object>> data = memStore.getAll(userId, scopeId, MemoryType.SUMMARY.getValue());
@@ -125,12 +147,15 @@ public class SummaryManager extends BaseMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> get(String userId, String scopeId, String memId) {
         Map<String, Object> result = memStore.get(userId, scopeId, memId);
         if (result != null && result.containsKey("mem")) {
@@ -140,14 +165,19 @@ public class SummaryManager extends BaseMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * search.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param query query
+     * @param topK topK
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Map<String, Object>> search(String userId, String scopeId, String query, int topK,
-                                             Map<String, Object> kwargs) {
+            Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("search", kwargs);
         String tableName = MemoryUtils.generateIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());
         List<Map.Entry<String, Double>> hitInfo = semanticStore.search(query, tableName, topK);
@@ -162,14 +192,18 @@ public class SummaryManager extends BaseMemoryManager {
             item.put("score", parsed.scores().getOrDefault(id, 0.0));
             item.put("mem", decryptMemoryIfNeeded(cryptoKey, String.valueOf(item.getOrDefault("mem", ""))));
         }
-        retrieveRes.sort((a, b) -> Double.compare(
-                ((Number) b.getOrDefault("score", 0.0)).doubleValue(),
+        retrieveRes.sort((a, b) -> Double.compare(((Number) b.getOrDefault("score", 0.0)).doubleValue(),
                 ((Number) a.getOrDefault("score", 0.0)).doubleValue()));
         return retrieveRes;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listUserSummary.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
      */
     public List<Map<String, Object>> listUserSummary(String userId, String scopeId) {
         List<Map<String, Object>> data = memStore.getAll(userId, scopeId, MemoryType.SUMMARY.getValue());
@@ -195,6 +229,14 @@ public class SummaryManager extends BaseMemoryManager {
 
     // ---- Private Helpers ----
 
+    /**
+     * addSummaryToMemStore.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param unit unit
+     * @since 0.1.7
+     */
     private void addSummaryToMemStore(String userId, String scopeId, SummaryUnit unit) {
         String mem = encryptMemoryIfNeeded(cryptoKey, unit.getSummary());
         Map<String, Object> data = new LinkedHashMap<>();
@@ -208,20 +250,34 @@ public class SummaryManager extends BaseMemoryManager {
         memStore.write(userId, scopeId, unit.getMemId(), data);
     }
 
-    private boolean addSummaryToVector(SummaryUnit unit, String userId, String scopeId,
-                                        SemanticStore semanticStore) {
+    /**
+     * addSummaryToVector.
+     * 
+     * @param unit unit
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param semanticStore semanticStore
+     * @return the result
+     * @since 0.1.7
+     */
+    private boolean addSummaryToVector(SummaryUnit unit, String userId, String scopeId, SemanticStore semanticStore) {
         if (semanticStore == null) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                    "memory_type", "summary",
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type", "summary",
                     "error_msg", "vector store must not be None");
         }
         String tableName = MemoryUtils.generateIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());
-        return semanticStore.addDocs(
-                List.of(new AbstractMap.SimpleEntry<>(unit.getMemId(), unit.getSummary())),
-                tableName
-        );
+        return semanticStore.addDocs(List.of(new AbstractMap.SimpleEntry<>(unit.getMemId(), unit.getSummary())),
+                tableName);
     }
 
+    /**
+     * getSemanticStore.
+     * 
+     * @param operationType operationType
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     private SemanticStore getSemanticStore(String operationType, Map<String, Object> kwargs) {
         SemanticStore store = kwargs != null ? (SemanticStore) kwargs.get("semantic_store") : null;
         if (store == null) {
@@ -231,9 +287,8 @@ public class SummaryManager extends BaseMemoryManager {
                 case "search" -> StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR;
                 default -> StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR;
             };
-            throw ErrorHelper.buildError(code,
-                    "memory_type", MemoryType.SUMMARY.getValue(),
-                    "error_msg", "semantic_store is required");
+            throw ErrorHelper.buildError(code, "memory_type", MemoryType.SUMMARY.getValue(), "error_msg",
+                    "semantic_store is required");
         }
         return store;
     }

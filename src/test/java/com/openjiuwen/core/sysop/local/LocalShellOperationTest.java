@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.sysop.local;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.BaseShellOperation;
@@ -11,22 +14,20 @@ import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
+
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.nio.file.Path;
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.*;
-import org.junit.jupiter.api.Assumptions;
-
 /**
  * Tests for LocalShellOperation.
  * Mirrors Python's test_shell_operation.py test cases.
  */
 class LocalShellOperationTest {
-
     @TempDir
     Path workDir;
 
@@ -34,10 +35,7 @@ class LocalShellOperationTest {
 
     @BeforeEach
     void setUp() {
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .workDir(workDir.toString())
-                .shellAllowlist(null)
-                .build();
+        LocalWorkConfig config = LocalWorkConfig.builder().workDir(workDir.toString()).shellAllowlist(null).build();
         SysOperationCard card = new SysOperationCard();
         card.setId("test_shell_op");
         card.setMode(OperationMode.LOCAL);
@@ -177,10 +175,8 @@ class LocalShellOperationTest {
     @DisplayName("Shell allowlist enforcement")
     void testShellAllowlist() {
         // Create operation with restricted allowlist
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .shellAllowlist(List.of("echo", "pwd"))
-                .workDir(workDir.toString())
-                .build();
+        LocalWorkConfig config =
+            LocalWorkConfig.builder().shellAllowlist(List.of("echo", "pwd")).workDir(workDir.toString()).build();
         SysOperationCard card = new SysOperationCard();
         card.setId("test_allowlist");
         card.setMode(OperationMode.LOCAL);
@@ -201,11 +197,8 @@ class LocalShellOperationTest {
     @Test
     @DisplayName("Shell dangerous patterns are blocked")
     void testShellDangerousPatterns() {
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .shellAllowlist(null)
-                .dangerousPatterns(List.of("rm\\s+-rf", "shutdown"))
-                .workDir(workDir.toString())
-                .build();
+        LocalWorkConfig config = LocalWorkConfig.builder().shellAllowlist(null)
+                .dangerousPatterns(List.of("rm\\s+-rf", "shutdown")).workDir(workDir.toString()).build();
         SysOperationCard card = new SysOperationCard();
         card.setId("test_dangerous_patterns");
         card.setMode(OperationMode.LOCAL);
@@ -226,12 +219,8 @@ class LocalShellOperationTest {
         assertTrue(cwdInside.toFile().mkdirs());
         assertTrue(cwdOutside.toFile().mkdirs());
 
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .workDir(cwdInside.toString())
-                .sandboxRoot(List.of(sandboxRoot.toString()))
-                .restrictToSandbox(true)
-                .shellAllowlist(null)
-                .build();
+        LocalWorkConfig config = LocalWorkConfig.builder().workDir(cwdInside.toString())
+                .sandboxRoot(List.of(sandboxRoot.toString())).restrictToSandbox(true).shellAllowlist(null).build();
         SysOperationCard card = new SysOperationCard();
         card.setId("test_shell_sandbox_root");
         card.setMode(OperationMode.LOCAL);
@@ -265,9 +254,7 @@ class LocalShellOperationTest {
     @Test
     @DisplayName("Shell background execution returns pid")
     void testShellBackgroundExecution() {
-        String cmd = isWindows()
-                ? "ping -n 3 127.0.0.1 > NUL"
-                : "sleep 2";
+        String cmd = isWindows() ? "ping -n 3 127.0.0.1 > NUL" : "sleep 2";
         var result = shell().executeCmdBackground(cmd, null, null, 0.1, null);
 
         assertEquals(StatusCode.SUCCESS.getCode(), result.getCode());
@@ -314,31 +301,31 @@ class LocalShellOperationTest {
             cmd = "echo chunk1; sleep 0.01; echo chunk2; sleep 0.01; echo error_chunk 1>&2";
         }
 
-        List<ExecuteCmdStreamResult> results = collectStreamResults(
-                shell().executeCmdStream(cmd, null, 10, null, null));
+        List<ExecuteCmdStreamResult> results =
+            collectStreamResults(shell().executeCmdStream(cmd, null, 10, null, null));
 
         assertTrue(results.size() > 0, "At least one result");
 
         // Collect stdout
-        String stdoutContent = results.stream()
-                .filter(r -> r.getData() != null && "stdout".equals(r.getData().getType()))
-                .map(r -> r.getData().getText())
-                .reduce("", String::concat);
+        String stdoutContent =
+            results.stream().filter(r -> r.getData() != null && "stdout".equals(r.getData().getType()))
+                    .map(r -> r.getData().getText()).reduce("", String::concat);
         assertTrue(stdoutContent.contains("chunk1"));
         assertTrue(stdoutContent.contains("chunk2"));
 
         // Collect stderr
-        String stderrContent = results.stream()
-                .filter(r -> r.getData() != null && "stderr".equals(r.getData().getType()))
-                .map(r -> r.getData().getText())
-                .reduce("", String::concat);
+        String stderrContent =
+            results.stream().filter(r -> r.getData() != null && "stderr".equals(r.getData().getType()))
+                    .map(r -> r.getData().getText()).reduce("", String::concat);
         assertTrue(stderrContent.contains("error_chunk"));
 
         // Validate exit event
-        ExecuteCmdStreamResult exitResult = results.stream()
-                .filter(r -> r.getData() != null && r.getData().getExitCode() != null)
-                .reduce((a, b) -> b) // last one with exitCode
-                .orElse(null);
+        ExecuteCmdStreamResult exitResult =
+            results.stream().filter(r -> r.getData() != null && r.getData().getExitCode() != null).reduce((a, b) -> b) // last
+                                                                                                                       // one
+                                                                                                                       // with
+                                                                                                                       // exitCode
+                    .orElse(null);
         assertNotNull(exitResult, "Exit chunk should exist");
         assertEquals(0, exitResult.getData().getExitCode());
     }
@@ -350,10 +337,8 @@ class LocalShellOperationTest {
         // when the timed-out process still holds file handles on Windows
         Path separateDir = java.nio.file.Files.createTempDirectory("shell-stream-timeout");
         try {
-            LocalWorkConfig cfg = LocalWorkConfig.builder()
-                    .workDir(separateDir.toString())
-                    .shellAllowlist(null)
-                    .build();
+            LocalWorkConfig cfg =
+                LocalWorkConfig.builder().workDir(separateDir.toString()).shellAllowlist(null).build();
             SysOperationCard card = new SysOperationCard();
             card.setId("stream_timeout_test");
             card.setMode(OperationMode.LOCAL);
@@ -361,33 +346,37 @@ class LocalShellOperationTest {
             SysOperation localOp = new SysOperation(card);
 
             String cmd = isWindows() ? "ping -n 10 127.0.0.1" : "sleep 10";
-            List<ExecuteCmdStreamResult> results = collectStreamResults(
-                    localOp.shell().executeCmdStream(cmd, null, 1, null, null));
+            List<ExecuteCmdStreamResult> results =
+                collectStreamResults(localOp.shell().executeCmdStream(cmd, null, 1, null, null));
 
-            boolean hasTimeout = results.stream().anyMatch(r ->
-                    r.getCode() == StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode());
+            boolean hasTimeout =
+                results.stream().anyMatch(r -> r.getCode() == StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode());
             assertTrue(hasTimeout, "Should have timeout error");
-            ExecuteCmdStreamResult errorResult = results.stream()
-                    .filter(r -> r.getCode() == StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode())
-                    .findFirst().orElse(null);
+            ExecuteCmdStreamResult errorResult =
+                results.stream().filter(r -> r.getCode() == StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode())
+                        .findFirst().orElse(null);
             assertNotNull(errorResult);
             assertTrue(errorResult.getMessage().toLowerCase().contains("timeout"));
         } finally {
             // Give the OS time to release file handles after process kill
             Thread.sleep(1000);
             try {
-                java.nio.file.Files.walk(separateDir)
-                        .sorted(java.util.Comparator.reverseOrder())
-                        .forEach(p -> { try { java.nio.file.Files.deleteIfExists(p); } catch (Exception ignored) {} });
-            } catch (Exception ignored) {}
+                java.nio.file.Files.walk(separateDir).sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                    try {
+                        java.nio.file.Files.deleteIfExists(p);
+                    } catch (Exception ignored) {
+                    }
+                });
+            } catch (Exception ignored) {
+            }
         }
     }
 
     @Test
     @DisplayName("Stream: empty command returns error")
     void testStreamEmptyCommand() {
-        List<ExecuteCmdStreamResult> results = collectStreamResults(
-                shell().executeCmdStream("", null, 300, null, null));
+        List<ExecuteCmdStreamResult> results =
+            collectStreamResults(shell().executeCmdStream("", null, 300, null, null));
         assertEquals(1, results.size());
         assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), results.get(0).getCode());
         assertTrue(results.get(0).getMessage().contains("command can not be empty"));
@@ -398,10 +387,8 @@ class LocalShellOperationTest {
     @Test
     @DisplayName("Stream: allowlist blocked command")
     void testStreamAllowlist() {
-        LocalWorkConfig config = LocalWorkConfig.builder()
-                .shellAllowlist(List.of("echo"))
-                .workDir(workDir.toString())
-                .build();
+        LocalWorkConfig config =
+            LocalWorkConfig.builder().shellAllowlist(List.of("echo")).workDir(workDir.toString()).build();
         SysOperationCard card = new SysOperationCard();
         card.setId("test_stream_allowlist");
         card.setMode(OperationMode.LOCAL);
@@ -409,17 +396,16 @@ class LocalShellOperationTest {
         SysOperation restrictedOp = new SysOperation(card);
 
         // Allowed
-        List<ExecuteCmdStreamResult> allowedResults = collectStreamResults(
-                restrictedOp.shell().executeCmdStream("echo allowed", null, 10, null, null));
-        boolean hasAllowed = allowedResults.stream().anyMatch(r ->
-                r.getData() != null && "stdout".equals(r.getData().getType()) &&
-                r.getData().getText().contains("allowed"));
+        List<ExecuteCmdStreamResult> allowedResults =
+            collectStreamResults(restrictedOp.shell().executeCmdStream("echo allowed", null, 10, null, null));
+        boolean hasAllowed = allowedResults.stream().anyMatch(r -> r.getData() != null
+                && "stdout".equals(r.getData().getType()) && r.getData().getText().contains("allowed"));
         assertTrue(hasAllowed);
 
         // Denied
         String denyCmd = isWindows() ? "dir" : "ls";
-        List<ExecuteCmdStreamResult> denyResults = collectStreamResults(
-                restrictedOp.shell().executeCmdStream(denyCmd, null, 300, null, null));
+        List<ExecuteCmdStreamResult> denyResults =
+            collectStreamResults(restrictedOp.shell().executeCmdStream(denyCmd, null, 300, null, null));
         assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), denyResults.get(0).getCode());
         assertTrue(denyResults.get(0).getMessage().contains("not allowed by allowlist"));
     }
@@ -428,12 +414,11 @@ class LocalShellOperationTest {
     @DisplayName("Stream: continuous output (ping)")
     void testStreamContinuousOutput() {
         String cmd = isWindows() ? "ping -n 3 127.0.0.1" : "ping -c 3 127.0.0.1";
-        List<ExecuteCmdStreamResult> results = collectStreamResults(
-                shell().executeCmdStream(cmd, null, 15, null, null));
+        List<ExecuteCmdStreamResult> results =
+            collectStreamResults(shell().executeCmdStream(cmd, null, 15, null, null));
 
-        List<ExecuteCmdStreamResult> stdoutChunks = results.stream()
-                .filter(r -> r.getData() != null && "stdout".equals(r.getData().getType()))
-                .toList();
+        List<ExecuteCmdStreamResult> stdoutChunks =
+            results.stream().filter(r -> r.getData() != null && "stdout".equals(r.getData().getType())).toList();
         assertTrue(stdoutChunks.size() >= 1);
 
         String combined = stdoutChunks.stream().map(r -> r.getData().getText()).reduce("", String::concat);
@@ -441,9 +426,7 @@ class LocalShellOperationTest {
 
         // Validate exit code
         ExecuteCmdStreamResult exitChunk = results.stream()
-                .filter(r -> r.getData() != null && r.getData().getExitCode() != null)
-                .reduce((a, b) -> b)
-                .orElse(null);
+                .filter(r -> r.getData() != null && r.getData().getExitCode() != null).reduce((a, b) -> b).orElse(null);
         assertNotNull(exitChunk);
         assertEquals(0, exitChunk.getData().getExitCode());
     }

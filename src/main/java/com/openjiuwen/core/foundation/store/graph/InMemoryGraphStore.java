@@ -10,6 +10,7 @@ import com.openjiuwen.spi.store.query.LogicalExpr;
 import com.openjiuwen.spi.store.query.NullExpr;
 import com.openjiuwen.spi.store.query.QueryExpr;
 import com.openjiuwen.spi.store.query.RangeExpr;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -24,10 +25,12 @@ import java.util.stream.Collectors;
 
 /**
  * In-memory implementation of the foundation {@link GraphStore} contract.
- *
- * <p>Provides a simple in-memory backend for graph storage that can be used for testing and
+ * <p>
+ * Provides a simple in-memory backend for graph storage that can be used for testing and
  * lightweight local development. Registered with {@link GraphStoreFactory} under the name {@code
  * "in_memory"}.
+ * 
+ * @since 0.1.7
  */
 public class InMemoryGraphStore implements GraphStore {
     private static final int EMBED_QUEUE_CAPACITY = 1024;
@@ -36,80 +39,116 @@ public class InMemoryGraphStore implements GraphStore {
     private final ExecutorService embedExecutor;
     private Embedding embedder;
 
-    /** Collection name -> list of data records. */
+    /**
+     * Collection name -> list of data records.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, List<Map<String, Object>>> collections = new ConcurrentHashMap<>();
 
+    /**
+     * InMemoryGraphStore.
+     * 
+     * @param config config
+     * @since 0.1.7
+     */
     private InMemoryGraphStore(GraphConfig config) {
         this.config = config;
         int workerThreads = Math.max(1, config.getWorkerThreads());
-        this.embedExecutor =
-                new ThreadPoolExecutor(
-                        workerThreads,
-                        workerThreads,
-                        0L,
-                        TimeUnit.MILLISECONDS,
-                        new LinkedBlockingQueue<>(EMBED_QUEUE_CAPACITY),
-                        new ThreadPoolExecutor.CallerRunsPolicy());
+        this.embedExecutor = new ThreadPoolExecutor(workerThreads, workerThreads, 0L, TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(EMBED_QUEUE_CAPACITY), new ThreadPoolExecutor.CallerRunsPolicy());
     }
 
     /**
      * Creates an in-memory graph store from the provided graph configuration.
-     *
+     * 
      * @param config graph store configuration
      * @return graph store instance backed by local memory
+     * @since 0.1.7
      */
     public static GraphStore fromConfig(GraphConfig config) {
         return new InMemoryGraphStore(config);
     }
 
+    /**
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
     public GraphConfig getConfig() {
         return config;
     }
 
+    /**
+     * getEmbedExecutor.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
     public ExecutorService getEmbedExecutor() {
         return embedExecutor;
     }
 
+    /**
+     * getEmbedder.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
     public Embedding getEmbedder() {
         return embedder;
     }
 
+    /**
+     * refresh.
+     * 
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
     public void refresh() {
         // No-op for in-memory store
     }
 
+    /**
+     * addData.
+     * 
+     * @param collection collection
+     * @param data data
+     * @param isFlush isFlush
+     * @param isUpsert isUpsert
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
-    public void addData(
-            String collection, Iterable<Map<String, Object>> data, boolean isFlush, boolean isUpsert) {
+    public void addData(String collection, Iterable<Map<String, Object>> data, boolean isFlush, boolean isUpsert) {
         List<Map<String, Object>> coll =
-                collections.computeIfAbsent(
-                        collection, k -> Collections.synchronizedList(new ArrayList<>()));
+            collections.computeIfAbsent(collection, k -> Collections.synchronizedList(new ArrayList<>()));
         for (Map<String, Object> record : data) {
             if (isUpsert) {
                 Object id = record.containsKey("id") ? record.get("id") : record.get("uuid");
                 if (id != null) {
-                    coll.removeIf(
-                            existing ->
-                                    id.equals(existing.containsKey("id") ? existing.get("id") : existing.get("uuid")));
+                    coll.removeIf(existing -> id
+                            .equals(existing.containsKey("id") ? existing.get("id") : existing.get("uuid")));
                 }
             }
             coll.add(new HashMap<>(record));
         }
     }
 
+    /**
+     * addEntity.
+     * 
+     * @param entities entities
+     * @param isFlush isFlush
+     * @param isUpsert isUpsert
+     * @param shouldSkipEmbed shouldSkipEmbed
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
-    public void addEntity(
-            Iterable<?> entities, boolean isFlush, boolean isUpsert, boolean shouldSkipEmbed) {
+    public void addEntity(Iterable<?> entities, boolean isFlush, boolean isUpsert, boolean shouldSkipEmbed) {
         List<Map<String, Object>> records = new ArrayList<>();
         for (Object entity : entities) {
             if (entity instanceof BaseGraphObject graphObject) {
@@ -125,10 +164,17 @@ public class InMemoryGraphStore implements GraphStore {
         addData(GraphConstants.ENTITY_COLLECTION, records, isFlush, isUpsert);
     }
 
+    /**
+     * addRelation.
+     * 
+     * @param relations relations
+     * @param isFlush isFlush
+     * @param isUpsert isUpsert
+     * @param shouldSkipEmbed shouldSkipEmbed
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
-    public void addRelation(
-            Iterable<?> relations, boolean isFlush, boolean isUpsert, boolean shouldSkipEmbed) {
+    public void addRelation(Iterable<?> relations, boolean isFlush, boolean isUpsert, boolean shouldSkipEmbed) {
         List<Map<String, Object>> records = new ArrayList<>();
         for (Object relation : relations) {
             if (relation instanceof BaseGraphObject graphObject) {
@@ -144,10 +190,17 @@ public class InMemoryGraphStore implements GraphStore {
         addData(GraphConstants.RELATION_COLLECTION, records, isFlush, isUpsert);
     }
 
+    /**
+     * addEpisode.
+     * 
+     * @param episodes episodes
+     * @param isFlush isFlush
+     * @param isUpsert isUpsert
+     * @param shouldSkipEmbed shouldSkipEmbed
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
-    public void addEpisode(
-            Iterable<?> episodes, boolean isFlush, boolean isUpsert, boolean shouldSkipEmbed) {
+    public void addEpisode(Iterable<?> episodes, boolean isFlush, boolean isUpsert, boolean shouldSkipEmbed) {
         List<Map<String, Object>> records = new ArrayList<>();
         for (Object episode : episodes) {
             if (episode instanceof BaseGraphObject graphObject) {
@@ -163,33 +216,53 @@ public class InMemoryGraphStore implements GraphStore {
         addData(GraphConstants.EPISODE_COLLECTION, records, isFlush, isUpsert);
     }
 
+    /**
+     * isEmpty.
+     * 
+     * @param collection collection
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
     public boolean isEmpty(String collection) {
         List<Map<String, Object>> coll = collections.get(collection);
         return coll == null || coll.isEmpty();
     }
 
+    /**
+     * query.
+     * 
+     * @param collection collection
+     * @param ids ids
+     * @param expr expr
+     * @param shouldSilenceErrors shouldSilenceErrors
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
-    public List<Map<String, Object>> query(
-            String collection, List<Object> ids, QueryExpr expr, boolean shouldSilenceErrors) {
+    public List<Map<String, Object>> query(String collection, List<Object> ids, QueryExpr expr,
+            boolean shouldSilenceErrors) {
         List<Map<String, Object>> coll = collections.get(collection);
         if (coll == null) {
             return Collections.emptyList();
         }
         if (ids != null && !ids.isEmpty()) {
-            return coll.stream()
-                    .filter(r -> ids.contains(r.get("id")) || ids.contains(r.get("uuid")))
-                    .filter(r -> matches(r, expr))
-                    .map(HashMap::new)
-                    .collect(Collectors.toList());
+            return coll.stream().filter(r -> ids.contains(r.get("id")) || ids.contains(r.get("uuid")))
+                    .filter(r -> matches(r, expr)).map(HashMap::new).collect(Collectors.toList());
         }
         return coll.stream().filter(r -> matches(r, expr)).map(HashMap::new).collect(Collectors.toList());
     }
 
+    /**
+     * delete.
+     * 
+     * @param collection collection
+     * @param ids ids
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
     public Map<String, Object> delete(String collection, List<Object> ids, QueryExpr expr) {
         List<Map<String, Object>> coll = collections.get(collection);
         if (coll == null) {
@@ -207,46 +280,51 @@ public class InMemoryGraphStore implements GraphStore {
         return Map.of("deleted", before - coll.size());
     }
 
+    /**
+     * search.
+     * 
+     * @param queryText queryText
+     * @param k k
+     * @param collection collection
+     * @param rankerConfig rankerConfig
+     * @param bfsDepth bfsDepth
+     * @param bfsK bfsK
+     * @param filterExpr filterExpr
+     * @param outputFields outputFields
+     * @param queryEmbedding queryEmbedding
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
-    public Map<String, List<Map<String, Object>>> search(
-            String queryText,
-            int k,
-            String collection,
-            Object rankerConfig,
-            int bfsDepth,
-            int bfsK,
-            QueryExpr filterExpr,
-            List<String> outputFields,
-            List<Float> queryEmbedding,
-            Map<String, Object> kwargs) {
+    public Map<String, List<Map<String, Object>>> search(String queryText, int k, String collection,
+            Object rankerConfig, int bfsDepth, int bfsK, QueryExpr filterExpr, List<String> outputFields,
+            List<Float> queryEmbedding, Map<String, Object> kwargs) {
         // Simple implementation: return first k records from the collection
         Map<String, List<Map<String, Object>>> result = new HashMap<>();
         List<String> targetCollections;
         if ("all".equals(collection)) {
-            targetCollections =
-                    List.of(
-                            GraphConstants.ENTITY_COLLECTION,
-                            GraphConstants.RELATION_COLLECTION,
-                            GraphConstants.EPISODE_COLLECTION);
+            targetCollections = List.of(GraphConstants.ENTITY_COLLECTION, GraphConstants.RELATION_COLLECTION,
+                    GraphConstants.EPISODE_COLLECTION);
         } else {
             targetCollections = List.of(collection);
         }
         for (String cname : targetCollections) {
             List<Map<String, Object>> coll = collections.getOrDefault(cname, Collections.emptyList());
-            List<Map<String, Object>> limited =
-                    coll.stream()
-                            .filter(record -> matches(record, filterExpr))
-                            .limit(k)
-                            .map(HashMap::new)
-                            .collect(Collectors.toList());
+            List<Map<String, Object>> limited = coll.stream().filter(record -> matches(record, filterExpr)).limit(k)
+                    .map(HashMap::new).collect(Collectors.toList());
             result.put(cname, limited);
         }
         return result;
     }
 
+    /**
+     * attachEmbedder.
+     * 
+     * @param embedder embedder
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
     public void attachEmbedder(Embedding embedder) {
         if (embedder == null) {
             throw new IllegalArgumentException("Embedder must not be null");
@@ -254,6 +332,14 @@ public class InMemoryGraphStore implements GraphStore {
         this.embedder = embedder;
     }
 
+    /**
+     * matches.
+     * 
+     * @param record record
+     * @param expression expression
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean matches(Map<String, Object> record, QueryExpr expression) {
         if (expression == null) {
             return true;
@@ -300,6 +386,14 @@ public class InMemoryGraphStore implements GraphStore {
         return true;
     }
 
+    /**
+     * compare.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static int compare(Object left, Object right) {
         if (left instanceof Number leftNumber && right instanceof Number rightNumber) {
             return Double.compare(leftNumber.doubleValue(), rightNumber.doubleValue());
@@ -310,8 +404,12 @@ public class InMemoryGraphStore implements GraphStore {
         return String.valueOf(left).compareTo(String.valueOf(right));
     }
 
+    /**
+     * close.
+     * 
+     * @since 0.1.7
+     */
     @Override
-    /** Auto-generated for codecheck compliance. */
     public void close() {
         embedExecutor.shutdown();
         collections.clear();

@@ -21,6 +21,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Core memory manager for workspace-scoped lite memory.
+ * 
+ * @since 0.1.7
  */
 public class MemoryIndexManager {
     private static final Map<String, MemoryIndexManager> INDEX_CACHE = new ConcurrentHashMap<>();
@@ -32,10 +34,24 @@ public class MemoryIndexManager {
     private final String memoryDir;
     private final MemorySettings settings;
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<ChunkEntry> chunks = new ArrayList<>();
     private boolean isClosed;
     private boolean isInitialized;
 
+    /**
+     * MemoryIndexManager.
+     * 
+     * @param agentId agentId
+     * @param workspace workspace
+     * @param settings settings
+     * @param nodeName nodeName
+     * @since 0.1.7
+     */
     private MemoryIndexManager(String agentId, Workspace workspace, MemorySettings settings, String nodeName) {
         this.agentId = agentId;
         this.workspace = workspace;
@@ -44,32 +60,48 @@ public class MemoryIndexManager {
         this.memoryDir = String.valueOf(workspace.getNodePath(this.nodeName));
     }
 
+    /**
+     * ChunkEntry.
+     * 
+     * @param id id
+     * @param path path
+     * @param text text
+     * @param startLine startLine
+     * @param endLine endLine
+     * @param hash hash
+     * @since 0.1.7
+     */
     private record ChunkEntry(String id, String path, String text, int startLine, int endLine, String hash) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param params params
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public static MemoryIndexManager get(MemoryManagerParams params) throws IOException {
-        String cacheKey = params.agentId() + ":" + params.nodeName() + ":"
-                + params.workspace().getNodePath(params.nodeName());
+        String cacheKey =
+            params.agentId() + ":" + params.nodeName() + ":" + params.workspace().getNodePath(params.nodeName());
         MemoryIndexManager cached = INDEX_CACHE.get(cacheKey);
         if (cached != null && !cached.isClosed) {
             return cached;
         }
         MemorySettings settings = params.settings() != null ? params.settings() : new MemorySettings();
-        MemoryIndexManager manager = new MemoryIndexManager(
-                params.agentId(),
-                params.workspace(),
-                settings,
-                params.nodeName());
+        MemoryIndexManager manager =
+            new MemoryIndexManager(params.agentId(), params.workspace(), settings, params.nodeName());
         manager.initialize();
         INDEX_CACHE.put(cacheKey, manager);
         return manager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * initialize.
+     * 
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public void initialize() throws IOException {
         if (isInitialized) {
@@ -80,7 +112,11 @@ public class MemoryIndexManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * sync.
+     * 
+     * @param reason reason
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public synchronized void sync(String reason) throws IOException {
         chunks.clear();
@@ -91,20 +127,22 @@ public class MemoryIndexManager {
             int index = 0;
             for (MemoryChunk chunk : LiteMemoryInternal.chunkMarkdown(content, settings.getChunking())) {
                 chunks.add(new ChunkEntry(
-                        LiteMemoryInternal.hashText(relPath + "#" + index++ + "#"
-                                + chunk.startLine() + "#" + chunk.endLine()),
-                        relPath,
-                        chunk.text(),
-                        chunk.startLine(),
-                        chunk.endLine(),
-                        LiteMemoryInternal.hashText(chunk.text())
-                ));
+                        LiteMemoryInternal.hashText(
+                                relPath + "#" + index++ + "#" + chunk.startLine() + "#" + chunk.endLine()),
+                        relPath, chunk.text(), chunk.startLine(), chunk.endLine(),
+                        LiteMemoryInternal.hashText(chunk.text())));
             }
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * search.
+     * 
+     * @param query query
+     * @param opts opts
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public synchronized List<Map<String, Object>> search(String query, Map<String, Object> opts) throws IOException {
         if (isClosed) {
@@ -140,7 +178,14 @@ public class MemoryIndexManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * readFile.
+     * 
+     * @param relPath relPath
+     * @param fromLine fromLine
+     * @param lines lines
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public Map<String, Object> readFile(String relPath, Integer fromLine, Integer lines) throws IOException {
         Path path = resolvePath(relPath);
@@ -159,7 +204,10 @@ public class MemoryIndexManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * status.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> status() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -173,7 +221,9 @@ public class MemoryIndexManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @since 0.1.7
      */
     public void close() {
         isClosed = true;
@@ -182,19 +232,33 @@ public class MemoryIndexManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isClosed.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isClosed() {
         return isClosed;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMemoryDir.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getMemoryDir() {
         return memoryDir;
     }
 
+    /**
+     * scoreChunk.
+     * 
+     * @param lowerQuery lowerQuery
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     private double scoreChunk(String lowerQuery, String text) {
         if (lowerQuery.isBlank()) {
             return 0.0;
@@ -213,6 +277,14 @@ public class MemoryIndexManager {
         return queryTokens.isEmpty() ? 0.0 : (double) matched / queryTokens.size();
     }
 
+    /**
+     * snippet.
+     * 
+     * @param text text
+     * @param lowerQuery lowerQuery
+     * @return the result
+     * @since 0.1.7
+     */
     private String snippet(String text, String lowerQuery) {
         if (text.length() <= SNIPPET_MAX_CHARS) {
             return text;
@@ -226,6 +298,13 @@ public class MemoryIndexManager {
         return text.substring(start, end);
     }
 
+    /**
+     * resolvePath.
+     * 
+     * @param relPath relPath
+     * @return the result
+     * @since 0.1.7
+     */
     private Path resolvePath(String relPath) {
         Path path = Path.of(relPath);
         if (path.isAbsolute()) {
@@ -234,11 +313,27 @@ public class MemoryIndexManager {
         return workspace.root().resolve(relPath).normalize();
     }
 
+    /**
+     * intQuery.
+     * 
+     * @param key key
+     * @param fallback fallback
+     * @return the result
+     * @since 0.1.7
+     */
     private int intQuery(String key, int fallback) {
         Object value = settings.getQuery().get(key);
         return value == null ? fallback : Integer.parseInt(String.valueOf(value));
     }
 
+    /**
+     * doubleQuery.
+     * 
+     * @param key key
+     * @param fallback fallback
+     * @return the result
+     * @since 0.1.7
+     */
     private double doubleQuery(String key, double fallback) {
         Object value = settings.getQuery().get(key);
         return value == null ? fallback : Double.parseDouble(String.valueOf(value));

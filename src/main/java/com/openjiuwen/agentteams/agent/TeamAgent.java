@@ -42,6 +42,7 @@ import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
+
 import lombok.Getter;
 
 import java.io.IOException;
@@ -59,6 +60,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * Java coordination host mirroring the first real TeamAgent interaction slice.
+ * 
+ * @since 0.1.7
  */
 @Getter
 public class TeamAgent {
@@ -82,18 +85,34 @@ public class TeamAgent {
     private boolean isCancelRequested;
     private boolean isInFlightRound;
     private String pendingUserQuery = "";
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<Object> eventListeners = new ArrayList<>();
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<String> leaderInbox = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * configure.
+     * 
+     * @param spec spec
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     public TeamAgent configure(TeamAgentSpec spec, TeamRuntimeContext context) {
         this.spec = spec.build();
-        this.context = context != null ? context : TeamRuntimeContext.builder()
-                .teamId(this.spec.getName())
-                .lifecycle(TeamLifecycle.CREATED)
-                .build();
+        this.context = context != null
+                ? context
+                : TeamRuntimeContext.builder().teamId(this.spec.getName()).lifecycle(TeamLifecycle.CREATED).build();
         if (this.context.getTeamId() == null || this.context.getTeamId().isBlank()) {
             this.context.setTeamId(this.spec.getName());
         }
@@ -119,7 +138,12 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * attachModelAllocator.
+     * 
+     * @param allocator allocator
+     * @param leaderAllocation leaderAllocation
+     * @return the result
+     * @since 0.1.7
      */
     public TeamAgent attachModelAllocator(ModelAllocator allocator, Allocation leaderAllocation) {
         this.modelAllocator = allocator;
@@ -137,12 +161,16 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resumeForNewSession.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public TeamAgent resumeForNewSession(String sessionId) {
         ensureConfigured();
         List<RecoveryManager.RecoverableMember> recoverableMembers =
-                recoveryManager.collectLiveTeammatesForSessionSwitch();
+            recoveryManager.collectLiveTeammatesForSessionSwitch();
         applySessionId(sessionId);
         recoveryManager.restartForSessionSwitch(recoverableMembers, true);
         context.getMetadata().put("recoverable_member_count", recoverableMembers.size());
@@ -151,12 +179,16 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * recoverForExistingSession.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public TeamAgent recoverForExistingSession(String sessionId) {
         ensureConfigured();
         List<RecoveryManager.RecoverableMember> recoverableMembers =
-                recoveryManager.collectLiveTeammatesForSessionSwitch();
+            recoveryManager.collectLiveTeammatesForSessionSwitch();
         applySessionId(sessionId);
         recoveryManager.restartForSessionSwitch(recoverableMembers, false);
         context.getMetadata().put("recoverable_member_count", recoverableMembers.size());
@@ -165,7 +197,10 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * recoverTeam.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> recoverTeam() {
         ensureConfigured();
@@ -175,7 +210,9 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * persistLeaderConfigToSession.
+     * 
+     * @since 0.1.7
      */
     public void persistLeaderConfigToSession() {
         ensureConfigured();
@@ -183,7 +220,9 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * persistAllocatorStateToSession.
+     * 
+     * @since 0.1.7
      */
     public void persistAllocatorStateToSession() {
         ensureConfigured();
@@ -191,7 +230,9 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * persistAllocatorState.
+     * 
+     * @since 0.1.7
      */
     public void persistAllocatorState() {
         ensureConfigured();
@@ -200,14 +241,18 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * dispatchTask.
+     * 
+     * @param query query
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> dispatchTask(String query) {
         ensureConfigured();
         String memberName = context != null && context.getMemberName() != null ? context.getMemberName() : "unknown";
         com.openjiuwen.core.common.logging.Loggers.AGENT.info("dispatchTask: member={} lifecycle={} query={}",
-            memberName, context != null ? context.getLifecycle() : "null",
-            query != null ? query.substring(0, Math.min(100, query.length())) : "null");
+                memberName, context != null ? context.getLifecycle() : "null",
+                query != null ? query.substring(0, Math.min(100, query.length())) : "null");
         context.setLifecycle(TeamLifecycle.RUNNING);
         pendingUserQuery = query != null ? query : "";
         context.getMetadata().put("last_query", query);
@@ -215,9 +260,8 @@ public class TeamAgent {
         setInFlightRound(true);
         startCoordination(query);
         try {
-            CoordinationManager.UserInputHandoff handoff = coordinationManager.handoffUserInput(
-                    query,
-                    resolveLeaderMemberName());
+            CoordinationManager.UserInputHandoff handoff =
+                coordinationManager.handoffUserInput(query, resolveLeaderMemberName());
             String route = handoff.route();
             String target = handoff.target();
             String deliveredContent = handoff.deliveredContent();
@@ -228,10 +272,8 @@ public class TeamAgent {
             context.getMetadata().put("leader_inbox_size", leaderInbox.size());
             context.getMetadata().put("message_count", messageManager.listAllMessages().size());
 
-            TeamMemberSpec leader = spec.getMembers().stream()
-                    .filter(member -> member.getRole() == TeamRole.LEADER)
-                    .findFirst()
-                    .orElse(null);
+            TeamMemberSpec leader = spec.getMembers().stream().filter(member -> member.getRole() == TeamRole.LEADER)
+                    .findFirst().orElse(null);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("team_id", context.getTeamId());
             result.put("session_id", context.getSessionId());
@@ -244,8 +286,8 @@ public class TeamAgent {
             result.put("delivered_content", deliveredContent);
             result.put("message_id", messageId);
             result.put("leader_inbox_size", leaderInbox.size());
-            com.openjiuwen.core.common.logging.Loggers.AGENT.info("dispatchTask completed: member={} route={} target={}",
-                memberName, route, target);
+            com.openjiuwen.core.common.logging.Loggers.AGENT
+                    .info("dispatchTask completed: member={} route={} target={}", memberName, route, target);
             return result;
         } finally {
             finalizeRound();
@@ -254,15 +296,18 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public Iterator<Object> stream(Map<String, Object> inputs, Object session) {
         ensureConfigured();
-        Loggers.AGENT.info("stream() called: member={} sessionParam={}",
-            resolveLocalMemberName(), session != null ? session.getClass().getSimpleName() + ":" + session : "null");
-        Object rawQuery = inputs != null
-                ? inputs.getOrDefault("query", inputs.getOrDefault("data", ""))
-                : "";
+        Loggers.AGENT.info("stream() called: member={} sessionParam={}", resolveLocalMemberName(),
+                session != null ? session.getClass().getSimpleName() + ":" + session : "null");
+        Object rawQuery = inputs != null ? inputs.getOrDefault("query", inputs.getOrDefault("data", "")) : "";
         context.setLifecycle(TeamLifecycle.RUNNING);
         pendingUserQuery = rawQuery != null ? String.valueOf(rawQuery) : "";
         context.getMetadata().put("last_query", pendingUserQuery);
@@ -281,25 +326,31 @@ public class TeamAgent {
         streamController.requestCloseStreamAfterCurrentRound();
         startCoordination(pendingUserQuery);
         // Ensure transport subscriptions are active before starting the loop.
-        // invokeForSpawn() does this via coordinationManager.start(), but stream()
         // (used by the leader) was skipping it, causing the leader to never receive
         // task/message/broadcast events from spawned members.
         coordinationManager.subscribeTransport();
         coordinatorLoop.start();
-        coordinatorLoop.enqueue(InnerEventMessage.builder()
-                .eventType(InnerEventType.USER_INPUT)
-                .payload(Map.of("content", pendingUserQuery))
-                .build());
+        coordinatorLoop.enqueue(InnerEventMessage.builder().eventType(InnerEventType.USER_INPUT)
+                .payload(Map.of("content", pendingUserQuery)).build());
         return new CoordinationStreamIterator(queue);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deliverInput.
+     * 
+     * @param content content
+     * @since 0.1.7
      */
     public void deliverInput(String content) {
         deliverInput(content, true);
     }
 
+    /**
+     * interact.
+     * 
+     * @param message message
+     * @since 0.1.7
+     */
     public void interact(String message) {
         ensureConfigured();
         if (streamController != null && streamController.isAgentRunning()) {
@@ -308,16 +359,18 @@ public class TeamAgent {
             return;
         }
         if (coordinatorLoop != null) {
-            coordinatorLoop.enqueue(InnerEventMessage.builder()
-                    .eventType(InnerEventType.USER_INPUT)
-                    .payload(Map.of("content", message != null ? message : ""))
-                    .build());
+            coordinatorLoop.enqueue(InnerEventMessage.builder().eventType(InnerEventType.USER_INPUT)
+                    .payload(Map.of("content", message != null ? message : "")).build());
             context.getMetadata().put("last_interact_route", "enqueue");
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deliverInput.
+     * 
+     * @param content content
+     * @param isUseSteer isUseSteer
+     * @since 0.1.7
      */
     public void deliverInput(String content, boolean isUseSteer) {
         ensureConfigured();
@@ -329,10 +382,9 @@ public class TeamAgent {
             com.openjiuwen.agentteams.spawn.SpawnContext.setSessionId(ctxSid);
         }
         String role = context != null ? String.valueOf(context.getRole()) : "unknown";
-        Loggers.AGENT.info("deliverInput: member={} role={} agentRunning={} contentLen={}",
-            resolveLocalMemberName(), role,
-            streamController != null && streamController.isAgentRunning(),
-            content != null ? content.length() : 0);
+        Loggers.AGENT.info("deliverInput: member={} role={} agentRunning={} contentLen={}", resolveLocalMemberName(),
+                role, streamController != null && streamController.isAgentRunning(),
+                content != null ? content.length() : 0);
         if (streamController != null && streamController.isAgentRunning()) {
             if (isUseSteer) {
                 streamController.steer(content);
@@ -363,6 +415,9 @@ public class TeamAgent {
 
     /**
      * Match Python _start_agent: start a round on this member's own DeepAgent.
+     * 
+     * @param content content
+     * @since 0.1.7
      */
     public void startAgent(String content) {
         if (streamController != null) {
@@ -373,19 +428,22 @@ public class TeamAgent {
     /**
      * Match Python invoke(): process initial input through member's own ReAct stream,
      * consuming chunks until the round completes.
+     * 
+     * @param query query
+     * @return the result
+     * @throws InterruptedException InterruptedException
+     * @since 0.1.7
      */
     public Object invokeForSpawn(String query) throws InterruptedException {
         ensureConfigured();
         Loggers.AGENT.info("invokeForSpawn: member={} queryLen={}", resolveLocalMemberName(),
-            query != null ? query.length() : 0);
+                query != null ? query.length() : 0);
         LinkedBlockingQueue<Object> queue = new LinkedBlockingQueue<>();
         streamController.setStreamQueue(queue);
         startCoordinationLoop();
         coordinatorLoop.start();
-        coordinatorLoop.enqueue(InnerEventMessage.builder()
-            .eventType(InnerEventType.USER_INPUT)
-            .payload(Map.of("content", query != null ? query : ""))
-            .build());
+        coordinatorLoop.enqueue(InnerEventMessage.builder().eventType(InnerEventType.USER_INPUT)
+                .payload(Map.of("content", query != null ? query : "")).build());
         // Match Python: keep the coordinator loop running so the member can
         // receive new dispatches (broadcasts, direct messages, task events)
         // after the initial round. Block until the coordinator loop is stopped
@@ -412,15 +470,13 @@ public class TeamAgent {
         // Log task status at completion to help diagnose stuck claimed tasks
         if (teamBackend != null && teamBackend.getTaskManager() != null) {
             var tasks = teamBackend.getTaskManager().list();
-            var claimedByMe = tasks.stream()
-                .filter(t -> "claimed".equals(t.getStatus()))
-                .filter(t -> resolveLocalMemberName().equals(t.getAssignee()))
-                .toList();
+            var claimedByMe = tasks.stream().filter(t -> "claimed".equals(t.getStatus()))
+                    .filter(t -> resolveLocalMemberName().equals(t.getAssignee())).toList();
             if (!claimedByMe.isEmpty()) {
-                Loggers.AGENT.warn("invokeForSpawn: member={} finished but has {} claimed task(s) still not completed: {}",
-                    resolveLocalMemberName(), claimedByMe.size(),
-                    claimedByMe.stream().map(t -> t.getTaskId() + " (" + t.getTitle() + ")")
-                        .toList());
+                Loggers.AGENT.warn(
+                        "invokeForSpawn: member={} finished but has {} claimed task(s) still not completed: {}",
+                        resolveLocalMemberName(), claimedByMe.size(),
+                        claimedByMe.stream().map(t -> t.getTaskId() + " (" + t.getTitle() + ")").toList());
             }
         }
         Loggers.AGENT.info("invokeForSpawn: completed for member={}", resolveLocalMemberName());
@@ -428,7 +484,10 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resumeInterrupt.
+     * 
+     * @param input input
+     * @since 0.1.7
      */
     public void resumeInterrupt(InteractiveInput input) {
         ensureConfigured();
@@ -438,34 +497,40 @@ public class TeamAgent {
         }
         if (hasInFlightRound()) {
             streamController.getPendingInterruptResumes().offer(input);
-            context.getMetadata().put(
-                    "pending_interrupt_resume_count",
+            context.getMetadata().put("pending_interrupt_resume_count",
                     streamController.getPendingInterruptResumes().size());
             return;
         }
         this.lastResumedInterruptInput = input;
-        context.getMetadata().put(
-                "last_resume_interrupt",
+        context.getMetadata().put("last_resume_interrupt",
                 input != null ? new LinkedHashMap<>(input.getUserInputs()) : null);
         streamController.startRound(input);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addEventListener.
+     * 
+     * @param handler handler
+     * @since 0.1.7
      */
     public void addEventListener(Object handler) {
         eventListeners.add(handler);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeEventListener.
+     * 
+     * @param handler handler
+     * @since 0.1.7
      */
     public void removeEventListener(Object handler) {
         eventListeners.remove(handler);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * cancelAgent.
+     * 
+     * @since 0.1.7
      */
     public void cancelAgent() {
         ensureConfigured();
@@ -474,7 +539,10 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskManager.
+     * 
+     * @return TeamTaskManager
+     * @since 0.1.7
      */
     public com.openjiuwen.agentteams.tools.TeamTaskManager getTaskManager() {
         var tm = teamBackend.getTaskManager();
@@ -482,28 +550,40 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasInFlightRound.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasInFlightRound() {
         return isInFlightRound || (streamController != null && streamController.hasInFlightRound());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAgentReady.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isAgentReady() {
         return deepAgent != null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * currentMemberName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String currentMemberName() {
         return context != null ? context.getMemberName() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInFlightRound.
+     * 
+     * @param isInFlightRound isInFlightRound
+     * @since 0.1.7
      */
     public void setInFlightRound(boolean isInFlightRound) {
         this.isInFlightRound = isInFlightRound;
@@ -513,7 +593,11 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * broadcast.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
     public String broadcast(String content) {
         ensureConfigured();
@@ -525,7 +609,13 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * humanAgentSay.
+     * 
+     * @param content content
+     * @param to to
+     * @param sender sender
+     * @return the result
+     * @since 0.1.7
      */
     public String humanAgentSay(String content, String to, String sender) {
         ensureConfigured();
@@ -537,7 +627,10 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateModelPool.
+     * 
+     * @param newPool newPool
+     * @since 0.1.7
      */
     public void updateModelPool(List<ModelPoolEntry> newPool) {
         ensureConfigured();
@@ -549,7 +642,10 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * snapshot.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> snapshot() {
         ensureConfigured();
@@ -559,14 +655,17 @@ public class TeamAgent {
         snapshot.put("session_id", context.getSessionId());
         snapshot.put("leader_inbox", new ArrayList<>(leaderInbox));
         snapshot.put("messages", new ArrayList<>(messageManager.listAllMessages()));
-        snapshot.put(
-                "model_allocator_state",
+        snapshot.put("model_allocator_state",
                 modelAllocator != null ? new LinkedHashMap<>(modelAllocator.stateDict()) : null);
         return snapshot;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildMemberContext.
+     * 
+     * @param memberSpec memberSpec
+     * @return the result
+     * @since 0.1.7
      */
     public TeamRuntimeContext buildMemberContext(TeamMemberSpec memberSpec) {
         ensureConfigured();
@@ -575,17 +674,19 @@ public class TeamAgent {
         if (memberSpec.getDescription() != null && !memberSpec.getDescription().isBlank()) {
             metadata.put("persona", memberSpec.getDescription());
         }
-        return TeamRuntimeContext.builder()
-                .teamId(context.getTeamId())
-                .sessionId(context.getSessionId())
+        return TeamRuntimeContext.builder().teamId(context.getTeamId()).sessionId(context.getSessionId())
                 .memberName(memberSpec.getName())
-                .role(memberSpec.getRole() == TeamRole.LEADER ? TeamRole.LEADER : TeamRole.MEMBER)
-                .metadata(metadata)
+                .role(memberSpec.getRole() == TeamRole.LEADER ? TeamRole.LEADER : TeamRole.MEMBER).metadata(metadata)
                 .build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildSpawnPayload.
+     * 
+     * @param ctx ctx
+     * @param initialMessage initialMessage
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> buildSpawnPayload(TeamRuntimeContext ctx, String initialMessage) {
         ensureConfigured();
@@ -601,14 +702,19 @@ public class TeamAgent {
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("coordination", coordination);
-        payload.put("query", initialMessage != null && !initialMessage.isBlank()
-                ? initialMessage
-                : "Join the team and wait for your first assignment.");
+        payload.put("query",
+                initialMessage != null && !initialMessage.isBlank()
+                        ? initialMessage
+                        : "Join the team and wait for your first assignment.");
         return payload;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildSpawnConfig.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     public SpawnAgentConfig buildSpawnConfig(TeamRuntimeContext ctx) {
         ensureConfigured();
@@ -617,29 +723,30 @@ public class TeamAgent {
         payload.put("spec", serializeSpec(spec));
         payload.put("context", serializeContext(ctx));
 
-        return SpawnAgentConfig.builder()
-                .agentKind(SpawnAgentKind.TEAM_AGENT)
-                .runnerConfig(RunnerConfig.getRunnerConfig())
-                .loggingConfig(Map.of("member_name", ctx.getMemberName()))
-                .sessionId(null)
-                .payload(payload)
-                .build();
+        return SpawnAgentConfig.builder().agentKind(SpawnAgentKind.TEAM_AGENT)
+                .runnerConfig(RunnerConfig.getRunnerConfig()).loggingConfig(Map.of("member_name", ctx.getMemberName()))
+                .sessionId(null).payload(payload).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildSpawnConfigPayload.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> buildSpawnConfigPayload(TeamRuntimeContext ctx) {
         return buildSpawnConfig(ctx).toPayload();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromSpawnPayload.
+     * 
+     * @param payload payload
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static TeamAgent fromSpawnPayload(Map<String, Object> payload) {
         Objects.requireNonNull(payload, "payload is required");
         TeamAgentSpec restoredSpec = deserializeSpec(payload.get("spec"));
@@ -648,12 +755,13 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * restoreFromSnapshot.
+     * 
+     * @param snapshot snapshot
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public TeamAgent restoreFromSnapshot(Map<String, Object> snapshot) {
         ensureConfigured();
         leaderInbox.clear();
@@ -695,33 +803,50 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * pendingUserQuery.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String pendingUserQuery() {
         return pendingUserQuery;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * eventListeners.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> eventListeners() {
         return eventListeners;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * sessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String sessionId() {
         return context != null ? context.getSessionId() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSessionId.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public void setSessionId(String sessionId) {
         applySessionId(sessionId);
     }
 
+    /**
+     * bootstrapCoordinationHost.
+     * 
+     * @since 0.1.7
+     */
     private void bootstrapCoordinationHost() {
         String leaderName = resolveLeaderMemberName();
         String localMemberName = resolveLocalMemberName();
@@ -729,10 +854,8 @@ public class TeamAgent {
         // unique subscription key in the messager's topic map. Previously all
         // members shared "team_leader", causing the last subscriber to overwrite
         // earlier ones — the leader never received "message" events from analysts.
-        Messager messager = MessagerFactory.createMessager(MessagerTransportConfig.builder()
-                .teamName(context.getTeamId())
-                .nodeId(localMemberName)
-                .build());
+        Messager messager = MessagerFactory.createMessager(
+                MessagerTransportConfig.builder().teamName(context.getTeamId()).nodeId(localMemberName).build());
         // Use resolveLocalMemberName() so spawned members get their own memberName
         // (not the leader's name) in TeamBackend / TeamTaskManager.
         this.teamBackend = new TeamBackend(context.getTeamId(), localMemberName, true, messager);
@@ -754,16 +877,15 @@ public class TeamAgent {
                 } else if (broadcastContent != null && !broadcastContent.isBlank()) {
                     // Tag the broadcast with member identity so the LLM knows which
                     // specific task it should claim from the broadcast.
-                    String displayName = member != null && member.getDisplayName() != null
-                        ? member.getDisplayName() : memberName;
-                    initialMessage = "你是 " + displayName + "（" + memberName + "）。"
-                        + " 以下是队长的任务分配。请只认领和完成分配给你的任务，"
-                        + " 不要认领其他成员的任务。\n\n" + broadcastContent;
+                    String displayName =
+                        member != null && member.getDisplayName() != null ? member.getDisplayName() : memberName;
+                    initialMessage = "你是 " + displayName + "（" + memberName + "）。" + " 以下是队长的任务分配。请只认领和完成分配给你的任务，"
+                            + " 不要认领其他成员的任务。\n\n" + broadcastContent;
                 } else {
                     initialMessage = "Join the team and wait for your first assignment.";
                 }
                 Loggers.AGENT.info("onAutoLaunch: member={} initialMessage={}", memberName,
-                    initialMessage.length() > 60 ? initialMessage.substring(0, 60) + "..." : initialMessage);
+                        initialMessage.length() > 60 ? initialMessage.substring(0, 60) + "..." : initialMessage);
                 spawnManager.spawnTeammate(ctx, initialMessage);
             }
         });
@@ -774,39 +896,32 @@ public class TeamAgent {
             context.setSessionId(sid);
             com.openjiuwen.agentteams.spawn.SpawnContext.setSessionId(sid);
         }
-        this.streamController = new StreamController(
-                () -> deepAgent,
-                this::resolveLocalMemberName,
-                status -> teamBackend.updateMemberStatus(resolveLocalMemberName(), status),
-                ignored -> { },
-                () -> agentSession,
-                () -> {
+        this.streamController = new StreamController(() -> deepAgent, this::resolveLocalMemberName,
+                status -> teamBackend.updateMemberStatus(resolveLocalMemberName(), status), ignored -> {
+                }, () -> agentSession, () -> {
                     dispatcher.processUnreadMessages(resolveLocalMemberName());
                     // Auto-complete any claimed tasks the member forgot to mark completed.
                     // This prevents the leader summary from being blocked forever.
                     dispatcher.tryAutoCompleteMemberTasks();
-                },
-                null
-        );
+                }, null);
         this.dispatcher = new EventDispatcher(this);
         this.coordinatorLoop = new CoordinatorLoop(context.getRole(), dispatcher::dispatch);
     }
 
+    /**
+     * setupAgent.
+     * 
+     * @since 0.1.7
+     */
     private void setupAgent() {
-        TeamMemberSpec leader = spec.getMembers().stream()
-                .filter(member -> member.getRole() == TeamRole.LEADER)
-                .findFirst()
-                .orElse(null);
+        TeamMemberSpec leader =
+            spec.getMembers().stream().filter(member -> member.getRole() == TeamRole.LEADER).findFirst().orElse(null);
         String leaderName = leader != null ? leader.getName() : resolveLeaderMemberName();
-        Workspace workspace = Workspace.builder()
-                .rootPath(resolveWorkspaceRoot().toString())
-                .language(resolveLanguage())
-                .build();
+        Workspace workspace =
+            Workspace.builder().rootPath(resolveWorkspaceRoot().toString()).language(resolveLanguage()).build();
         SysOperation sysOperation = new SysOperation(SysOperationCard.builder()
-                .id(context.getTeamId() + "." + leaderName + ".sys_operation")
-                .mode(OperationMode.LOCAL)
-                .workConfig(LocalWorkConfig.builder().workDir(workspace.root().toString()).build())
-                .build());
+                .id(context.getTeamId() + "." + leaderName + ".sys_operation").mode(OperationMode.LOCAL)
+                .workConfig(LocalWorkConfig.builder().workDir(workspace.root().toString()).build()).build());
 
         // Register team tools before creating DeepAgent
         List<Tool> teamTools = registerTeamTools();
@@ -819,93 +934,68 @@ public class TeamAgent {
         // file_io (read/write files within workspace sandbox).
         String workspaceRoot = workspace.root().toString();
         var fsBackend = new com.openjiuwen.harness.tools.FilesystemTool(workspaceRoot);
-        Tool fileIoTool = new com.openjiuwen.core.foundation.tool.function.LocalFunction(
-                com.openjiuwen.core.foundation.tool.ToolCard.builder()
-                        .id("team.file_io")
-                        .name("file_io")
-                        .description("Read or write files within the team workspace. "
-                                + "Use action='read' to read a file, action='write' to write content to a file.")
-                        .inputParams(Map.of(
-                                "type", "object",
-                                "properties", Map.of(
-                                        "action", Map.of("type", "string", "enum", List.of("read", "write"),
-                                                "description", "Action: 'read' to read a file, 'write' to create/overwrite a file"),
-                                        "file_path", Map.of("type", "string", "description",
-                                                "Absolute path to the file within the workspace"),
-                                        "content", Map.of("type", "string", "description",
-                                                "Content to write (required for action='write')")),
-                                "required", List.of("action", "file_path")))
-                        .build(),
-                inputs -> {
-                    String action = inputs.get("action") instanceof String s ? s : "";
-                    String filePath = inputs.get("file_path") instanceof String s ? s : "";
-                    if (filePath.isBlank()) {
-                        return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
-                                .success(false).error("file_path is required").build());
-                    }
-                    if ("read".equals(action)) {
-                        return java.util.List.of(fsBackend.readFile(filePath));
-                    }
-                    if ("write".equals(action)) {
-                        String content = inputs.get("content") instanceof String s ? s : "";
-                        if (content.isBlank()) {
-                            return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
-                                    .success(false).error("content is required for write action").build());
+        Tool fileIoTool =
+            new com.openjiuwen.core.foundation.tool.function.LocalFunction(com.openjiuwen.core.foundation.tool.ToolCard
+                    .builder().id("team.file_io").name("file_io")
+                    .description("Read or write files within the team workspace. "
+                            + "Use action='read' to read a file, action='write' to write content to a file.")
+                    .inputParams(Map.of("type", "object", "properties", Map.of("action",
+                            Map.of("type", "string", "enum", List.of("read", "write"), "description",
+                                    "Action: 'read' to read a file, 'write' to create/overwrite a file"),
+                            "file_path",
+                            Map.of("type", "string", "description", "Absolute path to the file within the workspace"),
+                            "content",
+                            Map.of("type", "string", "description", "Content to write (required for action='write')")),
+                            "required", List.of("action", "file_path")))
+                    .build(), inputs -> {
+                        String action = inputs.get("action") instanceof String s ? s : "";
+                        String filePath = inputs.get("file_path") instanceof String s ? s : "";
+                        if (filePath.isBlank()) {
+                            return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder().success(false)
+                                    .error("file_path is required").build());
                         }
-                        return java.util.List.of(fsBackend.writeFile(filePath, content));
-                    }
-                    return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
-                            .success(false).error("Unknown action '" + action + "'. Use 'read' or 'write'.").build());
-                });
-        com.openjiuwen.core.runner.Runner.resourceMgr().addTool(fileIoTool,
-                context.getTeamId() + "." + leaderName);
+                        if ("read".equals(action)) {
+                            return java.util.List.of(fsBackend.readFile(filePath));
+                        }
+                        if ("write".equals(action)) {
+                            String content = inputs.get("content") instanceof String s ? s : "";
+                            if (content.isBlank()) {
+                                return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
+                                        .success(false).error("content is required for write action").build());
+                            }
+                            return java.util.List.of(fsBackend.writeFile(filePath, content));
+                        }
+                        return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder().success(false)
+                                .error("Unknown action '" + action + "'. Use 'read' or 'write'.").build());
+                    });
+        com.openjiuwen.core.runner.Runner.resourceMgr().addTool(fileIoTool, context.getTeamId() + "." + leaderName);
         teamTools.add(fileIoTool);
 
-        Loggers.AGENT.info("setupAgent: memberName={} ctxMemberName={} role={}",
-            resolveLocalMemberName(),
-            context.getMemberName(),
-            context.getRole());
+        Loggers.AGENT.info("setupAgent: memberName={} ctxMemberName={} role={}", resolveLocalMemberName(),
+                context.getMemberName(), context.getRole());
 
         String localName = resolveLocalMemberName();
-        this.deepAgent = HarnessFactory.createDeepAgent(
-                com.openjiuwen.core.singleagent.schema.AgentCard.builder()
-                        .id(context.getTeamId() + "." + localName)
-                        .name(localName)
-                        .description(leader != null ? leader.getDescription() : "")
-                        .build(),
-                DeepAgentConfig.builder()
-                        .workspacePath(workspace.root().toString())
-                        .language(resolveLanguage())
-                        .model(resolveConfiguredModel())
-                        .backend(resolveConfiguredBackend())
-                        .isTaskLoopEnabled(true)
-                        .enableSkillDiscovery(true)
-                        .skillDirectories(List.of(
-                                workspace.getNodePath("skills").toString(),
-                                System.getProperty("user.dir"),
-                                System.getProperty("user.home") + "/.openjiuwen/workspace/skills",
-                                System.getProperty("user.home") + "/.claude/skills"
-                        ))
-                        .skillMode("all")
-                        .sysOperation(sysOperation)
-                        .tools(new ArrayList<>(teamTools.stream().map(Tool::getCard).toList()))
-                        .rails(List.of(new TeamRail(
-                                context.getRole() != null ? context.getRole() : TeamRole.LEADER,
-                                resolvePersona(leader),
-                                resolveLocalMemberName(),
-                                spec.getLifecycle(),
-                                "build_mode",
-                                resolveLanguage(),
-                                "default",
-                                null,
-                                resolveTeamWorkspaceMount(),
-                                resolveTeamWorkspacePath(),
-                                teamBackend.humanAgentNames(),
-                                teamBackend
-                        )))
-                        .build(),
-                workspace
-        );
+        this.deepAgent = HarnessFactory
+                .createDeepAgent(
+                        com.openjiuwen.core.singleagent.schema.AgentCard.builder()
+                                .id(context.getTeamId() + "." + localName).name(localName)
+                                .description(leader != null ? leader.getDescription() : "").build(),
+                        DeepAgentConfig.builder().workspacePath(workspace.root().toString()).language(resolveLanguage())
+                                .model(resolveConfiguredModel()).backend(resolveConfiguredBackend())
+                                .isTaskLoopEnabled(true).enableSkillDiscovery(true)
+                                .skillDirectories(List.of(workspace.getNodePath("skills").toString(),
+                                        System.getProperty("user.dir"),
+                                        System.getProperty("user.home") + "/.openjiuwen/workspace/skills",
+                                        System.getProperty("user.home") + "/.claude/skills"))
+                                .skillMode("all").sysOperation(sysOperation)
+                                .tools(new ArrayList<>(teamTools.stream().map(Tool::getCard).toList()))
+                                .rails(List.of(new TeamRail(
+                                        context.getRole() != null ? context.getRole() : TeamRole.LEADER,
+                                        resolvePersona(leader), resolveLocalMemberName(), spec.getLifecycle(),
+                                        "build_mode", resolveLanguage(), "default", null, resolveTeamWorkspaceMount(),
+                                        resolveTeamWorkspacePath(), teamBackend.humanAgentNames(), teamBackend)))
+                                .build(),
+                        workspace);
         this.deepAgent.ensureInitialized();
         this.memoryManager = buildMemoryManager(workspace, sysOperation, leaderName);
         Object configuredModel = this.deepAgent.getConfig().getModel();
@@ -914,19 +1004,19 @@ public class TeamAgent {
         }
     }
 
+    /**
+     * registerTeamTools.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Tool> registerTeamTools() {
         String roleValue = context.getRole() != null ? context.getRole().name().toLowerCase(Locale.ROOT) : "leader";
         String teammateMode = resolveTeammateMode();
         Set<String> excludeTools = "predefined".equals(resolveTeamMode()) ? Set.of("spawn_member") : Set.of();
-        List<Tool> tools = com.openjiuwen.agentteams.tools.TeamTools.createTeamTools(
-                roleValue,
-                teamBackend,
-                teammateMode,
-                excludeTools,
-                null,
-                null,
-                modelName -> modelAllocator != null ? modelAllocator.allocate(modelName) : null
-        );
+        List<Tool> tools = com.openjiuwen.agentteams.tools.TeamTools.createTeamTools(roleValue, teamBackend,
+                teammateMode, excludeTools, null, null,
+                modelName -> modelAllocator != null ? modelAllocator.allocate(modelName) : null);
         // Match Python _qualify_team_tool_ids: make each agent's tool IDs unique
         // so they don't overwrite each other in the global ResourceMgr.
         qualifyTeamToolIds(tools);
@@ -936,6 +1026,9 @@ public class TeamAgent {
     /**
      * Match Python _qualify_team_tool_ids: add team_name.member_name suffix
      * to each tool's card ID so per-agent tools don't collide globally.
+     * 
+     * @param tools tools
+     * @since 0.1.7
      */
     private void qualifyTeamToolIds(List<Tool> tools) {
         String teamKey = context.getTeamId() != null ? context.getTeamId() : "default";
@@ -958,22 +1051,29 @@ public class TeamAgent {
 
     /**
      * Re-register team tools after backend state sharing.
+     * 
+     * @since 0.1.7
      */
     public void reregisterTeamTools() {
-        String memberName = context != null && context.getMemberName() != null
-            ? context.getMemberName() : resolveLeaderMemberName();
+        String memberName =
+            context != null && context.getMemberName() != null ? context.getMemberName() : resolveLeaderMemberName();
         List<Tool> teamTools = registerTeamTools();
         for (Tool tool : teamTools) {
             Loggers.AGENT.info("reregisterTeamTools: registering tool id={} db={}",
-                tool.getCard() != null ? tool.getCard().getId() : "null",
-                Integer.toHexString(System.identityHashCode(teamBackend.getDb())));
-            com.openjiuwen.core.runner.Runner.resourceMgr().addTool(
-                tool, context.getTeamId() + "." + memberName);
+                    tool.getCard() != null ? tool.getCard().getId() : "null",
+                    Integer.toHexString(System.identityHashCode(teamBackend.getDb())));
+            com.openjiuwen.core.runner.Runner.resourceMgr().addTool(tool, context.getTeamId() + "." + memberName);
         }
-        com.openjiuwen.core.common.logging.Loggers.AGENT.info(
-            "reregisterTeamTools: re-registered {} tools for member={}", teamTools.size(), memberName);
+        com.openjiuwen.core.common.logging.Loggers.AGENT
+                .info("reregisterTeamTools: re-registered {} tools for member={}", teamTools.size(), memberName);
     }
 
+    /**
+     * resolveTeammateMode.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveTeammateMode() {
         if (context != null && context.getMetadata() != null) {
             Object mode = context.getMetadata().get("teammate_mode");
@@ -984,6 +1084,12 @@ public class TeamAgent {
         return "build_mode";
     }
 
+    /**
+     * resolveTeamMode.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveTeamMode() {
         if (context != null && context.getMetadata() != null) {
             Object mode = context.getMetadata().get("team_mode");
@@ -994,6 +1100,12 @@ public class TeamAgent {
         return "default";
     }
 
+    /**
+     * resolveConfiguredModel.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Object resolveConfiguredModel() {
         if (context == null || context.getMetadata() == null) {
             return nullValue();
@@ -1006,6 +1118,12 @@ public class TeamAgent {
         return memberModel;
     }
 
+    /**
+     * resolveConfiguredBackend.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Object resolveConfiguredBackend() {
         if (context == null || context.getMetadata() == null) {
             return nullValue();
@@ -1014,6 +1132,15 @@ public class TeamAgent {
         return config != null ? config.modelClientConfig() : null;
     }
 
+    /**
+     * buildMemoryManager.
+     * 
+     * @param workspace workspace
+     * @param sysOperation sysOperation
+     * @param memberName memberName
+     * @return the result
+     * @since 0.1.7
+     */
     private TeamMemoryManager buildMemoryManager(Workspace workspace, SysOperation sysOperation, String memberName) {
         TeamMemoryConfig memory = spec.getMemory();
         if (memory == null || !memory.isEnabled()) {
@@ -1034,27 +1161,26 @@ public class TeamAgent {
         String readOnlySource = lifecycle == com.openjiuwen.core.memory.team.TeamLifecycle.TEMPORARY
                 ? memory.getParentWorkspacePath()
                 : null;
-        return new TeamMemoryManager(TeamMemoryManagerParams.builder()
-                .memberName(memberName)
-                .teamName(context.getTeamId())
-                .role(com.openjiuwen.core.memory.team.TeamRole.LEADER)
-                .lifecycle(lifecycle)
-                .scenario(parseScenario(memory.getScenario()))
-                .embeddingConfig(TeamMemoryConfig.resolveEmbeddingConfig(memory))
-                .workspace(workspace)
-                .sysOperation(sysOperation)
-                .teamMemoryDir(teamMemoryDir)
-                .language(parseLanguage(resolveLanguage()))
+        return new TeamMemoryManager(TeamMemoryManagerParams.builder().memberName(memberName)
+                .teamName(context.getTeamId()).role(com.openjiuwen.core.memory.team.TeamRole.LEADER)
+                .lifecycle(lifecycle).scenario(parseScenario(memory.getScenario()))
+                .embeddingConfig(TeamMemoryConfig.resolveEmbeddingConfig(memory)).workspace(workspace)
+                .sysOperation(sysOperation).teamMemoryDir(teamMemoryDir).language(parseLanguage(resolveLanguage()))
                 .promptMode(parsePromptMode(memory.getMemberMemoryPromptMode()))
-                .enableAutoExtract(memory.isAutoExtract()
-                        && lifecycle == com.openjiuwen.core.memory.team.TeamLifecycle.PERSISTENT)
-                .readOnlySourceWorkspace(readOnlySource)
-                .db(teamBackend.getDb())
-                .taskManager(teamBackend.getTaskManager())
-                .timezoneOffsetHours(memory.getTimezoneOffsetHours())
+                .enableAutoExtract(
+                        memory.isAutoExtract() && lifecycle == com.openjiuwen.core.memory.team.TeamLifecycle.PERSISTENT)
+                .readOnlySourceWorkspace(readOnlySource).db(teamBackend.getDb())
+                .taskManager(teamBackend.getTaskManager()).timezoneOffsetHours(memory.getTimezoneOffsetHours())
                 .build());
     }
 
+    /**
+     * resolvePersona.
+     * 
+     * @param fallbackLeader fallbackLeader
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolvePersona(TeamMemberSpec fallbackLeader) {
         if (context != null && context.getMetadata() != null) {
             Object persona = context.getMetadata().get("persona");
@@ -1065,6 +1191,12 @@ public class TeamAgent {
         return fallbackLeader != null ? fallbackLeader.getDescription() : "";
     }
 
+    /**
+     * startCoordination.
+     * 
+     * @param query query
+     * @since 0.1.7
+     */
     private void startCoordination(String query) {
         if (memoryManager == null || deepAgent == null) {
             return;
@@ -1085,6 +1217,11 @@ public class TeamAgent {
         }
     }
 
+    /**
+     * finalizeRound.
+     * 
+     * @since 0.1.7
+     */
     private void finalizeRound() {
         if (memoryManager == null) {
             return;
@@ -1096,6 +1233,11 @@ public class TeamAgent {
         }
     }
 
+    /**
+     * finalizeStreamingRound.
+     * 
+     * @since 0.1.7
+     */
     private void finalizeStreamingRound() {
         try {
             finalizeRound();
@@ -1112,7 +1254,11 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * allocateModel.
+     * 
+     * @param modelName modelName
+     * @return the result
+     * @since 0.1.7
      */
     public Allocation allocateModel(String modelName) {
         if (modelAllocator == null) {
@@ -1125,7 +1271,10 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * restoreAllocatorState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
     public void restoreAllocatorState(Map<String, Object> state) {
         if (modelAllocator == null || state == null) {
@@ -1135,6 +1284,12 @@ public class TeamAgent {
         context.getMetadata().put("model_allocator_state", new LinkedHashMap<>(modelAllocator.stateDict()));
     }
 
+    /**
+     * applySessionId.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
+     */
     private void applySessionId(String sessionId) {
         Loggers.AGENT.info("applySessionId: inputSid={}", sessionId);
         context.setSessionId(sessionId);
@@ -1151,6 +1306,11 @@ public class TeamAgent {
         }
     }
 
+    /**
+     * restoreAllocatorStateFromContext.
+     * 
+     * @since 0.1.7
+     */
     private void restoreAllocatorStateFromContext() {
         Object state = context.getMetadata().get("model_allocator_state");
         if (state instanceof Map<?, ?> rawState && modelAllocator != null) {
@@ -1161,18 +1321,26 @@ public class TeamAgent {
         }
     }
 
+    /**
+     * persistAllocatorStateToContext.
+     * 
+     * @since 0.1.7
+     */
     private void persistAllocatorStateToContext() {
         if (modelAllocator != null) {
             context.getMetadata().put("model_allocator_state", new LinkedHashMap<>(modelAllocator.stateDict()));
         }
     }
 
+    /**
+     * resolveLeaderMemberName.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveLeaderMemberName() {
-        return spec.getMembers().stream()
-                .filter(member -> member.getRole() == TeamRole.LEADER)
-                .map(TeamMemberSpec::getName)
-                .findFirst()
-                .orElseGet(() -> {
+        return spec.getMembers().stream().filter(member -> member.getRole() == TeamRole.LEADER)
+                .map(TeamMemberSpec::getName).findFirst().orElseGet(() -> {
                     if (spec.getMembers().isEmpty()) {
                         return context != null ? context.getTeamId() : "leader";
                     }
@@ -1181,7 +1349,10 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTeamBackend.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TeamBackend getTeamBackend() {
         return teamBackend;
@@ -1189,20 +1360,28 @@ public class TeamAgent {
 
     /**
      * Override Lombok getter to always use teamBackend's shared instance.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TeamMessageManager getMessageManager() {
         return teamBackend != null ? teamBackend.getMessageManager() : messageManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCoordinatorLoop.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public CoordinatorLoop getCoordinatorLoop() {
         return coordinatorLoop;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @since 0.1.7
      */
     public void close() {
         if (memoryManager != null) {
@@ -1214,7 +1393,9 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * startCoordinationLoop.
+     * 
+     * @since 0.1.7
      */
     public void startCoordinationLoop() {
         ensureConfigured();
@@ -1222,7 +1403,9 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stopCoordinationLoop.
+     * 
+     * @since 0.1.7
      */
     public void stopCoordinationLoop() {
         if (coordinationManager != null) {
@@ -1231,7 +1414,9 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * pausePolls.
+     * 
+     * @since 0.1.7
      */
     public void pausePolls() {
         if (coordinatorLoop != null) {
@@ -1240,7 +1425,9 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resumePolls.
+     * 
+     * @since 0.1.7
      */
     public void resumePolls() {
         if (coordinatorLoop != null) {
@@ -1249,7 +1436,9 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shutdownSelf.
+     * 
+     * @since 0.1.7
      */
     public void shutdownSelf() {
         String memberName = resolveLocalMemberName();
@@ -1265,8 +1454,8 @@ public class TeamAgent {
                 teamBackend.updateMemberStatus(memberName, MemberStatus.SHUTDOWN);
                 Loggers.AGENT.info("shutdownSelf: member={} status updated to SHUTDOWN", memberName);
             } catch (Exception e) {
-                Loggers.AGENT.debug("shutdownSelf: post-clean status update failed for {}: {}",
-                    memberName, e.getMessage());
+                Loggers.AGENT.debug("shutdownSelf: post-clean status update failed for {}: {}", memberName,
+                        e.getMessage());
             }
         }
         if (context != null) {
@@ -1276,7 +1465,11 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * destroyTeam.
+     * 
+     * @param isForceEnabled isForceEnabled
+     * @return the result
+     * @since 0.1.7
      */
     public boolean destroyTeam(boolean isForceEnabled) {
         ensureConfigured();
@@ -1292,12 +1485,22 @@ public class TeamAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasPendingInterrupt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasPendingInterrupt() {
         return streamController != null && streamController.hasPendingInterrupt();
     }
 
+    /**
+     * firstNonBlank.
+     * 
+     * @param values values
+     * @return the result
+     * @since 0.1.7
+     */
     private static String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -1307,14 +1510,22 @@ public class TeamAgent {
         return null;
     }
 
+    /**
+     * isStreamingCoordinationActive.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isStreamingCoordinationActive() {
-        return context != null
-                && context.getMetadata() != null
+        return context != null && context.getMetadata() != null
                 && Boolean.TRUE.equals(context.getMetadata().get("streaming_coordination"));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveLocalMemberName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String resolveLocalMemberName() {
         if (context != null && context.getMemberName() != null && !context.getMemberName().isBlank()) {
@@ -1323,6 +1534,12 @@ public class TeamAgent {
         return resolveLeaderMemberName();
     }
 
+    /**
+     * resolveWorkspaceRoot.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Path resolveWorkspaceRoot() {
         Object configuredWorkspace = context.getMetadata().get("workspace_path");
         if (configuredWorkspace != null && !String.valueOf(configuredWorkspace).isBlank()) {
@@ -1331,15 +1548,35 @@ public class TeamAgent {
         return defaultTeamHome(context.getTeamId()).resolve("team-workspace");
     }
 
+    /**
+     * defaultTeamHome.
+     * 
+     * @param teamName teamName
+     * @return the result
+     * @since 0.1.7
+     */
     private static Path defaultTeamHome(String teamName) {
         return Path.of(System.getProperty("user.home"), ".openjiuwen", ".agent_teams",
                 teamName != null && !teamName.isBlank() ? teamName : "agent_team");
     }
 
+    /**
+     * defaultTeamMemoryDir.
+     * 
+     * @param teamName teamName
+     * @return the result
+     * @since 0.1.7
+     */
     private static Path defaultTeamMemoryDir(String teamName) {
         return defaultTeamHome(teamName).resolve("team-workspace").resolve("team-memory");
     }
 
+    /**
+     * resolveTeamWorkspaceMount.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveTeamWorkspaceMount() {
         if (context == null || context.getMetadata() == null) {
             return nullValue();
@@ -1348,6 +1585,12 @@ public class TeamAgent {
         return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : null;
     }
 
+    /**
+     * resolveTeamWorkspacePath.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveTeamWorkspacePath() {
         if (context == null || context.getMetadata() == null) {
             return nullValue();
@@ -1356,28 +1599,69 @@ public class TeamAgent {
         return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : null;
     }
 
+    /**
+     * resolveLanguage.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveLanguage() {
         return spec.getLanguage() != null && !spec.getLanguage().isBlank() ? spec.getLanguage() : "cn";
     }
 
+    /**
+     * parseMemoryLifecycle.
+     * 
+     * @param lifecycle lifecycle
+     * @return TeamLifecycle
+     * @since 0.1.7
+     */
     private static com.openjiuwen.core.memory.team.TeamLifecycle parseMemoryLifecycle(String lifecycle) {
         return "persistent".equalsIgnoreCase(lifecycle)
                 ? com.openjiuwen.core.memory.team.TeamLifecycle.PERSISTENT
                 : com.openjiuwen.core.memory.team.TeamLifecycle.TEMPORARY;
     }
 
+    /**
+     * parseScenario.
+     * 
+     * @param scenario scenario
+     * @return the result
+     * @since 0.1.7
+     */
     private static TeamScenario parseScenario(String scenario) {
         return "coding".equalsIgnoreCase(scenario) ? TeamScenario.CODING : TeamScenario.GENERAL;
     }
 
+    /**
+     * parseLanguage.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
+     */
     private static TeamLanguage parseLanguage(String language) {
         return "en".equalsIgnoreCase(language) ? TeamLanguage.EN : TeamLanguage.CN;
     }
 
+    /**
+     * parsePromptMode.
+     * 
+     * @param mode mode
+     * @return the result
+     * @since 0.1.7
+     */
     private static PromptMode parsePromptMode(String mode) {
         return "passive".equalsIgnoreCase(mode) ? PromptMode.PASSIVE : PromptMode.PROACTIVE;
     }
 
+    /**
+     * payloadRole.
+     * 
+     * @param role role
+     * @return the result
+     * @since 0.1.7
+     */
     private static String payloadRole(TeamRole role) {
         if (role == TeamRole.LEADER) {
             return "leader";
@@ -1391,6 +1675,13 @@ public class TeamAgent {
         return "teammate";
     }
 
+    /**
+     * parsePayloadRole.
+     * 
+     * @param role role
+     * @return the result
+     * @since 0.1.7
+     */
     private static TeamRole parsePayloadRole(Object role) {
         String value = role != null ? String.valueOf(role) : "";
         if ("leader".equalsIgnoreCase(value)) {
@@ -1405,6 +1696,13 @@ public class TeamAgent {
         return TeamRole.MEMBER;
     }
 
+    /**
+     * serializeSpec.
+     * 
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> serializeSpec(TeamAgentSpec spec) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("name", spec.getName());
@@ -1426,19 +1724,32 @@ public class TeamAgent {
         return data;
     }
 
+    /**
+     * serializeContext.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> serializeContext(TeamRuntimeContext ctx) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("team_id", ctx.getTeamId());
         data.put("session_id", ctx.getSessionId());
         data.put("member_name", ctx.getMemberName());
         data.put("role", payloadRole(ctx.getRole()));
-        data.put(
-                "metadata",
+        data.put("metadata",
                 ctx.getMetadata() != null ? new LinkedHashMap<>(ctx.getMetadata()) : new LinkedHashMap<>());
         return data;
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * deserializeSpec.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static TeamAgentSpec deserializeSpec(Object value) {
         if (value instanceof TeamAgentSpec teamAgentSpec) {
             return teamAgentSpec;
@@ -1451,27 +1762,28 @@ public class TeamAgent {
         if (memberValues instanceof List<?> list) {
             for (Object item : list) {
                 if (item instanceof Map<?, ?> memberMap) {
-                    members.add(TeamMemberSpec.builder()
-                            .name(stringValue(memberMap.get("name")))
+                    members.add(TeamMemberSpec.builder().name(stringValue(memberMap.get("name")))
                             .role(parsePayloadRole(memberMap.get("role")))
                             .description(stringValue(memberMap.get("description")))
                             .agentId(stringValue(memberMap.get("agent_id")))
                             .modelId(stringValue(memberMap.get("model_id")))
-                            .modelName(stringValue(memberMap.get("model_name")))
-                            .build());
+                            .modelName(stringValue(memberMap.get("model_name"))).build());
                 }
             }
         }
-        return TeamAgentSpec.builder()
-                .name(stringValue(raw.get("name")))
-                .description(stringValue(raw.get("description")))
-                .lifecycle(stringValue(raw.get("lifecycle")))
-                .language(stringValue(raw.get("language")))
-                .members(members)
-                .build();
+        return TeamAgentSpec.builder().name(stringValue(raw.get("name")))
+                .description(stringValue(raw.get("description"))).lifecycle(stringValue(raw.get("lifecycle")))
+                .language(stringValue(raw.get("language"))).members(members).build();
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * deserializeContext.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static TeamRuntimeContext deserializeContext(Object value) {
         if (value instanceof TeamRuntimeContext teamRuntimeContext) {
             return teamRuntimeContext;
@@ -1487,15 +1799,19 @@ public class TeamAgent {
                 metadata.put(name, normalizeMetadataValue(name, item));
             });
         }
-        return TeamRuntimeContext.builder()
-                .teamId(stringValue(raw.get("team_id")))
-                .sessionId(stringValue(raw.get("session_id")))
-                .memberName(stringValue(raw.get("member_name")))
-                .role(parsePayloadRole(raw.get("role")))
-                .metadata(metadata)
-                .build();
+        return TeamRuntimeContext.builder().teamId(stringValue(raw.get("team_id")))
+                .sessionId(stringValue(raw.get("session_id"))).memberName(stringValue(raw.get("member_name")))
+                .role(parsePayloadRole(raw.get("role"))).metadata(metadata).build();
     }
 
+    /**
+     * normalizeMetadataValue.
+     * 
+     * @param key key
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object normalizeMetadataValue(String key, Object value) {
         if ("member_model".equals(key)) {
             TeamModelConfig config = teamModelConfigFromObject(value);
@@ -1507,6 +1823,13 @@ public class TeamAgent {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * teamModelConfigFromObject.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static TeamModelConfig teamModelConfigFromObject(Object value) {
         if (value instanceof TeamModelConfig config) {
             return config;
@@ -1514,25 +1837,29 @@ public class TeamAgent {
         if (!(value instanceof Map<?, ?> raw)) {
             return nullValue();
         }
-        Object client = firstPresent(
-                raw,
-                new String[]{"modelClientConfig", "model_client_config", "modelClient", "model_client"});
-        Object request = firstPresent(
-                raw,
+        Object client =
+            firstPresent(raw, new String[]{"modelClientConfig", "model_client_config", "modelClient", "model_client"});
+        Object request = firstPresent(raw,
                 new String[]{"modelRequestConfig", "model_request_config", "modelConfig", "model_config"});
         if (!(client instanceof Map<?, ?>) || !(request instanceof Map<?, ?>)) {
             return nullValue();
         }
         try {
-            return new TeamModelConfig(
-                    OBJECT_MAPPER.convertValue(client, ModelClientConfig.class),
-                    OBJECT_MAPPER.convertValue(request, ModelRequestConfig.class)
-            );
+            return new TeamModelConfig(OBJECT_MAPPER.convertValue(client, ModelClientConfig.class),
+                    OBJECT_MAPPER.convertValue(request, ModelRequestConfig.class));
         } catch (IllegalArgumentException e) {
             return nullValue();
         }
     }
 
+    /**
+     * firstPresent.
+     * 
+     * @param raw raw
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object firstPresent(Map<?, ?> raw, String[] keys) {
         for (String key : keys) {
             if (raw.containsKey(key)) {
@@ -1542,10 +1869,22 @@ public class TeamAgent {
         return nullValue();
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringValue(Object value) {
         return value != null ? String.valueOf(value) : null;
     }
 
+    /**
+     * ensureConfigured.
+     * 
+     * @since 0.1.7
+     */
     private void ensureConfigured() {
         if (spec == null || context == null || teamBackend == null || messageManager == null) {
             throw new IllegalStateException("TeamAgent is not configured");
@@ -1557,17 +1896,23 @@ public class TeamAgent {
         private Object next;
         private boolean isFinished;
 
+        /**
+         * CoordinationStreamIterator.
+         * 
+         * @param queue queue
+         * @since 0.1.7
+         */
         private CoordinationStreamIterator(LinkedBlockingQueue<Object> queue) {
             this.queue = queue;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * hasNext.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public boolean hasNext() {
             if (next != null) {
                 return true;
@@ -1585,7 +1930,6 @@ public class TeamAgent {
                 next = item;
                 return true;
             } catch (InterruptedException interruptedException) {
-
                 isFinished = true;
                 finalizeStreamingRound();
                 return false;
@@ -1597,12 +1941,12 @@ public class TeamAgent {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * next.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Object next() {
             if (!hasNext()) {
                 throw new java.util.NoSuchElementException();
@@ -1612,8 +1956,14 @@ public class TeamAgent {
             return value;
         }
     }
+
+    /**
+     * nullValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static <T> T nullValue() {
         return null;
     }
-
 }

@@ -1,3 +1,4 @@
+
 package com.openjiuwen.core.memory.support;
 
 import com.openjiuwen.spi.store.BaseKVStore;
@@ -10,7 +11,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class TestInMemoryKVStore extends BaseKVStore {
-
     private final ConcurrentHashMap<String, Object> data = new ConcurrentHashMap<>();
 
     @Override
@@ -51,9 +51,7 @@ public class TestInMemoryKVStore extends BaseKVStore {
 
     @Override
     public void deleteByPrefix(String prefix, Integer batchSize) {
-        new ArrayList<>(data.keySet()).stream()
-                .filter(key -> key.startsWith(prefix))
-                .forEach(data::remove);
+        new ArrayList<>(data.keySet()).stream().filter(key -> key.startsWith(prefix)).forEach(data::remove);
     }
 
     @Override

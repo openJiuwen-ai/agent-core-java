@@ -1,16 +1,5 @@
+
 package com.openjiuwen.core.memory.manage.mem_model;
-
-import com.openjiuwen.core.memory.support.TestDbStore;
-import org.h2.jdbcx.JdbcDataSource;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
-import javax.sql.DataSource;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -18,8 +7,21 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class SqlDbStoreTest {
+import com.openjiuwen.core.memory.support.TestDbStore;
 
+import org.h2.jdbcx.JdbcDataSource;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import javax.sql.DataSource;
+
+class SqlDbStoreTest {
     private SqlDbStore sqlDbStore;
 
     @BeforeEach
@@ -44,13 +46,8 @@ class SqlDbStoreTest {
 
     @Test
     void getWithSortReturnsAscendingResults() {
-        List<Map<String, Object>> rows = sqlDbStore.getWithSort(
-                "user_message",
-                Map.of("user_id", "u1"),
-                "timestamp",
-                "ASC",
-                10
-        );
+        List<Map<String, Object>> rows =
+            sqlDbStore.getWithSort("user_message", Map.of("user_id", "u1"), "timestamp", "ASC", 10);
 
         assertEquals(2, rows.size());
         assertEquals("m1", rows.get(0).get("message_id"));
@@ -59,28 +56,19 @@ class SqlDbStoreTest {
 
     @Test
     void getWithSortReturnsEmptyWhenSortColumnDoesNotExist() {
-        List<Map<String, Object>> rows = sqlDbStore.getWithSort(
-                "user_message",
-                Map.of("user_id", "u1"),
-                "missing_column",
-                "ASC",
-                10
-        );
+        List<Map<String, Object>> rows =
+            sqlDbStore.getWithSort("user_message", Map.of("user_id", "u1"), "missing_column", "ASC", 10);
 
         assertTrue(rows.isEmpty());
     }
 
     @Test
     void batchGetUsesOrWithinEachConditionGroupLikePython() {
-        List<Map<String, Object>> rows = sqlDbStore.batchGet("user_message", List.of(
-                Map.of("message_id", "m1", "role", "assistant")
-        ));
+        List<Map<String, Object>> rows =
+            sqlDbStore.batchGet("user_message", List.of(Map.of("message_id", "m1", "role", "assistant")));
 
         assertEquals(2, rows.size());
-        List<String> ids = rows.stream()
-                .map(row -> String.valueOf(row.get("message_id")))
-                .sorted()
-                .toList();
+        List<String> ids = rows.stream().map(row -> String.valueOf(row.get("message_id"))).sorted().toList();
         assertEquals(List.of("m1", "m3"), ids);
     }
 
@@ -98,22 +86,14 @@ class SqlDbStoreTest {
         assertTrue(sqlDbStore.exist("user_message", Map.of("message_id", "m1")));
         assertFalse(sqlDbStore.exist("user_message", Map.of("message_id", "not_exist")));
 
-        assertTrue(sqlDbStore.update(
-                "user_message",
-                Map.of("message_id", "m1"),
-                Map.of("content", "hi")
-        ));
+        assertTrue(sqlDbStore.update("user_message", Map.of("message_id", "m1"), Map.of("content", "hi")));
         Map<String, List<Object>> singleFilter = new LinkedHashMap<>();
         singleFilter.put("message_id", new ArrayList<>(List.of("m1")));
         assertEquals("hi", sqlDbStore.conditionGet("user_message", singleFilter, null).get(0).get("content"));
 
         Map<String, Object> batchConditions = new LinkedHashMap<>();
         batchConditions.put("message_id", new ArrayList<>(List.of("m2", "m3")));
-        assertTrue(sqlDbStore.update(
-                "user_message",
-                batchConditions,
-                Map.of("content", "batch")
-        ));
+        assertTrue(sqlDbStore.update("user_message", batchConditions, Map.of("content", "batch")));
 
         Map<String, List<Object>> m2Filter = new LinkedHashMap<>();
         m2Filter.put("message_id", new ArrayList<>(List.of("m2")));
@@ -127,19 +107,16 @@ class SqlDbStoreTest {
     }
 
     private void seedMessages() {
-        assertTrue(sqlDbStore.write("user_message", row("u1", "group1", "s1", "m1", "user", "Hello", "2025-11-19 09:00:00")));
-        assertTrue(sqlDbStore.write("user_message", row("u1", "group1", "s1", "m2", "user", "World", "2025-11-19 10:00:00")));
-        assertTrue(sqlDbStore.write("user_message", row("u2", "group2", "s2", "m3", "assistant", "Hi there", "2025-11-19 11:00:00")));
+        assertTrue(sqlDbStore.write("user_message",
+                row("u1", "group1", "s1", "m1", "user", "Hello", "2025-11-19 09:00:00")));
+        assertTrue(sqlDbStore.write("user_message",
+                row("u1", "group1", "s1", "m2", "user", "World", "2025-11-19 10:00:00")));
+        assertTrue(sqlDbStore.write("user_message",
+                row("u2", "group2", "s2", "m3", "assistant", "Hi there", "2025-11-19 11:00:00")));
     }
 
-    private static Map<String, Object> row(
-            String userId,
-            String scopeId,
-            String sessionId,
-            String messageId,
-            String role,
-            String content,
-            String timestamp) {
+    private static Map<String, Object> row(String userId, String scopeId, String sessionId, String messageId,
+            String role, String content, String timestamp) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("user_id", userId);
         row.put("scope_id", scopeId);

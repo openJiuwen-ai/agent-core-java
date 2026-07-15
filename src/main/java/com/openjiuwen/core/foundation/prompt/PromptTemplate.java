@@ -22,11 +22,18 @@ import java.util.Map;
  * Interpolatable text prompt template with configurable placeholders.
  * Supports both String and {@code List<BaseMessage>} as content.
  * Mirrors Python's {@code PromptTemplate}.
+ * 
+ * @since 0.1.7
  */
 public class PromptTemplate {
-
     /**
-     * Four-arg constructor for direct instantiation in tests.
+     * PromptTemplate.
+     * 
+     * @param name name
+     * @param content content
+     * @param placeholderPrefix placeholderPrefix
+     * @param placeholderSuffix placeholderSuffix
+     * @since 0.1.7
      */
     public PromptTemplate(String name, Object content, String placeholderPrefix, String placeholderSuffix) {
         this.name = name;
@@ -48,69 +55,92 @@ public class PromptTemplate {
     private String placeholderSuffix = "}}";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setName.
+     * 
+     * @param name name
+     * @since 0.1.7
      */
     public void setName(String name) {
         this.name = name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getContent() {
         return content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setContent.
+     * 
+     * @param content content
+     * @since 0.1.7
      */
     public void setContent(Object content) {
         this.content = content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPlaceholderPrefix.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getPlaceholderPrefix() {
         return placeholderPrefix;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setPlaceholderPrefix.
+     * 
+     * @param placeholderPrefix placeholderPrefix
+     * @since 0.1.7
      */
     public void setPlaceholderPrefix(String placeholderPrefix) {
         this.placeholderPrefix = placeholderPrefix;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPlaceholderSuffix.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getPlaceholderSuffix() {
         return placeholderSuffix;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setPlaceholderSuffix.
+     * 
+     * @param placeholderSuffix placeholderSuffix
+     * @since 0.1.7
      */
     public void setPlaceholderSuffix(String placeholderSuffix) {
         this.placeholderSuffix = placeholderSuffix;
     }
 
     /**
-     * Convert template content to a list of BaseMessages.
-     * Preserves original message subtype.
+     * toMessages.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<BaseMessage> toMessages() {
         if (content == null || (content instanceof String s && s.isEmpty())) {
             return List.of();
@@ -121,8 +151,8 @@ public class PromptTemplate {
         if (content instanceof List<?> list) {
             for (Object item : list) {
                 if (!(item instanceof BaseMessage)) {
-                    throw ErrorHelper.buildError(StatusCode.PROMPT_TEMPLATE_INVALID,
-                            "error_msg", "prompt template type must be in str or list[BaseMessage]");
+                    throw ErrorHelper.buildError(StatusCode.PROMPT_TEMPLATE_INVALID, "error_msg",
+                            "prompt template type must be in str or list[BaseMessage]");
                 }
             }
             List<BaseMessage> result = new ArrayList<>();
@@ -131,25 +161,22 @@ public class PromptTemplate {
             }
             return result;
         }
-        throw ErrorHelper.buildError(StatusCode.PROMPT_TEMPLATE_INVALID,
-                "error_msg", "prompt template type must be in str or list[BaseMessage]");
+        throw ErrorHelper.buildError(StatusCode.PROMPT_TEMPLATE_INVALID, "error_msg",
+                "prompt template type must be in str or list[BaseMessage]");
     }
 
     /**
-     * Replace placeholders with the given keywords and return a new PromptTemplate.
+     * format.
+     * 
+     * @param keywords keywords
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public PromptTemplate format(Map<String, Object> keywords) {
         if (keywords == null || keywords.isEmpty()) {
-            return PromptTemplate.builder()
-                    .name(name)
-                    .content(content)
-                    .placeholderPrefix(placeholderPrefix)
-                    .placeholderSuffix(placeholderSuffix)
-                    .build();
+            return PromptTemplate.builder().name(name).content(content).placeholderPrefix(placeholderPrefix)
+                    .placeholderSuffix(placeholderSuffix).build();
         }
 
         Object contentCopy;
@@ -165,8 +192,7 @@ public class PromptTemplate {
             contentCopy = content;
         }
 
-        PromptAssembler assembler = new PromptAssembler(
-                contentCopy, placeholderPrefix, placeholderSuffix);
+        PromptAssembler assembler = new PromptAssembler(contentCopy, placeholderPrefix, placeholderSuffix);
         List<String> inputKeys = assembler.getInputKeys();
 
         Map<String, Object> validKeywords = new java.util.LinkedHashMap<>();
@@ -178,66 +204,49 @@ public class PromptTemplate {
 
         Object assembled = assembler.promptAssemble(validKeywords);
 
-        return PromptTemplate.builder()
-                .name(name)
-                .content(assembled)
-                .placeholderPrefix(placeholderPrefix)
-                .placeholderSuffix(placeholderSuffix)
-                .build();
+        return PromptTemplate.builder().name(name).content(assembled).placeholderPrefix(placeholderPrefix)
+                .placeholderSuffix(placeholderSuffix).build();
     }
 
     /**
      * Copy a BaseMessage preserving its original subtype.
+     * 
+     * @param bm bm
+     * @return the result
+     * @since 0.1.7
      */
     private static BaseMessage copyMessage(BaseMessage bm) {
         if (bm instanceof AssistantMessage am) {
-            return AssistantMessage.builder()
-                    .role(am.getRole())
-                    .content(am.getContent())
-                    .name(am.getName())
-                    .toolCalls(am.getToolCalls())
-                    .usageMetadata(am.getUsageMetadata())
-                    .finishReason(am.getFinishReason())
-                    .parserContent(am.getParserContent())
-                    .reasoningContent(am.getReasoningContent())
-                    .build();
+            return AssistantMessage.builder().role(am.getRole()).content(am.getContent()).name(am.getName())
+                    .toolCalls(am.getToolCalls()).usageMetadata(am.getUsageMetadata())
+                    .finishReason(am.getFinishReason()).parserContent(am.getParserContent())
+                    .reasoningContent(am.getReasoningContent()).build();
         } else if (bm instanceof UserMessage) {
-            return UserMessage.builder()
-                    .role(bm.getRole())
-                    .content(bm.getContent())
-                    .name(bm.getName())
-                    .build();
+            return UserMessage.builder().role(bm.getRole()).content(bm.getContent()).name(bm.getName()).build();
         } else if (bm instanceof SystemMessage) {
-            return SystemMessage.builder()
-                    .role(bm.getRole())
-                    .content(bm.getContent())
-                    .name(bm.getName())
-                    .build();
+            return SystemMessage.builder().role(bm.getRole()).content(bm.getContent()).name(bm.getName()).build();
         } else if (bm instanceof ToolMessage tm) {
-            return ToolMessage.builder()
-                    .role(bm.getRole())
-                    .content(bm.getContent())
-                    .name(bm.getName())
-                    .toolCallId(tm.getToolCallId())
-                    .build();
+            return ToolMessage.builder().role(bm.getRole()).content(bm.getContent()).name(bm.getName())
+                    .toolCallId(tm.getToolCallId()).build();
         } else {
-            return BaseMessage.builder()
-                    .role(bm.getRole())
-                    .content(bm.getContent())
-                    .name(bm.getName())
-                    .build();
+            return BaseMessage.builder().role(bm.getRole()).content(bm.getContent()).name(bm.getName()).build();
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder {
         private String name = "";
@@ -246,7 +255,11 @@ public class PromptTemplate {
         private String placeholderSuffix = "}}";
 
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
          */
         public Builder name(String name) {
             this.name = name;
@@ -254,7 +267,11 @@ public class PromptTemplate {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * content.
+         * 
+         * @param content content
+         * @return the result
+         * @since 0.1.7
          */
         public Builder content(Object content) {
             this.content = content;
@@ -262,7 +279,11 @@ public class PromptTemplate {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * placeholderPrefix.
+         * 
+         * @param placeholderPrefix placeholderPrefix
+         * @return the result
+         * @since 0.1.7
          */
         public Builder placeholderPrefix(String placeholderPrefix) {
             this.placeholderPrefix = placeholderPrefix;
@@ -270,7 +291,11 @@ public class PromptTemplate {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * placeholderSuffix.
+         * 
+         * @param placeholderSuffix placeholderSuffix
+         * @return the result
+         * @since 0.1.7
          */
         public Builder placeholderSuffix(String placeholderSuffix) {
             this.placeholderSuffix = placeholderSuffix;
@@ -278,7 +303,10 @@ public class PromptTemplate {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public PromptTemplate build() {
             return new PromptTemplate(name, content, placeholderPrefix, placeholderSuffix);

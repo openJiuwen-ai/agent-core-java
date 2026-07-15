@@ -15,14 +15,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Public class BuildProgress used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class BuildProgress used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class BuildProgress {
     private String sessionId;
@@ -31,17 +31,35 @@ public class BuildProgress {
     private ProgressStatus currentStatus;
     private String currentMessage;
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<ProgressStep> steps = new ArrayList<>();
     @Builder.Default
     private Double overallProgress = 0.0;
     @Builder.Default
+    /**
+     * Instant.now.
+     * 
+     * @since 0.1.7
+     */
     private Instant startTime = Instant.now();
     @Builder.Default
+    /**
+     * Instant.now.
+     * 
+     * @since 0.1.7
+     */
     private Instant lastUpdateTime = Instant.now();
     private String error;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> data = new LinkedHashMap<>();

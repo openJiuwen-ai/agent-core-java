@@ -1,574 +1,265 @@
-多工作流跳转是openJiuwen框架中`WorkflowAgent`的核心能力，允许智能体在同一会话中管理多个工作流，支持工作流间的智能路由、并发中断和恢复。它解决了用户在同一对话中切换不同任务场景的需求，提供了灵活的多任务管理能力。
+# WorkflowAgent支持多工作流跳转
 
-多工作流跳转的核心价值在于：
+Java 版 `WorkflowAgent` 的“多工作流跳转”不是单条 graph 内部的节点分支，而是：**同一个 agent 在同一会话里托管多条 workflow，并根据用户输入在它们之间选择、打断、恢复和继续执行。**
 
-- 智能路由：根据用户意图自动选择合适的工作流
-- 并发管理：支持多个工作流同时处于中断状态，互不干扰
-- 无缝切换：用户可以在不同工作流间自由切换，系统自动处理状态管理
-- 状态恢复：中断的工作流可以随时恢复，保持上下文连续性
+这项能力主要由两层组成：
 
+1. `WorkflowAgent`：负责把多条 workflow 注册到 agent 与全局资源管理器；
+2. `WorkflowEventHandler`：负责意图识别、保存中断任务、根据用户回复恢复对应 workflow。
 
-# 多工作流跳转流程
+这里以 `examples/workflow_agent` 为主线，解释 Java 当前已经可验证的多 workflow 选择与恢复路径。更适合把它理解成多 workflow 入口与恢复机制，而不是一个超出仓库实现范围的“通用任务编排平台”。
 
-`WorkflowAgent`通过`WorkflowController`实现工作流的执行和管理，能够根据用户查询自动选择合适的工作流，并支持工作流间的切换和恢复。
+## 先区分两种“跳转”
 
-`WorkflowAgent`的开发流程分为以下两步：
+| 类型 | Java 落点 | 关注点 |
+| --- | --- | --- |
+| 多 workflow 跳转 | `WorkflowAgent` + `WorkflowEventHandler` | 在同一个 agent 下选择哪一条 workflow 运行 |
+| 单 workflow 内节点跳转 | `Workflow.addConditionalConnection(...)` 等 | 一条 graph 内部节点之间如何分支 / 回跳 |
 
-- 创建`WorkflowAgent`：通过`WorkflowAgentConfig`创建配置，并动态添加多个工作流实例。
-- 运行`WorkflowAgent`：通过`Runner.runAgent`或`Runner.runAgentStreaming`方法执行查询，支持多工作流场景下的意图识别、跳转和恢复。
+如果你的问题是“用户这句话应该进入转账流程、理财流程还是余额查询流程”，这是本页讨论的多 workflow 跳转。
 
-## 创建WorkflowAgent
+如果你的问题是“在一条 workflow 里，满足某个条件后应该走哪个节点”，那应该回到 [工作流 / 构建工作流](../工作流/构建工作流.md) 和条件边文档。
 
-用户可根据需求创建`WorkflowAgent`实例，并动态绑定多个工作流。
+## 示例里实际注册了什么
 
-### 创建WorkflowAgent配置
+`examples/workflow_agent/WorkflowAgentExampleSupport.java` 当前注册了三条 workflow：
 
-首先使用`WorkflowAgentConfig`创建智能体配置。该配置支持多工作流场景，可以在创建时传入空的工作流列表，后续通过`addWorkflows`方法动态添加。
+- `transfer_flow_multi`：转账服务
+- `invest_flow_multi`：理财服务
+- `balance_flow`：余额查询
+
+三条 workflow 的结构都类似：
+
+```text
+start -> questioner -> end
+```
+
+差别在于：
+
+- workflow 描述文本不同；
+- `QuestionerComponent` 追问的字段不同；
+- `End` 输出模板不同。
+
+这正好适合作为多 workflow 路由示例：
+
+- 当用户说“我要转账”，应该进入转账 workflow；
+- 当用户说“我想买理财产品”，应该进入理财 workflow；
+- 当用户说“帮我查一下余额”，应该进入余额 workflow。
+
+## `WorkflowAgent.addWorkflows(...)` 做了什么
+
+`WorkflowAgent.addWorkflows(...)` 不只是把 workflow 塞进一个列表。Java 当前实现里，它至少做了三件事：
+
+1. 把 workflow card 加进 agent 的 ability manager；
+2. 把 workflow 元信息写进 `WorkflowAgentConfig.workflows`；
+3. 用 `WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion())` 生成版本化资源 ID，并把 workflow 注册到 `Runner.resourceMgr()`。
+
+这意味着，后续 `WorkflowEventHandler` 能够：
+
+- 从 agent 配置里拿到所有 workflow 的描述与输入 schema；
+- 通过资源 ID 取回真正的 workflow 实例；
+- 把“workflow 选择”和“workflow 执行”连接起来。
+
+## 示例主线：先创建 agent，再注册 workflow
+
+示意代码与 example 基本一致：
 
 ```java
-import com.openjiuwen.core.application.schema.DefaultResponse;
-import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
-import com.openjiuwen.core.application.workflow.WorkflowAgent;
-import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
-import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
-
-// 模型配置（从环境变量或配置文件读取）
-String apiBase = "your api base";
-String apiKey = "your api key";
-String modelName = "your model name";
-String modelProvider = "your model provider";
-
-BaseModelInfo modelInfo = BaseModelInfo.builder()
-        .modelName(modelName)
-        .apiBase(apiBase)
-        .apiKey(apiKey)
-        .temperature(0.7)
-        .topP(0.9)
-        .timeout(120)
-        .build();
-ModelConfig modelConfig = new ModelConfig(modelProvider, modelInfo);
-
-// 创建最小化配置（workflows 为空列表）
 WorkflowAgentConfig config = WorkflowAgentConfig.builder()
-        .id("test_multi_workflow_jump_agent")
-        .version("0.1.0")
-        .description("多工作流跳转恢复测试")
+        .id("workflow_agent_java_example")
+        .description("Java 多工作流金融助手示例")
         .model(modelConfig)
-        .promptTemplate(List.of(Map.of("role", "system", "content", "你是一个智能助手")))
-        .defaultResponse(DefaultResponse.builder()
-                .text("我目前只支持特定的业务流程，请明确说明你的需求。")
-                .build())
+        .promptTemplate(List.of(Map.of("role", "system", "content", systemPrompt)))
+        .defaultResponse(DefaultResponse.builder().text(defaultText).build())
         .build();
 
 WorkflowAgent agent = new WorkflowAgent(config);
+agent.addWorkflows(List.of(
+        transferWorkflow,
+        investWorkflow,
+        balanceWorkflow
+));
 ```
 
-### 动态添加多个工作流
+这里的 `defaultResponse` 也很重要：当多 workflow 意图识别没有命中时，Java 当前实现优先返回默认回复，而不是强行承诺一定能选对业务流。
 
-创建`WorkflowAgent`后，可以使用`addWorkflows`方法动态添加多个工作流实例。该方法会自动从工作流实例中提取`schema`信息并更新配置。
+## 运行时到底怎么选 workflow
 
-#### 创建工作流实例
+这部分由 `WorkflowEventHandler.intentDetection(...)` 负责。Java 当前可验证的优先级是：
 
-以下示例创建两个工作流：天气查询工作流和股票查询工作流。
+### 1. 如果输入是带 node id 的 `InteractiveInput`
 
-```java
-import com.openjiuwen.core.workflow.Workflow;
-import com.openjiuwen.core.workflow.WorkflowCard;
-import com.openjiuwen.core.workflow.component.End;
-import com.openjiuwen.core.workflow.component.Start;
-import com.openjiuwen.core.workflow.component.llm.FieldInfo;
-import com.openjiuwen.core.workflow.component.llm.QuestionerComponent;
-import com.openjiuwen.core.workflow.component.llm.QuestionerConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+`WorkflowEventHandler` 会先尝试根据 `InteractiveInput.userInputs` 里的 node id，直接找回之前被打断的 workflow。
 
-/**
- * 构建包含提问器的简单工作流。
- *
- * @param workflowId        工作流ID
- * @param workflowName      工作流名称
- * @param workflowDescription 工作流描述
- * @param fieldName         提问字段名
- * @param fieldDescription  提问字段描述
- * @return 包含 start -> questioner -> end 的工作流
- */
-private Workflow buildQuestionerWorkflow(
-        String workflowId,
-        String workflowName,
-        String workflowDescription,
-        String fieldName,
-        String fieldDescription) {
+这一步的含义是：
 
-    WorkflowCard card = WorkflowCard.builder()
-            .id(workflowId)
-            .name(workflowName)
-            .version("1.0")
-            .description(workflowDescription)
-            .inputParams(Map.of(
-                    "type", "object",
-                    "properties", Map.of("query", Map.of("type", "string", "description", "用户输入")),
-                    "required", List.of("query")
-            ))
-            .build();
+- 用户这次不是在发起一个全新业务；
+- 而是在回答上一个 workflow 的补充问题；
+- 因此无需再次做 LLM 意图识别，而是应直接恢复那条 workflow。
 
-    Workflow workflow = new Workflow(card);
+### 2. 如果只配置了一条 workflow
 
-    // 创建 Start 组件
-    Start start = new Start();
+那就直接使用这条 workflow，不做分类。
 
-    // 创建提问器配置
-    QuestionerConfig questionerConfig = new QuestionerConfig();
-    questionerConfig.setModelClientConfig(ModelClientConfig.builder()
-            .clientProvider(modelProvider)
-            .apiKey(apiKey)
-            .apiBase(apiBase)
-            .timeout(30.0)
-            .verifySsl(false)
-            .build());
-    questionerConfig.setModelConfig(ModelRequestConfig.builder()
-            .modelName(modelName)
-            .temperature(0.8)
-            .topP(0.9)
-            .build());
-    questionerConfig.setQuestionContent("请补充" + fieldDescription);
-    questionerConfig.setExtractFieldsFromResponse(true);
-    questionerConfig.setFieldNames(List.of(FieldInfo.builder()
-            .fieldName(fieldName)
-            .description(fieldDescription)
-            .required(true)
-            .build()));
-    questionerConfig.setWithChatHistory(false);
-    questionerConfig.setMaxResponse(10);
+### 3. 如果配置了多条 workflow
 
-    QuestionerComponent questioner = new QuestionerComponent(questionerConfig);
+这时才进入 LLM 意图识别，根据 workflow 描述选择最合适的业务流。
 
-    // 创建 End 组件
-    String responseTemplate = "{{" + fieldName + "}}";
-    End end = new End(Map.of("responseTemplate", responseTemplate));
+### 4. 如果没识别到明确结果
 
-    // 注册组件
-    workflow.setStartComp("start", start, Map.of("query", "${query}"), null);
-    workflow.addWorkflowComp("questioner", questioner, Map.of("query", "${start.query}"), null);
-    workflow.setEndComp("end", end, Map.of(fieldName, "${questioner." + fieldName + "}"), null);
+- 若配置了 `defaultResponse`，就返回默认回复；
+- 否则退回第一条 workflow。
 
-    // 连接拓扑
-    workflow.addConnection("start", "questioner");
-    workflow.addConnection("questioner", "end");
+这也是为什么页面和示例都要强调：workflow 描述文本要写清楚业务边界，不能只写一个很空泛的名字。
 
-    return workflow;
-}
+## 中断后怎么保存“待恢复任务”
 
-// 创建两个工作流
-Workflow weatherWorkflow = buildQuestionerWorkflow(
-        "weather_flow",
-        "天气查询",
-        "查询某地的天气情况、温度、气象信息",
-        "location",
-        "地点"
-);
-Workflow stockWorkflow = buildQuestionerWorkflow(
-        "stock_flow",
-        "股票查询",
-        "查询股票价格、股市行情、股票走势等金融信息",
-        "stock_code",
-        "股票代码"
-);
+当某条 workflow 进入 `QuestionerComponent` 等待输入时，`WorkflowEventHandler.execTask(...)` 会调用 `interruptTask(...)`，把中断信息写进 agent session state 的：
 
-// 使用 addWorkflows 动态添加（自动提取 schema）
-agent.addWorkflows(List.of(weatherWorkflow, stockWorkflow));
+```text
+workflow_controller.interrupted_tasks
 ```
 
-## 运行WorkflowAgent
+当前保存的内容至少包括：
 
-`WorkflowAgent`支持多工作流场景下的跳转和恢复功能。以下示例演示了完整的多工作流跳转和恢复流程：
+- task 基本信息
+- `component_id`
+- `last_interaction_value`
 
-场景描述
+这里的 `component_id` 很关键，因为下一次用户回复时，事件处理器就是靠它把回答路由回正确的 workflow。
 
-1. 用户发起天气查询请求，但未提供地点信息，工作流中断等待输入
-2. 用户转而查询股票信息，但未提供股票代码，另一个工作流也中断
-3. 用户提供地点信息，恢复天气查询工作流并完成
-4. 用户提供股票代码，恢复股票查询工作流并完成
+## 结合示例看完整交互链路
 
-### 步骤1：用户查询"查询天气"
+`examples/workflow_agent/WorkflowAgentExampleSupport.java` 的命令行示例使用同一个 `conversationId` 贯穿全程：
 
-- 意图识别：识别为天气查询工作流
-- 执行工作流：工作流执行到提问器组件
-- 中断：提问器询问地点
+### 第一步：用户发起新请求
 
 ```java
-import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.session.stream.StreamMode;
-import java.util.Iterator;
-
-String conversationId = "test-jump-recovery-001";
-
-Iterator<Object> stream = Runner.runAgentStreaming(
+Runner.runAgentStreaming(
         agent,
-        Map.of("query", "查询天气", "conversation_id", conversationId),
+        Map.of("query", userInput, "conversation_id", conversationId),
         null,
         null,
         List.of(StreamMode.OUTPUT)
 );
-
-// 处理流式输出
-while (stream.hasNext()) {
-    Object item = stream.next();
-    System.out.println(item);
-}
 ```
 
-预期输出
+运行结果可能是：
 
 ```text
-assistant> 请补充地点
+user> 我要转账
+assistant> 请补充转账金额，必须是数字或带货币单位的金额描述。
 ```
 
-输出中包含`InteractionOutput`，表示工作流中断等待用户输入。
+### 第二步：用户回复补充信息
 
-### 步骤2：用户查询"查看股票"
-
-- 意图识别：识别为股票查询工作流（不同的工作流）
-- 检查中断：股票工作流无中断任务
-- 执行工作流：执行股票查询工作流
-- 中断：提问器询问股票代码
+命令行示例会记住这次中断对应的 `nodeId`，然后构造：
 
 ```java
-Iterator<Object> stream2 = Runner.runAgentStreaming(
-        agent,
-        Map.of("query", "查看股票", "conversation_id", conversationId),
-        null,
-        null,
-        List.of(StreamMode.OUTPUT)
-);
-
-while (stream2.hasNext()) {
-    Object item = stream2.next();
-    System.out.println(item);
-}
-```
-
-预期输出
-
-```text
-assistant> 请补充股票代码
-```
-
-### 步骤3：用户查询"查询北京天气"
-
-- 意图识别：识别为天气查询工作流
-- 检查中断：发现天气工作流有中断任务
-- 恢复任务：创建`InteractiveInput`，恢复天气工作流
-- 完成：工作流从提问器继续执行，返回结果
-
-```java
-import com.openjiuwen.core.session.interaction.InteractiveInput;
-
-// 构造 InteractiveInput 恢复中断的工作流
 InteractiveInput reply = new InteractiveInput();
-reply.update("questioner", "北京");
+reply.update(nodeId, "2000元");
+```
 
-Iterator<Object> stream3 = Runner.runAgentStreaming(
+并继续调用：
+
+```java
+Runner.runAgentStreaming(
         agent,
         Map.of("query", reply, "conversation_id", conversationId),
         null,
         null,
         List.of(StreamMode.OUTPUT)
 );
-
-while (stream3.hasNext()) {
-    Object item = stream3.next();
-    System.out.println(item);
-}
 ```
 
-预期输出（完成）
+于是同一 workflow 会继续完成：
 
 ```text
-assistant> 北京
+reply> 2000元
+assistant> 转账服务完成，记录的转账金额为 2000元。
 ```
 
-### 步骤4：用户查询"查看AAPL股票"
+### 第三步：继续同一会话处理下一类业务
 
-- 意图识别：识别为股票查询工作流
-- 检查中断：发现股票工作流有中断任务
-- 恢复任务：创建`InteractiveInput`，恢复股票工作流
-- 完成：工作流从提问器继续执行，返回结果
-
-```java
-InteractiveInput reply2 = new InteractiveInput();
-reply2.update("questioner", "AAPL");
-
-Iterator<Object> stream4 = Runner.runAgentStreaming(
-        agent,
-        Map.of("query", reply2, "conversation_id", conversationId),
-        null,
-        null,
-        List.of(StreamMode.OUTPUT)
-);
-
-while (stream4.hasNext()) {
-    Object item = stream4.next();
-    System.out.println(item);
-}
-
-// 清理资源
-Runner.release(conversationId);
-Runner.stop();
-```
-
-预期输出（完成）
+只要仍然复用同一个 `conversation_id`，agent session 就不会丢失。后续再输入：
 
 ```text
-assistant> AAPL
+user> 我想买理财产品
+assistant> 请补充理财产品名称，例如稳健理财、现金管理类产品。
+reply> 稳健理财
+assistant> 理财服务完成，选择的理财产品为 稳健理财。
 ```
 
-# 完整示例代码
+或：
 
-以下完整示例展示了多工作流跳转和恢复的全流程：
-
-```java
-import com.openjiuwen.core.application.schema.DefaultResponse;
-import com.openjiuwen.core.application.schema.WorkflowAgentConfig;
-import com.openjiuwen.core.application.workflow.WorkflowAgent;
-import com.openjiuwen.core.foundation.llm.schema.BaseModelInfo;
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.runner.Runner;
-import com.openjiuwen.core.session.interaction.InteractionOutput;
-import com.openjiuwen.core.session.interaction.InteractiveInput;
-import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.workflow.Workflow;
-import com.openjiuwen.core.workflow.WorkflowCard;
-import com.openjiuwen.core.workflow.component.End;
-import com.openjiuwen.core.workflow.component.Start;
-import com.openjiuwen.core.workflow.component.llm.FieldInfo;
-import com.openjiuwen.core.workflow.component.llm.QuestionerComponent;
-import com.openjiuwen.core.workflow.component.llm.QuestionerConfig;
-
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-
-public class MultiWorkflowJumpExample {
-
-    // 从环境变量或配置文件读取模型配置
-    private static final String API_BASE = "your api url";
-    private static final String API_KEY = "your model token";
-    private static final String MODEL_NAME = "your model name";
-    private static final String MODEL_PROVIDER = "your model provider";
-
-    private static final String SYSTEM_PROMPT = "你是一个智能助手，能够根据用户意图选择合适的工作流处理请求。";
-
-    public static void main(String[] args) throws Exception {
-        // 创建模型配置
-        BaseModelInfo modelInfo = BaseModelInfo.builder()
-                .modelName(MODEL_NAME)
-                .apiBase(API_BASE)
-                .apiKey(API_KEY)
-                .temperature(0.7)
-                .topP(0.9)
-                .timeout(120)
-                .build();
-        ModelConfig modelConfig = new ModelConfig(MODEL_PROVIDER, modelInfo);
-
-        // 创建 WorkflowAgent 配置
-        WorkflowAgentConfig config = WorkflowAgentConfig.builder()
-                .id("test_multi_workflow_jump_agent")
-                .version("0.1.0")
-                .description("多工作流跳转恢复测试")
-                .model(modelConfig)
-                .promptTemplate(List.of(Map.of("role", "system", "content", SYSTEM_PROMPT)))
-                .defaultResponse(DefaultResponse.builder()
-                        .text("我目前只支持天气和股票查询，请明确说明你的需求。")
-                        .build())
-                .build();
-
-        WorkflowAgent agent = new WorkflowAgent(config);
-
-        // 创建两个带提问器的工作流
-        Workflow weatherWorkflow = buildQuestionerWorkflow(
-                "weather_flow",
-                "天气查询",
-                "查询某地的天气情况、温度、气象信息",
-                "location",
-                "地点"
-        );
-        Workflow stockWorkflow = buildQuestionerWorkflow(
-                "stock_flow",
-                "股票查询",
-                "查询股票价格、股市行情、股票走势等金融信息",
-                "stock_code",
-                "股票代码"
-        );
-
-        // 使用 addWorkflows 动态添加（自动提取 schema）
-        agent.addWorkflows(List.of(weatherWorkflow, stockWorkflow));
-
-        String conversationId = UUID.randomUUID().toString();
-
-        try {
-            // ========== 步骤1: query1 -> workflow1 -> 中断 ==========
-            System.out.println("\n【步骤1】发送 query1: 查询天气");
-            runAndPrintOutput(agent, "查询天气", conversationId, null);
-
-            // ========== 步骤2: query2 -> workflow2 -> 中断 ==========
-            System.out.println("\n【步骤2】发送 query2: 查看股票");
-            runAndPrintOutput(agent, "查看股票", conversationId, null);
-
-            // ========== 步骤3: query3 -> 恢复 workflow1 ==========
-            System.out.println("\n【步骤3】发送 query3: 提供地点信息，恢复 workflow1");
-            InteractiveInput reply1 = new InteractiveInput();
-            reply1.update("questioner", "北京");
-            runAndPrintOutput(agent, null, conversationId, reply1);
-
-            // ========== 步骤4: query4 -> 恢复 workflow2 ==========
-            System.out.println("\n【步骤4】发送 query4: 提供股票代码，恢复 workflow2");
-            InteractiveInput reply2 = new InteractiveInput();
-            reply2.update("questioner", "AAPL");
-            runAndPrintOutput(agent, null, conversationId, reply2);
-
-        } finally {
-            Runner.release(conversationId);
-            Runner.stop();
-        }
-    }
-
-    private static Workflow buildQuestionerWorkflow(
-            String workflowId,
-            String workflowName,
-            String workflowDescription,
-            String fieldName,
-            String fieldDescription) {
-
-        WorkflowCard card = WorkflowCard.builder()
-                .id(workflowId)
-                .name(workflowName)
-                .version("1.0")
-                .description(workflowDescription)
-                .inputParams(Map.of(
-                        "type", "object",
-                        "properties", Map.of("query", Map.of("type", "string", "description", "用户输入")),
-                        "required", List.of("query")
-                ))
-                .build();
-
-        Workflow workflow = new Workflow(card);
-
-        Start start = new Start();
-
-        QuestionerConfig questionerConfig = new QuestionerConfig();
-        questionerConfig.setModelClientConfig(ModelClientConfig.builder()
-                .clientProvider(MODEL_PROVIDER)
-                .apiKey(API_KEY)
-                .apiBase(API_BASE)
-                .timeout(30.0)
-                .verifySsl(false)
-                .build());
-        questionerConfig.setModelConfig(ModelRequestConfig.builder()
-                .modelName(MODEL_NAME)
-                .temperature(0.8)
-                .topP(0.9)
-                .build());
-        questionerConfig.setQuestionContent("请补充" + fieldDescription);
-        questionerConfig.setExtractFieldsFromResponse(true);
-        questionerConfig.setFieldNames(List.of(FieldInfo.builder()
-                .fieldName(fieldName)
-                .description(fieldDescription)
-                .required(true)
-                .build()));
-        questionerConfig.setWithChatHistory(false);
-        questionerConfig.setMaxResponse(10);
-
-        QuestionerComponent questioner = new QuestionerComponent(questionerConfig);
-
-        String responseTemplate = "{{" + fieldName + "}}";
-        End end = new End(Map.of("responseTemplate", responseTemplate));
-
-        workflow.setStartComp("start", start, Map.of("query", "${query}"), null);
-        workflow.addWorkflowComp("questioner", questioner, Map.of("query", "${start.query}"), null);
-        workflow.setEndComp("end", end, Map.of(fieldName, "${questioner." + fieldName + "}"), null);
-
-        workflow.addConnection("start", "questioner");
-        workflow.addConnection("questioner", "end");
-
-        return workflow;
-    }
-
-    private static void runAndPrintOutput(WorkflowAgent agent, String query, 
-            String conversationId, InteractiveInput interactiveInput) {
-        
-        Map<String, Object> inputs;
-        if (interactiveInput != null) {
-            inputs = Map.of("query", interactiveInput, "conversation_id", conversationId);
-        } else {
-            inputs = Map.of("query", query, "conversation_id", conversationId);
-        }
-
-        Iterator<Object> stream = Runner.runAgentStreaming(
-                agent,
-                inputs,
-                null,
-                null,
-                List.of(StreamMode.OUTPUT)
-        );
-
-        while (stream.hasNext()) {
-            Object item = stream.next();
-            if (item instanceof OutputSchema output) {
-                String type = output.getType();
-                if ("interaction".equals(type) || "__interaction__".equals(type)) {
-                    Object payload = output.getPayload();
-                    if (payload instanceof InteractionOutput interaction) {
-                        System.out.println("assistant> " + interaction.getValue());
-                    } else {
-                        System.out.println("assistant> " + payload);
-                    }
-                } else {
-                    System.out.println("assistant> " + output.getPayload());
-                }
-            }
-        }
-    }
-}
+```text
+user> 帮我查一下余额
+assistant> 请补充需要查询余额的账户号码。
+reply> 62220001
+assistant> 余额查询完成，登记的账户号码为 62220001。
 ```
 
-# conversation_id的重要性
+这正是示例 README 已实际跑通的三条主业务流。
 
-对`WorkflowAgent`来说，`conversation_id`有两层作用：
+## 为什么这里强调 `conversation_id`
 
-1. `Runner`会优先用它作为agent session id
-2. `WorkflowAgent.createManagedSession(...)`也会优先从输入里取它，缺失时才回退到默认session
+对 `WorkflowAgent` 来说，`conversation_id` 有两层作用：
+
+1. `RunnerImpl` 会优先用它作为 agent session id；
+2. `WorkflowAgent.createManagedSession(...)` 也会优先从输入里取它，缺失时才回退到 `default_session`。
 
 所以如果你想保住：
 
-- workflow中断任务
-- agent多轮上下文
-- `workflow_controller.interrupted_tasks`里的恢复信息
+- workflow 中断任务
+- agent 多轮上下文
+- `workflow_controller.interrupted_tasks` 里的恢复信息
 
-就必须继续复用同一个`conversation_id`。
+就必须继续复用同一个 `conversation_id`。
 
-# 意图识别优先级
+## 这和原生 workflow 的恢复有什么关系
 
-`WorkflowEventHandler`在进行意图识别时，遵循以下优先级：
+可以把多 workflow 跳转理解成在原生 workflow 恢复语义外面又包了一层 agent 控制器：
 
-1. **如果输入是带node id的`InteractiveInput`**：直接找回之前被打断的workflow，无需再次做LLM意图识别
+```text
+Runner / WorkflowAgent
+  -> WorkflowEventHandler 选择 workflow
+  -> 具体 Workflow 执行
+  -> workflow 因交互而中断
+  -> EventHandler 把中断任务记录到 agent session
+  -> 用户回复后再由 EventHandler 找回正确 workflow
+```
 
-2. **如果只配置了一条workflow**：直接使用这条workflow，不做分类
+也就是说：
 
-3. **如果配置了多条workflow**：进入LLM意图识别，根据workflow描述选择最合适的业务流
+- workflow 内部仍然使用 `InteractiveInput`、`InteractionOutput`、checkpointer 这些基础机制；
+- `WorkflowAgent` 做的是“多条 workflow 之间的选择与恢复调度”。
 
-4. **如果没识别到明确结果**：若配置了`defaultResponse`就返回默认回复，否则退回第一条workflow
+## 当前 Java 示例真正验证了什么
 
-这也是为什么workflow描述文本要写清楚业务边界，不能只写一个很空泛的名字。
+基于当前 example、源码和 API 文档，可以确认以下事实：
 
-# 参考入口
+- `WorkflowAgent` 可以注册多条 workflow；
+- Java 侧用 workflow 描述文本进行 LLM 意图路由；
+- `QuestionerComponent` 中断后，可以在同一会话中继续执行；
+- 恢复时通过 `InteractiveInput.update(nodeId, userInput)` 把回答送回对应 workflow；
+- 示例命令行会在结束时调用 `Runner.release(conversationId)` 清掉会话状态。
 
+## 当前 Java 能力边界
+
+为了避免写出超出实现范围的承诺，这里明确几点：
+
+- 这里讨论的是 **`WorkflowAgent` 管理多条顶层 workflow**，不是单条 workflow 内部的任意节点跳转。
+- `examples/workflow_agent` 的命令行界面重点展示“多 workflow 注册 + 单轮补问恢复”主线；更细粒度的多中断并存行为主要由 `WorkflowEventHandler` 的状态管理逻辑保证。
+- Java 当前流式路径里，交互回放存在边界：`stream` 路径只保证当前需要展示的交互能返回给调用方，不应把它理解成复杂中断集合一定能够完整重放。
+- `QuestionerComponent` 触发时底层可能打印 `GraphInterrupt` 的 `ERROR` 日志；按照示例 README，这属于正常等待输入行为，不代表示例失败。
+
+## 参考入口
+
+- [工作流 / 构建工作流](../工作流/构建工作流.md)
+- [高阶用法 / 人机交互](人机交互.md)
+- [高阶用法 / Checkpointer检查点机制](Checkpointer检查点机制.md)
+- [API 文档：WorkflowAgent](../API文档/com.openjiuwen.core/application/workflow/WorkflowAgent.md)
+- [API 文档：WorkflowEventHandler](../API文档/com.openjiuwen.core/application/workflow/WorkflowEventHandler.md)
+- [API 文档：WorkflowController](../API文档/com.openjiuwen.core/application/workflow/WorkflowController.md)
 - [示例：workflow_agent](../../../../examples/workflow_agent/README.md)
 - [示例：workflow_agent/multi_workflow_agent_demo](../../../../examples/workflow_agent/multi_workflow_agent_demo/README.md)
-- [API文档：WorkflowAgent](../API文档/com.openjiuwen.core/application/workflow/WorkflowAgent.md)
-- [API文档：WorkflowController](../API文档/com.openjiuwen.core/application/workflow/WorkflowController.md)
-- [高阶用法：人机交互](人机交互.md)
-- [高阶用法：Checkpointer检查点机制](Checkpointer检查点机制.md)

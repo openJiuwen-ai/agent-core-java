@@ -24,22 +24,31 @@ import java.util.Map;
 /**
  * Abstract base class for file system providers in the sandbox environment.
  * Defines the SPI contract for file read, write, upload, download, list, and search operations.
- *
- * @since 2026-01-01
+ * 
  * @version 1.0
+ * @since 0.1.7
  */
 public abstract class BaseFSProvider {
-    /** The sandbox endpoint configuration. */
+    /**
+     * endpoint.
+     * 
+     * @since 0.1.7
+     */
     protected final SandboxEndpoint endpoint;
 
-    /** The sandbox gateway configuration. */
+    /**
+     * config.
+     * 
+     * @since 0.1.7
+     */
     protected final SandboxGatewayConfig config;
 
     /**
      * Constructs a BaseFSProvider with the given endpoint and config.
-     *
+     * 
      * @param endpoint the sandbox endpoint
      * @param config the sandbox gateway configuration
+     * @since 0.1.7
      */
     protected BaseFSProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
         this.endpoint = endpoint;
@@ -48,7 +57,7 @@ public abstract class BaseFSProvider {
 
     /**
      * Reads a file from the sandbox and returns the result.
-     *
+     * 
      * @param path the file path to read
      * @param mode the read mode
      * @param head the number of lines to read from the head
@@ -58,16 +67,16 @@ public abstract class BaseFSProvider {
      * @param chunkSize the chunk size for streaming
      * @param options additional options map
      * @return the read file result
+     * @since 0.1.7
      */
-    public ReadFileResult readFile(String path, String mode, Integer head, Integer tail,
-            int[] lineRange, String encoding, int chunkSize, Map<String, Object> options) {
-        throw new UnsupportedOperationException(
-                this.getClass().getSimpleName() + ".readFile is not implemented");
+    public ReadFileResult readFile(String path, String mode, Integer head, Integer tail, int[] lineRange,
+            String encoding, int chunkSize, Map<String, Object> options) {
+        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".readFile is not implemented");
     }
 
     /**
      * Reads a file from the sandbox as a stream of chunks.
-     *
+     * 
      * @param path the file path to read
      * @param mode the read mode
      * @param head the number of lines to read from the head
@@ -77,17 +86,16 @@ public abstract class BaseFSProvider {
      * @param chunkSize the chunk size for streaming
      * @param options additional options map
      * @return an iterator of read file stream results
+     * @since 0.1.7
      */
-    public Iterator<ReadFileStreamResult> readFileStream(String path, String mode, Integer head,
-            Integer tail, int[] lineRange, String encoding, int chunkSize,
-            Map<String, Object> options) {
-        throw new UnsupportedOperationException(
-                this.getClass().getSimpleName() + ".readFileStream is not implemented");
+    public Iterator<ReadFileStreamResult> readFileStream(String path, String mode, Integer head, Integer tail,
+            int[] lineRange, String encoding, int chunkSize, Map<String, Object> options) {
+        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".readFileStream is not implemented");
     }
 
     /**
      * Writes content to a file in the sandbox.
-     *
+     * 
      * @param path the file path to write
      * @param content the content to write
      * @param mode the write mode
@@ -98,17 +106,17 @@ public abstract class BaseFSProvider {
      * @param encoding the file encoding
      * @param options additional options map
      * @return the write file result
+     * @since 0.1.7
      */
-    public WriteFileResult writeFile(String path, Object content, String mode,
-            boolean isPrependNewline, boolean isAppendNewline, boolean isCreateIfMissing,
-            String permissions, String encoding, Map<String, Object> options) {
-        throw new UnsupportedOperationException(
-                this.getClass().getSimpleName() + ".writeFile is not implemented");
+    public WriteFileResult writeFile(String path, Object content, String mode, boolean isPrependNewline,
+            boolean isAppendNewline, boolean isCreateIfMissing, String permissions, String encoding,
+            Map<String, Object> options) {
+        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".writeFile is not implemented");
     }
 
     /**
      * Uploads a local file to the sandbox.
-     *
+     * 
      * @param localPath the local file path
      * @param targetPath the target path in the sandbox
      * @param isOverwrite whether to overwrite existing files
@@ -117,17 +125,16 @@ public abstract class BaseFSProvider {
      * @param chunkSize the chunk size for upload
      * @param options additional options map
      * @return the upload file result
+     * @since 0.1.7
      */
-    public UploadFileResult uploadFile(String localPath, String targetPath,
-            boolean isOverwrite, boolean isCreateParentDirs, boolean isPreservePermissions,
-            int chunkSize, Map<String, Object> options) {
-        throw new UnsupportedOperationException(
-                this.getClass().getSimpleName() + ".uploadFile is not implemented");
+    public UploadFileResult uploadFile(String localPath, String targetPath, boolean isOverwrite,
+            boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize, Map<String, Object> options) {
+        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".uploadFile is not implemented");
     }
 
     /**
      * Uploads a local file to the sandbox as a stream of chunks.
-     *
+     * 
      * @param localPath the local file path
      * @param targetPath the target path in the sandbox
      * @param isOverwrite whether to overwrite existing files
@@ -136,17 +143,17 @@ public abstract class BaseFSProvider {
      * @param chunkSize the chunk size for upload
      * @param options additional options map
      * @return an iterator of upload file stream results
+     * @since 0.1.7
      */
-    public Iterator<UploadFileStreamResult> uploadFileStream(String localPath, String targetPath,
-            boolean isOverwrite, boolean isCreateParentDirs, boolean isPreservePermissions,
-            int chunkSize, Map<String, Object> options) {
+    public Iterator<UploadFileStreamResult> uploadFileStream(String localPath, String targetPath, boolean isOverwrite,
+            boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize, Map<String, Object> options) {
         throw new UnsupportedOperationException(
                 this.getClass().getSimpleName() + ".uploadFileStream is not implemented");
     }
 
     /**
      * Downloads a file from the sandbox to a local path.
-     *
+     * 
      * @param sourcePath the source path in the sandbox
      * @param localPath the local file path to download to
      * @param isOverwrite whether to overwrite existing local files
@@ -155,17 +162,16 @@ public abstract class BaseFSProvider {
      * @param chunkSize the chunk size for download
      * @param options additional options map
      * @return the download file result
+     * @since 0.1.7
      */
-    public DownloadFileResult downloadFile(String sourcePath, String localPath,
-            boolean isOverwrite, boolean isCreateParentDirs, boolean isPreservePermissions,
-            int chunkSize, Map<String, Object> options) {
-        throw new UnsupportedOperationException(
-                this.getClass().getSimpleName() + ".downloadFile is not implemented");
+    public DownloadFileResult downloadFile(String sourcePath, String localPath, boolean isOverwrite,
+            boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize, Map<String, Object> options) {
+        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".downloadFile is not implemented");
     }
 
     /**
      * Downloads a file from the sandbox as a stream of chunks.
-     *
+     * 
      * @param sourcePath the source path in the sandbox
      * @param localPath the local file path to download to
      * @param isOverwrite whether to overwrite existing local files
@@ -174,17 +180,18 @@ public abstract class BaseFSProvider {
      * @param chunkSize the chunk size for download
      * @param options additional options map
      * @return an iterator of download file stream results
+     * @since 0.1.7
      */
-    public Iterator<DownloadFileStreamResult> downloadFileStream(String sourcePath,
-            String localPath, boolean isOverwrite, boolean isCreateParentDirs,
-            boolean isPreservePermissions, int chunkSize, Map<String, Object> options) {
+    public Iterator<DownloadFileStreamResult> downloadFileStream(String sourcePath, String localPath,
+            boolean isOverwrite, boolean isCreateParentDirs, boolean isPreservePermissions, int chunkSize,
+            Map<String, Object> options) {
         throw new UnsupportedOperationException(
                 this.getClass().getSimpleName() + ".downloadFileStream is not implemented");
     }
 
     /**
      * Lists files in a sandbox directory with optional filtering and sorting.
-     *
+     * 
      * @param path the directory path to list
      * @param isRecursive whether to list recursively
      * @param maxDepth the maximum recursion depth
@@ -193,17 +200,16 @@ public abstract class BaseFSProvider {
      * @param fileTypes the file type filters
      * @param options additional options map
      * @return the list files result
+     * @since 0.1.7
      */
-    public ListFilesResult listFiles(String path, boolean isRecursive, Integer maxDepth,
-            String sortBy, boolean isSortDescending, List<String> fileTypes,
-            Map<String, Object> options) {
-        throw new UnsupportedOperationException(
-                this.getClass().getSimpleName() + ".listFiles is not implemented");
+    public ListFilesResult listFiles(String path, boolean isRecursive, Integer maxDepth, String sortBy,
+            boolean isSortDescending, List<String> fileTypes, Map<String, Object> options) {
+        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".listFiles is not implemented");
     }
 
     /**
      * Lists directories in a sandbox directory with optional filtering and sorting.
-     *
+     * 
      * @param path the directory path to list
      * @param isRecursive whether to list recursively
      * @param maxDepth the maximum recursion depth
@@ -211,24 +217,24 @@ public abstract class BaseFSProvider {
      * @param isSortDescending whether to sort in descending order
      * @param options additional options map
      * @return the list directories result
+     * @since 0.1.7
      */
-    public ListDirsResult listDirectories(String path, boolean isRecursive, Integer maxDepth,
-            String sortBy, boolean isSortDescending, Map<String, Object> options) {
+    public ListDirsResult listDirectories(String path, boolean isRecursive, Integer maxDepth, String sortBy,
+            boolean isSortDescending, Map<String, Object> options) {
         throw new UnsupportedOperationException(
                 this.getClass().getSimpleName() + ".listDirectories is not implemented");
     }
 
     /**
      * Searches files in a sandbox directory by pattern with optional exclusion patterns.
-     *
+     * 
      * @param path the directory path to search
      * @param pattern the search pattern
      * @param excludePatterns the patterns to exclude from results
      * @return the search files result
+     * @since 0.1.7
      */
-    public SearchFilesResult searchFiles(String path, String pattern,
-            List<String> excludePatterns) {
-        throw new UnsupportedOperationException(
-                this.getClass().getSimpleName() + ".searchFiles is not implemented");
+    public SearchFilesResult searchFiles(String path, String pattern, List<String> excludePatterns) {
+        throw new UnsupportedOperationException(this.getClass().getSimpleName() + ".searchFiles is not implemented");
     }
 }

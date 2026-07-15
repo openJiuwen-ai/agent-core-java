@@ -28,15 +28,20 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.UUID;
 
-/** Minimal HTTP client for the A2A JSON-RPC transport. */
+/**
+ * Minimal HTTP client for the A2A JSON-RPC transport.
+ * 
+ * @since 0.1.7
+ */
 public class A2AClient {
     private final URI endpoint;
     private final HttpClient httpClient;
 
     /**
      * Create an A2A client with a default HTTP client.
-     *
+     * 
      * @param endpointUrl A2A endpoint URL
+     * @since 0.1.7
      */
     public A2AClient(String endpointUrl) {
         this(endpointUrl, HttpClient.newHttpClient());
@@ -44,9 +49,10 @@ public class A2AClient {
 
     /**
      * Create an A2A client with a custom HTTP client.
-     *
+     * 
      * @param endpointUrl A2A endpoint URL
      * @param httpClient HTTP client
+     * @since 0.1.7
      */
     public A2AClient(String endpointUrl, HttpClient httpClient) {
         this.endpoint = URI.create(normalizeEndpoint(endpointUrl));
@@ -55,18 +61,19 @@ public class A2AClient {
 
     /**
      * Invoke the remote A2A endpoint once.
-     *
+     * 
      * @param inputs request inputs
      * @param timeoutSeconds request timeout in seconds
      * @return agent result
      * @throws Exception when the HTTP call or response parsing fails
+     * @since 0.1.7
      */
     public AgentResult invoke(Map<String, Object> inputs, Double timeoutSeconds) throws Exception {
         String requestId = UUID.randomUUID().toString();
         Map<String, Object> payload = A2ATransformer.toJsonRpcRequest(inputs, "SendMessage", requestId);
         HttpRequest request = buildJsonRequest(payload, timeoutSeconds);
         HttpResponse<String> response =
-                httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         ensureSuccess(response.statusCode(), response.body());
 
         @SuppressWarnings("unchecked")
@@ -76,29 +83,29 @@ public class A2AClient {
 
     /**
      * Start a streaming A2A call.
-     *
+     * 
      * @param inputs request inputs
      * @param timeoutSeconds request timeout in seconds
      * @return iterator over stream chunks
      * @throws Exception when the HTTP call or response parsing fails
+     * @since 0.1.7
      */
     public Iterator<Object> stream(Map<String, Object> inputs, Double timeoutSeconds) throws Exception {
         String requestId = UUID.randomUUID().toString();
-        Map<String, Object> payload =
-                A2ATransformer.toJsonRpcRequest(inputs, "SendStreamingMessage", requestId);
+        Map<String, Object> payload = A2ATransformer.toJsonRpcRequest(inputs, "SendStreamingMessage", requestId);
         HttpRequest request = buildJsonRequest(payload, timeoutSeconds);
-        HttpResponse<InputStream> response =
-                httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
         ensureSuccess(response.statusCode(), "<stream>");
         return new SseIterator(response.body());
     }
 
     /**
      * Reactive version of {@link #invoke(Map, Double)}.
-     *
+     * 
      * @param inputs request inputs
      * @param timeoutSeconds request timeout in seconds
      * @return Mono emitting the agent result
+     * @since 0.1.7
      */
     public Mono<AgentResult> invokeAsync(Map<String, Object> inputs, Double timeoutSeconds) {
         return ReactiveAdapters.fromCallable(() -> invoke(inputs, timeoutSeconds));
@@ -106,35 +113,52 @@ public class A2AClient {
 
     /**
      * Reactive version of {@link #stream(Map, Double)}.
-     *
+     * 
      * @param inputs request inputs
      * @param timeoutSeconds request timeout in seconds
      * @return Flux emitting stream chunks
+     * @since 0.1.7
      */
     public Flux<Object> streamAsync(Map<String, Object> inputs, Double timeoutSeconds) {
         return ReactiveAdapters.fromAutoCloseableIterator(() -> stream(inputs, timeoutSeconds));
     }
 
+    /**
+     * buildJsonRequest.
+     * 
+     * @param payload payload
+     * @param timeoutSeconds timeoutSeconds
+     * @return the result
+     * @since 0.1.7
+     */
     private HttpRequest buildJsonRequest(Map<String, Object> payload, Double timeoutSeconds) {
         Duration timeout =
-                timeoutSeconds != null
-                        ? Duration.ofMillis(toMillis(timeoutSeconds))
-                        : Duration.ofSeconds(30);
-        return HttpRequest.newBuilder(endpoint)
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json, text/event-stream")
-                .timeout(timeout)
-                .POST(HttpRequest.BodyPublishers.ofString(
-                        JsonUtils.safeJsonDumps(payload), StandardCharsets.UTF_8))
+            timeoutSeconds != null ? Duration.ofMillis(toMillis(timeoutSeconds)) : Duration.ofSeconds(30);
+        return HttpRequest.newBuilder(endpoint).header("Content-Type", "application/json")
+                .header("Accept", "application/json, text/event-stream").timeout(timeout)
+                .POST(HttpRequest.BodyPublishers.ofString(JsonUtils.safeJsonDumps(payload), StandardCharsets.UTF_8))
                 .build();
     }
 
+    /**
+     * toMillis.
+     * 
+     * @param timeoutSeconds timeoutSeconds
+     * @return the result
+     * @since 0.1.7
+     */
     private static long toMillis(Double timeoutSeconds) {
-        return BigDecimal.valueOf(timeoutSeconds)
-                .movePointRight(3)
-                .longValue();
+        return BigDecimal.valueOf(timeoutSeconds).movePointRight(3).longValue();
     }
 
+    /**
+     * ensureSuccess.
+     * 
+     * @param statusCode statusCode
+     * @param body body
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private static void ensureSuccess(int statusCode, String body) throws IOException {
         if (statusCode >= 200 && statusCode < 300) {
             return;
@@ -156,10 +180,21 @@ public class A2AClient {
         private boolean isDone;
         private volatile boolean isClosed;
 
+        /**
+         * SseIterator.
+         * 
+         * @param stream stream
+         * @since 0.1.7
+         */
         private SseIterator(InputStream stream) {
             this.reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8));
         }
 
+        /**
+         * close.
+         * 
+         * @since 0.1.7
+         */
         @Override
         public void close() {
             if (isClosed) {
@@ -170,6 +205,12 @@ public class A2AClient {
             closeReader();
         }
 
+        /**
+         * hasNext.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         @Override
         public boolean hasNext() {
             if (next != null) {
@@ -194,6 +235,12 @@ public class A2AClient {
             }
         }
 
+        /**
+         * next.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         @Override
         public Object next() {
             if (!hasNext()) {
@@ -204,6 +251,13 @@ public class A2AClient {
             return result;
         }
 
+        /**
+         * readNext.
+         * 
+         * @return the result
+         * @throws IOException IOException
+         * @since 0.1.7
+         */
         private Optional<AgentResult> readNext() throws IOException {
             String line;
             while ((line = reader.readLine()) != null) {
@@ -224,6 +278,11 @@ public class A2AClient {
             return Optional.empty();
         }
 
+        /**
+         * closeReader.
+         * 
+         * @since 0.1.7
+         */
         private void closeReader() {
             try {
                 reader.close();

@@ -11,6 +11,7 @@ import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -26,27 +27,31 @@ import java.util.Map;
  * offload handle and type so they can be later reloaded.
  * <p>
  * Mirrors Python's {@code OffloadMixin} from {@code context_engine/schema/messages.py}.
+ * 
+ * @since 0.1.7
  */
 public final class OffloadMessages {
-
+    /**
+     * OffloadMessages.
+     * 
+     * @since 0.1.7
+     */
     private OffloadMessages() {
     }
 
     // ==================== Offload Message Types ====================
 
     /**
-     * User message that has been offloaded.
+     * OffloadUserMessage.
+     * 
+     * @since 0.1.7
      */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     @EqualsAndHashCode(callSuper = true)
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class OffloadUserMessage extends UserMessage implements OffloadMixin {
-
         @JsonProperty("offload_type")
         private String offloadType;
 
@@ -56,12 +61,12 @@ public final class OffloadMessages {
         private Map<String, Object> metadata;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMetadata.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Map<String, Object> getMetadata() {
             if (metadata == null) {
                 metadata = new HashMap<>();
@@ -71,18 +76,16 @@ public final class OffloadMessages {
     }
 
     /**
-     * Assistant message that has been offloaded.
+     * OffloadAssistantMessage.
+     * 
+     * @since 0.1.7
      */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     @EqualsAndHashCode(callSuper = true)
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class OffloadAssistantMessage extends AssistantMessage implements OffloadMixin {
-
         @JsonProperty("offload_type")
         private String offloadType;
 
@@ -92,12 +95,12 @@ public final class OffloadMessages {
         private Map<String, Object> metadata;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMetadata.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Map<String, Object> getMetadata() {
             if (metadata == null) {
                 metadata = new HashMap<>();
@@ -107,18 +110,16 @@ public final class OffloadMessages {
     }
 
     /**
-     * System message that has been offloaded.
+     * OffloadSystemMessage.
+     * 
+     * @since 0.1.7
      */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     @EqualsAndHashCode(callSuper = true)
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class OffloadSystemMessage extends SystemMessage implements OffloadMixin {
-
         @JsonProperty("offload_type")
         private String offloadType;
 
@@ -128,12 +129,12 @@ public final class OffloadMessages {
         private Map<String, Object> metadata;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMetadata.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Map<String, Object> getMetadata() {
             if (metadata == null) {
                 metadata = new HashMap<>();
@@ -143,18 +144,16 @@ public final class OffloadMessages {
     }
 
     /**
-     * Tool message that has been offloaded.
+     * OffloadToolMessage.
+     * 
+     * @since 0.1.7
      */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
     @EqualsAndHashCode(callSuper = true)
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class OffloadToolMessage extends ToolMessage implements OffloadMixin {
-
         @JsonProperty("offload_type")
         private String offloadType;
 
@@ -164,12 +163,12 @@ public final class OffloadMessages {
         private Map<String, Object> metadata;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMetadata.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Map<String, Object> getMetadata() {
             if (metadata == null) {
                 metadata = new HashMap<>();
@@ -178,14 +177,19 @@ public final class OffloadMessages {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * builder.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public static Builder builder() {
             return new Builder();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Builder.
+         * 
+         * @since 0.1.7
          */
         public static class Builder extends ToolMessage.Builder {
             private String offloadType;
@@ -193,48 +197,52 @@ public final class OffloadMessages {
             private Map<String, Object> metadata;
 
             /**
-             * Auto-generated for codecheck compliance.
+             * role.
+             * 
+             * @param role role
+             * @return the result
+             * @since 0.1.7
              */
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Builder role(String role) {
                 super.role(role);
                 return this;
             }
 
             /**
-             * Auto-generated for codecheck compliance.
+             * content.
+             * 
+             * @param content content
+             * @return the result
+             * @since 0.1.7
              */
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Builder content(Object content) {
                 super.content(content);
                 return this;
             }
 
             /**
-             * Auto-generated for codecheck compliance.
+             * name.
+             * 
+             * @param name name
+             * @return the result
+             * @since 0.1.7
              */
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Builder name(String name) {
                 super.name(name);
                 return this;
             }
 
             /**
-             * Auto-generated for codecheck compliance.
+             * metadata.
+             * 
+             * @param metadata metadata
+             * @return the result
+             * @since 0.1.7
              */
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Builder metadata(Map<String, Object> metadata) {
                 super.metadata(metadata);
                 this.metadata = metadata;
@@ -242,19 +250,24 @@ public final class OffloadMessages {
             }
 
             /**
-             * Auto-generated for codecheck compliance.
+             * toolCallId.
+             * 
+             * @param toolCallId toolCallId
+             * @return the result
+             * @since 0.1.7
              */
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Builder toolCallId(String toolCallId) {
                 super.toolCallId(toolCallId);
                 return this;
             }
 
             /**
-             * Auto-generated for codecheck compliance.
+             * offloadType.
+             * 
+             * @param offloadType offloadType
+             * @return the result
+             * @since 0.1.7
              */
             public Builder offloadType(String offloadType) {
                 this.offloadType = offloadType;
@@ -262,7 +275,11 @@ public final class OffloadMessages {
             }
 
             /**
-             * Auto-generated for codecheck compliance.
+             * offloadHandle.
+             * 
+             * @param offloadHandle offloadHandle
+             * @return the result
+             * @since 0.1.7
              */
             public Builder offloadHandle(String offloadHandle) {
                 this.offloadHandle = offloadHandle;
@@ -270,7 +287,10 @@ public final class OffloadMessages {
             }
 
             /**
-             * Auto-generated for codecheck compliance.
+             * build.
+             * 
+             * @return the result
+             * @since 0.1.7
              */
             public OffloadToolMessage build() {
                 OffloadToolMessage message = new OffloadToolMessage();
@@ -290,17 +310,15 @@ public final class OffloadMessages {
 
     /**
      * Create an offloaded message of the appropriate type based on role.
-     *
-     * @param role          message role (user, assistant, system, tool)
-     * @param content       the (compressed/trimmed) content
+     * 
+     * @param role message role (user, assistant, system, tool)
+     * @param content the (compressed/trimmed) content
      * @param offloadHandle unique handle for reloading
-     * @param offloadType   storage type (e.g., "in_memory")
+     * @param offloadType storage type (e.g., "in_memory")
      * @return an offload message instance
+     * @since 0.1.7
      */
-    public static BaseMessage createOffloadMessage(
-            String role,
-            String content,
-            String offloadHandle,
+    public static BaseMessage createOffloadMessage(String role, String content, String offloadHandle,
             String offloadType) {
         return createOffloadMessage(role, content, offloadHandle, offloadType, null);
     }
@@ -313,21 +331,17 @@ public final class OffloadMessages {
      * through extra fields like {@code tool_call_id}, {@code tool_calls},
      * {@code usage_metadata}, {@code finish_reason}, {@code parser_content},
      * {@code reasoning_content}, and {@code name}.
-     *
-     * @param role          message role (user, assistant, system, tool)
-     * @param content       the (compressed/trimmed) content
+     * 
+     * @param role message role (user, assistant, system, tool)
+     * @param content the (compressed/trimmed) content
      * @param offloadHandle unique handle for reloading
-     * @param offloadType   storage type (e.g., "in_memory")
-     * @param extraFields   additional fields from the original message to preserve; may be null
+     * @param offloadType storage type (e.g., "in_memory")
+     * @param extraFields additional fields from the original message to preserve; may be null
      * @return an offload message instance with preserved fields
+     * @since 0.1.7
      */
-    public static BaseMessage createOffloadMessage(
-            String role,
-            String content,
-            String offloadHandle,
-            String offloadType,
-            Map<String, Object> extraFields) {
-
+    public static BaseMessage createOffloadMessage(String role, String content, String offloadHandle,
+            String offloadType, Map<String, Object> extraFields) {
         return switch (role) {
             case "assistant" -> {
                 var msg = new OffloadAssistantMessage();
@@ -366,6 +380,13 @@ public final class OffloadMessages {
 
     // ==================== Extra Fields Helpers ====================
 
+    /**
+     * applyBaseExtraFields.
+     * 
+     * @param msg msg
+     * @param extraFields extraFields
+     * @since 0.1.7
+     */
     private static void applyBaseExtraFields(BaseMessage msg, Map<String, Object> extraFields) {
         if (extraFields == null) {
             return;
@@ -377,6 +398,13 @@ public final class OffloadMessages {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * applyAssistantExtraFields.
+     * 
+     * @param msg msg
+     * @param extraFields extraFields
+     * @since 0.1.7
+     */
     private static void applyAssistantExtraFields(OffloadAssistantMessage msg, Map<String, Object> extraFields) {
         applyBaseExtraFields(msg, extraFields);
         if (extraFields == null) {
@@ -404,6 +432,13 @@ public final class OffloadMessages {
         }
     }
 
+    /**
+     * applyToolExtraFields.
+     * 
+     * @param msg msg
+     * @param extraFields extraFields
+     * @since 0.1.7
+     */
     private static void applyToolExtraFields(OffloadToolMessage msg, Map<String, Object> extraFields) {
         applyBaseExtraFields(msg, extraFields);
         if (extraFields == null) {

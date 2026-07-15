@@ -1,5 +1,12 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.runner;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.multiagent.schema.GroupCard;
@@ -18,22 +25,16 @@ import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 import com.openjiuwen.core.workflow.component.End;
 import com.openjiuwen.core.workflow.component.Start;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Tests for Runner singleton and RunnerImpl lifecycle/behavior.
@@ -42,7 +43,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @DisplayName("Runner Tests")
 class RunnerTest {
-
     private final List<String> sessionsToRelease = new ArrayList<>();
 
     @AfterEach
@@ -97,10 +97,8 @@ class RunnerTest {
     @Test
     @DisplayName("RunnerConfig topic templates apply env prefix")
     void testRunnerConfigTopicTemplates() {
-        RunnerConfig config = RunnerConfig.builder()
-                .envPrefix("prod")
-                .distributedConfig(DistributedConfig.builder().build())
-                .build();
+        RunnerConfig config =
+            RunnerConfig.builder().envPrefix("prod").distributedConfig(DistributedConfig.builder().build()).build();
 
         assertEquals("prod.openjiuwen.single_agent.{agent_id}.{version}", config.agentTopicTemplate());
         assertEquals("prod.openjiuwen.reply.runner.{instance_id}", config.replyTopicTemplate());
@@ -136,7 +134,8 @@ class RunnerTest {
         RunnerImpl runner = new RunnerImpl("workflow-runner", RunnerConfig.DEFAULT);
         Workflow workflow = createEchoWorkflow("workflow-auto");
 
-        WorkflowOutput result = (WorkflowOutput) runner.runWorkflow(workflow, Map.of("query", "hello"), null, null, null);
+        WorkflowOutput result =
+            (WorkflowOutput) runner.runWorkflow(workflow, Map.of("query", "hello"), null, null, null);
 
         assertEquals(WorkflowExecutionState.COMPLETED, result.getState());
         assertEquals("hello", getWorkflowResultField(result, "query"));
@@ -149,8 +148,8 @@ class RunnerTest {
         RunnerImpl runner = new RunnerImpl("workflow-runner", RunnerConfig.DEFAULT);
         Workflow workflow = createEchoWorkflow("workflow-string-session");
 
-        WorkflowOutput result = (WorkflowOutput) runner.runWorkflow(
-                workflow, Map.of("query", "hello"), "workflow-session", null, null);
+        WorkflowOutput result =
+            (WorkflowOutput) runner.runWorkflow(workflow, Map.of("query", "hello"), "workflow-session", null, null);
 
         assertEquals("workflow-session", getWorkflowResultField(result, "session_id"));
     }
@@ -163,8 +162,8 @@ class RunnerTest {
         AgentSessionApi agentSession = AgentSessionApi.create("agent-session", null, null);
         agentSession.updateState(Map.of("seed", 41));
 
-        WorkflowOutput result = (WorkflowOutput) runner.runWorkflow(
-                workflow, Map.of("query", "hello"), agentSession, null, null);
+        WorkflowOutput result =
+            (WorkflowOutput) runner.runWorkflow(workflow, Map.of("query", "hello"), agentSession, null, null);
 
         assertEquals("agent-session", getWorkflowResultField(result, "session_id"));
         assertEquals(41, getWorkflowResultField(result, "seed"));
@@ -177,8 +176,8 @@ class RunnerTest {
         Workflow workflow = createEchoWorkflow("workflow-by-id");
         runner.getResourceMgr().addWorkflow(workflow.getCard(), () -> workflow, null);
 
-        WorkflowOutput result = (WorkflowOutput) runner.runWorkflow(
-                workflow.getCard().getId(), Map.of("query", "by-id"), null, null, null);
+        WorkflowOutput result =
+            (WorkflowOutput) runner.runWorkflow(workflow.getCard().getId(), Map.of("query", "by-id"), null, null, null);
 
         assertEquals("by-id", getWorkflowResultField(result, "query"));
     }
@@ -189,8 +188,8 @@ class RunnerTest {
         RunnerImpl runner = new RunnerImpl("workflow-runner", RunnerConfig.DEFAULT);
         Workflow workflow = createStreamingWorkflow("workflow-stream");
 
-        Iterator<?> iterator = runner.runWorkflowStreaming(
-                workflow, Map.of("query", "stream"), "stream-session", null, null, null);
+        Iterator<?> iterator =
+            runner.runWorkflowStreaming(workflow, Map.of("query", "stream"), "stream-session", null, null, null);
         List<?> chunks = collect(iterator);
 
         assertEquals(1, chunks.size());
@@ -210,10 +209,10 @@ class RunnerTest {
         String sessionId = "agent-conversation";
         trackSession(sessionId);
 
-        Map<String, Object> first = castMap(runner.runAgent(
-                agent, Map.of("conversation_id", sessionId, "query", "hello"), null, null, null));
-        Map<String, Object> second = castMap(runner.runAgent(
-                agent, Map.of("conversation_id", sessionId, "query", "hello again"), null, null, null));
+        Map<String, Object> first =
+            castMap(runner.runAgent(agent, Map.of("conversation_id", sessionId, "query", "hello"), null, null, null));
+        Map<String, Object> second = castMap(
+                runner.runAgent(agent, Map.of("conversation_id", sessionId, "query", "hello again"), null, null, null));
 
         assertEquals(sessionId, first.get("session_id"));
         assertEquals(1, first.get("count"));
@@ -228,8 +227,7 @@ class RunnerTest {
         String sessionId = "explicit-agent-session";
         trackSession(sessionId);
 
-        Map<String, Object> result = castMap(runner.runAgent(
-                agent, Map.of("query", "hello"), sessionId, null, null));
+        Map<String, Object> result = castMap(runner.runAgent(agent, Map.of("query", "hello"), sessionId, null, null));
 
         assertEquals(sessionId, result.get("session_id"));
         assertEquals(1, result.get("count"));
@@ -258,10 +256,10 @@ class RunnerTest {
         String sessionId = "stream-agent-session";
         trackSession(sessionId);
 
-        List<Object> firstChunks = collect(runner.runAgentStreaming(
-                agent, Map.of("conversation_id", sessionId), null, null, null, null));
-        List<Object> secondChunks = collect(runner.runAgentStreaming(
-                agent, Map.of("conversation_id", sessionId), null, null, null, null));
+        List<Object> firstChunks =
+            collect(runner.runAgentStreaming(agent, Map.of("conversation_id", sessionId), null, null, null, null));
+        List<Object> secondChunks =
+            collect(runner.runAgentStreaming(agent, Map.of("conversation_id", sessionId), null, null, null, null));
 
         assertEquals(List.of(Map.of("session_id", sessionId, "count", 1)), firstChunks);
         assertEquals(List.of(Map.of("session_id", sessionId, "count", 2)), secondChunks);
@@ -277,8 +275,8 @@ class RunnerTest {
         trackSession(sessionId);
         runner.getResourceMgr().addAgent(AgentCard.builder().id(agentId).name(agentId).build(), () -> agent, null);
 
-        Map<String, Object> result = castMap(runner.runAgent(
-                agentId, Map.of("conversation_id", sessionId), null, null, null));
+        Map<String, Object> result =
+            castMap(runner.runAgent(agentId, Map.of("conversation_id", sessionId), null, null, null));
 
         assertEquals(sessionId, result.get("session_id"));
     }
@@ -291,14 +289,13 @@ class RunnerTest {
         String groupId = "managed-group";
         runner.getResourceMgr().addAgentGroup(GroupCard.builder().id(groupId).name(groupId).build(), () -> group, null);
 
-        Map<String, Object> invokeResult = castMap(runner.runAgentGroup(
-                groupId, Map.of("value", "hello"), "group-session", null, null));
-        List<Object> streamResult = collect(runner.runAgentGroupStreaming(
-                groupId, Map.of("value", "hello"), "group-session", null, null, null));
+        Map<String, Object> invokeResult =
+            castMap(runner.runAgentGroup(groupId, Map.of("value", "hello"), "group-session", null, null));
+        List<Object> streamResult = collect(
+                runner.runAgentGroupStreaming(groupId, Map.of("value", "hello"), "group-session", null, null, null));
 
         assertEquals(Map.of("group_value", "hello", "session_id", "group-session"), invokeResult);
-        assertEquals(List.of(
-                Map.of("group_value", "hello", "session_id", "group-session"),
+        assertEquals(List.of(Map.of("group_value", "hello", "session_id", "group-session"),
                 Map.of("group_value", "hello-next", "session_id", "group-session")), streamResult);
     }
 
@@ -331,43 +328,22 @@ class RunnerTest {
     }
 
     private Workflow createEchoWorkflow(String workflowId) {
-        Workflow workflow = new Workflow(WorkflowCard.builder()
-                .id(workflowId)
-                .name(workflowId)
-                .version("1")
-                .build());
+        Workflow workflow = new Workflow(WorkflowCard.builder().id(workflowId).name(workflowId).version("1").build());
         workflow.setStartComp("start", new Start(), Map.of("query", "${query}"), null);
         workflow.addWorkflowComp("echo", new SessionEchoNode(), Map.of("query", "${start.query}"), null);
         workflow.setEndComp("end", new IdentityNode(),
-                Map.of(
-                        "query", "${echo.query}",
-                        "session_id", "${echo.session_id}",
-                        "seed", "${echo.seed}"),
-                null);
+                Map.of("query", "${echo.query}", "session_id", "${echo.session_id}", "seed", "${echo.seed}"), null);
         workflow.addConnection("start", "echo");
         workflow.addConnection("echo", "end");
         return workflow;
     }
 
     private Workflow createStreamingWorkflow(String workflowId) {
-        Workflow workflow = new Workflow(WorkflowCard.builder()
-                .id(workflowId)
-                .name(workflowId)
-                .version("1")
-                .build());
+        Workflow workflow = new Workflow(WorkflowCard.builder().id(workflowId).name(workflowId).version("1").build());
         workflow.setStartComp("start", new Start(), Map.of("query", "${query}"), null);
-        workflow.addWorkflowComp("producer", new SessionStreamNode(),
-                null,
-                Map.of("query", "${start.query}"),
-                null,
-                null,
-                null,
-                List.of(com.openjiuwen.core.workflow.component.ComponentAbility.STREAM));
-        workflow.setEndComp("end", new End(),
-                null,
-                null,
-                Map.of("session_id", "${producer.session_id}"),
-                null,
+        workflow.addWorkflowComp("producer", new SessionStreamNode(), null, Map.of("query", "${start.query}"), null,
+                null, null, List.of(com.openjiuwen.core.workflow.component.ComponentAbility.STREAM));
+        workflow.setEndComp("end", new End(), null, null, Map.of("session_id", "${producer.session_id}"), null,
                 "streaming");
         workflow.addConnection("start", "producer");
         workflow.addStreamConnection("producer", "end");
@@ -395,9 +371,8 @@ class RunnerTest {
         @SuppressWarnings("unchecked")
         public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
             Map<String, Object> inputMap = (Map<String, Object>) inputs;
-            return List.<Object>of(Map.of(
-                    "session_id", session.getSessionId(),
-                    "query", inputMap.get("query"))).iterator();
+            return List.<Object>of(Map.of("session_id", session.getSessionId(), "query", inputMap.get("query")))
+                    .iterator();
         }
     }
 
@@ -434,10 +409,8 @@ class RunnerTest {
         }
 
         public Iterator<Object> stream(Map<String, Object> inputs, String sessionId) {
-            return List.<Object>of(
-                    Map.of("group_value", inputs.get("value"), "session_id", sessionId),
-                    Map.of("group_value", inputs.get("value") + "-next", "session_id", sessionId))
-                    .iterator();
+            return List.<Object>of(Map.of("group_value", inputs.get("value"), "session_id", sessionId),
+                    Map.of("group_value", inputs.get("value") + "-next", "session_id", sessionId)).iterator();
         }
     }
 }

@@ -12,18 +12,25 @@ import java.util.Map;
  * Java equivalent of Python's {@code build_error}, {@code raise_error}, etc.
  * Since Java cannot directly "return and throw" from a void method the way Python does,
  * the {@code raiseXxx} methods throw immediately; callers should not catch the return.
+ * 
+ * @since 0.1.7
  */
 public final class ErrorHelper {
-
+    /**
+     * ErrorHelper.
+     * 
+     * @since 0.1.7
+     */
     private ErrorHelper() {
     }
 
     /**
      * Build exception instance without throwing.
      * Useful for deferred throw or wrapping.
-     *
+     * 
      * @param status the status code
      * @return a BaseError instance
+     * @since 0.1.7
      */
     public static BaseError buildError(StatusCode status) {
         return StatusMapping.resolveException(status);
@@ -31,11 +38,13 @@ public final class ErrorHelper {
 
     /**
      * Build exception with key-value parameter pairs for template substitution.
-     * <p>Example: {@code buildError(StatusCode.TOOL_CARD_INVALID, "card", card, "reason", "card is None")}
-     *
+     * <p>
+     * Example: {@code buildError(StatusCode.TOOL_CARD_INVALID, "card", card, "reason", "card is None")}
+     * 
      * @param status the status code
      * @param kvPairs alternating key/value pairs (must be even number)
      * @return a BaseError with the parameters applied to the message template
+     * @since 0.1.7
      */
     public static BaseError buildError(StatusCode status, String... kvPairs) {
         if (kvPairs == null || kvPairs.length == 0) {
@@ -50,16 +59,17 @@ public final class ErrorHelper {
 
     /**
      * Build exception with custom message and details.
-     *
-     * @param status  the status code
-     * @param msg     optional custom message
+     * 
+     * @param status the status code
+     * @param msg optional custom message
      * @param details optional additional details
-     * @param cause   optional root cause
-     * @param params  template parameters for message rendering
+     * @param cause optional root cause
+     * @param params template parameters for message rendering
      * @return a BaseError instance with the specified details
+     * @since 0.1.7
      */
-    public static BaseError buildError(StatusCode status, String msg, Object details,
-                                       Throwable cause, Map<String, Object> params) {
+    public static BaseError buildError(StatusCode status, String msg, Object details, Throwable cause,
+            Map<String, Object> params) {
         var factory = StatusMapping.resolveExceptionFactory(status);
         BaseError err = factory.apply(status);
         // For full control, use the isResolved class constructor explicitly.
@@ -69,9 +79,9 @@ public final class ErrorHelper {
 
     /**
      * Unified error raising — throws immediately.
-     *
+     * 
      * @param status the status code
-     * @throws BaseError always thrown with the given status
+     * @since 0.1.7
      */
     public static void raiseError(StatusCode status) {
         throw StatusMapping.resolveException(status);
@@ -79,24 +89,24 @@ public final class ErrorHelper {
 
     /**
      * Unified error raising with details — throws immediately.
-     *
-     * @param status  the status code
-     * @param msg     optional custom message
+     * 
+     * @param status the status code
+     * @param msg optional custom message
      * @param details optional additional details
-     * @param cause   optional root cause
-     * @param params  template parameters for message rendering
-     * @throws BaseError always thrown with the specified details
+     * @param cause optional root cause
+     * @param params template parameters for message rendering
+     * @since 0.1.7
      */
-    public static void raiseError(StatusCode status, String msg, Object details,
-                                  Throwable cause, Map<String, Object> params) {
+    public static void raiseError(StatusCode status, String msg, Object details, Throwable cause,
+            Map<String, Object> params) {
         throw createWithDetails(status, msg, details, cause, params);
     }
 
     /**
      * Raise a FrameworkError.
-     *
+     * 
      * @param status the status code
-     * @throws FrameworkError always thrown
+     * @since 0.1.7
      */
     public static void systemError(StatusCode status) {
         throw new FrameworkError(status);
@@ -104,11 +114,11 @@ public final class ErrorHelper {
 
     /**
      * Raise a FrameworkError with cause.
-     *
+     * 
      * @param status the status code
-     * @param cause  the root cause
+     * @param cause the root cause
      * @param params template parameters for message rendering
-     * @throws FrameworkError always thrown
+     * @since 0.1.7
      */
     public static void systemError(StatusCode status, Throwable cause, Map<String, Object> params) {
         throw new FrameworkError(status, null, null, cause, params);
@@ -116,9 +126,9 @@ public final class ErrorHelper {
 
     /**
      * Raise a ValidationError.
-     *
+     * 
      * @param status the status code
-     * @throws ValidationError always thrown
+     * @since 0.1.7
      */
     public static void validateError(StatusCode status) {
         throw new ValidationError(status);
@@ -126,11 +136,11 @@ public final class ErrorHelper {
 
     /**
      * Raise a ValidationError with cause.
-     *
+     * 
      * @param status the status code
-     * @param cause  the root cause
+     * @param cause the root cause
      * @param params template parameters for message rendering
-     * @throws ValidationError always thrown
+     * @since 0.1.7
      */
     public static void validateError(StatusCode status, Throwable cause, Map<String, Object> params) {
         throw new ValidationError(status, null, null, cause, params);
@@ -138,9 +148,9 @@ public final class ErrorHelper {
 
     /**
      * Raise a Termination.
-     *
+     * 
      * @param status the status code
-     * @throws Termination always thrown
+     * @since 0.1.7
      */
     public static void terminate(StatusCode status) {
         throw new Termination(status);
@@ -148,23 +158,29 @@ public final class ErrorHelper {
 
     /**
      * Raise a Termination with params.
-     *
+     * 
      * @param status the status code
      * @param params template parameters for message rendering
-     * @throws Termination always thrown
+     * @since 0.1.7
      */
     public static void terminate(StatusCode status, Map<String, Object> params) {
         throw new Termination(status, params);
     }
 
-    // ==================== Internal ====================
-
     /**
      * Create exception with full details using reflection-free approach:
      * resolve via StatusMapping then construct the appropriate class.
+     * 
+     * @param status status
+     * @param msg msg
+     * @param details details
+     * @param cause cause
+     * @param params params
+     * @return the result
+     * @since 0.1.7
      */
-    private static BaseError createWithDetails(StatusCode status, String msg, Object details,
-                                               Throwable cause, Map<String, Object> params) {
+    private static BaseError createWithDetails(StatusCode status, String msg, Object details, Throwable cause,
+            Map<String, Object> params) {
         String excName = resolveExceptionName(status);
         return switch (excName) {
             case "FrameworkError" -> new FrameworkError(status, msg, details, cause, params);
@@ -192,6 +208,10 @@ public final class ErrorHelper {
     /**
      * Resolve exception class name from status code (mirrors StatusMapping logic inline
      * for the switch-expression).
+     * 
+     * @param status status
+     * @return the result
+     * @since 0.1.7
      */
     private static String resolveExceptionName(StatusCode status) {
         var factory = StatusMapping.resolveExceptionFactory(status);

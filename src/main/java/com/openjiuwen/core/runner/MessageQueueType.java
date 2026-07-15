@@ -6,6 +6,8 @@ package com.openjiuwen.core.runner;
 
 /**
  * Message queue type enumeration.
+ * 
+ * @since 0.1.7
  */
 public enum MessageQueueType {
     PULSAR("pulsar"),
@@ -18,7 +20,10 @@ public enum MessageQueueType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

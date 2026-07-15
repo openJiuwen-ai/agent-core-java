@@ -12,49 +12,73 @@ import java.util.function.Function;
  * Workflow state collection managing io, global, comp, and workflow state partitions.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.state.workflow_state.StateCollection}.
+ * 
+ * @since 0.1.7
  */
 public class WorkflowStateCollection implements State {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * ioState.
+     * 
+     * @since 0.1.7
      */
     protected final CommitStateLike ioState;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * globalState.
+     * 
+     * @since 0.1.7
      */
     protected final CommitStateLike globalState;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * compState.
+     * 
+     * @since 0.1.7
      */
     protected final CommitStateLike compState;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * workflowState.
+     * 
+     * @since 0.1.7
      */
     protected final CommitStateLike workflowState;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * traceState.
+     * 
+     * @since 0.1.7
      */
     protected Map<String, Object> traceState;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * parentId.
+     * 
+     * @since 0.1.7
      */
     protected String parentId;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * nodeId.
+     * 
+     * @since 0.1.7
      */
     protected String nodeId;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowStateCollection.
+     * 
+     * @param ioState ioState
+     * @param globalState globalState
+     * @param compState compState
+     * @param workflowState workflowState
+     * @param traceState traceState
+     * @param parentId parentId
+     * @param nodeId nodeId
+     * @since 0.1.7
      */
-    public WorkflowStateCollection(
-            CommitStateLike ioState,
-            CommitStateLike globalState,
-            CommitStateLike compState,
-            CommitStateLike workflowState,
-            Map<String, Object> traceState,
-            String parentId,
-            String nodeId) {
+    public WorkflowStateCollection(CommitStateLike ioState, CommitStateLike globalState, CommitStateLike compState,
+            CommitStateLike workflowState, Map<String, Object> traceState, String parentId, String nodeId) {
         this.ioState = ioState;
         this.globalState = globalState;
         this.compState = compState;
@@ -64,10 +88,14 @@ public class WorkflowStateCollection implements State {
         this.nodeId = nodeId != null ? nodeId : State.DEFAULT_NODE_ID;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getGlobal.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object getGlobal(Object key) {
         if (globalState == null || key == null) {
             return null;
@@ -82,10 +110,13 @@ public class WorkflowStateCollection implements State {
         return result;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateGlobal.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @Override
     public void updateGlobal(Map<String, Object> data) {
         if (globalState == null || data == null) {
             return;
@@ -93,20 +124,26 @@ public class WorkflowStateCollection implements State {
         globalState.updateById(nodeId, data);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateTrace.
+     * 
+     * @param span span
+     * @since 0.1.7
      */
+    @Override
     public void updateTrace(Object span) {
         Map<String, Object> spanMap = new LinkedHashMap<>();
         spanMap.put(nodeId, span);
         traceState.putAll(spanMap);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * update.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @Override
     public void update(Map<String, Object> data) {
         if (compState == null) {
             return;
@@ -116,10 +153,14 @@ public class WorkflowStateCollection implements State {
         compState.updateById(nodeId, wrappedData);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object get(Object key) {
         if (compState == null) {
             return null;
@@ -132,6 +173,10 @@ public class WorkflowStateCollection implements State {
 
     /**
      * Get workflow-scoped state by key.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public Object getWorkflow(Object key) {
         if (workflowState == null) {
@@ -145,6 +190,9 @@ public class WorkflowStateCollection implements State {
 
     /**
      * Update workflow-scoped state for the current node.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     public void updateWorkflow(Map<String, Object> data) {
         if (workflowState == null || data == null) {
@@ -153,10 +201,13 @@ public class WorkflowStateCollection implements State {
         workflowState.updateById(nodeId, data);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * dump.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> dump() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("io_state", ioState.getState());
@@ -173,6 +224,8 @@ public class WorkflowStateCollection implements State {
 
     /**
      * Commit component state.
+     * 
+     * @since 0.1.7
      */
     public void commitCmp() {
         compState.commit(nodeId);
@@ -180,16 +233,13 @@ public class WorkflowStateCollection implements State {
     }
 
     /**
-     * Get inputs by a schema map.
-     * Mirrors Python's {@code state.get_inputs(schema)}.
-     *
-     * @param schema the inputs schema (Map or other)
-     * @return the isResolved inputs
+     * getInputs.
+     * 
+     * @param schema schema
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object getInputs(Object schema) {
         if (ioState == null) {
             return null;
@@ -201,16 +251,13 @@ public class WorkflowStateCollection implements State {
     }
 
     /**
-     * Get inputs by a transformer function.
-     * Mirrors Python's {@code state.get_inputs_by_transformer(transformer)}.
-     *
-     * @param transformer a function that transforms state data
-     * @return the transformed inputs
+     * getInputsByTransformer.
+     * 
+     * @param transformer transformer
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object getInputsByTransformer(Object transformer) {
         if (transformer instanceof Function) {
             return ((Function<Object, Object>) transformer).apply(dump());
@@ -221,8 +268,9 @@ public class WorkflowStateCollection implements State {
     /**
      * Set outputs for the current node.
      * Mirrors Python's {@code state.set_outputs(results)}.
-     *
+     * 
      * @param results the output data to write
+     * @since 0.1.7
      */
     public void setOutputs(Object results) {
         if (ioState == null || results == null) {
@@ -236,9 +284,10 @@ public class WorkflowStateCollection implements State {
     /**
      * Get outputs for a specific node.
      * Mirrors Python's {@code state.get_outputs(node_id)}.
-     *
+     * 
      * @param outputNodeId the node identifier whose outputs to retrieve
      * @return the node's output data
+     * @since 0.1.7
      */
     public Object getOutputs(String outputNodeId) {
         if (ioState == null) {
@@ -250,8 +299,9 @@ public class WorkflowStateCollection implements State {
 
     /**
      * Commit user inputs (input data submitted to the workflow).
-     *
+     * 
      * @param inputs a map of user inputs
+     * @since 0.1.7
      */
     public void commitUserInputs(Map<String, Object> inputs) {
         if (ioState == null || globalState == null || inputs == null) {
@@ -265,6 +315,8 @@ public class WorkflowStateCollection implements State {
 
     /**
      * Commit all workflow state partitions.
+     * 
+     * @since 0.1.7
      */
     public void commit() {
         ioState.commit();
@@ -276,36 +328,47 @@ public class WorkflowStateCollection implements State {
     /**
      * Create a node-scoped state sharing the same underlying partitions.
      * Mirrors Python's {@code create_node_state(executable_id, parent_id)}.
+     * 
+     * @param newNodeId newNodeId
+     * @param newParentId newParentId
+     * @return the result
+     * @since 0.1.7
      */
     public WorkflowCommitState createNodeState(String newNodeId, String newParentId) {
-        return new WorkflowCommitState(
-                ioState,
-                globalState,
-                compState,
-                workflowState,
-                traceState,
-                newParentId,
-                newNodeId
-        );
+        return new WorkflowCommitState(ioState, globalState, compState, workflowState, traceState, newParentId,
+                newNodeId);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> getState() {
         return new LinkedHashMap<>();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * setState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
+    @Override
     public void setState(Map<String, Object> state) {
         // Default no-op; overridden by CommitState
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * castMap.
+     * 
+     * @param obj obj
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> castMap(Object obj) {
         return (Map<String, Object>) obj;
     }

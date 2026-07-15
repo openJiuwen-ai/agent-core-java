@@ -1,22 +1,23 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.context.token;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for {@link SimpleTokenCounter}.
  */
 class SimpleTokenCounterTest {
-
     private final SimpleTokenCounter counter = new SimpleTokenCounter();
 
     @Test
@@ -44,8 +45,7 @@ class SimpleTokenCounterTest {
         BaseMessage msg = new BaseMessage("user", "Hello world");
         int tokens = counter.countMessages(List.of(msg));
         // Should be more than just the text (framing overhead)
-        assertTrue(tokens > counter.count("Hello world"),
-                "Message count should include framing overhead");
+        assertTrue(tokens > counter.count("Hello world"), "Message count should include framing overhead");
     }
 
     @Test
@@ -64,10 +64,7 @@ class SimpleTokenCounterTest {
     @Test
     @DisplayName("countTools returns positive value for tools")
     void testCountTools() {
-        ToolInfo tool = ToolInfo.builder()
-                .name("test_tool")
-                .description("A test tool")
-                .build();
+        ToolInfo tool = ToolInfo.builder().name("test_tool").description("A test tool").build();
         int tokens = counter.countTools(List.of(tool));
         assertTrue(tokens > 0);
     }

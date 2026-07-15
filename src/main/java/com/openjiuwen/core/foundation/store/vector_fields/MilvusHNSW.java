@@ -12,33 +12,55 @@ import java.util.Map;
  * <p>
  * Builds a multi-layer graph structure for efficient ANN search.
  * Supports optional quantization variants: SQ, PQ, PRQ.
+ * 
+ * @since 0.1.7
  */
 public class MilvusHNSW extends MilvusVectorField {
-
     private int m = 30;
     private int efConstruction = 360;
     private Float efSearchFactor;
     private String variant;
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> extraConstruct = new HashMap<>();
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> extraSearch = new HashMap<>();
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getIndexType() {
         return "hnsw";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getM.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getM() {
         return m;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setM.
+     * 
+     * @param m m
+     * @since 0.1.7
      */
     public void setM(int m) {
         if (m < 2 || m > 2048) {
@@ -48,14 +70,20 @@ public class MilvusHNSW extends MilvusVectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEfConstruction.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getEfConstruction() {
         return efConstruction;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEfConstruction.
+     * 
+     * @param efConstruction efConstruction
+     * @since 0.1.7
      */
     public void setEfConstruction(int efConstruction) {
         if (efConstruction < 1) {
@@ -65,14 +93,20 @@ public class MilvusHNSW extends MilvusVectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEfSearchFactor.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Float getEfSearchFactor() {
         return efSearchFactor;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEfSearchFactor.
+     * 
+     * @param efSearchFactor efSearchFactor
+     * @since 0.1.7
      */
     public void setEfSearchFactor(Float efSearchFactor) {
         if (efSearchFactor != null && efSearchFactor < 1) {
@@ -82,14 +116,20 @@ public class MilvusHNSW extends MilvusVectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getVariant.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getVariant() {
         return variant;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setVariant.
+     * 
+     * @param variant variant
+     * @since 0.1.7
      */
     public void setVariant(String variant) {
         if (variant != null && !("SQ".equals(variant) || "PQ".equals(variant) || "PRQ".equals(variant))) {
@@ -99,28 +139,40 @@ public class MilvusHNSW extends MilvusVectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtraConstruct.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getExtraConstruct() {
         return extraConstruct;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setExtraConstruct.
+     * 
+     * @param extraConstruct extraConstruct
+     * @since 0.1.7
      */
     public void setExtraConstruct(Map<String, Object> extraConstruct) {
         this.extraConstruct = extraConstruct != null ? extraConstruct : new HashMap<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtraSearch.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getExtraSearch() {
         return extraSearch;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setExtraSearch.
+     * 
+     * @param extraSearch extraSearch
+     * @since 0.1.7
      */
     public void setExtraSearch(Map<String, Object> extraSearch) {
         this.extraSearch = extraSearch != null ? extraSearch : new HashMap<>();
@@ -128,8 +180,8 @@ public class MilvusHNSW extends MilvusVectorField {
 
     /**
      * Validate extra_construct and extra_search parameters based on variant.
-     *
-     * @throws IllegalArgumentException if arguments are invalid for the variant
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         if (variant == null) {
@@ -141,8 +193,8 @@ public class MilvusHNSW extends MilvusVectorField {
             case "SQ": {
                 Object sqType = extraConstruct.getOrDefault("sq_type", "SQ8");
                 String st = sqType.toString();
-                if (!("SQ4U".equals(st) || "SQ6".equals(st) || "SQ8".equals(st)
-                        || "FP16".equals(st) || "BF16".equals(st))) {
+                if (!("SQ4U".equals(st) || "SQ6".equals(st) || "SQ8".equals(st) || "FP16".equals(st)
+                        || "BF16".equals(st))) {
                     errMsg.append("; \"sq_type\" must be one of [\"SQ4U\", \"SQ6\", \"SQ8\", \"FP16\", \"BF16\"]");
                 }
                 errMsg.append(validateSqConstruct(extraConstruct));
@@ -177,10 +229,14 @@ public class MilvusHNSW extends MilvusVectorField {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toDict.
+     * 
+     * @param stage stage
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> toDict(String stage) {
         Map<String, Object> result = new HashMap<>();
         if (STAGE_CONSTRUCT.equals(stage)) {

@@ -16,14 +16,14 @@ import java.util.Map;
  * Remote sandbox gateway connection configuration.
  * <p>
  * Mirrors Python's {@code SandboxGatewayConfig} in {@code sys_operation/config.py}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class SandboxGatewayConfig {
-
-    /** Isolation and naming strategy for the sandbox instance. */
     @Builder.Default
     private SandboxIsolationConfig isolation = SandboxIsolationConfig.builder().build();
 
@@ -38,15 +38,27 @@ public class SandboxGatewayConfig {
     @Builder.Default
     private String gatewayUrl = "";
 
-    /** Global request parameters. */
+    /**
+     * Global request parameters.
+     * 
+     * @since 0.1.7
+     */
     @Builder.Default
     private Map<String, Object> params = new HashMap<>();
 
-    /** Authentication HTTP headers. */
+    /**
+     * Authentication HTTP headers.
+     * 
+     * @since 0.1.7
+     */
     @Builder.Default
     private Map<String, String> authHeaders = new HashMap<>();
 
-    /** Authentication query parameters. */
+    /**
+     * Authentication query parameters.
+     * 
+     * @since 0.1.7
+     */
     @Builder.Default
     private Map<String, String> authQueryParams = new HashMap<>();
 }

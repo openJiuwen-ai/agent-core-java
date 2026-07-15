@@ -8,10 +8,16 @@ import com.openjiuwen.harness.task_loop.TaskIterationContext;
 
 /**
  * Public interface TaskIterationRail used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public interface TaskIterationRail {
+    /**
+     * afterTaskIteration.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
+     */
     default void afterTaskIteration(TaskIterationContext ctx) {
     }
 }

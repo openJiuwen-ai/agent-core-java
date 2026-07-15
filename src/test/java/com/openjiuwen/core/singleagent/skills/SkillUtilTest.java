@@ -1,17 +1,16 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent.skills;
 
-import org.junit.jupiter.api.Test;
-
 import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
 
 /**
  * Unit tests for {@link SkillUtil} and {@link GitHubTree}.
  */
 class SkillUtilTest {
-
     // ========== SkillUtil ==========
-
     @Test
     void testSkillUtilInitialState() {
         SkillUtil util = new SkillUtil("sysop-1");
@@ -38,11 +37,7 @@ class SkillUtilTest {
     void testGetSkillPromptFormat() {
         SkillUtil util = new SkillUtil("test");
         // Register a skill programmatically via the skill manager
-        Skill skill = Skill.builder()
-                .name("testSkill")
-                .description("A test skill")
-                .directory("/skills/test")
-                .build();
+        Skill skill = Skill.builder().name("testSkill").description("A test skill").directory("/skills/test").build();
         util.getSkillManager().getAll(); // Just verify it's accessible
 
         // The prompt should be generated even without skills

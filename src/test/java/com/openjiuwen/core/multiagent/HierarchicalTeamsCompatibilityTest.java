@@ -1,4 +1,7 @@
+
 package com.openjiuwen.core.multiagent;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.multiagent.schema.TeamCard;
 import com.openjiuwen.core.multiagent.teams.hierarchical_msgbus.HierarchicalMsgBusTeam;
@@ -10,16 +13,14 @@ import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HierarchicalTeamsCompatibilityTest {
-
     @Test
     void hierarchicalToolsTeamShouldDispatchToRootAgent() {
         TeamCard card = teamCard("hier-tools");
@@ -36,7 +37,8 @@ class HierarchicalTeamsCompatibilityTest {
     void hierarchicalMsgBusTeamShouldDispatchToSupervisor() {
         TeamCard card = teamCard("hier-msgbus");
         AgentCard supervisor = agentCard("supervisor");
-        HierarchicalMsgBusTeam team = new HierarchicalMsgBusTeam(card, new HierarchicalMsgBusTeamConfig(supervisor, 30.0));
+        HierarchicalMsgBusTeam team =
+            new HierarchicalMsgBusTeam(card, new HierarchicalMsgBusTeamConfig(supervisor, 30.0));
         team.addAgent(supervisor, () -> new EchoAgent(supervisor, Map.of("result", "supervised")));
 
         Object result = team.invoke("hello", new AgentGroupSessionApi("hier-msgbus-session"));
@@ -65,7 +67,6 @@ class HierarchicalTeamsCompatibilityTest {
     }
 
     private static final class EchoAgent extends BaseAgent {
-
         private final Object output;
 
         private EchoAgent(AgentCard card, Object output) {

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.foundation.llm.output_parsers;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -14,7 +15,6 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -26,17 +26,34 @@ import java.util.regex.Pattern;
  * or parsing plain JSON text.
  * <p>
  * Mirrors Python's {@code JsonOutputParser}.
+ * 
+ * @since 0.1.7
  */
 public class JsonOutputParser extends BaseOutputParser {
-
     private static final Logger LOG = LoggerFactory.getLogger(JsonOutputParser.class);
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern JSON_CODE_BLOCK = Pattern.compile("```json\\n(.*?)```", Pattern.DOTALL);
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parse.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object parse(Object inputs) {
         String text;
         String modelName = null;
@@ -67,16 +84,20 @@ public class JsonOutputParser extends BaseOutputParser {
 
         try {
             return MAPPER.readValue(jsonStr, Object.class);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             LOG.error("Failed to decode JSON from LLM output. model={}", modelName, e);
             return null;
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * streamParse.
+     * 
+     * @param streamingInputs streamingInputs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Iterator<Object> streamParse(Iterator<?> streamingInputs) {
         return new JsonStreamIterator(streamingInputs);
     }
@@ -85,19 +106,33 @@ public class JsonOutputParser extends BaseOutputParser {
      * Iterator that buffers streaming chunks and yields parsed JSON as it becomes available.
      */
     private static class JsonStreamIterator implements Iterator<Object> {
-
         private final Iterator<?> source;
+
+        /**
+         * StringBuilder.
+         * 
+         * @since 0.1.7
+         */
         private final StringBuilder buffer = new StringBuilder();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<Object> pending = new ArrayList<>();
 
         JsonStreamIterator(Iterator<?> source) {
             this.source = source;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * hasNext.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public boolean hasNext() {
             if (!pending.isEmpty()) {
                 return true;
@@ -109,8 +144,7 @@ public class JsonOutputParser extends BaseOutputParser {
                 } else if (chunk instanceof String s) {
                     buffer.append(s);
                 } else {
-                    LOG.warn("Unsupported chunk type for stream_parse: {}",
-                            chunk != null ? chunk.getClass() : "null");
+                    LOG.warn("Unsupported chunk type for stream_parse: {}", chunk != null ? chunk.getClass() : "null");
                     continue;
                 }
                 tryParse();
@@ -125,10 +159,13 @@ public class JsonOutputParser extends BaseOutputParser {
             return !pending.isEmpty();
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * next.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public Object next() {
             if (pending.isEmpty() && !hasNext()) {
                 throw new NoSuchElementException();
@@ -137,6 +174,11 @@ public class JsonOutputParser extends BaseOutputParser {
         }
 
         @SuppressWarnings("unchecked")
+        /**
+         * tryParse.
+         * 
+         * @since 0.1.7
+         */
         private void tryParse() {
             String text = buffer.toString();
             Matcher matcher = JSON_CODE_BLOCK.matcher(text);
@@ -146,7 +188,7 @@ public class JsonOutputParser extends BaseOutputParser {
                     Object parsed = MAPPER.readValue(jsonStr, Object.class);
                     pending.add(parsed);
                     buffer.delete(0, matcher.end());
-                } catch (Exception e) {
+                } catch (JsonProcessingException e) {
                     LOG.error("Streaming JSON parse error", e);
                 }
             } else if (text.strip().startsWith("{") && text.strip().endsWith("}")) {
@@ -154,12 +196,19 @@ public class JsonOutputParser extends BaseOutputParser {
                     Object parsed = MAPPER.readValue(text.strip(), Object.class);
                     pending.add(parsed);
                     buffer.setLength(0);
-                } catch (Exception e) {
+                } catch (JsonProcessingException e) {
                     // Not yet complete, keep buffering
                 }
+            } else {
+                // no-op
             }
         }
 
+        /**
+         * tryParseFinal.
+         * 
+         * @since 0.1.7
+         */
         private void tryParseFinal() {
             String text = buffer.toString().strip();
             if (text.isEmpty()) {
@@ -175,7 +224,7 @@ public class JsonOutputParser extends BaseOutputParser {
             try {
                 Object parsed = MAPPER.readValue(jsonStr, Object.class);
                 pending.add(parsed);
-            } catch (Exception e) {
+            } catch (JsonProcessingException e) {
                 LOG.warn("Remaining buffer could not be parsed as JSON", e);
             }
             buffer.setLength(0);

@@ -11,22 +11,25 @@ import java.util.Map;
  * Output model for the Memory Write component.
  * <p>
  * Mirrors Python's {@code MemoryWriteOutput}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 public class MemoryWriteOutput {
     private boolean isSuccess = true;
 
     /**
      * Default constructor.
+     * 
+     * @since 0.1.7
      */
     public MemoryWriteOutput() {
     }
 
     /**
      * Constructor with success parameter.
-     *
+     * 
      * @param isSuccess whether the operation was successful
+     * @since 0.1.7
      */
     public MemoryWriteOutput(boolean isSuccess) {
         this.isSuccess = isSuccess;
@@ -34,8 +37,9 @@ public class MemoryWriteOutput {
 
     /**
      * Check if the operation was successful.
-     *
+     * 
      * @return true if successful, false otherwise
+     * @since 0.1.7
      */
     public boolean isSuccess() {
         return isSuccess;
@@ -43,8 +47,9 @@ public class MemoryWriteOutput {
 
     /**
      * Set the success status.
-     *
+     * 
      * @param isSuccess whether the operation was successful
+     * @since 0.1.7
      */
     public void setSuccess(boolean isSuccess) {
         this.isSuccess = isSuccess;
@@ -52,8 +57,9 @@ public class MemoryWriteOutput {
 
     /**
      * Convert to a plain map representation.
-     *
+     * 
      * @return the map representation
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> map = new LinkedHashMap<>();

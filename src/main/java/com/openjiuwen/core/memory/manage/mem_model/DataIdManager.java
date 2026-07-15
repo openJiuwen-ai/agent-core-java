@@ -9,16 +9,18 @@ import java.security.SecureRandom;
 
 /**
  * Generates unique memory IDs using timestamp + random + user hash.
+ * 
+ * @since 0.1.7
  */
 public class DataIdManager {
-
     private final SecureRandom random = new SecureRandom();
 
     /**
      * Generate a unique hex ID based on current time, random bytes, and user ID hash.
-     *
+     * 
      * @param userId the user identifier
      * @return hex string ID (24 chars = 12 bytes)
+     * @since 0.1.7
      */
     public String generateNextId(String userId) {
         long t = System.currentTimeMillis() & 0xFFFFFFFFFFFFL; // 6 bytes

@@ -13,24 +13,28 @@ import java.util.Map;
  * JSON parser for LLM response content.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.llm_comp.JsonParser}.
+ * 
+ * @since 0.1.7
  */
 public final class JsonParser {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * JsonParser.
+     * 
+     * @since 0.1.7
+     */
     private JsonParser() {
     }
 
     /**
-     * Parse JSON content from LLM response, stripping markdown code blocks if present.
-     *
-     * @param responseContent the raw response content
-     * @return parsed map
+     * parseJsonContent.
+     * 
+     * @param responseContent responseContent
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static Map<String, Object> parseJsonContent(String responseContent) {
         String content = cleanMarkdownBlocks(responseContent);
 
@@ -44,6 +48,9 @@ public final class JsonParser {
 
     /**
      * Remove markdown code block wrappers from content.
+     *
+     * @param content content
+     * @return String
      */
     static String cleanMarkdownBlocks(String content) {
         if (content == null) {

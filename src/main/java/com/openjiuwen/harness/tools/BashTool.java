@@ -17,28 +17,40 @@ import java.util.concurrent.CompletionException;
 
 /**
  * Public class BashTool used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class BashTool {
     private final String permissionMode;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BashTool.
+     * 
+     * @since 0.1.7
      */
     public BashTool() {
         this("auto");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BashTool.
+     * 
+     * @param permissionMode permissionMode
+     * @since 0.1.7
      */
     public BashTool(String permissionMode) {
         this.permissionMode = permissionMode != null ? permissionMode : "auto";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param command command
+     * @param workdir workdir
+     * @param isRunInBackground isRunInBackground
+     * @param maxOutputChars maxOutputChars
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput invoke(String command, String workdir, boolean isRunInBackground, Integer maxOutputChars) {
         if (command == null || command.isBlank()) {
@@ -63,9 +75,7 @@ public class BashTool {
                     builder.directory(new java.io.File(workdir));
                 }
                 Process process = builder.start();
-                return ToolOutput.builder()
-                        .success(true)
-                        .data(Map.of("pid", process.pid(), "status", "started"))
+                return ToolOutput.builder().success(true).data(Map.of("pid", process.pid(), "status", "started"))
                         .build();
             }
 
@@ -74,10 +84,10 @@ public class BashTool {
                 builder.directory(new java.io.File(workdir));
             }
             Process process = builder.start();
-            CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(
-                    () -> read(process.getInputStream()));
-            CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(
-                    () -> read(process.getErrorStream()));
+            CompletableFuture<String> stdoutFuture =
+                CompletableFuture.supplyAsync(() -> read(process.getInputStream()));
+            CompletableFuture<String> stderrFuture =
+                CompletableFuture.supplyAsync(() -> read(process.getErrorStream()));
             int exitCode = process.onExit().join().exitValue();
             String stdout = stdoutFuture.join();
             String stderr = stderrFuture.join();
@@ -90,9 +100,7 @@ public class BashTool {
             payload.put("return_code_interpretation", interpret(command, exitCode));
             payload.put("no_output_expected", isSilent(command));
             payload.put("destructive_warning", getDestructiveWarning(command));
-            return ToolOutput.builder()
-                    .success(isExecutionSuccessful)
-                    .data(payload)
+            return ToolOutput.builder().success(isExecutionSuccessful).data(payload)
                     .error(isExecutionSuccessful ? null : truncate(stderr.isBlank() ? "command failed" : stderr, limit))
                     .build();
         } catch (IOException | SecurityException | CompletionException ex) {
@@ -101,7 +109,11 @@ public class BashTool {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * checkInjection.
+     * 
+     * @param command command
+     * @return the result
+     * @since 0.1.7
      */
     public static InjectionCheck checkInjection(String command) {
         if (command.contains("`")) {
@@ -117,7 +129,11 @@ public class BashTool {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDestructiveWarning.
+     * 
+     * @param command command
+     * @return the result
+     * @since 0.1.7
      */
     public static String getDestructiveWarning(String command) {
         String lower = command.toLowerCase(Locale.ROOT);
@@ -139,19 +155,39 @@ public class BashTool {
         return null;
     }
 
+    /**
+     * looksLikeWrite.
+     * 
+     * @param command command
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean looksLikeWrite(String command) {
         String lower = command.toLowerCase(Locale.ROOT);
-        return List.of(
-                        "touch ", "mkdir ", "rm ", "mv ", "cp ",
-                        "git commit", "git reset", "git clean", "echo ")
-                .stream()
-                .anyMatch(lower::contains);
+        return List.of("touch ", "mkdir ", "rm ", "mv ", "cp ", "git commit", "git reset", "git clean", "echo ")
+                .stream().anyMatch(lower::contains);
     }
 
+    /**
+     * isNonErrorExit.
+     * 
+     * @param command command
+     * @param exitCode exitCode
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isNonErrorExit(String command, int exitCode) {
         return command.contains("grep") && exitCode == 1;
     }
 
+    /**
+     * interpret.
+     * 
+     * @param command command
+     * @param exitCode exitCode
+     * @return the result
+     * @since 0.1.7
+     */
     private static String interpret(String command, int exitCode) {
         if (command.contains("grep") && exitCode == 1) {
             return "No matches found";
@@ -159,11 +195,26 @@ public class BashTool {
         return exitCode == 0 ? "Command completed successfully" : "Command failed";
     }
 
+    /**
+     * isSilent.
+     * 
+     * @param command command
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isSilent(String command) {
         String lower = command.toLowerCase(Locale.ROOT);
         return lower.startsWith("mkdir") || lower.startsWith("touch") || lower.startsWith("rm ");
     }
 
+    /**
+     * truncate.
+     * 
+     * @param text text
+     * @param limit limit
+     * @return the result
+     * @since 0.1.7
+     */
     private static String truncate(String text, int limit) {
         if (text == null) {
             return "";
@@ -174,6 +225,13 @@ public class BashTool {
         return text.substring(0, Math.max(0, limit - 32)) + "\n...[lines omitted]...";
     }
 
+    /**
+     * read.
+     * 
+     * @param stream stream
+     * @return the result
+     * @since 0.1.7
+     */
     private static String read(InputStream stream) {
         try {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
@@ -185,10 +243,10 @@ public class BashTool {
     }
 
     /**
- * Public record InjectionCheck used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record InjectionCheck(boolean isBlocked, String reason) {
+     * Public record InjectionCheck used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record InjectionCheck(boolean isBlocked, String reason) {
     }
 }

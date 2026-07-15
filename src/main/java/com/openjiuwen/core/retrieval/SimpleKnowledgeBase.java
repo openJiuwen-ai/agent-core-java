@@ -33,34 +33,46 @@ import java.util.UUID;
 
 /**
  * Standard chunk-based knowledge base.
+ * 
+ * @since 0.1.7
  */
 public class SimpleKnowledgeBase extends KnowledgeBase {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * SimpleKnowledgeBase.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public SimpleKnowledgeBase(KnowledgeBaseConfig config) {
         super(config);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SimpleKnowledgeBase.
+     * 
+     * @param config config
+     * @param vectorStore vectorStore
+     * @param embedModel embedModel
+     * @param parser parser
+     * @param chunker chunker
+     * @param indexManager indexManager
+     * @param llmClient llmClient
+     * @param retriever retriever
+     * @since 0.1.7
      */
-    public SimpleKnowledgeBase(KnowledgeBaseConfig config,
-                               VectorStore vectorStore,
-                               Embedding embedModel,
-                               Parser parser,
-                               Chunker chunker,
-                               Indexer indexManager,
-                               BaseModelClient llmClient,
-                               Retriever retriever) {
+    public SimpleKnowledgeBase(KnowledgeBaseConfig config, VectorStore vectorStore, Embedding embedModel, Parser parser,
+            Chunker chunker, Indexer indexManager, BaseModelClient llmClient, Retriever retriever) {
         super(config, vectorStore, embedModel, parser, chunker, null, indexManager, llmClient, retriever);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addDocuments.
+     * 
+     * @param documents documents
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<String> addDocuments(List<Document> documents) {
         if (chunker == null) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND, "chunker is required");
@@ -78,23 +90,24 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
             normalized.add(new Document(docId, document.getText(), document.getMetadata()));
             docIds.add(docId);
         }
-        boolean built = activeIndexManager.buildIndex(
-                chunker.chunkDocuments(normalized),
-                new IndexConfig(chunkIndexName(), config.getIndexType()),
-                embedModel,
-                Map.of());
+        boolean built = activeIndexManager.buildIndex(chunker.chunkDocuments(normalized),
+                new IndexConfig(chunkIndexName(), config.getIndexType()), embedModel, Map.of());
         if (!built) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_INDEX_BUILD_EXECUTION_ERROR,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_INDEX_BUILD_EXECUTION_ERROR,
                     "Failed to build index");
         }
         return docIds;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieve.
+     * 
+     * @param query query
+     * @param retrievalConfig retrievalConfig
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<RetrievalResult> retrieve(String query, RetrievalConfig retrievalConfig) {
         RetrievalConfig config = retrievalConfig == null ? new RetrievalConfig() : retrievalConfig;
         Retriever activeRetriever = resolveRetriever(config);
@@ -106,10 +119,14 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         return activeRetriever.retrieve(query, config.getTopK(), config.getScoreThreshold(), mode, optionsFrom(config));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteDocuments.
+     * 
+     * @param docIds docIds
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean deleteDocuments(List<String> docIds) {
         Indexer activeIndexManager = requireIndexManager();
         if (strictValidation && vectorStore != null) {
@@ -122,10 +139,14 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         return deleted;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateDocuments.
+     * 
+     * @param documents documents
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<String> updateDocuments(List<Document> documents) {
         if (chunker == null) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND, "chunker is required");
@@ -142,18 +163,18 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
             ids.add(docId);
             activeIndexManager.updateIndex(
                     chunker.chunkDocuments(List.of(new Document(docId, document.getText(), document.getMetadata()))),
-                    docId,
-                    new IndexConfig(chunkIndexName(), config.getIndexType()),
-                    embedModel,
-                    Map.of());
+                    docId, new IndexConfig(chunkIndexName(), config.getIndexType()), embedModel, Map.of());
         }
         return ids;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getStatistics.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> getStatistics() {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("kb_id", config.getKbId());
@@ -169,14 +190,21 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * chunkIndexName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected String chunkIndexName() {
         return "kb_" + config.getKbId() + "_chunks";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * optionsFrom.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     protected Map<String, Object> optionsFrom(RetrievalConfig config) {
         Map<String, Object> options = new LinkedHashMap<>();
@@ -190,14 +218,17 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveRetriever.
+     * 
+     * @param retrievalConfig retrievalConfig
+     * @return the result
+     * @since 0.1.7
      */
     protected Retriever resolveRetriever(RetrievalConfig retrievalConfig) {
         Retriever baseRetriever = retriever;
         if (baseRetriever == null) {
             if (vectorStore == null) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
                         "vector_store or retriever is required");
             }
             baseRetriever = switch (config.getIndexType()) {
@@ -208,8 +239,7 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
         }
         if (retrievalConfig.isAgentic()) {
             if (llmClient == null) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_RETRIEVER_LLM_CLIENT_NOT_FOUND,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_LLM_CLIENT_NOT_FOUND,
                         "llm_client is required");
             }
             return new AgenticRetriever(baseRetriever, llmClient);
@@ -218,12 +248,17 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieveMultiKb.
+     * 
+     * @param knowledgeBases knowledgeBases
+     * @param query query
+     * @param config config
+     * @param topK topK
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<String> retrieveMultiKb(List<? extends KnowledgeBase> knowledgeBases,
-                                               String query,
-                                               RetrievalConfig config,
-                                               Integer topK) {
+    public static List<String> retrieveMultiKb(List<? extends KnowledgeBase> knowledgeBases, String query,
+            RetrievalConfig config, Integer topK) {
         if (knowledgeBases == null || knowledgeBases.isEmpty()) {
             return List.of();
         }
@@ -240,6 +275,8 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
                     }
                 }
             } catch (Exception ignored) {
+
+                // Ignore.
             }
         }
         int limit = topK != null ? topK : (config != null ? config.getTopK() : 5);
@@ -254,18 +291,29 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
 
     /**
      * Convenience overload without config/topK.
+     * 
+     * @param knowledgeBases knowledgeBases
+     * @param query query
+     * @param topK topK
+     * @return the result
+     * @since 0.1.7
      */
     public static List<String> retrieveMultiKb(List<? extends KnowledgeBase> knowledgeBases, String query, int topK) {
         return retrieveMultiKb(knowledgeBases, query, null, topK);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieveMultiKbWithSource.
+     * 
+     * @param knowledgeBases knowledgeBases
+     * @param query query
+     * @param config config
+     * @param topK topK
+     * @return the result
+     * @since 0.1.7
      */
     public static List<MultiKBRetrievalResult> retrieveMultiKbWithSource(List<? extends KnowledgeBase> knowledgeBases,
-                                                                         String query,
-                                                                         RetrievalConfig config,
-                                                                         Integer topK) {
+            String query, RetrievalConfig config, Integer topK) {
         if (knowledgeBases == null || knowledgeBases.isEmpty()) {
             return List.of();
         }
@@ -276,20 +324,14 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
             try {
                 for (RetrievalResult result : kb.retrieve(query, retrievalConfig)) {
                     MultiKBRetrievalResult aggregate = byText.get(result.getText());
-                    double rawScore = result.getMetadata().get("raw_score") instanceof Number n
-                            ? n.doubleValue()
-                            : result.getScore();
+                    double rawScore =
+                        result.getMetadata().get("raw_score") instanceof Number n ? n.doubleValue() : result.getScore();
                     double scaled = result.getMetadata().get("raw_score_scaled") instanceof Number n
                             ? n.doubleValue()
                             : result.getScore();
                     if (aggregate == null) {
-                        aggregate = new MultiKBRetrievalResult(
-                                result.getText(),
-                                result.getScore(),
-                                rawScore,
-                                scaled,
-                                List.of(kbId),
-                                result.getMetadata());
+                        aggregate = new MultiKBRetrievalResult(result.getText(), result.getScore(), rawScore, scaled,
+                                List.of(kbId), result.getMetadata());
                         byText.put(result.getText(), aggregate);
                     } else {
                         if (result.getScore() > aggregate.getScore()) {
@@ -304,6 +346,8 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
                     }
                 }
             } catch (Exception ignored) {
+
+                // Ignore.
             }
         }
         int limit = topK != null ? topK : (config != null ? config.getTopK() : 5);
@@ -314,10 +358,15 @@ public class SimpleKnowledgeBase extends KnowledgeBase {
 
     /**
      * Convenience overload without config/topK.
+     * 
+     * @param knowledgeBases knowledgeBases
+     * @param query query
+     * @param topK topK
+     * @return the result
+     * @since 0.1.7
      */
     public static List<MultiKBRetrievalResult> retrieveMultiKbWithSource(List<? extends KnowledgeBase> knowledgeBases,
-                                                                         String query,
-                                                                         int topK) {
+            String query, int topK) {
         return retrieveMultiKbWithSource(knowledgeBases, query, null, topK);
     }
 }

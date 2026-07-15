@@ -13,6 +13,7 @@ import com.openjiuwen.harness.security.PermissionCheckResult;
 import com.openjiuwen.harness.security.PermissionEngine;
 import com.openjiuwen.harness.security.PermissionLevel;
 import com.openjiuwen.harness.security.ToolPermissionHost;
+
 import lombok.Getter;
 
 import java.util.LinkedHashMap;
@@ -20,8 +21,8 @@ import java.util.Map;
 
 /**
  * Public class PermissionInterruptRail used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 @Getter
 public class PermissionInterruptRail extends BaseInterruptRail {
@@ -29,7 +30,11 @@ public class PermissionInterruptRail extends BaseInterruptRail {
     private final ToolPermissionHost host;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PermissionInterruptRail.
+     * 
+     * @param engine engine
+     * @param host host
+     * @since 0.1.7
      */
     public PermissionInterruptRail(PermissionEngine engine, ToolPermissionHost host) {
         super(null);
@@ -41,21 +46,23 @@ public class PermissionInterruptRail extends BaseInterruptRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveInterrupt.
+     * 
+     * @param ctx ctx
+     * @param toolCall toolCall
+     * @param userInput userInput
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected InterruptDecision resolveInterrupt(AgentCallbackContext ctx, ToolCall toolCall, Object userInput) {
         String toolName = toolCall != null ? toolCall.getName() : "";
         Object toolArgsObj = ctx.getInputs() instanceof com.openjiuwen.core.singleagent.rail.ToolCallInputs inputs
                 ? inputs.getToolArgs()
                 : Map.of();
         @SuppressWarnings("unchecked")
-        Map<String, Object> toolArgs = toolArgsObj instanceof Map<?, ?> map
-                ? (Map<String, Object>) map
-                : new LinkedHashMap<>();
+        Map<String, Object> toolArgs =
+            toolArgsObj instanceof Map<?, ?> map ? (Map<String, Object>) map : new LinkedHashMap<>();
         PermissionCheckResult result = engine.checkPermission(toolName, toolArgs);
         if (result.getPermission() == PermissionLevel.ALLOW) {
             return approve();
@@ -63,12 +70,7 @@ public class PermissionInterruptRail extends BaseInterruptRail {
         if (result.getPermission() == PermissionLevel.DENY) {
             return reject("Permission denied for tool: " + toolName);
         }
-        return interrupt(InterruptRequest.builder()
-                .message("Permission approval required for tool: " + toolName)
-                .context(Map.of(
-                        "tool_name", toolName,
-                        "matched_rule", result.getMatchedRule()
-                ))
-                .build());
+        return interrupt(InterruptRequest.builder().message("Permission approval required for tool: " + toolName)
+                .context(Map.of("tool_name", toolName, "matched_rule", result.getMatchedRule())).build());
     }
 }

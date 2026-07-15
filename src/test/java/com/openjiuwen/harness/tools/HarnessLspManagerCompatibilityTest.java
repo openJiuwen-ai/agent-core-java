@@ -1,8 +1,12 @@
+
 package com.openjiuwen.harness.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.harness.lsp.core.LSPServerManager;
 import com.openjiuwen.harness.lsp.core.LspDiagnostic;
 import com.openjiuwen.harness.lsp.core.LspDiagnosticRegistry;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -13,10 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessLspManagerCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
@@ -32,13 +33,8 @@ class HarnessLspManagerCompatibilityTest {
         assertThat(server.handlers).containsKey("textDocument/publishDiagnostics");
         assertThat(server.handlerRegistrations).isEqualTo(1);
 
-        server.handlers.get("textDocument/publishDiagnostics").accept(Map.of(
-                "uri", "file:///workspace/a.py",
-                "diagnostics", List.of(Map.of(
-                        "message", "err",
-                        "severity", 1
-                ))
-        ));
+        server.handlers.get("textDocument/publishDiagnostics").accept(Map.of("uri", "file:///workspace/a.py",
+                "diagnostics", List.of(Map.of("message", "err", "severity", 1))));
 
         List<LspDiagnostic> pending = LspDiagnosticRegistry.getInstance().getAndClear();
         assertThat(pending).hasSize(1);
@@ -62,7 +58,9 @@ class HarnessLspManagerCompatibilityTest {
         assertThat(((Map<?, ?>) server.notifications.get(0).params.get("textDocument")).get("version")).isEqualTo(0);
         assertThat(server.notifications.get(1).method).isEqualTo("textDocument/didChange");
         assertThat(((Map<?, ?>) server.notifications.get(1).params.get("textDocument")).get("version")).isEqualTo(1);
-        assertThat(((Map<?, ?>) ((List<?>) server.notifications.get(1).params.get("contentChanges")).get(0)).get("text")).isEqualTo("print('b')");
+        assertThat(
+                ((Map<?, ?>) ((List<?>) server.notifications.get(1).params.get("contentChanges")).get(0)).get("text"))
+                .isEqualTo("print('b')");
         assertThat(((Map<?, ?>) server.notifications.get(2).params.get("textDocument")).get("version")).isEqualTo(2);
         assertThat(manager.getDocumentVersion(file.toString())).isEqualTo(2);
     }
@@ -91,15 +89,10 @@ class HarnessLspManagerCompatibilityTest {
     @Test
     void getPendingDiagnosticsShouldSupportLimits() {
         LspDiagnosticRegistry.reset();
-        LspDiagnosticRegistry.getInstance().register("pyright", "file:///a.py", List.of(
-                Map.of("message", "e1"),
-                Map.of("message", "e2"),
-                Map.of("message", "e3")
-        ));
-        LspDiagnosticRegistry.getInstance().register("ruff", "file:///b.py", List.of(
-                Map.of("message", "e4"),
-                Map.of("message", "e5")
-        ));
+        LspDiagnosticRegistry.getInstance().register("pyright", "file:///a.py",
+                List.of(Map.of("message", "e1"), Map.of("message", "e2"), Map.of("message", "e3")));
+        LspDiagnosticRegistry.getInstance().register("ruff", "file:///b.py",
+                List.of(Map.of("message", "e4"), Map.of("message", "e5")));
 
         List<LspDiagnostic> limited = LSPServerManager.getPendingDiagnostics(2, 3);
 

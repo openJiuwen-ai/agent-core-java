@@ -8,7 +8,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 
 /**
  * Runtime exception used to signal a tool interruption inside the ReAct loop.
- *
+ * 
  * @since 0.1.7
  */
 public class ToolInterruptException extends RuntimeException {
@@ -17,9 +17,10 @@ public class ToolInterruptException extends RuntimeException {
 
     /**
      * Create a tool interruption exception.
-     *
+     * 
      * @param request interruption request payload
      * @param toolCall interrupted tool call
+     * @since 0.1.7
      */
     public ToolInterruptException(InterruptRequest request, ToolCall toolCall) {
         super(request != null ? request.getMessage() : "Tool execution interrupted");
@@ -29,8 +30,9 @@ public class ToolInterruptException extends RuntimeException {
 
     /**
      * Return the interruption request.
-     *
+     * 
      * @return interruption request
+     * @since 0.1.7
      */
     public InterruptRequest getRequest() {
         return request;
@@ -38,8 +40,9 @@ public class ToolInterruptException extends RuntimeException {
 
     /**
      * Return the interrupted tool call.
-     *
+     * 
      * @return interrupted tool call
+     * @since 0.1.7
      */
     public ToolCall getToolCall() {
         return toolCall;

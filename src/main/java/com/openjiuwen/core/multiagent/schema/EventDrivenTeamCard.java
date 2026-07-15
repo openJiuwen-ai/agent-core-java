@@ -15,6 +15,8 @@ import java.util.Map;
 /**
  * Event-driven compatibility card aligned with Python's
  * {@code EventDrivenTeamCard}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
@@ -22,7 +24,11 @@ public class EventDrivenTeamCard extends TeamCard {
     private Map<String, List<String>> subscriptions = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * putSubscription.
+     * 
+     * @param agentId agentId
+     * @param topics topics
+     * @since 0.1.7
      */
     public void putSubscription(String agentId, List<String> topics) {
         subscriptions.put(agentId, topics != null ? new ArrayList<>(topics) : new ArrayList<>());

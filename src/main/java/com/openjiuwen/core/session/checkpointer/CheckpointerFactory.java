@@ -17,13 +17,25 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link #register(String, CheckpointerProvider)} without modifying Core source.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.checkpointer.checkpointer.CheckpointerFactory}.
- *
- * @since 0.1.12
+ * 
+ * @since 0.1.7
  */
 public final class CheckpointerFactory {
     private static final Map<String, CheckpointerProvider> REGISTRY = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, Checkpointer> TYPE_CHECKPOINTERS = new ConcurrentHashMap<>();
     private static Checkpointer defaultCheckpointer = null;
+
+    /**
+     * InMemoryCheckpointer.
+     * 
+     * @since 0.1.7
+     */
     private static final Checkpointer DEFAULT_INMEMORY_CHECKPOINTER = new InMemoryCheckpointer();
 
     static {
@@ -37,14 +49,20 @@ public final class CheckpointerFactory {
         }
     }
 
+    /**
+     * CheckpointerFactory.
+     * 
+     * @since 0.1.7
+     */
     private CheckpointerFactory() {
     }
 
     /**
      * Register a checkpointer provider for a given type name.
-     *
-     * @param name     the type name
+     * 
+     * @param name the type name
      * @param provider the provider
+     * @since 0.1.7
      */
     public static void register(String name, CheckpointerProvider provider) {
         REGISTRY.put(name, provider);
@@ -52,9 +70,10 @@ public final class CheckpointerFactory {
 
     /**
      * Create a checkpointer from a CheckpointerConfig.
-     *
+     * 
      * @param checkpointerConf the checkpointer configuration
      * @return the checkpointer instance
+     * @since 0.1.7
      */
     public static Checkpointer create(CheckpointerConfig checkpointerConf) {
         if (checkpointerConf == null) {
@@ -65,10 +84,11 @@ public final class CheckpointerFactory {
 
     /**
      * Create a checkpointer from config.
-     *
+     * 
      * @param type the checkpointer type
      * @param conf the configuration map
      * @return the checkpointer instance
+     * @since 0.1.7
      */
     public static Checkpointer create(String type, Map<String, Object> conf) {
         CheckpointerProvider provider = REGISTRY.get(type);
@@ -80,6 +100,9 @@ public final class CheckpointerFactory {
 
     /**
      * Set the default checkpointer instance.
+     * 
+     * @param checkpointer checkpointer
+     * @since 0.1.7
      */
     public static void setDefaultCheckpointer(Checkpointer checkpointer) {
         defaultCheckpointer = checkpointer;
@@ -87,9 +110,10 @@ public final class CheckpointerFactory {
 
     /**
      * Set a checkpointer instance for a specific type.
-     *
-     * @param storeType    the type
+     * 
+     * @param storeType the type
      * @param checkpointer the instance
+     * @since 0.1.7
      */
     public static void setCheckpointer(String storeType, Checkpointer checkpointer) {
         TYPE_CHECKPOINTERS.put(storeType, checkpointer);
@@ -97,9 +121,10 @@ public final class CheckpointerFactory {
 
     /**
      * Get checkpointer instance.
-     *
+     * 
      * @param storeType optional checkpointer type
      * @return checkpointer instance
+     * @since 0.1.7
      */
     public static Checkpointer getCheckpointer(String storeType) {
         if (storeType != null) {
@@ -119,6 +144,9 @@ public final class CheckpointerFactory {
 
     /**
      * Get the default in-memory checkpointer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Checkpointer getCheckpointer() {
         return getCheckpointer(null);

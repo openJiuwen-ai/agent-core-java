@@ -8,25 +8,43 @@ package com.openjiuwen.core.context.context;
  * Context-engine callback event names.
  * <p>
  * Mirrors Python's {@code ContextEvents}.
+ * 
+ * @since 0.1.7
  */
 public final class ContextEvents {
     /**
-     * Auto-generated for codecheck compliance.
+     * CONTEXT_UPDATED.
+     * 
+     * @since 0.1.7
      */
     public static final String CONTEXT_UPDATED = "context_updated";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * CONTEXT_RETRIEVED.
+     * 
+     * @since 0.1.7
      */
     public static final String CONTEXT_RETRIEVED = "context_retrieved";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * CONTEXT_CLEARED.
+     * 
+     * @since 0.1.7
      */
     public static final String CONTEXT_CLEARED = "context_cleared";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * CONTEXT_COMPRESSION_STATE.
+     * 
+     * @since 0.1.7
      */
     public static final String CONTEXT_COMPRESSION_STATE = "context_compression_state";
 
+    /**
+     * ContextEvents.
+     * 
+     * @since 0.1.7
+     */
     private ContextEvents() {
     }
 }

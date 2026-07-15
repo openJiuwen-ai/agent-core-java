@@ -8,9 +8,10 @@ package com.openjiuwen.spi.store.vector;
  * Supported data types for vector store fields.
  * <p>
  * Mirrors Python's {@code VectorDataType} enum.
+ * 
+ * @since 0.1.7
  */
 public enum VectorDataType {
-
     VARCHAR,
     FLOAT_VECTOR,
     INT64,

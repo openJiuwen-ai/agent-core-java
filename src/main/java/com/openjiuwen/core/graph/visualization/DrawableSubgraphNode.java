@@ -6,23 +6,32 @@ package com.openjiuwen.core.graph.visualization;
 
 /**
  * A drawable node that contains a subgraph for nested visualization.
- *
- * <p>Used for loop components and sub-workflow components that contain inner graphs.
- * Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_subgraph_node.DrawableSubgraphNode}.</p>
+ * <p>
+ * Used for loop components and sub-workflow components that contain inner graphs.
+ * Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_subgraph_node.DrawableSubgraphNode}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class DrawableSubgraphNode extends DrawableNode {
-
     private DrawableGraph subgraph;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DrawableSubgraphNode.
+     * 
+     * @param id id
+     * @since 0.1.7
      */
     public DrawableSubgraphNode(String id) {
         super(id);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DrawableSubgraphNode.
+     * 
+     * @param id id
+     * @param subgraph subgraph
+     * @since 0.1.7
      */
     public DrawableSubgraphNode(String id, DrawableGraph subgraph) {
         super(id);
@@ -30,14 +39,20 @@ public class DrawableSubgraphNode extends DrawableNode {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSubgraph.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public DrawableGraph getSubgraph() {
         return subgraph;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSubgraph.
+     * 
+     * @param subgraph subgraph
+     * @since 0.1.7
      */
     public void setSubgraph(DrawableGraph subgraph) {
         this.subgraph = subgraph;

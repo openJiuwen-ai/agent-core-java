@@ -12,16 +12,21 @@ import lombok.NoArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Public class SessionResultsArtifact used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class SessionResultsArtifact used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class SessionResultsArtifact {
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<CycleResult> results = new ArrayList<>();
 }

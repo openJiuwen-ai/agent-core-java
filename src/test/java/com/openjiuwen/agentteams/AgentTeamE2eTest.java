@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agentteams;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.agentteams.agent.TeamAgent;
 import com.openjiuwen.agentteams.factory.TeamFactory;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
@@ -11,6 +13,7 @@ import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.core.runner.Runner;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,13 +24,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * E2E test for AgentTeam functionality aligned with Python's agent_team_e2e.py.
  */
 public class AgentTeamE2eTest {
-
     private static final String TEAM_NAME = "e2e_test_team";
     private static final String LEADER_NAME = "test_leader";
     private static final String SESSION_ID = "e2e_test_session";
@@ -153,15 +153,9 @@ public class AgentTeamE2eTest {
         TeamAgentSpec spec = buildTestSpec();
         TeamAgent leader = TeamFactory.createAgentTeam(spec);
 
-        ModelPoolEntry newModel = ModelPoolEntry.builder()
-                .modelId(UUID.randomUUID().toString())
-                .provider("openai")
-                .modelName("gpt-4-turbo")
-                .apiKey("test-key-2")
-                .apiBaseUrl("https://api.example.com/v1")
-                .description("Updated model")
-                .weight(2)
-                .build();
+        ModelPoolEntry newModel = ModelPoolEntry.builder().modelId(UUID.randomUUID().toString()).provider("openai")
+                .modelName("gpt-4-turbo").apiKey("test-key-2").apiBaseUrl("https://api.example.com/v1")
+                .description("Updated model").weight(2).build();
 
         leader.updateModelPool(List.of(newModel));
 
@@ -187,35 +181,16 @@ public class AgentTeamE2eTest {
     }
 
     private TeamAgentSpec buildTestSpec() {
-        ModelPoolEntry modelPoolEntry = ModelPoolEntry.builder()
-                .modelId(UUID.randomUUID().toString())
-                .provider("openai")
-                .modelName("gpt-4")
-                .apiKey("test-api-key")
-                .apiBaseUrl("https://api.openai.com/v1")
-                .description("Test model for E2E tests")
-                .weight(1)
-                .build();
+        ModelPoolEntry modelPoolEntry = ModelPoolEntry.builder().modelId(UUID.randomUUID().toString())
+                .provider("openai").modelName("gpt-4").apiKey("test-api-key").apiBaseUrl("https://api.openai.com/v1")
+                .description("Test model for E2E tests").weight(1).build();
 
-        TeamMemberSpec leaderSpec = TeamMemberSpec.builder()
-                .name(LEADER_NAME)
-                .role(TeamRole.LEADER)
-                .description("Test team leader for E2E tests")
-                .modelName("gpt-4")
-                .build();
+        TeamMemberSpec leaderSpec = TeamMemberSpec.builder().name(LEADER_NAME).role(TeamRole.LEADER)
+                .description("Test team leader for E2E tests").modelName("gpt-4").build();
 
-        return TeamAgentSpec.builder()
-                .name(TEAM_NAME)
-                .description("E2E test agent team")
-                .members(List.of(leaderSpec))
-                .modelPool(List.of(modelPoolEntry))
-                .modelPoolStrategy("round_robin")
-                .lifecycle("temporary")
-                .teammateMode("build_mode")
-                .spawnMode("inprocess")
-                .transport("inprocess")
-                .storage("sqlite")
-                .language("cn")
-                .build();
+        return TeamAgentSpec.builder().name(TEAM_NAME).description("E2E test agent team").members(List.of(leaderSpec))
+                .modelPool(List.of(modelPoolEntry)).modelPoolStrategy("round_robin").lifecycle("temporary")
+                .teammateMode("build_mode").spawnMode("inprocess").transport("inprocess").storage("sqlite")
+                .language("cn").build();
     }
 }

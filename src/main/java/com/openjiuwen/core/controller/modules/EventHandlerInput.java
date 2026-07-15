@@ -13,14 +13,19 @@ import com.openjiuwen.core.session.AgentSessionApi;
  * Contains event and session information that is isPassed to event handlers.
  * <p>
  * Mirrors Python's {@code EventHandlerInput(BaseModel)}.
+ * 
+ * @since 0.1.7
  */
 public class EventHandlerInput {
-
     private final Event event;
     private final AgentSessionApi session;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EventHandlerInput.
+     * 
+     * @param event event
+     * @param session session
+     * @since 0.1.7
      */
     public EventHandlerInput(Event event, AgentSessionApi session) {
         this.event = event;
@@ -28,14 +33,20 @@ public class EventHandlerInput {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEvent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Event getEvent() {
         return event;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSession.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AgentSessionApi getSession() {
         return session;

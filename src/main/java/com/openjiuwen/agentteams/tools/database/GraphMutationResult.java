@@ -10,6 +10,8 @@ import java.util.List;
 
 /**
  * Result for atomic dependency graph mutations.
+ * 
+ * @since 0.1.7
  */
 @Value(staticConstructor = "of")
 public class GraphMutationResult {
@@ -18,14 +20,22 @@ public class GraphMutationResult {
     List<TaskRecord> refreshedTasks;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * success.
+     * 
+     * @param refreshedTasks refreshedTasks
+     * @return the result
+     * @since 0.1.7
      */
     public static GraphMutationResult success(List<TaskRecord> refreshedTasks) {
         return of(true, "", refreshedTasks != null ? refreshedTasks : List.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fail.
+     * 
+     * @param reason reason
+     * @return the result
+     * @since 0.1.7
      */
     public static GraphMutationResult fail(String reason) {
         return of(false, reason != null ? reason : "", List.of());

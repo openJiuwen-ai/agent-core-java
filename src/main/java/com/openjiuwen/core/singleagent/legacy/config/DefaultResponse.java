@@ -11,13 +11,14 @@ import lombok.NoArgsConstructor;
 
 /**
  * Default response configuration for legacy workflow agents.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class DefaultResponse {
-
     @Builder.Default
     private String type = "text";
 

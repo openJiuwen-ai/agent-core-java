@@ -1,7 +1,12 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.controller;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.controller.modules.EventHandlerInput;
@@ -30,16 +35,11 @@ import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
 /**
  * Unit tests for EventHandlerWithIntentRecognition.
  * Translated from Python tests/unit_tests/core/controller/test_event_handler_with_intent_recognition.py
  */
 class EventHandlerWithIntentRecognitionTest {
-
     private EventHandlerWithIntentRecognition handler;
     private ControllerConfig mockConfig;
     private TaskManager mockTaskManager;
@@ -111,7 +111,6 @@ class EventHandlerWithIntentRecognitionTest {
     @Nested
     @DisplayName("Handle Input Tests")
     class HandleInputTests {
-
         @Test
         @DisplayName("test handling input with CREATE_TASK intent")
         void testHandleInputCreateTask() {
@@ -211,7 +210,6 @@ class EventHandlerWithIntentRecognitionTest {
     @Nested
     @DisplayName("Handle Task Interaction Tests")
     class HandleTaskInteractionTests {
-
         @Test
         @DisplayName("test handling task interaction event")
         void testHandleTaskInteraction() {
@@ -240,7 +238,6 @@ class EventHandlerWithIntentRecognitionTest {
     @Nested
     @DisplayName("Handle Task Completion Tests")
     class HandleTaskCompletionTests {
-
         @Test
         @DisplayName("test handling task completion event")
         void testHandleTaskCompletion() {
@@ -269,7 +266,6 @@ class EventHandlerWithIntentRecognitionTest {
     @Nested
     @DisplayName("Handle Task Failed Tests")
     class HandleTaskFailedTests {
-
         @Test
         @DisplayName("test handling task failed event")
         void testHandleTaskFailed() {
@@ -295,7 +291,6 @@ class EventHandlerWithIntentRecognitionTest {
     @Nested
     @DisplayName("Supplement Intent Tests")
     class SupplementIntentTests {
-
         @Test
         @DisplayName("test handling input with SUPPLEMENT_TASK intent")
         void testHandleInputSupplementTask() {
@@ -326,7 +321,6 @@ class EventHandlerWithIntentRecognitionTest {
     @Nested
     @DisplayName("Modify Intent Tests")
     class ModifyIntentTests {
-
         @Test
         @DisplayName("test handling input with MODIFY_TASK intent")
         void testHandleInputModifyTask() {

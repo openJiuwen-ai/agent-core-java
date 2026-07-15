@@ -14,18 +14,20 @@ import java.util.List;
  * Base streaming message chunk for accumulation via {@link #merge(BaseMessageChunk)}.
  * <p>
  * Mirrors Python's {@code BaseMessageChunk} model.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class BaseMessageChunk extends BaseMessage {
-
     /**
-     * Creates a base message chunk with the given role, content, and name.
-     *
-     * @param role    the message role
-     * @param content the message content
-     * @param name    the sender name
+     * BaseMessageChunk.
+     * 
+     * @param role role
+     * @param content content
+     * @param name name
+     * @since 0.1.7
      */
     public BaseMessageChunk(String role, Object content, String name) {
         super(role, content, name);
@@ -33,33 +35,29 @@ public class BaseMessageChunk extends BaseMessage {
 
     /**
      * Merge another chunk into this one (content concatenation).
-     *
+     * 
      * @param other the chunk to merge
      * @return a new merged chunk
+     * @since 0.1.7
      */
     public BaseMessageChunk merge(BaseMessageChunk other) {
         if (other == null) {
             return this;
         }
         Object combinedContent = mergeContent(this.getContent(), other.getContent());
-        return new BaseMessageChunk(
-                this.getRole(),
-                combinedContent,
-                this.getName() != null ? this.getName() : other.getName()
-        );
+        return new BaseMessageChunk(this.getRole(), combinedContent,
+                this.getName() != null ? this.getName() : other.getName());
     }
 
     /**
-     * Merge content fields based on type compatibility.
-     *
-     * @param left  the left content to merge
-     * @param right the right content to merge
-     * @return the merged content
+     * mergeContent.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected static Object mergeContent(Object left, Object right) {
         if (left instanceof String ls && right instanceof String rs) {
             return ls + rs;

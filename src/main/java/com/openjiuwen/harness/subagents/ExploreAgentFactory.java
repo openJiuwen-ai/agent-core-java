@@ -13,11 +13,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Auto-generated for codecheck compliance.
+ * ExploreAgentFactory.
+ * 
+ * @since 0.1.7
  */
 public final class ExploreAgentFactory {
     /**
-     * Auto-generated for codecheck compliance.
+     * DEFAULT_EXPLORE_AGENT_SYSTEM_PROMPT_EN.
+     * 
+     * @since 0.1.7
      */
     public static final String DEFAULT_EXPLORE_AGENT_SYSTEM_PROMPT_EN = """
             You are a codebase navigation specialist operating on behalf of a host coding agent.
@@ -58,7 +62,9 @@ public final class ExploreAgentFactory {
             """;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DEFAULT_EXPLORE_AGENT_SYSTEM_PROMPT_CN.
+     * 
+     * @since 0.1.7
      */
     public static final String DEFAULT_EXPLORE_AGENT_SYSTEM_PROMPT_CN = """
             你是宿主编程代理的代码库导航专家，职责是在现有代码中定位、读取并汇报信息。
@@ -97,7 +103,9 @@ public final class ExploreAgentFactory {
             """;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DEFAULT_EXPLORE_AGENT_DESCRIPTION_EN.
+     * 
+     * @since 0.1.7
      */
     public static final String DEFAULT_EXPLORE_AGENT_DESCRIPTION_EN = "Codebase navigation agent optimised for "
             + "speed. Invoke when you need to locate files by glob pattern (e.g. \"src/components/**/*.tsx\"), "
@@ -105,81 +113,74 @@ public final class ExploreAgentFactory {
             + "a repository (e.g. \"how do API endpoints work?\"). Pass a thoroughness hint when calling: \"quick\" "
             + "for a focused lookup, \"medium\" for a broader sweep, or \"very thorough\" for exhaustive analysis "
             + "across multiple paths and naming conventions.";
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public static final String DEFAULT_EXPLORE_AGENT_DESCRIPTION_CN = "以速度为优先的代码库导航子代理：按 glob "
-            + "模式定位文件（如 src/components/**/*.tsx）、按关键词检索源码（如 API 端点），或回答代码库结构性问题。"
-            + "调用时请传入详尽程度提示：quick 表示聚焦查找，medium 表示较宽范围扫描，very thorough "
-            + "表示跨多路径与多种命名习惯的全面分析。";
 
+    /**
+     * DEFAULT_EXPLORE_AGENT_DESCRIPTION_CN.
+     * 
+     * @since 0.1.7
+     */
+    public static final String DEFAULT_EXPLORE_AGENT_DESCRIPTION_CN =
+        "以速度为优先的代码库导航子代理：按 glob " + "模式定位文件（如 src/components/**/*.tsx）、按关键词检索源码（如 API 端点），或回答代码库结构性问题。"
+                + "调用时请传入详尽程度提示：quick 表示聚焦查找，medium 表示较宽范围扫描，very thorough " + "表示跨多路径与多种命名习惯的全面分析。";
+
+    /**
+     * ExploreAgentFactory.
+     * 
+     * @since 0.1.7
+     */
     private ExploreAgentFactory() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildExploreAgentConfig.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
      */
     public static SubAgentConfig buildExploreAgentConfig(String language) {
         return buildExploreAgentConfig(language, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildExploreAgentConfig.
+     * 
+     * @param language language
+     * @param factoryKwargs factoryKwargs
+     * @return the result
+     * @since 0.1.7
      */
     public static SubAgentConfig buildExploreAgentConfig(String language, Map<String, Object> factoryKwargs) {
         String isResolved = language != null ? language : "cn";
         Map<String, Object> kwargs = SubAgentFactoryKwargsSupport.copy(factoryKwargs);
-        SubAgentConfig config = SubAgentConfig.builder()
-                .agentCard(SubAgentFactoryKwargsSupport.resolveAgentCard(
-                        kwargs,
-                        "explore_agent",
-                        "en".equals(isResolved)
-                                ? DEFAULT_EXPLORE_AGENT_DESCRIPTION_EN
-                                : DEFAULT_EXPLORE_AGENT_DESCRIPTION_CN
-                ))
-                .systemPrompt(SubAgentFactoryKwargsSupport.systemPrompt(
-                        kwargs,
+        SubAgentConfig config = SubAgentConfig.builder().agentCard(SubAgentFactoryKwargsSupport.resolveAgentCard(kwargs,
+                "explore_agent",
+                "en".equals(isResolved) ? DEFAULT_EXPLORE_AGENT_DESCRIPTION_EN : DEFAULT_EXPLORE_AGENT_DESCRIPTION_CN))
+                .systemPrompt(SubAgentFactoryKwargsSupport.systemPrompt(kwargs,
                         "en".equals(isResolved)
                                 ? DEFAULT_EXPLORE_AGENT_SYSTEM_PROMPT_EN
-                                : DEFAULT_EXPLORE_AGENT_SYSTEM_PROMPT_CN
-                ))
-                .language(isResolved)
-                .maxIterations(SubAgentFactoryKwargsSupport.maxIterations(kwargs, 25))
-                .factoryName("explore_agent")
-                .executionMode("ephemeral")
-                .role("exploration")
-                .metadata(Map.of(
-                        "readonly", true,
-                        "write_tools_forbidden", true,
-                        "allowed_shell_intent", "read_only",
+                                : DEFAULT_EXPLORE_AGENT_SYSTEM_PROMPT_CN))
+                .language(isResolved).maxIterations(SubAgentFactoryKwargsSupport.maxIterations(kwargs, 25))
+                .factoryName("explore_agent").executionMode("ephemeral").role("exploration")
+                .metadata(Map.of("readonly", true, "write_tools_forbidden", true, "allowed_shell_intent", "read_only",
                         "recommended_tools", List.of("glob", "grep", "read_file", "list_files", "bash"),
-                        "forbidden_operations", List.of(
-                                "write_file",
-                                "edit_file",
-                                "mkdir",
-                                "touch",
-                                "rm",
-                                "cp",
-                                "mv",
-                                "git add",
-                                "git commit",
-                                "install_dependencies",
-                                "shell_redirection"
-                        )
-                ))
+                        "forbidden_operations",
+                        List.of("write_file", "edit_file", "mkdir", "touch", "rm", "cp", "mv", "git add", "git commit",
+                                "install_dependencies", "shell_redirection")))
                 .rails(SubAgentRailMergeSupport.mergeRails(
-                        List.of(new SysOperationRail(), new com.openjiuwen.harness.rails.SecurityRail(true)),
-                        kwargs
-                ))
-                .restrictToWorkDir(false)
-                .factoryKwargs(kwargs)
-                .build();
+                        List.of(new SysOperationRail(), new com.openjiuwen.harness.rails.SecurityRail(true)), kwargs))
+                .restrictToWorkDir(false).factoryKwargs(kwargs).build();
         SubAgentFactoryKwargsSupport.applyCommonOverrides(config, kwargs);
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createExploreAgent.
+     * 
+     * @param language language
+     * @param workspace workspace
+     * @return the result
+     * @since 0.1.7
      */
     public static DeepAgent createExploreAgent(String language, Workspace workspace) {
         SubAgentConfig spec = buildExploreAgentConfig(language);

@@ -10,7 +10,11 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Agent related event. */
+/**
+ * Agent related event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -24,17 +28,22 @@ public class AgentEvent extends BaseLogEvent {
     private Double executionTimeMs;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentEvent.
+     * 
+     * @since 0.1.7
      */
     public AgentEvent() {
         super();
         setModuleType(ModuleType.AGENT);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "agent_type", agentType);
         putIfNotNull(map, "agent_config", agentConfig);

@@ -17,28 +17,41 @@ import java.util.Map;
  * Trace handler for agent-level tracing (chain, llm, prompt, plugin, retriever, evaluator, workflow).
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.tracer.handler.TraceAgentHandler}.
+ * 
+ * @since 0.1.7
  */
 public class TraceAgentHandler extends TraceBaseHandler {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * TraceAgentHandler.
+     * 
+     * @param owner owner
+     * @param streamWriterManager streamWriterManager
+     * @param spanManager spanManager
+     * @since 0.1.7
      */
     public TraceAgentHandler(Object owner, StreamWriterManager streamWriterManager, SpanManager spanManager) {
         super(owner, streamWriterManager, spanManager);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * eventName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String eventName() {
         return TracerHandlerName.TRACE_AGENT.getValue();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * formatData.
+     * 
+     * @param span span
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected Map<String, Object> formatData(Span span) {
         if (span instanceof TraceAgentSpan) {
             ((TraceAgentSpan) span).setStatus(getNodeStatus(span));
@@ -51,6 +64,10 @@ public class TraceAgentHandler extends TraceBaseHandler {
 
     /**
      * Get or create an agent span.
+     * 
+     * @param invokeId invokeId
+     * @return the result
+     * @since 0.1.7
      */
     public TraceAgentSpan getTracerAgentSpan(String invokeId) {
         if (invokeId != null) {
@@ -64,199 +81,294 @@ public class TraceAgentHandler extends TraceBaseHandler {
 
     // ---- Trigger Events ----
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onChainStart.
+     * 
+     * @param span span
+     * @param inputs inputs
+     * @param instanceInfo instanceInfo
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onChainStart(TraceAgentSpan span, Object inputs, Map<String, Object> instanceInfo) {
         updateStartTraceData(span, InvokeType.CHAIN.getValue(), inputs, instanceInfo);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onChainEnd.
+     * 
+     * @param span span
+     * @param outputs outputs
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onChainEnd(TraceAgentSpan span, Object outputs) {
         updateEndTraceData(span, outputs);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onChainError.
+     * 
+     * @param span span
+     * @param error error
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onChainError(TraceAgentSpan span, Object error) {
         updateErrorTraceData(span, error);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onLlmStart.
+     * 
+     * @param span span
+     * @param inputs inputs
+     * @param instanceInfo instanceInfo
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onLlmStart(TraceAgentSpan span, Object inputs, Map<String, Object> instanceInfo) {
         updateStartTraceData(span, InvokeType.LLM.getValue(), inputs, instanceInfo);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onLlmRequest.
+     * 
+     * @param span span
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onLlmRequest(TraceAgentSpan span, Map<String, Object> kwargs) {
         updateRunningTraceData(span, kwargs);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onLlmEnd.
+     * 
+     * @param span span
+     * @param outputs outputs
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onLlmEnd(TraceAgentSpan span, Object outputs) {
         updateEndTraceData(span, outputs);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onLlmError.
+     * 
+     * @param span span
+     * @param error error
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onLlmError(TraceAgentSpan span, Object error) {
         updateErrorTraceData(span, error);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onPromptStart.
+     * 
+     * @param span span
+     * @param inputs inputs
+     * @param instanceInfo instanceInfo
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onPromptStart(TraceAgentSpan span, Object inputs, Map<String, Object> instanceInfo) {
         updateStartTraceData(span, InvokeType.PROMPT.getValue(), inputs, instanceInfo);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onPromptEnd.
+     * 
+     * @param span span
+     * @param outputs outputs
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onPromptEnd(TraceAgentSpan span, Object outputs) {
         updateEndTraceData(span, outputs);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onPromptError.
+     * 
+     * @param span span
+     * @param error error
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onPromptError(TraceAgentSpan span, Object error) {
         updateErrorTraceData(span, error);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onPluginStart.
+     * 
+     * @param span span
+     * @param inputs inputs
+     * @param instanceInfo instanceInfo
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onPluginStart(TraceAgentSpan span, Object inputs, Map<String, Object> instanceInfo) {
         updateStartTraceData(span, InvokeType.PLUGIN.getValue(), inputs, instanceInfo);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onPluginEnd.
+     * 
+     * @param span span
+     * @param outputs outputs
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onPluginEnd(TraceAgentSpan span, Object outputs) {
         updateEndTraceData(span, outputs);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onPluginError.
+     * 
+     * @param span span
+     * @param error error
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onPluginError(TraceAgentSpan span, Object error) {
         updateErrorTraceData(span, error);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onRetrieverStart.
+     * 
+     * @param span span
+     * @param inputs inputs
+     * @param instanceInfo instanceInfo
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onRetrieverStart(TraceAgentSpan span, Object inputs, Map<String, Object> instanceInfo) {
         updateStartTraceData(span, InvokeType.RETRIEVER.getValue(), inputs, instanceInfo);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onRetrieverEnd.
+     * 
+     * @param span span
+     * @param outputs outputs
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onRetrieverEnd(TraceAgentSpan span, Object outputs) {
         updateEndTraceData(span, outputs);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onRetrieverError.
+     * 
+     * @param span span
+     * @param error error
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onRetrieverError(TraceAgentSpan span, Object error) {
         updateErrorTraceData(span, error);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onEvaluatorStart.
+     * 
+     * @param span span
+     * @param inputs inputs
+     * @param instanceInfo instanceInfo
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onEvaluatorStart(TraceAgentSpan span, Object inputs, Map<String, Object> instanceInfo) {
         updateStartTraceData(span, InvokeType.EVALUATOR.getValue(), inputs, instanceInfo);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onEvaluatorEnd.
+     * 
+     * @param span span
+     * @param outputs outputs
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onEvaluatorEnd(TraceAgentSpan span, Object outputs) {
         updateEndTraceData(span, outputs);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onEvaluatorError.
+     * 
+     * @param span span
+     * @param error error
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onEvaluatorError(TraceAgentSpan span, Object error) {
         updateErrorTraceData(span, error);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onWorkflowStart.
+     * 
+     * @param span span
+     * @param inputs inputs
+     * @param instanceInfo instanceInfo
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onWorkflowStart(TraceAgentSpan span, Object inputs, Map<String, Object> instanceInfo) {
         updateStartTraceData(span, InvokeType.WORKFLOW.getValue(), inputs, instanceInfo);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onWorkflowEnd.
+     * 
+     * @param span span
+     * @param outputs outputs
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onWorkflowEnd(TraceAgentSpan span, Object outputs) {
         updateEndTraceData(span, outputs);
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onWorkflowError.
+     * 
+     * @param span span
+     * @param error error
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onWorkflowError(TraceAgentSpan span, Object error) {
         updateErrorTraceData(span, error);
         sendData(span);
@@ -264,8 +376,17 @@ public class TraceAgentHandler extends TraceBaseHandler {
 
     // ---- Helpers ----
 
+    /**
+     * updateStartTraceData.
+     * 
+     * @param span span
+     * @param invokeType invokeType
+     * @param inputs inputs
+     * @param instanceInfo instanceInfo
+     * @since 0.1.7
+     */
     private void updateStartTraceData(TraceAgentSpan span, String invokeType, Object inputs,
-                                       Map<String, Object> instanceInfo) {
+            Map<String, Object> instanceInfo) {
         Map<String, Object> data = new HashMap<>();
         data.put("start_time", LocalDateTime.now());
         data.put("invoke_type", invokeType);
@@ -277,6 +398,13 @@ public class TraceAgentHandler extends TraceBaseHandler {
         spanManager.updateSpan(span, data);
     }
 
+    /**
+     * updateEndTraceData.
+     * 
+     * @param span span
+     * @param outputs outputs
+     * @since 0.1.7
+     */
     private void updateEndTraceData(TraceAgentSpan span, Object outputs) {
         LocalDateTime endTime = LocalDateTime.now();
         Map<String, Object> data = new HashMap<>();
@@ -290,6 +418,13 @@ public class TraceAgentHandler extends TraceBaseHandler {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * updateErrorTraceData.
+     * 
+     * @param span span
+     * @param error error
+     * @since 0.1.7
+     */
     private void updateErrorTraceData(TraceAgentSpan span, Object error) {
         LocalDateTime endTime = LocalDateTime.now();
         Map<String, Object> errorInfo = new HashMap<>();
@@ -310,6 +445,13 @@ public class TraceAgentHandler extends TraceBaseHandler {
         spanManager.updateSpan(span, data);
     }
 
+    /**
+     * updateRunningTraceData.
+     * 
+     * @param span span
+     * @param kwargs kwargs
+     * @since 0.1.7
+     */
     private void updateRunningTraceData(TraceAgentSpan span, Map<String, Object> kwargs) {
         List<Map<String, Object>> onInvokeData = span.getOnInvokeData();
         if (onInvokeData == null) {

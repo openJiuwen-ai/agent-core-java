@@ -12,31 +12,44 @@ import java.util.function.BooleanSupplier;
  * Condition that wraps a callable predicate.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.condition.condition.FuncCondition}.
+ * 
+ * @since 0.1.7
  */
 public class FuncCondition extends Condition {
-
     private final BooleanSupplier func;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * FuncCondition.
+     * 
+     * @param func func
+     * @since 0.1.7
      */
     public FuncCondition(BooleanSupplier func) {
         super();
         this.func = func;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * doInvoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object doInvoke(Object inputs, BaseSession session) {
         return func.getAsBoolean();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * traceInfo.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object traceInfo(BaseSession session) {
         return func.toString();
     }

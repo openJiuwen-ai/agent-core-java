@@ -1,25 +1,23 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.multiagent;
-
-import com.openjiuwen.core.session.AgentGroupSessionApi;
-import com.openjiuwen.core.session.AgentSessionApi;
-import org.junit.jupiter.api.Test;
-
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
-class MultiAgentFacadeTest {
+import com.openjiuwen.core.session.AgentGroupSessionApi;
+import com.openjiuwen.core.session.AgentSessionApi;
 
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+
+class MultiAgentFacadeTest {
     @Test
     void createAgentGroupSessionUsesMultiagentFacade() {
-        Session session = MultiAgentSessions.createAgentGroupSession(
-                "group-session",
-                Map.of("topic", "facade")
-        );
+        Session session = MultiAgentSessions.createAgentGroupSession("group-session", Map.of("topic", "facade"));
 
         assertEquals("group-session", session.getSessionId());
         assertEquals("facade", session.getEnv("topic", ""));

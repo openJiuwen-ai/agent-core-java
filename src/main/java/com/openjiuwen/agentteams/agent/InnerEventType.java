@@ -6,6 +6,8 @@ package com.openjiuwen.agentteams.agent;
 
 /**
  * Event types generated inside the coordination layer.
+ * 
+ * @since 0.1.7
  */
 public enum InnerEventType {
     USER_INPUT("user_input"),
@@ -20,7 +22,10 @@ public enum InnerEventType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

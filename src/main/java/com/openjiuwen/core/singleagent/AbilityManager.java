@@ -5,6 +5,7 @@
 package com.openjiuwen.core.singleagent;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -38,30 +39,53 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Agent Ability Manager.
- *
- * <p>Responsibilities:
+ * <p>
+ * Responsibilities:
  * <ul>
- *   <li>Store available ability Cards for Agent (metadata only, no instances)</li>
- *   <li>Provide add/remove/query interfaces for abilities</li>
- *   <li>Convert Cards to ToolInfo for LLM usage</li>
- *   <li>Execute ability calls (get instances from ResourceManager)</li>
+ * <li>Store available ability Cards for Agent (metadata only, no instances)</li>
+ * <li>Provide add/remove/query interfaces for abilities</li>
+ * <li>Convert Cards to ToolInfo for LLM usage</li>
+ * <li>Execute ability calls (get instances from ResourceManager)</li>
  * </ul>
- *
+ * 
  * @since 0.1.7
  */
 public class AbilityManager implements ToolRegistry {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, ToolCard> tools = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, WorkflowCard> workflows = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, AgentCard> agents = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, McpServerConfig> mcpServers = new ConcurrentHashMap<>();
 
     /**
      * Add an ability.
-     *
+     * 
      * @param ability the ability card to add (ToolCard, WorkflowCard, AgentCard, or McpServerConfig)
+     * @since 0.1.7
      */
     public void add(Object ability) {
         if (ability instanceof List<?> list) {
@@ -73,18 +97,24 @@ public class AbilityManager implements ToolRegistry {
         }
     }
 
+    /**
+     * addSingle.
+     * 
+     * @param ability ability
+     * @since 0.1.7
+     */
     private void addSingle(Object ability) {
         if (ability instanceof ToolCard toolCard) {
-            String key = (toolCard.getName() == null || toolCard.getName().isBlank())
-                    ? toolCard.getId() : toolCard.getName();
+            String key =
+                (toolCard.getName() == null || toolCard.getName().isBlank()) ? toolCard.getId() : toolCard.getName();
             tools.put(key, toolCard);
         } else if (ability instanceof WorkflowCard wfCard) {
-            String key = (wfCard.getName() == null || wfCard.getName().isBlank())
-                    ? wfCard.getId() : wfCard.getName();
+            String key = (wfCard.getName() == null || wfCard.getName().isBlank()) ? wfCard.getId() : wfCard.getName();
             workflows.put(key, wfCard);
         } else if (ability instanceof AgentCard agentCard) {
             String key = (agentCard.getName() == null || agentCard.getName().isBlank())
-                    ? agentCard.getId() : agentCard.getName();
+                    ? agentCard.getId()
+                    : agentCard.getName();
             agents.put(key, agentCard);
         } else if (ability instanceof McpServerConfig mcpConfig) {
             mcpServers.put(mcpConfig.getServerName(), mcpConfig);
@@ -95,9 +125,10 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * Remove an ability by name.
-     *
+     * 
      * @param name ability name
      * @return removed ability, or null if not found
+     * @since 0.1.7
      */
     public Object remove(String name) {
         Object removed = tools.remove(name);
@@ -126,9 +157,10 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * Remove abilities by name list.
-     *
+     * 
      * @param names ability names
      * @return list of removed abilities
+     * @since 0.1.7
      */
     public List<Object> remove(List<String> names) {
         List<Object> result = new ArrayList<>();
@@ -140,9 +172,10 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * Get an ability Card by name.
-     *
+     * 
      * @param name ability name
      * @return ability card, or null
+     * @since 0.1.7
      */
     public Object get(String name) {
         Object result = tools.get(name);
@@ -162,8 +195,9 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * List all ability Cards.
-     *
+     * 
      * @return all abilities
+     * @since 0.1.7
      */
     public List<Object> list() {
         List<Object> abilities = new ArrayList<>();
@@ -176,8 +210,9 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * Get ToolInfo list (for LLM usage).
-     *
+     * 
      * @return list of ToolInfo objects
+     * @since 0.1.7
      */
     public List<ToolInfo> listToolInfo() {
         return listToolInfo(null, null);
@@ -185,10 +220,11 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * Get ToolInfo list (for LLM usage) with optional name/server filtering.
-     *
-     * @param names         optional tool names to include
+     * 
+     * @param names optional tool names to include
      * @param mcpServerName optional MCP server name to include
      * @return list of ToolInfo objects
+     * @since 0.1.7
      */
     public List<ToolInfo> listToolInfo(List<String> names, String mcpServerName) {
         List<ToolInfo> toolInfos = new ArrayList<>();
@@ -224,15 +260,13 @@ public class AbilityManager implements ToolRegistry {
     // ========== ToolRegistry interface ==========
 
     /**
-     * Override a registered tool description in memory.
-     *
-     * @param toolName tool name
-     * @param description replacement description
+     * setToolDescription.
+     * 
+     * @param toolName toolName
+     * @param description description
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void setToolDescription(String toolName, String description) {
         ToolCard toolCard = tools.get(toolName);
         if (toolCard != null) {
@@ -242,10 +276,11 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * Execute a single tool call for use as a ToolExecutor.
-     *
+     * 
      * @param toolCallObj the tool call object
-     * @param session     the session
+     * @param session the session
      * @return the execution result
+     * @since 0.1.7
      */
     public ToolExecutionResult executeAsToolExecutor(Object toolCallObj, Session session) {
         if (toolCallObj instanceof ToolCall tc) {
@@ -257,19 +292,15 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * Execute ability call(s) with per-tool rail hooks.
-     *
-     * @param ctx      shared callback context
+     * 
+     * @param ctx shared callback context
      * @param toolCall single tool call or list of tool calls
-     * @param session  session instance
-     * @param tag      optional tag
+     * @param session session instance
+     * @param tag optional tag
      * @return list of (result, ToolMessage) tuples
+     * @since 0.1.7
      */
-    public List<ToolExecutionEntry> execute(
-            AgentCallbackContext ctx,
-            Object toolCall,
-            Session session,
-            String tag
-    ) {
+    public List<ToolExecutionEntry> execute(AgentCallbackContext ctx, Object toolCall, Session session, String tag) {
         List<ToolCall> toolCalls = normalizeToolCalls(toolCall);
         if (toolCalls.isEmpty()) {
             return List.of();
@@ -278,18 +309,10 @@ public class AbilityManager implements ToolRegistry {
         List<ToolExecutionEntry> finalResults = new ArrayList<>();
 
         for (ToolCall singleToolCall : toolCalls) {
-            AgentCallbackContext toolCtx = AgentCallbackContext.builder()
-                    .agent(ctx.getAgent())
-                    .inputs(ToolCallInputs.builder()
-                            .toolCall(singleToolCall)
-                            .toolName(singleToolCall.getName())
-                            .toolArgs(singleToolCall.getArguments())
-                            .build())
-                    .config(ctx.getConfig())
-                    .session(session)
-                    .context(ctx.getContext())
-                    .extra(ctx.getExtra())
-                    .build();
+            AgentCallbackContext toolCtx = AgentCallbackContext.builder().agent(ctx.getAgent())
+                    .inputs(ToolCallInputs.builder().toolCall(singleToolCall).toolName(singleToolCall.getName())
+                            .toolArgs(singleToolCall.getArguments()).build())
+                    .config(ctx.getConfig()).session(session).context(ctx.getContext()).extra(ctx.getExtra()).build();
             if (ctx.hasSteeringQueue()) {
                 toolCtx.bindSteeringQueue(ctx.getSteeringQueue());
             }
@@ -316,13 +339,14 @@ public class AbilityManager implements ToolRegistry {
             } catch (Exception e) {
                 ToolInterruptException interruptException = unwrapToolInterrupt(e);
                 if (interruptException != null) {
-                    Loggers.AGENT.debug("Ability execution interrupted for tool {}: {}",
-                            singleToolCall.getName(), interruptException.getMessage());
+                    Loggers.AGENT.debug("Ability execution interrupted for tool {}: {}", singleToolCall.getName(),
+                            interruptException.getMessage());
                     finalResults.add(new ToolExecutionEntry(interruptException, null));
                     continue;
                 }
 
-                String errorMsg = "Ability execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
+                String errorMsg =
+                    "Ability execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                 Loggers.AGENT.error(errorMsg);
 
                 Object toolResult = null;
@@ -338,10 +362,7 @@ public class AbilityManager implements ToolRegistry {
                 }
 
                 if (toolMessage == null) {
-                    toolMessage = ToolMessage.builder()
-                            .content(errorMsg)
-                            .toolCallId(singleToolCall.getId())
-                            .build();
+                    toolMessage = ToolMessage.builder().content(errorMsg).toolCallId(singleToolCall.getId()).build();
                 }
 
                 finalResults.add(new ToolExecutionEntry(toolResult, toolMessage));
@@ -353,19 +374,18 @@ public class AbilityManager implements ToolRegistry {
 
     /**
      * Execute one tool call under rail lifecycle events.
+     * 
+     * @param ctx ctx
+     * @param toolCall toolCall
+     * @param session session
+     * @param tag tag
+     * @return the result
+     * @since 0.1.7
      */
-    private ToolExecutionEntry railedExecuteSingleToolCall(
-            AgentCallbackContext ctx,
-            ToolCall toolCall,
-            Session session,
-            String tag
-    ) {
-        return RailExecutor.execute(
-                ctx,
-                AgentCallbackEvent.BEFORE_TOOL_CALL,
-                AgentCallbackEvent.AFTER_TOOL_CALL,
-                AgentCallbackEvent.ON_TOOL_EXCEPTION,
-                () -> {
+    private ToolExecutionEntry railedExecuteSingleToolCall(AgentCallbackContext ctx, ToolCall toolCall, Session session,
+            String tag) {
+        return RailExecutor.execute(ctx, AgentCallbackEvent.BEFORE_TOOL_CALL, AgentCallbackEvent.AFTER_TOOL_CALL,
+                AgentCallbackEvent.ON_TOOL_EXCEPTION, () -> {
                     if (Boolean.TRUE.equals(ctx.getExtra().get("_skip_tool"))) {
                         if (ctx.getInputs() instanceof ToolCallInputs inputs) {
                             return new ToolExecutionEntry(inputs.getToolResult(), inputs.getToolMsg());
@@ -378,11 +398,9 @@ public class AbilityManager implements ToolRegistry {
                             toolCall.setName(inputs.getToolName());
                         }
                         if (inputs.getToolArgs() != null) {
-                            toolCall.setArguments(
-                                    inputs.getToolArgs() instanceof String s
-                                            ? s
-                                            : MAPPER.writeValueAsString(inputs.getToolArgs())
-                            );
+                            toolCall.setArguments(inputs.getToolArgs() instanceof String s
+                                    ? s
+                                    : MAPPER.writeValueAsString(inputs.getToolArgs()));
                         }
                     }
 
@@ -397,12 +415,17 @@ public class AbilityManager implements ToolRegistry {
                     }
 
                     return result;
-                }
-        ).orElseGet(() -> new ToolExecutionEntry(null, null));
+                }).orElseGet(() -> new ToolExecutionEntry(null, null));
     }
 
     /**
      * Execute a single tool call by dispatching to the appropriate handler.
+     * 
+     * @param toolCall toolCall
+     * @param session session
+     * @param tag tag
+     * @return the result
+     * @since 0.1.7
      */
     public ToolExecutionEntry executeSingleToolCall(ToolCall toolCall, Session session, String tag) {
         String toolName = toolCall.getName();
@@ -422,7 +445,8 @@ public class AbilityManager implements ToolRegistry {
                 result = invokeTool(tool, toolArgs, session);
                 logToolResult(result);
             } catch (Exception e) {
-                String errorMsg = "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
+                String errorMsg =
+                    "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                 Loggers.AGENT.error(errorMsg);
                 Loggers.TOOL.info("Tool result: None");
                 throw buildExecutionError(toolCall, errorMsg);
@@ -433,7 +457,8 @@ public class AbilityManager implements ToolRegistry {
             try {
                 result = Runner.runWorkflow(workflowId, toolArgs, adaptSubtaskSession(session), null);
             } catch (Exception e) {
-                String errorMsg = "Workflow execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
+                String errorMsg =
+                    "Workflow execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                 Loggers.AGENT.error(errorMsg);
                 Loggers.TOOL.info("Tool result: None");
                 throw buildExecutionError(toolCall, errorMsg);
@@ -453,7 +478,8 @@ public class AbilityManager implements ToolRegistry {
                 AgentSessionApi childSession = AgentSessionApi.create(childSessionId, null, agentCard);
                 result = Runner.runAgent(agentInstance, toolArgs, childSession, null);
             } catch (Exception e) {
-                String errorMsg = "Agent execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
+                String errorMsg =
+                    "Agent execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                 Loggers.AGENT.error(errorMsg);
                 Loggers.TOOL.info("Tool result: None");
                 throw buildExecutionError(toolCall, errorMsg);
@@ -465,7 +491,8 @@ public class AbilityManager implements ToolRegistry {
                     result = invokeTool(tool, toolArgs, session);
                     logToolResult(result);
                 } catch (Exception e) {
-                    String errorMsg = "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
+                    String errorMsg =
+                        "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                     Loggers.AGENT.error(errorMsg);
                     Loggers.TOOL.info("Tool result: None");
                     throw buildExecutionError(toolCall, errorMsg);
@@ -482,7 +509,8 @@ public class AbilityManager implements ToolRegistry {
                     result = invokeTool(fallbackTool, toolArgs, session);
                     logToolResult(result);
                 } catch (Exception e) {
-                    String errorMsg = "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
+                    String errorMsg =
+                        "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                     Loggers.AGENT.error(errorMsg);
                     Loggers.TOOL.info("Tool result: None");
                     throw buildExecutionError(toolCall, errorMsg);
@@ -499,7 +527,8 @@ public class AbilityManager implements ToolRegistry {
                 result = invokeTool(tool, toolArgs, session);
                 logToolResult(result);
             } catch (Exception e) {
-                String errorMsg = "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
+                String errorMsg =
+                    "Tool execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
                 Loggers.AGENT.error(errorMsg);
                 Loggers.TOOL.info("Tool result: None");
                 throw buildExecutionError(toolCall, errorMsg);
@@ -507,37 +536,45 @@ public class AbilityManager implements ToolRegistry {
         }
 
         String content = String.valueOf(result);
-        ToolMessage toolMessage = ToolMessage.builder()
-                .content(content)
-                .toolCallId(toolCall.getId())
-                .build();
+        ToolMessage toolMessage = ToolMessage.builder().content(content).toolCallId(toolCall.getId()).build();
 
         return new ToolExecutionEntry(result, toolMessage);
     }
 
+    /**
+     * buildExecutionError.
+     * 
+     * @param toolCall toolCall
+     * @param message message
+     * @return the result
+     * @since 0.1.7
+     */
     private static AbilityExecutionError buildExecutionError(ToolCall toolCall, String message) {
-        return new AbilityExecutionError(
-                StatusCode.AGENT_TOOL_EXECUTION_ERROR,
-                message,
-                ToolMessage.builder()
-                        .content(message)
-                        .toolCallId(toolCall.getId())
-                        .build()
-        );
+        return new AbilityExecutionError(StatusCode.AGENT_TOOL_EXECUTION_ERROR, message,
+                ToolMessage.builder().content(message).toolCallId(toolCall.getId()).build());
     }
 
+    /**
+     * parseToolArgs.
+     * 
+     * @param rawArgs rawArgs
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> parseToolArgs(String rawArgs) {
         if (rawArgs == null || rawArgs.isBlank()) {
             return Map.of();
         }
         try {
-            return MAPPER.readValue(rawArgs, new TypeReference<>() {});
-        } catch (Exception ignored) {
+            return MAPPER.readValue(rawArgs, new TypeReference<>() {
+            });
+        } catch (JsonProcessingException ignored) {
             String normalized = normalizePythonLikeJson(rawArgs);
             if (normalized != null && !normalized.isBlank()) {
                 try {
-                    return MAPPER.readValue(normalized, new TypeReference<>() {});
-                } catch (Exception ignoredAgain) {
+                    return MAPPER.readValue(normalized, new TypeReference<>() {
+                    });
+                } catch (JsonProcessingException ignoredAgain) {
                     return Map.of();
                 }
             }
@@ -545,6 +582,13 @@ public class AbilityManager implements ToolRegistry {
         }
     }
 
+    /**
+     * normalizePythonLikeJson.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizePythonLikeJson(String raw) {
         String text = raw == null ? "" : raw.trim();
         if (text.isEmpty()) {
@@ -555,6 +599,12 @@ public class AbilityManager implements ToolRegistry {
         return text;
     }
 
+    /**
+     * logToolResult.
+     * 
+     * @param result result
+     * @since 0.1.7
+     */
     private static void logToolResult(Object result) {
         String content = String.valueOf(result);
         Loggers.TOOL.info("Tool result: " + content);
@@ -563,6 +613,13 @@ public class AbilityManager implements ToolRegistry {
         }
     }
 
+    /**
+     * toPythonLiteral.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String toPythonLiteral(Object value) {
         if (value == null) {
             return "None";
@@ -606,6 +663,13 @@ public class AbilityManager implements ToolRegistry {
         return String.valueOf(value);
     }
 
+    /**
+     * normalizeToolCalls.
+     * 
+     * @param toolCall toolCall
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<ToolCall> normalizeToolCalls(Object toolCall) {
         List<ToolCall> result = new ArrayList<>();
         if (toolCall instanceof List<?> list) {
@@ -617,36 +681,45 @@ public class AbilityManager implements ToolRegistry {
         } else if (toolCall instanceof ToolCall tc) {
             result.add(tc);
         } else {
-            Loggers.AGENT.warning("execute ability input tool call is invalid: " +
-                    (toolCall != null ? toolCall.getClass().getName() : "null"));
+            Loggers.AGENT.warning("execute ability input tool call is invalid: "
+                    + (toolCall != null ? toolCall.getClass().getName() : "null"));
         }
         return result;
     }
 
     /**
      * Result entry from tool execution.
-     *
-     * @param result      the raw result
-     * @param toolMessage the tool message for LLM context
+     * 
+     * @since 0.1.7
      */
-    public record ToolExecutionEntry(Object result, ToolMessage toolMessage) {}
+    public record ToolExecutionEntry(Object result, ToolMessage toolMessage) {
+    }
 
+    /**
+     * appendToolInfo.
+     * 
+     * @param toolInfos toolInfos
+     * @param toolInfoObj toolInfoObj
+     * @since 0.1.7
+     */
     private static void appendToolInfo(List<ToolInfo> toolInfos, Object toolInfoObj) {
         if (toolInfoObj instanceof ToolInfo toolInfo) {
             toolInfos.add(toolInfo);
         }
     }
 
+    /**
+     * appendMcpToolInfos.
+     * 
+     * @param toolInfos toolInfos
+     * @param names names
+     * @param mcpServer mcpServer
+     * @since 0.1.7
+     */
     private void appendMcpToolInfos(List<ToolInfo> toolInfos, List<String> names, McpServerConfig mcpServer) {
         try {
-            Object mcpTools = Runner.resourceMgr().getMcpTool(
-                    names,
-                    mcpServer.getServerId(),
-                    mcpServer.getServerName(),
-                    null,
-                    TagMatchStrategy.ALL,
-                    true
-            );
+            Object mcpTools = Runner.resourceMgr().getMcpTool(names, mcpServer.getServerId(), mcpServer.getServerName(),
+                    null, TagMatchStrategy.ALL, true);
             if (mcpTools instanceof List<?> toolList) {
                 for (Object toolObj : toolList) {
                     cacheMcpToolInfo(toolInfos, toolObj);
@@ -655,11 +728,18 @@ public class AbilityManager implements ToolRegistry {
                 cacheMcpToolInfo(toolInfos, mcpTools);
             }
         } catch (Exception e) {
-            Loggers.AGENT.warning("Failed to list MCP tool infos for server " + mcpServer.getServerName()
-                    + ": " + e.getMessage());
+            Loggers.AGENT.warning(
+                    "Failed to list MCP tool infos for server " + mcpServer.getServerName() + ": " + e.getMessage());
         }
     }
 
+    /**
+     * cacheMcpToolInfo.
+     * 
+     * @param toolInfos toolInfos
+     * @param toolObj toolObj
+     * @since 0.1.7
+     */
     private void cacheMcpToolInfo(List<ToolInfo> toolInfos, Object toolObj) {
         if (!(toolObj instanceof Tool tool) || tool.getCard() == null) {
             return;
@@ -670,6 +750,14 @@ public class AbilityManager implements ToolRegistry {
         appendToolInfo(toolInfos, tool.getCard().toolInfo());
     }
 
+    /**
+     * getToolFromResourceMgr.
+     * 
+     * @param toolId toolId
+     * @param tag tag
+     * @return the result
+     * @since 0.1.7
+     */
     private Tool getToolFromResourceMgr(String toolId, String tag) {
         Object toolObj = tag != null && !tag.isBlank()
                 ? Runner.resourceMgr().getTool(toolId, tag, TagMatchStrategy.ALL)
@@ -677,6 +765,13 @@ public class AbilityManager implements ToolRegistry {
         return toolObj instanceof Tool tool ? tool : null;
     }
 
+    /**
+     * adaptSubtaskSession.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private Object adaptSubtaskSession(Session session) {
         if (session instanceof AgentSessionApi) {
             return session;
@@ -684,6 +779,16 @@ public class AbilityManager implements ToolRegistry {
         return session != null ? session.getSessionId() : null;
     }
 
+    /**
+     * invokeTool.
+     * 
+     * @param tool tool
+     * @param toolArgs toolArgs
+     * @param session session
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private Object invokeTool(Tool tool, Map<String, Object> toolArgs, Session session) throws Exception {
         Map<String, Object> kwargs = new LinkedHashMap<String, Object>();
         if (session != null) {
@@ -697,28 +802,26 @@ public class AbilityManager implements ToolRegistry {
         }
     }
 
+    /**
+     * resolveMcpToolByName.
+     * 
+     * @param toolName toolName
+     * @return the result
+     * @since 0.1.7
+     */
     private Tool resolveMcpToolByName(String toolName) {
         for (McpServerConfig mcpServer : mcpServers.values()) {
             try {
-                String toolId = com.openjiuwen.core.runner.resourcemanager.ToolMgr.generateMcpToolId(
-                        mcpServer.getServerId(),
-                        mcpServer.getServerName(),
-                        toolName
-                );
+                String toolId = com.openjiuwen.core.runner.resourcemanager.ToolMgr
+                        .generateMcpToolId(mcpServer.getServerId(), mcpServer.getServerName(), toolName);
                 Tool directTool = getToolFromResourceMgr(toolId, null);
                 if (directTool != null && directTool.getCard() != null) {
                     tools.put(directTool.getCard().getName(), directTool.getCard());
                     return directTool;
                 }
 
-                Object toolsObj = Runner.resourceMgr().getMcpTool(
-                        List.of(toolName),
-                        mcpServer.getServerId(),
-                        mcpServer.getServerName(),
-                        null,
-                        TagMatchStrategy.ALL,
-                        true
-                );
+                Object toolsObj = Runner.resourceMgr().getMcpTool(List.of(toolName), mcpServer.getServerId(),
+                        mcpServer.getServerName(), null, TagMatchStrategy.ALL, true);
                 if (toolsObj instanceof List<?> toolList) {
                     for (Object toolObj : toolList) {
                         if (toolObj instanceof Tool tool && tool.getCard() != null) {
@@ -728,13 +831,20 @@ public class AbilityManager implements ToolRegistry {
                     }
                 }
             } catch (Exception e) {
-                Loggers.AGENT.debug("Failed to resolve MCP tool {} from server {}: {}",
-                        toolName, mcpServer.getServerName(), e.getMessage());
+                Loggers.AGENT.debug("Failed to resolve MCP tool {} from server {}: {}", toolName,
+                        mcpServer.getServerName(), e.getMessage());
             }
         }
         return null;
     }
 
+    /**
+     * unwrapToolInterrupt.
+     * 
+     * @param throwable throwable
+     * @return the result
+     * @since 0.1.7
+     */
     private static ToolInterruptException unwrapToolInterrupt(Throwable throwable) {
         Throwable cursor = throwable;
         ToolInterruptException interruptException = null;

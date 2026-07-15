@@ -14,56 +14,64 @@ import com.openjiuwen.dev_tools.tune.EvaluatedCase;
 import com.openjiuwen.dev_tools.tune.TuneConstant;
 import com.openjiuwen.dev_tools.tune.TuneUtils;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * Example optimizer for prompt tuning.
- *
- * <p>Mirrors Python's {@code ExampleOptimizer} in {@code openjiuwen.dev_tools.tune.optimizer.example_optimizer}.
+ * <p>
+ * Mirrors Python's {@code ExampleOptimizer} in {@code openjiuwen.dev_tools.tune.optimizer.example_optimizer}.
+ * 
+ * @since 0.1.7
  */
 public class ExampleOptimizer extends BaseOptimizer {
-
     private final Model model;
     private final int numExamples;
 
     /**
      * Creates an ExampleOptimizer.
-     *
+     * 
      * @param modelConfig the model request configuration
      * @param modelClientConfig the model client configuration
      * @param parameters the LLM call parameters
      * @param numExamples the number of examples to select
+     * @since 0.1.7
      */
-    public ExampleOptimizer(ModelRequestConfig modelConfig,
-                           ModelClientConfig modelClientConfig,
-                           Map<String, LLMCall> parameters,
-                           int numExamples) {
+    public ExampleOptimizer(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
+            Map<String, LLMCall> parameters, int numExamples) {
         super(parameters);
         this.model = new Model(modelClientConfig, modelConfig);
-        
+
         if (numExamples < TuneConstant.MIN_EXAMPLE_NUM || numExamples > TuneConstant.MAX_EXAMPLE_NUM) {
-            throw new IllegalArgumentException(
-                    "num_examples should be between " + TuneConstant.MIN_EXAMPLE_NUM + 
-                    " and " + TuneConstant.MAX_EXAMPLE_NUM
-            );
+            throw new IllegalArgumentException("num_examples should be between " + TuneConstant.MIN_EXAMPLE_NUM
+                    + " and " + TuneConstant.MAX_EXAMPLE_NUM);
         }
         this.numExamples = numExamples;
     }
 
     /**
      * Gets the number of examples.
-     *
+     * 
      * @return the number of examples
+     * @since 0.1.7
      */
     public int getNumExamples() {
         return numExamples;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * doBackward.
+     * 
+     * @param evaluatedCases evaluatedCases
+     * @since 0.1.7
      */
+    @Override
     protected void doBackward(List<EvaluatedCase> evaluatedCases) {
         if (numExamples <= 0) {
             return;
@@ -71,13 +79,10 @@ public class ExampleOptimizer extends BaseOptimizer {
 
         for (Map.Entry<String, TextualParameter> entry : parameters.entrySet()) {
             TextualParameter param = entry.getValue();
-            
-            List<Case> selectedExamples = selectBestExamples(
-                    param.getLlmCall().getSystemPrompt(),
-                    param.getLlmCall().getUserPrompt(),
-                    evaluatedCases
-            );
-            
+
+            List<Case> selectedExamples = selectBestExamples(param.getLlmCall().getSystemPrompt(),
+                    param.getLlmCall().getUserPrompt(), evaluatedCases);
+
             if (!param.getLlmCall().getFreezeSystemPrompt()) {
                 param.setGradient("system_prompt", TuneUtils.convertCasesToExamples(selectedExamples));
             }
@@ -87,38 +92,39 @@ public class ExampleOptimizer extends BaseOptimizer {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * doUpdate.
+     * 
+     * @since 0.1.7
      */
+    @Override
     protected void doUpdate() {
         for (Map.Entry<String, TextualParameter> entry : parameters.entrySet()) {
             TextualParameter param = entry.getValue();
-            
+
             if (!param.getLlmCall().getFreezeUserPrompt()) {
-                String optimizedPrompt = formatPrompt(
-                        param.getLlmCall().getUserPrompt(),
-                        param.getGradient("user_prompt").orElse(null)
-                );
+                String optimizedPrompt =
+                    formatPrompt(param.getLlmCall().getUserPrompt(), param.getGradient("user_prompt").orElse(null));
                 param.getLlmCall().updateUserPrompt(optimizedPrompt);
             } else if (!param.getLlmCall().getFreezeSystemPrompt()) {
-                String optimizedPrompt = formatPrompt(
-                        param.getLlmCall().getSystemPrompt(),
-                        param.getGradient("system_prompt").orElse(null)
-                );
+                String optimizedPrompt =
+                    formatPrompt(param.getLlmCall().getSystemPrompt(), param.getGradient("system_prompt").orElse(null));
                 param.getLlmCall().updateSystemPrompt(optimizedPrompt);
+            } else {
+                // no-op
             }
         }
     }
 
     /**
      * Initializes examples from evaluated cases.
-     *
+     * 
      * @param evaluatedCases the evaluated cases
+     * @since 0.1.7
      */
     public void initExamples(List<EvaluatedCase> evaluatedCases) {
         List<Case> preSelectedExamples = sampleExamples(numExamples, evaluatedCases);
-        
+
         for (TextualParameter param : parameters.values()) {
             if (!param.getLlmCall().getFreezeSystemPrompt()) {
                 param.setGradient("system_prompt", TuneUtils.convertCasesToExamples(preSelectedExamples));
@@ -130,7 +136,12 @@ public class ExampleOptimizer extends BaseOptimizer {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatPrompt.
+     * 
+     * @param prompt prompt
+     * @param gradient gradient
+     * @return the result
+     * @since 0.1.7
      */
     public String formatPrompt(PromptTemplate prompt, String gradient) {
         String content = TuneUtils.getContentStringFromTemplate(prompt);
@@ -140,6 +151,14 @@ public class ExampleOptimizer extends BaseOptimizer {
         return content + "\n" + gradient;
     }
 
+    /**
+     * sampleExamples.
+     * 
+     * @param num num
+     * @param evaluatedCases evaluatedCases
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Case> sampleExamples(int num, List<EvaluatedCase> evaluatedCases) {
         if (num >= evaluatedCases.size()) {
             return evaluatedCases.stream().map(EvaluatedCase::getCase).toList();
@@ -147,7 +166,7 @@ public class ExampleOptimizer extends BaseOptimizer {
 
         List<EvaluatedCase> sampled = new ArrayList<>();
         List<EvaluatedCase> errors = new ArrayList<>(badCases);
-        
+
         if (!errors.isEmpty()) {
             int numError = Math.min(num, errors.size());
             Collections.shuffle(errors);
@@ -156,9 +175,8 @@ public class ExampleOptimizer extends BaseOptimizer {
 
         if (sampled.size() < num) {
             int remaining = num - sampled.size();
-            List<EvaluatedCase> remainingCases = evaluatedCases.stream()
-                    .filter(c -> !sampled.contains(c))
-                    .collect(Collectors.toList());
+            List<EvaluatedCase> remainingCases =
+                evaluatedCases.stream().filter(c -> !sampled.contains(c)).collect(Collectors.toList());
             Collections.shuffle(remainingCases);
             sampled.addAll(remainingCases.subList(0, Math.min(remaining, remainingCases.size())));
         }
@@ -166,11 +184,19 @@ public class ExampleOptimizer extends BaseOptimizer {
         return sampled.stream().map(EvaluatedCase::getCase).toList();
     }
 
-    private List<Case> selectBestExamples(PromptTemplate systemPrompt,
-                                          PromptTemplate userPrompt,
-                                          List<EvaluatedCase> evaluatedCases) {
+    /**
+     * selectBestExamples.
+     * 
+     * @param systemPrompt systemPrompt
+     * @param userPrompt userPrompt
+     * @param evaluatedCases evaluatedCases
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<Case> selectBestExamples(PromptTemplate systemPrompt, PromptTemplate userPrompt,
+            List<EvaluatedCase> evaluatedCases) {
         List<Case> preSelected = sampleExamplesFromCases(evaluatedCases);
-        
+
         if (preSelected.size() <= numExamples) {
             return preSelected;
         }
@@ -178,31 +204,24 @@ public class ExampleOptimizer extends BaseOptimizer {
         StringBuilder examplesString = new StringBuilder();
         for (int i = 0; i < preSelected.size(); i++) {
             Case example = preSelected.get(i);
-            examplesString.append(String.format(
-                    "index: %d\nquestion: %s\nassistant answer: %s\n",
-                    i, example.getInputs(), example.getLabel()
-            ));
+            examplesString.append(String.format(Locale.ROOT, "index: %d\nquestion: %s\nassistant answer: %s\n", i,
+                    example.getInputs(), example.getLabel()));
         }
 
-        String prompt = String.format(
-                EXAMPLE_SELECTION_TEMPLATE,
-                TuneUtils.getContentStringFromTemplate(systemPrompt) + "\n" +
-                TuneUtils.getContentStringFromTemplate(userPrompt),
-                numExamples,
-                examplesString.toString()
-        );
+        String prompt =
+            String.format(Locale.ROOT, EXAMPLE_SELECTION_TEMPLATE,
+                    TuneUtils.getContentStringFromTemplate(systemPrompt) + "\n"
+                            + TuneUtils.getContentStringFromTemplate(userPrompt),
+                    numExamples, examplesString.toString());
 
         try {
-            String response = model.invoke(prompt, null, null, null, null, null, null, null, null, null)
-                    .getContentAsString();
+            String response =
+                model.invoke(prompt, null, null, null, null, null, null, null, null, null).getContentAsString();
             Optional<List<Object>> indices = TuneUtils.parseListFromLlmResponse(response);
-            
+
             if (indices.isPresent()) {
-                return indices.get().stream()
-                        .mapToInt(obj -> ((Number) obj).intValue())
-                        .filter(i -> i >= 0 && i < preSelected.size())
-                        .limit(numExamples)
-                        .mapToObj(preSelected::get)
+                return indices.get().stream().mapToInt(obj -> ((Number) obj).intValue())
+                        .filter(i -> i >= 0 && i < preSelected.size()).limit(numExamples).mapToObj(preSelected::get)
                         .toList();
             }
         } catch (Exception e) {
@@ -212,15 +231,20 @@ public class ExampleOptimizer extends BaseOptimizer {
         return sampleExamples(numExamples, evaluatedCases);
     }
 
+    /**
+     * sampleExamplesFromCases.
+     * 
+     * @param evaluatedCases evaluatedCases
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Case> sampleExamplesFromCases(List<EvaluatedCase> evaluatedCases) {
         if (numExamples >= evaluatedCases.size()) {
             return evaluatedCases.stream().map(EvaluatedCase::getCase).toList();
         }
 
-        List<Case> examples = badCases.stream()
-                .limit(TuneConstant.DEFAULT_MAX_NUM_SAMPLE_ERROR_CASES)
-                .map(EvaluatedCase::getCase)
-                .collect(Collectors.toList());
+        List<Case> examples = badCases.stream().limit(TuneConstant.DEFAULT_MAX_NUM_SAMPLE_ERROR_CASES)
+                .map(EvaluatedCase::getCase).collect(Collectors.toList());
 
         if (examples.size() < Math.min(numExamples, evaluatedCases.size())) {
             examples = fillMissingExamples(examples, evaluatedCases);
@@ -229,34 +253,38 @@ public class ExampleOptimizer extends BaseOptimizer {
         return examples;
     }
 
+    /**
+     * fillMissingExamples.
+     * 
+     * @param selected selected
+     * @param evaluatedCases evaluatedCases
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Case> fillMissingExamples(List<Case> selected, List<EvaluatedCase> evaluatedCases) {
         int numToSelect = Math.min(numExamples, evaluatedCases.size());
         int numToFill = numToSelect - selected.size();
-        
-        Set<String> selectedIds = selected.stream()
-                .map(Case::getCaseId)
-                .collect(Collectors.toSet());
-        
-        List<Case> remaining = evaluatedCases.stream()
-                .map(EvaluatedCase::getCase)
-                .filter(c -> !selectedIds.contains(c.getCaseId()))
-                .collect(Collectors.toList());
-        
+
+        Set<String> selectedIds = selected.stream().map(Case::getCaseId).collect(Collectors.toSet());
+
+        List<Case> remaining = evaluatedCases.stream().map(EvaluatedCase::getCase)
+                .filter(c -> !selectedIds.contains(c.getCaseId())).collect(Collectors.toList());
+
         Collections.shuffle(remaining);
         selected.addAll(remaining.subList(0, Math.min(numToFill, remaining.size())));
-        
+
         return selected;
     }
 
     private static final String EXAMPLE_SELECTION_TEMPLATE = """
             作为提示词优化专家，从以下示例中选择最具代表性的%d个示例：
-            
+
             任务描述：
             %s
-            
+
             示例集合：
             %s
-            
+
             请输出选择的示例索引列表，格式为：[索引1, 索引2, ...]
             """;
 }

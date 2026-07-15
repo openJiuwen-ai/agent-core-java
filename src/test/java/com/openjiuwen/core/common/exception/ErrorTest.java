@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.common.exception;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -9,14 +12,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * JUnit 5 tests for exception / error infrastructure.
  * Ported from Python: tests/unit_tests/core/common/test_errors.py
  */
 class ErrorTest {
-
     // ==========================================================================
     // test_build_error_returns_instance
     // ==========================================================================
@@ -24,8 +24,7 @@ class ErrorTest {
     @DisplayName("buildError returns BaseError instance with correct code and details")
     void testBuildErrorReturnsInstance() {
         Map<String, Object> details = Map.of("tool", "xyz");
-        BaseError error = ErrorHelper.buildError(
-                StatusCode.AGENT_TOOL_EXECUTION_ERROR, "failed", details, null, null);
+        BaseError error = ErrorHelper.buildError(StatusCode.AGENT_TOOL_EXECUTION_ERROR, "failed", details, null, null);
 
         assertInstanceOf(BaseError.class, error);
         assertEquals(StatusCode.AGENT_TOOL_EXECUTION_ERROR.getCode(), error.getCode());
@@ -42,8 +41,8 @@ class ErrorTest {
         BaseError resolved = StatusMapping.resolveException(StatusCode.AGENT_TOOL_EXECUTION_ERROR);
         Class<? extends BaseError> expectedType = resolved.getClass();
 
-        BaseError caught = assertThrows(BaseError.class, () ->
-                ErrorHelper.raiseError(StatusCode.AGENT_TOOL_EXECUTION_ERROR));
+        BaseError caught =
+            assertThrows(BaseError.class, () -> ErrorHelper.raiseError(StatusCode.AGENT_TOOL_EXECUTION_ERROR));
 
         assertInstanceOf(expectedType, caught);
     }
@@ -83,11 +82,11 @@ class ErrorTest {
     @Nested
     @DisplayName("BaseError construction")
     class BaseErrorConstruction {
-
         @Test
         @DisplayName("BaseError with status only sets code/message from StatusCode")
         void testStatusOnly() {
-            BaseError error = new BaseError(StatusCode.AGENT_TOOL_EXECUTION_ERROR) {};
+            BaseError error = new BaseError(StatusCode.AGENT_TOOL_EXECUTION_ERROR) {
+            };
             assertEquals(StatusCode.AGENT_TOOL_EXECUTION_ERROR.getCode(), error.getCode());
             assertEquals(StatusCode.AGENT_TOOL_EXECUTION_ERROR, error.getStatus());
             assertNotNull(error.getMessage());
@@ -96,7 +95,8 @@ class ErrorTest {
         @Test
         @DisplayName("BaseError with custom message overrides template")
         void testCustomMessage() {
-            BaseError error = new BaseError(StatusCode.ERROR, "custom msg", null, null) {};
+            BaseError error = new BaseError(StatusCode.ERROR, "custom msg", null, null) {
+            };
             assertEquals("custom msg", error.getMessage());
         }
 
@@ -104,7 +104,8 @@ class ErrorTest {
         @DisplayName("BaseError with params renders template placeholders")
         void testTemplateParams() {
             Map<String, Object> params = Map.of("error_msg", "timeout hit");
-            BaseError error = new BaseError(StatusCode.AGENT_TOOL_EXECUTION_ERROR, params) {};
+            BaseError error = new BaseError(StatusCode.AGENT_TOOL_EXECUTION_ERROR, params) {
+            };
             assertTrue(error.getTemplateMessage().contains("timeout hit"));
         }
 
@@ -112,8 +113,8 @@ class ErrorTest {
         @DisplayName("toMap contains all required fields")
         void testToMap() {
             Map<String, Object> details = Map.of("key", "value");
-            BaseError error = new BaseError(
-                    StatusCode.AGENT_TOOL_EXECUTION_ERROR, "fail", details, null) {};
+            BaseError error = new BaseError(StatusCode.AGENT_TOOL_EXECUTION_ERROR, "fail", details, null) {
+            };
 
             Map<String, Object> map = error.toMap();
             assertEquals(StatusCode.AGENT_TOOL_EXECUTION_ERROR.getCode(), map.get("code"));
@@ -127,7 +128,8 @@ class ErrorTest {
         @Test
         @DisplayName("toString includes code and message")
         void testToString() {
-            BaseError error = new BaseError(StatusCode.ERROR, "something wrong", null, null) {};
+            BaseError error = new BaseError(StatusCode.ERROR, "something wrong", null, null) {
+            };
             String str = error.toString();
             assertTrue(str.contains(String.valueOf(StatusCode.ERROR.getCode())));
             assertTrue(str.contains("something wrong"));
@@ -140,7 +142,6 @@ class ErrorTest {
     @Nested
     @DisplayName("Exception hierarchy and recovery semantics")
     class ExceptionHierarchy {
-
         @Test
         @DisplayName("ExecutionError is recoverable and not fatal")
         void testExecutionError() {
@@ -184,14 +185,11 @@ class ErrorTest {
         @Test
         @DisplayName("ToolError merges card into details")
         void testToolErrorWithCard() {
-            com.openjiuwen.core.common.schema.BaseCard card =
-                    com.openjiuwen.core.common.schema.BaseCard.builder()
-                            .name("search_tool")
-                            .description("A web search tool")
-                            .build();
+            com.openjiuwen.core.common.schema.BaseCard card = com.openjiuwen.core.common.schema.BaseCard.builder()
+                    .name("search_tool").description("A web search tool").build();
 
-            ToolError err = new ToolError(StatusCode.TOOL_EXECUTION_ERROR,
-                    "tool fail", Map.of("extra", "info"), null, card, null);
+            ToolError err =
+                new ToolError(StatusCode.TOOL_EXECUTION_ERROR, "tool fail", Map.of("extra", "info"), null, card, null);
 
             assertNotNull(err.getCard());
             assertEquals("search_tool", err.getCard().getName());
@@ -221,37 +219,29 @@ class ErrorTest {
     @Nested
     @DisplayName("ErrorHelper factory/raising methods")
     class ErrorHelperTests {
-
         @Test
         @DisplayName("systemError throws FrameworkError")
         void testSystemError() {
-            assertThrows(FrameworkError.class, () ->
-                    ErrorHelper.systemError(StatusCode.ERROR));
+            assertThrows(FrameworkError.class, () -> ErrorHelper.systemError(StatusCode.ERROR));
         }
 
         @Test
         @DisplayName("validateError throws ValidationError")
         void testValidateError() {
-            assertThrows(ValidationError.class, () ->
-                    ErrorHelper.validateError(StatusCode.SCHEMA_VALIDATE_INVALID));
+            assertThrows(ValidationError.class, () -> ErrorHelper.validateError(StatusCode.SCHEMA_VALIDATE_INVALID));
         }
 
         @Test
         @DisplayName("terminate throws Termination")
         void testTerminate() {
-            assertThrows(Termination.class, () ->
-                    ErrorHelper.terminate(StatusCode.SUCCESS));
+            assertThrows(Termination.class, () -> ErrorHelper.terminate(StatusCode.SUCCESS));
         }
 
         @Test
         @DisplayName("buildError with full params")
         void testBuildErrorWithFullParams() {
-            BaseError err = ErrorHelper.buildError(
-                    StatusCode.WORKFLOW_EXECUTION_ERROR,
-                    "custom msg",
-                    Map.of("detail", "val"),
-                    new RuntimeException("root cause"),
-                    Map.of("reason", "timeout"));
+            BaseError err = ErrorHelper.buildError(StatusCode.WORKFLOW_EXECUTION_ERROR, "custom msg",
+                    Map.of("detail", "val"), new RuntimeException("root cause"), Map.of("reason", "timeout"));
 
             assertEquals("custom msg", err.getMessage());
             assertNotNull(err.getCause());
@@ -265,7 +255,6 @@ class ErrorTest {
     @Nested
     @DisplayName("StatusMapping resolution")
     class StatusMappingTests {
-
         @Test
         @DisplayName("Validation-related codes resolve to ValidationError")
         void testValidationKeyword() {

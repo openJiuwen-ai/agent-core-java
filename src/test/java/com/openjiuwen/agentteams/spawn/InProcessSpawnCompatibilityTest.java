@@ -1,4 +1,7 @@
+
 package com.openjiuwen.agentteams.spawn;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.agentteams.TeamConstants;
 import com.openjiuwen.agentteams.agent.TeamAgent;
@@ -7,6 +10,7 @@ import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -16,10 +20,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 public class InProcessSpawnCompatibilityTest {
-
     @AfterEach
     void cleanup() {
         SpawnContext.resetSessionId(null);
@@ -27,29 +28,18 @@ public class InProcessSpawnCompatibilityTest {
 
     @Test
     void inprocessSpawnShouldRunTeammateLifecycleEntryPointWithSessionContext() throws Exception {
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("spawn-team")
-                .members(List.of(
-                        TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build(),
-                        TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).description("Backend worker").build()
-                ))
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("spawn-team").members(List.of(
+                TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build(),
+                TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).description("Backend worker").build()))
                 .build();
         TeamAgent leader = TeamFactory.createAgentTeam(spec);
-        TeamRuntimeContext ctx = TeamRuntimeContext.builder()
-                .teamId("spawn-team")
-                .memberName("worker-1")
-                .role(TeamRole.MEMBER)
-                .build();
+        TeamRuntimeContext ctx =
+            TeamRuntimeContext.builder().teamId("spawn-team").memberName("worker-1").role(TeamRole.MEMBER).build();
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            InProcessSpawnHandle handle = InProcessSpawn.inprocessSpawn(
-                    leader,
-                    ctx,
-                    executor,
-                    "@worker-1 take the first task",
-                    "spawn-session-1"
-            );
+            InProcessSpawnHandle handle = InProcessSpawn.inprocessSpawn(leader, ctx, executor,
+                    "@worker-1 take the first task", "spawn-session-1");
 
             assertThat(handle.getProcessId()).isEqualTo("inproc-worker-1");
             assertThat(handle.waitForCompletion()).isEqualTo(0);
@@ -72,13 +62,11 @@ public class InProcessSpawnCompatibilityTest {
     void inProcessHandleShouldTriggerUnhealthyCallbackAndSupportShutdown() {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            InProcessSpawnHandle handle = InProcessSpawnHandle.builder()
-                    .processId("inproc-test")
-                    .task(executor.submit(() -> {
-                        Thread.sleep(5_000L);
-                        return null;
-                    }))
-                    .build();
+            InProcessSpawnHandle handle =
+                InProcessSpawnHandle.builder().processId("inproc-test").task(executor.submit(() -> {
+                    Thread.sleep(5_000L);
+                    return null;
+                })).build();
 
             int[] callbackCount = {0};
             handle.setOnUnhealthy(() -> callbackCount[0]++);
@@ -102,29 +90,17 @@ public class InProcessSpawnCompatibilityTest {
         SpawnContext.SessionToken token = SpawnContext.setSessionId("session-root");
         assertThat(SpawnContext.getSessionId()).isEqualTo("session-root");
 
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("spawn-team-2")
-                .members(List.of(
-                        TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build(),
-                        TeamMemberSpec.builder().name("worker-2").role(TeamRole.MEMBER).description("Backend worker").build()
-                ))
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("spawn-team-2").members(List.of(
+                TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build(),
+                TeamMemberSpec.builder().name("worker-2").role(TeamRole.MEMBER).description("Backend worker").build()))
                 .build();
         TeamAgent leader = TeamFactory.createAgentTeam(spec);
-        TeamRuntimeContext ctx = TeamRuntimeContext.builder()
-                .teamId("spawn-team-2")
-                .memberName("worker-2")
-                .role(TeamRole.MEMBER)
-                .build();
+        TeamRuntimeContext ctx =
+            TeamRuntimeContext.builder().teamId("spawn-team-2").memberName("worker-2").role(TeamRole.MEMBER).build();
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
-            InProcessSpawnHandle handle = InProcessSpawn.inprocessSpawn(
-                    leader,
-                    ctx,
-                    executor,
-                    null,
-                    "spawn-session-2"
-            );
+            InProcessSpawnHandle handle = InProcessSpawn.inprocessSpawn(leader, ctx, executor, null, "spawn-session-2");
             assertThat(handle.waitForCompletion()).isEqualTo(0);
             assertThat(SpawnContext.getSessionId()).isEqualTo("session-root");
             assertThat(handle.isHealthy()).isFalse();

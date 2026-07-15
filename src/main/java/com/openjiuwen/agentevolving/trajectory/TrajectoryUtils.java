@@ -9,21 +9,30 @@ import java.util.List;
 
 /**
  * Query helpers for trajectories.
+ * 
+ * @since 0.1.7
  */
 public final class TrajectoryUtils {
-
+    /**
+     * TrajectoryUtils.
+     * 
+     * @since 0.1.7
+     */
     private TrajectoryUtils() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * iterSteps.
+     * 
+     * @param trajectories trajectories
+     * @param caseId caseId
+     * @param operatorId operatorId
+     * @param kind kind
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<TrajectoryStep> iterSteps(
-            List<Trajectory> trajectories,
-            String caseId,
-            String operatorId,
-            StepKind kind
-    ) {
+    public static List<TrajectoryStep> iterSteps(List<Trajectory> trajectories, String caseId, String operatorId,
+            StepKind kind) {
         List<TrajectoryStep> result = new ArrayList<>();
         for (Trajectory trajectory : trajectories != null ? trajectories : List.<Trajectory>of()) {
             if (trajectory == null) {
@@ -32,7 +41,9 @@ public final class TrajectoryUtils {
             if (caseId != null && !caseId.equals(trajectory.getCaseId())) {
                 continue;
             }
-            for (TrajectoryStep step : trajectory.getSteps() != null ? trajectory.getSteps() : List.<TrajectoryStep>of()) {
+            for (TrajectoryStep step : trajectory.getSteps() != null
+                    ? trajectory.getSteps()
+                    : List.<TrajectoryStep>of()) {
                 if (operatorId != null && !operatorId.equals(step.getOperatorId())) {
                     continue;
                 }
@@ -46,37 +57,46 @@ public final class TrajectoryUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * iterSteps.
+     * 
+     * @param trajectories trajectories
+     * @param caseId caseId
+     * @param operatorId operatorId
+     * @param kind kind
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<TrajectoryStep> iterSteps(
-            List<Trajectory> trajectories,
-            String caseId,
-            String operatorId,
-            String kind
-    ) {
+    public static List<TrajectoryStep> iterSteps(List<Trajectory> trajectories, String caseId, String operatorId,
+            String kind) {
         return iterSteps(trajectories, caseId, operatorId, kind != null ? StepKind.fromValue(kind) : null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStepsForCaseOperator.
+     * 
+     * @param trajectories trajectories
+     * @param caseId caseId
+     * @param operatorId operatorId
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<TrajectoryStep> getStepsForCaseOperator(
-            List<Trajectory> trajectories,
-            String caseId,
-            String operatorId
-    ) {
+    public static List<TrajectoryStep> getStepsForCaseOperator(List<Trajectory> trajectories, String caseId,
+            String operatorId) {
         return getStepsForCaseOperator(trajectories, caseId, operatorId, StepKind.LLM);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStepsForCaseOperator.
+     * 
+     * @param trajectories trajectories
+     * @param caseId caseId
+     * @param operatorId operatorId
+     * @param kind kind
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<TrajectoryStep> getStepsForCaseOperator(
-            List<Trajectory> trajectories,
-            String caseId,
-            String operatorId,
-            StepKind kind
-    ) {
+    public static List<TrajectoryStep> getStepsForCaseOperator(List<Trajectory> trajectories, String caseId,
+            String operatorId, StepKind kind) {
         return iterSteps(trajectories, caseId, operatorId, kind);
     }
 }

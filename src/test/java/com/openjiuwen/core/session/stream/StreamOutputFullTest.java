@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.stream;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,8 +17,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Comprehensive tests for stream output subsystem: {@link StreamEmitter}, {@link StreamWriterManager},
  * {@link StreamWriter}, and stream schemas.
@@ -23,7 +24,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Ported from Python's {@code test_stream_output.py}.
  */
 class StreamOutputFullTest {
-
     private StreamEmitter emitter;
     private StreamWriterManager manager;
 
@@ -38,7 +38,6 @@ class StreamOutputFullTest {
     @Nested
     @DisplayName("Custom Writer")
     class CustomWriterTests {
-
         @Test
         @DisplayName("stream output with custom writer - producer/consumer pattern")
         void testCustomWriterProducerConsumer() throws Exception {
@@ -52,8 +51,7 @@ class StreamOutputFullTest {
                 emitter.close();
             });
 
-            CompletableFuture<Void> consumer = CompletableFuture.runAsync(() ->
-                    manager.streamOutput(received::add));
+            CompletableFuture<Void> consumer = CompletableFuture.runAsync(() -> manager.streamOutput(received::add));
 
             CompletableFuture.allOf(producer, consumer).get(5, TimeUnit.SECONDS);
             assertEquals(3, received.size());
@@ -79,7 +77,6 @@ class StreamOutputFullTest {
     @Nested
     @DisplayName("Output Writer")
     class OutputWriterTests {
-
         @Test
         @DisplayName("stream output with output writer - validates schema")
         void testOutputWriter() throws Exception {
@@ -93,8 +90,7 @@ class StreamOutputFullTest {
                 emitter.close();
             });
 
-            CompletableFuture<Void> consumer = CompletableFuture.runAsync(() ->
-                    manager.streamOutput(received::add));
+            CompletableFuture<Void> consumer = CompletableFuture.runAsync(() -> manager.streamOutput(received::add));
 
             CompletableFuture.allOf(producer, consumer).get(5, TimeUnit.SECONDS);
             assertEquals(3, received.size());
@@ -115,7 +111,6 @@ class StreamOutputFullTest {
     @Nested
     @DisplayName("Trace Writer")
     class TraceWriterTests {
-
         @Test
         @DisplayName("stream output with trace writer")
         void testTraceWriter() throws Exception {
@@ -129,8 +124,7 @@ class StreamOutputFullTest {
                 emitter.close();
             });
 
-            CompletableFuture<Void> consumer = CompletableFuture.runAsync(() ->
-                    manager.streamOutput(received::add));
+            CompletableFuture<Void> consumer = CompletableFuture.runAsync(() -> manager.streamOutput(received::add));
 
             CompletableFuture.allOf(producer, consumer).get(5, TimeUnit.SECONDS);
             assertEquals(3, received.size());
@@ -149,7 +143,6 @@ class StreamOutputFullTest {
     @Nested
     @DisplayName("StreamEmitter")
     class EmitterTests {
-
         @Test
         @DisplayName("emitter closed state")
         void testEmitterClosedState() {
@@ -186,7 +179,6 @@ class StreamOutputFullTest {
     @Nested
     @DisplayName("StreamWriterManager")
     class ManagerTests {
-
         @Test
         @DisplayName("get default writers returns non-null")
         void testGetDefaultWriters() {
@@ -212,8 +204,8 @@ class StreamOutputFullTest {
                 emitter.close();
             });
 
-            CompletableFuture<List<Object>> consumer = CompletableFuture.supplyAsync(() ->
-                    manager.collectStreamOutput());
+            CompletableFuture<List<Object>> consumer =
+                CompletableFuture.supplyAsync(() -> manager.collectStreamOutput());
 
             producer.get(5, TimeUnit.SECONDS);
             List<Object> result = consumer.get(5, TimeUnit.SECONDS);
@@ -238,7 +230,6 @@ class StreamOutputFullTest {
     @Nested
     @DisplayName("StreamWriter validation")
     class WriterValidation {
-
         @Test
         @DisplayName("write null throws error")
         void testWriteNullThrows() {
@@ -250,8 +241,7 @@ class StreamOutputFullTest {
         @DisplayName("write accepts schema instance directly")
         void testWriteSchemaInstance() throws Exception {
             List<Object> received = new ArrayList<>();
-            CompletableFuture<Void> consumer = CompletableFuture.runAsync(() ->
-                    manager.streamOutput(received::add));
+            CompletableFuture<Void> consumer = CompletableFuture.runAsync(() -> manager.streamOutput(received::add));
 
             CustomSchema schema = new CustomSchema(Map.of("key", "direct"));
             manager.getCustomWriter().write(schema);
@@ -268,7 +258,6 @@ class StreamOutputFullTest {
     @Nested
     @DisplayName("AsyncStreamQueue")
     class QueueTests {
-
         @Test
         @DisplayName("queue send and receive")
         void testSendReceive() {
@@ -319,12 +308,11 @@ class StreamOutputFullTest {
     @Nested
     @DisplayName("Stream schemas")
     class SchemaTests {
-
         @Test
         @DisplayName("OutputSchema fromMap")
         void testOutputSchemaFromMap() {
-            OutputSchema schema = OutputSchema.fromMap(Map.of(
-                    "type", "test_type", "index", 5, "payload", "test_payload"));
+            OutputSchema schema =
+                OutputSchema.fromMap(Map.of("type", "test_type", "index", 5, "payload", "test_payload"));
             assertEquals("test_type", schema.getType());
             assertEquals(5, schema.getIndex());
             assertEquals("test_payload", schema.getPayload());
@@ -333,8 +321,7 @@ class StreamOutputFullTest {
         @Test
         @DisplayName("TraceSchema fromMap")
         void testTraceSchemaFromMap() {
-            TraceSchema schema = TraceSchema.fromMap(Map.of(
-                    "type", "on_chain_start", "payload", "test_payload"));
+            TraceSchema schema = TraceSchema.fromMap(Map.of("type", "on_chain_start", "payload", "test_payload"));
             assertEquals("on_chain_start", schema.getType());
             assertEquals("test_payload", schema.getPayload());
         }
@@ -342,8 +329,7 @@ class StreamOutputFullTest {
         @Test
         @DisplayName("CustomSchema fromMap and property access")
         void testCustomSchemaFromMap() {
-            CustomSchema schema = CustomSchema.fromMap(Map.of(
-                    "key1", "value1", "key2", 42));
+            CustomSchema schema = CustomSchema.fromMap(Map.of("key1", "value1", "key2", 42));
             assertEquals("value1", schema.get("key1"));
             assertEquals(42, schema.get("key2"));
             assertNull(schema.get("non_existent"));

@@ -18,9 +18,10 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.store.base.GraphState}.
  * Named {@code GraphStoreState} to avoid conflict with the graph node state class.
+ * 
+ * @since 0.1.7
  */
 public class GraphStoreState implements Serializable {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -32,11 +33,18 @@ public class GraphStoreState implements Serializable {
     private final Map<String, Integer> nodeVersion;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GraphStoreState.
+     * 
+     * @param ns ns
+     * @param step step
+     * @param channelValues channelValues
+     * @param pendingBuffer pendingBuffer
+     * @param pendingNode pendingNode
+     * @param nodeVersion nodeVersion
+     * @since 0.1.7
      */
-    public GraphStoreState(String ns, int step, Map<String, Object> channelValues,
-                           List<Message> pendingBuffer, Map<String, PendingNode> pendingNode,
-                           Map<String, Integer> nodeVersion) {
+    public GraphStoreState(String ns, int step, Map<String, Object> channelValues, List<Message> pendingBuffer,
+            Map<String, PendingNode> pendingNode, Map<String, Integer> nodeVersion) {
         this.ns = ns;
         this.step = step;
         this.channelValues = channelValues != null ? channelValues : new HashMap<>();
@@ -46,42 +54,60 @@ public class GraphStoreState implements Serializable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getNs() {
         return ns;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStep.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getStep() {
         return step;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getChannelValues.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getChannelValues() {
         return channelValues;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPendingBuffer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Message> getPendingBuffer() {
         return pendingBuffer;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPendingNode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, PendingNode> getPendingNode() {
         return pendingNode;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNodeVersion.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Integer> getNodeVersion() {
         return nodeVersion;
@@ -89,10 +115,18 @@ public class GraphStoreState implements Serializable {
 
     /**
      * Factory method to create a new GraphStoreState.
+     * 
+     * @param ns ns
+     * @param step step
+     * @param channelSnapshot channelSnapshot
+     * @param pendingBuffer pendingBuffer
+     * @param pendingNode pendingNode
+     * @param nodeVersion nodeVersion
+     * @return the result
+     * @since 0.1.7
      */
     public static GraphStoreState create(String ns, int step, Map<String, Object> channelSnapshot,
-                                         List<Message> pendingBuffer, Map<String, PendingNode> pendingNode,
-                                         Map<String, Integer> nodeVersion) {
+            List<Message> pendingBuffer, Map<String, PendingNode> pendingNode, Map<String, Integer> nodeVersion) {
         return new GraphStoreState(ns, step, channelSnapshot, pendingBuffer, pendingNode, nodeVersion);
     }
 }

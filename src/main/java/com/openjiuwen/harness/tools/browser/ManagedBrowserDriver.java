@@ -8,8 +8,8 @@ import java.io.IOException;
 
 /**
  * Public class ManagedBrowserDriver used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class ManagedBrowserDriver {
     private final BrowserProfile profile;
@@ -17,14 +17,21 @@ public class ManagedBrowserDriver {
     private boolean isProcessOwned;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ManagedBrowserDriver.
+     * 
+     * @param profile profile
+     * @since 0.1.7
      */
     public ManagedBrowserDriver(BrowserProfile profile) {
         this.profile = profile;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * start.
+     * 
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public String start() throws IOException {
         if (isEndpointReady()) {
@@ -37,7 +44,9 @@ public class ManagedBrowserDriver {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stop.
+     * 
+     * @since 0.1.7
      */
     public void stop() {
         if (process == null || !isProcessOwned) {
@@ -49,21 +58,30 @@ public class ManagedBrowserDriver {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isEndpointReady.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isEndpointReady() {
         return false;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isProcessOwned.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isProcessOwned() {
         return isProcessOwned;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * process.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Process process() {
         return process;

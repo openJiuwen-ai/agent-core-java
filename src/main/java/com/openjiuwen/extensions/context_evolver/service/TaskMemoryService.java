@@ -29,6 +29,7 @@ import com.openjiuwen.extensions.context_evolver.summary.task.ace.ApplyDeltaOp;
 import com.openjiuwen.extensions.context_evolver.summary.task.ace.CurateOp;
 import com.openjiuwen.extensions.context_evolver.summary.task.ace.LoadPlaybookOp;
 import com.openjiuwen.extensions.context_evolver.summary.task.ace.ReflectOp;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,11 +49,11 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.service.task_memory_service.TaskMemoryService}.
- *
  * Service for task memory retrieval and summarization.
+ * 
+ * @since 0.1.7
  */
 public class TaskMemoryService {
-
     private static final Logger log = LoggerFactory.getLogger(TaskMemoryService.class);
 
     private final ServiceContext serviceContext;
@@ -63,36 +64,42 @@ public class TaskMemoryService {
     private final BaseOp summaryFlow;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskMemoryService.
+     * 
+     * @since 0.1.7
      */
     public TaskMemoryService() {
         this(null, null, null, null, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskMemoryService.
+     * 
+     * @param llmModel llmModel
+     * @param embeddingModel embeddingModel
+     * @param apiKey apiKey
+     * @param retrievalAlgo retrievalAlgo
+     * @param summaryAlgo summaryAlgo
+     * @since 0.1.7
      */
-    public TaskMemoryService(
-            String llmModel,
-            String embeddingModel,
-            String apiKey,
-            String retrievalAlgo,
-            String summaryAlgo
-    ) {
+    public TaskMemoryService(String llmModel, String embeddingModel, String apiKey, String retrievalAlgo,
+            String summaryAlgo) {
         this(llmModel, embeddingModel, apiKey, retrievalAlgo, summaryAlgo, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskMemoryService.
+     * 
+     * @param llmModel llmModel
+     * @param embeddingModel embeddingModel
+     * @param apiKey apiKey
+     * @param retrievalAlgo retrievalAlgo
+     * @param summaryAlgo summaryAlgo
+     * @param configPath configPath
+     * @since 0.1.7
      */
-    public TaskMemoryService(
-            String llmModel,
-            String embeddingModel,
-            String apiKey,
-            String retrievalAlgo,
-            String summaryAlgo,
-            String configPath
-    ) {
+    public TaskMemoryService(String llmModel, String embeddingModel, String apiKey, String retrievalAlgo,
+            String summaryAlgo, String configPath) {
         if (configPath != null && !configPath.isBlank()) {
             Config.reload(configPath, null);
         } else {
@@ -102,12 +109,10 @@ public class TaskMemoryService {
         this.serviceContext = ServiceContext.getInstance();
         this.vectorStore = new MemoryVectorStore();
 
-        String llm = llmModel != null
-            ? llmModel
-            : Config.getString("MODEL_NAME", Config.getString("LLM_MODEL", "gpt-5.2"));
-        String embedding = embeddingModel != null
-            ? embeddingModel
-            : Config.getString("EMBEDDING_MODEL", "text-embedding-3-small");
+        String llm =
+            llmModel != null ? llmModel : Config.getString("MODEL_NAME", Config.getString("LLM_MODEL", "gpt-5.2"));
+        String embedding =
+            embeddingModel != null ? embeddingModel : Config.getString("EMBEDDING_MODEL", "text-embedding-3-small");
         String resolvedApiKey = apiKey != null ? apiKey : Config.getString("API_KEY");
 
         serviceContext.registerService("llm", llm);
@@ -117,23 +122,24 @@ public class TaskMemoryService {
             serviceContext.registerService("api_key", resolvedApiKey);
         }
 
-        this.retrievalAlgorithm = normalizeAlgoName(
-            retrievalAlgo != null ? retrievalAlgo : Config.getString("RETRIEVAL_ALGO", "ACE")
-        );
-        this.summaryAlgorithm = normalizeAlgoName(
-            summaryAlgo != null ? summaryAlgo : Config.getString("SUMMARY_ALGO", "ACE")
-        );
+        this.retrievalAlgorithm =
+            normalizeAlgoName(retrievalAlgo != null ? retrievalAlgo : Config.getString("RETRIEVAL_ALGO", "ACE"));
+        this.summaryAlgorithm =
+            normalizeAlgoName(summaryAlgo != null ? summaryAlgo : Config.getString("SUMMARY_ALGO", "ACE"));
 
         this.retrieveFlow = createRetrieveFlow();
         this.summaryFlow = createSummaryFlow();
 
-        log.info(
-            "TaskMemoryService initialized with retrieval={}, summary={}",
-            retrievalAlgorithm,
-            summaryAlgorithm
-        );
+        log.info("TaskMemoryService initialized with retrieval={}, summary={}", retrievalAlgorithm, summaryAlgorithm);
     }
 
+    /**
+     * normalizeAlgoName.
+     * 
+     * @param algo algo
+     * @return the result
+     * @since 0.1.7
+     */
     private String normalizeAlgoName(String algo) {
         if (algo == null) {
             return "ACE";
@@ -151,89 +157,92 @@ public class TaskMemoryService {
         return "Our";
     }
 
+    /**
+     * createRetrieveFlow.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private BaseOp createRetrieveFlow() {
         return switch (retrievalAlgorithm) {
             case "ReasoningBank" ->
                 new com.openjiuwen.extensions.context_evolver.retrieve.task.reasoning_bank.RecallMemoryOp(
-                    Config.getInt("TOPK_QUERY", 1)
-                );
+                        Config.getInt("TOPK_QUERY", 1));
             case "ReMe", "Our" -> new SequentialOp(
-                new com.openjiuwen.extensions.context_evolver.retrieve.task.reme.RecallMemoryOp(
-                    Config.getInt("TOPK_RETRIEVAL", 10)
-                ),
-                new ReMeRerankMemoryOp(
-                    Config.getBoolean("LLM_RERANK", true),
-                    Config.getInt("TOPK_RERANK", 5)
-                ),
-                new ReMeRewriteMemoryOp(Config.getBoolean("LLM_REWRITE", true))
-            );
+                    new com.openjiuwen.extensions.context_evolver.retrieve.task.reme.RecallMemoryOp(
+                            Config.getInt("TOPK_RETRIEVAL", 10)),
+                    new ReMeRerankMemoryOp(Config.getBoolean("LLM_RERANK", true), Config.getInt("TOPK_RERANK", 5)),
+                    new ReMeRewriteMemoryOp(Config.getBoolean("LLM_REWRITE", true)));
             default -> new RecallMemoryOp();
         };
     }
 
+    /**
+     * createSummaryFlow.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private BaseOp createSummaryFlow() {
         if ("ACE".equals(summaryAlgorithm)) {
             boolean useGroundTruth = Config.getBoolean("USE_GROUNDTRUTH", false);
             int maxPlaybookSize = Config.getInt("MAX_PLAYBOOK_SIZE", 50);
-            return new SequentialOp(
-                new LoadPlaybookOp(),
-                new ReflectOp(useGroundTruth),
-                new CurateOp(),
-                new ApplyDeltaOp(maxPlaybookSize),
-                new UpdateVectorStoreOp(vectorStore)
-            );
+            return new SequentialOp(new LoadPlaybookOp(), new ReflectOp(useGroundTruth), new CurateOp(),
+                    new ApplyDeltaOp(maxPlaybookSize), new UpdateVectorStoreOp(vectorStore));
         }
         if ("ReasoningBank".equals(summaryAlgorithm)) {
-            return new SequentialOp(
-                new ReasoningBankSummarizeMemoryOp(),
-                new UpdateVectorStoreOp(vectorStore)
-            );
+            return new SequentialOp(new ReasoningBankSummarizeMemoryOp(), new UpdateVectorStoreOp(vectorStore));
         }
         if ("ReMe".equals(summaryAlgorithm) || "Our".equals(summaryAlgorithm)) {
-            return new SequentialOp(
-                new ReMeSummarizeMemoryOp(
-                    Config.getBoolean("EXTRACT_BEST_TRAJ", true),
-                    Config.getBoolean("EXTRACT_WORST_TRAJ", true),
-                    Config.getBoolean("EXTRACT_COMPARATIVE_TRAJ", true),
-                    Config.getBoolean("MEMORY_VALIDATION", true),
-                    Config.getBoolean("MEMORY_DEDUPLICATION", true)
-                ),
-                new UpdateVectorStoreOp(vectorStore)
-            );
+            return new SequentialOp(new ReMeSummarizeMemoryOp(Config.getBoolean("EXTRACT_BEST_TRAJ", true),
+                    Config.getBoolean("EXTRACT_WORST_TRAJ", true), Config.getBoolean("EXTRACT_COMPARATIVE_TRAJ", true),
+                    Config.getBoolean("MEMORY_VALIDATION", true), Config.getBoolean("MEMORY_DEDUPLICATION", true)),
+                    new UpdateVectorStoreOp(vectorStore));
         }
         return new SequentialOp(new UpdateVectorStoreOp(vectorStore));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRetrievalAlgorithm.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getRetrievalAlgorithm() {
         return retrievalAlgorithm;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSummaryAlgorithm.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSummaryAlgorithm() {
         return summaryAlgorithm;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getVectorStore.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public MemoryVectorStore getVectorStore() {
         return vectorStore;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieveResponse.
+     * 
+     * @param userId userId
+     * @param query query
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<RetrieveResponse> retrieveResponse(String userId, String query) {
-        log.info(
-            "Retrieving task memory for user={}, query='{}'",
-            userId,
-            query != null && query.length() > 50 ? query.substring(0, 50) + "..." : query
-        );
+        log.info("Retrieving task memory for user={}, query='{}'", userId,
+                query != null && query.length() > 50 ? query.substring(0, 50) + "..." : query);
 
         RuntimeContext context = new RuntimeContext();
         context.set("user_id", userId);
@@ -253,47 +262,61 @@ public class TaskMemoryService {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieve.
+     * 
+     * @param userId userId
+     * @param query query
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<Map<String, Object>> retrieve(String userId, String query) {
         return retrieveResponse(userId, query).thenApply(RetrieveResponse::toMap);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * summarizeResponse.
+     * 
+     * @param userId userId
+     * @param matts matts
+     * @param query query
+     * @param trajectories trajectories
+     * @return the result
+     * @since 0.1.7
      */
-    public CompletableFuture<SummarizeResponse> summarizeResponse(
-            String userId,
-            String matts,
-            String query,
-            List<?> trajectories
-    ) {
+    public CompletableFuture<SummarizeResponse> summarizeResponse(String userId, String matts, String query,
+            List<?> trajectories) {
         return summarizeResponse(userId, matts, query, trajectories, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * summarize.
+     * 
+     * @param userId userId
+     * @param matts matts
+     * @param query query
+     * @param trajectories trajectories
+     * @return the result
+     * @since 0.1.7
      */
-    public CompletableFuture<Map<String, Object>> summarize(
-            String userId,
-            String matts,
-            String query,
-            List<?> trajectories
-    ) {
+    public CompletableFuture<Map<String, Object>> summarize(String userId, String matts, String query,
+            List<?> trajectories) {
         return summarizeResponse(userId, matts, query, trajectories).thenApply(SummarizeResponse::toMap);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * summarizeResponse.
+     * 
+     * @param userId userId
+     * @param matts matts
+     * @param query query
+     * @param trajectories trajectories
+     * @param labels labels
+     * @param scores scores
+     * @return the result
+     * @since 0.1.7
      */
-    public CompletableFuture<SummarizeResponse> summarizeResponse(
-            String userId,
-            String matts,
-            String query,
-            List<?> trajectories,
-            List<Boolean> labels,
-            List<? extends Number> scores
-    ) {
+    public CompletableFuture<SummarizeResponse> summarizeResponse(String userId, String matts, String query,
+            List<?> trajectories, List<Boolean> labels, List<? extends Number> scores) {
         log.info("Summarizing {} trajectories for user={}", trajectories != null ? trajectories.size() : 0, userId);
 
         RuntimeContext context = new RuntimeContext();
@@ -315,22 +338,30 @@ public class TaskMemoryService {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * summarize.
+     * 
+     * @param userId userId
+     * @param matts matts
+     * @param query query
+     * @param trajectories trajectories
+     * @param labels labels
+     * @param scores scores
+     * @return the result
+     * @since 0.1.7
      */
-    public CompletableFuture<Map<String, Object>> summarize(
-            String userId,
-            String matts,
-            String query,
-            List<?> trajectories,
-            List<Boolean> labels,
-            List<? extends Number> scores
-    ) {
+    public CompletableFuture<Map<String, Object>> summarize(String userId, String matts, String query,
+            List<?> trajectories, List<Boolean> labels, List<? extends Number> scores) {
         return summarizeResponse(userId, matts, query, trajectories, labels, scores)
-            .thenApply(SummarizeResponse::toMap);
+                .thenApply(SummarizeResponse::toMap);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addMemory.
+     * 
+     * @param userId userId
+     * @param request request
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<Map<String, Object>> addMemory(String userId, AddMemoryRequest request) {
         try {
@@ -351,7 +382,11 @@ public class TaskMemoryService {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPlaybook.
+     * 
+     * @param userId userId
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<Map<String, Object>> getPlaybook(String userId) {
         Map<String, Object> filter = new LinkedHashMap<>();
@@ -370,7 +405,11 @@ public class TaskMemoryService {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clearPlaybook.
+     * 
+     * @param userId userId
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<Map<String, Object>> clearPlaybook(String userId) {
         log.warn("Clearing playbook for user={}", userId);
@@ -392,6 +431,14 @@ public class TaskMemoryService {
         });
     }
 
+    /**
+     * createManualMemoryNode.
+     * 
+     * @param userId userId
+     * @param request request
+     * @return the result
+     * @since 0.1.7
+     */
     private VectorNode createManualMemoryNode(String userId, AddMemoryRequest request) {
         if (request == null || request.getContent() == null || request.getContent().isBlank()) {
             throw new IllegalArgumentException("Memory content is required");
@@ -404,6 +451,14 @@ public class TaskMemoryService {
         };
     }
 
+    /**
+     * createAceMemory.
+     * 
+     * @param userId userId
+     * @param request request
+     * @return the result
+     * @since 0.1.7
+     */
     private ACEMemory createAceMemory(String userId, AddMemoryRequest request) {
         String section = request.getSection();
         if (section == null || section.isBlank()) {
@@ -411,11 +466,8 @@ public class TaskMemoryService {
         }
 
         Instant now = Instant.now();
-        ACEMemory memory = new ACEMemory(
-            ACEMemory.generateId(section, request.getContent()),
-            section,
-            request.getContent()
-        );
+        ACEMemory memory =
+            new ACEMemory(ACEMemory.generateId(section, request.getContent()), section, request.getContent());
         memory.setWorkspaceId(userId);
         memory.setHelpful(0);
         memory.setHarmful(0);
@@ -425,23 +477,37 @@ public class TaskMemoryService {
         return memory;
     }
 
+    /**
+     * createReasoningBankMemory.
+     * 
+     * @param userId userId
+     * @param request request
+     * @return the result
+     * @since 0.1.7
+     */
     private ReasoningBankMemory createReasoningBankMemory(String userId, AddMemoryRequest request) {
         if (request.getTitle() == null || request.getDescription() == null) {
             throw new IllegalArgumentException(
-                "ReasoningBank requires 'title', 'description' and 'content' parameters"
-            );
+                    "ReasoningBank requires 'title', 'description' and 'content' parameters");
         }
 
         ReasoningBankMemory memory = new ReasoningBankMemory();
         memory.setWorkspaceId(userId);
         memory.setQuery(request.getQuery() != null ? request.getQuery() : request.getDescription());
         memory.setLabel(request.getLabel());
-        memory.setMemory(List.of(
-            new ReasoningBankMemoryItem(request.getTitle(), request.getDescription(), request.getContent())
-        ));
+        memory.setMemory(List
+                .of(new ReasoningBankMemoryItem(request.getTitle(), request.getDescription(), request.getContent())));
         return memory;
     }
 
+    /**
+     * createReMeMemory.
+     * 
+     * @param userId userId
+     * @param request request
+     * @return the result
+     * @since 0.1.7
+     */
     private ReMeMemory createReMeMemory(String userId, AddMemoryRequest request) {
         if (request.getWhenToUse() == null || request.getWhenToUse().isBlank()) {
             throw new IllegalArgumentException("ReMe algorithm requires 'when_to_use' parameter");
@@ -467,6 +533,13 @@ public class TaskMemoryService {
         return memory;
     }
 
+    /**
+     * normalizeScores.
+     * 
+     * @param scores scores
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Double> normalizeScores(List<? extends Number> scores) {
         List<Double> normalized = new ArrayList<>();
         if (scores == null) {
@@ -480,6 +553,13 @@ public class TaskMemoryService {
         return normalized;
     }
 
+    /**
+     * normalizeRetrievedMemories.
+     * 
+     * @param rawMemories rawMemories
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> normalizeRetrievedMemories(List<?> rawMemories) {
         List<Object> normalized = new ArrayList<>();
         if (rawMemories == null) {
@@ -499,6 +579,14 @@ public class TaskMemoryService {
         return normalized;
     }
 
+    /**
+     * normalizeSummarizedMemories.
+     * 
+     * @param rawMemories rawMemories
+     * @param userId userId
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> normalizeSummarizedMemories(List<?> rawMemories, String userId) {
         List<Object> normalized = new ArrayList<>();
         if (rawMemories == null) {
@@ -518,6 +606,13 @@ public class TaskMemoryService {
         return normalized;
     }
 
+    /**
+     * toAceRetrievedMemory.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private ACERetrievedMemory toAceRetrievedMemory(Object raw) {
         if (raw instanceof ACERetrievedMemory aceRetrievedMemory) {
             return aceRetrievedMemory;
@@ -534,6 +629,13 @@ public class TaskMemoryService {
         return null;
     }
 
+    /**
+     * toReasoningBankRetrievedMemory.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private ReasoningBankRetrievedMemory toReasoningBankRetrievedMemory(Object raw) {
         if (raw instanceof ReasoningBankRetrievedMemory reasoningBankRetrievedMemory) {
             return reasoningBankRetrievedMemory;
@@ -551,6 +653,13 @@ public class TaskMemoryService {
         return null;
     }
 
+    /**
+     * toReMeRetrievedMemory.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private ReMeRetrievedMemory toReMeRetrievedMemory(Object raw) {
         if (raw instanceof ReMeRetrievedMemory reMeRetrievedMemory) {
             return reMeRetrievedMemory;
@@ -567,6 +676,14 @@ public class TaskMemoryService {
         return null;
     }
 
+    /**
+     * toAceMemory.
+     * 
+     * @param raw raw
+     * @param userId userId
+     * @return the result
+     * @since 0.1.7
+     */
     private ACEMemory toAceMemory(Object raw, String userId) {
         ACEMemory memory;
         if (raw instanceof ACEMemory aceMemory) {
@@ -591,6 +708,14 @@ public class TaskMemoryService {
         return memory;
     }
 
+    /**
+     * toReasoningBankMemory.
+     * 
+     * @param raw raw
+     * @param userId userId
+     * @return the result
+     * @since 0.1.7
+     */
     private ReasoningBankMemory toReasoningBankMemory(Object raw, String userId) {
         ReasoningBankMemory memory;
         if (raw instanceof ReasoningBankMemory reasoningBankMemory) {
@@ -609,6 +734,14 @@ public class TaskMemoryService {
         return memory;
     }
 
+    /**
+     * toReMeMemory.
+     * 
+     * @param raw raw
+     * @param userId userId
+     * @return the result
+     * @since 0.1.7
+     */
     private ReMeMemory toReMeMemory(Object raw, String userId) {
         ReMeMemory memory;
         if (raw instanceof ReMeMemory reMeMemory) {
@@ -629,6 +762,13 @@ public class TaskMemoryService {
         return memory;
     }
 
+    /**
+     * decodeStoredMemory.
+     * 
+     * @param node node
+     * @return the result
+     * @since 0.1.7
+     */
     private Object decodeStoredMemory(VectorNode node) {
         String type = SchemaUtils.stringValue(node.getMetadata("type"), "");
         return switch (type) {
@@ -641,6 +781,13 @@ public class TaskMemoryService {
         };
     }
 
+    /**
+     * formatMemoryString.
+     * 
+     * @param memories memories
+     * @return the result
+     * @since 0.1.7
+     */
     private String formatMemoryString(List<?> memories) {
         if (memories == null || memories.isEmpty()) {
             return "";
@@ -664,35 +811,52 @@ public class TaskMemoryService {
         return builder.toString();
     }
 
+    /**
+     * formatAceMemory.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
+     */
     private String formatAceMemory(Object item) {
         ACERetrievedMemory memory = toAceRetrievedMemory(item);
         if (memory == null) {
             return null;
         }
-        return "[" + memory.getId() + "] helpful=" + memory.getHelpful()
-            + " harmful=" + memory.getHarmful()
-            + " neutral=" + memory.getNeutral()
-            + "\nSection: " + memory.getSection()
-            + "\nContent: " + memory.getContent();
+        return "[" + memory.getId() + "] helpful=" + memory.getHelpful() + " harmful=" + memory.getHarmful()
+                + " neutral=" + memory.getNeutral() + "\nSection: " + memory.getSection() + "\nContent: "
+                + memory.getContent();
     }
 
+    /**
+     * formatReasoningBankMemory.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
+     */
     private String formatReasoningBankMemory(Object item) {
         ReasoningBankRetrievedMemory memory = toReasoningBankRetrievedMemory(item);
         if (memory == null) {
             return null;
         }
-        return "Title: " + memory.getTitle()
-            + "\nDescription: " + memory.getDescription()
-            + "\nContent: " + memory.getContent();
+        return "Title: " + memory.getTitle() + "\nDescription: " + memory.getDescription() + "\nContent: "
+                + memory.getContent();
     }
 
+    /**
+     * formatReMeMemory.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
+     */
     private String formatReMeMemory(Object item) {
         ReMeRetrievedMemory memory = toReMeRetrievedMemory(item);
         if (memory == null) {
             return null;
         }
-        return "When to use: " + memory.getWhenToUse()
-            + "\nContent: " + memory.getContent();
+        return "When to use: " + memory.getWhenToUse() + "\nContent: " + memory.getContent();
     }
 
     static List<Double> defaultEmbeddingFor(String value) {
@@ -714,7 +878,7 @@ public class TaskMemoryService {
             previousSlot = slot;
         }
 
-        if (Arrays.stream(dense).allMatch(component -> component == 0.0d)) {
+        if (Arrays.stream(dense).allMatch(component -> Math.abs(component) < 1e-12)) {
             dense[0] = 1.0d;
         }
 
@@ -727,17 +891,20 @@ public class TaskMemoryService {
 }
 
 class UpdateVectorStoreOp extends BaseOp {
-
     private final MemoryVectorStore vectorStore;
 
     UpdateVectorStoreOp(MemoryVectorStore vectorStore) {
         this.vectorStore = vectorStore;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * asyncExecute.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
         List<?> memories = context.getList("memories");
         String userId = context.getString("user_id", "default");
@@ -758,10 +925,18 @@ class UpdateVectorStoreOp extends BaseOp {
         }
 
         return futures.isEmpty()
-            ? CompletableFuture.completedFuture(null)
-            : CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new));
+                ? CompletableFuture.completedFuture(null)
+                : CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new));
     }
 
+    /**
+     * toVectorNode.
+     * 
+     * @param memory memory
+     * @param userId userId
+     * @return the result
+     * @since 0.1.7
+     */
     private VectorNode toVectorNode(Object memory, String userId) {
         if (memory instanceof VectorNode node) {
             return node;
@@ -796,13 +971,19 @@ class UpdateVectorStoreOp extends BaseOp {
         return new VectorNode("memory-" + UUID.randomUUID(), String.valueOf(memory), null, metadata);
     }
 
+    /**
+     * defaultEmbeddingFor.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Double> defaultEmbeddingFor(String value) {
         return TaskMemoryService.defaultEmbeddingFor(value);
     }
 }
 
 class ReMeRerankMemoryOp extends BaseOp {
-
     private final boolean llmRerank;
     private final int topKRerank;
 
@@ -811,10 +992,14 @@ class ReMeRerankMemoryOp extends BaseOp {
         this.topKRerank = topKRerank;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * asyncExecute.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
         if (!llmRerank) {
             return CompletableFuture.completedFuture(null);
@@ -833,7 +1018,8 @@ class ReMeRerankMemoryOp extends BaseOp {
         }
 
         String query = context.getString("query", "");
-        retrievedMemories.sort(Comparator.comparingDouble((ReMeRetrievedMemory memory) -> score(query, memory)).reversed());
+        retrievedMemories
+                .sort(Comparator.comparingDouble((ReMeRetrievedMemory memory) -> score(query, memory)).reversed());
         if (topKRerank > 0 && retrievedMemories.size() > topKRerank) {
             retrievedMemories = new ArrayList<>(retrievedMemories.subList(0, topKRerank));
         }
@@ -842,6 +1028,14 @@ class ReMeRerankMemoryOp extends BaseOp {
         return CompletableFuture.completedFuture(null);
     }
 
+    /**
+     * score.
+     * 
+     * @param query query
+     * @param memory memory
+     * @return the result
+     * @since 0.1.7
+     */
     private static double score(String query, ReMeRetrievedMemory memory) {
         Set<String> queryTokens = tokenize(query);
         Set<String> whenTokens = tokenize(memory.getWhenToUse());
@@ -867,6 +1061,14 @@ class ReMeRerankMemoryOp extends BaseOp {
         return score;
     }
 
+    /**
+     * overlapRatio.
+     * 
+     * @param first first
+     * @param second second
+     * @return the result
+     * @since 0.1.7
+     */
     private static double overlapRatio(Set<String> first, Set<String> second) {
         int overlap = 0;
         for (String token : first) {
@@ -877,6 +1079,13 @@ class ReMeRerankMemoryOp extends BaseOp {
         return (double) overlap / Math.max(1, first.size());
     }
 
+    /**
+     * tokenize.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Set<String> tokenize(String value) {
         Set<String> tokens = new HashSet<>();
         String normalized = value != null ? value.toLowerCase(Locale.ROOT) : "";
@@ -890,17 +1099,20 @@ class ReMeRerankMemoryOp extends BaseOp {
 }
 
 class ReMeRewriteMemoryOp extends BaseOp {
-
     private final boolean llmRewrite;
 
     ReMeRewriteMemoryOp(boolean llmRewrite) {
         this.llmRewrite = llmRewrite;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * asyncExecute.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
         List<?> rawMemories = context.getList("retrieved_memories");
         if (rawMemories == null || rawMemories.isEmpty()) {
@@ -928,15 +1140,20 @@ class ReMeRewriteMemoryOp extends BaseOp {
         }
         builder.append(", apply these relevant experiences:");
         for (ReMeRetrievedMemory memory : retrievedMemories) {
-            builder.append("\n- When to use: ")
-                .append(memory.getWhenToUse())
-                .append(". Guidance: ")
-                .append(memory.getContent());
+            builder.append("\n- When to use: ").append(memory.getWhenToUse()).append(". Guidance: ")
+                    .append(memory.getContent());
         }
         context.set("memory_string", builder.toString());
         return CompletableFuture.completedFuture(null);
     }
 
+    /**
+     * formatOriginalMemories.
+     * 
+     * @param memories memories
+     * @return the result
+     * @since 0.1.7
+     */
     private static String formatOriginalMemories(List<ReMeRetrievedMemory> memories) {
         StringBuilder builder = new StringBuilder();
         for (int index = 0; index < memories.size(); index++) {
@@ -944,9 +1161,9 @@ class ReMeRewriteMemoryOp extends BaseOp {
             if (builder.length() > 0) {
                 builder.append("\n");
             }
-            builder.append("Memory ").append(index + 1).append(":\n")
-                .append("  When to use: ").append(memory.getWhenToUse()).append("\n")
-                .append("  Content: ").append(memory.getContent()).append("\n");
+            builder.append("Memory ").append(index + 1).append(":\n").append("  When to use: ")
+                    .append(memory.getWhenToUse()).append("\n").append("  Content: ").append(memory.getContent())
+                    .append("\n");
         }
         return builder.toString().trim();
     }

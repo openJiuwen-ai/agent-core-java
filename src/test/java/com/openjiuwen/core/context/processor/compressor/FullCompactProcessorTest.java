@@ -4,6 +4,13 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.context.SessionMemoryManager;
@@ -16,6 +23,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.session.Session;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -24,33 +32,18 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class FullCompactProcessorTest {
-
     @TempDir
     Path tempDir;
 
     @Test
     void triggerAddMessagesTrueWhenCompletedRoundExceedsThreshold() {
-        FullCompactProcessor processor = new FullCompactProcessor(FullCompactProcessorConfig.builder()
-                .triggerTotalTokens(5)
-                .sessionMemoryEnabled(false)
-                .build());
-        ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext(
-                "test",
-                null,
-                null,
-                List.of(new UserMessage("trigger message ".repeat(30))),
-                new SimpleTokenCounter());
+        FullCompactProcessor processor = new FullCompactProcessor(
+                FullCompactProcessorConfig.builder().triggerTotalTokens(5).sessionMemoryEnabled(false).build());
+        ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext("test", null,
+                null, List.of(new UserMessage("trigger message ".repeat(30))), new SimpleTokenCounter());
 
-        boolean triggered = processor.triggerAddMessages(
-                context,
+        boolean triggered = processor.triggerAddMessages(context,
                 List.of(new AssistantMessage("new assistant " + "payload ".repeat(20))));
 
         assertTrue(triggered);
@@ -62,23 +55,17 @@ class FullCompactProcessorTest {
         Path notesPath = tempDir.resolve("memory.md");
         java.nio.file.Files.writeString(notesPath, "committed notes");
         DummySession session = new DummySession("s1");
-        session.updateState(Map.of(SessionMemoryManager.SESSION_MEMORY_STATE_KEY, Map.of(
-                "is_extracting", true,
-                "notes_upto_message_id", "msg-2",
-                "memory_path", notesPath.toString())));
+        session.updateState(Map.of(SessionMemoryManager.SESSION_MEMORY_STATE_KEY,
+                Map.of("is_extracting", true, "notes_upto_message_id", "msg-2", "memory_path", notesPath.toString())));
         ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext("test", session);
         List<BaseMessage> activeMessages = List.of(
                 UserMessage.builder().content("old-a").metadata(Map.of("context_message_id", "msg-1")).build(),
                 AssistantMessage.builder().content("old-b").metadata(Map.of("context_message_id", "msg-2")).build(),
                 UserMessage.builder().content("keep-1").metadata(Map.of("context_message_id", "msg-3")).build(),
-                AssistantMessage.builder().content("keep-2").metadata(Map.of("context_message_id", "msg-4")).build()
-        );
+                AssistantMessage.builder().content("keep-2").metadata(Map.of("context_message_id", "msg-4")).build());
 
-        FullCompactProcessor.SessionMemoryBuild build = processor.buildSessionMemoryMessages(
-                context,
-                List.of(),
-                activeMessages,
-                false);
+        FullCompactProcessor.SessionMemoryBuild build =
+            processor.buildSessionMemoryMessages(context, List.of(), activeMessages, false);
 
         assertNotNull(build.candidateMessages());
         assertNotNull(build.sessionMemoryMessage());
@@ -89,25 +76,16 @@ class FullCompactProcessorTest {
     @Test
     void selectMessagesAfterSessionMemoryRewindsUnsafeAnchorToCompletedRound() {
         FullCompactProcessor processor = new FullCompactProcessor(FullCompactProcessorConfig.builder().build());
-        List<BaseMessage> activeMessages = List.of(
-                UserMessage.builder().content("u2").metadata(Map.of("context_message_id", "msg-3")).build(),
-                AssistantMessage.builder()
-                        .content("")
-                        .toolCalls(List.of(toolCall("tc-unsafe", "read_file", "{}")))
-                        .metadata(Map.of("context_message_id", "msg-4"))
-                        .build(),
-                ToolMessage.builder()
-                        .content("tool output")
-                        .toolCallId("tc-unsafe")
-                        .metadata(Map.of("context_message_id", "msg-5"))
-                        .build(),
-                AssistantMessage.builder().content("a2").metadata(Map.of("context_message_id", "msg-6")).build()
-        );
+        List<BaseMessage> activeMessages =
+            List.of(UserMessage.builder().content("u2").metadata(Map.of("context_message_id", "msg-3")).build(),
+                    AssistantMessage.builder().content("").toolCalls(List.of(toolCall("tc-unsafe", "read_file", "{}")))
+                            .metadata(Map.of("context_message_id", "msg-4")).build(),
+                    ToolMessage.builder().content("tool output").toolCallId("tc-unsafe")
+                            .metadata(Map.of("context_message_id", "msg-5")).build(),
+                    AssistantMessage.builder().content("a2").metadata(Map.of("context_message_id", "msg-6")).build());
 
-        List<BaseMessage> preserved = processor.selectMessagesAfterSessionMemory(
-                activeMessages,
-                Map.of("notes_upto_message_id", "msg-4"),
-                false);
+        List<BaseMessage> preserved =
+            processor.selectMessagesAfterSessionMemory(activeMessages, Map.of("notes_upto_message_id", "msg-4"), false);
 
         assertNull(preserved);
     }
@@ -115,17 +93,12 @@ class FullCompactProcessorTest {
     @Test
     void groupMessagesByApiRoundSplitsUserAndFollowingAssistantToolMessages() {
         FullCompactProcessor processor = new FullCompactProcessor(FullCompactProcessorConfig.builder().build());
-        List<BaseMessage> messages = List.of(
-                new UserMessage("u1"),
-                AssistantMessage.builder()
-                        .content("")
-                        .toolCalls(List.of(toolCall("tc-1", "read_file", "{}")))
-                        .build(),
-                new ToolMessage("tool-1", "tc-1"),
-                new AssistantMessage("a1"),
-                new UserMessage("u2"),
-                new AssistantMessage("a2")
-        );
+        List<BaseMessage> messages =
+            List.of(new UserMessage("u1"),
+                    AssistantMessage.builder().content("").toolCalls(List.of(toolCall("tc-1", "read_file", "{}")))
+                            .build(),
+                    new ToolMessage("tool-1", "tc-1"), new AssistantMessage("a1"), new UserMessage("u2"),
+                    new AssistantMessage("a2"));
 
         List<List<BaseMessage>> groups = processor.groupMessagesByApiRound(messages);
 
@@ -138,23 +111,16 @@ class FullCompactProcessorTest {
     @Test
     void buildReinjectedStateMessagesPreservesOriginalApiRoundStructure() {
         FullCompactProcessor processor = new FullCompactProcessor(FullCompactProcessorConfig.builder().build());
-        List<BaseMessage> sourceMessages = List.of(
-                new UserMessage("read the skill"),
-                AssistantMessage.builder()
-                        .content("")
-                        .toolCalls(List.of(toolCall("tc-skill", "read_file", "{\"file_path\":\"/skills/demo/SKILL.md\"}")))
+        List<BaseMessage> sourceMessages = List.of(new UserMessage("read the skill"),
+                AssistantMessage.builder().content("")
+                        .toolCalls(
+                                List.of(toolCall("tc-skill", "read_file", "{\"file_path\":\"/skills/demo/SKILL.md\"}")))
                         .build(),
-                new ToolMessage("{\"content\":\"# Demo Skill\"}", "tc-skill"),
-                new AssistantMessage("skill loaded")
-        );
+                new ToolMessage("{\"content\":\"# Demo Skill\"}", "tc-skill"), new AssistantMessage("skill loaded"));
 
         List<BaseMessage> reinjected = processor.buildReinjectedStateMessages(
-                new ContextEngine(ContextEngineConfig.builder().build()).createContext("test", null),
-                sourceMessages,
-                List.of(),
-                new UserMessage("summary"),
-                new SystemMessage("boundary"),
-                List.of("skills"));
+                new ContextEngine(ContextEngineConfig.builder().build()).createContext("test", null), sourceMessages,
+                List.of(), new UserMessage("summary"), new SystemMessage("boundary"), List.of("skills"));
 
         assertEquals(1, reinjected.size());
         assertInstanceOf(UserMessage.class, reinjected.get(0));
@@ -164,18 +130,12 @@ class FullCompactProcessorTest {
     @Test
     void fullCompactInvalidatesSessionMemoryAnchor() {
         DummySession session = new DummySession("s1");
-        session.updateState(Map.of(SessionMemoryManager.SESSION_MEMORY_STATE_KEY, Map.of(
-                "last_summarized_message_count", 9,
-                "notes_upto_message_id", "anchor-id")));
-        FullCompactProcessor processor = new FullCompactProcessor(FullCompactProcessorConfig.builder()
-                .triggerTotalTokens(1)
-                .sessionMemoryEnabled(false)
-                .build());
-        ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext(
-                "test",
-                session,
-                null,
-                List.of(new UserMessage("old message"), new AssistantMessage("old answer")),
+        session.updateState(Map.of(SessionMemoryManager.SESSION_MEMORY_STATE_KEY,
+                Map.of("last_summarized_message_count", 9, "notes_upto_message_id", "anchor-id")));
+        FullCompactProcessor processor = new FullCompactProcessor(
+                FullCompactProcessorConfig.builder().triggerTotalTokens(1).sessionMemoryEnabled(false).build());
+        ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext("test", session,
+                null, List.of(new UserMessage("old message"), new AssistantMessage("old answer")),
                 new SimpleTokenCounter());
 
         processor.onAddMessages(context, List.of());
@@ -187,7 +147,8 @@ class FullCompactProcessorTest {
 
     @Test
     void formatSummaryExtractsSummaryBlockAndRemovesAnalysis() {
-        String formatted = FullCompactProcessor.formatSummary("<analysis>debug</analysis><summary>final notes</summary>");
+        String formatted =
+            FullCompactProcessor.formatSummary("<analysis>debug</analysis><summary>final notes</summary>");
 
         assertEquals("Summary:\nfinal notes", formatted);
         assertFalse(formatted.contains("debug"));

@@ -8,9 +8,10 @@ package com.openjiuwen.core.runner.base;
  * Strategy for matching multiple tags when querying or filtering resources.
  * <p>
  * Mirrors Python's {@code TagMatchStrategy}.
+ * 
+ * @since 0.1.7
  */
 public enum TagMatchStrategy {
-    /** Resource must contain ALL specified tags. */
     ALL("all"),
     /** Resource must contain ANY of the specified tags. */
     ANY("any");
@@ -22,7 +23,10 @@ public enum TagMatchStrategy {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

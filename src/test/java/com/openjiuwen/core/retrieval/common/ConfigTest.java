@@ -1,12 +1,8 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.common;
-
-import com.openjiuwen.core.common.exception.BaseError;
-import org.junit.jupiter.api.Test;
-
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -15,8 +11,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ConfigTest {
+import com.openjiuwen.core.common.exception.BaseError;
 
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+
+class ConfigTest {
     @Test
     void retrievalConfigRejectsNonPositiveTopK() {
         RetrievalConfig config = new RetrievalConfig();

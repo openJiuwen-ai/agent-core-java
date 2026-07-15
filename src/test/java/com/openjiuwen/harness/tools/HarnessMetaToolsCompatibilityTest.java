@@ -1,14 +1,14 @@
+
 package com.openjiuwen.harness.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessMetaToolsCompatibilityTest {
-
     @Test
     void askUserToolShouldReturnStructuredPayload() {
         AskUserTool tool = new AskUserTool();
@@ -20,10 +20,10 @@ class HarnessMetaToolsCompatibilityTest {
 
     @Test
     void searchAndLoadToolsShouldDelegateToHandlers() {
-        SearchToolsTool search = new SearchToolsTool((query, limit, detailLevel) -> List.of(
-                Map.of("name", "read_file", "description", "Read file", "limit", limit, "detail", detailLevel)
-        ));
-        LoadToolsTool load = new LoadToolsTool((toolNames, replace) -> Map.of("tool_names", toolNames, "replace", replace));
+        SearchToolsTool search = new SearchToolsTool((query, limit, detailLevel) -> List
+                .of(Map.of("name", "read_file", "description", "Read file", "limit", limit, "detail", detailLevel)));
+        LoadToolsTool load =
+            new LoadToolsTool((toolNames, replace) -> Map.of("tool_names", toolNames, "replace", replace));
 
         ToolOutput searched = search.invoke("file", 5, 2);
         ToolOutput loaded = load.invoke(List.of("read_file"), true);
@@ -85,7 +85,8 @@ class HarnessMetaToolsCompatibilityTest {
 
         assertThat(tool.invoke("status", Map.of()).isSuccess()).isTrue();
         assertThat(tool.invoke("list", Map.of()).isSuccess()).isTrue();
-        assertThat(tool.invoke("add", Map.of("name", "job-a")).getData()).isEqualTo(Map.of("created", "job-a", "scope", "cron:s1"));
+        assertThat(tool.invoke("add", Map.of("name", "job-a")).getData())
+                .isEqualTo(Map.of("created", "job-a", "scope", "cron:s1"));
         assertThat(tool.invoke("wake", Map.of("text", "hello", "mode", "plan")).getData())
                 .isEqualTo(Map.of("text", "hello", "mode", "plan", "scope", "cron:s1"));
     }

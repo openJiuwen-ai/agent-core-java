@@ -18,9 +18,10 @@ import java.util.Map;
 
 /**
  * Tool invocation operator; tunables cover tool descriptions only.
+ * 
+ * @since 0.1.7
  */
 public class ToolCallOperator extends Operator {
-
     private final Tool tool;
     private final String toolCallId;
     private final ToolExecutor toolExecutor;
@@ -29,7 +30,13 @@ public class ToolCallOperator extends Operator {
     private int maxRetries;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolCallOperator.
+     * 
+     * @param tool tool
+     * @param toolCallId toolCallId
+     * @param toolExecutor toolExecutor
+     * @param toolRegistry toolRegistry
+     * @since 0.1.7
      */
     public ToolCallOperator(Tool tool, String toolCallId, ToolExecutor toolExecutor, ToolRegistry toolRegistry) {
         this.tool = tool;
@@ -39,45 +46,63 @@ public class ToolCallOperator extends Operator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolCallOperator.
+     * 
+     * @param tool tool
+     * @since 0.1.7
      */
     public ToolCallOperator(Tool tool) {
         this(tool, "tool_call", null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolCallOperator.
+     * 
+     * @param toolExecutor toolExecutor
+     * @since 0.1.7
      */
     public ToolCallOperator(ToolExecutor toolExecutor) {
         this(null, "tool_call", toolExecutor, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolCallOperator.
+     * 
+     * @param tool tool
+     * @param toolRegistry toolRegistry
+     * @since 0.1.7
      */
     public ToolCallOperator(Tool tool, ToolRegistry toolRegistry) {
         this(tool, "tool_call", null, toolRegistry);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolCallOperator.
+     * 
+     * @since 0.1.7
      */
     public ToolCallOperator() {
         this(null, "tool_call", null, null);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getOperatorId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getOperatorId() {
         return toolCallId;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getTunables.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, TunableSpec> getTunables() {
         if (toolRegistry == null) {
             return Collections.emptyMap();
@@ -86,10 +111,14 @@ public class ToolCallOperator extends Operator {
                 new TunableSpec("tool_description", "text", "tool_description", Map.of("type", "dict")));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * setParameter.
+     * 
+     * @param target target
+     * @param value value
+     * @since 0.1.7
      */
+    @Override
     public void setParameter(String target, Object value) {
         if (!"tool_description".equals(target) || toolRegistry == null || !(value instanceof Map<?, ?> descriptions)) {
             return;
@@ -101,10 +130,13 @@ public class ToolCallOperator extends Operator {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> getState() {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("enabled", enabled);
@@ -112,30 +144,39 @@ public class ToolCallOperator extends Operator {
         return state;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * loadState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
+    @Override
     public void loadState(Map<String, Object> state) {
         if (state == null) {
             return;
         }
         if (state.containsKey("enabled")) {
             enabled = state.get("enabled") instanceof Boolean b
-                    ? b : Boolean.parseBoolean(String.valueOf(state.get("enabled")));
+                    ? b
+                    : Boolean.parseBoolean(String.valueOf(state.get("enabled")));
         }
         if (state.containsKey("max_retries")) {
             maxRetries = clampRetries(state.get("max_retries"));
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public Object invoke(Map<String, Object> inputs,
-                         Session session,
-                         Map<String, Object> kwargs) throws Exception {
+    @Override
+    public Object invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) throws Exception {
         if (!enabled) {
             throw new IllegalStateException("ToolCallOperator disabled: " + toolCallId);
         }
@@ -181,13 +222,19 @@ public class ToolCallOperator extends Operator {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public OperatorStream<Object> stream(Map<String, Object> inputs,
-                                         Session session,
-                                         Map<String, Object> kwargs) throws Exception {
+    @Override
+    public OperatorStream<Object> stream(Map<String, Object> inputs, Session session, Map<String, Object> kwargs)
+            throws Exception {
         if (tool == null) {
             throw new UnsupportedOperationException("tool stream not implemented");
         }
@@ -201,9 +248,15 @@ public class ToolCallOperator extends Operator {
         }
     }
 
+    /**
+     * clampRetries.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static int clampRetries(Object value) {
         int retries = Integer.parseInt(String.valueOf(value));
         return Math.max(0, Math.min(5, retries));
     }
-
 }

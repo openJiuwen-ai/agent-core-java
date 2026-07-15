@@ -1,22 +1,21 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.spi.store;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for KVStoreFactory SPI registration and ServiceLoader discovery.
  */
 class KVStoreFactorySpiTest {
-
     // ========== ServiceLoader auto-discovery ==========
-
     @Test
     @DisplayName("ServiceLoader discovers built-in in_memory provider")
     void discoversInMemoryProvider() {
@@ -42,8 +41,8 @@ class KVStoreFactorySpiTest {
     @Test
     @DisplayName("create() with unknown type throws IllegalArgumentException")
     void createUnknownTypeThrows() {
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
-                () -> KVStoreFactory.create("redis", Map.of()));
+        IllegalArgumentException ex =
+            assertThrows(IllegalArgumentException.class, () -> KVStoreFactory.create("redis", Map.of()));
         assertTrue(ex.getMessage().contains("redis"));
     }
 
@@ -54,9 +53,14 @@ class KVStoreFactorySpiTest {
     void registerCustomProvider() {
         KVStoreFactory.register("mock_redis", new KVStoreProvider() {
             @Override
-            public String typeName() { return "mock_redis"; }
+            public String typeName() {
+                return "mock_redis";
+            }
+
             @Override
-            public BaseKVStore create(Map<String, Object> conf) { return new com.openjiuwen.core.foundation.store.kv.InMemoryKVStore(); }
+            public BaseKVStore create(Map<String, Object> conf) {
+                return new com.openjiuwen.core.foundation.store.kv.InMemoryKVStore();
+            }
         });
         assertTrue(KVStoreFactory.hasProvider("mock_redis"));
 
@@ -69,9 +73,14 @@ class KVStoreFactorySpiTest {
     void registerOverridesExisting() {
         KVStoreFactory.register("in_memory", new KVStoreProvider() {
             @Override
-            public String typeName() { return "in_memory"; }
+            public String typeName() {
+                return "in_memory";
+            }
+
             @Override
-            public BaseKVStore create(Map<String, Object> conf) { return new com.openjiuwen.core.foundation.store.kv.InMemoryKVStore(); }
+            public BaseKVStore create(Map<String, Object> conf) {
+                return new com.openjiuwen.core.foundation.store.kv.InMemoryKVStore();
+            }
         });
         BaseKVStore store = KVStoreFactory.create("in_memory", Map.of());
         assertNotNull(store);
@@ -106,7 +115,10 @@ class KVStoreFactorySpiTest {
     void registerProviderThatReadsConf() {
         KVStoreFactory.register("conf_aware_kv", new KVStoreProvider() {
             @Override
-            public String typeName() { return "conf_aware_kv"; }
+            public String typeName() {
+                return "conf_aware_kv";
+            }
+
             @Override
             public BaseKVStore create(Map<String, Object> conf) {
                 assertNotNull(conf);
@@ -121,8 +133,7 @@ class KVStoreFactorySpiTest {
     @Test
     @DisplayName("create() with empty string type throws IllegalArgumentException")
     void createWithEmptyTypeThrows() {
-        assertThrows(IllegalArgumentException.class,
-                () -> KVStoreFactory.create("", Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> KVStoreFactory.create("", Map.of()));
     }
 
     @Test
@@ -136,7 +147,10 @@ class KVStoreFactorySpiTest {
     void createWithNestedConf() {
         KVStoreFactory.register("nested_conf_kv", new KVStoreProvider() {
             @Override
-            public String typeName() { return "nested_conf_kv"; }
+            public String typeName() {
+                return "nested_conf_kv";
+            }
+
             @Override
             public BaseKVStore create(Map<String, Object> conf) {
                 // Provider should receive the full conf including nested maps
@@ -145,8 +159,8 @@ class KVStoreFactorySpiTest {
             }
         });
 
-        BaseKVStore store = KVStoreFactory.create("nested_conf_kv",
-                Map.of("connection", Map.of("host", "localhost", "port", 6379)));
+        BaseKVStore store =
+            KVStoreFactory.create("nested_conf_kv", Map.of("connection", Map.of("host", "localhost", "port", 6379)));
         assertNotNull(store);
     }
 }

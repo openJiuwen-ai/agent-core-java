@@ -16,20 +16,31 @@ import java.util.Map;
 /**
  * Config of Intent Detection Component.
  * Mirrors Python's {@code IntentDetectionConfig}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class IntentDetectionConfig {
-
     @Builder.Default
     private String categoryInfo = "";
 
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> categoryList = new ArrayList<>();
 
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Map<String, Object>> intentDetectionTemplate = new ArrayList<>();
 
     @Builder.Default
@@ -48,5 +59,10 @@ public class IntentDetectionConfig {
     private boolean enableInput = true;
 
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> exampleContent = new ArrayList<>();
 }

@@ -11,50 +11,55 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * In-memory sandbox record store aligned with Python's default gateway store.
+ * 
+ * @since 0.1.7
  */
 public class InMemorySandboxStore implements AbstractSandboxStore {
     private final Map<String, SandboxRecord> records = new ConcurrentHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public SandboxRecord get(String key) {
         return records.get(key);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * set.
+     * 
+     * @param key key
+     * @param record record
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void set(String key, SandboxRecord record) {
         records.put(key, record);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hdel.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public SandboxRecord hdel(String key) {
         return records.remove(key);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * flushdb.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<SandboxRecord> flushdb() {
         List<SandboxRecord> values = new ArrayList<>(records.values());
         records.clear();
@@ -62,12 +67,14 @@ public class InMemorySandboxStore implements AbstractSandboxStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * evictExpired.
+     * 
+     * @param idleTtlSeconds idleTtlSeconds
+     * @param now now
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<SandboxRecord> evictExpired(int idleTtlSeconds, double now) {
         List<String> expiredKeys = new ArrayList<>();
         for (Map.Entry<String, SandboxRecord> entry : records.entrySet()) {

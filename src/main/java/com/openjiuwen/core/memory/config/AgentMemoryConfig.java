@@ -6,6 +6,7 @@ package com.openjiuwen.core.memory.config;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.openjiuwen.core.common.schema.Param;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,15 +17,21 @@ import java.util.List;
 
 /**
  * Agent memory configuration.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class AgentMemoryConfig {
-
     @Builder.Default
     @JsonProperty("mem_variables")
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Param> memVariables = new ArrayList<>();
 
     @Builder.Default
@@ -52,7 +59,11 @@ public class AgentMemoryConfig {
     private boolean enableSummaryMemory = true;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isMemoryTypeEnabled.
+     * 
+     * @param memoryType memoryType
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isMemoryTypeEnabled(String memoryType) {
         if (!enableFragmentMemory) {

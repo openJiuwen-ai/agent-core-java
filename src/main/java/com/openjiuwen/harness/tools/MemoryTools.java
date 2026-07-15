@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,19 +16,30 @@ import java.util.stream.Stream;
 
 /**
  * File-backed memory helpers for the Java harness baseline.
+ * 
+ * @since 0.1.7
  */
 public class MemoryTools {
     private final Path memoryRoot;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MemoryTools.
+     * 
+     * @param memoryRoot memoryRoot
+     * @since 0.1.7
      */
     public MemoryTools(String memoryRoot) {
         this.memoryRoot = Path.of(memoryRoot).toAbsolutePath().normalize();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * writeMemory.
+     * 
+     * @param relativePath relativePath
+     * @param content content
+     * @param isAppend isAppend
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput writeMemory(String relativePath, String content, boolean isAppend) {
         try {
@@ -47,7 +57,13 @@ public class MemoryTools {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * readMemory.
+     * 
+     * @param relativePath relativePath
+     * @param offset offset
+     * @param limit limit
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput readMemory(String relativePath, Integer offset, Integer limit) {
         try {
@@ -67,7 +83,13 @@ public class MemoryTools {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * editMemory.
+     * 
+     * @param relativePath relativePath
+     * @param oldText oldText
+     * @param newText newText
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput editMemory(String relativePath, String oldText, String newText) {
         try {
@@ -84,41 +106,52 @@ public class MemoryTools {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * memoryGet.
+     * 
+     * @param relativePath relativePath
+     * @param fromLine fromLine
+     * @param lines lines
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput memoryGet(String relativePath, Integer fromLine, Integer lines) {
         return readMemory(relativePath, fromLine, lines);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * memorySearch.
+     * 
+     * @param query query
+     * @param maxResults maxResults
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput memorySearch(String query, Integer maxResults) {
         int limit = maxResults != null ? Math.max(1, maxResults) : 10;
         try (Stream<Path> stream = Files.walk(memoryRoot)) {
-            List<Map<String, Object>> matches = stream
-                    .filter(Files::isRegularFile)
-                    .map(path -> match(path, query))
-                    .filter(map -> !map.isEmpty())
-                    .sorted(Comparator.comparing(map -> String.valueOf(map.get("path"))))
-                    .limit(limit)
-                    .toList();
+            List<Map<String, Object>> matches =
+                stream.filter(Files::isRegularFile).map(path -> match(path, query)).filter(map -> !map.isEmpty())
+                        .sorted(Comparator.comparing(map -> String.valueOf(map.get("path")))).limit(limit).toList();
             return ToolOutput.builder().success(true).data(matches).build();
         } catch (IOException ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();
         }
     }
 
+    /**
+     * match.
+     * 
+     * @param path path
+     * @param query query
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> match(Path path, String query) {
         try {
             List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
             for (int i = 0; i < lines.size(); i++) {
                 if (lines.get(i).contains(query)) {
-                    return Map.of(
-                            "path", memoryRoot.relativize(path).toString(),
-                            "line", i,
-                            "snippet", lines.get(i)
-                    );
+                    return Map.of("path", memoryRoot.relativize(path).toString(), "line", i, "snippet", lines.get(i));
                 }
             }
             return Map.of();
@@ -127,6 +160,13 @@ public class MemoryTools {
         }
     }
 
+    /**
+     * resolve.
+     * 
+     * @param relativePath relativePath
+     * @return the result
+     * @since 0.1.7
+     */
     private Path resolve(String relativePath) {
         return memoryRoot.resolve(relativePath).normalize();
     }

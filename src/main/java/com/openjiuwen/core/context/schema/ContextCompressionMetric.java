@@ -5,6 +5,7 @@
 package com.openjiuwen.core.context.schema;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,6 +15,8 @@ import lombok.NoArgsConstructor;
  * Compression metric snapshot.
  * <p>
  * Mirrors Python's {@code ContextCompressionMetric}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

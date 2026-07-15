@@ -5,6 +5,7 @@
 package com.openjiuwen.agentevolving.agent_rl;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -13,6 +14,8 @@ import java.util.Map;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.schemas.Rollout.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -26,16 +29,18 @@ public class Rollout {
     private List<Integer> outputResponseIds;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Rollout.
+     * 
+     * @param turnId turnId
+     * @param inputPrompt inputPrompt
+     * @param outputResponse outputResponse
+     * @param llmConfig llmConfig
+     * @param inputPromptIds inputPromptIds
+     * @param outputResponseIds outputResponseIds
+     * @since 0.1.7
      */
-    public Rollout(
-            Integer turnId,
-            Map<String, Object> inputPrompt,
-            Map<String, Object> outputResponse,
-            Map<String, Object> llmConfig,
-            List<Integer> inputPromptIds,
-            List<Integer> outputResponseIds
-    ) {
+    public Rollout(Integer turnId, Map<String, Object> inputPrompt, Map<String, Object> outputResponse,
+            Map<String, Object> llmConfig, List<Integer> inputPromptIds, List<Integer> outputResponseIds) {
         this.turnId = turnId;
         this.inputPrompt = inputPrompt;
         this.outputResponse = outputResponse;
@@ -45,35 +50,50 @@ public class Rollout {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOutput_response.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getOutput_response() {
         return getOutputResponse();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInput_prompt_ids.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Integer> getInput_prompt_ids() {
         return getInputPromptIds();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOutput_response_ids.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Integer> getOutput_response_ids() {
         return getOutputResponseIds();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLlm_config.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getLlm_config() {
         return getLlmConfig();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInput_prompt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getInput_prompt() {
         return getInputPrompt();

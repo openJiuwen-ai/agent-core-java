@@ -1,6 +1,10 @@
+
 package com.openjiuwen.core.session;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.session.store.FileStore;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -9,10 +13,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class FileStoreTest {
-
     @TempDir
     Path tempDir;
 

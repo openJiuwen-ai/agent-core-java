@@ -1,3 +1,4 @@
+
 package com.openjiuwen.harness.rails.fixtures;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -34,33 +35,23 @@ public final class StdioMcpResourceServer {
     @SuppressWarnings("unchecked")
     private static Map<String, Object> result(String method, Object params) {
         if ("initialize".equals(method)) {
-            return Map.of(
-                    "protocolVersion", "2024-11-05",
-                    "capabilities", Map.of("resources", Map.of()),
-                    "serverInfo", Map.of("name", "stdio-fixture", "version", "1.0.0")
-            );
+            return Map.of("protocolVersion", "2024-11-05", "capabilities", Map.of("resources", Map.of()), "serverInfo",
+                    Map.of("name", "stdio-fixture", "version", "1.0.0"));
         }
         if ("tools/list".equals(method)) {
             return Map.of("tools", List.of());
         }
         if ("resources/list".equals(method)) {
-            return Map.of("resources", List.of(Map.of(
-                    "uri", "memory://fixture/readme",
-                    "name", "Fixture README",
-                    "mimeType", "text/plain",
-                    "description", "Local stdio MCP fixture resource"
-            )));
+            return Map.of("resources", List.of(Map.of("uri", "memory://fixture/readme", "name", "Fixture README",
+                    "mimeType", "text/plain", "description", "Local stdio MCP fixture resource")));
         }
         if ("resources/read".equals(method)) {
             String uri = "";
             if (params instanceof Map<?, ?> map && map.get("uri") != null) {
                 uri = String.valueOf(map.get("uri"));
             }
-            return Map.of("contents", List.of(Map.of(
-                    "uri", uri,
-                    "mimeType", "text/plain",
-                    "text", "hello from stdio fixture"
-            )));
+            return Map.of("contents",
+                    List.of(Map.of("uri", uri, "mimeType", "text/plain", "text", "hello from stdio fixture")));
         }
         if ("tools/call".equals(method)) {
             return Map.of("content", List.of());
@@ -84,7 +75,8 @@ public final class StdioMcpResourceServer {
         if (body.length == 0) {
             return null;
         }
-        return MAPPER.readValue(body, new TypeReference<>() {});
+        return MAPPER.readValue(body, new TypeReference<>() {
+        });
     }
 
     private static String readHeaderLine() throws Exception {

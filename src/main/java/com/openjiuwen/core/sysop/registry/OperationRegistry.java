@@ -6,14 +6,12 @@ package com.openjiuwen.core.sysop.registry;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.sysop.BaseOperation;
 import com.openjiuwen.core.sysop.OperationMode;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Enumeration;
@@ -27,31 +25,41 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * Mirrors Python's {@code OperationRegistry} in {@code sys_operation/registry.py}.
  * Built-in operations are loaded lazily when first accessed for a given mode.
+ * 
+ * @since 0.1.7
  */
 public final class OperationRegistry {
-
     private static final LoggerProtocol logger = Loggers.SYS_OPERATION;
 
-    /** Storage: mode -> name -> OperationDef. */
+    /**
+     * Storage: mode -> name -> OperationDef.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<OperationMode, Map<String, OperationDef>> REPOSITORY = new ConcurrentHashMap<>();
 
+    /**
+     * OperationRegistry.
+     * 
+     * @since 0.1.7
+     */
     private OperationRegistry() {
     }
 
     /**
      * Register an operation.
-     *
+     * 
      * @param operationCls the class implementing the operation logic
-     * @param name         unique identifier for the operation (e.g., "fs", "shell", "code")
-     * @param mode         running mode (LOCAL or SANDBOX)
-     * @param description  human-readable description
+     * @param name unique identifier for the operation (e.g., "fs", "shell", "code")
+     * @param mode running mode (LOCAL or SANDBOX)
+     * @param description human-readable description
+     * @since 0.1.7
      */
-    public static void register(Class<? extends BaseOperation> operationCls,
-                                String name, OperationMode mode, String description) {
+    public static void register(Class<? extends BaseOperation> operationCls, String name, OperationMode mode,
+            String description) {
         if (name == null || name.isBlank() || mode == null) {
-            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_REGISTRY_ERROR,
-                    "process", "register",
-                    "error_msg", "Operation name and mode must be provided for " + operationCls.getName());
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_REGISTRY_ERROR, "process", "register", "error_msg",
+                    "Operation name and mode must be provided for " + operationCls.getName());
         }
 
         // Ensure built-in operations for this mode are loaded
@@ -71,25 +79,26 @@ public final class OperationRegistry {
 
     /**
      * Register an operation class that has the {@link Operation} annotation.
-     *
+     * 
      * @param operationCls the annotated operation class
+     * @since 0.1.7
      */
     public static void register(Class<? extends BaseOperation> operationCls) {
         Operation annotation = operationCls.getAnnotation(Operation.class);
         if (annotation == null) {
-            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_REGISTRY_ERROR,
-                    "process", "register",
-                    "error_msg", "Class " + operationCls.getName() + " does not have @Operation annotation");
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_REGISTRY_ERROR, "process", "register", "error_msg",
+                    "Class " + operationCls.getName() + " does not have @Operation annotation");
         }
         register(operationCls, annotation.name(), annotation.mode(), annotation.description());
     }
 
     /**
      * Get operation information for the given name and mode.
-     *
+     * 
      * @param name operation name
      * @param mode operation mode
      * @return the operation definition, or empty if not found
+     * @since 0.1.7
      */
     public static Optional<OperationDef> getOperationInfo(String name, OperationMode mode) {
         loadBuiltInOperations(mode);
@@ -98,9 +107,10 @@ public final class OperationRegistry {
 
     /**
      * Get list of supported operation names for the given mode.
-     *
+     * 
      * @param mode operation mode
      * @return sorted list of operation names
+     * @since 0.1.7
      */
     public static List<String> getSupportedOperations(OperationMode mode) {
         loadBuiltInOperations(mode);
@@ -115,6 +125,9 @@ public final class OperationRegistry {
      * First registers explicitly known built-in classes, then performs dynamic package
      * scanning to discover any additional {@link Operation}-annotated classes, mirroring
      * Python's {@code _discover_package()} behavior.
+     * 
+     * @param mode mode
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
     private static synchronized void loadBuiltInOperations(OperationMode mode) {
@@ -141,9 +154,10 @@ public final class OperationRegistry {
      * <p>
      * Mirrors Python's {@code _discover_package(package_name)} — scans the given package
      * for classes annotated with {@code @Operation} and registers them automatically.
-     *
+     * 
      * @param packageName the fully-qualified package name to scan
-     * @param mode        the operation mode to filter by
+     * @param mode the operation mode to filter by
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
     private static void discoverPackage(String packageName, OperationMode mode) {
@@ -160,6 +174,8 @@ public final class OperationRegistry {
                     scanDirectoryForClasses(new java.io.File(resource.toURI()), packageName, mode);
                 } else if ("jar".equals(resource.getProtocol())) {
                     scanJarForClasses(resource, packagePath, packageName, mode);
+                } else {
+                    // no-op
                 }
             }
         } catch (Exception e) {
@@ -168,6 +184,14 @@ public final class OperationRegistry {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * scanDirectoryForClasses.
+     * 
+     * @param directory directory
+     * @param packageName packageName
+     * @param mode mode
+     * @since 0.1.7
+     */
     private static void scanDirectoryForClasses(java.io.File directory, String packageName, OperationMode mode) {
         if (!directory.exists() || !directory.isDirectory()) {
             return;
@@ -182,13 +206,23 @@ public final class OperationRegistry {
             } else if (file.getName().endsWith(".class")) {
                 String className = packageName + "." + file.getName().replace(".class", "");
                 registerClassByName(className, mode);
+            } else {
+                // no-op
             }
         }
     }
 
     @SuppressWarnings("unchecked")
-    private static void scanJarForClasses(URL resource, String packagePath,
-                                          String packageName, OperationMode mode) {
+    /**
+     * scanJarForClasses.
+     * 
+     * @param resource resource
+     * @param packagePath packagePath
+     * @param packageName packageName
+     * @param mode mode
+     * @since 0.1.7
+     */
+    private static void scanJarForClasses(URL resource, String packagePath, String packageName, OperationMode mode) {
         try {
             String jarPath = resource.getPath();
             if (jarPath.contains("!")) {
@@ -208,53 +242,49 @@ public final class OperationRegistry {
                     }
                 }
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             logger.warning("Failed to scan JAR for operations: " + e.getMessage());
         }
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * registerClassByName.
+     * 
+     * @param className className
+     * @param mode mode
+     * @since 0.1.7
+     */
     private static void registerClassByName(String className, OperationMode mode) {
         try {
             Class<?> cls = Class.forName(className);
             if (BaseOperation.class.isAssignableFrom(cls)) {
                 Operation annotation = cls.getAnnotation(Operation.class);
                 if (annotation != null && annotation.mode() == mode) {
-                    REPOSITORY.get(mode).putIfAbsent(
-                            annotation.name(),
-                            new OperationDef(
-                                    (Class<? extends BaseOperation>) cls,
-                                    annotation.name(),
-                                    annotation.mode(),
-                                    annotation.description()
-                            ));
+                    REPOSITORY.get(mode).putIfAbsent(annotation.name(),
+                            new OperationDef((Class<? extends BaseOperation>) cls, annotation.name(), annotation.mode(),
+                                    annotation.description()));
                 }
             }
         } catch (ClassNotFoundException e) {
             logger.warning("Operation class not found: " + className);
-        } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_REGISTRY_ERROR,
-                    "process", "register",
-                    "error_msg", "Failed to load operation: " + className + " - " + e.getMessage());
         }
     }
 
     /**
      * Get the class names of built-in operations for a mode.
+     * 
+     * @param mode mode
+     * @return the result
+     * @since 0.1.7
      */
     private static List<String> getBuiltInClassNames(OperationMode mode) {
         String basePackage = "com.openjiuwen.core.sysop.";
         return switch (mode) {
-            case LOCAL -> List.of(
-                    basePackage + "local.LocalShellOperation",
-                    basePackage + "local.LocalCodeOperation",
-                    basePackage + "local.LocalFsOperation"
-            );
-            case SANDBOX -> List.of(
-                    basePackage + "sandbox.SandboxShellOperation",
-                    basePackage + "sandbox.SandboxCodeOperation",
-                    basePackage + "sandbox.SandboxFsOperation"
-            );
+            case LOCAL -> List.of(basePackage + "local.LocalShellOperation", basePackage + "local.LocalCodeOperation",
+                    basePackage + "local.LocalFsOperation");
+            case SANDBOX -> List.of(basePackage + "sandbox.SandboxShellOperation",
+                    basePackage + "sandbox.SandboxCodeOperation", basePackage + "sandbox.SandboxFsOperation");
         };
     }
 

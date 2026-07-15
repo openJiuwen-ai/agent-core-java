@@ -1,15 +1,15 @@
+
 package com.openjiuwen.agentevolving.checkpointing;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class DefaultCheckpointManagerTest {
-
     @Test
     void shouldSaveHonorsImproveAndPeriodicStrategy() {
         DefaultCheckpointManager manager = new DefaultCheckpointManager("run_1", "v1", 3, true);
@@ -28,9 +28,7 @@ class DefaultCheckpointManagerTest {
     @Test
     void buildCheckpointUsesSnakeCaseMetricKeys() {
         DefaultCheckpointManager manager = new DefaultCheckpointManager("run_2", "v1", 1, true);
-        FakeAgent agent = new FakeAgent(Map.of(
-                "op_a", new FakeOperator("op_a", Map.of("prompt", "value"))
-        ));
+        FakeAgent agent = new FakeAgent(Map.of("op_a", new FakeOperator("op_a", Map.of("prompt", "value"))));
         FakeProgress progress = new FakeProgress(5, 12, 0.85, 123, 0.8);
 
         EvolveCheckpoint checkpoint = manager.buildCheckpoint(agent, progress, Map.of("step", 7));
@@ -48,11 +46,8 @@ class DefaultCheckpointManagerTest {
     void buildCheckpointCoercesNumericStringProgressValues() {
         DefaultCheckpointManager manager = new DefaultCheckpointManager("run_strings", "v1", 1, true);
 
-        EvolveCheckpoint checkpoint = manager.buildCheckpoint(
-                new FakeAgent(Map.of()),
-                new FakeStringProgress("6", "14", "0.88", "0.81"),
-                Map.of()
-        );
+        EvolveCheckpoint checkpoint = manager.buildCheckpoint(new FakeAgent(Map.of()),
+                new FakeStringProgress("6", "14", "0.88", "0.81"), Map.of());
 
         assertEquals(6, checkpoint.getStep().get("epoch"));
         assertEquals(14, checkpoint.getStep().get("batch"));
@@ -66,17 +61,10 @@ class DefaultCheckpointManagerTest {
         FakeOperator operator = new FakeOperator("op_restore", Map.of("prompt", "before"));
         FakeAgent agent = new FakeAgent(Map.of("op_restore", operator));
 
-        EvolveCheckpoint checkpoint = EvolveCheckpoint.builder()
-                .version("v1")
-                .runId("run_restore")
-                .step(Map.of("epoch", 4, "batch", 10))
-                .best(Map.of("best_score", 0.91))
-                .seed(42)
-                .operatorsState(Map.of("op_restore", Map.of("prompt", "after")))
-                .updaterState(Map.of())
-                .searcherState(Map.of())
-                .lastMetrics(Map.of())
-                .build();
+        EvolveCheckpoint checkpoint = EvolveCheckpoint.builder().version("v1").runId("run_restore")
+                .step(Map.of("epoch", 4, "batch", 10)).best(Map.of("best_score", 0.91)).seed(42)
+                .operatorsState(Map.of("op_restore", Map.of("prompt", "after"))).updaterState(Map.of())
+                .searcherState(Map.of()).lastMetrics(Map.of()).build();
 
         Map<String, Object> restored = manager.restore(agent, checkpoint);
 
@@ -94,17 +82,9 @@ class DefaultCheckpointManagerTest {
         DefaultCheckpointManager manager = new DefaultCheckpointManager("run_4", "v1", 1, true);
         FakeAgent agent = new FakeAgent(Map.of());
 
-        EvolveCheckpoint checkpoint = EvolveCheckpoint.builder()
-                .version("v1")
-                .runId("run_legacy")
-                .step(Map.of("epoch", 2))
-                .best(new LinkedHashMap<>(Map.of("bestScore", "0.72")))
-                .seed(null)
-                .operatorsState(Map.of())
-                .updaterState(Map.of())
-                .searcherState(Map.of())
-                .lastMetrics(Map.of())
-                .build();
+        EvolveCheckpoint checkpoint = EvolveCheckpoint.builder().version("v1").runId("run_legacy")
+                .step(Map.of("epoch", 2)).best(new LinkedHashMap<>(Map.of("bestScore", "0.72"))).seed(null)
+                .operatorsState(Map.of()).updaterState(Map.of()).searcherState(Map.of()).lastMetrics(Map.of()).build();
 
         Map<String, Object> restored = manager.restore(agent, checkpoint);
 
@@ -118,17 +98,9 @@ class DefaultCheckpointManagerTest {
         FakeAgent agent = new FakeAgent(Map.of());
         Map<String, Integer> step = (Map<String, Integer>) (Map<?, ?>) new LinkedHashMap<>(Map.of("epoch", "7"));
 
-        EvolveCheckpoint checkpoint = EvolveCheckpoint.builder()
-                .version("v1")
-                .runId("run_string_epoch")
-                .step(step)
-                .best(Map.of("best_score", 0.5))
-                .seed(null)
-                .operatorsState(Map.of())
-                .updaterState(Map.of())
-                .searcherState(Map.of())
-                .lastMetrics(Map.of())
-                .build();
+        EvolveCheckpoint checkpoint = EvolveCheckpoint.builder().version("v1").runId("run_string_epoch").step(step)
+                .best(Map.of("best_score", 0.5)).seed(null).operatorsState(Map.of()).updaterState(Map.of())
+                .searcherState(Map.of()).lastMetrics(Map.of()).build();
 
         Map<String, Object> restored = manager.restore(agent, checkpoint);
 

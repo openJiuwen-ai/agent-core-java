@@ -8,31 +8,39 @@ import java.util.Map;
 
 /**
  * Base class for graph objects with names.
+ * 
+ * @since 0.1.7
  */
 public class NamedGraphObject extends BaseGraphObject {
     private String name = "";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setName.
+     * 
+     * @param name name
+     * @since 0.1.7
      */
     public void setName(String name) {
         this.name = name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> toMap() {
         Map<String, Object> result = super.toMap();
         result.put("name", name);

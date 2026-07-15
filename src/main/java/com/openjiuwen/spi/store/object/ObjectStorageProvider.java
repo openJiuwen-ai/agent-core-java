@@ -14,24 +14,26 @@ import java.util.Map;
  * Each provider declares which {@code typeName()} it supports.
  * Service adapters can also register providers programmatically via
  * {@link ObjectStorageFactory#register(String, ObjectStorageProvider)}.
- *
+ * 
  * @see ObjectStorageFactory
  * @see BaseObjectStorageClient
- * @since 0.1.12
+ * @since 0.1.7
  */
 public interface ObjectStorageProvider {
     /**
-     * The storage type name this provider handles (e.g., "obs", "s3").
-     *
-     * @return the type name for registration
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     String typeName();
 
     /**
      * Create an object storage client with the given configuration.
-     *
+     * 
      * @param conf the configuration map
      * @return a new BaseObjectStorageClient instance
+     * @since 0.1.7
      */
     BaseObjectStorageClient create(Map<String, Object> conf);
 }

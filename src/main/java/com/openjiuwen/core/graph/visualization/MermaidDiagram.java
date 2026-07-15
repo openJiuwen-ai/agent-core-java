@@ -15,31 +15,38 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Generates Mermaid flowchart syntax from a {@link DrawableGraph}.
- *
- * <p>Replaces Python's dependency on the {@code mermaid-py} library by generating
+ * <p>
+ * Replaces Python's dependency on the {@code mermaid-py} library by generating
  * the Mermaid flowchart text syntax directly. Supports node shapes, link styles
- * (normal, dotted, thick), subgraph expansion, and link animation properties.</p>
- *
- * <p>Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable._MermaidDiagram}.</p>
+ * (normal, dotted, thick), subgraph expansion, and link animation properties.
+ * </p>
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable._MermaidDiagram}.
+ * </p>
  */
 class MermaidDiagram {
-
     private final AtomicInteger nodeIdCounter = new AtomicInteger(0);
+
+    /**
+     * AtomicInteger.
+     * 
+     * @since 0.1.7
+     */
     private final AtomicInteger linkIdCounter = new AtomicInteger(0);
 
     /**
      * Convert a DrawableGraph to Mermaid flowchart syntax.
      *
-     * @param graph           the drawable graph
-     * @param title           the diagram title (appears as comment if non-empty)
-     * @param expandSubgraph  depth of subgraph expansion (0 = no expansion, negative = full)
+     * @param graph the drawable graph
+     * @param title the diagram title (appears as comment if non-empty)
+     * @param expandSubgraph depth of subgraph expansion (0 = no expansion, negative = full)
      * @param enableAnimation whether to add animation properties to streaming links
      * @return the Mermaid flowchart syntax string
      */
     String toMermaid(DrawableGraph graph, String title, int expandSubgraph, boolean enableAnimation) {
         if (title == null || !(title instanceof String)) {
-            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID,
-                    "reason", "'title' type is not str");
+            throw ErrorHelper.buildError(StatusCode.DRAWABLE_GRAPH_TO_MERMAID_INVALID, "reason",
+                    "'title' type is not str");
         }
 
         Map<String, MermaidNode> mermaidNodes = new LinkedHashMap<>();
@@ -48,8 +55,7 @@ class MermaidDiagram {
         for (DrawableNode node : graph.getNodes().values()) {
             if (expandSubgraph != 0 && node instanceof DrawableSubgraphNode subNode) {
                 int nextDepth = expandSubgraph < 0 ? expandSubgraph : expandSubgraph - 1;
-                subgraphMermaidNodes.put(node.getId(),
-                        genMermaidSubgraphNode(nextDepth, subNode, enableAnimation));
+                subgraphMermaidNodes.put(node.getId(), genMermaidSubgraphNode(nextDepth, subNode, enableAnimation));
             } else {
                 String shape = "normal";
                 if (graph.getStartNodes().contains(node) || graph.getEndNodes().contains(node)) {
@@ -82,6 +88,8 @@ class MermaidDiagram {
 
         /**
          * Render the node definition in Mermaid syntax.
+         * 
+         * @return String
          */
         String toMermaid() {
             String escaped = escapeContent(content);
@@ -91,6 +99,13 @@ class MermaidDiagram {
             };
         }
 
+        /**
+         * escapeContent.
+         * 
+         * @param content content
+         * @return the result
+         * @since 0.1.7
+         */
         private static String escapeContent(String content) {
             // Escape quotes and special chars for Mermaid
             return "\"" + content.replace("\"", "#quot;") + "\"";
@@ -109,12 +124,9 @@ class MermaidDiagram {
         final List<MermaidNode> subgraphEndNodes;
         final List<MermaidNode> subgraphBreakNodes;
 
-        SubGraphNode(MermaidNode node, List<MermaidNode> innerNodes,
-                     Map<String, SubGraphNode> innerSubgraphs,
-                     List<String> subgraphLinks,
-                     List<MermaidNode> subgraphStartNodes,
-                     List<MermaidNode> subgraphEndNodes,
-                     List<MermaidNode> subgraphBreakNodes) {
+        SubGraphNode(MermaidNode node, List<MermaidNode> innerNodes, Map<String, SubGraphNode> innerSubgraphs,
+                List<String> subgraphLinks, List<MermaidNode> subgraphStartNodes, List<MermaidNode> subgraphEndNodes,
+                List<MermaidNode> subgraphBreakNodes) {
             this.node = node;
             this.innerNodes = innerNodes;
             this.innerSubgraphs = innerSubgraphs;
@@ -127,19 +139,39 @@ class MermaidDiagram {
 
     // ==================== Node/Link ID generation ====================
 
+    /**
+     * nextNodeId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String nextNodeId() {
         return "node_" + nodeIdCounter.incrementAndGet();
     }
 
+    /**
+     * nextLinkId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String nextLinkId() {
         return "link_" + linkIdCounter.incrementAndGet();
     }
 
     // ==================== Subgraph node generation ====================
 
-    private SubGraphNode genMermaidSubgraphNode(int expandSubgraph,
-                                                 DrawableSubgraphNode node,
-                                                 boolean enableAnimation) {
+    /**
+     * genMermaidSubgraphNode.
+     * 
+     * @param expandSubgraph expandSubgraph
+     * @param node node
+     * @param enableAnimation enableAnimation
+     * @return the result
+     * @since 0.1.7
+     */
+    private SubGraphNode genMermaidSubgraphNode(int expandSubgraph, DrawableSubgraphNode node,
+            boolean enableAnimation) {
         DrawableGraph subgraph = node.getSubgraph();
         Map<String, MermaidNode> innerMermaidNodes = new LinkedHashMap<>();
         Map<String, SubGraphNode> innerSubgraphs = new LinkedHashMap<>();
@@ -147,15 +179,13 @@ class MermaidDiagram {
         for (DrawableNode subNode : subgraph.getNodes().values()) {
             if (expandSubgraph != 0 && subNode instanceof DrawableSubgraphNode subSubNode) {
                 int nextDepth = expandSubgraph < 0 ? expandSubgraph : expandSubgraph - 1;
-                innerSubgraphs.put(subNode.getId(),
-                        genMermaidSubgraphNode(nextDepth, subSubNode, enableAnimation));
+                innerSubgraphs.put(subNode.getId(), genMermaidSubgraphNode(nextDepth, subSubNode, enableAnimation));
             } else {
                 String shape = "normal";
                 if (subgraph.getStartNodes().contains(subNode) || subgraph.getEndNodes().contains(subNode)) {
                     shape = "round-edge";
                 }
-                innerMermaidNodes.put(subNode.getId(),
-                        new MermaidNode(nextNodeId(), subNode.getId(), shape));
+                innerMermaidNodes.put(subNode.getId(), new MermaidNode(nextNodeId(), subNode.getId(), shape));
             }
         }
 
@@ -169,24 +199,29 @@ class MermaidDiagram {
         // Create the subgraph container node
         MermaidNode containerNode = new MermaidNode(nextNodeId(), node.getId(), "subgraph");
 
-        return new SubGraphNode(containerNode,
-                new ArrayList<>(innerMermaidNodes.values()),
-                innerSubgraphs,
-                links, startNodes, endNodes, breakNodes);
+        return new SubGraphNode(containerNode, new ArrayList<>(innerMermaidNodes.values()), innerSubgraphs, links,
+                startNodes, endNodes, breakNodes);
     }
 
     /**
      * Resolve DrawableNodes to their MermaidNode representations.
+     * 
+     * @param drawableNodes drawableNodes
+     * @param mermaidNodes mermaidNodes
+     * @param subgraphNodes subgraphNodes
+     * @return the result
+     * @since 0.1.7
      */
-    private List<MermaidNode> resolveNodes(List<DrawableNode> drawableNodes,
-                                           Map<String, MermaidNode> mermaidNodes,
-                                           Map<String, SubGraphNode> subgraphNodes) {
+    private List<MermaidNode> resolveNodes(List<DrawableNode> drawableNodes, Map<String, MermaidNode> mermaidNodes,
+            Map<String, SubGraphNode> subgraphNodes) {
         List<MermaidNode> result = new ArrayList<>();
         for (DrawableNode dn : drawableNodes) {
             if (mermaidNodes.containsKey(dn.getId())) {
                 result.add(mermaidNodes.get(dn.getId()));
             } else if (subgraphNodes.containsKey(dn.getId())) {
                 result.add(subgraphNodes.get(dn.getId()).node);
+            } else {
+                // no-op
             }
         }
         return result;
@@ -194,22 +229,30 @@ class MermaidDiagram {
 
     // ==================== Link generation ====================
 
-    private List<String> genMermaidLinks(DrawableGraph graph,
-                                         Map<String, MermaidNode> mermaidNodes,
-                                         Map<String, SubGraphNode> subgraphNodes,
-                                         boolean enableAnimation) {
+    /**
+     * genMermaidLinks.
+     * 
+     * @param graph graph
+     * @param mermaidNodes mermaidNodes
+     * @param subgraphNodes subgraphNodes
+     * @param enableAnimation enableAnimation
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<String> genMermaidLinks(DrawableGraph graph, Map<String, MermaidNode> mermaidNodes,
+            Map<String, SubGraphNode> subgraphNodes, boolean enableAnimation) {
         List<String> links = new ArrayList<>();
 
         for (DrawableEdge edge : graph.getEdges()) {
-            String arrow = " --> ";       // normal
+            String arrow = " --> "; // normal
             String linkId = null;
             Map<String, String> properties = null;
 
             if (edge.isConditional()) {
-                arrow = " -.-> ";         // dotted
+                arrow = " -.-> "; // dotted
             }
             if (edge.isStreaming()) {
-                arrow = " ==> ";          // thick
+                arrow = " ==> "; // thick
                 if (enableAnimation) {
                     linkId = nextLinkId();
                     properties = Map.of("animate", "true");
@@ -222,8 +265,8 @@ class MermaidDiagram {
             }
 
             // Build link strings based on source/target types
-            List<String[]> sourceTargetPairs = resolveSourceTargetPairs(
-                    edge.getSource(), edge.getTarget(), mermaidNodes, subgraphNodes);
+            List<String[]> sourceTargetPairs =
+                resolveSourceTargetPairs(edge.getSource(), edge.getTarget(), mermaidNodes, subgraphNodes);
 
             for (String[] pair : sourceTargetPairs) {
                 String linkStr = buildLinkString(pair[0], pair[1], arrow, message, linkId, properties);
@@ -242,10 +285,16 @@ class MermaidDiagram {
     /**
      * Resolve source and target node IDs to Mermaid node ID pairs,
      * handling subgraph expansion (routing to start/end/break nodes).
+     * 
+     * @param sourceId sourceId
+     * @param targetId targetId
+     * @param mermaidNodes mermaidNodes
+     * @param subgraphNodes subgraphNodes
+     * @return the result
+     * @since 0.1.7
      */
     private List<String[]> resolveSourceTargetPairs(String sourceId, String targetId,
-                                                     Map<String, MermaidNode> mermaidNodes,
-                                                     Map<String, SubGraphNode> subgraphNodes) {
+            Map<String, MermaidNode> mermaidNodes, Map<String, SubGraphNode> subgraphNodes) {
         List<String[]> pairs = new ArrayList<>();
         boolean sourceIsNode = mermaidNodes.containsKey(sourceId);
         boolean sourceIsSub = subgraphNodes.containsKey(sourceId);
@@ -284,9 +333,18 @@ class MermaidDiagram {
 
     /**
      * Build a Mermaid link string with optional ID and properties.
+     * 
+     * @param sourceId sourceId
+     * @param targetId targetId
+     * @param arrow arrow
+     * @param message message
+     * @param linkId linkId
+     * @param properties properties
+     * @return the result
+     * @since 0.1.7
      */
-    private String buildLinkString(String sourceId, String targetId, String arrow,
-                                    String message, String linkId, Map<String, String> properties) {
+    private String buildLinkString(String sourceId, String targetId, String arrow, String message, String linkId,
+            Map<String, String> properties) {
         StringBuilder sb = new StringBuilder();
         String tag = (linkId != null) ? linkId + "@" : "";
         sb.append(sourceId).append(" ").append(tag);
@@ -320,11 +378,16 @@ class MermaidDiagram {
 
     /**
      * Build the final Mermaid flowchart script text.
+     * 
+     * @param title title
+     * @param mermaidNodes mermaidNodes
+     * @param subgraphNodes subgraphNodes
+     * @param links links
+     * @return the result
+     * @since 0.1.7
      */
-    private String buildFlowchartScript(String title,
-                                         Map<String, MermaidNode> mermaidNodes,
-                                         Map<String, SubGraphNode> subgraphNodes,
-                                         List<String> links) {
+    private String buildFlowchartScript(String title, Map<String, MermaidNode> mermaidNodes,
+            Map<String, SubGraphNode> subgraphNodes, List<String> links) {
         StringBuilder sb = new StringBuilder();
 
         // Header
@@ -354,10 +417,15 @@ class MermaidDiagram {
 
     /**
      * Recursively append a subgraph definition to the Mermaid script.
+     * 
+     * @param sb sb
+     * @param sgNode sgNode
+     * @param indent indent
+     * @since 0.1.7
      */
     private void appendSubgraph(StringBuilder sb, SubGraphNode sgNode, String indent) {
-        sb.append(indent).append("subgraph ").append(sgNode.node.id)
-                .append("[\"").append(sgNode.node.content).append("\"]\n");
+        sb.append(indent).append("subgraph ").append(sgNode.node.id).append("[\"").append(sgNode.node.content)
+                .append("\"]\n");
         sb.append(indent).append("    direction TB\n");
 
         // Inner regular nodes

@@ -15,9 +15,27 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.METHOD)
 public @interface ToolDefinition {
+    /**
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     String name() default "";
 
+    /**
+     * description.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     String description() default "";
 
+    /**
+     * autoExtract.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     boolean autoExtract() default true;
 }

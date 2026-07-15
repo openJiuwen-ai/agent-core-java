@@ -16,16 +16,18 @@ import java.util.Properties;
  * User configuration — singleton that reads security settings from a properties/ini file.
  * <p>
  * Thread-safe singleton with configurable path.
+ * 
+ * @since 0.1.7
  */
 public final class UserConfig {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * DEFAULT_SENSITIVE_PATHS.
+     * 
+     * @since 0.1.7
      */
-    public static final List<String> DEFAULT_SENSITIVE_PATHS = List.of(
-        "/etc/passwd", "/etc/shadow", "/etc/hosts", "/etc/hostname", "/etc/ssh/",
-        "C:\\Windows\\System32\\", "C:\\Windows\\SysWOW64\\", "C:\\Windows\\System\\"
-    );
+    public static final List<String> DEFAULT_SENSITIVE_PATHS =
+        List.of("/etc/passwd", "/etc/shadow", "/etc/hosts", "/etc/hostname", "/etc/ssh/", "C:\\Windows\\System32\\",
+                "C:\\Windows\\SysWOW64\\", "C:\\Windows\\System\\");
 
     private static volatile UserConfig instance;
     private static volatile Path configPath;
@@ -34,6 +36,12 @@ public final class UserConfig {
     private volatile List<String> sensitivePaths;
     private final Properties properties;
 
+    /**
+     * UserConfig.
+     * 
+     * @param path path
+     * @since 0.1.7
+     */
     private UserConfig(Path path) {
         this.properties = new Properties();
         if (path != null && Files.isRegularFile(path)) {
@@ -43,11 +51,15 @@ public final class UserConfig {
                 // Fall back to defaults
             }
         }
-        this.sensitive = Boolean.parseBoolean(
-            properties.getProperty("settings.is_sensitive", "true"));
+        this.sensitive = Boolean.parseBoolean(properties.getProperty("settings.is_sensitive", "true"));
     }
 
-    /** Set config path — must be called before first access. */
+    /**
+     * Set config path — must be called before first access.
+     * 
+     * @param path path
+     * @since 0.1.7
+     */
     public static void setConfigPath(Path path) {
         if (instance != null) {
             throw new IllegalStateException("Config already initialized");
@@ -55,7 +67,12 @@ public final class UserConfig {
         configPath = path.toAbsolutePath().normalize();
     }
 
-    /** Get the singleton config instance. */
+    /**
+     * Get the singleton config instance.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static UserConfig getConfig() {
         if (instance == null) {
             synchronized (UserConfig.class) {
@@ -67,7 +84,12 @@ public final class UserConfig {
         return instance;
     }
 
-    /** Whether sensitivity checking is enabled. */
+    /**
+     * Whether sensitivity checking is enabled.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static boolean isSensitive() {
         String envValue = System.getenv("IS_SENSITIVE");
         if ("false".equalsIgnoreCase(envValue)) {
@@ -76,15 +98,21 @@ public final class UserConfig {
         return getConfig().sensitive;
     }
 
-    /** Get the list of sensitive paths. */
+    /**
+     * Get the list of sensitive paths.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public static List<String> getSensitivePaths() {
         return getConfig().getSensitivePathsList();
     }
 
     /**
      * Set the is_sensitive flag at runtime.
-     *
+     * 
      * @param isSensitive whether sensitivity checking should be enabled
+     * @since 0.1.7
      */
     public static void setSensitive(boolean isSensitive) {
         getConfig().sensitive = isSensitive;
@@ -92,8 +120,9 @@ public final class UserConfig {
 
     /**
      * Get the isResolved list of sensitive paths (lazy-initialized).
-     *
+     * 
      * @return an immutable copy of the sensitive paths
+     * @since 0.1.7
      */
     public List<String> getSensitivePathsList() {
         if (sensitivePaths == null) {
@@ -118,7 +147,11 @@ public final class UserConfig {
         return sensitivePaths;
     }
 
-    /** Reset singleton — primarily for testing. */
+    /**
+     * Reset singleton — primarily for testing.
+     * 
+     * @since 0.1.7
+     */
     public static synchronized void reset() {
         instance = null;
         configPath = null;

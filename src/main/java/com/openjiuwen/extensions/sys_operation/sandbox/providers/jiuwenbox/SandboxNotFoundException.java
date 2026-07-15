@@ -6,9 +6,9 @@ package com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox;
 
 /**
  * Exception thrown when a jiuwenbox sandbox is not found (404 response with sandbox-not-found body).
- *
- * @since 2026-01-01
+ * 
  * @version 1.0
+ * @since 0.1.7
  */
 public class SandboxNotFoundException extends RuntimeException {
     private final String sandboxId;
@@ -17,10 +17,11 @@ public class SandboxNotFoundException extends RuntimeException {
 
     /**
      * Constructs a SandboxNotFoundException with sandbox ID and HTTP response details.
-     *
+     * 
      * @param sandboxId the sandbox ID that was not found
      * @param statusCode the HTTP status code returned by the server
      * @param responseBody the raw response body from the server
+     * @since 0.1.7
      */
     public SandboxNotFoundException(String sandboxId, int statusCode, String responseBody) {
         super("Sandbox '" + sandboxId + "' not found (HTTP " + statusCode + ")");
@@ -31,8 +32,9 @@ public class SandboxNotFoundException extends RuntimeException {
 
     /**
      * Returns the sandbox ID that was not found.
-     *
+     * 
      * @return the sandbox ID
+     * @since 0.1.7
      */
     public String getSandboxId() {
         return sandboxId;
@@ -40,8 +42,9 @@ public class SandboxNotFoundException extends RuntimeException {
 
     /**
      * Returns the HTTP status code from the server response.
-     *
+     * 
      * @return the HTTP status code
+     * @since 0.1.7
      */
     public int getStatusCode() {
         return statusCode;
@@ -49,8 +52,9 @@ public class SandboxNotFoundException extends RuntimeException {
 
     /**
      * Returns the raw response body from the server.
-     *
+     * 
      * @return the response body string
+     * @since 0.1.7
      */
     public String getResponseBody() {
         return responseBody;

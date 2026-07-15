@@ -20,20 +20,25 @@ import java.util.Map;
 
 /**
  * Unified entry point for InferenceAffinity (vLLM-style) invocation.
+ * 
+ * @since 0.1.7
  */
 public class InferenceAffinityModel {
-
     private final ModelRequestConfig modelConfig;
     private final ModelClientConfig modelClientConfig;
     private final InferenceAffinityModelClient client;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * InferenceAffinityModel.
+     * 
+     * @param modelClientConfig modelClientConfig
+     * @param modelConfig modelConfig
+     * @since 0.1.7
      */
     public InferenceAffinityModel(ModelClientConfig modelClientConfig, ModelRequestConfig modelConfig) {
         if (modelClientConfig == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "error_msg", "model client config is none");
+            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR, "error_msg",
+                    "model client config is none");
         }
         this.modelConfig = modelConfig;
         this.modelClientConfig = modelClientConfig;
@@ -41,33 +46,46 @@ public class InferenceAffinityModel {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ModelRequestConfig getModelConfig() {
         return modelConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelClientConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ModelClientConfig getModelClientConfig() {
         return modelClientConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param messages messages
+     * @param tools tools
+     * @param temperature temperature
+     * @param topP topP
+     * @param maxTokens maxTokens
+     * @param stop stop
+     * @param model model
+     * @param outputParser outputParser
+     * @param sessionId sessionId
+     * @param enableCacheSharing enableCacheSharing
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public AssistantMessage invoke(Object messages,
-                                   Object tools,
-                                   Float temperature,
-                                   Float topP,
-                                   Integer maxTokens,
-                                   String stop,
-                                   String model,
-                                   BaseOutputParser outputParser,
-                                   String sessionId,
-                                   boolean enableCacheSharing,
-                                   Map<String, Object> kwargs) throws Exception {
+    public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, Integer maxTokens,
+            String stop, String model, BaseOutputParser outputParser, String sessionId, boolean enableCacheSharing,
+            Map<String, Object> kwargs) throws Exception {
         Map<String, Object> options = kwargs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(kwargs);
         if (sessionId != null) {
             options.put("session_id", sessionId);
@@ -77,19 +95,26 @@ public class InferenceAffinityModel {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param messages messages
+     * @param tools tools
+     * @param temperature temperature
+     * @param topP topP
+     * @param maxTokens maxTokens
+     * @param stop stop
+     * @param model model
+     * @param outputParser outputParser
+     * @param sessionId sessionId
+     * @param enableCacheSharing enableCacheSharing
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public Iterator<AssistantMessageChunk> stream(Object messages,
-                                                  Object tools,
-                                                  Float temperature,
-                                                  Float topP,
-                                                  Integer maxTokens,
-                                                  String stop,
-                                                  String model,
-                                                  BaseOutputParser outputParser,
-                                                  String sessionId,
-                                                  boolean enableCacheSharing,
-                                                  Map<String, Object> kwargs) throws Exception {
+    public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+            Integer maxTokens, String stop, String model, BaseOutputParser outputParser, String sessionId,
+            boolean enableCacheSharing, Map<String, Object> kwargs) throws Exception {
         Map<String, Object> options = kwargs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(kwargs);
         if (sessionId != null) {
             options.put("session_id", sessionId);
@@ -99,14 +124,20 @@ public class InferenceAffinityModel {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * release.
+     * 
+     * @param sessionId sessionId
+     * @param messages messages
+     * @param messagesReleasedIndex messagesReleasedIndex
+     * @param tools tools
+     * @param toolsReleasedIndex toolsReleasedIndex
+     * @param model model
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public boolean release(String sessionId,
-                           List<?> messages,
-                           int messagesReleasedIndex,
-                           List<?> tools,
-                           Integer toolsReleasedIndex,
-                           String model) throws Exception {
+    public boolean release(String sessionId, List<?> messages, int messagesReleasedIndex, List<?> tools,
+            Integer toolsReleasedIndex, String model) throws Exception {
         return client.release(sessionId, messages, messagesReleasedIndex, tools, toolsReleasedIndex, model);
     }
 }

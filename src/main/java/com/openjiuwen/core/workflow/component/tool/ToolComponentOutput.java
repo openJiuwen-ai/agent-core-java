@@ -12,14 +12,32 @@ import lombok.NoArgsConstructor;
  * Output model for the Tool workflow component.
  * <p>
  * Mirrors Python's {@code ToolComponentOutput}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class ToolComponentOutput {
-
+    /**
+     * ERR_CODE.
+     * 
+     * @since 0.1.7
+     */
     public static final String ERR_CODE = "errCode";
+
+    /**
+     * ERR_MESSAGE.
+     * 
+     * @since 0.1.7
+     */
     public static final String ERR_MESSAGE = "errMessage";
+
+    /**
+     * RESTFUL_DATA.
+     * 
+     * @since 0.1.7
+     */
     public static final String RESTFUL_DATA = "data";
 
     private int errorCode = 0;
@@ -27,7 +45,10 @@ public class ToolComponentOutput {
     private Object data = "";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public java.util.Map<String, Object> toMap() {
         java.util.Map<String, Object> map = new java.util.LinkedHashMap<>();
@@ -38,7 +59,11 @@ public class ToolComponentOutput {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromMap.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
      */
     public static ToolComponentOutput fromMap(java.util.Map<String, Object> map) {
         ToolComponentOutput out = new ToolComponentOutput();

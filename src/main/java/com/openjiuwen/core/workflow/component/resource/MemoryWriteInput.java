@@ -17,8 +17,8 @@ import java.util.Map;
  * Input model for the Memory Write component.
  * <p>
  * Mirrors Python's {@code MemoryWriteInput}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 @Data
 public class MemoryWriteInput {
@@ -27,9 +27,10 @@ public class MemoryWriteInput {
 
     /**
      * Convert from a map representation to MemoryWriteInput.
-     *
+     * 
      * @param inputs the input map
      * @return the MemoryWriteInput instance
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
     public static MemoryWriteInput fromMap(Map<String, Object> inputs) {
@@ -51,6 +52,13 @@ public class MemoryWriteInput {
         return input;
     }
 
+    /**
+     * parseMessagesList.
+     * 
+     * @param msgList msgList
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<BaseMessage> parseMessagesList(List<?> msgList) {
         List<BaseMessage> messages = new ArrayList<>();
         for (Object item : msgList) {
@@ -59,12 +67,21 @@ public class MemoryWriteInput {
             } else if (item instanceof Map<?, ?> msgMap) {
                 BaseMessage message = parseMessageFromMap(msgMap);
                 messages.add(message);
+            } else {
+                // no-op
             }
         }
         return messages;
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * parseMessageFromMap.
+     * 
+     * @param msgMap msgMap
+     * @return the result
+     * @since 0.1.7
+     */
     private static BaseMessage parseMessageFromMap(Map<?, ?> msgMap) {
         Map<String, Object> typedMap = (Map<String, Object>) msgMap;
         String role = String.valueOf(typedMap.getOrDefault("role", ""));

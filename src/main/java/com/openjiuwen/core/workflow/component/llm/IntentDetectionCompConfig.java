@@ -18,16 +18,29 @@ import java.util.List;
  * Configuration for IntentDetection workflow component.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.intent_detection_comp.IntentDetectionCompConfig}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class IntentDetectionCompConfig extends ComponentConfig {
-
     private String modelId;
     private ModelClientConfig modelClientConfig;
     private ModelRequestConfig modelConfig;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> categoryNameList = new ArrayList<>();
     private String userPrompt = "";
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> exampleContent = new ArrayList<>();
     private boolean enableHistory = false;
     private int chatHistoryMaxTurn = 3;

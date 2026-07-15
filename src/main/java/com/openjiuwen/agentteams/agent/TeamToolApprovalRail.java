@@ -16,28 +16,33 @@ import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
 
 /**
  * Tool approval rail for team coordination.
- *
- * <p>Mirrors Python TeamToolApprovalRail: when a teammate calls a tool,
+ * <p>
+ * Mirrors Python TeamToolApprovalRail: when a teammate calls a tool,
  * sends an approval request to the leader. The leader reviews and
- * responds via the approve_tool tool.</p>
+ * responds via the approve_tool tool.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class TeamToolApprovalRail extends ConfirmInterruptRail {
-
     private final String teamName;
     private final String memberName;
     private final String leaderMemberName;
     private final TeamMessageManager messageManager;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamToolApprovalRail.
+     * 
+     * @param teamName teamName
+     * @param memberName memberName
+     * @param db db
+     * @param messager messager
+     * @param leaderMemberName leaderMemberName
+     * @param toolNames toolNames
+     * @since 0.1.7
      */
-    public TeamToolApprovalRail(
-            String teamName,
-            String memberName,
-            TeamDatabase db,
-            Messager messager,
-            String leaderMemberName,
-            Iterable<String> toolNames) {
+    public TeamToolApprovalRail(String teamName, String memberName, TeamDatabase db, Messager messager,
+            String leaderMemberName, Iterable<String> toolNames) {
         super(toolNames);
         this.teamName = teamName;
         this.memberName = memberName;
@@ -46,29 +51,29 @@ public class TeamToolApprovalRail extends ConfirmInterruptRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveInterrupt.
+     * 
+     * @param ctx ctx
+     * @param toolCall toolCall
+     * @param userInput userInput
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    protected InterruptDecision resolveInterrupt(
-            AgentCallbackContext ctx, ToolCall toolCall, Object userInput) {
-
+    protected InterruptDecision resolveInterrupt(AgentCallbackContext ctx, ToolCall toolCall, Object userInput) {
         String toolName = toolCall != null ? toolCall.getName() : "unknown";
 
         // First call: send approval request to leader and interrupt
         if (userInput == null) {
             String toolCallId = toolCall != null ? toolCall.getId() : "";
-            String argsStr = toolCall != null && toolCall.getArguments() != null
-                    ? String.valueOf(toolCall.getArguments()) : "{}";
+            String argsStr =
+                toolCall != null && toolCall.getArguments() != null ? String.valueOf(toolCall.getArguments()) : "{}";
 
-            String message = "Teammate tool approval request.\n"
-                    + "Member: " + memberName + "\n"
-                    + "Tool: " + toolName + "\n"
-                    + "Tool Call ID: " + toolCallId + "\n"
-                    + "Arguments: " + argsStr + "\n"
+            String message = "Teammate tool approval request.\n" + "Member: " + memberName + "\n" + "Tool: " + toolName
+                    + "\n" + "Tool Call ID: " + toolCallId + "\n" + "Arguments: " + argsStr + "\n"
                     + "Please review and call approve_tool.\n\n";
 
-            Loggers.AGENT.info("Sending tool approval request to leader for {} (call_id: {})",
-                    toolName, toolCallId);
+            Loggers.AGENT.info("Sending tool approval request to leader for {} (call_id: {})", toolName, toolCallId);
 
             try {
                 String messageId = messageManager.sendMessage(message, leaderMemberName).join();
@@ -81,9 +86,8 @@ public class TeamToolApprovalRail extends ConfirmInterruptRail {
                 return reject("Failed to send approval request to leader: " + e.getMessage());
             }
 
-            return interrupt(InterruptRequest.builder()
-                    .message("Awaiting leader approval for tool: " + toolName)
-                    .build());
+            return interrupt(
+                    InterruptRequest.builder().message("Awaiting leader approval for tool: " + toolName).build());
         }
 
         // Resume: process leader's approval response
@@ -98,8 +102,7 @@ public class TeamToolApprovalRail extends ConfirmInterruptRail {
         } catch (Exception e) {
             Loggers.AGENT.error("Failed to parse approval response for {}: {}", toolName, e.getMessage());
             return interrupt(InterruptRequest.builder()
-                    .message("Invalid approval response format for tool: " + toolName)
-                    .build());
+                    .message("Invalid approval response format for tool: " + toolName).build());
         }
     }
 }

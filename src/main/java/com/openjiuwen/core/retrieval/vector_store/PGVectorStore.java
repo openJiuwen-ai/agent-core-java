@@ -15,9 +15,9 @@ import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.common.WeightedRankConfig;
 import com.openjiuwen.core.retrieval.utils.FusionUtils;
 import com.pgvector.PGvector;
+
 import org.postgresql.util.PGobject;
 
-import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -36,13 +36,28 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.sql.DataSource;
+
 /**
  * PostgreSQL/pgvector-backed vector store for retrieval.
+ * 
+ * @since 0.1.7
  */
 public class PGVectorStore implements VectorStore {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]*$");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern JDBC_URL_PATTERN = Pattern.compile("^jdbc:postgresql://[^/]+/([^?;]+).*$");
     private static final String PUBLIC_SCHEMA = "public";
     private static final int DEFAULT_BATCH_SIZE = 128;
@@ -65,76 +80,104 @@ public class PGVectorStore implements VectorStore {
     private String collectionName;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PGVectorStore.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public PGVectorStore(VectorStoreConfig config) {
         this(config, null, null, null, "hybrid", Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PGVectorStore.
+     * 
+     * @param config config
+     * @param indexType indexType
+     * @since 0.1.7
      */
     public PGVectorStore(VectorStoreConfig config, String indexType) {
         this(config, null, null, null, indexType, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PGVectorStore.
+     * 
+     * @param config config
+     * @param jdbcUrl jdbcUrl
+     * @param username username
+     * @param password password
+     * @param indexType indexType
+     * @since 0.1.7
      */
-    public PGVectorStore(VectorStoreConfig config,
-                         String jdbcUrl,
-                         String username,
-                         String password,
-                         String indexType) {
+    public PGVectorStore(VectorStoreConfig config, String jdbcUrl, String username, String password, String indexType) {
         this(config, jdbcUrl, username, password, indexType, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PGVectorStore.
+     * 
+     * @param config config
+     * @param jdbcUrl jdbcUrl
+     * @param username username
+     * @param password password
+     * @param indexType indexType
+     * @param options options
+     * @since 0.1.7
      */
-    public PGVectorStore(VectorStoreConfig config,
-                         String jdbcUrl,
-                         String username,
-                         String password,
-                         String indexType,
-                         Map<String, Object> options) {
+    public PGVectorStore(VectorStoreConfig config, String jdbcUrl, String username, String password, String indexType,
+            Map<String, Object> options) {
         this(config, null, jdbcUrl, username, password, indexType, options);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PGVectorStore.
+     * 
+     * @param config config
+     * @param dataSource dataSource
+     * @param indexType indexType
+     * @since 0.1.7
      */
     public PGVectorStore(VectorStoreConfig config, DataSource dataSource, String indexType) {
         this(config, dataSource, indexType, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PGVectorStore.
+     * 
+     * @param config config
+     * @param dataSource dataSource
+     * @param indexType indexType
+     * @param options options
+     * @since 0.1.7
      */
-    public PGVectorStore(VectorStoreConfig config,
-                         DataSource dataSource,
-                         String indexType,
-                         Map<String, Object> options) {
+    public PGVectorStore(VectorStoreConfig config, DataSource dataSource, String indexType,
+            Map<String, Object> options) {
         this(config, dataSource, null, null, null, indexType, options);
     }
 
-    private PGVectorStore(VectorStoreConfig config,
-                          DataSource dataSource,
-                          String jdbcUrl,
-                          String username,
-                          String password,
-                          String indexType,
-                          Map<String, Object> options) {
+    /**
+     * PGVectorStore.
+     * 
+     * @param config config
+     * @param dataSource dataSource
+     * @param jdbcUrl jdbcUrl
+     * @param username username
+     * @param password password
+     * @param indexType indexType
+     * @param options options
+     * @since 0.1.7
+     */
+    private PGVectorStore(VectorStoreConfig config, DataSource dataSource, String jdbcUrl, String username,
+            String password, String indexType, Map<String, Object> options) {
         Objects.requireNonNull(config, "config");
         config.validate();
         if (dataSource == null && (jdbcUrl == null || jdbcUrl.isBlank())) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
                     "jdbcUrl or dataSource is required for PGVectorStore");
         }
         if (jdbcUrl != null && !jdbcUrl.isBlank() && !jdbcUrl.startsWith("jdbc:postgresql://")) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
                     "PGVectorStore jdbcUrl must start with jdbc:postgresql://");
         }
         this.dataSource = dataSource;
@@ -143,9 +186,8 @@ public class PGVectorStore implements VectorStore {
         this.password = password;
         this.databaseName = resolveDatabaseName(config.getDatabaseName(), jdbcUrl);
         this.distanceMetric = config.getDistanceMetric();
-        this.indexType = RetrievalValidation.validateIndexType(
-                indexType == null ? "hybrid" : indexType,
-                "PGVectorStore.indexType");
+        this.indexType =
+            RetrievalValidation.validateIndexType(indexType == null ? "hybrid" : indexType, "PGVectorStore.indexType");
         this.collectionName = requireIdentifier(config.getCollectionName(), "collectionName");
         this.textField = requireIdentifier("text", "textField");
         this.vectorField = options != null && options.containsKey("vector_field")
@@ -157,52 +199,58 @@ public class PGVectorStore implements VectorStore {
         this.sparseVectorField = requireIdentifier("sparse_vector", "sparseVectorField");
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getCollectionName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getCollectionName() {
         return collectionName;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * setCollectionName.
+     * 
+     * @param collectionName collectionName
+     * @since 0.1.7
      */
+    @Override
     public void setCollectionName(String collectionName) {
         this.collectionName = requireIdentifier(collectionName, "collectionName");
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * withCollection.
+     * 
+     * @param collectionName collectionName
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public VectorStore withCollection(String collectionName) {
-        VectorStoreConfig scopedConfig = new VectorStoreConfig(
-                "pgvector",
-                databaseName,
-                collectionName,
-                distanceMetric);
+        VectorStoreConfig scopedConfig =
+            new VectorStoreConfig("pgvector", databaseName, collectionName, distanceMetric);
         if (dataSource != null) {
             return new PGVectorStore(scopedConfig, dataSource, indexType, Map.of("vector_field", vectorField));
         }
-        return new PGVectorStore(
-                scopedConfig,
-                jdbcUrl,
-                username,
-                password,
-                indexType,
+        return new PGVectorStore(scopedConfig, jdbcUrl, username, password, indexType,
                 Map.of("vector_field", vectorField));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * ensureCollection.
+     * 
+     * @param collectionName collectionName
+     * @param indexType indexType
+     * @param dimension dimension
+     * @param options options
+     * @since 0.1.7
      */
-    public void ensureCollection(String collectionName,
-                                 String indexType,
-                                 Integer dimension,
-                                 Map<String, Object> options) {
+    @Override
+    public void ensureCollection(String collectionName, String indexType, Integer dimension,
+            Map<String, Object> options) {
         String targetCollectionName = collectionName == null ? this.collectionName : collectionName;
         String targetTable = requireIdentifier(targetCollectionName, "collectionName");
         int safeDimension = requireVectorDimension(dimension);
@@ -227,34 +275,29 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * checkVectorField.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void checkVectorField() {
         try (Connection connection = openConnection()) {
             if (!tableExists(connection, collectionName)) {
                 return;
             }
             Map<String, String> columnTypes = loadColumnTypes(connection, collectionName);
-            List<String> requiredColumns = List.of(
-                    "id",
-                    textField,
-                    vectorField,
-                    metadataField,
-                    docIdField,
-                    chunkIdField);
+            List<String> requiredColumns =
+                List.of("id", textField, vectorField, metadataField, docIdField, chunkIdField);
             for (String requiredColumn : requiredColumns) {
                 if (!columnTypes.containsKey(requiredColumn)) {
-                    throw RetrievalExceptions.error(
-                            StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
                             "PGVector table " + collectionName + " is missing required column " + requiredColumn);
                 }
             }
             String vectorType = columnTypes.get(vectorField);
             if (vectorType == null || !vectorType.toLowerCase(Locale.ROOT).startsWith("vector(")) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
                         "PGVector column " + vectorField + " must use vector(n), got " + vectorType);
             }
         } catch (SQLException ex) {
@@ -262,10 +305,15 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * add.
+     * 
+     * @param data data
+     * @param batchSize batchSize
+     * @param options options
+     * @since 0.1.7
      */
+    @Override
     public void add(List<Map<String, Object>> data, Integer batchSize, Map<String, Object> options) {
         if (data == null || data.isEmpty()) {
             return;
@@ -302,14 +350,18 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * search.
+     * 
+     * @param queryVector queryVector
+     * @param topK topK
+     * @param filters filters
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public List<SearchResult> search(
-            List<Float> queryVector,
-            int topK,
-            Map<String, Object> filters,
+    @Override
+    public List<SearchResult> search(List<Float> queryVector, int topK, Map<String, Object> filters,
             Map<String, Object> options) {
         if (queryVector == null || queryVector.isEmpty() || topK <= 0) {
             return List.of();
@@ -319,15 +371,11 @@ public class PGVectorStore implements VectorStore {
                 return List.of();
             }
             StringBuilder sql = new StringBuilder();
-            sql.append("SELECT ")
-                    .append(quoteIdentifier("id")).append(", ")
-                    .append(quoteIdentifier(textField)).append(", ")
-                    .append(quoteIdentifier(metadataField)).append(", ")
-                    .append(quoteIdentifier(docIdField)).append(", ")
-                    .append(quoteIdentifier(chunkIdField)).append(", ")
-                    .append(quoteIdentifier(vectorField)).append(" ")
-                    .append(distanceOperator()).append(" ? AS raw_score ")
-                    .append("FROM ").append(qualifiedTableName(collectionName))
+            sql.append("SELECT ").append(quoteIdentifier("id")).append(", ").append(quoteIdentifier(textField))
+                    .append(", ").append(quoteIdentifier(metadataField)).append(", ")
+                    .append(quoteIdentifier(docIdField)).append(", ").append(quoteIdentifier(chunkIdField)).append(", ")
+                    .append(quoteIdentifier(vectorField)).append(" ").append(distanceOperator())
+                    .append(" ? AS raw_score ").append("FROM ").append(qualifiedTableName(collectionName))
                     .append(" WHERE ").append(quoteIdentifier(vectorField)).append(" IS NOT NULL");
             List<Object> parameters = new ArrayList<>();
             appendFilterSql(sql, filters, parameters);
@@ -345,14 +393,18 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * sparseSearch.
+     * 
+     * @param queryText queryText
+     * @param topK topK
+     * @param filters filters
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public List<SearchResult> sparseSearch(
-            String queryText,
-            int topK,
-            Map<String, Object> filters,
+    @Override
+    public List<SearchResult> sparseSearch(String queryText, int topK, Map<String, Object> filters,
             Map<String, Object> options) {
         if (queryText == null || queryText.isBlank() || topK <= 0) {
             return List.of();
@@ -364,15 +416,12 @@ public class PGVectorStore implements VectorStore {
             String tsvector = "to_tsvector('isEnglish', COALESCE(" + quoteIdentifier(textField) + ", ''))";
             String tsquery = "websearch_to_tsquery('isEnglish', ?)";
             StringBuilder sql = new StringBuilder();
-            sql.append("SELECT ")
-                    .append(quoteIdentifier("id")).append(", ")
-                    .append(quoteIdentifier(textField)).append(", ")
-                    .append(quoteIdentifier(metadataField)).append(", ")
-                    .append(quoteIdentifier(docIdField)).append(", ")
-                    .append(quoteIdentifier(chunkIdField)).append(", ")
+            sql.append("SELECT ").append(quoteIdentifier("id")).append(", ").append(quoteIdentifier(textField))
+                    .append(", ").append(quoteIdentifier(metadataField)).append(", ")
+                    .append(quoteIdentifier(docIdField)).append(", ").append(quoteIdentifier(chunkIdField)).append(", ")
                     .append("ts_rank(").append(tsvector).append(", ").append(tsquery).append(") AS raw_score ")
-                    .append("FROM ").append(qualifiedTableName(collectionName))
-                    .append(" WHERE ").append(tsvector).append(" @@ ").append(tsquery);
+                    .append("FROM ").append(qualifiedTableName(collectionName)).append(" WHERE ").append(tsvector)
+                    .append(" @@ ").append(tsquery);
             List<Object> parameters = new ArrayList<>();
             appendFilterSql(sql, filters, parameters);
             sql.append(" ORDER BY raw_score DESC LIMIT ?");
@@ -390,16 +439,21 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * hybridSearch.
+     * 
+     * @param queryText queryText
+     * @param queryVector queryVector
+     * @param topK topK
+     * @param alpha alpha
+     * @param filters filters
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public List<SearchResult> hybridSearch(String queryText,
-                                           List<Float> queryVector,
-                                           int topK,
-                                           double alpha,
-                                           Map<String, Object> filters,
-                                           Map<String, Object> options) {
+    @Override
+    public List<SearchResult> hybridSearch(String queryText, List<Float> queryVector, int topK, double alpha,
+            Map<String, Object> filters, Map<String, Object> options) {
         if (queryVector == null || queryVector.isEmpty()) {
             return sparseSearch(queryText, topK, filters, options);
         }
@@ -414,19 +468,24 @@ public class PGVectorStore implements VectorStore {
             return fused.size() <= topK ? fused : fused.subList(0, topK);
         }
         if (rankConfig instanceof WeightedRankConfig weighted) {
-            double denseWeight = weighted.getDenseContent() > 0.0
-                    ? weighted.getDenseContent()
-                    : weighted.getDenseName();
+            double denseWeight =
+                weighted.getDenseContent() > 0.0 ? weighted.getDenseContent() : weighted.getDenseName();
             double sparseWeight = weighted.getSparseContent();
             return weightedFusion(dense, sparse, topK, denseWeight, sparseWeight);
         }
         return weightedFusion(dense, sparse, topK, alpha, 1.0 - alpha);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * delete.
+     * 
+     * @param ids ids
+     * @param filterExpr filterExpr
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean delete(List<String> ids, Map<String, Object> filterExpr, Map<String, Object> options) {
         if ((ids == null || ids.isEmpty()) && (filterExpr == null || filterExpr.isEmpty())) {
             return false;
@@ -436,9 +495,8 @@ public class PGVectorStore implements VectorStore {
         List<Object> parameters = new ArrayList<>();
         if (ids != null && !ids.isEmpty()) {
             String placeholders = placeholders(ids.size());
-            clauses.add("("
-                    + quoteIdentifier("id") + " IN (" + placeholders + ") OR "
-                    + quoteIdentifier(chunkIdField) + " IN (" + placeholders + "))");
+            clauses.add("(" + quoteIdentifier("id") + " IN (" + placeholders + ") OR " + quoteIdentifier(chunkIdField)
+                    + " IN (" + placeholders + "))");
             parameters.addAll(ids);
             parameters.addAll(ids);
         }
@@ -469,10 +527,8 @@ public class PGVectorStore implements VectorStore {
             if (!tableExists(connection, collectionName)) {
                 return false;
             }
-            String sql = "DELETE FROM "
-                    + qualifiedTableName(collectionName)
-                    + " WHERE "
-                    + String.join(" AND ", clauses);
+            String sql =
+                "DELETE FROM " + qualifiedTableName(collectionName) + " WHERE " + String.join(" AND ", clauses);
             boolean originalAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -491,10 +547,14 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * tableExists.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean tableExists(String tableName) {
         try (Connection connection = openConnection()) {
             String targetTable = tableName == null ? collectionName : tableName;
@@ -504,10 +564,13 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteTable.
+     * 
+     * @param tableName tableName
+     * @since 0.1.7
      */
+    @Override
     public void deleteTable(String tableName) {
         String targetTable = requireIdentifier(tableName == null ? collectionName : tableName, "tableName");
         try (Connection connection = openConnection()) {
@@ -527,10 +590,15 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * queryByFilters.
+     * 
+     * @param filters filters
+     * @param limit limit
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<SearchResult> queryByFilters(Map<String, Object> filters, int limit) {
         if (limit <= 0) {
             return List.of();
@@ -540,14 +608,10 @@ public class PGVectorStore implements VectorStore {
                 return List.of();
             }
             StringBuilder sql = new StringBuilder();
-            sql.append("SELECT ")
-                    .append(quoteIdentifier("id")).append(", ")
-                    .append(quoteIdentifier(textField)).append(", ")
-                    .append(quoteIdentifier(metadataField)).append(", ")
-                    .append(quoteIdentifier(docIdField)).append(", ")
-                    .append(quoteIdentifier(chunkIdField))
-                    .append(" FROM ").append(qualifiedTableName(collectionName))
-                    .append(" WHERE 1 = 1");
+            sql.append("SELECT ").append(quoteIdentifier("id")).append(", ").append(quoteIdentifier(textField))
+                    .append(", ").append(quoteIdentifier(metadataField)).append(", ")
+                    .append(quoteIdentifier(docIdField)).append(", ").append(quoteIdentifier(chunkIdField))
+                    .append(" FROM ").append(qualifiedTableName(collectionName)).append(" WHERE 1 = 1");
             List<Object> parameters = new ArrayList<>();
             appendFilterSql(sql, filters, parameters);
             sql.append(" ORDER BY ").append(quoteIdentifier("id")).append(" LIMIT ?");
@@ -563,19 +627,23 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * count.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public long count(String tableName) {
         String targetTable = requireIdentifier(tableName == null ? collectionName : tableName, "tableName");
         try (Connection connection = openConnection()) {
             if (!tableExists(connection, targetTable)) {
                 return 0L;
             }
-            try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT COUNT(*) FROM " + qualifiedTableName(targetTable));
-                 ResultSet resultSet = statement.executeQuery()) {
+            try (PreparedStatement statement =
+                connection.prepareStatement("SELECT COUNT(*) FROM " + qualifiedTableName(targetTable));
+                    ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? resultSet.getLong(1) : 0L;
             }
         } catch (SQLException ex) {
@@ -583,72 +651,100 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDatabaseName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getDatabaseName() {
         return databaseName;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDistanceMetric.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getDistanceMetric() {
         return distanceMetric;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getIndexType() {
         return indexType;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getTextField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getTextField() {
         return textField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getVectorField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getVectorField() {
         return vectorField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getSparseVectorField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getSparseVectorField() {
         return sparseVectorField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadataField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getMetadataField() {
         return metadataField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDocIdField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getDocIdField() {
         return docIdField;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * openConnection.
+     * 
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
      */
     protected Connection openConnection() throws SQLException {
         if (dataSource != null) {
@@ -664,12 +760,22 @@ public class PGVectorStore implements VectorStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerVectorTypes.
+     * 
+     * @param connection connection
+     * @throws SQLException SQLException
+     * @since 0.1.7
      */
     protected void registerVectorTypes(Connection connection) throws SQLException {
         PGvector.registerTypes(connection);
     }
 
+    /**
+     * distanceOperator.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String distanceOperator() {
         return switch (distanceMetric) {
             case "euclidean" -> "<->";
@@ -678,6 +784,14 @@ public class PGVectorStore implements VectorStore {
         };
     }
 
+    /**
+     * appendFilterSql.
+     * 
+     * @param sql sql
+     * @param filters filters
+     * @param parameters parameters
+     * @since 0.1.7
+     */
     private void appendFilterSql(StringBuilder sql, Map<String, Object> filters, List<Object> parameters) {
         if (filters == null || filters.isEmpty()) {
             return;
@@ -691,11 +805,8 @@ public class PGVectorStore implements VectorStore {
                         sql.append(" AND 1 = 0");
                         continue;
                     }
-                    sql.append(" AND ")
-                            .append(quoteIdentifier(key))
-                            .append(" IN (")
-                            .append(placeholders(collection.size()))
-                            .append(")");
+                    sql.append(" AND ").append(quoteIdentifier(key)).append(" IN (")
+                            .append(placeholders(collection.size())).append(")");
                     parameters.addAll(collection);
                 } else {
                     sql.append(" AND ").append(quoteIdentifier(key)).append(" = ?");
@@ -708,6 +819,15 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
+    /**
+     * bindValues.
+     * 
+     * @param statement statement
+     * @param values values
+     * @param startIndex startIndex
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private void bindValues(PreparedStatement statement, List<Object> values, int startIndex) throws SQLException {
         int index = startIndex;
         for (Object value : values) {
@@ -715,6 +835,15 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
+    /**
+     * readSearchResults.
+     * 
+     * @param resultSet resultSet
+     * @param denseMode denseMode
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private List<SearchResult> readSearchResults(ResultSet resultSet, Boolean denseMode) throws SQLException {
         List<SearchResult> results = new ArrayList<>();
         while (resultSet.next()) {
@@ -748,6 +877,13 @@ public class PGVectorStore implements VectorStore {
         return results;
     }
 
+    /**
+     * readMetadata.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> readMetadata(Object raw) {
         if (raw instanceof PGobject pgObject) {
             try {
@@ -755,14 +891,20 @@ public class PGVectorStore implements VectorStore {
                 Map<String, Object> parsed = OBJECT_MAPPER.readValue(pgObject.getValue(), LinkedHashMap.class);
                 return parsed == null ? new LinkedHashMap<>() : new LinkedHashMap<>(parsed);
             } catch (JsonProcessingException ex) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
                         "failed to parse PGVector metadata");
             }
         }
         return castMap(raw);
     }
 
+    /**
+     * normalizeDenseScore.
+     * 
+     * @param rawScore rawScore
+     * @return the result
+     * @since 0.1.7
+     */
     private double normalizeDenseScore(double rawScore) {
         return switch (distanceMetric) {
             case "euclidean" -> 1.0 / (1.0 + Math.max(rawScore, 0.0));
@@ -774,11 +916,19 @@ public class PGVectorStore implements VectorStore {
         };
     }
 
-    private List<SearchResult> weightedFusion(List<SearchResult> dense,
-                                              List<SearchResult> sparse,
-                                              int topK,
-                                              double denseWeight,
-                                              double sparseWeight) {
+    /**
+     * weightedFusion.
+     * 
+     * @param dense dense
+     * @param sparse sparse
+     * @param topK topK
+     * @param denseWeight denseWeight
+     * @param sparseWeight sparseWeight
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<SearchResult> weightedFusion(List<SearchResult> dense, List<SearchResult> sparse, int topK,
+            double denseWeight, double sparseWeight) {
         Map<String, Double> scores = new LinkedHashMap<>();
         Map<String, SearchResult> resultsByText = new LinkedHashMap<>();
         mergeWeighted(scores, resultsByText, dense, denseWeight);
@@ -796,10 +946,17 @@ public class PGVectorStore implements VectorStore {
         return fused;
     }
 
-    private void mergeWeighted(Map<String, Double> scores,
-                               Map<String, SearchResult> resultsByText,
-                               List<SearchResult> results,
-                               double weight) {
+    /**
+     * mergeWeighted.
+     * 
+     * @param scores scores
+     * @param resultsByText resultsByText
+     * @param results results
+     * @param weight weight
+     * @since 0.1.7
+     */
+    private void mergeWeighted(Map<String, Double> scores, Map<String, SearchResult> resultsByText,
+            List<SearchResult> results, double weight) {
         if (results == null || results.isEmpty() || weight <= 0.0) {
             return;
         }
@@ -809,6 +966,15 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
+    /**
+     * tableExists.
+     * 
+     * @param connection connection
+     * @param tableName tableName
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private boolean tableExists(Connection connection, String tableName) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
                 "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = ? AND table_name = ?)")) {
@@ -820,12 +986,19 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
+    /**
+     * loadColumnTypes.
+     * 
+     * @param connection connection
+     * @param tableName tableName
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private Map<String, String> loadColumnTypes(Connection connection, String tableName) throws SQLException {
         Map<String, String> columnTypes = new LinkedHashMap<>();
-        String sql = "SELECT a.attname AS column_name, "
-                + "format_type(a.atttypid, a.atttypmod) AS column_type "
-                + "FROM pg_attribute a "
-                + "JOIN pg_class c ON a.attrelid = c.oid "
+        String sql = "SELECT a.attname AS column_name, " + "format_type(a.atttypid, a.atttypmod) AS column_type "
+                + "FROM pg_attribute a " + "JOIN pg_class c ON a.attrelid = c.oid "
                 + "JOIN pg_namespace n ON c.relnamespace = n.oid "
                 + "WHERE n.nspname = ? AND c.relname = ? AND a.attnum > 0 AND NOT a.attisdropped";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -840,34 +1013,50 @@ public class PGVectorStore implements VectorStore {
         return columnTypes;
     }
 
+    /**
+     * createTableSql.
+     * 
+     * @param tableName tableName
+     * @param dimension dimension
+     * @return the result
+     * @since 0.1.7
+     */
     private String createTableSql(String tableName, int dimension) {
-        return "CREATE TABLE IF NOT EXISTS " + qualifiedTableName(tableName) + " ("
-                + quoteIdentifier("id") + " TEXT PRIMARY KEY, "
-                + quoteIdentifier(textField) + " TEXT NOT NULL DEFAULT '', "
-                + quoteIdentifier(vectorField) + " vector(" + dimension + "), "
-                + quoteIdentifier(metadataField) + " JSONB NOT NULL DEFAULT '{}'::jsonb, "
-                + quoteIdentifier(docIdField) + " TEXT, "
-                + quoteIdentifier(chunkIdField) + " TEXT"
-                + ")";
+        return "CREATE TABLE IF NOT EXISTS " + qualifiedTableName(tableName) + " (" + quoteIdentifier("id")
+                + " TEXT PRIMARY KEY, " + quoteIdentifier(textField) + " TEXT NOT NULL DEFAULT '', "
+                + quoteIdentifier(vectorField) + " vector(" + dimension + "), " + quoteIdentifier(metadataField)
+                + " JSONB NOT NULL DEFAULT '{}'::jsonb, " + quoteIdentifier(docIdField) + " TEXT, "
+                + quoteIdentifier(chunkIdField) + " TEXT" + ")";
     }
 
+    /**
+     * upsertSql.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @since 0.1.7
+     */
     private String upsertSql(String tableName) {
-        return "INSERT INTO " + qualifiedTableName(tableName) + " ("
-                + quoteIdentifier("id") + ", "
-                + quoteIdentifier(textField) + ", "
-                + quoteIdentifier(vectorField) + ", "
-                + quoteIdentifier(metadataField) + ", "
-                + quoteIdentifier(docIdField) + ", "
-                + quoteIdentifier(chunkIdField)
-                + ") VALUES (?, ?, ?, ?::jsonb, ?, ?) "
-                + "ON CONFLICT (" + quoteIdentifier("id") + ") DO UPDATE SET "
-                + quoteIdentifier(textField) + " = EXCLUDED." + quoteIdentifier(textField) + ", "
-                + quoteIdentifier(vectorField) + " = EXCLUDED." + quoteIdentifier(vectorField) + ", "
-                + quoteIdentifier(metadataField) + " = EXCLUDED." + quoteIdentifier(metadataField) + ", "
-                + quoteIdentifier(docIdField) + " = EXCLUDED." + quoteIdentifier(docIdField) + ", "
-                + quoteIdentifier(chunkIdField) + " = EXCLUDED." + quoteIdentifier(chunkIdField);
+        return "INSERT INTO " + qualifiedTableName(tableName) + " (" + quoteIdentifier("id") + ", "
+                + quoteIdentifier(textField) + ", " + quoteIdentifier(vectorField) + ", "
+                + quoteIdentifier(metadataField) + ", " + quoteIdentifier(docIdField) + ", "
+                + quoteIdentifier(chunkIdField) + ") VALUES (?, ?, ?, ?::jsonb, ?, ?) " + "ON CONFLICT ("
+                + quoteIdentifier("id") + ") DO UPDATE SET " + quoteIdentifier(textField) + " = EXCLUDED."
+                + quoteIdentifier(textField) + ", " + quoteIdentifier(vectorField) + " = EXCLUDED."
+                + quoteIdentifier(vectorField) + ", " + quoteIdentifier(metadataField) + " = EXCLUDED."
+                + quoteIdentifier(metadataField) + ", " + quoteIdentifier(docIdField) + " = EXCLUDED."
+                + quoteIdentifier(docIdField) + ", " + quoteIdentifier(chunkIdField) + " = EXCLUDED."
+                + quoteIdentifier(chunkIdField);
     }
 
+    /**
+     * bindUpsert.
+     * 
+     * @param statement statement
+     * @param row row
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private void bindUpsert(PreparedStatement statement, StoredRow row) throws SQLException {
         statement.setString(1, row.id());
         statement.setString(2, row.text());
@@ -881,6 +1070,13 @@ public class PGVectorStore implements VectorStore {
         statement.setString(6, row.chunkId());
     }
 
+    /**
+     * normalizeRow.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
+     */
     private StoredRow normalizeRow(Map<String, Object> item) {
         Map<String, Object> metadata = castMap(item == null ? null : item.get(metadataField));
         String chunkId = stringValue(item == null ? null : item.get(chunkIdField));
@@ -907,15 +1103,17 @@ public class PGVectorStore implements VectorStore {
         }
         metadata.putIfAbsent("doc_id", docId);
         metadata.putIfAbsent("chunk_id", chunkId);
-        return new StoredRow(
-                id,
-                text,
-                castFloatList(item == null ? null : item.get(vectorField)),
-                metadata,
-                docId,
+        return new StoredRow(id, text, castFloatList(item == null ? null : item.get(vectorField)), metadata, docId,
                 chunkId);
     }
 
+    /**
+     * inferDimension.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
+     */
     private int inferDimension(List<Map<String, Object>> data) {
         for (Map<String, Object> item : data) {
             StoredRow row = normalizeRow(item);
@@ -923,29 +1121,37 @@ public class PGVectorStore implements VectorStore {
                 return requireVectorDimension(row.vector().size());
             }
         }
-        throw RetrievalExceptions.error(
-                StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+        throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
                 "vector dimension is required to bootstrap PGVector collection");
     }
 
+    /**
+     * requireVectorDimension.
+     * 
+     * @param dimension dimension
+     * @return the result
+     * @since 0.1.7
+     */
     private int requireVectorDimension(Integer dimension) {
         if (dimension == null || dimension <= 0) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
                     "vector dimension is required to bootstrap PGVector collection");
         }
         if (dimension > MAX_VECTOR_DIMENSION) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
-                    "pgvector only supports vector dimensions up to "
-                            + MAX_VECTOR_DIMENSION
-                            + ". Got "
-                            + dimension
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+                    "pgvector only supports vector dimensions up to " + MAX_VECTOR_DIMENSION + ". Got " + dimension
                             + ".");
         }
         return dimension;
     }
 
+    /**
+     * placeholders.
+     * 
+     * @param size size
+     * @return the result
+     * @since 0.1.7
+     */
     private String placeholders(int size) {
         List<String> placeholders = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
@@ -954,6 +1160,14 @@ public class PGVectorStore implements VectorStore {
         return String.join(", ", placeholders);
     }
 
+    /**
+     * bindValues.
+     * 
+     * @param statement statement
+     * @param values values
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private void bindValues(PreparedStatement statement, List<Object> values) throws SQLException {
         int index = 1;
         for (Object value : values) {
@@ -961,39 +1175,61 @@ public class PGVectorStore implements VectorStore {
         }
     }
 
+    /**
+     * annIndexSql.
+     * 
+     * @param tableName tableName
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     private String annIndexSql(String tableName, Map<String, Object> options) {
-        String annIndexType = options != null && options.containsKey("index_type")
-                ? String.valueOf(options.get("index_type"))
-                : "hnsw";
+        String annIndexType =
+            options != null && options.containsKey("index_type") ? String.valueOf(options.get("index_type")) : "hnsw";
         if ("ivfflat".equalsIgnoreCase(annIndexType)) {
             int lists = options != null && options.get("lists") instanceof Number number ? number.intValue() : 100;
-            return "CREATE INDEX IF NOT EXISTS " + quoteIdentifier(indexName(tableName, "vector_ann_idx"))
-                    + " ON " + qualifiedTableName(tableName)
-                    + " USING ivfflat (" + quoteIdentifier(vectorField) + " " + operatorClass() + ")"
-                    + " WITH (lists = " + lists + ")";
+            return "CREATE INDEX IF NOT EXISTS " + quoteIdentifier(indexName(tableName, "vector_ann_idx")) + " ON "
+                    + qualifiedTableName(tableName) + " USING ivfflat (" + quoteIdentifier(vectorField) + " "
+                    + operatorClass() + ")" + " WITH (lists = " + lists + ")";
         }
         int m = options != null && options.get("m") instanceof Number number ? number.intValue() : 16;
-        int efConstruction = options != null && options.get("ef_construction") instanceof Number number
-                ? number.intValue()
-                : 64;
-        return "CREATE INDEX IF NOT EXISTS " + quoteIdentifier(indexName(tableName, "vector_ann_idx"))
-                + " ON " + qualifiedTableName(tableName)
-                + " USING hnsw (" + quoteIdentifier(vectorField) + " " + operatorClass() + ")"
-                + " WITH (m = " + m + ", ef_construction = " + efConstruction + ")";
+        int efConstruction =
+            options != null && options.get("ef_construction") instanceof Number number ? number.intValue() : 64;
+        return "CREATE INDEX IF NOT EXISTS " + quoteIdentifier(indexName(tableName, "vector_ann_idx")) + " ON "
+                + qualifiedTableName(tableName) + " USING hnsw (" + quoteIdentifier(vectorField) + " " + operatorClass()
+                + ")" + " WITH (m = " + m + ", ef_construction = " + efConstruction + ")";
     }
 
+    /**
+     * docIndexSql.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @since 0.1.7
+     */
     private String docIndexSql(String tableName) {
-        return "CREATE INDEX IF NOT EXISTS " + quoteIdentifier(indexName(tableName, "doc_id_idx"))
-                + " ON " + qualifiedTableName(tableName)
-                + " (" + quoteIdentifier(docIdField) + ")";
+        return "CREATE INDEX IF NOT EXISTS " + quoteIdentifier(indexName(tableName, "doc_id_idx")) + " ON "
+                + qualifiedTableName(tableName) + " (" + quoteIdentifier(docIdField) + ")";
     }
 
+    /**
+     * chunkIndexSql.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @since 0.1.7
+     */
     private String chunkIndexSql(String tableName) {
-        return "CREATE INDEX IF NOT EXISTS " + quoteIdentifier(indexName(tableName, "chunk_id_idx"))
-                + " ON " + qualifiedTableName(tableName)
-                + " (" + quoteIdentifier(chunkIdField) + ")";
+        return "CREATE INDEX IF NOT EXISTS " + quoteIdentifier(indexName(tableName, "chunk_id_idx")) + " ON "
+                + qualifiedTableName(tableName) + " (" + quoteIdentifier(chunkIdField) + ")";
     }
 
+    /**
+     * operatorClass.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String operatorClass() {
         return switch (distanceMetric) {
             case "euclidean" -> "vector_l2_ops";
@@ -1002,39 +1238,66 @@ public class PGVectorStore implements VectorStore {
         };
     }
 
+    /**
+     * qualifiedTableName.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @since 0.1.7
+     */
     private String qualifiedTableName(String tableName) {
         return quoteIdentifier(PUBLIC_SCHEMA) + "." + quoteIdentifier(tableName);
     }
 
+    /**
+     * quoteIdentifier.
+     * 
+     * @param identifier identifier
+     * @return the result
+     * @since 0.1.7
+     */
     private String quoteIdentifier(String identifier) {
         return "\"" + requireIdentifier(identifier, "identifier") + "\"";
     }
 
+    /**
+     * requireIdentifier.
+     * 
+     * @param identifier identifier
+     * @param field field
+     * @return the result
+     * @since 0.1.7
+     */
     private String requireIdentifier(String identifier, String field) {
         RetrievalValidation.requireNonBlank(identifier, field);
         if (!IDENTIFIER_PATTERN.matcher(identifier).matches()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
                     field + " must match " + IDENTIFIER_PATTERN.pattern());
         }
         return identifier;
     }
 
+    /**
+     * resolveDatabaseName.
+     * 
+     * @param configuredDatabaseName configuredDatabaseName
+     * @param jdbcUrl jdbcUrl
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveDatabaseName(String configuredDatabaseName, String jdbcUrl) {
         String parsedDatabaseName = "";
         if (jdbcUrl != null && !jdbcUrl.isBlank()) {
             Matcher matcher = JDBC_URL_PATTERN.matcher(jdbcUrl);
             if (!matcher.matches()) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
                         "PGVectorStore jdbcUrl must be in jdbc:postgresql://host/database form");
             }
             parsedDatabaseName = matcher.group(1);
         }
         if (configuredDatabaseName != null && !configuredDatabaseName.isBlank()) {
             if (!parsedDatabaseName.isBlank() && !configuredDatabaseName.equals(parsedDatabaseName)) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
                         "VectorStoreConfig.databaseName does not match jdbcUrl database name");
             }
             return configuredDatabaseName;
@@ -1042,6 +1305,13 @@ public class PGVectorStore implements VectorStore {
         return parsedDatabaseName;
     }
 
+    /**
+     * toPgVector.
+     * 
+     * @param vector vector
+     * @return the result
+     * @since 0.1.7
+     */
     private PGvector toPgVector(List<Float> vector) {
         float[] values = new float[vector.size()];
         for (int i = 0; i < vector.size(); i++) {
@@ -1050,6 +1320,14 @@ public class PGVectorStore implements VectorStore {
         return new PGvector(values);
     }
 
+    /**
+     * indexName.
+     * 
+     * @param tableName tableName
+     * @param suffix suffix
+     * @return the result
+     * @since 0.1.7
+     */
     private String indexName(String tableName, String suffix) {
         String raw = tableName + "_" + suffix;
         if (raw.length() <= 63) {
@@ -1059,6 +1337,13 @@ public class PGVectorStore implements VectorStore {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * castMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> castMap(Object value) {
         if (!(value instanceof Map<?, ?> map)) {
             return new LinkedHashMap<>();
@@ -1070,9 +1355,16 @@ public class PGVectorStore implements VectorStore {
         return result;
     }
 
+    /**
+     * castFloatList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Float> castFloatList(Object value) {
         if (!(value instanceof Collection<?> values)) {
-            return null;
+            return java.util.Collections.emptyList();
         }
         List<Float> floats = new ArrayList<>(values.size());
         for (Object item : values) {
@@ -1083,31 +1375,58 @@ public class PGVectorStore implements VectorStore {
         return floats.isEmpty() ? null : floats;
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private String stringValue(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * sqlError.
+     * 
+     * @param message message
+     * @param ex ex
+     * @return the result
+     * @since 0.1.7
+     */
     private RuntimeException sqlError(String message, SQLException ex) {
-        return RetrievalExceptions.error(
-                StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+        return RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
                 message + ": " + ex.getMessage());
     }
 
+    /**
+     * toJson.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private String toJson(Map<String, Object> value) {
         try {
             return OBJECT_MAPPER.writeValueAsString(value == null ? Map.of() : value);
         } catch (JsonProcessingException ex) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
                     "failed to serialize PGVector JSON payload");
         }
     }
 
-    private record StoredRow(String id,
-                             String text,
-                             List<Float> vector,
-                             Map<String, Object> metadata,
-                             String docId,
-                             String chunkId) {
+    /**
+     * StoredRow.
+     * 
+     * @param id id
+     * @param text text
+     * @param vector vector
+     * @param metadata metadata
+     * @param docId docId
+     * @param chunkId chunkId
+     * @since 0.1.7
+     */
+    private record StoredRow(String id, String text, List<Float> vector, Map<String, Object> metadata, String docId,
+            String chunkId) {
     }
 }

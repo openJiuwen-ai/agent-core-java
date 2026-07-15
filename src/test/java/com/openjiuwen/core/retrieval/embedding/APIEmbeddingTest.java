@@ -1,19 +1,8 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.embedding;
-
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
-import com.openjiuwen.core.retrieval.common.TqdmCallback;
-import org.junit.jupiter.api.Test;
-
-import java.io.IOException;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -25,8 +14,20 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class APIEmbeddingTest {
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
+import com.openjiuwen.core.retrieval.common.TqdmCallback;
 
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.List;
+import java.util.Map;
+
+class APIEmbeddingTest {
     @Test
     void initKeepsApiFieldsAndHeaders() {
         EmbeddingConfig config = new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key");
@@ -68,14 +69,9 @@ class APIEmbeddingTest {
         when(response.body()).thenReturn("{\"embedding\":[0.1,0.2,0.3]}");
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(response);
 
-        APIEmbedding model = new APIEmbedding(
-                new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key"),
-                60,
-                3,
-                null,
-                8,
-                50,
-                httpClient);
+        APIEmbedding model =
+            new APIEmbedding(new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key"), 60,
+                    3, null, 8, 50, httpClient);
 
         List<Float> embedding = model.embedQuery("test query");
 
@@ -90,17 +86,11 @@ class APIEmbeddingTest {
         when(response.statusCode()).thenReturn(200);
         when(response.body()).thenReturn("{\"embeddings\":[[0.1,0.2]]}");
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenThrow(new IOException("boom"))
-                .thenReturn(response);
+                .thenThrow(new IOException("boom")).thenReturn(response);
 
-        APIEmbedding model = new APIEmbedding(
-                new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key"),
-                60,
-                2,
-                null,
-                8,
-                50,
-                httpClient);
+        APIEmbedding model =
+            new APIEmbedding(new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key"), 60,
+                    2, null, 8, 50, httpClient);
 
         List<Float> embedding = model.embedQuery("test query");
 
@@ -110,7 +100,8 @@ class APIEmbeddingTest {
 
     @Test
     void embedDocumentsRejectsEmptyOrBlankInputs() {
-        APIEmbedding model = new APIEmbedding(new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key"));
+        APIEmbedding model =
+            new APIEmbedding(new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key"));
 
         assertThrows(BaseError.class, () -> model.embedDocuments(List.of(), 1));
         assertThrows(BaseError.class, () -> model.embedDocuments(List.of("text 1", "   ", "text 2"), 1));
@@ -124,20 +115,13 @@ class APIEmbeddingTest {
         when(response.body()).thenReturn("{\"embeddings\":[[0.1,0.2]]}");
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(response);
 
-        APIEmbedding model = new APIEmbedding(
-                new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key"),
-                60,
-                3,
-                null,
-                1,
-                10,
-                httpClient);
+        APIEmbedding model =
+            new APIEmbedding(new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key"), 60,
+                    3, null, 1, 10, httpClient);
 
         TqdmCallback callback = new TqdmCallback(List.of(0, 1, 2, 3));
-        List<List<Float>> embeddings = model.embedDocuments(
-                List.of("a", "b", "c", "d"),
-                1,
-                Map.of("callback", callback));
+        List<List<Float>> embeddings =
+            model.embedDocuments(List.of("a", "b", "c", "d"), 1, Map.of("callback", callback));
 
         assertEquals(4, embeddings.size());
         assertEquals(4, callback.getCallCounter());

@@ -8,9 +8,10 @@ import com.openjiuwen.core.common.exception.StatusCode;
 
 /**
  * Knowledge base configuration.
+ * 
+ * @since 0.1.7
  */
 public class KnowledgeBaseConfig {
-
     private String kbId;
     private String indexType = "hybrid";
     private boolean useGraph = false;
@@ -18,13 +19,18 @@ public class KnowledgeBaseConfig {
     private int chunkOverlap = 50;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * KnowledgeBaseConfig.
+     * 
+     * @since 0.1.7
      */
     public KnowledgeBaseConfig() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * KnowledgeBaseConfig.
+     * 
+     * @param kbId kbId
+     * @since 0.1.7
      */
     public KnowledgeBaseConfig(String kbId) {
         this.kbId = kbId;
@@ -32,7 +38,14 @@ public class KnowledgeBaseConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * KnowledgeBaseConfig.
+     * 
+     * @param kbId kbId
+     * @param indexType indexType
+     * @param useGraph useGraph
+     * @param chunkSize chunkSize
+     * @param chunkOverlap chunkOverlap
+     * @since 0.1.7
      */
     public KnowledgeBaseConfig(String kbId, String indexType, boolean useGraph, int chunkSize, int chunkOverlap) {
         this.kbId = kbId;
@@ -44,27 +57,33 @@ public class KnowledgeBaseConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validate.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         RetrievalValidation.requireNonBlank(kbId, "KnowledgeBaseConfig.kbId");
         this.indexType = RetrievalValidation.validateIndexType(indexType, "KnowledgeBaseConfig.indexType");
         RetrievalValidation.requirePositive(chunkSize, "chunk_size", StatusCode.RETRIEVAL_INDEXING_CHUNK_SIZE_INVALID);
-        RetrievalValidation.requireNonNegative(
-                chunkOverlap,
-                "chunk_overlap",
+        RetrievalValidation.requireNonNegative(chunkOverlap, "chunk_overlap",
                 StatusCode.RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getKbId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getKbId() {
         return kbId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setKbId.
+     * 
+     * @param kbId kbId
+     * @since 0.1.7
      */
     public void setKbId(String kbId) {
         this.kbId = kbId;
@@ -72,14 +91,20 @@ public class KnowledgeBaseConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getIndexType() {
         return indexType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setIndexType.
+     * 
+     * @param indexType indexType
+     * @since 0.1.7
      */
     public void setIndexType(String indexType) {
         this.indexType = indexType;
@@ -87,28 +112,40 @@ public class KnowledgeBaseConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isUseGraph.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isUseGraph() {
         return useGraph;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setUseGraph.
+     * 
+     * @param useGraph useGraph
+     * @since 0.1.7
      */
     public void setUseGraph(boolean useGraph) {
         this.useGraph = useGraph;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getChunkSize.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getChunkSize() {
         return chunkSize;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setChunkSize.
+     * 
+     * @param chunkSize chunkSize
+     * @since 0.1.7
      */
     public void setChunkSize(int chunkSize) {
         this.chunkSize = chunkSize;
@@ -116,14 +153,20 @@ public class KnowledgeBaseConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getChunkOverlap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getChunkOverlap() {
         return chunkOverlap;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setChunkOverlap.
+     * 
+     * @param chunkOverlap chunkOverlap
+     * @since 0.1.7
      */
     public void setChunkOverlap(int chunkOverlap) {
         this.chunkOverlap = chunkOverlap;

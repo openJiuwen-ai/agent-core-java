@@ -7,22 +7,29 @@ package com.openjiuwen.core.runner.mq;
 /**
  * Base message object for message queue communication.
  * Mirrors Python's {@code QueueMessage} in {@code message_queue_base.py}.
+ * 
+ * @since 0.1.7
  */
 public class QueueMessage {
-
     private String messageId = "";
     private Object payload;
     private int errorCode = 0; // StatusCode.SUCCESS
     private String errorMsg = "";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * QueueMessage.
+     * 
+     * @since 0.1.7
      */
     public QueueMessage() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * QueueMessage.
+     * 
+     * @param messageId messageId
+     * @param payload payload
+     * @since 0.1.7
      */
     public QueueMessage(String messageId, Object payload) {
         this.messageId = messageId;
@@ -30,56 +37,80 @@ public class QueueMessage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMessageId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getMessageId() {
         return messageId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMessageId.
+     * 
+     * @param messageId messageId
+     * @since 0.1.7
      */
     public void setMessageId(String messageId) {
         this.messageId = messageId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPayload.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getPayload() {
         return payload;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setPayload.
+     * 
+     * @param payload payload
+     * @since 0.1.7
      */
     public void setPayload(Object payload) {
         this.payload = payload;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getErrorCode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getErrorCode() {
         return errorCode;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setErrorCode.
+     * 
+     * @param errorCode errorCode
+     * @since 0.1.7
      */
     public void setErrorCode(int errorCode) {
         this.errorCode = errorCode;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getErrorMsg.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getErrorMsg() {
         return errorMsg;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setErrorMsg.
+     * 
+     * @param errorMsg errorMsg
+     * @since 0.1.7
      */
     public void setErrorMsg(String errorMsg) {
         this.errorMsg = errorMsg;

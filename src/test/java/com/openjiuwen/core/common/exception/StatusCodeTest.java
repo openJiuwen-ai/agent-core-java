@@ -1,27 +1,26 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.common.exception;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * JUnit 5 tests for StatusCode, StatusCodeTemplate, StatusCodeSpec, and ErrorMessageTemplate.
  * Ported from Python: tests/unit_tests/core/common/test_status_code.py
  */
 class StatusCodeTest {
-
     // ==========================================================================
     // test_status_code_template (Python: test_status_code_template)
     // ==========================================================================
     @Nested
     @DisplayName("StatusCodeTemplate generation")
     class StatusCodeTemplateTests {
-
         @Test
         @DisplayName("Generate template with scope=TOOL, subject=INPUT, failureType=PARAM_ERROR")
         void testGenerateToolInputParamError() {
@@ -52,23 +51,22 @@ class StatusCodeTest {
         @Test
         @DisplayName("Invalid scope throws IllegalArgumentException")
         void testInvalidScope() {
-            assertThrows(IllegalArgumentException.class, () ->
-                    StatusCodeTemplate.generate("INVALID_SCOPE", "INPUT", "PARAM_ERROR"));
+            assertThrows(IllegalArgumentException.class,
+                    () -> StatusCodeTemplate.generate("INVALID_SCOPE", "INPUT", "PARAM_ERROR"));
         }
 
         @Test
         @DisplayName("Invalid failure type throws IllegalArgumentException")
         void testInvalidFailureType() {
-            assertThrows(IllegalArgumentException.class, () ->
-                    StatusCodeTemplate.generate("TOOL", "INPUT", "INVALID_FAILURE"));
+            assertThrows(IllegalArgumentException.class,
+                    () -> StatusCodeTemplate.generate("TOOL", "INPUT", "INVALID_FAILURE"));
         }
 
         @Test
         @DisplayName("All allowed scopes are accepted")
         void testAllAllowedScopes() {
             for (String scope : StatusCodeTemplate.ALLOWED_SCOPES) {
-                assertDoesNotThrow(() ->
-                        StatusCodeTemplate.generate(scope, "TEST", "EXECUTION_ERROR"));
+                assertDoesNotThrow(() -> StatusCodeTemplate.generate(scope, "TEST", "EXECUTION_ERROR"));
             }
         }
 
@@ -76,14 +74,11 @@ class StatusCodeTest {
         @DisplayName("All failure types supported by ErrorMessageTemplate are accepted")
         void testAllAllowedFailureTypes() {
             // TYPE_ERROR is in ALLOWED_FAILURE_TYPES but not supported by ErrorMessageTemplate.generate()
-            String[] supportedFailureTypes = {
-                    "INVALID", "NOT_FOUND", "NOT_SUPPORTED", "CONFIG_ERROR", "PARAM_ERROR",
-                    "INIT_FAILED", "CALL_FAILED",
-                    "EXECUTION_ERROR", "RUNTIME_ERROR", "PROCESS_ERROR", "TIMEOUT", "INTERRUPTED"
-            };
+            String[] supportedFailureTypes =
+                {"INVALID", "NOT_FOUND", "NOT_SUPPORTED", "CONFIG_ERROR", "PARAM_ERROR", "INIT_FAILED", "CALL_FAILED",
+                        "EXECUTION_ERROR", "RUNTIME_ERROR", "PROCESS_ERROR", "TIMEOUT", "INTERRUPTED"};
             for (String failureType : supportedFailureTypes) {
-                assertDoesNotThrow(() ->
-                        StatusCodeTemplate.generate("AGENT", "TEST", failureType));
+                assertDoesNotThrow(() -> StatusCodeTemplate.generate("AGENT", "TEST", failureType));
             }
         }
 
@@ -91,8 +86,8 @@ class StatusCodeTest {
         @DisplayName("TYPE_ERROR is in ALLOWED_FAILURE_TYPES but not in ErrorMessageTemplate — throws")
         void testTypeErrorNotSupportedByMessageTemplate() {
             assertTrue(StatusCodeTemplate.ALLOWED_FAILURE_TYPES.contains("TYPE_ERROR"));
-            assertThrows(IllegalArgumentException.class, () ->
-                    StatusCodeTemplate.generate("AGENT", "TEST", "TYPE_ERROR"));
+            assertThrows(IllegalArgumentException.class,
+                    () -> StatusCodeTemplate.generate("AGENT", "TEST", "TYPE_ERROR"));
         }
     }
 
@@ -102,7 +97,6 @@ class StatusCodeTest {
     @Nested
     @DisplayName("StatusCodeSpec generation")
     class StatusCodeSpecTests {
-
         @Test
         @DisplayName("Generate spec from TOOL template with code 182010")
         void testToolSpec() {
@@ -160,7 +154,6 @@ class StatusCodeTest {
     @Nested
     @DisplayName("ErrorMessageTemplate generation")
     class ErrorMessageTemplateTests {
-
         @Test
         @DisplayName("Generate with AGENT/GROUP_ADD/RUNTIME_ERROR includes reason")
         void testAgentGroupAddRuntimeError() {
@@ -208,9 +201,9 @@ class StatusCodeTest {
         @Test
         @DisplayName("Each failure type produces a distinct message pattern")
         void testAllFailureTypeMessages() {
-            String[] failureTypes = {"INVALID", "PARAM_ERROR", "NOT_FOUND", "NOT_SUPPORTED",
-                    "CONFIG_ERROR", "INIT_FAILED", "CALL_FAILED",
-                    "EXECUTION_ERROR", "RUNTIME_ERROR", "PROCESS_ERROR", "TIMEOUT", "INTERRUPTED"};
+            String[] failureTypes =
+                {"INVALID", "PARAM_ERROR", "NOT_FOUND", "NOT_SUPPORTED", "CONFIG_ERROR", "INIT_FAILED", "CALL_FAILED",
+                        "EXECUTION_ERROR", "RUNTIME_ERROR", "PROCESS_ERROR", "TIMEOUT", "INTERRUPTED"};
 
             for (String ft : failureTypes) {
                 ErrorMessageTemplate tpl = ErrorMessageTemplate.generate("AGENT", "TEST", ft);
@@ -222,8 +215,8 @@ class StatusCodeTest {
         @Test
         @DisplayName("Unsupported failure type throws IllegalArgumentException")
         void testUnsupportedFailureType() {
-            assertThrows(IllegalArgumentException.class, () ->
-                    ErrorMessageTemplate.generate("AGENT", "TEST", "UNKNOWN_TYPE"));
+            assertThrows(IllegalArgumentException.class,
+                    () -> ErrorMessageTemplate.generate("AGENT", "TEST", "UNKNOWN_TYPE"));
         }
     }
 
@@ -233,7 +226,6 @@ class StatusCodeTest {
     @Nested
     @DisplayName("StatusCode enum properties")
     class StatusCodeEnumTests {
-
         @Test
         @DisplayName("SUCCESS has code 0")
         void testSuccessCode() {

@@ -1,27 +1,8 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.operator.llm_call;
-
-import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
-import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
-import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.operator.OperatorStream;
-import com.openjiuwen.core.operator.OperatorTestSupport;
-import com.openjiuwen.core.operator.TunableSpec;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.function.BiConsumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -36,25 +17,44 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+import com.openjiuwen.core.operator.OperatorStream;
+import com.openjiuwen.core.operator.OperatorTestSupport;
+import com.openjiuwen.core.operator.TunableSpec;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.function.BiConsumer;
+
 /**
  * Port of Python LLMCallOperator tests.
  */
 class LLMCallOperatorTest {
-
     @Test
     @DisplayName("operator id and tunables")
     void testOperatorIdAndTunables() {
         Model llm = mock(Model.class);
-        LLMCallOperator operator = new LLMCallOperator(
-                "gpt-4", llm, "sys", "{{query}}", false, false, "llm_call", null);
-        LLMCallOperator custom = new LLMCallOperator(
-                "gpt-4", llm, "sys", "{{query}}", false, true, "custom_id", null);
-        LLMCallOperator frozenSystem = new LLMCallOperator(
-                "gpt-4", llm, "sys", "{{query}}", true, false, "llm_call", null);
-        LLMCallOperator frozenUser = new LLMCallOperator(
-                "gpt-4", llm, "sys", "{{query}}", false, true, "llm_call", null);
-        LLMCallOperator bothFrozen = new LLMCallOperator(
-                "gpt-4", llm, "sys", "{{query}}", true, true, "llm_call", null);
+        LLMCallOperator operator =
+            new LLMCallOperator("gpt-4", llm, "sys", "{{query}}", false, false, "llm_call", null);
+        LLMCallOperator custom = new LLMCallOperator("gpt-4", llm, "sys", "{{query}}", false, true, "custom_id", null);
+        LLMCallOperator frozenSystem =
+            new LLMCallOperator("gpt-4", llm, "sys", "{{query}}", true, false, "llm_call", null);
+        LLMCallOperator frozenUser =
+            new LLMCallOperator("gpt-4", llm, "sys", "{{query}}", false, true, "llm_call", null);
+        LLMCallOperator bothFrozen =
+            new LLMCallOperator("gpt-4", llm, "sys", "{{query}}", true, true, "llm_call", null);
 
         assertEquals("llm_call", operator.getOperatorId());
         assertEquals("custom_id", custom.getOperatorId());
@@ -78,15 +78,8 @@ class LLMCallOperatorTest {
         Model llm = mock(Model.class);
         @SuppressWarnings("unchecked")
         BiConsumer<String, Object> callback = mock(BiConsumer.class);
-        LLMCallOperator operator = new LLMCallOperator(
-                "gpt-4",
-                llm,
-                "You are a helpful assistant.",
-                "Answer: {{query}}",
-                false,
-                false,
-                "llm_call",
-                callback);
+        LLMCallOperator operator = new LLMCallOperator("gpt-4", llm, "You are a helpful assistant.",
+                "Answer: {{query}}", false, false, "llm_call", callback);
 
         operator.setParameter("system_prompt", "New system prompt");
         operator.setParameter("user_prompt", "New: {{query}}");
@@ -127,20 +120,11 @@ class LLMCallOperatorTest {
         Model llm = mock(Model.class);
         AssistantMessage response = new AssistantMessage("Hello!");
         when(llm.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())).thenReturn(response);
-        LLMCallOperator operator = new LLMCallOperator(
-                "gpt-4",
-                llm,
-                "You are a helpful assistant.",
-                "Answer: {{query}}",
-                false,
-                false,
-                "llm_call",
-                null);
+        LLMCallOperator operator = new LLMCallOperator("gpt-4", llm, "You are a helpful assistant.",
+                "Answer: {{query}}", false, false, "llm_call", null);
         OperatorTestSupport.TrackingSession session = new OperatorTestSupport.TrackingSession();
 
-        AssistantMessage result = operator.invoke(
-                Map.of("query", "new question"),
-                session,
+        AssistantMessage result = operator.invoke(Map.of("query", "new question"), session,
                 Map.of("history", List.of(new UserMessage("past"))));
 
         assertEquals("Hello!", result.getContent());
@@ -148,8 +132,8 @@ class LLMCallOperatorTest {
         assertNull(session.getCurrentOperatorId());
 
         ArgumentCaptor<Object> messagesCaptor = ArgumentCaptor.forClass(Object.class);
-        verify(llm).invoke(messagesCaptor.capture(), isNull(), isNull(), isNull(), eq("gpt-4"),
-                isNull(), isNull(), isNull(), isNull(), anyMap());
+        verify(llm).invoke(messagesCaptor.capture(), isNull(), isNull(), isNull(), eq("gpt-4"), isNull(), isNull(),
+                isNull(), isNull(), anyMap());
 
         @SuppressWarnings("unchecked")
         List<BaseMessage> messages = (List<BaseMessage>) messagesCaptor.getValue();
@@ -166,17 +150,18 @@ class LLMCallOperatorTest {
         Model llm = mock(Model.class);
         when(llm.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(new AssistantMessage("response"));
-        LLMCallOperator operator = new LLMCallOperator(
-                "gpt-4", llm, "sys", "{{query}}", false, false, "llm_call", null);
+        LLMCallOperator operator =
+            new LLMCallOperator("gpt-4", llm, "sys", "{{query}}", false, false, "llm_call", null);
         List<Map<String, Object>> tools = List.of(Map.of("name", "get_weather", "description", "Get weather"));
         List<BaseMessage> passthrough = List.of(new UserMessage("context"), new AssistantMessage("answer"));
 
-        operator.invoke(Map.of("messages", passthrough), new OperatorTestSupport.TrackingSession(), Map.of("tools", tools));
+        operator.invoke(Map.of("messages", passthrough), new OperatorTestSupport.TrackingSession(),
+                Map.of("tools", tools));
 
         ArgumentCaptor<Object> messagesCaptor = ArgumentCaptor.forClass(Object.class);
         ArgumentCaptor<Object> toolsCaptor = ArgumentCaptor.forClass(Object.class);
-        verify(llm).invoke(messagesCaptor.capture(), toolsCaptor.capture(), isNull(), isNull(), eq("gpt-4"),
-                isNull(), isNull(), isNull(), isNull(), anyMap());
+        verify(llm).invoke(messagesCaptor.capture(), toolsCaptor.capture(), isNull(), isNull(), eq("gpt-4"), isNull(),
+                isNull(), isNull(), isNull(), anyMap());
 
         @SuppressWarnings("unchecked")
         List<BaseMessage> messages = (List<BaseMessage>) messagesCaptor.getValue();
@@ -191,13 +176,11 @@ class LLMCallOperatorTest {
     @DisplayName("stream yields chunks and clears context")
     void testStreamBasicAndCleanup() throws Exception {
         Model llm = mock(Model.class);
-        List<AssistantMessageChunk> stream = List.of(
-                AssistantMessageChunk.builder().content("Hel").build(),
+        List<AssistantMessageChunk> stream = List.of(AssistantMessageChunk.builder().content("Hel").build(),
                 AssistantMessageChunk.builder().content("lo!").build());
         when(llm.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(stream.iterator());
-        LLMCallOperator operator = new LLMCallOperator(
-                "test", llm, "sys", "{{query}}", false, false, "llm_call", null);
+        LLMCallOperator operator = new LLMCallOperator("test", llm, "sys", "{{query}}", false, false, "llm_call", null);
         OperatorTestSupport.TrackingSession session = new OperatorTestSupport.TrackingSession();
 
         List<AssistantMessageChunk> chunks = new ArrayList<>();
@@ -215,8 +198,8 @@ class LLMCallOperatorTest {
     @DisplayName("updateSystemPrompt directly updates system prompt")
     void testUpdateSystemPrompt() {
         Model llm = mock(Model.class);
-        LLMCallOperator operator = new LLMCallOperator(
-                "gpt-4", llm, "original", "{{query}}", false, false, "llm_call", null);
+        LLMCallOperator operator =
+            new LLMCallOperator("gpt-4", llm, "original", "{{query}}", false, false, "llm_call", null);
 
         operator.updateSystemPrompt("Updated system prompt");
         assertEquals("Updated system prompt", operator.getSystemPrompt().getContent());
@@ -226,8 +209,7 @@ class LLMCallOperatorTest {
     @DisplayName("stream close clears context on early termination")
     void testStreamEarlyCloseClearsContext() throws Exception {
         Model llm = mock(Model.class);
-        List<AssistantMessageChunk> stream = List.of(
-                AssistantMessageChunk.builder().content("Hel").build(),
+        List<AssistantMessageChunk> stream = List.of(AssistantMessageChunk.builder().content("Hel").build(),
                 AssistantMessageChunk.builder().content("lo!").build());
         when(llm.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(stream.iterator());

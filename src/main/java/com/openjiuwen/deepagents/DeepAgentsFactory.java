@@ -16,16 +16,19 @@ import java.util.Map;
 
 /**
  * Factory for creating deep agent instances.
- *
- * <p>Mirrors Python's {@code factory} module in {@code openjiuwen.deepagents}.
- *
- * <p>This factory provides the Java-side top-level entry point for creating
+ * <p>
+ * Mirrors Python's {@code factory} module in {@code openjiuwen.deepagents}.
+ * <p>
+ * This factory provides the Java-side top-level entry point for creating
  * DeepAgent instances from direct config objects or harness_config files.
+ * 
+ * @since 0.1.7
  */
 public class DeepAgentsFactory {
-
     /**
-     * Creates a new DeepAgentsFactory instance.
+     * DeepAgentsFactory.
+     * 
+     * @since 0.1.7
      */
     public DeepAgentsFactory() {
         // Placeholder constructor
@@ -33,8 +36,9 @@ public class DeepAgentsFactory {
 
     /**
      * Creates a deep agent with default configuration.
-     *
+     * 
      * @return a new deep agent instance
+     * @since 0.1.7
      */
     public DeepAgent createDeepAgent() {
         return HarnessFactory.createDeepAgent(DeepAgentConfig.builder().build());
@@ -42,9 +46,10 @@ public class DeepAgentsFactory {
 
     /**
      * Creates a deep agent with the specified configuration.
-     *
+     * 
      * @param config the configuration for the deep agent
      * @return a new deep agent instance
+     * @since 0.1.7
      */
     public DeepAgent createDeepAgent(Object config) {
         if (config == null) {
@@ -60,12 +65,8 @@ public class DeepAgentsFactory {
             return HarnessConfigBuilder.build(HarnessConfigLoader.load(path));
         }
         if (config instanceof HarnessConfig harnessConfig) {
-            return HarnessConfigBuilder.build(HarnessConfigLoader.resolve(
-                    harnessConfig,
-                    Path.of(".").toAbsolutePath().normalize(),
-                    Map.of(),
-                    null
-            ));
+            return HarnessConfigBuilder.build(HarnessConfigLoader.resolve(harnessConfig,
+                    Path.of(".").toAbsolutePath().normalize(), Map.of(), null));
         }
         throw new IllegalArgumentException("Unsupported deep agent config type: " + config.getClass().getName());
     }

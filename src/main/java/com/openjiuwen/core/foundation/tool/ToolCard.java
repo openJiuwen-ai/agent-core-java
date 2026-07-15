@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.tool;
 
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -19,124 +20,151 @@ import java.util.Map;
  * <p>
  * Extends {@link BaseCard} with input parameters and custom properties.
  * Mirrors Python's {@code ToolCard} model.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class ToolCard extends BaseCard {
-
-    /** Input parameter schema (JSON Schema format). */
     private Map<String, Object> inputParams = new HashMap<>();
 
-    /** Custom properties map. */
+    /**
+     * Custom properties map.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> properties = new HashMap<>();
 
     /**
-     * Build a {@link ToolInfo} descriptor for this tool card.
-     *
-     * @return a ToolInfo instance with name, description, and parameters
+     * toolInfo.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public ToolInfo toolInfo() {
         String effectiveName = (getName() == null || getName().isBlank()) ? getId() : getName();
         String effectiveDesc = (getDescription() == null || getDescription().isBlank()) ? "" : getDescription();
-        return ToolInfo.builder()
-                .name(effectiveName)
-                .description(effectiveDesc)
-                .parameters(inputParams)
-                .build();
+        return ToolInfo.builder().name(effectiveName).description(effectiveDesc).parameters(inputParams).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputParams.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getInputParams() {
         return inputParams;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInputParams.
+     * 
+     * @param inputParams inputParams
+     * @since 0.1.7
      */
     public void setInputParams(Map<String, Object> inputParams) {
         this.inputParams = inputParams;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getProperties.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getProperties() {
         return properties;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setProperties.
+     * 
+     * @param properties properties
+     * @since 0.1.7
      */
     public void setProperties(Map<String, Object> properties) {
         this.properties = properties;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder extends BaseCard.Builder {
         /**
-         * Auto-generated for codecheck compliance.
+         * inputParams.
+         * 
+         * @since 0.1.7
          */
         protected Map<String, Object> inputParams = new HashMap<>();
+
         /**
-         * Auto-generated for codecheck compliance.
+         * properties.
+         * 
+         * @since 0.1.7
          */
         protected Map<String, Object> properties = new HashMap<>();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * id.
+         * 
+         * @param id id
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder id(String id) {
             super.id(id);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder name(String name) {
             super.name(name);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * description.
+         * 
+         * @param description description
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder description(String description) {
             super.description(description);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * inputParams.
+         * 
+         * @param inputParams inputParams
+         * @return the result
+         * @since 0.1.7
          */
         public Builder inputParams(Map<String, Object> inputParams) {
             this.inputParams = inputParams;
@@ -144,7 +172,11 @@ public class ToolCard extends BaseCard {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * properties.
+         * 
+         * @param properties properties
+         * @return the result
+         * @since 0.1.7
          */
         public Builder properties(Map<String, Object> properties) {
             this.properties = properties;
@@ -152,12 +184,12 @@ public class ToolCard extends BaseCard {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public ToolCard build() {
             ToolCard card = new ToolCard();
             if (id != null) {

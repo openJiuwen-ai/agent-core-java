@@ -6,10 +6,14 @@ package com.openjiuwen.core.memory.graph.extraction;
 
 /**
  * Human entity type.
+ * 
+ * @since 0.1.7
  */
 public class HumanEntity extends EntityDef {
     /**
-     * Auto-generated for codecheck compliance.
+     * HumanEntity.
+     * 
+     * @since 0.1.7
      */
     public HumanEntity() {
         setName("Human");

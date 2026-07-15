@@ -8,9 +8,19 @@ import com.openjiuwen.core.session.Session;
 
 /**
  * Router-mode executor for tool call batches.
+ * 
+ * @since 0.1.7
  */
 @FunctionalInterface
 public interface ToolExecutor {
-
+    /**
+     * execute.
+     * 
+     * @param toolCall toolCall
+     * @param session session
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     ToolExecutionResult execute(Object toolCall, Session session) throws Exception;
 }

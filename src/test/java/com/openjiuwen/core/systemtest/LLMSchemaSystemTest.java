@@ -1,7 +1,14 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.foundation.llm.output_parsers.JsonOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -19,12 +26,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * System tests for LLM schema classes, output parsers, and message merging.
  * Covers gaps identified in CHECK doc: AssistantMessage fields, UsageMetadata,
@@ -33,18 +34,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Tag("system-test")
 class LLMSchemaSystemTest {
-
     @Nested
     @DisplayName("AssistantMessage Field Tests")
     class AssistantMessageTests {
-
         @Test
         @DisplayName("AssistantMessage carries reasoningContent")
         void testReasoningContent() {
-            AssistantMessage msg = AssistantMessage.builder()
-                    .content("The answer is 42.")
-                    .reasoningContent("Let me think step by step...")
-                    .build();
+            AssistantMessage msg = AssistantMessage.builder().content("The answer is 42.")
+                    .reasoningContent("Let me think step by step...").build();
 
             assertEquals("The answer is 42.", msg.getContentAsString());
             assertEquals("Let me think step by step...", msg.getReasoningContent());
@@ -54,10 +51,8 @@ class LLMSchemaSystemTest {
         @DisplayName("AssistantMessage carries parserContent")
         void testParserContent() {
             Map<String, Object> parsed = Map.of("key", "value", "count", 3);
-            AssistantMessage msg = AssistantMessage.builder()
-                    .content("{\"key\":\"value\",\"count\":3}")
-                    .parserContent(parsed)
-                    .build();
+            AssistantMessage msg =
+                AssistantMessage.builder().content("{\"key\":\"value\",\"count\":3}").parserContent(parsed).build();
 
             assertNotNull(msg.getParserContent());
             @SuppressWarnings("unchecked")
@@ -69,16 +64,10 @@ class LLMSchemaSystemTest {
         @Test
         @DisplayName("AssistantMessage carries toolCalls")
         void testToolCalls() {
-            ToolCall tc = ToolCall.builder()
-                    .id("call_001")
-                    .name("get_weather")
-                    .arguments("{\"city\":\"Beijing\"}")
-                    .build();
+            ToolCall tc =
+                ToolCall.builder().id("call_001").name("get_weather").arguments("{\"city\":\"Beijing\"}").build();
 
-            AssistantMessage msg = AssistantMessage.builder()
-                    .content("")
-                    .toolCalls(List.of(tc))
-                    .build();
+            AssistantMessage msg = AssistantMessage.builder().content("").toolCalls(List.of(tc)).build();
 
             assertNotNull(msg.getToolCalls());
             assertEquals(1, msg.getToolCalls().size());
@@ -89,16 +78,10 @@ class LLMSchemaSystemTest {
         @Test
         @DisplayName("AssistantMessage.toApiFormat includes tool_calls when present")
         void testToApiFormat() {
-            ToolCall tc = ToolCall.builder()
-                    .id("call_002")
-                    .name("search")
-                    .arguments("{\"q\":\"test\"}")
-                    .build();
+            ToolCall tc = ToolCall.builder().id("call_002").name("search").arguments("{\"q\":\"test\"}").build();
 
-            AssistantMessage msg = AssistantMessage.builder()
-                    .content("I'll search for you.")
-                    .toolCalls(List.of(tc))
-                    .build();
+            AssistantMessage msg =
+                AssistantMessage.builder().content("I'll search for you.").toolCalls(List.of(tc)).build();
 
             Map<String, Object> apiFormat = msg.toApiFormat();
             assertNotNull(apiFormat);
@@ -110,16 +93,11 @@ class LLMSchemaSystemTest {
     @Nested
     @DisplayName("UsageMetadata Tests")
     class UsageMetadataTests {
-
         @Test
         @DisplayName("UsageMetadata tracks cacheTokens")
         void testCacheTokens() {
-            UsageMetadata usage = UsageMetadata.builder()
-                    .inputTokens(100)
-                    .outputTokens(50)
-                    .totalTokens(150)
-                    .cacheTokens(30)
-                    .build();
+            UsageMetadata usage =
+                UsageMetadata.builder().inputTokens(100).outputTokens(50).totalTokens(150).cacheTokens(30).build();
 
             assertEquals(100, usage.getInputTokens());
             assertEquals(50, usage.getOutputTokens());
@@ -144,11 +122,8 @@ class LLMSchemaSystemTest {
         @Test
         @DisplayName("UsageMetadata carries model and latency info")
         void testModelAndLatency() {
-            UsageMetadata usage = UsageMetadata.builder()
-                    .modelName("GLM-4")
-                    .totalLatency(1234.5)
-                    .taskId("task_001")
-                    .build();
+            UsageMetadata usage =
+                UsageMetadata.builder().modelName("GLM-4").totalLatency(1234.5).taskId("task_001").build();
 
             assertEquals("GLM-4", usage.getModelName());
             assertEquals(1234.5, usage.getTotalLatency());
@@ -159,17 +134,12 @@ class LLMSchemaSystemTest {
     @Nested
     @DisplayName("AssistantMessageChunk Merge Tests")
     class ChunkMergeTests {
-
         @Test
         @DisplayName("Merge two text chunks concatenates content")
         void testMergeTextChunks() {
-            AssistantMessageChunk chunk1 = AssistantMessageChunk.builder()
-                    .content("Hello, ")
-                    .build();
+            AssistantMessageChunk chunk1 = AssistantMessageChunk.builder().content("Hello, ").build();
 
-            AssistantMessageChunk chunk2 = AssistantMessageChunk.builder()
-                    .content("world!")
-                    .build();
+            AssistantMessageChunk chunk2 = AssistantMessageChunk.builder().content("world!").build();
 
             AssistantMessageChunk merged = chunk1.merge(chunk2);
             assertNotNull(merged);
@@ -177,48 +147,154 @@ class LLMSchemaSystemTest {
         }
 
         @Test
-        @DisplayName("Merge chunks with tool call deltas")
+        @DisplayName("Merge chunks with tool call deltas (no index, empty-string id/name)")
         void testMergeToolCallDeltas() {
-            ToolCall tc1 = ToolCall.builder()
-                    .id("call_001")
-                    .name("get_weather")
-                    .arguments("{\"ci")
-                    .build();
+            ToolCall tc1 = ToolCall.builder().id("call_001").name("get_weather").arguments("{\"ci").build();
 
-            ToolCall tc2 = ToolCall.builder()
-                    .id("")
-                    .name("")
-                    .arguments("ty\":\"BJ\"}")
-                    .build();
+            ToolCall tc2 = ToolCall.builder().id("").name("").arguments("ty\":\"BJ\"}").build();
 
-            AssistantMessageChunk chunk1 = AssistantMessageChunk.builder()
-                    .content("")
-                    .toolCalls(List.of(tc1))
-                    .build();
+            AssistantMessageChunk chunk1 = AssistantMessageChunk.builder().content("").toolCalls(List.of(tc1)).build();
 
-            AssistantMessageChunk chunk2 = AssistantMessageChunk.builder()
-                    .content("")
-                    .toolCalls(List.of(tc2))
-                    .build();
+            AssistantMessageChunk chunk2 = AssistantMessageChunk.builder().content("").toolCalls(List.of(tc2)).build();
 
             AssistantMessageChunk merged = chunk1.merge(chunk2);
             assertNotNull(merged);
             assertNotNull(merged.getToolCalls());
-            assertFalse(merged.getToolCalls().isEmpty());
+            assertEquals(1, merged.getToolCalls().size());
+            assertEquals("call_001", merged.getToolCalls().get(0).getId());
+            assertEquals("get_weather", merged.getToolCalls().get(0).getName());
+            assertEquals("{\"city\":\"BJ\"}", merged.getToolCalls().get(0).getArguments());
+        }
+
+        @Test
+        @DisplayName("Merge GLM-style streaming tool call deltas with index and empty-string id")
+        void testMergeGlmStreamingToolCallDeltas() {
+
+            AssistantMessageChunk frame1 = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("call_xxx")
+                            .type("function")
+                            .name("trip-planning-agent")
+                            .arguments("{")
+                            .index(0)
+                            .build()))
+                    .build();
+
+            AssistantMessageChunk frame2 = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("")
+                            .type("function")
+                            .name("")
+                            .arguments("\"remoteInput\":")
+                            .index(0)
+                            .build()))
+                    .build();
+
+            AssistantMessageChunk frame3 = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("")
+                            .type("function")
+                            .name("")
+                            .arguments("\"明天从上海到北京出差3天，住宿2晚\"")
+                            .index(0)
+                            .build()))
+                    .build();
+
+            AssistantMessageChunk frame4 = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(ToolCall.builder()
+                            .id("")
+                            .type("function")
+                            .name("")
+                            .arguments("}")
+                            .index(0)
+                            .build()))
+                    .finishReason("tool_calls")
+                    .build();
+
+            AssistantMessageChunk merged = frame1.merge(frame2).merge(frame3).merge(frame4);
+            assertNotNull(merged);
+            assertNotNull(merged.getToolCalls());
+            assertEquals(1, merged.getToolCalls().size());
+            assertEquals("call_xxx", merged.getToolCalls().get(0).getId());
+            assertEquals("trip-planning-agent", merged.getToolCalls().get(0).getName());
+            assertEquals("function", merged.getToolCalls().get(0).getType());
+            assertEquals(0, merged.getToolCalls().get(0).getIndex());
+            assertEquals("{\"remoteInput\":\"明天从上海到北京出差3天，住宿2晚\"}",
+                    merged.getToolCalls().get(0).getArguments());
+            assertEquals("tool_calls", merged.getFinishReason());
+        }
+
+        @Test
+        @DisplayName("Merge multiple parallel tool call deltas distinguished by index")
+        void testMergeMultipleParallelToolCallsByIndex() {
+            ToolCall tc1f1 = ToolCall.builder()
+                    .index(0)
+                    .id("call_a")
+                    .name("tool_a")
+                    .arguments("{\"a")
+                    .build();
+
+            ToolCall tc2f1 = ToolCall.builder()
+                    .index(1)
+                    .id("call_b")
+                    .name("tool_b")
+                    .arguments("{\"b")
+                    .build();
+
+            ToolCall tc1f2 = ToolCall.builder()
+                    .index(0)
+                    .id("")
+                    .name("")
+                    .arguments("\":1}")
+                    .build();
+
+            ToolCall tc2f2 = ToolCall.builder()
+                    .index(1)
+                    .id("")
+                    .name("")
+                    .arguments("\":2}")
+                    .build();
+
+            AssistantMessageChunk frame1 = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(tc1f1, tc2f1))
+                    .build();
+
+            AssistantMessageChunk frame2 = AssistantMessageChunk.builder()
+                    .content("")
+                    .toolCalls(List.of(tc1f2, tc2f2))
+                    .build();
+
+            AssistantMessageChunk merged = frame1.merge(frame2);
+            assertNotNull(merged);
+            assertNotNull(merged.getToolCalls());
+            assertEquals(2, merged.getToolCalls().size());
+
+            ToolCall first = merged.getToolCalls().get(0);
+            assertEquals("call_a", first.getId());
+            assertEquals("tool_a", first.getName());
+            assertEquals("{\"a\":1}", first.getArguments());
+            assertEquals(0, first.getIndex());
+
+            ToolCall second = merged.getToolCalls().get(1);
+            assertEquals("call_b", second.getId());
+            assertEquals("tool_b", second.getName());
+            assertEquals("{\"b\":2}", second.getArguments());
+            assertEquals(1, second.getIndex());
         }
 
         @Test
         @DisplayName("Merge chunks uses last-wins for reasoning content")
         void testMergeReasoningContent() {
-            AssistantMessageChunk chunk1 = AssistantMessageChunk.builder()
-                    .content("")
-                    .reasoningContent("Step 1: ")
-                    .build();
+            AssistantMessageChunk chunk1 =
+                AssistantMessageChunk.builder().content("").reasoningContent("Step 1: ").build();
 
-            AssistantMessageChunk chunk2 = AssistantMessageChunk.builder()
-                    .content("")
-                    .reasoningContent("Analyze data")
-                    .build();
+            AssistantMessageChunk chunk2 =
+                AssistantMessageChunk.builder().content("").reasoningContent("Analyze data").build();
 
             // merge uses last-wins: other.reasoningContent takes precedence
             AssistantMessageChunk merged = chunk1.merge(chunk2);
@@ -226,9 +302,7 @@ class LLMSchemaSystemTest {
             assertEquals("Analyze data", merged.getReasoningContent());
 
             // when other has null reasoning, this reasoning is preserved
-            AssistantMessageChunk chunk3 = AssistantMessageChunk.builder()
-                    .content("")
-                    .build();
+            AssistantMessageChunk chunk3 = AssistantMessageChunk.builder().content("").build();
             AssistantMessageChunk merged2 = chunk1.merge(chunk3);
             assertEquals("Step 1: ", merged2.getReasoningContent());
         }
@@ -237,7 +311,6 @@ class LLMSchemaSystemTest {
     @Nested
     @DisplayName("JsonOutputParser Tests")
     class JsonOutputParserTests {
-
         @Test
         @DisplayName("Parse JSON from code block")
         void testParseJsonCodeBlock() {
@@ -280,11 +353,9 @@ class LLMSchemaSystemTest {
         void testStreamParse() {
             JsonOutputParser parser = new JsonOutputParser();
 
-            List<Object> chunks = List.of(
-                    AssistantMessageChunk.builder().content("{\"ke").build(),
+            List<Object> chunks = List.of(AssistantMessageChunk.builder().content("{\"ke").build(),
                     AssistantMessageChunk.builder().content("y\":\"val").build(),
-                    AssistantMessageChunk.builder().content("ue\"}").build()
-            );
+                    AssistantMessageChunk.builder().content("ue\"}").build());
 
             Iterator<Object> result = parser.streamParse(chunks.iterator());
             assertTrue(result.hasNext(), "Stream parse should yield at least one result");
@@ -299,14 +370,12 @@ class LLMSchemaSystemTest {
     @Nested
     @DisplayName("ProviderType Tests")
     class ProviderTypeTests {
-
         @Test
         @DisplayName("ProviderType includes OpenRouter")
         void testOpenRouterProvider() {
             boolean found = false;
             for (ProviderType pt : ProviderType.values()) {
-                if ("OpenRouter".equalsIgnoreCase(pt.name())
-                        || "OPENROUTER".equalsIgnoreCase(pt.name())) {
+                if ("OpenRouter".equalsIgnoreCase(pt.name()) || "OPENROUTER".equalsIgnoreCase(pt.name())) {
                     found = true;
                     break;
                 }
@@ -318,8 +387,7 @@ class LLMSchemaSystemTest {
         @DisplayName("ProviderType includes standard providers")
         void testStandardProviders() {
             ProviderType[] types = ProviderType.values();
-            assertTrue(types.length >= 4,
-                    "Should have at least OpenAI, SiliconFlow, DashScope, OpenRouter");
+            assertTrue(types.length >= 4, "Should have at least OpenAI, SiliconFlow, DashScope, OpenRouter");
         }
     }
 }

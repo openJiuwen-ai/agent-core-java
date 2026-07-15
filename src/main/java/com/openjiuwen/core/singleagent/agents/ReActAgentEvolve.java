@@ -46,13 +46,15 @@ import java.util.Optional;
 
 /**
  * ReAct paradigm Agent with self-evolving operators.
- *
- * <p>Uses {@link LLMCallOperator} and {@link ToolCallOperator} as evolvable
+ * <p>
+ * Uses {@link LLMCallOperator} and {@link ToolCallOperator} as evolvable
  * operators, allowing system prompt tuning and tool description updates
- * at runtime.</p>
+ * at runtime.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class ReActAgentEvolve extends BaseAgent {
-
     private ReActAgentConfig config;
     private ContextEngine contextEngine;
     private Model llm;
@@ -60,7 +62,10 @@ public class ReActAgentEvolve extends BaseAgent {
     private ToolCallOperator toolOp;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ReActAgentEvolve.
+     * 
+     * @param card card
+     * @since 0.1.7
      */
     public ReActAgentEvolve(AgentCard card) {
         super(card);
@@ -75,38 +80,44 @@ public class ReActAgentEvolve extends BaseAgent {
         setSkillUtil(new SkillUtil(config.getSysOperationId()));
 
         // ToolCallOperator depends on ability_manager, so init after super()
-        this.toolOp = new ToolCallOperator(
-                null,
-                "react_tool",
+        this.toolOp = new ToolCallOperator(null, "react_tool",
                 (toolCall, session) -> getAbilityManager().executeAsToolExecutor(toolCall, session),
-                getAbilityManager()
-        );
+                getAbilityManager());
     }
 
+    /**
+     * initMemoryScope.
+     * 
+     * @since 0.1.7
+     */
     private void initMemoryScope() {
         if (config.getMemScopeId() != null && !config.getMemScopeId().isEmpty()) {
-            LongTermMemory.getInstance().setScopeConfig(
-                    config.getMemScopeId(),
-                    new MemoryScopeConfig()
-            );
+            LongTermMemory.getInstance().setScopeConfig(config.getMemScopeId(), new MemoryScopeConfig());
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createDefaultConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected ReActAgentConfig createDefaultConfig() {
         return ReActAgentConfig.builder().build();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * configure.
+     * 
+     * @param configObj configObj
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public BaseAgent configure(Object configObj) {
         if (!(configObj instanceof ReActAgentConfig newConfig)) {
-            throw new IllegalArgumentException("Expected ReActAgentConfig, got: "
-                    + (configObj != null ? configObj.getClass().getName() : "null"));
+            throw new IllegalArgumentException(
+                    "Expected ReActAgentConfig, got: " + (configObj != null ? configObj.getClass().getName() : "null"));
         }
 
         ReActAgentConfig oldConfig = this.config;
@@ -138,16 +149,22 @@ public class ReActAgentEvolve extends BaseAgent {
         return this;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContextEngine.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ContextEngine getContextEngine() {
         return contextEngine;
@@ -155,6 +172,9 @@ public class ReActAgentEvolve extends BaseAgent {
 
     /**
      * Get LLM instance (lazy initialization).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected Model getLlm() {
         if (llm == null) {
@@ -169,6 +189,10 @@ public class ReActAgentEvolve extends BaseAgent {
 
     /**
      * Callback when LLM operator parameter is updated (for sync with config).
+     * 
+     * @param target target
+     * @param value value
+     * @since 0.1.7
      */
     private void onLlmParameterUpdated(String target, Object value) {
         if ("system_prompt".equals(target)) {
@@ -186,10 +210,12 @@ public class ReActAgentEvolve extends BaseAgent {
 
     /**
      * Resolve model name from config.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     private String resolveModelName() {
-        if (config.getModelConfigObj() != null
-                && config.getModelConfigObj().getModelName() != null
+        if (config.getModelConfigObj() != null && config.getModelConfigObj().getModelName() != null
                 && !config.getModelConfigObj().getModelName().isEmpty()) {
             return config.getModelConfigObj().getModelName();
         }
@@ -198,34 +224,31 @@ public class ReActAgentEvolve extends BaseAgent {
 
     /**
      * Get LLMCallOperator (lazy initialization with self-evolution support).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     private LLMCallOperator getLlmOp() {
         if (llmOp == null) {
             Model model = getLlm();
             String modelName = resolveModelName();
-            List<Map<String, String>> systemPrompt = config.getPromptTemplate() != null
-                    ? config.getPromptTemplate() : List.of();
+            List<Map<String, String>> systemPrompt =
+                config.getPromptTemplate() != null ? config.getPromptTemplate() : List.of();
 
-            llmOp = new LLMCallOperator(
-                    modelName,
-                    model,
-                    systemPrompt,
-                    "{{query}}",
-                    false,
-                    true,
-                    "react_llm",
-                    this::onLlmParameterUpdated
-            );
+            llmOp = new LLMCallOperator(modelName, model, systemPrompt, "{{query}}", false, true, "react_llm",
+                    this::onLlmParameterUpdated);
         } else {
             // Sync system prompt from config to operator
-            llmOp.updateSystemPrompt(config.getPromptTemplate() != null
-                    ? config.getPromptTemplate() : List.of());
+            llmOp.updateSystemPrompt(config.getPromptTemplate() != null ? config.getPromptTemplate() : List.of());
         }
         return llmOp;
     }
 
     /**
      * Get skill messages as system messages.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     private List<SystemMessage> getSkillMessages() {
         if (getSkillUtil() == null || !getSkillUtil().hasSkill()) {
@@ -236,6 +259,9 @@ public class ReActAgentEvolve extends BaseAgent {
 
     /**
      * Return evolvable operator registry.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Operator> getOperators() {
         Map<String, Operator> ops = new LinkedHashMap<>();
@@ -253,19 +279,18 @@ public class ReActAgentEvolve extends BaseAgent {
 
     /**
      * Prepare model call: build context window and call via operator with rail hooks.
+     * 
+     * @param ctx ctx
+     * @param userInput userInput
+     * @param context context
+     * @param tools tools
+     * @return the result
+     * @since 0.1.7
      */
-    private AssistantMessage prepareModelCall(
-            AgentCallbackContext ctx,
-            String userInput,
-            ModelContext context,
-            List<ToolInfo> tools
-    ) {
-        ContextWindow contextWindow = context.getContextWindow(
-                List.of(),
-                tools != null ? tools : null,
-                (Integer) null,
-                (Integer) null
-        );
+    private AssistantMessage prepareModelCall(AgentCallbackContext ctx, String userInput, ModelContext context,
+            List<ToolInfo> tools) {
+        ContextWindow contextWindow =
+            context.getContextWindow(List.of(), tools != null ? tools : null, (Integer) null, (Integer) null);
 
         List<Object> skillMessages = new ArrayList<>(getSkillMessages());
         List<BaseMessage> historyMessages = contextWindow.getMessages();
@@ -273,28 +298,23 @@ public class ReActAgentEvolve extends BaseAgent {
         allMessages.addAll(skillMessages);
         allMessages.addAll(historyMessages);
 
-        ctx.setInputs(ModelCallInputs.builder()
-                .messages(allMessages)
-                .tools(contextWindow.getToolList())
-                .build());
+        ctx.setInputs(ModelCallInputs.builder().messages(allMessages).tools(contextWindow.getToolList()).build());
 
         return railedModelCall(ctx, userInput, ctx.getSession()).orElse(null);
     }
 
     /**
      * Execute LLM call via Operator with rail hooks.
+     * 
+     * @param ctx ctx
+     * @param userInput userInput
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
-    private Optional<AssistantMessage> railedModelCall(
-            AgentCallbackContext ctx,
-            String userInput,
-            Session session
-    ) {
-        return RailExecutor.execute(
-                ctx,
-                AgentCallbackEvent.BEFORE_MODEL_CALL,
-                AgentCallbackEvent.AFTER_MODEL_CALL,
-                AgentCallbackEvent.ON_MODEL_EXCEPTION,
-                () -> {
+    private Optional<AssistantMessage> railedModelCall(AgentCallbackContext ctx, String userInput, Session session) {
+        return RailExecutor.execute(ctx, AgentCallbackEvent.BEFORE_MODEL_CALL, AgentCallbackEvent.AFTER_MODEL_CALL,
+                AgentCallbackEvent.ON_MODEL_EXCEPTION, () -> {
                     LLMCallOperator op = getLlmOp();
                     ModelCallInputs inputs = (ModelCallInputs) ctx.getInputs();
 
@@ -310,18 +330,18 @@ public class ReActAgentEvolve extends BaseAgent {
                     AssistantMessage aiMessage = (AssistantMessage) op.invoke(invokeInputs, session, kwargs);
                     inputs.setResponse(aiMessage);
                     return aiMessage;
-                }
-        );
+                });
     }
 
     /**
      * Execute tool calls and commit tool messages into context.
+     * 
+     * @param ctx ctx
+     * @param toolCalls toolCalls
+     * @param context context
+     * @since 0.1.7
      */
-    private void prepareToolCall(
-            AgentCallbackContext ctx,
-            List<?> toolCalls,
-            ModelContext context
-    ) {
+    private void prepareToolCall(AgentCallbackContext ctx, List<?> toolCalls, ModelContext context) {
         if (toolCalls == null || toolCalls.isEmpty()) {
             return;
         }
@@ -345,6 +365,10 @@ public class ReActAgentEvolve extends BaseAgent {
 
     /**
      * Initialize model context.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     private ModelContext initContext(Session session) {
         ModelContext context;
@@ -377,29 +401,26 @@ public class ReActAgentEvolve extends BaseAgent {
         return context;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object invoke(Object inputs, Session session) {
         String userInput = normalizeUserInput(inputs);
         String conversationId = null;
         if (inputs instanceof Map<?, ?> map) {
-            conversationId = map.containsKey("conversation_id")
-                    ? String.valueOf(map.get("conversation_id")) : null;
+            conversationId = map.containsKey("conversation_id") ? String.valueOf(map.get("conversation_id")) : null;
         }
 
-        InvokeInputs invokeInputs = InvokeInputs.builder()
-                .query(userInput)
-                .conversationId(conversationId)
-                .build();
+        InvokeInputs invokeInputs = InvokeInputs.builder().query(userInput).conversationId(conversationId).build();
 
-        AgentCallbackContext ctx = AgentCallbackContext.builder()
-                .agent(this)
-                .inputs(invokeInputs)
-                .config(config)
-                .session(session)
-                .build();
+        AgentCallbackContext ctx =
+            AgentCallbackContext.builder().agent(this).inputs(invokeInputs).config(config).session(session).build();
         Object invokeLifecycleInputs = ctx.getInputs();
 
         // Fire BEFORE_INVOKE
@@ -421,15 +442,12 @@ public class ReActAgentEvolve extends BaseAgent {
 
             // ReAct loop
             for (int iteration = 0; iteration < config.getMaxIterations(); iteration++) {
-                Loggers.AGENT.info(
-                        "ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
+                Loggers.AGENT.info("ReAct iteration " + (iteration + 1) + "/" + config.getMaxIterations());
 
                 AssistantMessage aiMessage = prepareModelCall(ctx, query, context, tools);
 
-                context.addMessages(AssistantMessage.builder()
-                        .content(aiMessage.getContent())
-                        .toolCalls(aiMessage.getToolCalls())
-                        .build());
+                context.addMessages(AssistantMessage.builder().content(aiMessage.getContent())
+                        .toolCalls(aiMessage.getToolCalls()).build());
 
                 if (aiMessage.getToolCalls() != null && !aiMessage.getToolCalls().isEmpty()) {
                     prepareToolCall(ctx, aiMessage.getToolCalls(), context);
@@ -450,7 +468,6 @@ public class ReActAgentEvolve extends BaseAgent {
             result.put("result_type", "error");
             invokeInputs.setResult(result);
             return result;
-
         } finally {
             // Fire AFTER_INVOKE
             ctx.setInputs((com.openjiuwen.core.singleagent.rail.EventInputs) invokeLifecycleInputs);
@@ -458,10 +475,16 @@ public class ReActAgentEvolve extends BaseAgent {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param streamModes streamModes
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
         AgentSessionApi agentSession = toAgentSession(session);
 
@@ -509,6 +532,9 @@ public class ReActAgentEvolve extends BaseAgent {
 
     /**
      * Register a skill.
+     * 
+     * @param skillPath skillPath
+     * @since 0.1.7
      */
     public void registerSkill(Object skillPath) {
         if (getSkillUtil() != null) {
@@ -516,6 +542,13 @@ public class ReActAgentEvolve extends BaseAgent {
         }
     }
 
+    /**
+     * toAgentSession.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private AgentSessionApi toAgentSession(Session session) {
         AgentSessionApi agentSession = null;
         if (session == null) {
@@ -528,6 +561,13 @@ public class ReActAgentEvolve extends BaseAgent {
         return agentSession;
     }
 
+    /**
+     * normalizeUserInput.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizeUserInput(Object inputs) {
         if (inputs instanceof Map<?, ?> map) {
             Object query = map.get("query");
@@ -542,6 +582,14 @@ public class ReActAgentEvolve extends BaseAgent {
         throw new IllegalArgumentException("Input must be dict with 'query' or String");
     }
 
+    /**
+     * safeEquals.
+     * 
+     * @param a a
+     * @param b b
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean safeEquals(Object a, Object b) {
         if (a == b) {
             return true;

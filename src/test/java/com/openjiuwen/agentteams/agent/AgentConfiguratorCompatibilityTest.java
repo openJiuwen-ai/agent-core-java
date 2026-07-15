@@ -1,4 +1,7 @@
+
 package com.openjiuwen.agentteams.agent;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
@@ -7,23 +10,17 @@ import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
 import com.openjiuwen.agentteams.teamworkspace.TeamWorkspaceConfig;
 import com.openjiuwen.agentteams.teamworkspace.TeamWorkspaceManager;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 @Tag("agent-teams-config-slice")
 class AgentConfiguratorCompatibilityTest {
-
     @Test
     void shouldCreateConfiguratorWithAgentCard() {
-        AgentCard card = AgentCard.builder()
-                .id("test.card")
-                .name("test_agent")
-                .description("Test agent")
-                .build();
+        AgentCard card = AgentCard.builder().id("test.card").name("test_agent").description("Test agent").build();
         AgentConfigurator configurator = new AgentConfigurator(card);
 
         assertThat(configurator.getSpec()).isNull();
@@ -32,26 +29,13 @@ class AgentConfiguratorCompatibilityTest {
 
     @Test
     void shouldSetupInfraWithBasicSpec() {
-        AgentCard card = AgentCard.builder()
-                .id("test.card")
-                .name("leader")
-                .description("Test leader")
-                .build();
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("test_team")
+        AgentCard card = AgentCard.builder().id("test.card").name("leader").description("Test leader").build();
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("test_team")
                 .members(List.of(
-                        TeamMemberSpec.builder()
-                                .name("leader")
-                                .role(TeamRole.LEADER)
-                                .description("Leader")
-                                .build()
-                ))
+                        TeamMemberSpec.builder().name("leader").role(TeamRole.LEADER).description("Leader").build()))
                 .build();
-        TeamRuntimeContext ctx = TeamRuntimeContext.builder()
-                .teamId("test_team")
-                .memberName("leader")
-                .role(TeamRole.LEADER)
-                .build();
+        TeamRuntimeContext ctx =
+            TeamRuntimeContext.builder().teamId("test_team").memberName("leader").role(TeamRole.LEADER).build();
 
         AgentConfigurator configurator = new AgentConfigurator(card);
         configurator.setupInfra(spec, ctx);
@@ -64,24 +48,11 @@ class AgentConfiguratorCompatibilityTest {
 
     @Test
     void shouldBuildModelAllocatorWhenSetupInfraCompletes() {
-        AgentCard card = AgentCard.builder()
-                .id("test.card")
-                .name("leader")
-                .build();
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("test_team")
-                .members(List.of(
-                        TeamMemberSpec.builder()
-                                .name("leader")
-                                .role(TeamRole.LEADER)
-                                .build()
-                ))
-                .build();
-        TeamRuntimeContext ctx = TeamRuntimeContext.builder()
-                .teamId("test_team")
-                .memberName("leader")
-                .role(TeamRole.LEADER)
-                .build();
+        AgentCard card = AgentCard.builder().id("test.card").name("leader").build();
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("test_team")
+                .members(List.of(TeamMemberSpec.builder().name("leader").role(TeamRole.LEADER).build())).build();
+        TeamRuntimeContext ctx =
+            TeamRuntimeContext.builder().teamId("test_team").memberName("leader").role(TeamRole.LEADER).build();
 
         AgentConfigurator configurator = new AgentConfigurator(card);
         configurator.setupInfra(spec, ctx);
@@ -93,10 +64,7 @@ class AgentConfiguratorCompatibilityTest {
 
     @Test
     void shouldSupportManualModelAllocatorAttachment() {
-        AgentCard card = AgentCard.builder()
-                .id("test.card")
-                .name("leader")
-                .build();
+        AgentCard card = AgentCard.builder().id("test.card").name("leader").build();
 
         AgentConfigurator configurator = new AgentConfigurator(card);
         // Before setupInfra, allocator is null
@@ -109,29 +77,13 @@ class AgentConfiguratorCompatibilityTest {
 
     @Test
     void shouldBuildSpawnPayload() {
-        AgentCard card = AgentCard.builder()
-                .id("test.card")
-                .name("leader")
+        AgentCard card = AgentCard.builder().id("test.card").name("leader").build();
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("test_team").members(List.of(
+                TeamMemberSpec.builder().name("leader").role(TeamRole.LEADER).build(),
+                TeamMemberSpec.builder().name("worker").role(TeamRole.MEMBER).description("Worker desc").build()))
                 .build();
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("test_team")
-                .members(List.of(
-                        TeamMemberSpec.builder()
-                                .name("leader")
-                                .role(TeamRole.LEADER)
-                                .build(),
-                        TeamMemberSpec.builder()
-                                .name("worker")
-                                .role(TeamRole.MEMBER)
-                                .description("Worker desc")
-                                .build()
-                ))
-                .build();
-        TeamRuntimeContext ctx = TeamRuntimeContext.builder()
-                .teamId("test_team")
-                .memberName("leader")
-                .role(TeamRole.LEADER)
-                .build();
+        TeamRuntimeContext ctx =
+            TeamRuntimeContext.builder().teamId("test_team").memberName("leader").role(TeamRole.LEADER).build();
 
         AgentConfigurator configurator = new AgentConfigurator(card);
         configurator.setupInfra(spec, ctx);
@@ -143,24 +95,11 @@ class AgentConfiguratorCompatibilityTest {
 
     @Test
     void shouldBuildSpawnPayloadWithDefaultMessage() {
-        AgentCard card = AgentCard.builder()
-                .id("test.card")
-                .name("leader")
-                .build();
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("test_team")
-                .members(List.of(
-                        TeamMemberSpec.builder()
-                                .name("leader")
-                                .role(TeamRole.LEADER)
-                                .build()
-                ))
-                .build();
-        TeamRuntimeContext ctx = TeamRuntimeContext.builder()
-                .teamId("test_team")
-                .memberName("leader")
-                .role(TeamRole.LEADER)
-                .build();
+        AgentCard card = AgentCard.builder().id("test.card").name("leader").build();
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("test_team")
+                .members(List.of(TeamMemberSpec.builder().name("leader").role(TeamRole.LEADER).build())).build();
+        TeamRuntimeContext ctx =
+            TeamRuntimeContext.builder().teamId("test_team").memberName("leader").role(TeamRole.LEADER).build();
 
         AgentConfigurator configurator = new AgentConfigurator(card);
         configurator.setupInfra(spec, ctx);
@@ -172,32 +111,16 @@ class AgentConfiguratorCompatibilityTest {
 
     @Test
     void shouldBuildMemberContext() {
-        AgentCard card = AgentCard.builder()
-                .id("test.card")
-                .name("leader")
-                .build();
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("test_team")
-                .members(List.of(
-                        TeamMemberSpec.builder()
-                                .name("leader")
-                                .role(TeamRole.LEADER)
-                                .build()
-                ))
-                .build();
-        TeamRuntimeContext ctx = TeamRuntimeContext.builder()
-                .teamId("test_team")
-                .memberName("leader")
-                .role(TeamRole.LEADER)
-                .build();
+        AgentCard card = AgentCard.builder().id("test.card").name("leader").build();
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("test_team")
+                .members(List.of(TeamMemberSpec.builder().name("leader").role(TeamRole.LEADER).build())).build();
+        TeamRuntimeContext ctx =
+            TeamRuntimeContext.builder().teamId("test_team").memberName("leader").role(TeamRole.LEADER).build();
 
         AgentConfigurator configurator = new AgentConfigurator(card);
         configurator.setupInfra(spec, ctx);
 
-        TeamMemberSpec memberSpec = TeamMemberSpec.builder()
-                .name("worker")
-                .role(TeamRole.MEMBER)
-                .build();
+        TeamMemberSpec memberSpec = TeamMemberSpec.builder().name("worker").role(TeamRole.MEMBER).build();
 
         TeamRuntimeContext memberCtx = configurator.buildMemberContext(memberSpec);
         assertThat(memberCtx.getMemberName()).isEqualTo("worker");
@@ -206,10 +129,7 @@ class AgentConfiguratorCompatibilityTest {
 
     @Test
     void shouldCreateWorkspaceManager() {
-        TeamWorkspaceConfig wsConfig = TeamWorkspaceConfig.builder()
-                .isEnabled(true)
-                .rootPath(null)
-                .build();
+        TeamWorkspaceConfig wsConfig = TeamWorkspaceConfig.builder().isEnabled(true).rootPath(null).build();
 
         TeamWorkspaceManager mgr = AgentConfigurator.createWorkspaceManager(wsConfig, "test_team");
         assertThat(mgr).isNotNull();

@@ -11,26 +11,31 @@ import java.util.Map;
 
 /**
  * Public class SessionToolkit used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class SessionToolkit {
     private final Map<String, SessionTaskRow> rows = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * upsertRunning.
+     * 
+     * @param taskId taskId
+     * @param subSessionId subSessionId
+     * @param description description
+     * @since 0.1.7
      */
     public void upsertRunning(String taskId, String subSessionId, String description) {
-        rows.put(taskId, SessionTaskRow.builder()
-                .taskId(taskId)
-                .subSessionId(subSessionId)
-                .description(description)
-                .status("running")
-                .build());
+        rows.put(taskId, SessionTaskRow.builder().taskId(taskId).subSessionId(subSessionId).description(description)
+                .status("running").build());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * markCompleted.
+     * 
+     * @param taskId taskId
+     * @param result result
+     * @since 0.1.7
      */
     public void markCompleted(String taskId, String result) {
         SessionTaskRow row = rows.get(taskId);
@@ -41,7 +46,11 @@ public class SessionToolkit {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * markFailed.
+     * 
+     * @param taskId taskId
+     * @param error error
+     * @since 0.1.7
      */
     public void markFailed(String taskId, String error) {
         SessionTaskRow row = rows.get(taskId);
@@ -52,7 +61,10 @@ public class SessionToolkit {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * markCanceled.
+     * 
+     * @param taskId taskId
+     * @since 0.1.7
      */
     public void markCanceled(String taskId) {
         SessionTaskRow row = rows.get(taskId);
@@ -62,21 +74,30 @@ public class SessionToolkit {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listAll.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<SessionTaskRow> listAll() {
         return new ArrayList<>(rows.values());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param taskId taskId
+     * @return the result
+     * @since 0.1.7
      */
     public SessionTaskRow get(String taskId) {
         return rows.get(taskId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clear.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         rows.clear();

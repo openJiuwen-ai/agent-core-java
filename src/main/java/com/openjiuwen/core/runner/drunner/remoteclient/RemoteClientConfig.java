@@ -14,13 +14,14 @@ import java.util.Map;
 
 /**
  * Remote client configuration.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class RemoteClientConfig {
-
     private String id;
 
     private String version;
@@ -39,5 +40,10 @@ public class RemoteClientConfig {
     private String url;
 
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> kwargs = new LinkedHashMap<>();
 }

@@ -21,9 +21,10 @@ import java.util.concurrent.CancellationException;
  * Pregel execution loop implementing the BSP (Bulk Synchronous Parallel) model.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.engine.PregelLoop}.
+ * 
+ * @since 0.1.7
  */
 public class PregelLoop {
-
     private static final LoggerProtocol logger = Loggers.GRAPH;
 
     private final Pregel graph;
@@ -33,13 +34,35 @@ public class PregelLoop {
 
     private int step = 0;
     private int maxStep = 0;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> activeNodes = new ArrayList<>();
     private TaskExecutorPool executor;
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, PendingNode> retryPendingNodes = new HashMap<>();
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Integer> nodeVersion = new HashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PregelLoop.
+     * 
+     * @param graph graph
+     * @param config config
+     * @since 0.1.7
      */
     public PregelLoop(Pregel graph, PregelConfig config) {
         this.graph = graph;
@@ -50,6 +73,8 @@ public class PregelLoop {
 
     /**
      * Initialize the Pregel loop, restoring state if available.
+     * 
+     * @since 0.1.7
      */
     public void init() {
         executor = new TaskExecutorPool(config);
@@ -86,9 +111,10 @@ public class PregelLoop {
 
     /**
      * Execute one super-step of the Pregel computation.
-     *
+     * 
      * @return true if more steps should follow, false if done
      * @throws Exception on execution failure
+     * @since 0.1.7
      */
     public boolean runStep() throws Exception {
         try {
@@ -96,38 +122,54 @@ public class PregelLoop {
         } catch (CancellationException e) {
             throw e;
         } catch (Exception e) {
-            logger.error("Failed to run graph super-step[{}], ns={}, sessionId={}",
-                    step, config.getNs(), config.getSessionId(), e);
+            logger.error("Failed to run graph super-step[{}], ns={}, sessionId={}", step, config.getNs(),
+                    config.getSessionId(), e);
             saveStateOnError(e);
             throw e;
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStep.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getStep() {
         return step;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public PregelConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getActiveNodes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getActiveNodes() {
         return activeNodes;
     }
 
+    /**
+     * doRunStep.
+     * 
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private boolean doRunStep() throws Exception {
         throwIfInterrupted();
-        logger.debug("Start to run graph super-step[{}], ns={}, sessionId={}",
-                step, config.getNs(), config.getSessionId());
+        logger.debug("Start to run graph super-step[{}], ns={}, sessionId={}", step, config.getNs(),
+                config.getSessionId());
 
         // 1. Determine tasks for this round
         if (!retryPendingNodes.isEmpty()) {
@@ -193,12 +235,23 @@ public class PregelLoop {
         return true;
     }
 
+    /**
+     * throwIfInterrupted.
+     * 
+     * @since 0.1.7
+     */
     private static void throwIfInterrupted() {
         if (Thread.currentThread().isInterrupted()) {
             throw new CancellationException("Pregel loop cancelled");
         }
     }
 
+    /**
+     * saveStateOnError.
+     * 
+     * @param exception exception
+     * @since 0.1.7
+     */
     private void saveStateOnError(Exception exception) {
         if (config.getSessionId() == null || config.getNs() == null || saver == null) {
             return;
@@ -209,23 +262,21 @@ public class PregelLoop {
             pendingBuffer.addAll(executor.getSucceedMessages());
             pendingNode = executor.getFailed();
         }
-        GraphStoreState errorState = GraphStoreState.create(
-                config.getNs(),
-                step,
-                manager.snapshot(),
-                pendingBuffer,
-                pendingNode,
-                new HashMap<>(nodeVersion)
-        );
+        GraphStoreState errorState = GraphStoreState.create(config.getNs(), step, manager.snapshot(), pendingBuffer,
+                pendingNode, new HashMap<>(nodeVersion));
         saver.save(config.getSessionId(), config.getNs(), errorState);
     }
 
+    /**
+     * isResume.
+     * 
+     * @param state state
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isResume(GraphStoreState state) {
-        return state != null && (
-                (state.getPendingNode() != null && !state.getPendingNode().isEmpty())
-                        || (state.getPendingBuffer() != null && !state.getPendingBuffer().isEmpty())
-                        || (state.getChannelValues() != null && !state.getChannelValues().isEmpty())
-        );
+        return state != null && ((state.getPendingNode() != null && !state.getPendingNode().isEmpty())
+                || (state.getPendingBuffer() != null && !state.getPendingBuffer().isEmpty())
+                || (state.getChannelValues() != null && !state.getChannelValues().isEmpty()));
     }
-
 }

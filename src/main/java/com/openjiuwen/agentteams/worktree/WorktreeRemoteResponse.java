@@ -12,14 +12,14 @@ import lombok.NoArgsConstructor;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Public class WorktreeRemoteResponse used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class WorktreeRemoteResponse used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class WorktreeRemoteResponse {
     @Builder.Default
@@ -34,7 +34,10 @@ public class WorktreeRemoteResponse {
     private String error;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toPayload.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toPayload() {
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -49,23 +52,33 @@ public class WorktreeRemoteResponse {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromPayload.
+     * 
+     * @param payload payload
+     * @return the result
+     * @since 0.1.7
      */
     public static WorktreeRemoteResponse fromPayload(Map<String, Object> payload) {
         if (payload == null) {
             return WorktreeRemoteResponse.builder().isSuccess(false).error("empty response").build();
         }
-        return WorktreeRemoteResponse.builder()
-                .isSuccess(booleanValue(payload.get("success"), true))
+        return WorktreeRemoteResponse.builder().isSuccess(booleanValue(payload.get("success"), true))
                 .worktreePath(stringValue(payload.get("worktree_path")))
                 .worktreeBranch(stringValue(payload.get("worktree_branch")))
                 .headCommit(stringValue(payload.get("head_commit")))
                 .isExisted(booleanValue(payload.get("isExisted"), false))
-                .isExists(booleanValue(payload.get("isExists"), false))
-                .error(stringValue(payload.get("error")))
+                .isExists(booleanValue(payload.get("isExists"), false)).error(stringValue(payload.get("error")))
                 .build();
     }
 
+    /**
+     * booleanValue.
+     * 
+     * @param value value
+     * @param isDefaultValue isDefaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean booleanValue(Object value, boolean isDefaultValue) {
         if (value instanceof Boolean isBool) {
             return isBool;
@@ -76,6 +89,13 @@ public class WorktreeRemoteResponse {
         return isDefaultValue;
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringValue(Object value) {
         return value != null ? String.valueOf(value) : null;
     }

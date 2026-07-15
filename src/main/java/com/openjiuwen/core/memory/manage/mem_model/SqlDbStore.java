@@ -11,42 +11,71 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.spi.store.BaseDbStore;
 
-import javax.sql.DataSource;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
-import java.util.*;
+import java.util.Map;
+import java.util.Locale;
+
+import javax.sql.DataSource;
 
 /**
  * JDBC-based SQL CRUD wrapper for memory tables.
  * Translates Python's SQLAlchemy-based SqlDbStore to JDBC operations.
+ * 
+ * @since 0.1.7
  */
 public class SqlDbStore {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
     private final BaseDbStore<?> dbStore;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SqlDbStore.
+     * 
+     * @param dbStore dbStore
+     * @since 0.1.7
      */
     public SqlDbStore(BaseDbStore<?> dbStore) {
         this.dbStore = dbStore;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDbStore.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public BaseDbStore<?> getDbStore() {
         return dbStore;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEngine.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getEngine() {
         return dbStore.getEngine();
     }
 
+    /**
+     * getConnection.
+     * 
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private Connection getConnection() throws SQLException {
         Object engine = dbStore.getEngine();
         if (engine instanceof DataSource) {
@@ -60,6 +89,11 @@ public class SqlDbStore {
 
     /**
      * Insert a row into the specified table.
+     * 
+     * @param table table
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public boolean write(String table, Map<String, Object> data) {
         if (data == null || data.isEmpty()) {
@@ -70,14 +104,13 @@ public class SqlDbStore {
         String columnNames = String.join(", ", columns);
         String sql = String.format("INSERT INTO %s (%s) VALUES (%s)", table, columnNames, placeholders);
 
-        try (Connection conn = getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (Connection conn = getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             for (int i = 0; i < columns.size(); i++) {
                 ps.setObject(i + 1, data.get(columns.get(i)));
             }
             ps.executeUpdate();
             return true;
-        } catch (Exception e) {
+        } catch (SQLException e) {
             MEMORY_LOGGER.error("[{}] Write failed for table {}: {}", LogEventType.MEMORY_STORE, table, e.getMessage());
             return false;
         }
@@ -85,6 +118,12 @@ public class SqlDbStore {
 
     /**
      * Get a single record by id.
+     * 
+     * @param table table
+     * @param recordId recordId
+     * @param columns columns
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> get(String table, String recordId, List<String> columns) {
         try (Connection conn = getConnection()) {
@@ -99,25 +138,30 @@ public class SqlDbStore {
                     return null;
                 }
             }
-        } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Failed to get data from table {}: {}",
-                    LogEventType.MEMORY_RETRIEVE, table, e.getMessage());
+        } catch (SQLException e) {
+            MEMORY_LOGGER.error("[{}] Failed to get data from table {}: {}", LogEventType.MEMORY_RETRIEVE, table,
+                    e.getMessage());
             return null;
         }
     }
 
     /**
      * Get rows with filters, sorting, and limit.
+     * 
+     * @param table table
+     * @param filters filters
+     * @param sortBy sortBy
+     * @param order order
+     * @param limit limit
+     * @return the result
+     * @since 0.1.7
      */
-    public List<Map<String, Object>> getWithSort(String table, Map<String, Object> filters,
-                                                   String sortBy, String order, int limit) {
+    public List<Map<String, Object>> getWithSort(String table, Map<String, Object> filters, String sortBy, String order,
+            int limit) {
         try (Connection conn = getConnection()) {
             if (sortBy != null && !hasColumn(conn, table, sortBy)) {
-                throw ErrorHelper.buildError(
-                        StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
-                        "memory_type", "message",
-                        "error_msg", "sort column '" + sortBy + "' does not exist in db store table '" + table + "'"
-                );
+                throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "message",
+                        "error_msg", "sort column '" + sortBy + "' does not exist in db store table '" + table + "'");
             }
             StringBuilder sql = new StringBuilder("SELECT * FROM ").append(table);
             List<Object> params = new ArrayList<>();
@@ -149,15 +193,20 @@ public class SqlDbStore {
                     return resultSetToList(rs);
                 }
             }
-        } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Failed to fetch sorted data from table {}: {}",
-                    LogEventType.MEMORY_RETRIEVE, table, e.getMessage());
+        } catch (SQLException e) {
+            MEMORY_LOGGER.error("[{}] Failed to fetch sorted data from table {}: {}", LogEventType.MEMORY_RETRIEVE,
+                    table, e.getMessage());
             return Collections.emptyList();
         }
     }
 
     /**
      * Check if a record exists matching the given conditions.
+     * 
+     * @param table table
+     * @param conditions conditions
+     * @return the result
+     * @since 0.1.7
      */
     public boolean exist(String table, Map<String, Object> conditions) {
         try (Connection conn = getConnection()) {
@@ -179,15 +228,20 @@ public class SqlDbStore {
                     return rs.next();
                 }
             }
-        } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Exist check failed for table {}: {}",
-                    LogEventType.MEMORY_RETRIEVE, table, e.getMessage());
+        } catch (SQLException e) {
+            MEMORY_LOGGER.error("[{}] Exist check failed for table {}: {}", LogEventType.MEMORY_RETRIEVE, table,
+                    e.getMessage());
             return false;
         }
     }
 
     /**
      * Get rows matching any condition group in the provided list.
+     * 
+     * @param table table
+     * @param conditionsList conditionsList
+     * @return the result
+     * @since 0.1.7
      */
     public List<Map<String, Object>> batchGet(String table, List<Map<String, Object>> conditionsList) {
         try (Connection conn = getConnection()) {
@@ -221,22 +275,24 @@ public class SqlDbStore {
                     return resultSetToList(rs);
                 }
             }
-        } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Batch get failed for table {}: {}",
-                    LogEventType.MEMORY_RETRIEVE, table, e.getMessage());
+        } catch (SQLException e) {
+            MEMORY_LOGGER.error("[{}] Batch get failed for table {}: {}", LogEventType.MEMORY_RETRIEVE, table,
+                    e.getMessage());
             return Collections.emptyList();
         }
     }
 
     /**
-     * Get rows matching IN conditions on specified columns.
+     * conditionGet.
+     * 
+     * @param table table
+     * @param conditions conditions
+     * @param columns columns
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public List<Map<String, Object>> conditionGet(String table, Map<String, ?> conditions,
-                                                    List<String> columns) {
+    public List<Map<String, Object>> conditionGet(String table, Map<String, ?> conditions, List<String> columns) {
         try (Connection conn = getConnection()) {
             String cols = (columns == null || columns.isEmpty()) ? "*" : String.join(", ", columns);
             StringBuilder sql = new StringBuilder("SELECT ").append(cols).append(" FROM ").append(table);
@@ -248,11 +304,8 @@ public class SqlDbStore {
                 for (Map.Entry<String, ?> entry : conditions.entrySet()) {
                     Object rawValues = entry.getValue();
                     if (!(rawValues instanceof List<?> rawList)) {
-                        throw ErrorHelper.buildError(
-                                StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
-                                "memory_type", "message",
-                                "error_msg", "db store condition[" + entry.getKey() + "] must be a list"
-                        );
+                        throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type",
+                                "message", "error_msg", "db store condition[" + entry.getKey() + "] must be a list");
                     }
                     List<?> values = rawList;
                     if (values.isEmpty()) {
@@ -275,13 +328,23 @@ public class SqlDbStore {
                     return resultSetToList(rs);
                 }
             }
-        } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Failed to conditionGet from table {}: {}",
-                    LogEventType.MEMORY_RETRIEVE, table, e.getMessage());
+        } catch (SQLException e) {
+            MEMORY_LOGGER.error("[{}] Failed to conditionGet from table {}: {}", LogEventType.MEMORY_RETRIEVE, table,
+                    e.getMessage());
             return null;
         }
     }
 
+    /**
+     * hasColumn.
+     * 
+     * @param conn conn
+     * @param table table
+     * @param columnName columnName
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private boolean hasColumn(Connection conn, String table, String columnName) throws SQLException {
         TableInfo tableInfo = reflectTable(conn, table);
         if (tableInfo == null) {
@@ -296,12 +359,15 @@ public class SqlDbStore {
     }
 
     /**
-     * Update rows matching the given conditions.
+     * update.
+     * 
+     * @param table table
+     * @param conditions conditions
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean update(String table, Map<String, Object> conditions, Map<String, Object> data) {
         try (Connection conn = getConnection()) {
             List<Object> params = new ArrayList<>();
@@ -325,8 +391,8 @@ public class SqlDbStore {
                 }
             }
 
-            String sql = String.format("UPDATE %s SET %s WHERE %s", table,
-                    String.join(", ", setClauses), String.join(" AND ", whereClauses));
+            String sql = String.format("UPDATE %s SET %s WHERE %s", table, String.join(", ", setClauses),
+                    String.join(" AND ", whereClauses));
 
             try (PreparedStatement ps = conn.prepareStatement(sql)) {
                 for (int i = 0; i < params.size(); i++) {
@@ -335,20 +401,22 @@ public class SqlDbStore {
                 ps.executeUpdate();
                 return true;
             }
-        } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Update failed for table {}: {}",
-                    LogEventType.MEMORY_UPDATE, table, e.getMessage());
+        } catch (SQLException e) {
+            MEMORY_LOGGER.error("[{}] Update failed for table {}: {}", LogEventType.MEMORY_UPDATE, table,
+                    e.getMessage());
             return false;
         }
     }
 
     /**
-     * Delete rows matching the given conditions.
+     * delete.
+     * 
+     * @param table table
+     * @param conditions conditions
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean delete(String table, Map<String, Object> conditions) {
         try (Connection conn = getConnection()) {
             List<Object> params = new ArrayList<>();
@@ -375,42 +443,58 @@ public class SqlDbStore {
                 ps.executeUpdate();
                 return true;
             }
-        } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Delete failed for table {}: {}",
-                    LogEventType.MEMORY_DELETE, table, e.getMessage());
+        } catch (SQLException e) {
+            MEMORY_LOGGER.error("[{}] Delete failed for table {}: {}", LogEventType.MEMORY_DELETE, table,
+                    e.getMessage());
             return false;
         }
     }
 
     /**
      * Drop a table if it exists.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @since 0.1.7
      */
     public boolean deleteTable(String tableName) {
         String sql = "DROP TABLE IF EXISTS " + tableName;
-        try (Connection conn = getConnection();
-             Statement stmt = conn.createStatement()) {
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
             return true;
         } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Delete table failed for {}: {}",
-                    LogEventType.MEMORY_DELETE, tableName, e.getMessage());
+            MEMORY_LOGGER.error("[{}] Delete table failed for {}: {}", LogEventType.MEMORY_DELETE, tableName,
+                    e.getMessage());
             return false;
         }
     }
 
     /**
      * Reflect table metadata for public callers that need schema access.
+     * 
+     * @param tableName tableName
+     * @return the result
+     * @since 0.1.7
      */
     public TableInfo getTable(String tableName) {
         try (Connection conn = getConnection()) {
             return reflectTable(conn, tableName);
         } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Failed to reflect table {}: {}",
-                    LogEventType.MEMORY_RETRIEVE, tableName, e.getMessage());
+            MEMORY_LOGGER.error("[{}] Failed to reflect table {}: {}", LogEventType.MEMORY_RETRIEVE, tableName,
+                    e.getMessage());
             return null;
         }
     }
 
+    /**
+     * reflectTable.
+     * 
+     * @param conn conn
+     * @param tableName tableName
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private TableInfo reflectTable(Connection conn, String tableName) throws SQLException {
         DatabaseMetaData metaData = conn.getMetaData();
         String resolvedTableName = resolveTableName(metaData, tableName);
@@ -420,19 +504,23 @@ public class SqlDbStore {
         List<ColumnInfo> columns = new ArrayList<>();
         try (ResultSet rs = metaData.getColumns(conn.getCatalog(), conn.getSchema(), resolvedTableName, null)) {
             while (rs.next()) {
-                columns.add(new ColumnInfo(
-                        rs.getString("COLUMN_NAME"),
-                        rs.getString("TYPE_NAME"),
-                        rs.getInt("DATA_TYPE"),
-                        rs.getInt("COLUMN_SIZE"),
-                        rs.getInt("NULLABLE") == DatabaseMetaData.columnNullable,
-                        rs.getString("COLUMN_DEF")
-                ));
+                columns.add(new ColumnInfo(rs.getString("COLUMN_NAME"), rs.getString("TYPE_NAME"),
+                        rs.getInt("DATA_TYPE"), rs.getInt("COLUMN_SIZE"),
+                        rs.getInt("NULLABLE") == DatabaseMetaData.columnNullable, rs.getString("COLUMN_DEF")));
             }
         }
         return new TableInfo(resolvedTableName, columns);
     }
 
+    /**
+     * resolveTableName.
+     * 
+     * @param metaData metaData
+     * @param tableName tableName
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private String resolveTableName(DatabaseMetaData metaData, String tableName) throws SQLException {
         try (ResultSet rs = metaData.getTables(null, null, null, new String[]{"TABLE"})) {
             while (rs.next()) {
@@ -446,14 +534,20 @@ public class SqlDbStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TableInfo.
+     * 
+     * @since 0.1.7
      */
     public static final class TableInfo {
         private final String name;
         private final List<ColumnInfo> columns;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * TableInfo.
+         * 
+         * @param name name
+         * @param columns columns
+         * @since 0.1.7
          */
         public TableInfo(String name, List<ColumnInfo> columns) {
             this.name = name;
@@ -461,14 +555,20 @@ public class SqlDbStore {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getName.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getName() {
             return name;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getColumns.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<ColumnInfo> getColumns() {
             return columns;
@@ -476,7 +576,9 @@ public class SqlDbStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ColumnInfo.
+     * 
+     * @since 0.1.7
      */
     public static final class ColumnInfo {
         private final String name;
@@ -487,7 +589,15 @@ public class SqlDbStore {
         private final String defaultValue;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * ColumnInfo.
+         * 
+         * @param name name
+         * @param typeName typeName
+         * @param jdbcType jdbcType
+         * @param size size
+         * @param nullable nullable
+         * @param defaultValue defaultValue
+         * @since 0.1.7
          */
         public ColumnInfo(String name, String typeName, int jdbcType, int size, boolean nullable, String defaultValue) {
             this.name = name;
@@ -499,48 +609,74 @@ public class SqlDbStore {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getName.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getName() {
             return name;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getTypeName.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getTypeName() {
             return typeName;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getJdbcType.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public int getJdbcType() {
             return jdbcType;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getSize.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public int getSize() {
             return size;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * isNullable.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public boolean isNullable() {
             return nullable;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getDefaultValue.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getDefaultValue() {
             return defaultValue;
         }
     }
 
+    /**
+     * resultSetToMap.
+     * 
+     * @param rs rs
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private Map<String, Object> resultSetToMap(ResultSet rs) throws SQLException {
         ResultSetMetaData meta = rs.getMetaData();
         Map<String, Object> row = new LinkedHashMap<>();
@@ -554,6 +690,14 @@ public class SqlDbStore {
         return row;
     }
 
+    /**
+     * resultSetToList.
+     * 
+     * @param rs rs
+     * @return the result
+     * @throws SQLException SQLException
+     * @since 0.1.7
+     */
     private List<Map<String, Object>> resultSetToList(ResultSet rs) throws SQLException {
         List<Map<String, Object>> list = new ArrayList<>();
         while (rs.next()) {

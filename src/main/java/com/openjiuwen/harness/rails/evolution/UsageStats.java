@@ -12,14 +12,14 @@ import lombok.NoArgsConstructor;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Public class UsageStats used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class UsageStats used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class UsageStats {
     private int timesPresented;
@@ -30,7 +30,10 @@ public class UsageStats {
     private String lastEvaluatedAt;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> payload = new LinkedHashMap<>();

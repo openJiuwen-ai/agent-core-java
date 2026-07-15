@@ -19,29 +19,36 @@ import java.util.concurrent.ConcurrentHashMap;
  * SysOperation — facade for accessing system operations.
  * <p>
  * Mirrors Python's {@code SysOperation} class in {@code sys_operation/sys_operation.py}.
- *
- * <p>Usage:
+ * <p>
+ * Usage:
+ * 
  * <pre>
- *   SysOperationCard card = SysOperationCard.builder()
- *       .id("sys_op")
- *       .mode(OperationMode.LOCAL)
- *       .build();
- *   SysOperation sysOp = new SysOperation(card);
- *
- *   // Access operations
- *   BaseFsOperation fs = sysOp.fs();
- *   BaseShellOperation shell = sysOp.shell();
- *   BaseCodeOperation code = sysOp.code();
+ * SysOperationCard card = SysOperationCard.builder().id("sys_op").mode(OperationMode.LOCAL).build();
+ * SysOperation sysOp = new SysOperation(card);
+ * // Access operations
+ * BaseFsOperation fs = sysOp.fs();
+ * BaseShellOperation shell = sysOp.shell();
+ * BaseCodeOperation code = sysOp.code();
  * </pre>
+ * 
+ * @since 0.1.7
  */
 public class SysOperation {
-
     private final OperationMode mode;
     private final Object runConfig;
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, BaseOperation> instances = new ConcurrentHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SysOperation.
+     * 
+     * @param card card
+     * @since 0.1.7
      */
     public SysOperation(SysOperationCard card) {
         this.mode = card.getMode() != null ? card.getMode() : OperationMode.LOCAL;
@@ -54,6 +61,9 @@ public class SysOperation {
 
     /**
      * Get the file system operation instance.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public BaseFsOperation fs() {
         return (BaseFsOperation) getOperation("fs");
@@ -61,6 +71,9 @@ public class SysOperation {
 
     /**
      * Get the code execution operation instance.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public BaseCodeOperation code() {
         return (BaseCodeOperation) getOperation("code");
@@ -68,6 +81,9 @@ public class SysOperation {
 
     /**
      * Get the shell command operation instance.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public BaseShellOperation shell() {
         return (BaseShellOperation) getOperation("shell");
@@ -75,9 +91,10 @@ public class SysOperation {
 
     /**
      * Get an operation by name. Returns null if the operation is not registered.
-     *
+     * 
      * @param name operation name (e.g., "fs", "shell", "code")
      * @return the operation instance, or null
+     * @since 0.1.7
      */
     public BaseOperation getOperation(String name) {
         return instances.computeIfAbsent(name, n -> {
@@ -87,33 +104,37 @@ public class SysOperation {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public OperationMode getMode() {
         return mode;
     }
 
+    /**
+     * validateSandboxGatewayConfig.
+     * 
+     * @param gatewayConfig gatewayConfig
+     * @return the result
+     * @since 0.1.7
+     */
     private static SandboxGatewayConfig validateSandboxGatewayConfig(SandboxGatewayConfig gatewayConfig) {
         SandboxGatewayConfig config = gatewayConfig != null ? gatewayConfig : new SandboxGatewayConfig();
         if (config.getLauncherConfig() == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
-                    "error_msg", "sandbox mode requires launcher_config"
-            );
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR, "error_msg",
+                    "sandbox mode requires launcher_config");
         }
         if (config.getLauncherConfig().getLauncherType() == null
                 || config.getLauncherConfig().getLauncherType().isBlank()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
-                    "error_msg", "sandbox mode requires launcher_type"
-            );
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR, "error_msg",
+                    "sandbox mode requires launcher_type");
         }
         if (config.getLauncherConfig().getSandboxType() == null
                 || config.getLauncherConfig().getSandboxType().isBlank()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.SYS_OPERATION_CARD_PARAM_ERROR,
-                    "error_msg", "sandbox mode requires sandbox_type"
-            );
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_CARD_PARAM_ERROR, "error_msg",
+                    "sandbox mode requires sandbox_type");
         }
         return config;
     }

@@ -9,13 +9,19 @@ import lombok.experimental.SuperBuilder;
 
 /**
  * Result type for streaming code execution.
+ * 
+ * @since 0.1.7
  */
 @SuperBuilder
 @NoArgsConstructor
 public class ExecuteCodeStreamResult extends BaseResult<ExecuteCodeChunkData> {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * ExecuteCodeStreamResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
      */
     public ExecuteCodeStreamResult(int code, String message, ExecuteCodeChunkData data) {
         super(code, message, data);

@@ -6,36 +6,54 @@ package com.openjiuwen.agentteams.worktree;
 
 /**
  * Thread-local holder for the active worktree session.
+ * 
+ * @since 0.1.7
  */
 public final class WorktreeSessionState {
     private static final ThreadLocal<Holder> STATE = ThreadLocal.withInitial(Holder::new);
 
+    /**
+     * WorktreeSessionState.
+     * 
+     * @since 0.1.7
+     */
     private WorktreeSessionState() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * initSessionState.
+     * 
+     * @since 0.1.7
      */
     public static void initSessionState() {
         STATE.get();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentSession.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static WorktreeSession getCurrentSession() {
         return STATE.get().session;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCurrentSession.
+     * 
+     * @param session session
+     * @since 0.1.7
      */
     public static void setCurrentSession(WorktreeSession session) {
         STATE.get().session = session;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * requireCurrentSession.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static WorktreeSession requireCurrentSession() {
         WorktreeSession session = getCurrentSession();

@@ -36,8 +36,8 @@ import java.util.Objects;
 
 /**
  * Public class TaskPlanningRail used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail {
     private static final String TASK_PLANNING_MODEL_ID = "task_planning.model_id";
@@ -45,10 +45,40 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     private static final int TODO_SECTION_PRIORITY = 90;
     private final boolean isProgressRepeatEnabled;
     private final int listToolCallInterval;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, String> modelSelection = new LinkedHashMap<>();
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<Tool> tools = new ArrayList<>();
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Integer> toolCallCounts = new HashMap<>();
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, List<TodoItem>> todosCache = new HashMap<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, ModelUsageRecord> usageRecords = new LinkedHashMap<>();
     private TodoTool todoTool;
     private DeepAgent owner;
@@ -57,27 +87,35 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     private boolean isDefaultLlmCaptured;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskPlanningRail.
+     * 
+     * @since 0.1.7
      */
     public TaskPlanningRail() {
         this(false, 20);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskPlanningRail.
+     * 
+     * @param isProgressRepeatEnabled isProgressRepeatEnabled
+     * @param listToolCallInterval listToolCallInterval
+     * @since 0.1.7
      */
     public TaskPlanningRail(boolean isProgressRepeatEnabled, int listToolCallInterval) {
         this(isProgressRepeatEnabled, listToolCallInterval, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskPlanningRail.
+     * 
+     * @param isProgressRepeatEnabled isProgressRepeatEnabled
+     * @param listToolCallInterval listToolCallInterval
+     * @param modelSelection modelSelection
+     * @since 0.1.7
      */
-    public TaskPlanningRail(
-            boolean isProgressRepeatEnabled,
-            int listToolCallInterval,
-            Map<String, String> modelSelection
-    ) {
+    public TaskPlanningRail(boolean isProgressRepeatEnabled, int listToolCallInterval,
+            Map<String, String> modelSelection) {
         this.isProgressRepeatEnabled = isProgressRepeatEnabled;
         this.listToolCallInterval = listToolCallInterval;
         if (modelSelection != null) {
@@ -86,23 +124,23 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * priority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int priority() {
         return 90;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * init.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void init(Object agent) {
         if (!(agent instanceof DeepAgent deepAgent)) {
             return;
@@ -110,37 +148,26 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         owner = deepAgent;
         todoTool = new TodoTool(deepAgent.getWorkspace().root().resolve(".todo").toString());
         language = deepAgent.getWorkspace().getLanguage();
-        tools.add(new LocalFunction(
-                card("todo_create", deepAgent, language),
-                inputs -> todoTool.create(
-                        sessionId(inputs),
-                        objectList(inputs.get("tasks"))
-                )
-        ));
-        tools.add(new LocalFunction(
-                card("todo_list", deepAgent, language),
-                inputs -> todoTool.list(sessionId(inputs))
-        ));
-        tools.add(new LocalFunction(
-                card("todo_get", deepAgent, language),
-                inputs -> todoTool.get(sessionId(inputs), string(inputs.get("id")))
-        ));
-        tools.add(new LocalFunction(
-                card("todo_modify", deepAgent, language),
-                inputs -> todoTool.modify(sessionId(inputs), inputs)
-        ));
+        tools.add(new LocalFunction(card("todo_create", deepAgent, language),
+                inputs -> todoTool.create(sessionId(inputs), objectList(inputs.get("tasks")))));
+        tools.add(
+                new LocalFunction(card("todo_list", deepAgent, language), inputs -> todoTool.list(sessionId(inputs))));
+        tools.add(new LocalFunction(card("todo_get", deepAgent, language),
+                inputs -> todoTool.get(sessionId(inputs), string(inputs.get("id")))));
+        tools.add(new LocalFunction(card("todo_modify", deepAgent, language),
+                inputs -> todoTool.modify(sessionId(inputs), inputs)));
         for (Tool tool : tools) {
             deepAgent.registerHarnessTool(tool);
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * uninit.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void uninit(Object agent) {
         if (agent instanceof DeepAgent deepAgent) {
             for (Tool tool : tools) {
@@ -159,35 +186,51 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isEnableProgressRepeat.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isEnableProgressRepeat() {
         return isProgressRepeatEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getListToolCallInterval.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getListToolCallInterval() {
         return listToolCallInterval;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelSelection.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, String> getModelSelection() {
         return new LinkedHashMap<>(modelSelection);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUsageRecords.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, ModelUsageRecord> getUsageRecords() {
         return new LinkedHashMap<>(usageRecords);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * cachedTodos.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public List<TodoItem> cachedTodos(String sessionId) {
         List<TodoItem> todos = todosCache.get(sessionId);
@@ -195,33 +238,43 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registeredToolNames.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> registeredToolNames() {
         return tools.stream().map(tool -> tool.getCard().getName()).toList();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasTodoPromptSection.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasTodoPromptSection() {
         return owner != null && owner.getAgent().getPromptBuilder().hasSection(TODO_SECTION);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toolCallCount.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public int toolCallCount(String sessionId) {
         return toolCallCounts.getOrDefault(sessionId, 0);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * beforeModelCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void beforeModelCall(AgentCallbackContext ctx) {
         injectTodoPrompt(ctx);
         if (modelSelection.isEmpty() || todoTool == null || ctx == null || ctx.getSession() == null) {
@@ -235,10 +288,9 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
             return;
         }
         try {
-            TodoItem inProgress = loadTodos(sessionId).stream()
-                    .filter(item -> item != null && item.getStatus() == TodoStatus.IN_PROGRESS)
-                    .findFirst()
-                    .orElse(null);
+            TodoItem inProgress =
+                loadTodos(sessionId).stream().filter(item -> item != null && item.getStatus() == TodoStatus.IN_PROGRESS)
+                        .findFirst().orElse(null);
             String modelId = inProgress != null ? inProgress.getSelectedModelId() : null;
             if (!isDefaultLlmCaptured) {
                 defaultLlm = reactAgent.peekLlm();
@@ -267,12 +319,12 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterModelCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void afterModelCall(AgentCallbackContext ctx) {
         if (modelSelection.isEmpty() || ctx == null || ctx.getInputs() == null) {
             return;
@@ -292,7 +344,11 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * taskPlanPath.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public Path taskPlanPath(String sessionId) {
         String safeSession = sessionId == null || sessionId.isBlank() ? "default" : sessionId;
@@ -300,12 +356,12 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterToolCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void afterToolCall(AgentCallbackContext ctx) {
         if (ctx == null || ctx.getSession() == null || todoTool == null) {
             return;
@@ -336,12 +392,12 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterInvoke.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void afterInvoke(AgentCallbackContext ctx) {
         if (ctx != null && ctx.getSession() != null && ctx.getSession().getSessionId() != null) {
             toolCallCounts.remove(ctx.getSession().getSessionId());
@@ -353,12 +409,12 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterTaskIteration.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void afterTaskIteration(TaskIterationContext ctx) {
         if (ctx == null || todoTool == null || owner == null) {
             return;
@@ -380,7 +436,13 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * syncTodosFromTaskPlan.
+     * 
+     * @param sessionId sessionId
+     * @param plan plan
+     * @return the result
+     * @throws java.io.IOException java.io.IOException
+     * @since 0.1.7
      */
     public boolean syncTodosFromTaskPlan(String sessionId, TaskPlan plan) throws java.io.IOException {
         if (todoTool == null || plan == null || plan.getTasks() == null || plan.getTasks().isEmpty()) {
@@ -426,6 +488,13 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         return isChanged;
     }
 
+    /**
+     * resolveTaskPlan.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
+     */
     private TaskPlan resolveTaskPlan(TaskIterationContext ctx) {
         TaskPlan fromResult = TaskPlan.fromObject(firstNonNull(ctx.getResult(), new String[]{"task_plan", "taskPlan"}));
         if (fromResult != null) {
@@ -435,7 +504,11 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * writeTaskPlanSnapshot.
+     * 
+     * @param snapshot snapshot
+     * @throws java.io.IOException java.io.IOException
+     * @since 0.1.7
      */
     public void writeTaskPlanSnapshot(TaskPlanSnapshot snapshot) throws java.io.IOException {
         if (snapshot == null || owner == null) {
@@ -449,7 +522,12 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadTaskPlanSnapshot.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @throws java.io.IOException java.io.IOException
+     * @since 0.1.7
      */
     public TaskPlanSnapshot loadTaskPlanSnapshot(String sessionId) throws java.io.IOException {
         Path file = taskPlanPath(sessionId);
@@ -457,7 +535,12 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadPersistedTaskPlan.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @throws java.io.IOException java.io.IOException
+     * @since 0.1.7
      */
     public TaskPlan loadPersistedTaskPlan(String sessionId) throws java.io.IOException {
         TaskPlanSnapshot snapshot = loadTaskPlanSnapshot(sessionId);
@@ -471,6 +554,13 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         return plan;
     }
 
+    /**
+     * buildProgressReminder.
+     * 
+     * @param todos todos
+     * @return the result
+     * @since 0.1.7
+     */
     private String buildProgressReminder(List<TodoItem> todos) {
         StringBuilder tasks = new StringBuilder();
         String inProgressTask = "";
@@ -481,31 +571,25 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
             if (todo.getStatus() == TodoStatus.IN_PROGRESS) {
                 inProgressTask = todo.getContent() != null ? todo.getContent() : "";
             }
-            tasks.append("id: ")
-                    .append(todo.getId())
-                    .append(" |status: ")
-                    .append(todo.getStatus())
-                    .append(" |content: ")
-                    .append(todo.getContent())
-                    .append('\n');
+            tasks.append("id: ").append(todo.getId()).append(" |status: ").append(todo.getStatus())
+                    .append(" |content: ").append(todo.getContent()).append('\n');
         }
         if ("en".equalsIgnoreCase(language)) {
-            return "The following is the content and status of all tasks in the current task plan:\n\n"
-                    + tasks
-                    + "\nThe task currently being executed is:\n\n"
-                    + inProgressTask
+            return "The following is the content and status of all tasks in the current task plan:\n\n" + tasks
+                    + "\nThe task currently being executed is:\n\n" + inProgressTask
                     + "\n\nPlease review the above task progress to ensure the plan is being executed correctly.\n"
                     + "If any tasks are stuck or need adjustment, please update them promptly";
         }
-        return "以下是当前任务规划中所有任务的内容和状态：\n\n"
-                + tasks
-                + "\n正在执行的任务为：\n\n"
-                + inProgressTask
+        return "以下是当前任务规划中所有任务的内容和状态：\n\n" + tasks + "\n正在执行的任务为：\n\n" + inProgressTask
                 + "\n\n请查看上述任务进度，确保计划正在正确执行。如果有任务卡住或需要调整，请及时更新";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildTodoPrompt.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
      */
     public String buildTodoPrompt(String language) {
         String prompt;
@@ -560,6 +644,12 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         return prompt.trim() + "\n" + buildModelSelectionPrompt(language);
     }
 
+    /**
+     * injectTodoPrompt.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
+     */
     private void injectTodoPrompt(AgentCallbackContext ctx) {
         if (owner == null) {
             return;
@@ -571,6 +661,13 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         }
     }
 
+    /**
+     * buildModelSelectionPrompt.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
+     */
     private String buildModelSelectionPrompt(String language) {
         if (modelSelection.isEmpty()) {
             if ("en".equalsIgnoreCase(language)) {
@@ -593,10 +690,7 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         }
         StringBuilder modelList = new StringBuilder();
         for (Map.Entry<String, String> entry : modelSelection.entrySet()) {
-            modelList.append(" -selected_model_id: ")
-                    .append(entry.getKey())
-                    .append(": ")
-                    .append(entry.getValue())
+            modelList.append(" -selected_model_id: ").append(entry.getKey()).append(": ").append(entry.getValue())
                     .append('\n');
         }
         if ("en".equalsIgnoreCase(language)) {
@@ -647,15 +741,20 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
                 """.formatted(modelList.toString().trim()).trim();
     }
 
+    /**
+     * injectTodoMessage.
+     * 
+     * @param inputs inputs
+     * @param prompt prompt
+     * @since 0.1.7
+     */
     private static void injectTodoMessage(ModelCallInputs inputs, String prompt) {
-        List<Object> messages = inputs.getMessages() != null
-                ? new ArrayList<>(inputs.getMessages())
-                : new ArrayList<>();
+        List<Object> messages =
+            inputs.getMessages() != null ? new ArrayList<>(inputs.getMessages()) : new ArrayList<>();
         for (Object message : messages) {
-            if (message instanceof BaseMessage baseMessage
-                    && "system".equalsIgnoreCase(baseMessage.getRole())
+            if (message instanceof BaseMessage baseMessage && "system".equalsIgnoreCase(baseMessage.getRole())
                     && (String.valueOf(baseMessage.getContent()).contains("todo_create")
-                    || String.valueOf(baseMessage.getContent()).contains("使用 todo 工具"))) {
+                            || String.valueOf(baseMessage.getContent()).contains("使用 todo 工具"))) {
                 inputs.setMessages(messages);
                 return;
             }
@@ -664,6 +763,14 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         inputs.setMessages(messages);
     }
 
+    /**
+     * loadTodos.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @throws java.io.IOException java.io.IOException
+     * @since 0.1.7
+     */
     private List<TodoItem> loadTodos(String sessionId) throws java.io.IOException {
         List<TodoItem> cached = todosCache.get(sessionId);
         if (cached != null) {
@@ -674,6 +781,13 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         return loaded;
     }
 
+    /**
+     * refreshTodosCacheAfterTodoToolCall.
+     * 
+     * @param ctx ctx
+     * @param sessionId sessionId
+     * @since 0.1.7
+     */
     private void refreshTodosCacheAfterTodoToolCall(AgentCallbackContext ctx, String sessionId) {
         if (!(ctx.getInputs() instanceof ToolCallInputs inputs)) {
             return;
@@ -690,19 +804,49 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         }
     }
 
+    /**
+     * card.
+     * 
+     * @param name name
+     * @param agent agent
+     * @param language language
+     * @return the result
+     * @since 0.1.7
+     */
     private static ToolCard card(String name, DeepAgent agent, String language) {
         return ToolMetadataRegistry.buildToolCard(name, agent.getCard().getId() + "." + name, language);
     }
 
+    /**
+     * sessionId.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private static String sessionId(Map<String, Object> inputs) {
         Object value = inputs.get("session_id");
         return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : "default";
     }
 
+    /**
+     * string.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String string(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
 
+    /**
+     * objectList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> objectList(Object value) {
         if (value instanceof List<?> list) {
             return new ArrayList<>(list);
@@ -713,6 +857,14 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         return List.of(value);
     }
 
+    /**
+     * firstNonNull.
+     * 
+     * @param source source
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object firstNonNull(Map<String, Object> source, String[] keys) {
         if (source == null) {
             return null;
@@ -726,6 +878,13 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         return null;
     }
 
+    /**
+     * activeModelId.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
+     */
     private String activeModelId(AgentCallbackContext ctx) {
         if (!(ctx.getAgent() instanceof com.openjiuwen.core.singleagent.agents.ReActAgent reactAgent)) {
             return "";
@@ -743,6 +902,13 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         return "";
     }
 
+    /**
+     * responseUsage.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
+     */
     private static UsageMetadata responseUsage(AgentCallbackContext ctx) {
         if (!(ctx.getInputs() instanceof ModelCallInputs inputs)) {
             return null;
@@ -760,6 +926,13 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * mapList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Map<String, Object>> mapList(Object value) {
         if (value instanceof List<?> list) {
             List<Map<String, Object>> result = new ArrayList<>();

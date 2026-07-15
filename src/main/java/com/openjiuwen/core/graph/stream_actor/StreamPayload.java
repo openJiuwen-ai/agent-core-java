@@ -10,14 +10,19 @@ import com.openjiuwen.core.workflow.component.ComponentAbility;
  * Payload for stream messages between graph nodes.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.stream_actor.base.StreamPayload}.
+ * 
+ * @since 0.1.7
  */
 public class StreamPayload {
-
     private final Object message;
     private final ComponentAbility sourceAbility;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * StreamPayload.
+     * 
+     * @param message message
+     * @param sourceAbility sourceAbility
+     * @since 0.1.7
      */
     public StreamPayload(Object message, ComponentAbility sourceAbility) {
         this.message = message;
@@ -25,14 +30,20 @@ public class StreamPayload {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMessage.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getMessage() {
         return message;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSourceAbility.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ComponentAbility getSourceAbility() {
         return sourceAbility;

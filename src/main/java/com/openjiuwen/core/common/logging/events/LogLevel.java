@@ -4,7 +4,11 @@
 
 package com.openjiuwen.core.common.logging.events;
 
-/** Log level enumeration. */
+/**
+ * Log level enumeration.
+ * 
+ * @since 0.1.7
+ */
 public enum LogLevel {
     DEBUG("DEBUG"),
     INFO("INFO"),
@@ -19,7 +23,10 @@ public enum LogLevel {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

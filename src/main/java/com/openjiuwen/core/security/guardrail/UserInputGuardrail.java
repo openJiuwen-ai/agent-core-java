@@ -9,35 +9,53 @@ import java.util.Map;
 
 /**
  * Guardrail that checks user input events.
+ * 
+ * @since 0.1.7
  */
 public class UserInputGuardrail extends BaseGuardrail {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * UserInputGuardrail.
+     * 
+     * @since 0.1.7
      */
     public UserInputGuardrail() {
         this(null, null, true);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * UserInputGuardrail.
+     * 
+     * @param backend backend
+     * @param events events
+     * @param enableLogging enableLogging
+     * @since 0.1.7
      */
     public UserInputGuardrail(GuardrailBackend backend, List<String> events, boolean enableLogging) {
         super(backend, events, enableLogging);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * defaultEvents.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected List<String> defaultEvents() {
         return List.of("user_input");
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * detect.
+     * 
+     * @param eventName eventName
+     * @param args args
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public GuardrailResult detect(String eventName, Object[] args, Map<String, Object> kwargs) throws Exception {
         Object text = kwargs != null ? kwargs.get("text") : null;
         if (!(text instanceof String stringText) || stringText.isEmpty()) {

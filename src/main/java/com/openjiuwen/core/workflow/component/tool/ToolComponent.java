@@ -16,14 +16,18 @@ import com.openjiuwen.core.workflow.ComponentComposable;
  * Binds a {@link Tool} and creates a {@link ToolExecutable} for graph execution.
  * <p>
  * Mirrors Python's {@code ToolComponent}.
+ * 
+ * @since 0.1.7
  */
 public class ToolComponent implements ComponentComposable {
-
     private final ToolComponentConfig config;
     private Tool tool;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolComponent.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public ToolComponent(ToolComponentConfig config) {
         this.config = config;
@@ -31,20 +35,27 @@ public class ToolComponent implements ComponentComposable {
         // in the full framework. For now we support explicit binding.
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toExecutable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Executable<?, ?> toExecutable() {
         if (tool == null) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_INIT_FAILED,
-                    "error_msg", "tool component not bind a valid tool");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_INIT_FAILED, "error_msg",
+                    "tool component not bind a valid tool");
         }
         return new ToolExecutable(config).setTool(tool);
     }
 
     /**
      * Bind a tool instance to this component.
+     * 
+     * @param tool tool
+     * @return the result
+     * @since 0.1.7
      */
     public ToolComponent bindTool(Tool tool) {
         this.tool = tool;

@@ -12,6 +12,8 @@ import lombok.experimental.SuperBuilder;
 
 /**
  * Variable memory unit.
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
@@ -22,18 +24,24 @@ public class VariableUnit extends BaseMemoryUnit {
     private String variableName;
     private String variableMem;
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getMemType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public MemoryType getMemType() {
         return MemoryType.VARIABLE;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getMemId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getMemId() {
         return "";
     }

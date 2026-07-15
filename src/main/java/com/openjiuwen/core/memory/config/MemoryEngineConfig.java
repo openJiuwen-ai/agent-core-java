@@ -10,18 +10,20 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.memory.common.MemoryCrypto;
+
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
  * Memory engine configuration.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 public class MemoryEngineConfig {
-
     @JsonProperty("default_model_cfg")
     private ModelRequestConfig defaultModelCfg;
 
@@ -45,14 +47,18 @@ public class MemoryEngineConfig {
     private int singleTurnHistorySummaryMaxToken = 128;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MemoryEngineConfig.
+     * 
+     * @param defaultModelCfg defaultModelCfg
+     * @param defaultModelClientCfg defaultModelClientCfg
+     * @param inputMsgMaxLen inputMsgMaxLen
+     * @param cryptoKey cryptoKey
+     * @param forbiddenVariables forbiddenVariables
+     * @param singleTurnHistorySummaryMaxToken singleTurnHistorySummaryMaxToken
+     * @since 0.1.7
      */
-    public MemoryEngineConfig(ModelRequestConfig defaultModelCfg,
-                              ModelClientConfig defaultModelClientCfg,
-                              int inputMsgMaxLen,
-                              byte[] cryptoKey,
-                              String forbiddenVariables,
-                              int singleTurnHistorySummaryMaxToken) {
+    public MemoryEngineConfig(ModelRequestConfig defaultModelCfg, ModelClientConfig defaultModelClientCfg,
+            int inputMsgMaxLen, byte[] cryptoKey, String forbiddenVariables, int singleTurnHistorySummaryMaxToken) {
         this.defaultModelCfg = defaultModelCfg;
         this.defaultModelClientCfg = defaultModelClientCfg;
         this.inputMsgMaxLen = inputMsgMaxLen;
@@ -62,7 +68,10 @@ public class MemoryEngineConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCryptoKey.
+     * 
+     * @param cryptoKey cryptoKey
+     * @since 0.1.7
      */
     public void setCryptoKey(byte[] cryptoKey) {
         this.cryptoKey = cryptoKey != null ? cryptoKey : new byte[0];
@@ -71,17 +80,16 @@ public class MemoryEngineConfig {
 
     /**
      * Validate crypto key: must be empty or exactly 32 bytes.
+     * 
+     * @since 0.1.7
      */
     public void validateCryptoKey() {
         if (cryptoKey == null || cryptoKey.length == 0) {
             return;
         }
         if (cryptoKey.length != MemoryCrypto.AES_KEY_LENGTH) {
-            throw ErrorHelper.buildError(
-                    StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR,
-                    "config_type", "crypto_key",
-                    "error_msg", "crypto_key must be empty or " + MemoryCrypto.AES_KEY_LENGTH + " bytes length"
-            );
+            throw ErrorHelper.buildError(StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR, "config_type", "crypto_key",
+                    "error_msg", "crypto_key must be empty or " + MemoryCrypto.AES_KEY_LENGTH + " bytes length");
         }
     }
 }

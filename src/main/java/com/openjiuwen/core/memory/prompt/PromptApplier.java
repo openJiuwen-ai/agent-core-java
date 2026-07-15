@@ -20,21 +20,36 @@ import java.util.stream.Collectors;
 /**
  * Singleton prompt applier that loads .md prompt templates from classpath resources
  * and applies variable substitution.
+ * 
+ * @since 0.1.7
  */
 public class PromptApplier {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
     private static final String PROMPT_RESOURCE_DIR = "memory/prompt/";
 
     private static volatile PromptApplier instance;
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final ConcurrentHashMap<String, PromptTemplate> promptCache = new ConcurrentHashMap<>();
 
+    /**
+     * PromptApplier.
+     * 
+     * @since 0.1.7
+     */
     private PromptApplier() {
         MEMORY_LOGGER.info("PromptApplier singleton initialized");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInstance.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static PromptApplier getInstance() {
         if (instance == null) {
@@ -47,6 +62,13 @@ public class PromptApplier {
         return instance;
     }
 
+    /**
+     * loadPromptTemplate.
+     * 
+     * @param filePrefix filePrefix
+     * @return the result
+     * @since 0.1.7
+     */
     private PromptTemplate loadPromptTemplate(String filePrefix) {
         PromptTemplate cached = promptCache.get(filePrefix);
         if (cached != null) {
@@ -71,7 +93,12 @@ public class PromptApplier {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * apply.
+     * 
+     * @param filePrefix filePrefix
+     * @param variables variables
+     * @return the result
+     * @since 0.1.7
      */
     public String apply(String filePrefix, Map<String, Object> variables) {
         PromptTemplate template = loadPromptTemplate(filePrefix);
@@ -80,7 +107,10 @@ public class PromptApplier {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clearCache.
+     * 
+     * @param filePrefix filePrefix
+     * @since 0.1.7
      */
     public void clearCache(String filePrefix) {
         if (filePrefix == null) {
@@ -91,14 +121,20 @@ public class PromptApplier {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clearCache.
+     * 
+     * @since 0.1.7
      */
     public void clearCache() {
         clearCache(null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTemplate.
+     * 
+     * @param filePrefix filePrefix
+     * @return the result
+     * @since 0.1.7
      */
     public PromptTemplate getTemplate(String filePrefix) {
         return loadPromptTemplate(filePrefix);

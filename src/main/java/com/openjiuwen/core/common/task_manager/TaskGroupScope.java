@@ -20,12 +20,20 @@ import java.util.concurrent.TimeUnit;
  * Matches Python's async with manager.task_group() behavior:
  * exceptions from tasks are absorbed on scope exit, allowing
  * post-scope status assertions.
+ * 
+ * @since 0.1.7
  */
 public final class TaskGroupScope implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(TaskGroupScope.class);
     private final String name;
     private final TaskContext.Token token;
     private final TaskManager owner;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<Exception> suppressedErrors = new ArrayList<>();
     private volatile ScheduledFuture<?> timeoutFuture;
 
@@ -35,10 +43,22 @@ public final class TaskGroupScope implements AutoCloseable {
         this.token = TaskContext.setTaskGroup(this);
     }
 
+    /**
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getName() {
         return name;
     }
 
+    /**
+     * getErrors.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public List<Exception> getErrors() {
         return Collections.unmodifiableList(suppressedErrors);
     }
@@ -46,20 +66,24 @@ public final class TaskGroupScope implements AutoCloseable {
     /**
      * Mirrors Python's {@code anyio.fail_after()}: cancels all tasks in this group after
      * the given timeout if they have not completed.
-     *
+     * 
      * @param timeout the maximum time to allow before cancellation
      * @return this scope, for fluent chaining
+     * @since 0.1.7
      */
     public TaskGroupScope failAfter(Duration timeout) {
         if (owner != null) {
-            timeoutFuture = owner.schedule(
-                    () -> owner.cancelGroup(name),
-                    timeout.toMillis(),
-                    TimeUnit.MILLISECONDS);
+            timeoutFuture = owner.schedule(() -> owner.cancelGroup(name), timeout.toMillis(), TimeUnit.MILLISECONDS);
         }
         return this;
     }
 
+    /**
+     * close.
+     * 
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     @Override
     public void close() throws Exception {
         try {

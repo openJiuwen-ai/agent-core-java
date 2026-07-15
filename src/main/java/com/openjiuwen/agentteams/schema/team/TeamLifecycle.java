@@ -6,8 +6,8 @@ package com.openjiuwen.agentteams.schema.team;
 
 /**
  * Public enum TeamLifecycle used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum TeamLifecycle {
     CREATED,

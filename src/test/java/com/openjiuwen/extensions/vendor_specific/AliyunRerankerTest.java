@@ -1,29 +1,27 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.extensions.vendor_specific;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
 import com.openjiuwen.core.retrieval.common.RerankerConfig;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-
 class AliyunRerankerTest {
-
     @Test
     void buildRequestPayloadMatchesPythonShapeAndDefaultTopN() {
         InspectableAliyunReranker reranker = new InspectableAliyunReranker(config());
 
-        Map<String, Object> payload = reranker.inspectPayload(
-                "which document matches best",
-                List.of("doc-1", "doc-2"),
-                null,
-                Map.of());
+        Map<String, Object> payload =
+            reranker.inspectPayload("which document matches best", List.of("doc-1", "doc-2"), null, Map.of());
 
         assertEquals("aliyun-reranker", payload.get("model"));
         assertEquals(List.of("model", "input", "parameters"), List.copyOf(payload.keySet()));
@@ -46,11 +44,7 @@ class AliyunRerankerTest {
         Map<String, Object> options = new LinkedHashMap<>();
         options.put("top_n", 1);
 
-        Map<String, Object> payload = reranker.inspectPayload(
-                "query",
-                List.of("doc-1", "doc-2"),
-                "   ",
-                options);
+        Map<String, Object> payload = reranker.inspectPayload("query", List.of("doc-1", "doc-2"), "   ", options);
 
         @SuppressWarnings("unchecked")
         Map<String, Object> parameters = (Map<String, Object>) payload.get("parameters");
@@ -78,10 +72,8 @@ class AliyunRerankerTest {
             super(config);
         }
 
-        private Map<String, Object> inspectPayload(String query,
-                                                   List<String> documents,
-                                                   Object instruct,
-                                                   Map<String, Object> options) {
+        private Map<String, Object> inspectPayload(String query, List<String> documents, Object instruct,
+                Map<String, Object> options) {
             return buildRequestPayload(query, documents, instruct, options);
         }
 

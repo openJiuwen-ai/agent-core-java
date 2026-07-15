@@ -23,31 +23,57 @@ import java.util.function.Consumer;
 
 /**
  * KV data migrator with backup and rollback support.
+ * 
+ * @since 0.1.7
  */
 public class KvMigrator {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * KV_SCHEMA_VERSION.
+     * 
+     * @since 0.1.7
+     */
     public static final String KV_SCHEMA_VERSION = "MEMORY_MIGRATION_KV_SCHEMA_VERSION";
+
+    /**
+     * KV_ENTITY_KEY.
+     * 
+     * @since 0.1.7
+     */
     public static final String KV_ENTITY_KEY = "kv_global";
 
     private final BaseKVStore kvStore;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * KvMigrator.
+     * 
+     * @param kvStore kvStore
+     * @since 0.1.7
      */
     public KvMigrator(BaseKVStore kvStore) {
         this.kvStore = kvStore;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * tryMigrate.
+     * 
+     * @param entityKey entityKey
+     * @param operations operations
+     * @return the result
+     * @since 0.1.7
      */
     public boolean tryMigrate(String entityKey, List<BaseOperation> operations) {
         if (!KV_ENTITY_KEY.equals(entityKey)) {
-            MEMORY_LOGGER.error("[{}] Unsupported entity_key: '{}'. Expected: '{}'",
-                    LogEventType.MEMORY_INIT, entityKey, KV_ENTITY_KEY);
+            MEMORY_LOGGER.error("[{}] Unsupported entity_key: '{}'. Expected: '{}'", LogEventType.MEMORY_INIT,
+                    entityKey, KV_ENTITY_KEY);
             return false;
         }
         if (operations == null || operations.isEmpty()) {
@@ -62,15 +88,14 @@ public class KvMigrator {
         Integer currentVersion = getCurrentVersion();
         int lastOperationVersion = operations.get(operations.size() - 1).getSchemaVersion();
         if (currentVersion != null && currentVersion >= lastOperationVersion) {
-            MEMORY_LOGGER.info("[{}] KV version {} >= {}, no migration needed",
-                    LogEventType.MEMORY_INIT, currentVersion, lastOperationVersion);
+            MEMORY_LOGGER.info("[{}] KV version {} >= {}, no migration needed", LogEventType.MEMORY_INIT,
+                    currentVersion, lastOperationVersion);
             return true;
         }
 
         final Integer cv = currentVersion;
-        List<BaseOperation> pendingOps = operations.stream()
-                .filter(op -> cv == null || op.getSchemaVersion() > cv)
-                .toList();
+        List<BaseOperation> pendingOps =
+            operations.stream().filter(op -> cv == null || op.getSchemaVersion() > cv).toList();
         if (pendingOps.isEmpty()) {
             return true;
         }
@@ -83,9 +108,8 @@ public class KvMigrator {
             int lastVersion = currentVersion != null ? currentVersion : 0;
             for (int i = 0; i < pendingOps.size(); i++) {
                 BaseOperation op = pendingOps.get(i);
-                MEMORY_LOGGER.info("[{}] Executing KV operation {}/{}: {} (v={})",
-                        LogEventType.MEMORY_INIT, i + 1, pendingOps.size(),
-                        op.getClass().getSimpleName(), op.getSchemaVersion());
+                MEMORY_LOGGER.info("[{}] Executing KV operation {}/{}: {} (v={})", LogEventType.MEMORY_INIT, i + 1,
+                        pendingOps.size(), op.getClass().getSimpleName(), op.getSchemaVersion());
                 executeOperation(op);
                 lastVersion = op.getSchemaVersion();
             }
@@ -104,6 +128,12 @@ public class KvMigrator {
         }
     }
 
+    /**
+     * getCurrentVersion.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Integer getCurrentVersion() {
         Object vVal = kvStore.get(KV_SCHEMA_VERSION);
         if (vVal == null) {
@@ -119,13 +149,21 @@ public class KvMigrator {
             return (Integer) vVal;
         }
         if (vVal instanceof String s) {
-            try { return Integer.parseInt(s); } catch (NumberFormatException e) {
+            try {
+                return Integer.parseInt(s);
+            } catch (NumberFormatException e) {
                 throw new IllegalStateException("Invalid KV_SCHEMA_VERSION format: " + s);
             }
         }
         throw new IllegalStateException("Invalid KV_SCHEMA_VERSION type: " + vVal.getClass().getName());
     }
 
+    /**
+     * hasMemoryModuleData.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean hasMemoryModuleData() {
         Set<String> prefixes = KvPrefixRegistry.getInstance().getAllPrefixes();
         for (String prefix : prefixes) {
@@ -137,17 +175,29 @@ public class KvMigrator {
         return false;
     }
 
+    /**
+     * updateVersion.
+     * 
+     * @param version version
+     * @since 0.1.7
+     */
     private void updateVersion(int version) {
         kvStore.set(KV_SCHEMA_VERSION, String.valueOf(version));
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * executeOperation.
+     * 
+     * @param op op
+     * @since 0.1.7
+     */
     private void executeOperation(BaseOperation op) {
         String className = op.getClass().getSimpleName();
         if ("UpdateKVOperation".equals(className)) {
             try {
-                Consumer<BaseKVStore> func = (Consumer<BaseKVStore>)
-                        op.getClass().getMethod("getUpdateFunc").invoke(op);
+                Consumer<BaseKVStore> func =
+                    (Consumer<BaseKVStore>) op.getClass().getMethod("getUpdateFunc").invoke(op);
                 func.accept(kvStore);
             } catch (ReflectiveOperationException e) {
                 throw new RuntimeException("Failed to execute KV operation", e);
@@ -157,6 +207,13 @@ public class KvMigrator {
         }
     }
 
+    /**
+     * validateOperationsOrder.
+     * 
+     * @param operations operations
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean validateOperationsOrder(List<BaseOperation> operations) {
         for (int i = 0; i < operations.size() - 1; i++) {
             if (operations.get(i).getSchemaVersion() >= operations.get(i + 1).getSchemaVersion()) {
@@ -166,6 +223,13 @@ public class KvMigrator {
         return true;
     }
 
+    /**
+     * createBackup.
+     * 
+     * @param currentVersion currentVersion
+     * @return the result
+     * @since 0.1.7
+     */
     private String createBackup(Integer currentVersion) {
         String backupKey = KV_SCHEMA_VERSION + "_BACKUP_" + System.currentTimeMillis();
         Map<String, Object> backupData = new LinkedHashMap<>();
@@ -192,6 +256,12 @@ public class KvMigrator {
         return backupKey;
     }
 
+    /**
+     * restoreFromBackup.
+     * 
+     * @param backupKey backupKey
+     * @since 0.1.7
+     */
     private void restoreFromBackup(String backupKey) {
         Object backupJson = kvStore.get(backupKey);
         if (backupJson == null) {
@@ -199,8 +269,8 @@ public class KvMigrator {
             return;
         }
         try {
-            Map<String, Object> backupData = MAPPER.readValue(String.valueOf(backupJson),
-                    new TypeReference<>() {});
+            Map<String, Object> backupData = MAPPER.readValue(String.valueOf(backupJson), new TypeReference<>() {
+            });
             Set<String> prefixes = KvPrefixRegistry.getInstance().getAllPrefixes();
             for (String prefix : prefixes) {
                 kvStore.deleteByPrefix(prefix, null);
@@ -214,12 +284,18 @@ public class KvMigrator {
         }
     }
 
+    /**
+     * cleanupBackup.
+     * 
+     * @param backupKey backupKey
+     * @since 0.1.7
+     */
     private void cleanupBackup(String backupKey) {
         try {
             kvStore.delete(backupKey);
         } catch (Exception e) {
-            MEMORY_LOGGER.warn("[{}] Failed to cleanup backup {}: {}",
-                    LogEventType.MEMORY_INIT, backupKey, e.getMessage());
+            MEMORY_LOGGER.warn("[{}] Failed to cleanup backup {}: {}", LogEventType.MEMORY_INIT, backupKey,
+                    e.getMessage());
         }
     }
 }

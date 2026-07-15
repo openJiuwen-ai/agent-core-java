@@ -4,28 +4,26 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-
 /**
  * Configuration for the {@link DialogueCompressor} ContextProcessor.
  * <p>
  * Mirrors Python's {@code DialogueCompressorConfig}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class DialogueCompressorConfig {
-
-    /**
-     * Maximum number of messages allowed before compression is triggered.
-     */
     private Integer messagesThreshold;
 
     /**
@@ -68,6 +66,8 @@ public class DialogueCompressorConfig {
 
     /**
      * Validate configuration constraints matching Python Pydantic rules.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         if (messagesThreshold != null && messagesThreshold <= 0) {

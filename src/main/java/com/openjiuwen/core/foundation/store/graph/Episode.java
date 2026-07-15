@@ -10,53 +10,75 @@ import java.util.Map;
 
 /**
  * Episode nodes with no name.
+ * 
+ * @since 0.1.7
  */
 public class Episode extends BaseGraphObject {
     private int validSince = -1;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Object> entities = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Episode.
+     * 
+     * @since 0.1.7
      */
     public Episode() {
         setObjType("Episode");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValidSince.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getValidSince() {
         return validSince;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setValidSince.
+     * 
+     * @param validSince validSince
+     * @since 0.1.7
      */
     public void setValidSince(int validSince) {
         this.validSince = validSince;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEntities.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> getEntities() {
         return entities;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEntities.
+     * 
+     * @param entities entities
+     * @since 0.1.7
      */
     public void setEntities(List<Object> entities) {
         this.entities = entities;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> toMap() {
         Map<String, Object> result = super.toMap();
         List<String> entityIds = new ArrayList<>();

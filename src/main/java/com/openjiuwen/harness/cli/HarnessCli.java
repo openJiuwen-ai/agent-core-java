@@ -13,22 +13,24 @@ import java.util.Map;
 
 /**
  * Public class HarnessCli used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class HarnessCli {
     /**
-     * Auto-generated for codecheck compliance.
+     * runOnce.
+     * 
+     * @param opts opts
+     * @param prompt prompt
+     * @param outputFormat outputFormat
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> runOnce(CLIOptions opts, String prompt, String outputFormat) {
         DeepAgentConfig config = DeepAgentConfig.builder()
-                .workspacePath(opts != null && opts.getWorkspace() != null ? opts.getWorkspace() : ".")
-                .build();
-        var agent = HarnessFactory.createDeepAgent(
-                AgentCard.builder().name("cli_agent").description("CLI agent").build(),
-                config,
-                null
-        );
+                .workspacePath(opts != null && opts.getWorkspace() != null ? opts.getWorkspace() : ".").build();
+        var agent = HarnessFactory
+                .createDeepAgent(AgentCard.builder().name("cli_agent").description("CLI agent").build(), config, null);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("prompt", prompt);
         result.put("output_format", outputFormat);
@@ -37,7 +39,11 @@ public class HarnessCli {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runChat.
+     * 
+     * @param opts opts
+     * @return the result
+     * @since 0.1.7
      */
     public SessionStore runChat(CLIOptions opts) {
         SessionStore store = new SessionStore();

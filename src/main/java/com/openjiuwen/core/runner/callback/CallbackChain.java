@@ -26,37 +26,69 @@ import java.util.function.Function;
  * <p>
  * Provides ordered execution, error handling, and rollback capabilities
  * for groups of related callbacks.
+ * 
+ * @since 0.1.7
  */
 public class CallbackChain {
-
     private static final Logger logger = LoggerFactory.getLogger(CallbackChain.class);
 
     private final String name;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<CallbackInfo> callbacks = new ArrayList<>();
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<Function<Map<String, Object>, Object>, Consumer<ChainContext>> rollbackHandlers = new HashMap<>();
-    private final Map<Function<Map<String, Object>, Object>, Function<ExceptionContext, Object>> errorHandlers = new HashMap<>();
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
+    private final Map<Function<Map<String, Object>, Object>, Function<ExceptionContext, Object>> errorHandlers =
+        new HashMap<>();
 
     /**
      * Context isPassed to error handlers: the exception + the chain context.
+     * 
+     * @since 0.1.7
      */
-    public record ExceptionContext(Exception exception, ChainContext chainContext) {}
+    public record ExceptionContext(Exception exception, ChainContext chainContext) {
+    }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CallbackChain.
+     * 
+     * @param name name
+     * @since 0.1.7
      */
     public CallbackChain(String name) {
         this.name = name != null ? name : "";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCallbacks.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<CallbackInfo> getCallbacks() {
         return callbacks;
@@ -64,14 +96,14 @@ public class CallbackChain {
 
     /**
      * Add callback to the chain.
-     *
-     * @param callbackInfo    Callback metadata and configuration
+     * 
+     * @param callbackInfo Callback metadata and configuration
      * @param rollbackHandler Optional function to call on rollback
-     * @param errorHandler    Optional function to call on error
+     * @param errorHandler Optional function to call on error
+     * @since 0.1.7
      */
-    public void add(CallbackInfo callbackInfo,
-                    Consumer<ChainContext> rollbackHandler,
-                    Function<ExceptionContext, Object> errorHandler) {
+    public void add(CallbackInfo callbackInfo, Consumer<ChainContext> rollbackHandler,
+            Function<ExceptionContext, Object> errorHandler) {
         callbacks.add(callbackInfo);
         callbacks.sort((a, b) -> Integer.compare(b.getPriority(), a.getPriority()));
 
@@ -85,8 +117,9 @@ public class CallbackChain {
 
     /**
      * Remove callback from the chain.
-     *
+     * 
      * @param callback Callback function to remove
+     * @since 0.1.7
      */
     public void remove(Function<Map<String, Object>, Object> callback) {
         callbacks.removeIf(ci -> ci.getCallback() == callback);
@@ -99,9 +132,10 @@ public class CallbackChain {
      * <p>
      * Executes callbacks in priority order, passing results between them.
      * Supports retry logic, error handling, and rollback on failure.
-     *
+     * 
      * @param context Chain execution context
      * @return ChainResult with execution outcome
+     * @since 0.1.7
      */
     public ChainResult execute(ChainContext context) {
         List<Function<Map<String, Object>, Object>> executedCallbacks = new ArrayList<>();
@@ -140,20 +174,14 @@ public class CallbackChain {
                         if (chainResult.getAction() == ChainAction.BREAK) {
                             context.getResults().add(chainResult.getResult());
                             mergeResultToContext(context, chainResult.getResult());
-                            return ChainResult.builder()
-                                    .action(ChainAction.BREAK)
-                                    .result(chainResult.getResult())
-                                    .context(context)
-                                    .build();
+                            return ChainResult.builder().action(ChainAction.BREAK).result(chainResult.getResult())
+                                    .context(context).build();
                         } else if (chainResult.getAction() == ChainAction.RETRY) {
                             continue;
                         } else if (chainResult.getAction() == ChainAction.ROLLBACK) {
                             rollback(executedCallbacks, context);
-                            return ChainResult.builder()
-                                    .action(ChainAction.ROLLBACK)
-                                    .context(context)
-                                    .error(chainResult.getError())
-                                    .build();
+                            return ChainResult.builder().action(ChainAction.ROLLBACK).context(context)
+                                    .error(chainResult.getError()).build();
                         } else {
                             context.getResults().add(chainResult.getResult());
                             mergeResultToContext(context, chainResult.getResult());
@@ -171,7 +199,6 @@ public class CallbackChain {
                     }
 
                     break; // Success, exit retry loop
-
                 } catch (TimeoutException e) {
                     logger.error("Callback {} timed out", callbackInfo.getCallbackDisplayName());
                     if (attempt < callbackInfo.getMaxRetries()) {
@@ -179,18 +206,14 @@ public class CallbackChain {
                         continue;
                     } else {
                         rollback(executedCallbacks, context);
-                        return ChainResult.builder()
-                                .action(ChainAction.ROLLBACK)
-                                .context(context)
-                                .error(new TimeoutException("Callback timeout"))
-                                .build();
+                        return ChainResult.builder().action(ChainAction.ROLLBACK).context(context)
+                                .error(new TimeoutException("Callback timeout")).build();
                     }
                 } catch (Exception e) {
                     // Try error handler
                     if (errorHandlers.containsKey(callback)) {
                         try {
-                            Object errorResult = errorHandlers.get(callback)
-                                    .apply(new ExceptionContext(e, context));
+                            Object errorResult = errorHandlers.get(callback).apply(new ExceptionContext(e, context));
                             if (errorResult != null) {
                                 context.getResults().add(errorResult);
                                 executedCallbacks.add(callback);
@@ -203,36 +226,31 @@ public class CallbackChain {
 
                     // Retry if attempts remaining
                     if (attempt < callbackInfo.getMaxRetries()) {
-                        logger.info("Retrying {} (attempt {})",
-                                callbackInfo.getCallbackDisplayName(), attempt + 1);
+                        logger.info("Retrying {} (attempt {})", callbackInfo.getCallbackDisplayName(), attempt + 1);
                         sleepRetryDelay(callbackInfo.getRetryDelay());
                         continue;
                     }
 
                     // Rollback on final failure
                     rollback(executedCallbacks, context);
-                    return ChainResult.builder()
-                            .action(ChainAction.ROLLBACK)
-                            .context(context)
-                            .error(e)
-                            .build();
+                    return ChainResult.builder().action(ChainAction.ROLLBACK).context(context).error(e).build();
                 }
             }
         }
 
         context.setCompleted(true);
-        return ChainResult.builder()
-                .action(ChainAction.CONTINUE)
-                .result(context.getLastResult())
-                .context(context)
+        return ChainResult.builder().action(ChainAction.CONTINUE).result(context.getLastResult()).context(context)
                 .build();
     }
 
     /**
      * Execute rollback handlers for executed callbacks in reverse order.
+     * 
+     * @param executedCallbacks executedCallbacks
+     * @param context context
+     * @since 0.1.7
      */
-    private void rollback(List<Function<Map<String, Object>, Object>> executedCallbacks,
-                          ChainContext context) {
+    private void rollback(List<Function<Map<String, Object>, Object>> executedCallbacks, ChainContext context) {
         context.setRolledBack(true);
 
         for (int i = executedCallbacks.size() - 1; i >= 0; i--) {
@@ -248,9 +266,18 @@ public class CallbackChain {
         }
     }
 
-    private Object executeWithTimeout(Function<Map<String, Object>, Object> callback,
-                                       Map<String, Object> kwargs,
-                                       double timeoutSeconds) throws TimeoutException {
+    /**
+     * executeWithTimeout.
+     * 
+     * @param callback callback
+     * @param kwargs kwargs
+     * @param timeoutSeconds timeoutSeconds
+     * @return the result
+     * @throws TimeoutException TimeoutException
+     * @since 0.1.7
+     */
+    private Object executeWithTimeout(Function<Map<String, Object>, Object> callback, Map<String, Object> kwargs,
+            double timeoutSeconds) throws TimeoutException {
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             Callable<Object> task = () -> callback.apply(kwargs);
@@ -271,6 +298,12 @@ public class CallbackChain {
         }
     }
 
+    /**
+     * sleepRetryDelay.
+     * 
+     * @param delaySeconds delaySeconds
+     * @since 0.1.7
+     */
     private static void sleepRetryDelay(double delaySeconds) {
         if (delaySeconds > 0) {
             try {
@@ -282,6 +315,13 @@ public class CallbackChain {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * mergeResultToContext.
+     * 
+     * @param context context
+     * @param result result
+     * @since 0.1.7
+     */
     private static void mergeResultToContext(ChainContext context, Object result) {
         if (result instanceof Map) {
             Map<String, Object> resultMap = (Map<String, Object>) result;

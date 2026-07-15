@@ -15,20 +15,31 @@ import com.openjiuwen.core.memory.migration.migrator.VectorMigrator;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
 import com.openjiuwen.core.memory.migration.operation.OperationRegistry;
 import com.openjiuwen.spi.store.BaseKVStore;
+
 import java.util.List;
 
 /**
  * Entry point for running all memory migrations (SQL, Vector, KV).
+ * 
+ * @since 0.1.7
  */
 public final class RunMigrations {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
+    /**
+     * RunMigrations.
+     * 
+     * @since 0.1.7
+     */
     private RunMigrations() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runSqlMigrations.
+     * 
+     * @param sqlDbStore sqlDbStore
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean runSqlMigrations(SqlDbStore sqlDbStore) {
         OperationRegistry registry = MigrationPlan.getSqlRegistry();
@@ -41,8 +52,7 @@ public final class RunMigrations {
         for (String entityKey : entityKeys) {
             List<BaseOperation> ops = registry.getOperations(entityKey);
             if (!migrator.tryMigrate(entityKey, ops)) {
-                MEMORY_LOGGER.error("[{}] SQL migration failed for entity: {}",
-                        LogEventType.MEMORY_INIT, entityKey);
+                MEMORY_LOGGER.error("[{}] SQL migration failed for entity: {}", LogEventType.MEMORY_INIT, entityKey);
                 return false;
             }
         }
@@ -50,7 +60,11 @@ public final class RunMigrations {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runVectorMigrations.
+     * 
+     * @param semanticStore semanticStore
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean runVectorMigrations(SemanticStore semanticStore) {
         OperationRegistry registry = MigrationPlan.getVectorRegistry();
@@ -63,8 +77,7 @@ public final class RunMigrations {
         for (String entityKey : entityKeys) {
             List<BaseOperation> ops = registry.getOperations(entityKey);
             if (!migrator.tryMigrate(entityKey, ops)) {
-                MEMORY_LOGGER.error("[{}] Vector migration failed for entity: {}",
-                        LogEventType.MEMORY_INIT, entityKey);
+                MEMORY_LOGGER.error("[{}] Vector migration failed for entity: {}", LogEventType.MEMORY_INIT, entityKey);
                 return false;
             }
         }
@@ -72,7 +85,11 @@ public final class RunMigrations {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runKvMigrations.
+     * 
+     * @param kvStore kvStore
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean runKvMigrations(BaseKVStore kvStore) {
         OperationRegistry registry = MigrationPlan.getKvRegistry();
@@ -85,8 +102,7 @@ public final class RunMigrations {
         for (String entityKey : entityKeys) {
             List<BaseOperation> ops = registry.getOperations(entityKey);
             if (!migrator.tryMigrate(entityKey, ops)) {
-                MEMORY_LOGGER.error("[{}] KV migration failed for entity: {}",
-                        LogEventType.MEMORY_INIT, entityKey);
+                MEMORY_LOGGER.error("[{}] KV migration failed for entity: {}", LogEventType.MEMORY_INIT, entityKey);
                 return false;
             }
         }

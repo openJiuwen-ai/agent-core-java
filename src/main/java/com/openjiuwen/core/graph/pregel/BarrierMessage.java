@@ -8,18 +8,28 @@ package com.openjiuwen.core.graph.pregel;
  * Barrier message for N→1 fan-in synchronization.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.BarrierMessage}.
+ * 
+ * @since 0.1.7
  */
 public class BarrierMessage extends Message {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * BarrierMessage.
+     * 
+     * @param sender sender
+     * @param target target
+     * @since 0.1.7
      */
     public BarrierMessage(String sender, String target) {
         super(sender, target);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BarrierMessage.
+     * 
+     * @param sender sender
+     * @param target target
+     * @param payload payload
+     * @since 0.1.7
      */
     public BarrierMessage(String sender, String target, Object payload) {
         super(sender, target, payload);

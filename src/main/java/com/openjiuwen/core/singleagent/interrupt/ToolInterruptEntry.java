@@ -5,6 +5,7 @@
 package com.openjiuwen.core.singleagent.interrupt;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,7 +16,7 @@ import java.io.Serializable;
 
 /**
  * Persisted interrupted tool entry for resume support.
- *
+ * 
  * @since 0.1.7
  */
 @Data

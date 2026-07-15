@@ -9,14 +9,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Public class ToolOutput used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class ToolOutput used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class ToolOutput {
     private boolean isSuccess;
@@ -24,11 +24,17 @@ public class ToolOutput {
     private String error;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolOutputBuilder.
+     * 
+     * @since 0.1.7
      */
     public static class ToolOutputBuilder {
         /**
-         * Auto-generated for codecheck compliance.
+         * success.
+         * 
+         * @param value value
+         * @return the result
+         * @since 0.1.7
          */
         public ToolOutputBuilder success(boolean value) {
             this.isSuccess = value;

@@ -4,7 +4,11 @@
 
 package com.openjiuwen.core.common.logging.events;
 
-/** Event status enumeration. */
+/**
+ * Event status enumeration.
+ * 
+ * @since 0.1.7
+ */
 public enum EventStatus {
     SUCCESS("success"),
     FAILURE("failure"),
@@ -19,7 +23,10 @@ public enum EventStatus {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

@@ -12,9 +12,10 @@ package com.openjiuwen.core.controller.schema;
  * {@code working -> input-required -> (continue execution or cancel)}
  * <p>
  * Mirrors Python's {@code TaskStatus(str, Enum)}.
+ * 
+ * @since 0.1.7
  */
 public enum TaskStatus {
-
     SUBMITTED("submitted"),
     WORKING("working"),
     PAUSED("paused"),
@@ -32,14 +33,21 @@ public enum TaskStatus {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static TaskStatus fromValue(String value) {
         for (TaskStatus status : values()) {
@@ -50,10 +58,13 @@ public enum TaskStatus {
         throw new IllegalArgumentException("Unknown TaskStatus: " + value);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String toString() {
         return value;
     }

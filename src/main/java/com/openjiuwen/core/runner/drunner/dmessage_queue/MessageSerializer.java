@@ -5,9 +5,6 @@
 package com.openjiuwen.core.runner.drunner.dmessage_queue;
 
 import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonSerializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializerProvider;
@@ -37,14 +34,20 @@ import java.util.function.Function;
  * <p>
  * Mirrors Python's {@code message_serializer.py} with:
  * <ul>
- *   <li>{@code MAX_RECURSE_DEPTH} – prevents runaway recursion on nested payloads</li>
- *   <li>{@code TYPE_REGISTRY} – allows registering custom classes for deserialization via {@code __class__} marker</li>
- *   <li>datetime serialization – encodes {@link OffsetDateTime}/{@link LocalDateTime} as {@code {"__type__":"datetime","value":"..."}}</li>
+ * <li>{@code MAX_RECURSE_DEPTH} – prevents runaway recursion on nested payloads</li>
+ * <li>{@code TYPE_REGISTRY} – allows registering custom classes for deserialization via {@code __class__} marker</li>
+ * <li>datetime serialization – encodes {@link OffsetDateTime}/{@link LocalDateTime} as
+ * {@code {"__type__":"datetime","value":"..."}}</li>
  * </ul>
+ * 
+ * @since 0.1.7
  */
 public final class MessageSerializer {
-
-    /** Maximum recursion depth for payload serialization / deserialization. */
+    /**
+     * MAX_RECURSE_DEPTH.
+     * 
+     * @since 0.1.7
+     */
     public static final int MAX_RECURSE_DEPTH = 10;
 
     private static final ObjectMapper MAPPER;
@@ -54,6 +57,8 @@ public final class MessageSerializer {
      * <p>
      * When a JSON object contains {@code "__class__": "SomeName"}, the registry is
      * consulted to find a function that can reconstruct the object from a Map.
+     * 
+     * @since 0.1.7
      */
     private static final Map<String, Function<Map<String, Object>, Object>> TYPE_REGISTRY = new ConcurrentHashMap<>();
 
@@ -63,10 +68,8 @@ public final class MessageSerializer {
         // datetime serializers
         module.addSerializer(OffsetDateTime.class, new JsonSerializer<>() {
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
-            public void serialize(OffsetDateTime value, JsonGenerator gen, SerializerProvider provider) throws IOException {
+            public void serialize(OffsetDateTime value, JsonGenerator gen, SerializerProvider provider)
+                    throws IOException {
                 gen.writeStartObject();
                 gen.writeStringField("__type__", "datetime");
                 gen.writeStringField("value", value.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME));
@@ -75,10 +78,8 @@ public final class MessageSerializer {
         });
         module.addSerializer(LocalDateTime.class, new JsonSerializer<>() {
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
-            public void serialize(LocalDateTime value, JsonGenerator gen, SerializerProvider provider) throws IOException {
+            public void serialize(LocalDateTime value, JsonGenerator gen, SerializerProvider provider)
+                    throws IOException {
                 gen.writeStartObject();
                 gen.writeStringField("__type__", "datetime");
                 gen.writeStringField("value", value.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
@@ -89,6 +90,11 @@ public final class MessageSerializer {
         MAPPER = mapper;
     }
 
+    /**
+     * MessageSerializer.
+     * 
+     * @since 0.1.7
+     */
     private MessageSerializer() {
     }
 
@@ -98,9 +104,10 @@ public final class MessageSerializer {
      * Register a type for deserialization. When a dict with {@code "__class__": name} is
      * encountered during deserialization, the supplied function is called with the remaining
      * fields to reconstruct the object.
-     *
-     * @param className      class marker value
-     * @param deserializer   function that takes field map and returns the domain object
+     * 
+     * @param className class marker value
+     * @param deserializer function that takes field map and returns the domain object
+     * @since 0.1.7
      */
     public static void registerType(String className, Function<Map<String, Object>, Object> deserializer) {
         TYPE_REGISTRY.put(className, deserializer);
@@ -108,6 +115,9 @@ public final class MessageSerializer {
 
     /**
      * Unregister a previously registered type.
+     * 
+     * @param className className
+     * @since 0.1.7
      */
     public static void unregisterType(String className) {
         TYPE_REGISTRY.remove(className);
@@ -115,15 +125,21 @@ public final class MessageSerializer {
 
     /**
      * Returns an unmodifiable view of the current type registry.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Function<Map<String, Object>, Object>> getTypeRegistry() {
         return Map.copyOf(TYPE_REGISTRY);
     }
 
-    // ========== Serialization ==========
-
     /**
-     * Auto-generated for codecheck compliance.
+     * serializeMessage.
+     * 
+     * @param message message
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public static byte[] serializeMessage(DmqMessage message) throws Exception {
         Map<String, Object> data = new LinkedHashMap<>();
@@ -153,12 +169,15 @@ public final class MessageSerializer {
         return MAPPER.writeValueAsBytes(data);
     }
 
-    // ========== Deserialization ==========
-
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * deserializeMessage.
+     * 
+     * @param bytes bytes
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public static DmqMessage deserializeMessage(byte[] bytes) throws Exception {
         Map<String, Object> data = MAPPER.readValue(bytes, Map.class);
         // Recursively deserialize the body payload (handles __class__ and __type__ markers)
@@ -185,6 +204,10 @@ public final class MessageSerializer {
     /**
      * Recursively serialize a payload with depth limit.
      * Handles Enum values, Maps, Collections/arrays, and datetime objects.
+     *
+     * @param payload Object
+     * @param depth depth
+     * @return Object
      */
     @SuppressWarnings("unchecked")
     static Object serializePayload(Object payload, int depth) {
@@ -248,6 +271,10 @@ public final class MessageSerializer {
     /**
      * Recursively deserialize a payload with depth limit.
      * Handles {@code __class__} markers (type registry) and {@code __type__: datetime}.
+     *
+     * @param payload Object
+     * @param depth depth
+     * @return Object
      */
     @SuppressWarnings("unchecked")
     static Object deserializePayload(Object payload, int depth) {
@@ -302,8 +329,13 @@ public final class MessageSerializer {
         return payload;
     }
 
-    // ========== Internal ==========
-
+    /**
+     * populateCommonFields.
+     * 
+     * @param message message
+     * @param data data
+     * @since 0.1.7
+     */
     private static void populateCommonFields(DmqMessage message, Map<String, Object> data) {
         message.setMessageId(String.valueOf(data.getOrDefault("message_id", "")));
         message.setBody(data.get("body"));

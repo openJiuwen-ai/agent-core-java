@@ -12,35 +12,57 @@ import java.util.Map;
  * <p>
  * Mirrors Python's top-level export of {@code Session} and
  * {@code create_agent_group_session} from {@code openjiuwen.core.multi_agent}.
+ * 
+ * @since 0.1.7
  */
 public final class MultiAgentSessions {
-
+    /**
+     * MultiAgentSessions.
+     * 
+     * @since 0.1.7
+     */
     private MultiAgentSessions() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createAgentGroupSession.
+     * 
+     * @param sessionId sessionId
+     * @param envs envs
+     * @return the result
+     * @since 0.1.7
      */
     public static Session createAgentGroupSession(String sessionId, Map<String, Object> envs) {
         return Session.create(sessionId, envs);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createAgentGroupSession.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Session createAgentGroupSession() {
         return Session.create(null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createAgentGroupSession.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public static Session createAgentGroupSession(String sessionId) {
         return Session.create(sessionId, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createAgentGroupSession.
+     * 
+     * @param envs envs
+     * @return the result
+     * @since 0.1.7
      */
     public static Session createAgentGroupSession(Map<String, Object> envs) {
         return Session.create(null, envs);

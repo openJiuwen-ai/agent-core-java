@@ -4,15 +4,21 @@
 
 package com.openjiuwen.core.memory.migration;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.memory.common.KvPrefixRegistry;
 import com.openjiuwen.core.memory.migration.migrator.KvMigrator;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
 import com.openjiuwen.core.memory.migration.operation.OperationMetadata;
 import com.openjiuwen.core.memory.migration.operation.UpdateKVOperation;
 import com.openjiuwen.core.memory.support.TestInMemoryKVStore;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,13 +26,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class KvMigratorTest {
-
     private static final String PREFIX = "user_message";
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -47,12 +47,10 @@ class KvMigratorTest {
         kvStore.set(PREFIX + ":2", "old2");
 
         KvMigrator migrator = new KvMigrator(kvStore);
-        UpdateKVOperation op = new UpdateKVOperation(
-                new OperationMetadata(2, "append suffix"),
-                store -> {
-                    store.set(PREFIX + ":1", "migrated");
-                    store.set(PREFIX + ":2", "migrated");
-                });
+        UpdateKVOperation op = new UpdateKVOperation(new OperationMetadata(2, "append suffix"), store -> {
+            store.set(PREFIX + ":1", "migrated");
+            store.set(PREFIX + ":2", "migrated");
+        });
 
         assertTrue(migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(op)));
         assertEquals("migrated", kvStore.get(PREFIX + ":1"));
@@ -76,31 +74,28 @@ class KvMigratorTest {
         kvStore.set("key4", "value4");
 
         KvMigrator migrator = new KvMigrator(kvStore);
-        List<UpdateKVOperation> operations = List.of(
-                new UpdateKVOperation(new OperationMetadata(1, "rename key1 to key2"), store -> {
-                    Object value = store.get("key1");
-                    if (value != null) {
-                        store.set("key2", value);
-                        store.delete("key1");
-                    }
-                }),
-                new UpdateKVOperation(new OperationMetadata(2, "rename key2 to key3"), store -> {
-                    Object value = store.get("key2");
-                    if (value != null) {
-                        store.set("key3", value);
-                        store.delete("key2");
-                    }
-                }),
-                new UpdateKVOperation(new OperationMetadata(3, "merge key3 and key4"), store -> {
-                    Object value3 = store.get("key3");
-                    Object value4 = store.get("key4");
-                    if (value3 != null || value4 != null) {
-                        store.set("key5", "{\"key3\":\"" + value3 + "\",\"key4\":\"" + value4 + "\"}");
-                        store.delete("key3");
-                        store.delete("key4");
-                    }
-                })
-        );
+        List<UpdateKVOperation> operations =
+            List.of(new UpdateKVOperation(new OperationMetadata(1, "rename key1 to key2"), store -> {
+                Object value = store.get("key1");
+                if (value != null) {
+                    store.set("key2", value);
+                    store.delete("key1");
+                }
+            }), new UpdateKVOperation(new OperationMetadata(2, "rename key2 to key3"), store -> {
+                Object value = store.get("key2");
+                if (value != null) {
+                    store.set("key3", value);
+                    store.delete("key2");
+                }
+            }), new UpdateKVOperation(new OperationMetadata(3, "merge key3 and key4"), store -> {
+                Object value3 = store.get("key3");
+                Object value4 = store.get("key4");
+                if (value3 != null || value4 != null) {
+                    store.set("key5", "{\"key3\":\"" + value3 + "\",\"key4\":\"" + value4 + "\"}");
+                    store.delete("key3");
+                    store.delete("key4");
+                }
+            }));
 
         assertTrue(migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.copyOf(operations)));
         assertEquals(null, kvStore.get("key1"));
@@ -117,12 +112,11 @@ class KvMigratorTest {
         kvStore.set(KvMigrator.KV_SCHEMA_VERSION, "invalid_version");
 
         KvMigrator migrator = new KvMigrator(kvStore);
-        UpdateKVOperation op = new UpdateKVOperation(
-                new OperationMetadata(1, "migrate"),
-                store -> store.set("migrated", "true"));
+        UpdateKVOperation op =
+            new UpdateKVOperation(new OperationMetadata(1, "migrate"), store -> store.set("migrated", "true"));
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(op)));
+        IllegalStateException error =
+            assertThrows(IllegalStateException.class, () -> migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(op)));
         assertTrue(error.getMessage().contains("Invalid KV_SCHEMA_VERSION format"));
         assertTrue(error.getMessage().contains("invalid_version"));
     }
@@ -134,15 +128,14 @@ class KvMigratorTest {
         stringStore.set("old_key", "old_value");
         KvMigrator stringMigrator = new KvMigrator(stringStore);
 
-        UpdateKVOperation stringOp = new UpdateKVOperation(
-                new OperationMetadata(2, "migrate string version"),
-                store -> {
-                    Object value = store.get("old_key");
-                    if (value != null) {
-                        store.set("new_key", value);
-                        store.delete("old_key");
-                    }
-                });
+        UpdateKVOperation stringOp =
+            new UpdateKVOperation(new OperationMetadata(2, "migrate string version"), store -> {
+                Object value = store.get("old_key");
+                if (value != null) {
+                    store.set("new_key", value);
+                    store.delete("old_key");
+                }
+            });
 
         assertTrue(stringMigrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(stringOp)));
         assertEquals(null, stringStore.get("old_key"));
@@ -164,9 +157,8 @@ class KvMigratorTest {
     void tryMigrateRunsAllOperationsWhenVersionFieldDoesNotExist() {
         TestInMemoryKVStore kvStore = new TestInMemoryKVStore();
         KvMigrator migrator = new KvMigrator(kvStore);
-        UpdateKVOperation op = new UpdateKVOperation(
-                new OperationMetadata(1, "initialize"),
-                store -> store.set("initialized", "true"));
+        UpdateKVOperation op =
+            new UpdateKVOperation(new OperationMetadata(1, "initialize"), store -> store.set("initialized", "true"));
 
         assertTrue(migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(op)));
         assertEquals("true", kvStore.get("initialized"));
@@ -178,17 +170,14 @@ class KvMigratorTest {
         Map<String, List<BaseOperation>> originalOps = MigrationPlan.getKvRegistry().getAllOperations();
         try {
             MigrationPlan.getKvRegistry().clear();
-            MigrationPlan.getKvRegistry().register(
-                    KvMigrator.KV_ENTITY_KEY,
-                    new UpdateKVOperation(
-                            new OperationMetadata(1, "registered latest version"),
+            MigrationPlan.getKvRegistry().register(KvMigrator.KV_ENTITY_KEY,
+                    new UpdateKVOperation(new OperationMetadata(1, "registered latest version"),
                             store -> store.set("registered_op_ran", "true")));
 
             TestInMemoryKVStore kvStore = new TestInMemoryKVStore();
             kvStore.set("UNREGISTERED_PREFIX/key", "external_data");
             KvMigrator migrator = new KvMigrator(kvStore);
-            UpdateKVOperation op = new UpdateKVOperation(
-                    new OperationMetadata(1, "would migrate old memory data"),
+            UpdateKVOperation op = new UpdateKVOperation(new OperationMetadata(1, "would migrate old memory data"),
                     store -> store.set("migrated", "true"));
 
             assertTrue(migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(op)));
@@ -205,8 +194,7 @@ class KvMigratorTest {
         TestInMemoryKVStore zeroStore = new TestInMemoryKVStore();
         zeroStore.set(KvMigrator.KV_SCHEMA_VERSION, 0);
         KvMigrator zeroMigrator = new KvMigrator(zeroStore);
-        UpdateKVOperation zeroOp = new UpdateKVOperation(
-                new OperationMetadata(1, "migrate from zero"),
+        UpdateKVOperation zeroOp = new UpdateKVOperation(new OperationMetadata(1, "migrate from zero"),
                 store -> store.set("migrated", "zero"));
 
         assertTrue(zeroMigrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(zeroOp)));
@@ -216,8 +204,7 @@ class KvMigratorTest {
         TestInMemoryKVStore negativeStore = new TestInMemoryKVStore();
         negativeStore.set(KvMigrator.KV_SCHEMA_VERSION, -1);
         KvMigrator negativeMigrator = new KvMigrator(negativeStore);
-        UpdateKVOperation negativeOp = new UpdateKVOperation(
-                new OperationMetadata(1, "migrate from negative"),
+        UpdateKVOperation negativeOp = new UpdateKVOperation(new OperationMetadata(1, "migrate from negative"),
                 store -> store.set("migrated", "negative"));
 
         assertTrue(negativeMigrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(negativeOp)));
@@ -227,8 +214,7 @@ class KvMigratorTest {
         TestInMemoryKVStore largeStore = new TestInMemoryKVStore();
         largeStore.set(KvMigrator.KV_SCHEMA_VERSION, 999999);
         KvMigrator largeMigrator = new KvMigrator(largeStore);
-        UpdateKVOperation largeOp = new UpdateKVOperation(
-                new OperationMetadata(1000000, "migrate from large version"),
+        UpdateKVOperation largeOp = new UpdateKVOperation(new OperationMetadata(1000000, "migrate from large version"),
                 store -> store.set("migrated", "large"));
 
         assertTrue(largeMigrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(largeOp)));
@@ -241,12 +227,11 @@ class KvMigratorTest {
         TestInMemoryKVStore kvStore = new TestInMemoryKVStore();
         kvStore.set(KvMigrator.KV_SCHEMA_VERSION, 1.5d);
         KvMigrator migrator = new KvMigrator(kvStore);
-        UpdateKVOperation op = new UpdateKVOperation(
-                new OperationMetadata(2, "migrate"),
-                store -> store.set("migrated", "true"));
+        UpdateKVOperation op =
+            new UpdateKVOperation(new OperationMetadata(2, "migrate"), store -> store.set("migrated", "true"));
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(op)));
+        IllegalStateException error =
+            assertThrows(IllegalStateException.class, () -> migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(op)));
         assertTrue(error.getMessage().contains("Invalid KV_SCHEMA_VERSION type"));
         assertTrue(error.getMessage().contains(Double.class.getName()));
     }
@@ -256,11 +241,9 @@ class KvMigratorTest {
         TestInMemoryKVStore kvStore = new TestInMemoryKVStore();
         kvStore.set(PREFIX + ":1", "old");
         KvMigrator migrator = new KvMigrator(kvStore);
-        List<UpdateKVOperation> operations = List.of(
-                new UpdateKVOperation(new OperationMetadata(2, "v2"),
-                        store -> store.set("v2", "true")),
-                new UpdateKVOperation(new OperationMetadata(1, "v1"),
-                        store -> store.set("v1", "true")));
+        List<UpdateKVOperation> operations =
+            List.of(new UpdateKVOperation(new OperationMetadata(2, "v2"), store -> store.set("v2", "true")),
+                    new UpdateKVOperation(new OperationMetadata(1, "v1"), store -> store.set("v1", "true")));
 
         assertFalse(migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.copyOf(operations)));
         assertEquals(null, kvStore.get("v1"));
@@ -279,19 +262,15 @@ class KvMigratorTest {
             kvStore.set(testPrefix + "/initial_key2", "initial_value2");
 
             KvMigrator migrator = new KvMigrator(kvStore);
-            UpdateKVOperation v2 = new UpdateKVOperation(
-                    new OperationMetadata(2, "migrate v2"),
-                    store -> {
-                        store.set(testPrefix + "/v2_key", "v2_value");
-                        store.delete(testPrefix + "/initial_key1");
-                    });
-            UpdateKVOperation v3 = new UpdateKVOperation(
-                    new OperationMetadata(3, "migrate v3"),
-                    store -> {
-                        store.set(testPrefix + "/v3_key", "v3_value");
-                        store.delete(testPrefix + "/initial_key2");
-                        throw new IllegalStateException("Migration v3 failed");
-                    });
+            UpdateKVOperation v2 = new UpdateKVOperation(new OperationMetadata(2, "migrate v2"), store -> {
+                store.set(testPrefix + "/v2_key", "v2_value");
+                store.delete(testPrefix + "/initial_key1");
+            });
+            UpdateKVOperation v3 = new UpdateKVOperation(new OperationMetadata(3, "migrate v3"), store -> {
+                store.set(testPrefix + "/v3_key", "v3_value");
+                store.delete(testPrefix + "/initial_key2");
+                throw new IllegalStateException("Migration v3 failed");
+            });
 
             assertFalse(migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(v2, v3)));
             assertEquals("initial_value1", kvStore.get(testPrefix + "/initial_key1"));
@@ -316,13 +295,11 @@ class KvMigratorTest {
             kvStore.set("other_key", "other_value");
 
             KvMigrator migrator = new KvMigrator(kvStore);
-            UpdateKVOperation op = new UpdateKVOperation(
-                    new OperationMetadata(2, "migrate v2"),
-                    store -> {
-                        store.set(testPrefix + "/new_key", "new_value");
-                        store.delete(testPrefix + "/key1");
-                        throw new IllegalStateException("Migration v2 failed");
-                    });
+            UpdateKVOperation op = new UpdateKVOperation(new OperationMetadata(2, "migrate v2"), store -> {
+                store.set(testPrefix + "/new_key", "new_value");
+                store.delete(testPrefix + "/key1");
+                throw new IllegalStateException("Migration v2 failed");
+            });
 
             assertFalse(migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(op)));
             assertEquals("value1", kvStore.get(testPrefix + "/key1"));
@@ -350,8 +327,7 @@ class KvMigratorTest {
 
             KvMigrator migrator = new KvMigrator(kvStore);
             UpdateKVOperation op = new UpdateKVOperation(
-                    new OperationMetadata(1, "rename key prefix1 user/scope to scope/user"),
-                    store -> {
+                    new OperationMetadata(1, "rename key prefix1 user/scope to scope/user"), store -> {
                         for (Map.Entry<String, Object> entry : store.getByPrefix(keyPrefix1).entrySet()) {
                             String[] parts = entry.getKey().split("/");
                             if (parts.length == 3) {
@@ -390,21 +366,19 @@ class KvMigratorTest {
             kvStore.set(keyPrefix2 + "/user1/scope1/extra", "{\"key5\":\"value5\"}");
 
             KvMigrator migrator = new KvMigrator(kvStore);
-            UpdateKVOperation op = new UpdateKVOperation(
-                    new OperationMetadata(1, "merge key prefix values"),
-                    store -> {
-                        for (Map.Entry<String, Object> entry : store.getByPrefix(keyPrefix1).entrySet()) {
-                            String[] parts = entry.getKey().split("/");
-                            if (parts.length != 3) {
-                                continue;
-                            }
-                            Object second = store.get(keyPrefix2 + "/" + parts[1] + "/" + parts[2]);
-                            if (second != null) {
-                                store.set(keyPrefix3 + "/" + parts[1] + "/" + parts[2],
-                                        "{\"key1\":\"value1\",\"key2\":\"value2\",\"key3\":\"value3\",\"key4\":\"value4\"}");
-                            }
-                        }
-                    });
+            UpdateKVOperation op = new UpdateKVOperation(new OperationMetadata(1, "merge key prefix values"), store -> {
+                for (Map.Entry<String, Object> entry : store.getByPrefix(keyPrefix1).entrySet()) {
+                    String[] parts = entry.getKey().split("/");
+                    if (parts.length != 3) {
+                        continue;
+                    }
+                    Object second = store.get(keyPrefix2 + "/" + parts[1] + "/" + parts[2]);
+                    if (second != null) {
+                        store.set(keyPrefix3 + "/" + parts[1] + "/" + parts[2],
+                                "{\"key1\":\"value1\",\"key2\":\"value2\",\"key3\":\"value3\",\"key4\":\"value4\"}");
+                    }
+                }
+            });
 
             assertTrue(migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(op)));
             assertEquals("{\"key1\":\"value1\",\"key2\":\"value2\",\"key3\":\"value3\",\"key4\":\"value4\"}",
@@ -435,30 +409,31 @@ class KvMigratorTest {
             kvStore.set(keyPrefix2 + "/bad/scope", "{\"ignored\":\"value\"}");
 
             KvMigrator migrator = new KvMigrator(kvStore);
-            UpdateKVOperation op = new UpdateKVOperation(
-                    new OperationMetadata(1, "merge valid JSON and skip decode errors"),
-                    store -> {
-                        for (Map.Entry<String, Object> entry : store.getByPrefix(keyPrefix1).entrySet()) {
-                            String[] parts = entry.getKey().split("/");
-                            if (parts.length != 3) {
-                                continue;
-                            }
-                            String targetKey = keyPrefix3 + "/" + parts[1] + "/" + parts[2];
-                            Object value2 = store.get(keyPrefix2 + "/" + parts[1] + "/" + parts[2]);
-                            try {
-                                Map<String, Object> merged = new java.util.LinkedHashMap<>();
-                                if (entry.getValue() != null) {
-                                    merged.putAll(MAPPER.readValue(String.valueOf(entry.getValue()), new TypeReference<>() {}));
-                                }
-                                if (value2 != null) {
-                                    merged.putAll(MAPPER.readValue(String.valueOf(value2), new TypeReference<>() {}));
-                                }
-                                store.set(targetKey, MAPPER.writeValueAsString(merged));
-                            } catch (JsonProcessingException ignored) {
-                                continue;
-                            }
+            UpdateKVOperation op =
+                new UpdateKVOperation(new OperationMetadata(1, "merge valid JSON and skip decode errors"), store -> {
+                    for (Map.Entry<String, Object> entry : store.getByPrefix(keyPrefix1).entrySet()) {
+                        String[] parts = entry.getKey().split("/");
+                        if (parts.length != 3) {
+                            continue;
                         }
-                    });
+                        String targetKey = keyPrefix3 + "/" + parts[1] + "/" + parts[2];
+                        Object value2 = store.get(keyPrefix2 + "/" + parts[1] + "/" + parts[2]);
+                        try {
+                            Map<String, Object> merged = new java.util.LinkedHashMap<>();
+                            if (entry.getValue() != null) {
+                                merged.putAll(MAPPER.readValue(String.valueOf(entry.getValue()), new TypeReference<>() {
+                                }));
+                            }
+                            if (value2 != null) {
+                                merged.putAll(MAPPER.readValue(String.valueOf(value2), new TypeReference<>() {
+                                }));
+                            }
+                            store.set(targetKey, MAPPER.writeValueAsString(merged));
+                        } catch (JsonProcessingException ignored) {
+                            continue;
+                        }
+                    }
+                });
 
             assertTrue(migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(op)));
             assertEquals("{\"key1\":\"value1\",\"key2\":\"value2\"}", kvStore.get(keyPrefix3 + "/user1/scope1"));
@@ -474,30 +449,23 @@ class KvMigratorTest {
     @Test
     void tryMigrateHandlesSpecialCharacterKeyNames() {
         TestInMemoryKVStore kvStore = new TestInMemoryKVStore();
-        List<String> specialKeys = List.of(
-                "key/with/slashes",
-                "key:with:colons",
-                "key-with-dashes",
-                "key_with_underscores",
-                "key.with.dots",
-                "key@with@at",
-                "key#with#hash");
+        List<String> specialKeys = List.of("key/with/slashes", "key:with:colons", "key-with-dashes",
+                "key_with_underscores", "key.with.dots", "key@with@at", "key#with#hash");
         for (String key : specialKeys) {
             kvStore.set(key, "value_" + key);
         }
 
         KvMigrator migrator = new KvMigrator(kvStore);
-        UpdateKVOperation op = new UpdateKVOperation(
-                new OperationMetadata(1, "rename special character keys"),
-                store -> {
-                    for (String oldKey : specialKeys) {
-                        Object value = store.get(oldKey);
-                        if (value != null) {
-                            store.set("renamed_" + oldKey, value);
-                            store.delete(oldKey);
-                        }
+        UpdateKVOperation op =
+            new UpdateKVOperation(new OperationMetadata(1, "rename special character keys"), store -> {
+                for (String oldKey : specialKeys) {
+                    Object value = store.get(oldKey);
+                    if (value != null) {
+                        store.set("renamed_" + oldKey, value);
+                        store.delete(oldKey);
                     }
-                });
+                }
+            });
 
         assertTrue(migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.of(op)));
         for (String oldKey : specialKeys) {
@@ -515,10 +483,8 @@ class KvMigratorTest {
 
         KvMigrator migrator = new KvMigrator(kvStore);
         List<UpdateKVOperation> operations = List.of(
-                new UpdateKVOperation(new OperationMetadata(2, "migrate v2"),
-                        store -> store.set("key2", "value2")),
-                new UpdateKVOperation(new OperationMetadata(3, "migrate v3"),
-                        store -> store.set("key3", "value3")));
+                new UpdateKVOperation(new OperationMetadata(2, "migrate v2"), store -> store.set("key2", "value2")),
+                new UpdateKVOperation(new OperationMetadata(3, "migrate v3"), store -> store.set("key3", "value3")));
 
         assertTrue(migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.copyOf(operations)));
         assertEquals("value2", kvStore.get("key2"));
@@ -534,12 +500,9 @@ class KvMigratorTest {
 
         KvMigrator migrator = new KvMigrator(kvStore);
         List<UpdateKVOperation> operations = List.of(
-                new UpdateKVOperation(new OperationMetadata(1, "migrate v1"),
-                        store -> store.set("key1", "value1")),
-                new UpdateKVOperation(new OperationMetadata(2, "migrate v2"),
-                        store -> store.set("key2", "value2")),
-                new UpdateKVOperation(new OperationMetadata(3, "migrate v3"),
-                        store -> store.set("key3", "value3")));
+                new UpdateKVOperation(new OperationMetadata(1, "migrate v1"), store -> store.set("key1", "value1")),
+                new UpdateKVOperation(new OperationMetadata(2, "migrate v2"), store -> store.set("key2", "value2")),
+                new UpdateKVOperation(new OperationMetadata(3, "migrate v3"), store -> store.set("key3", "value3")));
 
         assertTrue(migrator.tryMigrate(KvMigrator.KV_ENTITY_KEY, List.copyOf(operations)));
         assertEquals(null, kvStore.get("key1"));

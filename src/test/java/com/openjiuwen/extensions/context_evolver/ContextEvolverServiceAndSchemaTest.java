@@ -1,4 +1,9 @@
+
 package com.openjiuwen.extensions.context_evolver;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.extensions.context_evolver.core.config.Config;
 import com.openjiuwen.extensions.context_evolver.core.context.ServiceContext;
@@ -11,6 +16,7 @@ import com.openjiuwen.extensions.context_evolver.schema.SchemaUtils;
 import com.openjiuwen.extensions.context_evolver.schema.TaskMemory;
 import com.openjiuwen.extensions.context_evolver.service.AddMemoryRequest;
 import com.openjiuwen.extensions.context_evolver.service.TaskMemoryService;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,12 +24,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class ContextEvolverServiceAndSchemaTest {
-
     private Map<String, Object> configSnapshot;
 
     @BeforeEach
@@ -40,13 +41,7 @@ class ContextEvolverServiceAndSchemaTest {
 
     @Test
     void addMemoryAndRetrieveAceUsesTypedSchemaPayloads() {
-        TaskMemoryService service = new TaskMemoryService(
-            "gpt-5.2",
-            "text-embedding-3-small",
-            null,
-            "ACE",
-            "ACE"
-        );
+        TaskMemoryService service = new TaskMemoryService("gpt-5.2", "text-embedding-3-small", null, "ACE", "ACE");
 
         AddMemoryRequest request = new AddMemoryRequest();
         request.setContent("Use functools.lru_cache decorator for pure functions.");
@@ -56,7 +51,8 @@ class ContextEvolverServiceAndSchemaTest {
         assertEquals("success", addResult.get("status"));
         assertEquals("ACE", service.getSummaryAlgorithm());
 
-        RetrieveResponse response = service.retrieveResponse("user-ace", "How do I implement caching in Python?").join();
+        RetrieveResponse response =
+            service.retrieveResponse("user-ace", "How do I implement caching in Python?").join();
         assertEquals("success", response.getStatus());
         assertEquals(1, response.getRetrievedMemory().size());
         ACERetrievedMemory memory = assertInstanceOf(ACERetrievedMemory.class, response.getRetrievedMemory().get(0));
@@ -72,13 +68,7 @@ class ContextEvolverServiceAndSchemaTest {
 
     @Test
     void addMemoryAndRetrieveReasoningBankUsesDescriptionAsDefaultQuery() {
-        TaskMemoryService service = new TaskMemoryService(
-            "gpt-5.2",
-            "text-embedding-3-small",
-            null,
-            "RB",
-            "RB"
-        );
+        TaskMemoryService service = new TaskMemoryService("gpt-5.2", "text-embedding-3-small", null, "RB", "RB");
 
         AddMemoryRequest request = new AddMemoryRequest();
         request.setContent("Prefer reusable reasoning patterns over trajectory-specific details.");
@@ -89,10 +79,8 @@ class ContextEvolverServiceAndSchemaTest {
 
         RetrieveResponse response = service.retrieveResponse("user-rb", "How should I generalize a strategy?").join();
         assertEquals(1, response.getRetrievedMemory().size());
-        ReasoningBankRetrievedMemory memory = assertInstanceOf(
-            ReasoningBankRetrievedMemory.class,
-            response.getRetrievedMemory().get(0)
-        );
+        ReasoningBankRetrievedMemory memory =
+            assertInstanceOf(ReasoningBankRetrievedMemory.class, response.getRetrievedMemory().get(0));
         assertEquals("Reusable Strategy", memory.getTitle());
         assertEquals("How to distill a reusable reasoning pattern", memory.getDescription());
 
@@ -106,13 +94,7 @@ class ContextEvolverServiceAndSchemaTest {
 
     @Test
     void addMemoryAndRetrieveReMeUsesManualMetadataDefaults() {
-        TaskMemoryService service = new TaskMemoryService(
-            "gpt-5.2",
-            "text-embedding-3-small",
-            null,
-            "ReMe",
-            "ReMe"
-        );
+        TaskMemoryService service = new TaskMemoryService("gpt-5.2", "text-embedding-3-small", null, "ReMe", "ReMe");
 
         AddMemoryRequest request = new AddMemoryRequest();
         request.setContent("Capture the invariant first, then adapt the API details.");
@@ -144,10 +126,8 @@ class ContextEvolverServiceAndSchemaTest {
         taskMemory.setSection("api");
 
         var taskNode = taskMemory.toVectorNode();
-        assertEquals(
-            "task_workspace-a_" + SchemaUtils.md5Hex("Use a dedicated DTO instead of an anonymous map."),
-            taskNode.getId()
-        );
+        assertEquals("task_workspace-a_" + SchemaUtils.md5Hex("Use a dedicated DTO instead of an anonymous map."),
+                taskNode.getId());
 
         TaskMemory restoredTaskMemory = TaskMemory.fromVectorNode(taskNode);
         assertEquals("api", restoredTaskMemory.getSection());
@@ -166,13 +146,7 @@ class ContextEvolverServiceAndSchemaTest {
 
     @Test
     void clearPlaybookOnlyRemovesRequestedUser() {
-        TaskMemoryService service = new TaskMemoryService(
-            "gpt-5.2",
-            "text-embedding-3-small",
-            null,
-            "ACE",
-            "ACE"
-        );
+        TaskMemoryService service = new TaskMemoryService("gpt-5.2", "text-embedding-3-small", null, "ACE", "ACE");
 
         AddMemoryRequest first = new AddMemoryRequest();
         first.setContent("User A memory");

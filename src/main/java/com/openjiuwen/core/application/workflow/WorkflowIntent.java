@@ -12,16 +12,13 @@ import java.util.Map;
 
 /**
  * Intent result used by {@link WorkflowController} compatibility APIs.
+ * 
+ * @since 0.1.7
  */
 public record WorkflowIntent(Type intentType, Task task, WorkflowSchema workflow, Map<String, Object> metadata) {
-
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public WorkflowIntent {
         metadata = metadata == null ? Map.of() : new LinkedHashMap<>(metadata);
     }
-
     public enum Type {
         EXEC_NEW_TASK,
         RESUME_TASK,

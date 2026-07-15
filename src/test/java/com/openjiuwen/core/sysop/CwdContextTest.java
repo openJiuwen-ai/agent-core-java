@@ -1,17 +1,18 @@
+
 package com.openjiuwen.core.sysop;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.sysop.cwd.CwdContext;
 import com.openjiuwen.core.sysop.cwd.CwdState;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class CwdContextTest {
-
     @TempDir
     Path tempDir;
 
@@ -45,10 +46,14 @@ class CwdContextTest {
 
         CwdState snapshot = CwdContext.snapshot();
         assertThat(snapshot.getCwd()).isEqualTo(tempDir.resolve("next").toAbsolutePath().normalize().toString());
-        assertThat(snapshot.getOriginalCwd()).isEqualTo(tempDir.resolve("origin").toAbsolutePath().normalize().toString());
-        assertThat(snapshot.getProjectRoot()).isEqualTo(tempDir.resolve("project").toAbsolutePath().normalize().toString());
-        assertThat(snapshot.getWorkspace()).isEqualTo(tempDir.resolve("workspace").toAbsolutePath().normalize().toString());
-        assertThat(snapshot.getTeamWorkspace()).isEqualTo(tempDir.resolve("team").toAbsolutePath().normalize().toString());
+        assertThat(snapshot.getOriginalCwd())
+                .isEqualTo(tempDir.resolve("origin").toAbsolutePath().normalize().toString());
+        assertThat(snapshot.getProjectRoot())
+                .isEqualTo(tempDir.resolve("project").toAbsolutePath().normalize().toString());
+        assertThat(snapshot.getWorkspace())
+                .isEqualTo(tempDir.resolve("workspace").toAbsolutePath().normalize().toString());
+        assertThat(snapshot.getTeamWorkspace())
+                .isEqualTo(tempDir.resolve("team").toAbsolutePath().normalize().toString());
     }
 
     @Test

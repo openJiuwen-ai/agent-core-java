@@ -12,19 +12,24 @@ import lombok.NoArgsConstructor;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Subscription descriptor used for tracking topic subscriptions in messager backends.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-/**
- * Subscription descriptor used for tracking topic subscriptions in messager backends.
- *
- * @since 1.0
- */
 public class SubscriptionHandle {
     private String subscriptionId;
     private String topic;
     private String agentId;
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> backendMetadata = new LinkedHashMap<>();
 }

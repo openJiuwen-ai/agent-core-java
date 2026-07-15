@@ -1,11 +1,11 @@
-package com.openjiuwen.autoharness.systemtest;
 
-import org.junit.jupiter.api.Test;
+package com.openjiuwen.autoharness.systemtest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class AutoHarnessGitCodeSystemTestCompatibilityTest {
+import org.junit.jupiter.api.Test;
 
+class AutoHarnessGitCodeSystemTestCompatibilityTest {
     @Test
     void systemTestUsernameShouldFallBackToForkOwnerLikePythonSchema() {
         assertThat(AutoHarnessGitCodeSystemTest.resolveGitCodeUsernameForSystemTest("", "fork-owner"))

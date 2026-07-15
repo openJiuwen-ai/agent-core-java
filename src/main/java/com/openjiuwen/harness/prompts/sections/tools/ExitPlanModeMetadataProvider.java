@@ -8,27 +8,30 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Auto-generated for codecheck compliance.
+ * ExitPlanModeMetadataProvider.
+ * 
+ * @since 0.1.7
  */
 public final class ExitPlanModeMetadataProvider implements ToolMetadataProvider {
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String getName() {
         return "exit_plan_mode";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDescription.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String getDescription(String language) {
         if ("en".equalsIgnoreCase(language)) {
             return "Finish the planning phase and switch the current session back to normal mode.";
@@ -37,17 +40,14 @@ public final class ExitPlanModeMetadataProvider implements ToolMetadataProvider 
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputParams.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> getInputParams(String language) {
-        return Map.of(
-                "type", "object",
-                "properties", Map.of(),
-                "required", List.of()
-        );
+        return Map.of("type", "object", "properties", Map.of(), "required", List.of());
     }
 }

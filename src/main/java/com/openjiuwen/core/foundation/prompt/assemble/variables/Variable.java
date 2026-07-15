@@ -12,24 +12,37 @@ import java.util.stream.Collectors;
  * Base class for prompt template variables.
  * <p>
  * Mirrors Python's {@code Variable} ABC.
+ * 
+ * @since 0.1.7
  */
 public abstract class Variable {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @since 0.1.7
      */
     protected String name;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * inputKeys.
+     * 
+     * @since 0.1.7
      */
     protected List<String> inputKeys;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * value.
+     * 
+     * @since 0.1.7
      */
     protected Object value = "";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Variable.
+     * 
+     * @param name name
+     * @param inputKeys inputKeys
+     * @since 0.1.7
      */
     protected Variable(String name, List<String> inputKeys) {
         this.name = name;
@@ -37,28 +50,40 @@ public abstract class Variable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setName.
+     * 
+     * @param name name
+     * @since 0.1.7
      */
     public void setName(String name) {
         this.name = name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputKeys.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getInputKeys() {
         return inputKeys;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getValue() {
         return value;
@@ -66,16 +91,18 @@ public abstract class Variable {
 
     /**
      * Update the variable value based on the given arguments.
-     *
+     * 
      * @param kwargs key-value arguments
+     * @since 0.1.7
      */
     public abstract void update(Map<String, Object> kwargs);
 
     /**
      * Validate input, update {@code value}, and return it.
-     *
+     * 
      * @param kwargs key-value pairs for evaluation
      * @return updated value
+     * @since 0.1.7
      */
     public Object eval(Map<String, Object> kwargs) {
         Map<String, Object> inputKwargs = prepareInputs(kwargs);
@@ -85,10 +112,13 @@ public abstract class Variable {
 
     /**
      * Filter kwargs to only include keys that are in {@code inputKeys}.
+     * 
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     protected Map<String, Object> prepareInputs(Map<String, Object> kwargs) {
-        return kwargs.entrySet().stream()
-                .filter(e -> inputKeys.contains(e.getKey()))
+        return kwargs.entrySet().stream().filter(e -> inputKeys.contains(e.getKey()))
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 }

@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Resolved sandbox endpoint descriptor.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

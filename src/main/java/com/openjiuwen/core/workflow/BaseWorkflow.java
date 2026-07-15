@@ -39,9 +39,10 @@ import java.util.regex.Pattern;
  * component configuration, and ability inference.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow._workflow.BaseWorkflow}.
+ * 
+ * @since 0.1.7
  */
 public class BaseWorkflow implements HasDrawable {
-
     private static final Pattern COMP_ID_PATTERN = Pattern.compile("^[A-Za-z0-9_-]+$");
     private static final String WORKFLOW_DRAWABLE = "WORKFLOW_DRAWABLE";
 
@@ -53,18 +54,25 @@ public class BaseWorkflow implements HasDrawable {
     private final Drawable drawable;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseWorkflow.
+     * 
+     * @since 0.1.7
      */
     public BaseWorkflow() {
         this(null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseWorkflow.
+     * 
+     * @param workflowConfig workflowConfig
+     * @param newGraph newGraph
+     * @since 0.1.7
      */
     public BaseWorkflow(WorkflowConfig workflowConfig, Graph newGraph) {
         this.graph = newGraph != null ? newGraph : new PregelGraph();
-        this.workflowConfig = workflowConfig != null ? workflowConfig
+        this.workflowConfig = workflowConfig != null
+                ? workflowConfig
                 : new WorkflowConfig(WorkflowCard.builder().id(UUID.randomUUID().toString().replace("-", "")).build());
         this.workflowSpec = this.workflowConfig.getSpec();
         this.streamActor = new StreamGraph();
@@ -73,21 +81,30 @@ public class BaseWorkflow implements HasDrawable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public WorkflowConfig getConfig() {
         return workflowConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getGraph.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Graph getGraph() {
         return graph;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStreamActor.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public StreamGraph getStreamActor() {
         return streamActor;
@@ -95,25 +112,27 @@ public class BaseWorkflow implements HasDrawable {
 
     /**
      * Add a workflow component with full configuration.
+     * 
+     * @param compId compId
+     * @param workflowComp workflowComp
+     * @param waitForAll waitForAll
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @param streamInputsSchema streamInputsSchema
+     * @param streamOutputsSchema streamOutputsSchema
+     * @param compAbility compAbility
+     * @return the result
+     * @since 0.1.7
      */
-    public BaseWorkflow addWorkflowComp(
-            String compId,
-            ComponentComposable workflowComp,
-            Boolean waitForAll,
-            Object inputsSchema,
-            Object outputsSchema,
-            Object streamInputsSchema,
-            Object streamOutputsSchema,
+    public BaseWorkflow addWorkflowComp(String compId, ComponentComposable workflowComp, Boolean waitForAll,
+            Object inputsSchema, Object outputsSchema, Object streamInputsSchema, Object streamOutputsSchema,
             List<ComponentAbility> compAbility) {
-
         validateCompId(compId);
         validateSchemas(compId, inputsSchema, outputsSchema, streamInputsSchema, streamOutputsSchema);
         validateCompAbility(compId, compAbility, waitForAll);
 
-        NodeConfig nodeSpec = new NodeConfig(
-                compAbility != null ? new ArrayList<>(compAbility) : new ArrayList<>(),
-                new IOConfig(inputsSchema, outputsSchema),
-                new IOConfig(streamInputsSchema, streamOutputsSchema));
+        NodeConfig nodeSpec = new NodeConfig(compAbility != null ? new ArrayList<>(compAbility) : new ArrayList<>(),
+                new IOConfig(inputsSchema, outputsSchema), new IOConfig(streamInputsSchema, streamOutputsSchema));
 
         workflowSpec.getCompConfigs().put(compId, nodeSpec);
 
@@ -127,7 +146,11 @@ public class BaseWorkflow implements HasDrawable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * startComp.
+     * 
+     * @param startCompId startCompId
+     * @return the result
+     * @since 0.1.7
      */
     public BaseWorkflow startComp(String startCompId) {
         validateCompId(startCompId);
@@ -140,7 +163,11 @@ public class BaseWorkflow implements HasDrawable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * endComp.
+     * 
+     * @param endCompId endCompId
+     * @return the result
+     * @since 0.1.7
      */
     public BaseWorkflow endComp(String endCompId) {
         validateCompId(endCompId);
@@ -152,7 +179,12 @@ public class BaseWorkflow implements HasDrawable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addConnection.
+     * 
+     * @param srcCompId srcCompId
+     * @param targetCompId targetCompId
+     * @return the result
+     * @since 0.1.7
      */
     public BaseWorkflow addConnection(Object srcCompId, String targetCompId) {
         validateEdge(srcCompId, targetCompId, StatusCode.WORKFLOW_EDGE_INVALID);
@@ -168,9 +200,7 @@ public class BaseWorkflow implements HasDrawable {
                 }
             }
         } else {
-            workflowSpec.getEdges()
-                    .computeIfAbsent((String) srcCompId, k -> new ArrayList<>())
-                    .add(targetCompId);
+            workflowSpec.getEdges().computeIfAbsent((String) srcCompId, k -> new ArrayList<>()).add(targetCompId);
             if (drawable != null) {
                 drawable.addEdge((String) srcCompId, targetCompId);
             }
@@ -179,7 +209,12 @@ public class BaseWorkflow implements HasDrawable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addStreamConnection.
+     * 
+     * @param srcCompId srcCompId
+     * @param targetCompId targetCompId
+     * @return the result
+     * @since 0.1.7
      */
     public BaseWorkflow addStreamConnection(String srcCompId, String targetCompId) {
         validateEdge(srcCompId, targetCompId, StatusCode.WORKFLOW_STREAM_EDGE_INVALID);
@@ -190,29 +225,30 @@ public class BaseWorkflow implements HasDrawable {
                 streamActor.addStreamConsumer(targetVertex, targetCompId);
             }
         }
-        workflowSpec.getStreamEdges()
-                .computeIfAbsent(srcCompId, k -> new ArrayList<>())
-                .add(targetCompId);
+        workflowSpec.getStreamEdges().computeIfAbsent(srcCompId, k -> new ArrayList<>()).add(targetCompId);
         if (drawable != null) {
             drawable.addEdge(srcCompId, targetCompId, false, true, null);
         }
         return this;
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * addConditionalConnection.
+     * 
+     * @param srcCompId srcCompId
+     * @param router router
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public BaseWorkflow addConditionalConnection(String srcCompId, Object router) {
         if (srcCompId == null || srcCompId.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.WORKFLOW_CONDITION_EDGE_INVALID,
-                    "src_comp_id", srcCompId,
-                    "reason", "src_comp_id cannot be empty or None");
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_CONDITION_EDGE_INVALID, "src_comp_id", srcCompId, "reason",
+                    "src_comp_id cannot be empty or None");
         }
         if (router == null) {
-            throw ErrorHelper.buildError(StatusCode.WORKFLOW_CONDITION_EDGE_INVALID,
-                    "src_comp_id", srcCompId,
-                    "reason", "router function is required for conditional edges");
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_CONDITION_EDGE_INVALID, "src_comp_id", srcCompId, "reason",
+                    "router function is required for conditional edges");
         }
 
         if (router instanceof BranchRouter) {
@@ -224,9 +260,8 @@ public class BaseWorkflow implements HasDrawable {
             Function<Object, Object> newRouter = state -> routerFunc.apply(routerSessionWrapper);
             graph.addConditionalEdges(srcCompId, (Router) newRouter::apply);
         } else {
-            throw ErrorHelper.buildError(StatusCode.WORKFLOW_CONDITION_EDGE_INVALID,
-                    "src_comp_id", srcCompId,
-                    "reason", "router must be a callable function, got " + router.getClass().getSimpleName());
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_CONDITION_EDGE_INVALID, "src_comp_id", srcCompId, "reason",
+                    "router must be a callable function, got " + router.getClass().getSimpleName());
         }
         if (drawable != null) {
             drawable.addEdge(srcCompId, null, true, false, router);
@@ -235,21 +270,25 @@ public class BaseWorkflow implements HasDrawable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * compile.
+     * 
+     * @param sessionArg sessionArg
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     public ExecutableGraph<?, ?> compile(BaseSession sessionArg, Object context) {
         if (sessionArg instanceof WorkflowSession) {
             ((WorkflowSession) sessionArg).setWorkflowId(workflowConfig.getCard().getId());
         }
         if (sessionArg instanceof SubWorkflowSession) {
-            Object mainConfig = sessionArg.config().getWorkflowConfig(
-                    ((SubWorkflowSession) sessionArg).mainWorkflowId());
+            Object mainConfig =
+                sessionArg.config().getWorkflowConfig(((SubWorkflowSession) sessionArg).mainWorkflowId());
             if (mainConfig instanceof WorkflowConfig) {
                 WorkflowConfig mwc = (WorkflowConfig) mainConfig;
                 if (((SubWorkflowSession) sessionArg).workflowNestingDepth() > mwc.getWorkflowMaxNestingDepth()) {
-                    throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPILE_ERROR,
-                            "reason", "workflow nesting hierarchy is too big, must <= "
-                                    + mwc.getWorkflowMaxNestingDepth());
+                    throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPILE_ERROR, "reason",
+                            "workflow nesting hierarchy is too big, must <= " + mwc.getWorkflowMaxNestingDepth());
                 }
             }
         }
@@ -258,13 +297,18 @@ public class BaseWorkflow implements HasDrawable {
             Map<String, Object> kwargs = context != null ? Map.of("context", context) : null;
             return graph.compile(sessionArg, kwargs);
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPILE_ERROR,
-                    "reason", e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPILE_ERROR, "reason", e.getMessage());
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMermaid.
+     * 
+     * @param title title
+     * @param expandSubgraph expandSubgraph
+     * @param enableAnimation enableAnimation
+     * @return the result
+     * @since 0.1.7
      */
     public String toMermaid(String title, int expandSubgraph, boolean enableAnimation) {
         if (drawable == null) {
@@ -274,7 +318,10 @@ public class BaseWorkflow implements HasDrawable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMermaid.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String toMermaid() {
         return toMermaid("", 0, false);
@@ -284,10 +331,11 @@ public class BaseWorkflow implements HasDrawable {
      * Render the workflow graph as a PNG image.
      * <p>
      * Mirrors Python's {@code BaseWorkflow.to_mermaid_png()}.
-     *
-     * @param title          diagram title
+     * 
+     * @param title diagram title
      * @param expandSubgraph depth of subgraph expansion
      * @return PNG bytes, or empty array if drawable is not enabled
+     * @since 0.1.7
      */
     public byte[] toMermaidPng(String title, int expandSubgraph) {
         if (drawable == null) {
@@ -297,7 +345,10 @@ public class BaseWorkflow implements HasDrawable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMermaidPng.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public byte[] toMermaidPng() {
         return toMermaidPng("", 0);
@@ -307,10 +358,11 @@ public class BaseWorkflow implements HasDrawable {
      * Render the workflow graph as an SVG image.
      * <p>
      * Mirrors Python's {@code BaseWorkflow.to_mermaid_svg()}.
-     *
-     * @param title          diagram title
+     * 
+     * @param title diagram title
      * @param expandSubgraph depth of subgraph expansion
      * @return SVG bytes, or empty array if drawable is not enabled
+     * @since 0.1.7
      */
     public byte[] toMermaidSvg(String title, int expandSubgraph) {
         if (drawable == null) {
@@ -320,16 +372,22 @@ public class BaseWorkflow implements HasDrawable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMermaidSvg.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public byte[] toMermaidSvg() {
         return toMermaidSvg("", 0);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDrawable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Drawable getDrawable() {
         return drawable;
     }
@@ -344,6 +402,8 @@ public class BaseWorkflow implements HasDrawable {
 
     /**
      * Auto-complete component abilities based on edge topology.
+     * 
+     * @since 0.1.7
      */
     public void autoCompleteAbilities() {
         EdgeTopology edgeTopology = buildEdgeTopology();
@@ -360,7 +420,9 @@ public class BaseWorkflow implements HasDrawable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * reset.
+     * 
+     * @since 0.1.7
      */
     public void reset() {
         if (graph instanceof PregelGraph pregelGraph) {
@@ -368,16 +430,24 @@ public class BaseWorkflow implements HasDrawable {
         }
     }
 
+    /**
+     * buildEdgeTopology.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private EdgeTopology buildEdgeTopology() {
         Map<String, List<String>> sourceMap = workflowSpec.getEdges();
         Map<String, List<String>> sourceStreamMap = workflowSpec.getStreamEdges();
-        return new EdgeTopology(
-                sourceMap,
-                invertMap(sourceMap),
-                sourceStreamMap,
-                invertMap(sourceStreamMap));
+        return new EdgeTopology(sourceMap, invertMap(sourceMap), sourceStreamMap, invertMap(sourceStreamMap));
     }
 
+    /**
+     * validateEdgeNodes.
+     * 
+     * @param edgeTopology edgeTopology
+     * @since 0.1.7
+     */
     private void validateEdgeNodes(EdgeTopology edgeTopology) {
         Set<String> registeredComps = workflowSpec.getCompConfigs().keySet();
         Set<String> missingNodes = new HashSet<>(edgeTopology.allEdgeNodes());
@@ -387,14 +457,21 @@ public class BaseWorkflow implements HasDrawable {
         }
 
         List<String> edgeDetails = collectProblematicEdges(edgeTopology, missingNodes);
-        throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPILE_ERROR,
-                "reason", "Component ID mismatch: nodes " + missingNodes
+        throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPILE_ERROR, "reason",
+                "Component ID mismatch: nodes " + missingNodes
                         + " are referenced in edges but not registered via addWorkflowComp/setStartComp/setEndComp. "
-                        + "Registered components: " + registeredComps
-                        + ". Problematic edges: " + edgeDetails,
+                        + "Registered components: " + registeredComps + ". Problematic edges: " + edgeDetails,
                 "workflow", workflowConfig.getCard().str());
     }
 
+    /**
+     * collectProblematicEdges.
+     * 
+     * @param edgeTopology edgeTopology
+     * @param missingNodes missingNodes
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> collectProblematicEdges(EdgeTopology edgeTopology, Set<String> missingNodes) {
         List<String> edgeDetails = new ArrayList<>();
         collectProblematicEdges(edgeDetails, edgeTopology.getSourceMap(), missingNodes, ConnectionType.CONNECTION);
@@ -403,10 +480,17 @@ public class BaseWorkflow implements HasDrawable {
         return edgeDetails;
     }
 
-    private void collectProblematicEdges(List<String> edgeDetails,
-                                         Map<String, List<String>> edgeMap,
-                                         Set<String> missingNodes,
-                                         ConnectionType connectionType) {
+    /**
+     * collectProblematicEdges.
+     * 
+     * @param edgeDetails edgeDetails
+     * @param edgeMap edgeMap
+     * @param missingNodes missingNodes
+     * @param connectionType connectionType
+     * @since 0.1.7
+     */
+    private void collectProblematicEdges(List<String> edgeDetails, Map<String, List<String>> edgeMap,
+            Set<String> missingNodes, ConnectionType connectionType) {
         for (Map.Entry<String, List<String>> entry : edgeMap.entrySet()) {
             for (String target : entry.getValue()) {
                 if (missingNodes.contains(entry.getKey()) || missingNodes.contains(target)) {
@@ -416,6 +500,13 @@ public class BaseWorkflow implements HasDrawable {
         }
     }
 
+    /**
+     * completeLoopNodeAbilities.
+     * 
+     * @param edgeTopology edgeTopology
+     * @param userProvided userProvided
+     * @since 0.1.7
+     */
     private void completeLoopNodeAbilities(EdgeTopology edgeTopology, Map<String, Boolean> userProvided) {
         List<String> loopStartNodes = this instanceof LoopGroup loopGroup ? loopGroup.getStartNodesList() : List.of();
         List<String> loopEndNodes = this instanceof LoopGroup loopGroup ? loopGroup.getEndNodesList() : List.of();
@@ -442,6 +533,13 @@ public class BaseWorkflow implements HasDrawable {
         }
     }
 
+    /**
+     * completeStreamNodeAbilities.
+     * 
+     * @param edgeTopology edgeTopology
+     * @param userProvided userProvided
+     * @since 0.1.7
+     */
     private void completeStreamNodeAbilities(EdgeTopology edgeTopology, Map<String, Boolean> userProvided) {
         for (String node : edgeTopology.getSourceStreamMap().keySet()) {
             if (Boolean.TRUE.equals(userProvided.get(node))) {
@@ -454,6 +552,8 @@ public class BaseWorkflow implements HasDrawable {
                 addAbilityToNode(node, ComponentAbility.TRANSFORM);
             } else if (!workflowSpec.getStartNodes().contains(node)) {
                 addAbilityToNode(node, ComponentAbility.STREAM);
+            } else {
+                // no-op
             }
         }
 
@@ -467,10 +567,16 @@ public class BaseWorkflow implements HasDrawable {
         }
     }
 
+    /**
+     * completeInvokeAbilities.
+     * 
+     * @param edgeTopology edgeTopology
+     * @param userProvided userProvided
+     * @since 0.1.7
+     */
     private void completeInvokeAbilities(EdgeTopology edgeTopology, Map<String, Boolean> userProvided) {
         for (String node : edgeTopology.getTargetMap().keySet()) {
-            if (!Boolean.TRUE.equals(userProvided.get(node))
-                    && edgeTopology.getSourceMap().containsKey(node)) {
+            if (!Boolean.TRUE.equals(userProvided.get(node)) && edgeTopology.getSourceMap().containsKey(node)) {
                 addAbilityToNode(node, ComponentAbility.INVOKE);
             }
         }
@@ -478,25 +584,36 @@ public class BaseWorkflow implements HasDrawable {
 
     // ======================= Validation Methods =======================
 
+    /**
+     * validateCompId.
+     * 
+     * @param compId compId
+     * @since 0.1.7
+     */
     private void validateCompId(String compId) {
         if (compId == null || compId.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_ID_INVALID,
-                    "comp_id", compId, "reason", "is None or empty",
-                    "workflow", workflowConfig.getCard().str());
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_ID_INVALID, "comp_id", compId, "reason",
+                    "is None or empty", "workflow", workflowConfig.getCard().str());
         }
         if (compId.length() > 100) {
-            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_ID_INVALID,
-                    "comp_id", compId, "reason", "length must not between [1, 100]",
-                    "workflow", workflowConfig.getCard().str());
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_ID_INVALID, "comp_id", compId, "reason",
+                    "length must not between [1, 100]", "workflow", workflowConfig.getCard().str());
         }
         if (!COMP_ID_PATTERN.matcher(compId).matches()) {
-            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_ID_INVALID,
-                    "comp_id", compId,
-                    "reason", "only support letters (a-z, A-Z), digits (0-9), underscores (_) or hyphens (-)",
-                    "workflow", workflowConfig.getCard().str());
+            throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_ID_INVALID, "comp_id", compId, "reason",
+                    "only support letters (a-z, A-Z), digits (0-9), underscores (_) or hyphens (-)", "workflow",
+                    workflowConfig.getCard().str());
         }
     }
 
+    /**
+     * validateCompAbility.
+     * 
+     * @param compId compId
+     * @param abilities abilities
+     * @param waitForAll waitForAll
+     * @since 0.1.7
+     */
     private void validateCompAbility(String compId, List<ComponentAbility> abilities, Boolean waitForAll) {
         if (abilities == null) {
             return;
@@ -505,8 +622,7 @@ public class BaseWorkflow implements HasDrawable {
             if (ability == ComponentAbility.TRANSFORM || ability == ComponentAbility.COLLECT) {
                 boolean wait = waitForAll != null && waitForAll;
                 if (!wait) {
-                    throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_ABILITY_INVALID,
-                            "comp_id", compId,
+                    throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_ABILITY_INVALID, "comp_id", compId,
                             "reason", "stream components (TRANSFORM/COLLECT) must set 'wait_for_all' to True",
                             "workflow", workflowConfig.getCard().str());
                 }
@@ -514,53 +630,71 @@ public class BaseWorkflow implements HasDrawable {
         }
     }
 
+    /**
+     * validateEdge.
+     * 
+     * @param srcCompId srcCompId
+     * @param targetCompId targetCompId
+     * @param errorCode errorCode
+     * @since 0.1.7
+     */
     private void validateEdge(Object srcCompId, String targetCompId, StatusCode errorCode) {
         if (srcCompId == null || (srcCompId instanceof String && ((String) srcCompId).isEmpty())) {
-            throw ErrorHelper.buildError(errorCode,
-                    "src_cmp_id", String.valueOf(srcCompId),
-                    "target_cmp_id", targetCompId,
-                    "reason", "src_comp_id cannot be empty or None",
-                    "workflow", workflowConfig.getCard().str());
+            throw ErrorHelper.buildError(errorCode, "src_cmp_id", String.valueOf(srcCompId), "target_cmp_id",
+                    targetCompId, "reason", "src_comp_id cannot be empty or None", "workflow",
+                    workflowConfig.getCard().str());
         }
         if (srcCompId instanceof List<?> list) {
             for (int idx = 0; idx < list.size(); idx++) {
                 Object value = list.get(idx);
                 if (!(value instanceof String strValue) || strValue.isEmpty()) {
-                    throw ErrorHelper.buildError(errorCode,
-                            "src_cmp_id", String.valueOf(srcCompId),
-                            "target_cmp_id", targetCompId,
-                            "reason", "src_comp_id list contains invalid value at index " + idx,
+                    throw ErrorHelper.buildError(errorCode, "src_cmp_id", String.valueOf(srcCompId), "target_cmp_id",
+                            targetCompId, "reason", "src_comp_id list contains invalid value at index " + idx,
                             "workflow", workflowConfig.getCard().str());
                 }
             }
         } else if (!(srcCompId instanceof String)) {
-            throw ErrorHelper.buildError(errorCode,
-                    "src_cmp_id", String.valueOf(srcCompId),
-                    "target_cmp_id", targetCompId,
-                    "reason", "src_comp_id must be a string or list[string]",
-                    "workflow", workflowConfig.getCard().str());
+            throw ErrorHelper.buildError(errorCode, "src_cmp_id", String.valueOf(srcCompId), "target_cmp_id",
+                    targetCompId, "reason", "src_comp_id must be a string or list[string]", "workflow",
+                    workflowConfig.getCard().str());
         }
         if (targetCompId == null || targetCompId.isEmpty()) {
-            throw ErrorHelper.buildError(errorCode,
-                    "src_cmp_id", String.valueOf(srcCompId),
-                    "target_cmp_id", targetCompId,
-                    "reason", "target_comp_id cannot be empty or None",
-                    "workflow", workflowConfig.getCard().str());
+            throw ErrorHelper.buildError(errorCode, "src_cmp_id", String.valueOf(srcCompId), "target_cmp_id",
+                    targetCompId, "reason", "target_comp_id cannot be empty or None", "workflow",
+                    workflowConfig.getCard().str());
         }
     }
 
     @SuppressWarnings("unchecked")
-    private void validateSchemas(String compId, Object inputsSchema, Object outputsSchema,
-                                 Object streamInputsSchema, Object streamOutputsSchema) {
-        validateSchemaOverlap(compId, inputsSchema, streamInputsSchema,
-                "inputs_schema", "stream_inputs_schema");
-        validateSchemaOverlap(compId, outputsSchema, streamOutputsSchema,
-                "outputs_schema", "stream_outputs_schema");
+    /**
+     * validateSchemas.
+     * 
+     * @param compId compId
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @param streamInputsSchema streamInputsSchema
+     * @param streamOutputsSchema streamOutputsSchema
+     * @since 0.1.7
+     */
+    private void validateSchemas(String compId, Object inputsSchema, Object outputsSchema, Object streamInputsSchema,
+            Object streamOutputsSchema) {
+        validateSchemaOverlap(compId, inputsSchema, streamInputsSchema, "inputs_schema", "stream_inputs_schema");
+        validateSchemaOverlap(compId, outputsSchema, streamOutputsSchema, "outputs_schema", "stream_outputs_schema");
     }
 
     @SuppressWarnings("unchecked")
-    private void validateSchemaOverlap(String compId, Object firstSchema, Object secondSchema,
-                                       String firstName, String secondName) {
+    /**
+     * validateSchemaOverlap.
+     * 
+     * @param compId compId
+     * @param firstSchema firstSchema
+     * @param secondSchema secondSchema
+     * @param firstName firstName
+     * @param secondName secondName
+     * @since 0.1.7
+     */
+    private void validateSchemaOverlap(String compId, Object firstSchema, Object secondSchema, String firstName,
+            String secondName) {
         if (!(firstSchema instanceof Map<?, ?> firstMapRaw) || !(secondSchema instanceof Map<?, ?> secondMapRaw)) {
             return;
         }
@@ -570,17 +704,22 @@ public class BaseWorkflow implements HasDrawable {
         Map<String, Object> flattenedSecond = DictUtils.flattenMap(secondMap);
         for (String key : flattenedFirst.keySet()) {
             if (flattenedSecond.containsKey(key)) {
-                throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_SCHEMA_INVALID,
-                        "comp_id", compId,
-                        "reason", "duplicate key both exist in " + firstName + " with " + secondName
-                                + ", key=" + key,
-                        "workflow", workflowConfig.getCard().str());
+                throw ErrorHelper.buildError(StatusCode.WORKFLOW_COMPONENT_SCHEMA_INVALID, "comp_id", compId, "reason",
+                        "duplicate key both exist in " + firstName + " with " + secondName + ", key=" + key, "workflow",
+                        workflowConfig.getCard().str());
             }
         }
     }
 
     // ======================= Helper Methods =======================
 
+    /**
+     * addAbilityToNode.
+     * 
+     * @param compId compId
+     * @param ability ability
+     * @since 0.1.7
+     */
     private void addAbilityToNode(String compId, ComponentAbility ability) {
         NodeConfig config = workflowSpec.getCompConfigs().get(compId);
         if (config != null && !config.getAbilities().contains(ability)) {
@@ -588,6 +727,13 @@ public class BaseWorkflow implements HasDrawable {
         }
     }
 
+    /**
+     * invertMap.
+     * 
+     * @param sourceMap sourceMap
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, List<String>> invertMap(Map<String, List<String>> sourceMap) {
         Map<String, List<String>> targetMap = new HashMap<>();
         for (Map.Entry<String, List<String>> entry : sourceMap.entrySet()) {

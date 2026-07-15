@@ -28,9 +28,10 @@ import java.util.Map;
  * Executable for LLM workflow component, handling model invocation and streaming.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.llm_comp.LLMExecutable}.
+ * 
+ * @since 0.1.7
  */
 public class LLMExecutable extends ComponentExecutable {
-
     private static final String ROLE_KEY = "role";
     private static final String TYPE_KEY = "type";
 
@@ -39,10 +40,19 @@ public class LLMExecutable extends ComponentExecutable {
     private boolean initialized = false;
     private NodeSessionApi session;
     private ModelContext context;
+
+    /**
+     * LLMExecutableState.
+     * 
+     * @since 0.1.7
+     */
     private final LLMExecutableState state = new LLMExecutableState();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LLMExecutable.
+     * 
+     * @param componentConfig componentConfig
+     * @since 0.1.7
      */
     public LLMExecutable(LLMCompConfig componentConfig) {
         validateConfig(componentConfig);
@@ -50,16 +60,25 @@ public class LLMExecutable extends ComponentExecutable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public LLMCompConfig getConfig() {
         return config;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         this.session = session;
         this.context = context;
@@ -67,20 +86,26 @@ public class LLMExecutable extends ComponentExecutable {
 
         String response;
         try {
-            AssistantMessage llmResponse = llm.invoke(modelInputs, null, null, null, null, null, null, null, null, null);
+            AssistantMessage llmResponse =
+                llm.invoke(modelInputs, null, null, null, null, null, null, null, null, null);
             response = llmResponse.getContent() != null ? llmResponse.getContent().toString() : "";
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED,
-                    "error_msg", e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED, "error_msg", e.getMessage());
         }
 
         return createOutput(response);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
         this.session = session;
         this.context = context;
@@ -89,9 +114,8 @@ public class LLMExecutable extends ComponentExecutable {
             state.clear();
         }
 
-        String responseFormatType = config.getResponseFormat() != null
-                ? (String) config.getResponseFormat().getOrDefault(TYPE_KEY, "")
-                : "";
+        String responseFormatType =
+            config.getResponseFormat() != null ? (String) config.getResponseFormat().getOrDefault(TYPE_KEY, "") : "";
 
         try {
             if (WorkflowLLMResponseType.JSON.getValue().equals(responseFormatType)) {
@@ -100,18 +124,20 @@ public class LLMExecutable extends ComponentExecutable {
                 return streamWithChunks(inputs);
             }
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED,
-                    "error_msg", e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED, "error_msg", e.getMessage());
         }
     }
 
     /**
      * Get the final output from cached stream content.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getStreamOutput() {
         if (config.isCacheStream()) {
-            Map<String, Object> finalResult = state.buildFinalResult(
-                    config.getResponseFormat(), config.getOutputConfig());
+            Map<String, Object> finalResult =
+                state.buildFinalResult(config.getResponseFormat(), config.getOutputConfig());
             return finalResult.isEmpty() ? null : finalResult;
         }
         return null;
@@ -119,36 +145,53 @@ public class LLMExecutable extends ComponentExecutable {
 
     // ==================== Private Methods ====================
 
+    /**
+     * initializeIfNeeded.
+     * 
+     * @since 0.1.7
+     */
     private void initializeIfNeeded() {
         if (!initialized) {
             try {
                 llm = createLLMInstance();
                 initialized = true;
             } catch (Exception e) {
-                throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INIT_FAILED,
-                        "error_msg", "failed to initialize llm: " + e.getMessage());
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INIT_FAILED, "error_msg",
+                        "failed to initialize llm: " + e.getMessage());
             }
         }
     }
 
+    /**
+     * createLLMInstance.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Model createLLMInstance() {
         if (config.getModelId() != null) {
             // In Java, Runner.resourceMgr.getModel() would be called here;
-            // for now, fallback to direct construction
             if (config.getModelClientConfig() == null || config.getModelConfig() == null) {
-                throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED,
-                        "error_msg", "failed to create llm instance: model config is null");
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED, "error_msg",
+                        "failed to create llm instance: model config is null");
             }
             return new Model(config.getModelClientConfig(), config.getModelConfig());
         }
         if (config.getModelClientConfig() == null || config.getModelConfig() == null) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED,
-                    "error_msg", "failed to create llm instance");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED, "error_msg",
+                    "failed to create llm instance");
         }
         return new Model(config.getModelClientConfig(), config.getModelConfig());
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * prepareModelInputs.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private List<BaseMessage> prepareModelInputs(Object inputs) {
         initializeIfNeeded();
         Map<String, Object> inputsMap;
@@ -160,6 +203,13 @@ public class LLMExecutable extends ComponentExecutable {
         return getModelInput(inputsMap);
     }
 
+    /**
+     * getModelInput.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private List<BaseMessage> getModelInput(Map<String, Object> inputs) {
         List<BaseMessage> systemPrompt = buildSystemPrompt(inputs);
         List<BaseMessage> userPrompt = buildUserPromptContent(inputs);
@@ -167,14 +217,19 @@ public class LLMExecutable extends ComponentExecutable {
         return LLMPromptFormatter.formatPrompt(allPrompts, config.getResponseFormat(), config.getOutputConfig());
     }
 
+    /**
+     * buildSystemPrompt.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private List<BaseMessage> buildSystemPrompt(Map<String, Object> inputs) {
         if (config.getSystemPromptTemplate() != null || config.getUserPromptTemplate() != null) {
             if (config.getSystemPromptTemplate() == null) {
                 return new ArrayList<>();
             }
-            PromptTemplate pt = PromptTemplate.builder()
-                    .content(List.of(config.getSystemPromptTemplate()))
-                    .build();
+            PromptTemplate pt = PromptTemplate.builder().content(List.of(config.getSystemPromptTemplate())).build();
             return pt.format(inputs).toMessages();
         }
 
@@ -193,22 +248,25 @@ public class LLMExecutable extends ComponentExecutable {
 
         List<BaseMessage> systemMessages = new ArrayList<>();
         for (Map<String, Object> m : systemPromptMaps) {
-            systemMessages.add(SystemMessage.builder()
-                    .content(m.getOrDefault("content", "").toString())
-                    .build());
+            systemMessages.add(SystemMessage.builder().content(m.getOrDefault("content", "").toString()).build());
         }
         PromptTemplate pt = PromptTemplate.builder().content(systemMessages).build();
         return pt.format(inputs).toMessages();
     }
 
+    /**
+     * buildUserPromptContent.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private List<BaseMessage> buildUserPromptContent(Map<String, Object> inputs) {
         if (config.getSystemPromptTemplate() != null || config.getUserPromptTemplate() != null) {
             if (config.getUserPromptTemplate() == null) {
                 return List.of(UserMessage.builder().content("").build());
             }
-            PromptTemplate pt = PromptTemplate.builder()
-                    .content(List.of(config.getUserPromptTemplate()))
-                    .build();
+            PromptTemplate pt = PromptTemplate.builder().content(List.of(config.getUserPromptTemplate())).build();
             return pt.format(inputs).toMessages();
         }
 
@@ -228,15 +286,21 @@ public class LLMExecutable extends ComponentExecutable {
             return List.of(UserMessage.builder().content("").build());
         }
 
-        UserMessage um = UserMessage.builder()
-                .content(userPromptMap.getOrDefault("content", "").toString())
-                .build();
+        UserMessage um = UserMessage.builder().content(userPromptMap.getOrDefault("content", "").toString()).build();
         PromptTemplate pt = PromptTemplate.builder().content(List.of(um)).build();
         return pt.format(inputs).toMessages();
     }
 
+    /**
+     * insertHistoryToSystemAndUserPrompt.
+     * 
+     * @param systemPrompt systemPrompt
+     * @param userPrompt userPrompt
+     * @return the result
+     * @since 0.1.7
+     */
     private List<BaseMessage> insertHistoryToSystemAndUserPrompt(List<BaseMessage> systemPrompt,
-                                                                  List<BaseMessage> userPrompt) {
+            List<BaseMessage> userPrompt) {
         List<BaseMessage> result = new ArrayList<>(systemPrompt);
         if (config.isEnableHistory() && context != null) {
             List<BaseMessage> chatHistory = context.getMessages();
@@ -248,18 +312,32 @@ public class LLMExecutable extends ComponentExecutable {
         return result;
     }
 
+    /**
+     * createOutput.
+     * 
+     * @param llmOutput llmOutput
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> createOutput(String llmOutput) {
         try {
             return OutputFormatter.formatResponse(llmOutput, config.getResponseFormat(), config.getOutputConfig());
         } catch (BaseError e) {
             if (e.getCode() == StatusCode.COMPONENT_LLM_CONFIG_INVALID.getCode()) {
-                throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_EXECUTION_PROCESS_ERROR,
-                        "error_msg", e.getMessage());
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_EXECUTION_PROCESS_ERROR, "error_msg",
+                        e.getMessage());
             }
             throw e;
         }
     }
 
+    /**
+     * invokeForJsonFormat.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private Iterator<Object> invokeForJsonFormat(Object inputs) {
         List<BaseMessage> modelInputs = prepareModelInputs(inputs);
 
@@ -268,8 +346,7 @@ public class LLMExecutable extends ComponentExecutable {
             AssistantMessage llmOutput = llm.invoke(modelInputs, null, null, null, null, null, null, null, null, null);
             llmOutputContent = llmOutput.getContent() != null ? llmOutput.getContent().toString() : "";
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED,
-                    "error_msg", e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED, "error_msg", e.getMessage());
         }
 
         if (config.isCacheStream()) {
@@ -280,6 +357,13 @@ public class LLMExecutable extends ComponentExecutable {
         return Collections.singletonList(output).iterator();
     }
 
+    /**
+     * streamWithChunks.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private Iterator<Object> streamWithChunks(Object inputs) {
         List<BaseMessage> modelInputs = prepareModelInputs(inputs);
 
@@ -290,8 +374,7 @@ public class LLMExecutable extends ComponentExecutable {
             if (config.isCacheStream()) {
                 state.clear();
             }
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED,
-                    "error_msg", e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_INVOKE_CALL_FAILED, "error_msg", e.getMessage());
         }
 
         List<Object> results = new ArrayList<>();
@@ -303,8 +386,8 @@ public class LLMExecutable extends ComponentExecutable {
                     if (config.isCacheStream()) {
                         state.accumulateContent(content);
                     }
-                    Map<String, Object> formattedRes = OutputFormatter.formatResponse(
-                            content, config.getResponseFormat(), config.getOutputConfig());
+                    Map<String, Object> formattedRes =
+                        OutputFormatter.formatResponse(content, config.getResponseFormat(), config.getOutputConfig());
                     results.add(formattedRes);
                 }
             }
@@ -318,16 +401,30 @@ public class LLMExecutable extends ComponentExecutable {
         return results.iterator();
     }
 
+    /**
+     * validateConfig.
+     * 
+     * @param cfg cfg
+     * @since 0.1.7
+     */
     private void validateConfig(LLMCompConfig cfg) {
         validateTemplate(cfg.getTemplateContent(), cfg.getSystemPromptTemplate(), cfg.getUserPromptTemplate());
         validateResponseFormat(cfg.getResponseFormat(), cfg.getOutputConfig());
         validateOutputConfig(cfg.getOutputConfig());
     }
 
-    private void validateTemplate(List<Map<String, Object>> templateContent,
-                                   SystemMessage systemPromptTemplate,
-                                   UserMessage userPromptTemplate) {
-        if (systemPromptTemplate != null || userPromptTemplate != null || templateContent == null || templateContent.isEmpty()) {
+    /**
+     * validateTemplate.
+     * 
+     * @param templateContent templateContent
+     * @param systemPromptTemplate systemPromptTemplate
+     * @param userPromptTemplate userPromptTemplate
+     * @since 0.1.7
+     */
+    private void validateTemplate(List<Map<String, Object>> templateContent, SystemMessage systemPromptTemplate,
+            UserMessage userPromptTemplate) {
+        if (systemPromptTemplate != null || userPromptTemplate != null || templateContent == null
+                || templateContent.isEmpty()) {
             return;
         }
 
@@ -337,31 +434,45 @@ public class LLMExecutable extends ComponentExecutable {
                 containsUserMessage = true;
             }
             if (containsUserMessage && "system".equals(element.get(ROLE_KEY))) {
-                throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_TEMPLATE_CONFIG_ERROR,
-                        "error_msg", "system message must be before user message");
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_TEMPLATE_CONFIG_ERROR, "error_msg",
+                        "system message must be before user message");
             }
         }
         if (!containsUserMessage) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_TEMPLATE_CONFIG_ERROR,
-                    "error_msg", "user message is required");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_TEMPLATE_CONFIG_ERROR, "error_msg",
+                    "user message is required");
         }
     }
 
+    /**
+     * validateResponseFormat.
+     * 
+     * @param responseFormat responseFormat
+     * @param outputConfig outputConfig
+     * @since 0.1.7
+     */
     private void validateResponseFormat(Map<String, Object> responseFormat, Map<String, Object> outputConfig) {
         if (responseFormat == null || responseFormat.isEmpty()) {
             return;
         }
         String resType = (String) responseFormat.get(TYPE_KEY);
         if (resType == null || (!resType.equals("text") && !resType.equals("markdown") && !resType.equals("json"))) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_RESPONSE_CONFIG_INVALID,
-                    "error_msg", "response format '" + resType + "' is invalid");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_RESPONSE_CONFIG_INVALID, "error_msg",
+                    "response format '" + resType + "' is invalid");
         }
-        if (("text".equals(resType) || "markdown".equals(resType)) && outputConfig != null && outputConfig.size() != 1) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_RESPONSE_CONFIG_INVALID,
-                    "error_msg", "output config must contain exactly one parameter for text or markdown response type");
+        if (("text".equals(resType) || "markdown".equals(resType)) && outputConfig != null
+                && outputConfig.size() != 1) {
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_RESPONSE_CONFIG_INVALID, "error_msg",
+                    "output config must contain exactly one parameter for text or markdown response type");
         }
     }
 
+    /**
+     * validateOutputConfig.
+     * 
+     * @param outputConfig outputConfig
+     * @since 0.1.7
+     */
     private void validateOutputConfig(Map<String, Object> outputConfig) {
         if (outputConfig == null || outputConfig.isEmpty()) {
             return;
@@ -372,8 +483,8 @@ public class LLMExecutable extends ComponentExecutable {
         }
         for (Map.Entry<String, Object> entry : outputConfig.entrySet()) {
             if (entry.getKey() == null || entry.getKey().isEmpty()) {
-                throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_CONFIG_ERROR,
-                        "error_msg", "output config parameter is empty");
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_LLM_CONFIG_ERROR, "error_msg",
+                        "output config parameter is empty");
             }
         }
     }

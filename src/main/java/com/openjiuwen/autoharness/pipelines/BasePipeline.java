@@ -13,45 +13,67 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Auto-generated for codecheck compliance.
+ * BasePipeline.
+ * 
+ * @since 0.1.7
  */
 public abstract class BasePipeline {
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public abstract String name();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * description.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public abstract String description();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * expectedOutputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> expectedOutputs() {
         return List.of();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * spec.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public PipelineSpec spec() {
-        return PipelineSpec.builder()
-                .name(name())
-                .pipelineCls(getClass())
-                .description(description())
-                .expectedOutputs(new ArrayList<>(expectedOutputs()))
-                .build();
+        return PipelineSpec.builder().name(name()).pipelineCls(getClass()).description(description())
+                .expectedOutputs(new ArrayList<>(expectedOutputs())).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> stream(BaseExecutionContext ctx) {
         return List.of();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * streamStage.
+     * 
+     * @param stage stage
+     * @param ctx ctx
+     * @param resultHolder resultHolder
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> streamStage(BaseStage stage, BaseExecutionContext ctx, List<StageResult> resultHolder) {
         List<Object> events = new ArrayList<>();
@@ -74,7 +96,12 @@ public abstract class BasePipeline {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * requireStageResult.
+     * 
+     * @param stage stage
+     * @param resultHolder resultHolder
+     * @return the result
+     * @since 0.1.7
      */
     public StageResult requireStageResult(BaseStage stage, List<StageResult> resultHolder) {
         if (resultHolder.isEmpty()) {
@@ -84,7 +111,12 @@ public abstract class BasePipeline {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * didStageFail.
+     * 
+     * @param stage stage
+     * @param resultHolder resultHolder
+     * @return the result
+     * @since 0.1.7
      */
     public boolean didStageFail(BaseStage stage, List<StageResult> resultHolder) {
         return "failed".equals(requireStageResult(stage, resultHolder).getStatus());

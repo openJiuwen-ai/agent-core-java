@@ -1,7 +1,15 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.session.callback.BaseHandler;
 import com.openjiuwen.core.session.callback.CallbackManager;
@@ -10,11 +18,11 @@ import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
 import com.openjiuwen.core.session.interaction.AgentInterrupt;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamMode;
-import com.openjiuwen.core.session.stream.StreamWriterManager;
-import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamWriter;
+import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.session.tracer.Tracer;
 
 import org.junit.jupiter.api.DisplayName;
@@ -26,13 +34,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Advanced Session system tests covering gaps identified in CHECK doc:
  * InMemoryCheckpointer, StreamEmitter/StreamWriterManager, CallbackManager,
@@ -41,11 +42,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Tag("system-test")
 class SessionAdvancedSystemTest {
-
     @Nested
     @DisplayName("InMemoryCheckpointer Tests")
     class CheckpointerTests {
-
         @Test
         @DisplayName("InMemoryCheckpointer creation")
         void testCheckpointerCreation() {
@@ -91,7 +90,6 @@ class SessionAdvancedSystemTest {
     @Nested
     @DisplayName("StreamEmitter Tests")
     class StreamEmitterTests {
-
         @Test
         @DisplayName("StreamEmitter emit and close lifecycle")
         void testEmitAndClose() {
@@ -115,13 +113,12 @@ class SessionAdvancedSystemTest {
     @Nested
     @DisplayName("StreamWriterManager Tests")
     class StreamWriterManagerTests {
-
         @Test
         @DisplayName("StreamWriterManager creation with modes")
         void testCreationWithModes() {
             StreamEmitter emitter = new StreamEmitter();
-            StreamWriterManager manager = StreamWriterManager.createManager(
-                    emitter, List.of(StreamMode.OUTPUT, StreamMode.TRACE));
+            StreamWriterManager manager =
+                StreamWriterManager.createManager(emitter, List.of(StreamMode.OUTPUT, StreamMode.TRACE));
 
             assertNotNull(manager);
             assertNotNull(manager.getStreamEmitter());
@@ -131,8 +128,8 @@ class SessionAdvancedSystemTest {
         @DisplayName("StreamWriterManager provides typed writers")
         void testTypedWriters() {
             StreamEmitter emitter = new StreamEmitter();
-            StreamWriterManager manager = StreamWriterManager.createManager(
-                    emitter, List.of(StreamMode.OUTPUT, StreamMode.TRACE, StreamMode.CUSTOM));
+            StreamWriterManager manager = StreamWriterManager.createManager(emitter,
+                    List.of(StreamMode.OUTPUT, StreamMode.TRACE, StreamMode.CUSTOM));
 
             StreamWriter<OutputSchema> outputWriter = manager.getOutputWriter();
             assertNotNull(outputWriter, "Output writer should be available");
@@ -145,8 +142,7 @@ class SessionAdvancedSystemTest {
         @DisplayName("StreamWriterManager collectStreamOutput")
         void testCollectStreamOutput() {
             StreamEmitter emitter = new StreamEmitter();
-            StreamWriterManager manager = StreamWriterManager.createManager(
-                    emitter, List.of(StreamMode.OUTPUT));
+            StreamWriterManager manager = StreamWriterManager.createManager(emitter, List.of(StreamMode.OUTPUT));
 
             // Emit some data then close
             emitter.emit("data_1");
@@ -162,7 +158,6 @@ class SessionAdvancedSystemTest {
     @Nested
     @DisplayName("StreamMode Tests")
     class StreamModeTests {
-
         @Test
         @DisplayName("StreamMode enum values")
         void testStreamModeValues() {
@@ -183,7 +178,6 @@ class SessionAdvancedSystemTest {
     @Nested
     @DisplayName("CallbackManager Tests")
     class CallbackManagerTests {
-
         static class TestHandler extends BaseHandler {
             private final AtomicBoolean invoked = new AtomicBoolean(false);
 
@@ -241,7 +235,6 @@ class SessionAdvancedSystemTest {
     @Nested
     @DisplayName("Tracer Tests")
     class TracerTests {
-
         @Test
         @DisplayName("Tracer generates unique traceId")
         void testTracerCreation() {
@@ -256,8 +249,7 @@ class SessionAdvancedSystemTest {
         void testTracerUniqueness() {
             Tracer t1 = new Tracer();
             Tracer t2 = new Tracer();
-            assertFalse(t1.getTraceId().equals(t2.getTraceId()),
-                    "Different tracers should have different IDs");
+            assertFalse(t1.getTraceId().equals(t2.getTraceId()), "Different tracers should have different IDs");
         }
 
         @Test
@@ -265,8 +257,7 @@ class SessionAdvancedSystemTest {
         void testTracerInit() {
             Tracer tracer = new Tracer();
             StreamEmitter emitter = new StreamEmitter();
-            StreamWriterManager swm = StreamWriterManager.createManager(
-                    emitter, List.of(StreamMode.TRACE));
+            StreamWriterManager swm = StreamWriterManager.createManager(emitter, List.of(StreamMode.TRACE));
             CallbackManager cbm = new CallbackManager();
 
             assertDoesNotThrow(() -> tracer.init(swm, cbm));
@@ -277,7 +268,6 @@ class SessionAdvancedSystemTest {
     @Nested
     @DisplayName("InteractiveInput Tests")
     class InteractiveInputTests {
-
         @Test
         @DisplayName("InteractiveInput default construction")
         void testDefaultConstruction() {
@@ -308,7 +298,6 @@ class SessionAdvancedSystemTest {
     @Nested
     @DisplayName("AgentInterrupt Tests")
     class AgentInterruptTests {
-
         @Test
         @DisplayName("AgentInterrupt is a RuntimeException")
         void testAgentInterruptException() {

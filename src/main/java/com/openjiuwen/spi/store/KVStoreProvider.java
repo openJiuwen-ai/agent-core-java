@@ -14,24 +14,26 @@ import java.util.Map;
  * Each provider declares which {@code typeName()} it supports.
  * Service adapters can also register providers programmatically via
  * {@link KVStoreFactory#register(String, KVStoreProvider)}.
- *
- * @since 0.1.12
+ * 
  * @see KVStoreFactory
  * @see BaseKVStore
+ * @since 0.1.7
  */
 public interface KVStoreProvider {
     /**
-     * The store type name this provider handles (e.g., "in_memory", "redis").
-     *
-     * @return the type name for registration
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     String typeName();
 
     /**
      * Create a KV store with the given configuration.
-     *
+     * 
      * @param conf the configuration map
      * @return a new BaseKVStore instance
+     * @since 0.1.7
      */
     BaseKVStore create(Map<String, Object> conf);
 }

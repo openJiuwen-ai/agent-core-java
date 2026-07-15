@@ -15,84 +15,93 @@ import java.util.Map;
  * <p>
  * Defines the contract for tool invocation and streaming.
  * Mirrors Python's {@code Tool} ABC from <code>foundation/tool/base.py</code>.
- *
- * <p>Usage:
+ * <p>
+ * Usage:
+ * 
  * <pre>
- *   Tool myTool = new LocalFunction(card, myFunction);
- *   Map&lt;String, Object&gt; result = myTool.invoke(inputs);
+ * Tool myTool = new LocalFunction(card, myFunction);
+ * Map&lt;String, Object&gt; result = myTool.invoke(inputs);
  * </pre>
- *
+ * 
  * @see ToolCard
+ * @since 0.1.7
  */
 public abstract class Tool {
-
-    /** The tool configuration card. */
+    /**
+     * card.
+     * 
+     * @since 0.1.7
+     */
     protected final ToolCard card;
 
     /**
      * Construct a new tool with the given configuration card.
-     *
+     * 
      * @param card the tool card; must not be null and must have a valid id
-     * @throws com.openjiuwen.core.common.exception.ToolError if card is invalid
+     * @since 0.1.7
      */
     protected Tool(ToolCard card) {
         if (card == null) {
             throw ErrorHelper.buildError(StatusCode.TOOL_CARD_INVALID, "card", "None", "reason", "card is None");
         }
         if (card.getId() == null || card.getId().isBlank()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.TOOL_CARD_INVALID,
-                    "card",
-                    "id=''",
-                    "reason",
+            throw ErrorHelper.buildError(StatusCode.TOOL_CARD_INVALID, "card", "id=''", "reason",
                     "card id is None or empty");
         }
         this.card = card;
     }
+
     /**
      * Get the tool card.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ToolCard getCard() {
         return card;
     }
 
     /**
-     * Execute the tool with provided inputs and return the final result.
-     * <p>
-     * This method performs complete tool execution in a single call.
-     * For asynchronous invocation, wrap with
-     * {@link com.openjiuwen.core.common.reactive.ReactiveAdapters#fromCallable}.
-     *
-     * @param inputs structured input data conforming to the tool's input schema
-     * @param kwargs additional execution parameters
-     * @return the complete result of tool execution
-     * @throws Exception if execution fails
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public abstract Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception;
 
     /**
      * Execute the tool with provided inputs (no extra kwargs).
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public Object invoke(Map<String, Object> inputs) throws Exception {
         return invoke(inputs, Map.of());
     }
 
     /**
-     * Execute the tool and stream incremental results.
-     * <p>
-     * Returns an {@link Iterator} to yield partial results as they become available.
-     * For reactive streaming, wrap with
-     * {@link com.openjiuwen.core.common.reactive.ReactiveAdapters#fromAutoCloseableIterator}.
-     *
-     * @param inputs structured input data conforming to the tool's input schema
-     * @param kwargs additional execution parameters
-     * @return an iterator of incremental results
-     * @throws Exception if execution fails
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public abstract Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception;
 
     /**
      * Execute the tool and stream incremental results (no extra kwargs).
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public Iterator<Object> stream(Map<String, Object> inputs) throws Exception {
         return stream(inputs, Map.of());

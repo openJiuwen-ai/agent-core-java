@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.graph.pregel;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.graph.store.InMemoryStore;
 
@@ -10,7 +13,6 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,21 +20,16 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for {@link Pregel} graph execution engine — barrier, conditional routing, multi-routing.
  * <p>
  * Ported from Python's {@code test_pregel.py :: TestPregelV2}.
  */
 class PregelTest {
-
     // ---------- helper: create trace-recording callback ----------
     private static java.util.function.Consumer<PregelLoop> traceCallback(List<Map<String, Object>> trace) {
-        return loop -> trace.add(Map.of(
-                "step", loop.getStep(),
-                "active_nodes", new ArrayList<>(loop.getActiveNodes())
-        ));
+        return loop -> trace
+                .add(Map.of("step", loop.getStep(), "active_nodes", new ArrayList<>(loop.getActiveNodes())));
     }
 
     // ---------- Barrier synchronization ----------
@@ -40,9 +37,9 @@ class PregelTest {
     @Nested
     @DisplayName("Barrier synchronization")
     class BarrierTests {
-
         /**
          * Graph structure (direct construction):
+         * 
          * <pre>
          * start -> a -> a1 --\
          *          b --------\
@@ -53,27 +50,19 @@ class PregelTest {
         @Test
         @DisplayName("barrier wait for all - direct construction")
         void testBarrierWaitForAllDirect() throws Exception {
-            Runnable fnPass = () -> {};
+            Runnable fnPass = () -> {
+            };
 
             BarrierChannel a1bcdToCollect = new BarrierChannel("collect", Set.of("a1", "b", "c", "d"));
 
-            List<Channel> channels = new ArrayList<>(List.of(
-                    new TriggerChannel("start"),
-                    new TriggerChannel("a"),
-                    new TriggerChannel("b"),
-                    new TriggerChannel("c"),
-                    new TriggerChannel("d"),
-                    new TriggerChannel("a1"),
-                    new TriggerChannel("collect"),
-                    new TriggerChannel("end"),
-                    a1bcdToCollect
-            ));
+            List<Channel> channels = new ArrayList<>(List.of(new TriggerChannel("start"), new TriggerChannel("a"),
+                    new TriggerChannel("b"), new TriggerChannel("c"), new TriggerChannel("d"), new TriggerChannel("a1"),
+                    new TriggerChannel("collect"), new TriggerChannel("end"), a1bcdToCollect));
 
             Map<String, PregelNode> nodes = new LinkedHashMap<>();
             nodes.put("start", new PregelNode("start", fnPass,
                     new ArrayList<>(List.of(new StaticRouter(List.of("a", "b", "c", "d"))))));
-            nodes.put("a", new PregelNode("a", fnPass,
-                    new ArrayList<>(List.of(new StaticRouter(List.of("a1"))))));
+            nodes.put("a", new PregelNode("a", fnPass, new ArrayList<>(List.of(new StaticRouter(List.of("a1"))))));
             nodes.put("b", new PregelNode("b", fnPass,
                     new ArrayList<>(List.of(new BarrierRouter(List.of(a1bcdToCollect.getKey()))))));
             nodes.put("c", new PregelNode("c", fnPass,
@@ -82,10 +71,9 @@ class PregelTest {
                     new ArrayList<>(List.of(new BarrierRouter(List.of(a1bcdToCollect.getKey()))))));
             nodes.put("a1", new PregelNode("a1", fnPass,
                     new ArrayList<>(List.of(new BarrierRouter(List.of(a1bcdToCollect.getKey()))))));
-            nodes.put("collect", new PregelNode("collect", fnPass,
-                    new ArrayList<>(List.of(new StaticRouter(List.of("end"))))));
-            nodes.put("end", new PregelNode("end", fnPass,
-                    new ArrayList<>(List.of(new StaticRouter(List.of())))));
+            nodes.put("collect",
+                    new PregelNode("collect", fnPass, new ArrayList<>(List.of(new StaticRouter(List.of("end"))))));
+            nodes.put("end", new PregelNode("end", fnPass, new ArrayList<>(List.of(new StaticRouter(List.of())))));
 
             List<Map<String, Object>> trace = new ArrayList<>();
             Pregel app = new Pregel(nodes, channels, "start", null, traceCallback(trace));
@@ -107,7 +95,8 @@ class PregelTest {
         @Test
         @DisplayName("barrier wait for all - builder construction")
         void testBarrierWaitForAllBuilder() throws Exception {
-            Runnable fnPass = () -> {};
+            Runnable fnPass = () -> {
+            };
 
             PregelBuilder builder = new PregelBuilder();
             builder.addNode("a", fnPass);
@@ -146,26 +135,21 @@ class PregelTest {
     @Nested
     @DisplayName("Conditional routing")
     class ConditionalRoutingTests {
-
         @Test
         @DisplayName("conditional router selects D - direct construction")
         void testConditionalRoutingDirect() throws Exception {
-            Runnable fnInt = () -> {};
-            Runnable fnReceive = () -> {};
+            Runnable fnInt = () -> {
+            };
+            Runnable fnReceive = () -> {
+            };
 
-            List<Channel> channels = new ArrayList<>(List.of(
-                    new TriggerChannel("A"),
-                    new TriggerChannel("D"),
-                    new TriggerChannel("E")
-            ));
+            List<Channel> channels =
+                new ArrayList<>(List.of(new TriggerChannel("A"), new TriggerChannel("D"), new TriggerChannel("E")));
 
             Map<String, PregelNode> nodes = new LinkedHashMap<>();
-            nodes.put("A", new PregelNode("A", fnInt,
-                    new ArrayList<>(List.of(new ConditionalRouter(x -> "D")))));
-            nodes.put("D", new PregelNode("D", fnReceive,
-                    new ArrayList<>(List.of(new StaticRouter(List.of())))));
-            nodes.put("E", new PregelNode("E", fnReceive,
-                    new ArrayList<>(List.of(new StaticRouter(List.of())))));
+            nodes.put("A", new PregelNode("A", fnInt, new ArrayList<>(List.of(new ConditionalRouter(x -> "D")))));
+            nodes.put("D", new PregelNode("D", fnReceive, new ArrayList<>(List.of(new StaticRouter(List.of())))));
+            nodes.put("E", new PregelNode("E", fnReceive, new ArrayList<>(List.of(new StaticRouter(List.of())))));
 
             List<Map<String, Object>> trace = new ArrayList<>();
             Pregel app = new Pregel(nodes, channels, "A", null, traceCallback(trace));
@@ -177,17 +161,18 @@ class PregelTest {
 
             // E was never activated
             @SuppressWarnings("unchecked")
-            List<String> allActivated = trace.stream()
-                    .flatMap(t -> ((List<String>) t.get("active_nodes")).stream())
-                    .toList();
+            List<String> allActivated =
+                trace.stream().flatMap(t -> ((List<String>) t.get("active_nodes")).stream()).toList();
             assertFalse(allActivated.contains("E"));
         }
 
         @Test
         @DisplayName("conditional router selects D - builder construction")
         void testConditionalRoutingBuilder() throws Exception {
-            Runnable fnInt = () -> {};
-            Runnable fnReceive = () -> {};
+            Runnable fnInt = () -> {
+            };
+            Runnable fnReceive = () -> {
+            };
 
             PregelBuilder builder = new PregelBuilder();
             builder.addNode("A", fnInt);
@@ -213,75 +198,65 @@ class PregelTest {
     @Nested
     @DisplayName("Multi-routing")
     class MultiRoutingTests {
-
         /**
          * Complex graph:
+         * 
          * <pre>
          * START → A, B, C, X (fan-out)
          * A → G (static), A → E (conditional), [A,B,C] → D (barrier), [A,Y] → D (barrier)
          * X → Y (static), Y → D (static)
          * [D,E,G] → FINISH (barrier), F → FINISH (static, never triggered)
          * </pre>
+         * 
          * Expected trace: START, {A,B,C,X}, {Y,E,G,D}, {FINISH,D}
          */
         @Test
         @DisplayName("multi-routing with mixed static/conditional/barrier - direct construction")
         void testMultiRoutingDirect() throws Exception {
-            Runnable fnInt = () -> {};
-            Runnable fnReceive = () -> {};
-            Runnable fnEnd = () -> {};
+            Runnable fnInt = () -> {
+            };
+            Runnable fnReceive = () -> {
+            };
+            Runnable fnEnd = () -> {
+            };
 
             // Create barrier channels
             BarrierChannel barrierABC_D = new BarrierChannel("D", Set.of("A", "B", "C"));
             BarrierChannel barrierAY_D = new BarrierChannel("D", Set.of("A", "Y"));
             BarrierChannel barrierDEG_FIN = new BarrierChannel("FINISH", Set.of("D", "E", "G"));
 
-            List<Channel> channels = new ArrayList<>(List.of(
-                    new TriggerChannel("START"),
-                    new TriggerChannel("A"),
-                    new TriggerChannel("B"),
-                    new TriggerChannel("C"),
-                    new TriggerChannel("X"),
-                    new TriggerChannel("Y"),
-                    new TriggerChannel("D"),
-                    new TriggerChannel("E"),
-                    new TriggerChannel("F"),
-                    new TriggerChannel("G"),
-                    new TriggerChannel("FINISH"),
-                    barrierABC_D,
-                    barrierAY_D,
-                    barrierDEG_FIN
-            ));
+            List<Channel> channels = new ArrayList<>(List.of(new TriggerChannel("START"), new TriggerChannel("A"),
+                    new TriggerChannel("B"), new TriggerChannel("C"), new TriggerChannel("X"), new TriggerChannel("Y"),
+                    new TriggerChannel("D"), new TriggerChannel("E"), new TriggerChannel("F"), new TriggerChannel("G"),
+                    new TriggerChannel("FINISH"), barrierABC_D, barrierAY_D, barrierDEG_FIN));
 
             Map<String, PregelNode> nodes = new LinkedHashMap<>();
             nodes.put("START", new PregelNode("START", fnInt,
                     new ArrayList<>(List.of(new StaticRouter(List.of("A", "B", "C", "X"))))));
-            nodes.put("A", new PregelNode("A", fnInt, new ArrayList<>(List.of(
-                    new StaticRouter(List.of("G")),                           // A → G
-                    new ConditionalRouter(x -> "E"),                          // A → E
-                    new BarrierRouter(List.of(barrierABC_D.getKey())),        // A → barrier(A,B,C→D)
-                    new BarrierRouter(List.of(barrierAY_D.getKey()))          // A → barrier(A,Y→D)
+            nodes.put("A", new PregelNode("A", fnInt, new ArrayList<>(List.of(new StaticRouter(List.of("G")), // A → G
+                    new ConditionalRouter(x -> "E"), // A → E
+                    new BarrierRouter(List.of(barrierABC_D.getKey())), // A → barrier(A,B,C→D)
+                    new BarrierRouter(List.of(barrierAY_D.getKey())) // A → barrier(A,Y→D)
             ))));
             nodes.put("B", new PregelNode("B", fnInt,
                     new ArrayList<>(List.of(new BarrierRouter(List.of(barrierABC_D.getKey()))))));
             nodes.put("C", new PregelNode("C", fnInt,
                     new ArrayList<>(List.of(new BarrierRouter(List.of(barrierABC_D.getKey()))))));
-            nodes.put("X", new PregelNode("X", fnInt,
-                    new ArrayList<>(List.of(new StaticRouter(List.of("Y"))))));
-            nodes.put("Y", new PregelNode("Y", fnReceive, new ArrayList<>(List.of(
-                    new StaticRouter(List.of("D")),                           // Y → D (static)
-                    new BarrierRouter(List.of(barrierAY_D.getKey()))          // Y → barrier(A,Y→D)
+            nodes.put("X", new PregelNode("X", fnInt, new ArrayList<>(List.of(new StaticRouter(List.of("Y"))))));
+            nodes.put("Y", new PregelNode("Y", fnReceive, new ArrayList<>(List.of(new StaticRouter(List.of("D")), // Y →
+                                                                                                                  // D
+                                                                                                                  // (static)
+                    new BarrierRouter(List.of(barrierAY_D.getKey())) // Y → barrier(A,Y→D)
             ))));
             nodes.put("D", new PregelNode("D", fnReceive,
                     new ArrayList<>(List.of(new BarrierRouter(List.of(barrierDEG_FIN.getKey()))))));
             nodes.put("E", new PregelNode("E", fnReceive,
                     new ArrayList<>(List.of(new BarrierRouter(List.of(barrierDEG_FIN.getKey()))))));
-            nodes.put("F", new PregelNode("F", fnReceive,
-                    new ArrayList<>(List.of(new StaticRouter(List.of("FINISH"))))));
+            nodes.put("F",
+                    new PregelNode("F", fnReceive, new ArrayList<>(List.of(new StaticRouter(List.of("FINISH"))))));
             nodes.put("G", new PregelNode("G", fnReceive,
                     new ArrayList<>(List.of(new BarrierRouter(List.of(barrierDEG_FIN.getKey()))))));
-            nodes.put("FINISH", new PregelNode("FINISH", fnEnd,
-                    new ArrayList<>(List.of(new StaticRouter(List.of())))));
+            nodes.put("FINISH", new PregelNode("FINISH", fnEnd, new ArrayList<>(List.of(new StaticRouter(List.of())))));
 
             List<Map<String, Object>> trace = new ArrayList<>();
             Pregel graph = new Pregel(nodes, channels, "START", null, traceCallback(trace));
@@ -306,9 +281,12 @@ class PregelTest {
         @Test
         @DisplayName("multi-routing with mixed static/conditional/barrier - builder construction")
         void testMultiRoutingBuilder() throws Exception {
-            Runnable fnInt = () -> {};
-            Runnable fnReceive = () -> {};
-            Runnable fnEnd = () -> {};
+            Runnable fnInt = () -> {
+            };
+            Runnable fnReceive = () -> {
+            };
+            Runnable fnEnd = () -> {
+            };
 
             PregelBuilder builder = new PregelBuilder();
             builder.addNode("A", fnInt);
@@ -322,15 +300,15 @@ class PregelTest {
             builder.addNode("G", fnReceive);
             builder.addNode("FINISH", fnEnd);
 
-            builder.addEdge(PregelConstants.START, List.of("A", "B", "C", "X"));  // fan-out
-            builder.addEdge("A", "G");                                             // A → G (static)
-            builder.addBranch("A", x -> "E");                                      // A → E (conditional)
-            builder.addEdge(List.of("A", "B", "C"), "D");                          // barrier A,B,C → D
-            builder.addEdge("X", "Y");                                             // X → Y (static)
-            builder.addEdge(List.of("A", "Y"), "D");                               // barrier A,Y → D
-            builder.addEdge("Y", "D");                                             // Y → D (static)
-            builder.addEdge(List.of("D", "E", "G"), "FINISH");                     // barrier D,E,G → FINISH
-            builder.addEdge("F", "FINISH");                                        // F → FINISH (static, never triggered)
+            builder.addEdge(PregelConstants.START, List.of("A", "B", "C", "X")); // fan-out
+            builder.addEdge("A", "G"); // A → G (static)
+            builder.addBranch("A", x -> "E"); // A → E (conditional)
+            builder.addEdge(List.of("A", "B", "C"), "D"); // barrier A,B,C → D
+            builder.addEdge("X", "Y"); // X → Y (static)
+            builder.addEdge(List.of("A", "Y"), "D"); // barrier A,Y → D
+            builder.addEdge("Y", "D"); // Y → D (static)
+            builder.addEdge(List.of("D", "E", "G"), "FINISH"); // barrier D,E,G → FINISH
+            builder.addEdge("F", "FINISH"); // F → FINISH (static, never triggered)
 
             List<Map<String, Object>> trace = new ArrayList<>();
             Pregel graph = builder.build(null, traceCallback(trace));
@@ -361,7 +339,6 @@ class PregelTest {
     @Nested
     @DisplayName("PregelBuilder")
     class PregelBuilderTests {
-
         @Test
         @DisplayName("builder creates __start__ and __end__ nodes by default")
         void testDefaultNodes() {
@@ -375,7 +352,8 @@ class PregelTest {
         @DisplayName("addNode adds node and trigger channel")
         void testAddNode() {
             PregelBuilder builder = new PregelBuilder();
-            builder.addNode("myNode", (Runnable) () -> {});
+            builder.addNode("myNode", (Runnable) () -> {
+            });
             Pregel pregel = builder.build();
             assertTrue(pregel.getNodes().containsKey("myNode"));
             assertTrue(pregel.getChannels().stream().anyMatch(c -> "myNode".equals(c.getNodeName())));
@@ -385,8 +363,10 @@ class PregelTest {
         @DisplayName("addEdge 1->1 creates static router")
         void testAddEdgeSingleStatic() {
             PregelBuilder builder = new PregelBuilder();
-            builder.addNode("A", (Runnable) () -> {});
-            builder.addNode("B", (Runnable) () -> {});
+            builder.addNode("A", (Runnable) () -> {
+            });
+            builder.addNode("B", (Runnable) () -> {
+            });
             builder.addEdge("A", "B");
             Pregel pregel = builder.build();
             assertFalse(pregel.getNodes().get("A").getRouters().isEmpty());
@@ -396,9 +376,12 @@ class PregelTest {
         @DisplayName("addEdge 1->N creates static router with multiple targets")
         void testAddEdgeFanOut() {
             PregelBuilder builder = new PregelBuilder();
-            builder.addNode("A", (Runnable) () -> {});
-            builder.addNode("B", (Runnable) () -> {});
-            builder.addNode("C", (Runnable) () -> {});
+            builder.addNode("A", (Runnable) () -> {
+            });
+            builder.addNode("B", (Runnable) () -> {
+            });
+            builder.addNode("C", (Runnable) () -> {
+            });
             builder.addEdge("A", List.of("B", "C"));
             Pregel pregel = builder.build();
             assertEquals(1, pregel.getNodes().get("A").getRouters().size());
@@ -408,9 +391,12 @@ class PregelTest {
         @DisplayName("addEdge N->1 creates barrier channel")
         void testAddEdgeBarrier() {
             PregelBuilder builder = new PregelBuilder();
-            builder.addNode("A", (Runnable) () -> {});
-            builder.addNode("B", (Runnable) () -> {});
-            builder.addNode("C", (Runnable) () -> {});
+            builder.addNode("A", (Runnable) () -> {
+            });
+            builder.addNode("B", (Runnable) () -> {
+            });
+            builder.addNode("C", (Runnable) () -> {
+            });
             builder.addEdge(List.of("A", "B"), "C");
             Pregel pregel = builder.build();
 
@@ -423,7 +409,8 @@ class PregelTest {
         @DisplayName("addBranch adds conditional router")
         void testAddBranch() {
             PregelBuilder builder = new PregelBuilder();
-            builder.addNode("A", (Runnable) () -> {});
+            builder.addNode("A", (Runnable) () -> {
+            });
             builder.addBranch("A", x -> "target");
             Pregel pregel = builder.build();
             assertEquals(1, pregel.getNodes().get("A").getRouters().size());
@@ -434,7 +421,8 @@ class PregelTest {
         @DisplayName("build creates a Pregel instance")
         void testBuild() {
             PregelBuilder builder = new PregelBuilder();
-            builder.addNode("A", (Runnable) () -> {});
+            builder.addNode("A", (Runnable) () -> {
+            });
             Pregel pregel = builder.build();
             assertNotNull(pregel);
             assertNotNull(pregel.getNodes());
@@ -447,7 +435,6 @@ class PregelTest {
     @Nested
     @DisplayName("PregelConfig")
     class PregelConfigTests {
-
         @Test
         @DisplayName("default config has MAX_RECURSIVE_LIMIT")
         void testDefaultConfig() {
@@ -513,7 +500,6 @@ class PregelTest {
     @Nested
     @DisplayName("Router dispatch")
     class RouterTests {
-
         @Test
         @DisplayName("StaticRouter dispatches TriggerMessages to all targets")
         void testStaticRouter() {
@@ -522,8 +508,7 @@ class PregelTest {
             assertEquals(3, messages.size());
             assertTrue(messages.stream().allMatch(m -> m instanceof TriggerMessage));
             assertTrue(messages.stream().allMatch(m -> "source".equals(m.getSender())));
-            assertEquals(Set.of("A", "B", "C"),
-                    Set.copyOf(messages.stream().map(Message::getTarget).toList()));
+            assertEquals(Set.of("A", "B", "C"), Set.copyOf(messages.stream().map(Message::getTarget).toList()));
         }
 
         @Test
@@ -550,8 +535,7 @@ class PregelTest {
             ConditionalRouter router = new ConditionalRouter(x -> List.of("X", "Y"));
             List<Message> messages = router.dispatch("source");
             assertEquals(2, messages.size());
-            assertEquals(Set.of("X", "Y"),
-                    Set.copyOf(messages.stream().map(Message::getTarget).toList()));
+            assertEquals(Set.of("X", "Y"), Set.copyOf(messages.stream().map(Message::getTarget).toList()));
         }
 
         @Test
@@ -570,7 +554,6 @@ class PregelTest {
     @Nested
     @DisplayName("Interrupt and PregelConstants")
     class InterruptAndConstantsTests {
-
         @Test
         @DisplayName("GraphInterrupt carries Interrupt value")
         void testGraphInterrupt() {
@@ -605,7 +588,6 @@ class PregelTest {
     @Nested
     @DisplayName("Subgraph with exception and state persistence")
     class SubgraphExceptionTests {
-
         @Test
         @DisplayName("exception in node saves checkpoint, resume retries")
         void testSubgraphExceptionAndResume() throws Exception {
@@ -620,22 +602,19 @@ class PregelTest {
                 return "ok";
             };
 
-            Runnable fnPass = () -> {};
+            Runnable fnPass = () -> {
+            };
 
             // Build nodes/channels manually so we can control the initial node
             BarrierChannel noBarrier = null; // unused
-            List<Channel> channels = new ArrayList<>(List.of(
-                    new TriggerChannel("start"),
-                    new TriggerChannel("worker"),
-                    new TriggerChannel("end")
-            ));
+            List<Channel> channels = new ArrayList<>(
+                    List.of(new TriggerChannel("start"), new TriggerChannel("worker"), new TriggerChannel("end")));
             Map<String, PregelNode> nodes = new LinkedHashMap<>();
-            nodes.put("start", new PregelNode("start", fnPass,
-                    new ArrayList<>(List.of(new StaticRouter(List.of("worker"))))));
-            nodes.put("worker", new PregelNode("worker", failThenPass,
-                    new ArrayList<>(List.of(new StaticRouter(List.of("end"))))));
-            nodes.put("end", new PregelNode("end", fnPass,
-                    new ArrayList<>(List.of(new StaticRouter(List.of())))));
+            nodes.put("start",
+                    new PregelNode("start", fnPass, new ArrayList<>(List.of(new StaticRouter(List.of("worker"))))));
+            nodes.put("worker",
+                    new PregelNode("worker", failThenPass, new ArrayList<>(List.of(new StaticRouter(List.of("end"))))));
+            nodes.put("end", new PregelNode("end", fnPass, new ArrayList<>(List.of(new StaticRouter(List.of())))));
 
             InMemoryStore store = new InMemoryStore();
             List<Map<String, Object>> trace = new ArrayList<>();
@@ -656,9 +635,8 @@ class PregelTest {
 
             // Worker should have been activated during the resumed run
             @SuppressWarnings("unchecked")
-            List<String> allNodes = trace.stream()
-                    .flatMap(t -> ((List<String>) t.get("active_nodes")).stream())
-                    .toList();
+            List<String> allNodes =
+                trace.stream().flatMap(t -> ((List<String>) t.get("active_nodes")).stream()).toList();
             assertTrue(allNodes.contains("worker"));
         }
     }
@@ -668,17 +646,16 @@ class PregelTest {
     @Nested
     @DisplayName("Recursion limit")
     class RecursionLimitTests {
-
         @Test
         @DisplayName("exceeding recursion limit throws StackOverflowError")
         void testRecursionLimitExceeded() {
-            Runnable fn = () -> {};
+            Runnable fn = () -> {
+            };
 
             // Build a self-loop graph: A → A
             List<Channel> channels = new ArrayList<>(List.of(new TriggerChannel("A")));
             Map<String, PregelNode> nodes = new LinkedHashMap<>();
-            nodes.put("A", new PregelNode("A", fn,
-                    new ArrayList<>(List.of(new StaticRouter(List.of("A"))))));
+            nodes.put("A", new PregelNode("A", fn, new ArrayList<>(List.of(new StaticRouter(List.of("A"))))));
 
             Pregel graph = new Pregel(nodes, channels, "A", null, null);
             PregelConfig config = new PregelConfig("test_limit", "ns_limit", 3);

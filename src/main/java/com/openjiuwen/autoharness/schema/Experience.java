@@ -11,14 +11,14 @@ import lombok.NoArgsConstructor;
 
 import java.util.UUID;
 
+/**
+ * Public class Experience used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class Experience used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class Experience {
     @Builder.Default
@@ -34,12 +34,33 @@ public class Experience {
     @Builder.Default
     private String prUrl = "";
     @Builder.Default
+    /**
+     * java.util.ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private java.util.List<String> filesChanged = new java.util.ArrayList<>();
     @Builder.Default
+    /**
+     * randomId.
+     * 
+     * @since 0.1.7
+     */
     private String id = randomId();
     @Builder.Default
+    /**
+     * System.currentTimeMillis.
+     * 
+     * @since 0.1.7
+     */
     private long timestamp = System.currentTimeMillis() / 1000;
 
+    /**
+     * randomId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static String randomId() {
         return UUID.randomUUID().toString().replace("-", "").substring(0, 12);
     }

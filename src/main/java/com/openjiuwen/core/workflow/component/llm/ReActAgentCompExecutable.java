@@ -29,8 +29,8 @@ import java.util.Optional;
  * the component only supports batch-in/batch-out and batch-in/stream-out.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.react.ReActAgentCompExecutable}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 public class ReActAgentCompExecutable extends ComponentExecutable {
     private final ReActAgentCompConfig config;
@@ -38,28 +38,36 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
 
     /**
      * Create an executable from the given config.
-     *
+     * 
      * @param config component configuration
+     * @since 0.1.7
      */
     public ReActAgentCompExecutable(ReActAgentCompConfig config) {
         this.config = config;
-        this.reactAgent = new ReActAgent(AgentCard.builder()
-                .id("react_agent_workflow_executable")
-                .name("ReAct Agent Workflow Executable")
-                .description("ReAct agent for workflow execution")
-                .build());
+        this.reactAgent = new ReActAgent(AgentCard.builder().id("react_agent_workflow_executable")
+                .name("ReAct Agent Workflow Executable").description("ReAct agent for workflow execution").build());
         this.reactAgent.configure(config);
     }
 
     /**
      * Get the ability manager for adding tools/workflows/agents.
-     *
+     * 
      * @return the ability manager instance
+     * @since 0.1.7
      */
     public AbilityManager getAbilityManager() {
         return reactAgent.getAbilityManager();
     }
 
+    /**
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         Session agentSession = toSession(session).orElse(null);
@@ -70,11 +78,19 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
         return result;
     }
 
+    /**
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
         Session agentSession = toSession(session).orElse(null);
-        Iterator<Object> agentStream = reactAgent.stream(inputs, agentSession,
-                List.of(StreamMode.OUTPUT));
+        Iterator<Object> agentStream = reactAgent.stream(inputs, agentSession, List.of(StreamMode.OUTPUT));
 
         List<Object> results = new ArrayList<>();
         while (agentStream.hasNext()) {
@@ -87,18 +103,43 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
         return results.iterator();
     }
 
+    /**
+     * collect.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Object collect(Object inputs, NodeSessionApi session, ModelContext context) {
         throw new UnsupportedOperationException(
                 "Component 'ReActAgentCompExecutable' is missing required method: collect()");
     }
 
+    /**
+     * transform.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Iterator<Object> transform(Object inputs, NodeSessionApi session, ModelContext context) {
         throw new UnsupportedOperationException(
                 "Component 'ReActAgentCompExecutable' is missing required method: transform()");
     }
 
+    /**
+     * toSession.
+     * 
+     * @param nodeSessionApi nodeSessionApi
+     * @return the result
+     * @since 0.1.7
+     */
     private static Optional<Session> toSession(NodeSessionApi nodeSessionApi) {
         if (nodeSessionApi == null) {
             return Optional.empty();
@@ -115,9 +156,10 @@ public class ReActAgentCompExecutable extends ComponentExecutable {
      * <p>
      * If the chunk is an OutputSchema of type 'llm_output' with a 'content' key in its
      * payload, extract the content. Otherwise, use the payload directly.
-     *
+     * 
      * @param chunk the stream chunk to process
      * @return the processed chunk
+     * @since 0.1.7
      */
     private static Object processStreamChunk(Object chunk) {
         if (chunk instanceof OutputSchema outputSchema) {

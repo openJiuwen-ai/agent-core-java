@@ -10,10 +10,12 @@ import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,64 +30,67 @@ import java.util.concurrent.Future;
  * <p>
  * Supports real-time interruption: cancels running handlers and tasks
  * when a new request arrives for the same conversation.
+ * 
+ * @since 0.1.7
  */
 public abstract class IntentDetectionController extends BaseController {
-
     private static final Logger LOG = LoggerFactory.getLogger(IntentDetectionController.class);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * taskQueue.
+     * 
+     * @since 0.1.7
      */
     protected final TaskQueue taskQueue = new TaskQueue();
 
     /**
      * Track currently processing handlers (conversationId -> Thread).
      * This tracks at handleEvent level, earlier than TaskQueue.
+     * 
+     * @since 0.1.7
      */
     private final Map<String, Thread> processingHandlers = new ConcurrentHashMap<>();
 
     /**
-     * Override invoke to support real-time interruption.
-     * <p>
-     * When a new request arrives:
-     * 1. Cancel currently processing handler thread first
-     * 2. Cancel any running task in the TaskQueue
-     * 3. Then delegate to parent invoke
-     * <p>
-     * Mirrors Python's {@code IntentDetectionController.invoke()}.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> invoke(Map<String, Object> inputs, Session session) {
         String conversationId = String.valueOf(inputs.getOrDefault("conversation_id", "default_session"));
 
         // Cancel processing handler BEFORE sending message to queue
         Thread oldHandler = processingHandlers.get(conversationId);
         if (oldHandler != null && oldHandler.isAlive()) {
-            LOG.info("[IntentDetectionController] New request received, "
-                    + "cancelling processing handler for {}", conversationId);
+            LOG.info("[IntentDetectionController] New request received, " + "cancelling processing handler for {}",
+                    conversationId);
             oldHandler.interrupt();
         }
 
         // Also check TaskQueue for running tasks
         if (taskQueue.hasRunningTask(conversationId)) {
-            LOG.info("[IntentDetectionController] Also cancelling running task "
-                    + "for {}", conversationId);
+            LOG.info("[IntentDetectionController] Also cancelling running task " + "for {}", conversationId);
             taskQueue.cancelRunningTask(conversationId);
         }
 
         return super.invoke(inputs, session);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * handleEvent.
+     * 
+     * @param event event
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected Map<String, Object> handleEvent(Event event, Session session) {
-        String conversationId = event.getSource() != null
-                ? event.getSource().getConversationId() : "default_session";
+        String conversationId = event.getSource() != null ? event.getSource().getConversationId() : "default_session";
         Thread currentThread = Thread.currentThread();
 
         // Register current handler thread for cancellation tracking
@@ -123,7 +128,13 @@ public abstract class IntentDetectionController extends BaseController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * handleNewTask.
+     * 
+     * @param event event
+     * @param intent intent
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     protected Map<String, Object> handleNewTask(Event event, Intent intent, Session session) {
         if (intent.getTask() == null) {
@@ -134,15 +145,15 @@ public abstract class IntentDetectionController extends BaseController {
     }
 
     /**
-     * Handle task resumption: Update input -> Execute.
-     * <p>
-     * Key: Must create InteractiveInput with new user input to update task parameters.
-     * Mirrors Python's {@code IntentDetectionController._handle_resume()}.
+     * handleResume.
+     * 
+     * @param event event
+     * @param intent intent
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected Map<String, Object> handleResume(Event event, Intent intent, Session session) {
         if (intent.getTask() == null) {
             return Map.of("status", "error", "message", "Task not found in intent");
@@ -193,8 +204,8 @@ public abstract class IntentDetectionController extends BaseController {
                 if (!matches) {
                     // Mismatch: remap user input value to target component
                     Object userValue = providedInput.getUserInputs().values().iterator().next();
-                    LOG.info("Component ID mismatch: provided={}, target={}. Remapping.",
-                            providedKeys, targetComponentId);
+                    LOG.info("Component ID mismatch: provided={}, target={}. Remapping.", providedKeys,
+                            targetComponentId);
                     interactiveInput = new InteractiveInput();
                     interactiveInput.update(targetIds.get(0), userValue);
                 } else {
@@ -208,8 +219,7 @@ public abstract class IntentDetectionController extends BaseController {
             String queryText = eventContent != null ? eventContent.getQueryText() : "";
             interactiveInput = new InteractiveInput();
             interactiveInput.update(targetComponentId, queryText);
-            LOG.info("Created InteractiveInput for resume: component_id={}, query={}",
-                    targetComponentId, queryText);
+            LOG.info("Created InteractiveInput for resume: component_id={}, query={}", targetComponentId, queryText);
         }
 
         // Update task input arguments to InteractiveInput
@@ -221,7 +231,13 @@ public abstract class IntentDetectionController extends BaseController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * handleCancel.
+     * 
+     * @param event event
+     * @param intent intent
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     protected Map<String, Object> handleCancel(Event event, Intent intent, Session session) {
         if (intent.getTask() == null) {
@@ -232,7 +248,13 @@ public abstract class IntentDetectionController extends BaseController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * handleDefaultResponse.
+     * 
+     * @param event event
+     * @param intent intent
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     protected Map<String, Object> handleDefaultResponse(Event event, Intent intent, Session session) {
         String defaultText = intent != null && intent.getMetadata() != null
@@ -244,35 +266,58 @@ public abstract class IntentDetectionController extends BaseController {
             payload.put("output", Map.of());
             agentSessionApi.writeStream(new OutputSchema("workflow_final", 0, payload));
         }
-        return Map.of(
-                "status", "default_response",
-                "output", Map.of("answer", defaultText),
-                "result_type", "answer"
-        );
+        return Map.of("status", "default_response", "output", Map.of("answer", defaultText), "result_type", "answer");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * handleUnknownIntent.
+     * 
+     * @param event event
+     * @param intent intent
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     protected Map<String, Object> handleUnknownIntent(Event event, Intent intent, Session session) {
         return Map.of("status", "error", "message", "Unknown intent type");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * intentDetection.
+     * 
+     * @param event event
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     protected abstract Intent intentDetection(Event event, Session session);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * execTask.
+     * 
+     * @param messageContent messageContent
+     * @param task task
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     protected abstract Map<String, Object> execTask(Event.EventContent messageContent, Task task, Session session);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * interruptTask.
+     * 
+     * @param task task
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     protected abstract Map<String, Object> interruptTask(Task task, Session session);
 
+    /**
+     * IntentType.
+     * 
+     * @since 0.1.7
+     */
     public enum IntentType {
         EXEC_NEW_TASK,
         RESUME_TASK,
@@ -281,37 +326,56 @@ public abstract class IntentDetectionController extends BaseController {
         UNKNOWN
     }
 
+    /**
+     * Intent.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class Intent {
         @Builder.Default
         private IntentType intentType = IntentType.UNKNOWN;
         private Task task;
         private Object workflow;
         @Builder.Default
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private Map<String, Object> metadata = new LinkedHashMap<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskQueue.
+     * 
+     * @since 0.1.7
      */
     public static class TaskQueue {
         private final Map<String, RunningTaskInfo> runningTasks = new ConcurrentHashMap<>();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * registerTask.
+         * 
+         * @param conversationId conversationId
+         * @param task task
+         * @param future future
+         * @param targetId targetId
+         * @since 0.1.7
          */
         public void registerTask(String conversationId, Task task, Future<?> future, String targetId) {
             runningTasks.put(conversationId, new RunningTaskInfo(task, future, targetId, System.currentTimeMillis()));
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * cancelRunningTask.
+         * 
+         * @param conversationId conversationId
+         * @return the result
+         * @since 0.1.7
          */
         public boolean cancelRunningTask(String conversationId) {
             RunningTaskInfo info = runningTasks.get(conversationId);
@@ -322,32 +386,45 @@ public abstract class IntentDetectionController extends BaseController {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * unregisterTask.
+         * 
+         * @param conversationId conversationId
+         * @since 0.1.7
          */
         public void unregisterTask(String conversationId) {
             runningTasks.remove(conversationId);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * findTask.
+         * 
+         * @param conversationId conversationId
+         * @return the result
+         * @since 0.1.7
          */
         public RunningTaskInfo findTask(String conversationId) {
             return runningTasks.get(conversationId);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * hasRunningTask.
+         * 
+         * @param conversationId conversationId
+         * @return the result
+         * @since 0.1.7
          */
         public boolean hasRunningTask(String conversationId) {
             return runningTasks.containsKey(conversationId);
         }
     }
 
+    /**
+     * RunningTaskInfo.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class RunningTaskInfo {
         private Task task;
         private Future<?> future;

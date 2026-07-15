@@ -11,19 +11,20 @@ import lombok.NoArgsConstructor;
 
 /**
  * Data structure for read file operation.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReadFileData {
-
-    /** File path of the read file. */
     private String path;
 
     /**
      * File content.
-     * <p>When mode is "text", this is a {@code String}.
+     * <p>
+     * When mode is "text", this is a {@code String}.
      * When mode is "bytes", this is a {@code byte[]} (raw binary content).
      * Mirrors Python's {@code Union[str, bytes]}.
      */
@@ -34,6 +35,9 @@ public class ReadFileData {
 
     /**
      * Get content as String (for text mode).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getContentAsString() {
         if (content instanceof String s) {
@@ -44,6 +48,9 @@ public class ReadFileData {
 
     /**
      * Get content as byte[] (for bytes mode).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public byte[] getContentAsBytes() {
         if (content instanceof byte[] b) {
@@ -52,6 +59,6 @@ public class ReadFileData {
         if (content instanceof String s) {
             return s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         }
-        return null;
+        return new byte[0];
     }
 }

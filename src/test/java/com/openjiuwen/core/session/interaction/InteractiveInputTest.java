@@ -1,14 +1,15 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.interaction;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.exception.BaseError;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link InteractiveInput}.
@@ -16,7 +17,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Ported from Python's {@code test_interactive_input.py}.
  */
 class InteractiveInputTest {
-
     @Test
     @DisplayName("null raw inputs throws BaseError")
     void testInvalidRawInputs() {

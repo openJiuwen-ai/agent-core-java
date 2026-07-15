@@ -13,51 +13,75 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 
-@Builder
-@NoArgsConstructor
 /**
  * Public class ToolPermissionHost used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
+@Builder
+@NoArgsConstructor
 @AllArgsConstructor
 public class ToolPermissionHost {
     @Builder.Default
+    /**
+     * =.
+     * 
+     * @since 0.1.7
+     */
     private Supplier<Path> resolveWorkspaceDir = () -> null;
     private Path permissionYamlPath;
     @Builder.Default
     private Supplier<Map<String, Object>> getPermissionsSnapshot = LinkedHashMap::new;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveWorkspaceDir.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path resolveWorkspaceDir() {
         return resolveWorkspaceDir != null ? resolveWorkspaceDir.get() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * permissionYamlPath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path permissionYamlPath() {
         return permissionYamlPath;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPermissionsSnapshot.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getPermissionsSnapshot() {
         return getPermissionsSnapshot != null ? getPermissionsSnapshot.get() : new LinkedHashMap<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * requestPermissionConfirmation.
+     * 
+     * @param toolName toolName
+     * @param toolArgs toolArgs
+     * @return the result
+     * @since 0.1.7
      */
     public boolean requestPermissionConfirmation(String toolName, Map<String, Object> toolArgs) {
         return false;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * persistAllowRule.
+     * 
+     * @param toolName toolName
+     * @param toolArgs toolArgs
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> persistAllowRule(String toolName, Map<String, Object> toolArgs) {
         Map<String, Object> snapshot = new LinkedHashMap<>(getPermissionsSnapshot());

@@ -10,21 +10,28 @@ import java.util.List;
 
 /**
  * Public class ListMcpResourcesTool used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class ListMcpResourcesTool {
     private final McpResourceService service;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ListMcpResourcesTool.
+     * 
+     * @param service service
+     * @since 0.1.7
      */
     public ListMcpResourcesTool(McpResourceService service) {
         this.service = service;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param serverId serverId
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput invoke(String serverId) {
         if (serverId == null || serverId.isBlank()) {
@@ -35,12 +42,9 @@ public class ListMcpResourcesTool {
             List<McpResourceDescriptor> mapped = new ArrayList<>();
             if (resources != null) {
                 for (Object resource : resources) {
-                    mapped.add(new McpResourceDescriptor(
-                            value(resource, "getUri", "uri"),
-                            value(resource, "getName", "name"),
-                            nullable(resource, "getMimeType", "mimeType"),
-                            nullable(resource, "getDescription", "description")
-                    ));
+                    mapped.add(new McpResourceDescriptor(value(resource, "getUri", "uri"),
+                            value(resource, "getName", "name"), nullable(resource, "getMimeType", "mimeType"),
+                            nullable(resource, "getDescription", "description")));
                 }
             }
             return ToolOutput.builder().success(true).data(mapped).build();

@@ -1,4 +1,7 @@
+
 package com.openjiuwen.harness;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
@@ -19,13 +22,14 @@ import com.openjiuwen.harness.rails.MemoryRail;
 import com.openjiuwen.harness.rails.ProgressiveToolRail;
 import com.openjiuwen.harness.rails.SkillCreateRail;
 import com.openjiuwen.harness.rails.SkillUseRail;
-import com.openjiuwen.harness.rails.TaskPlanningRail;
 import com.openjiuwen.harness.rails.TaskCompletionRail;
+import com.openjiuwen.harness.rails.TaskPlanningRail;
 import com.openjiuwen.harness.rails.TeamSkillCreateRail;
 import com.openjiuwen.harness.rails.TeamSkillRail;
 import com.openjiuwen.harness.rails.VerificationContractRail;
 import com.openjiuwen.harness.rails.VerificationRail;
 import com.openjiuwen.harness.tools.BashTool;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -37,10 +41,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessConfigCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
@@ -66,7 +67,8 @@ class HarnessConfigCompatibilityTest {
                         en: "Workspace: {{ workspace_root }}"
                 """);
 
-        ResolvedHarnessConfig resolved = HarnessConfigLoader.load(configPath, Map.of("workspace_root", "/tmp/work"), null);
+        ResolvedHarnessConfig resolved =
+            HarnessConfigLoader.load(configPath, Map.of("workspace_root", "/tmp/work"), null);
 
         assertThat(resolved.systemPrompt()).isEqualTo("You are working in /tmp/work");
         assertThat(resolved.extraSections()).hasSize(1);
@@ -156,33 +158,28 @@ class HarnessConfigCompatibilityTest {
         assertThat(agent.getConfig().getMaxIterations()).isEqualTo(9);
         assertThat(agent.getRegisteredTools().stream().map(tool -> tool.getClass().getSimpleName()).toList())
                 .contains("FilesystemTool", "BashTool");
-        assertThat(agent.getRegisteredTools().stream()
-                .filter(com.openjiuwen.core.foundation.tool.Tool.class::isInstance)
-                .map(tool -> ((com.openjiuwen.core.foundation.tool.Tool) tool).getCard().getName())
-                .toList())
-                .contains("todo_create", "todo_list", "todo_get", "todo_modify", "list_skill", "skill_tool",
-                        "lsp", "list_mcp_resources", "read_mcp_resource", "search_tools", "load_tools",
-                        "memory_search", "read_memory", "write_memory", "edit_memory",
-                        "coding_memory_read", "coding_memory_write", "coding_memory_edit",
-                        "ltm_search", "ltm_search_summary");
-        assertThat(agent.getRegisteredRails().stream().map(item -> item.getClass().getSimpleName()).toList())
-                .contains("SecurityRail", "TaskPlanningRail", "HeartbeatRail", "LspRail", "McpRail",
-                        "ProgressiveToolRail", "TaskCompletionRail", "ContextAssembleRail",
-                        "ContextProcessorRail", "MemoryRail", "CodingMemoryRail", "ExternalMemoryRail",
-                        "VerificationContractRail", "VerificationRail", "SkillCreateRail",
-                        "TeamSkillCreateRail", "TeamSkillRail");
+        assertThat(
+                agent.getRegisteredTools().stream().filter(com.openjiuwen.core.foundation.tool.Tool.class::isInstance)
+                        .map(tool -> ((com.openjiuwen.core.foundation.tool.Tool) tool).getCard().getName()).toList())
+                .contains("todo_create", "todo_list", "todo_get", "todo_modify", "list_skill", "skill_tool", "lsp",
+                        "list_mcp_resources", "read_mcp_resource", "search_tools", "load_tools", "memory_search",
+                        "read_memory", "write_memory", "edit_memory", "coding_memory_read", "coding_memory_write",
+                        "coding_memory_edit", "ltm_search", "ltm_search_summary");
+        assertThat(agent.getRegisteredRails().stream().map(item -> item.getClass().getSimpleName()).toList()).contains(
+                "SecurityRail", "TaskPlanningRail", "HeartbeatRail", "LspRail", "McpRail", "ProgressiveToolRail",
+                "TaskCompletionRail", "ContextAssembleRail", "ContextProcessorRail", "MemoryRail", "CodingMemoryRail",
+                "ExternalMemoryRail", "VerificationContractRail", "VerificationRail", "SkillCreateRail",
+                "TeamSkillCreateRail", "TeamSkillRail");
         assertThat(agent.getRegisteredMcps()).hasSize(1);
         assertThat(agent.getConfig().getSkillDirectories()).hasSize(1);
         assertThat(agent.getConfig().getSkillMode()).isEqualTo("auto_list");
         ExternalMemoryRail externalMemory = findRail(agent.getRegisteredRails(), ExternalMemoryRail.class);
         assertThat(externalMemory.toolNames()).containsExactly("ltm_search", "ltm_search_summary");
-        externalMemory.beforeInvoke(com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder()
-                .inputs(com.openjiuwen.core.singleagent.rail.InvokeInputs.builder()
-                        .query("remember config")
-                        .conversationId("session-from-config")
-                        .build())
-                .extra(new java.util.LinkedHashMap<>())
-                .build());
+        externalMemory
+                .beforeInvoke(com.openjiuwen.core.singleagent.rail.AgentCallbackContext.builder()
+                        .inputs(com.openjiuwen.core.singleagent.rail.InvokeInputs.builder().query("remember config")
+                                .conversationId("session-from-config").build())
+                        .extra(new java.util.LinkedHashMap<>()).build());
         assertThat(externalMemory.isInitialized()).isTrue();
         assertThat(Files.readString(tempDir.resolve("workspace/notes/RUNBOOK.md"))).isEqualTo("使用工作区");
     }
@@ -198,12 +195,8 @@ class HarnessConfigCompatibilityTest {
                     - name: identity
                       content: registry agent
                 """);
-        HarnessConfigRegistry.register(HarnessConfigInfo.builder()
-                .id("registered-agent")
-                .name("registered-agent")
-                .packageName("local")
-                .configPath(configPath)
-                .build());
+        HarnessConfigRegistry.register(HarnessConfigInfo.builder().id("registered-agent").name("registered-agent")
+                .packageName("local").configPath(configPath).build());
 
         assertThat(HarnessConfigRegistry.get("registered-agent")).isNotNull();
         DeepAgent agent = HarnessConfigRegistry.load("registered-agent");
@@ -226,12 +219,8 @@ class HarnessConfigCompatibilityTest {
                     - name: identity
                       content: first prompt
                 """);
-        HarnessConfigRegistry.register(HarnessConfigInfo.builder()
-                .id("hot-reload-agent")
-                .name("hot-reload-agent")
-                .packageName("local")
-                .configPath(configPath)
-                .build());
+        HarnessConfigRegistry.register(HarnessConfigInfo.builder().id("hot-reload-agent").name("hot-reload-agent")
+                .packageName("local").configPath(configPath).build());
 
         DeepAgent first = HarnessConfigRegistry.load("hot-reload-agent");
         assertThat(first.getCard().getName()).isEqualTo("Hot Reload One");
@@ -259,44 +248,23 @@ class HarnessConfigCompatibilityTest {
     @Test
     void generateYamlShouldRoundTripBuiltinResources() {
         String yaml = HarnessConfigBuilder.generateHarnessConfigYaml(
-                AgentCard.builder().id("demo").name("Demo").description("d").build(),
-                "System prompt",
+                AgentCard.builder().id("demo").name("Demo").description("d").build(), "System prompt",
                 List.of(new BashTool()),
-                List.of(
-                        new TaskPlanningRail(true, 4, Map.of("fast", "cheap model")),
-                        new HeartbeatRail(),
-                        new LspRail(),
-                        new McpRail(),
+                List.of(new TaskPlanningRail(true, 4, Map.of("fast", "cheap model")), new HeartbeatRail(),
+                        new LspRail(), new McpRail(),
                         new ProgressiveToolRail(List.of("read_file"), List.of("search_tools", "load_tools"), 3),
                         new TaskCompletionRail("Solve: {query}", "DONE", 2, true, 5, Duration.ofSeconds(7)),
                         new ContextAssembleRail(),
                         new ContextProcessorRail(false, List.of("ToolResultBudgetProcessor"), true),
-                        new MemoryRail(null, false),
-                        new CodingMemoryRail("code-mem", null, false),
-                        new ExternalMemoryRail(),
-                        new VerificationContractRail(),
+                        new MemoryRail(null, false), new CodingMemoryRail("code-mem", null, false),
+                        new ExternalMemoryRail(), new VerificationContractRail(),
                         new VerificationRail(java.util.Set.of("read_file")),
-                        new SkillUseRail(
-                                List.of("custom-skills"),
-                                "all",
-                                List.of("alpha"),
-                                List.of("beta"),
-                                List.of(new SkillUseRail.RemoteSkillSource(
-                                        "owner",
-                                        "remote-skills",
-                                        "main",
-                                        "skills",
-                                        "ghp_test"
-                                ))
-                        ),
+                        new SkillUseRail(List.of("custom-skills"), "all", List.of("alpha"), List.of("beta"),
+                                List.of(new SkillUseRail.RemoteSkillSource("owner", "remote-skills", "main", "skills",
+                                        "ghp_test"))),
                         new SkillCreateRail("custom-skills", "en", false, 4, 2),
-                        new TeamSkillCreateRail("team-skills", "en", false, 4),
-                        new TeamSkillRail("team-skills", "en")
-                ),
-                "en",
-                7,
-                3.5
-        );
+                        new TeamSkillCreateRail("team-skills", "en", false, 4), new TeamSkillRail("team-skills", "en")),
+                "en", 7, 3.5);
 
         assertThat(yaml).contains("schema_version: harness_config.v0.1");
         assertThat(yaml).contains("names: [shell]");
@@ -464,14 +432,13 @@ class HarnessConfigCompatibilityTest {
         assertThat(skillUse.skillMode()).isEqualTo("all");
         assertThat(skillUse.enabledSkills()).containsExactly("alpha");
         assertThat(skillUse.disabledSkills()).containsExactly("beta");
-        assertThat(skillUse.remoteSkillSources()).singleElement()
-                .satisfies(source -> {
-                    assertThat(source.owner()).isEqualTo("owner");
-                    assertThat(source.repo()).isEqualTo("remote-skills");
-                    assertThat(source.ref()).isEqualTo("main");
-                    assertThat(source.directory()).isEqualTo("skills");
-                    assertThat(source.token()).isEqualTo("ghp_test");
-                });
+        assertThat(skillUse.remoteSkillSources()).singleElement().satisfies(source -> {
+            assertThat(source.owner()).isEqualTo("owner");
+            assertThat(source.repo()).isEqualTo("remote-skills");
+            assertThat(source.ref()).isEqualTo("main");
+            assertThat(source.directory()).isEqualTo("skills");
+            assertThat(source.token()).isEqualTo("ghp_test");
+        });
 
         SkillCreateRail skillCreate = findRail(rails, SkillCreateRail.class);
         assertThat(skillCreate.getSkillsDir()).endsWith("workspace/custom-skills");
@@ -494,32 +461,21 @@ class HarnessConfigCompatibilityTest {
 
     @Test
     void loaderShouldResolveFromObjectModel() {
-        HarnessConfig config = HarnessConfig.builder()
-                .name("Model Agent")
-                .prompts(HarnessConfig.PromptsSchema.builder()
-                        .sections(List.of(HarnessConfig.SectionSchema.builder()
-                                .name("identity")
-                                .content(Map.of("en", "Hello {{ repo }}"))
-                                .build()))
-                        .build())
-                .language("en")
-                .build();
+        HarnessConfig config =
+            HarnessConfig.builder().name("Model Agent")
+                    .prompts(HarnessConfig.PromptsSchema.builder()
+                            .sections(List.of(HarnessConfig.SectionSchema.builder().name("identity")
+                                    .content(Map.of("en", "Hello {{ repo }}")).build()))
+                            .build())
+                    .language("en").build();
 
-        ResolvedHarnessConfig resolved = HarnessConfigLoader.resolve(
-                config,
-                tempDir.resolve("model.yaml"),
-                Map.of("repo", "agent-core-java"),
-                null
-        );
+        ResolvedHarnessConfig resolved =
+            HarnessConfigLoader.resolve(config, tempDir.resolve("model.yaml"), Map.of("repo", "agent-core-java"), null);
 
         assertThat(resolved.systemPrompt()).isEqualTo("Hello agent-core-java");
     }
 
     private static <T> T findRail(List<Object> rails, Class<T> type) {
-        return rails.stream()
-                .filter(type::isInstance)
-                .map(type::cast)
-                .findFirst()
-                .orElseThrow();
+        return rails.stream().filter(type::isInstance).map(type::cast).findFirst().orElseThrow();
     }
 }

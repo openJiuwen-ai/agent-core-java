@@ -1,7 +1,13 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
@@ -15,30 +21,19 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Integration tests for the Tool framework (LocalFunction).
  * Corresponds to the tool-building patterns in Python's react_agent examples.
  */
 @Tag("system-test")
 class ToolSystemTest {
-
     @Test
     @DisplayName("LocalFunction tool invocation with simple inputs")
     void testLocalFunctionInvoke() throws Exception {
-        ToolCard card = ToolCard.builder()
-                .id("add_tool")
-                .name("add")
-                .description("Adds two numbers together")
-                .inputParams(Map.of(
-                        "type", "object",
-                        "properties", Map.of(
-                                "a", Map.of("type", "number", "description", "First number"),
-                                "b", Map.of("type", "number", "description", "Second number")),
+        ToolCard card = ToolCard.builder().id("add_tool").name("add").description("Adds two numbers together")
+                .inputParams(Map.of("type", "object", "properties",
+                        Map.of("a", Map.of("type", "number", "description", "First number"), "b",
+                                Map.of("type", "number", "description", "Second number")),
                         "required", List.of("a", "b")))
                 .build();
 
@@ -57,16 +52,12 @@ class ToolSystemTest {
     @Test
     @DisplayName("LocalFunction tool returning map result")
     void testLocalFunctionMapResult() throws Exception {
-        ToolCard card = ToolCard.builder()
-                .id("weather_tool")
-                .name("get_weather")
-                .description("Gets the weather for a city")
-                .inputParams(Map.of(
-                        "type", "object",
-                        "properties", Map.of(
-                                "city", Map.of("type", "string", "description", "City name")),
-                        "required", List.of("city")))
-                .build();
+        ToolCard card =
+            ToolCard.builder().id("weather_tool").name("get_weather").description("Gets the weather for a city")
+                    .inputParams(Map.of("type", "object", "properties",
+                            Map.of("city", Map.of("type", "string", "description", "City name")), "required",
+                            List.of("city")))
+                    .build();
 
         LocalFunction tool = new LocalFunction(card, inputs -> {
             String city = (String) inputs.get("city");
@@ -86,14 +77,8 @@ class ToolSystemTest {
     @Test
     @DisplayName("ToolCard generates valid ToolInfo")
     void testToolCardInfo() {
-        ToolCard card = ToolCard.builder()
-                .id("test_tool")
-                .name("test")
-                .description("A test tool")
-                .inputParams(Map.of(
-                        "type", "object",
-                        "properties", Map.of(
-                                "input", Map.of("type", "string")),
+        ToolCard card = ToolCard.builder().id("test_tool").name("test").description("A test tool")
+                .inputParams(Map.of("type", "object", "properties", Map.of("input", Map.of("type", "string")),
                         "required", List.of("input")))
                 .build();
 
@@ -105,11 +90,7 @@ class ToolSystemTest {
     @Test
     @DisplayName("LocalFunction tool with streaming result")
     void testLocalFunctionStream() throws Exception {
-        ToolCard card = ToolCard.builder()
-                .id("list_tool")
-                .name("list_items")
-                .description("Lists items")
-                .build();
+        ToolCard card = ToolCard.builder().id("list_tool").name("list_items").description("Lists items").build();
 
         LocalFunction tool = new LocalFunction(card, inputs -> {
             List<String> items = List.of("item1", "item2", "item3");
@@ -130,13 +111,8 @@ class ToolSystemTest {
     @Test
     @DisplayName("Tool with empty id should throw error")
     void testToolIdValidation() {
-        ToolCard card = ToolCard.builder()
-                .id("")
-                .name("bad_tool")
-                .description("Should fail")
-                .build();
+        ToolCard card = ToolCard.builder().id("").name("bad_tool").description("Should fail").build();
 
-        assertThrows(Exception.class, () -> new LocalFunction(card, inputs -> null),
-                "Tool with empty id should throw");
+        assertThrows(Exception.class, () -> new LocalFunction(card, inputs -> null), "Tool with empty id should throw");
     }
 }

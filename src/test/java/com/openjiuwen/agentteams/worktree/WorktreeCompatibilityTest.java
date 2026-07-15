@@ -1,7 +1,12 @@
+
 package com.openjiuwen.agentteams.worktree;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.agentteams.messager.InProcessMessager;
 import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -13,11 +18,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class WorktreeCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
@@ -33,15 +34,11 @@ class WorktreeCompatibilityTest {
     void worktreeSessionStateShouldSetClearAndRequireCurrentSession() {
         WorktreeSessionState.setCurrentSession(null);
         assertThat(WorktreeSessionState.getCurrentSession()).isNull();
-        assertThatThrownBy(WorktreeSessionState::requireCurrentSession)
-                .isInstanceOf(IllegalStateException.class)
+        assertThatThrownBy(WorktreeSessionState::requireCurrentSession).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Not in a worktree session");
 
-        WorktreeSession session = WorktreeSession.builder()
-                .originalCwd("/repo")
-                .worktreePath("/workspace/.worktrees/test")
-                .worktreeName("test")
-                .build();
+        WorktreeSession session = WorktreeSession.builder().originalCwd("/repo")
+                .worktreePath("/workspace/.worktrees/test").worktreeName("test").build();
         WorktreeSessionState.setCurrentSession(session);
         assertThat(WorktreeSessionState.getCurrentSession()).isSameAs(session);
         assertThat(WorktreeSessionState.requireCurrentSession()).isSameAs(session);
@@ -69,7 +66,7 @@ class WorktreeCompatibilityTest {
         };
         WorktreeManager manager = new WorktreeManager(WorktreeConfig.builder().build(), List.of(railA, railB));
 
-        Object result = manager.fireRail("beforeWorktreeCreate", new Object[] {"original", "/repo"});
+        Object result = manager.fireRail("beforeWorktreeCreate", new Object[]{"original", "/repo"});
 
         assertThat(calls).containsExactly("a:original", "b:original");
         assertThat(result).isEqualTo("from-b");
@@ -101,11 +98,8 @@ class WorktreeCompatibilityTest {
 
     @Test
     void worktreeRailShouldDispatchAllPythonLifecycleHooksAndReturnLastNonNull() {
-        WorktreeSession session = WorktreeSession.builder()
-                .originalCwd("/repo")
-                .worktreePath("/repo/.worktrees/member")
-                .worktreeName("member")
-                .build();
+        WorktreeSession session = WorktreeSession.builder().originalCwd("/repo").worktreePath("/repo/.worktrees/member")
+                .worktreeName("member").build();
         List<String> calls = new ArrayList<>();
         WorktreeRail railA = new WorktreeRail() {
             @Override
@@ -169,27 +163,18 @@ class WorktreeCompatibilityTest {
         };
         WorktreeManager manager = new WorktreeManager(WorktreeConfig.builder().build(), List.of(railA, railB));
 
-        assertThat(manager.fireRail("beforeWorktreeExit", new Object[] {session, "keep"})).isEqualTo("remove");
-        manager.fireRail("afterWorktreeExit", new Object[] {session, "remove"});
-        assertThat(manager.fireRail("onWorktreeFileWrite", new Object[] {session, "/repo/file.txt"})).isEqualTo(true);
-        assertThat(manager.fireRail("beforeWorktreeCommit", new Object[] {session, "msg", List.of("a.txt", "b.txt")}))
+        assertThat(manager.fireRail("beforeWorktreeExit", new Object[]{session, "keep"})).isEqualTo("remove");
+        manager.fireRail("afterWorktreeExit", new Object[]{session, "remove"});
+        assertThat(manager.fireRail("onWorktreeFileWrite", new Object[]{session, "/repo/file.txt"})).isEqualTo(true);
+        assertThat(manager.fireRail("beforeWorktreeCommit", new Object[]{session, "msg", List.of("a.txt", "b.txt")}))
                 .isEqualTo("message-b");
-        manager.fireRail("afterWorktreeCommit", new Object[] {session, "abc123"});
-        assertThat(manager.fireRail("onWorktreeSync", new Object[] {session, "push", List.of("x.txt")}))
+        manager.fireRail("afterWorktreeCommit", new Object[]{session, "abc123"});
+        assertThat(manager.fireRail("onWorktreeSync", new Object[]{session, "push", List.of("x.txt")}))
                 .isEqualTo(List.of("b.txt"));
 
-        assertThat(calls).containsExactly(
-                "before-exit-a:keep",
-                "before-exit-b:keep",
-                "after-exit-b:remove",
-                "file-a:/repo/file.txt",
-                "file-b:/repo/file.txt",
-                "commit-a:msg:2",
-                "commit-b:msg:2",
-                "after-commit-b:abc123",
-                "sync-a:push",
-                "sync-b:push"
-        );
+        assertThat(calls).containsExactly("before-exit-a:keep", "before-exit-b:keep", "after-exit-b:remove",
+                "file-a:/repo/file.txt", "file-b:/repo/file.txt", "commit-a:msg:2", "commit-b:msg:2",
+                "after-commit-b:abc123", "sync-a:push", "sync-b:push");
     }
 
     @Test
@@ -226,17 +211,11 @@ class WorktreeCompatibilityTest {
         manager.exit("keep", false);
         WorktreeRemoteHandler handler = new WorktreeRemoteHandler(manager);
 
-        WorktreeRemoteResponse exists = handler.handle(WorktreeRemoteRequest.builder()
-                .action("exists")
-                .worktreePath(session.getWorktreePath())
-                .build());
-        WorktreeRemoteResponse unknown = handler.handle(WorktreeRemoteRequest.builder()
-                .action("unknown")
-                .build());
-        WorktreeRemoteResponse removed = handler.handle(WorktreeRemoteRequest.builder()
-                .action("remove")
-                .worktreePath(session.getWorktreePath())
-                .build());
+        WorktreeRemoteResponse exists = handler.handle(
+                WorktreeRemoteRequest.builder().action("exists").worktreePath(session.getWorktreePath()).build());
+        WorktreeRemoteResponse unknown = handler.handle(WorktreeRemoteRequest.builder().action("unknown").build());
+        WorktreeRemoteResponse removed = handler.handle(
+                WorktreeRemoteRequest.builder().action("remove").worktreePath(session.getWorktreePath()).build());
 
         assertThat(exists.isExists()).isTrue();
         assertThat(unknown.isSuccess()).isFalse();
@@ -252,24 +231,15 @@ class WorktreeCompatibilityTest {
         String previousHome = System.getProperty("openjiuwen.home");
         System.setProperty("openjiuwen.home", remoteHome.toString());
         try {
-            WorktreeManager manager = new WorktreeManager(WorktreeConfig.builder()
-                    .baseDir(tempDir.resolve("remote-worktrees").toString())
-                    .build());
+            WorktreeManager manager = new WorktreeManager(
+                    WorktreeConfig.builder().baseDir(tempDir.resolve("remote-worktrees").toString()).build());
             WorktreeRemoteHandler handler = new WorktreeRemoteHandler(manager);
             String repoUrl = runGit(source, "remote", "get-url", "origin").output().trim();
 
-            WorktreeRemoteResponse created = handler.handle(WorktreeRemoteRequest.builder()
-                    .action("create")
-                    .slug("remote-created")
-                    .repoUrl(repoUrl)
-                    .baseBranch("main")
-                    .build());
-            WorktreeRemoteResponse existing = handler.handle(WorktreeRemoteRequest.builder()
-                    .action("create")
-                    .slug("remote-created")
-                    .repoUrl(repoUrl)
-                    .baseBranch("main")
-                    .build());
+            WorktreeRemoteResponse created = handler.handle(WorktreeRemoteRequest.builder().action("create")
+                    .slug("remote-created").repoUrl(repoUrl).baseBranch("main").build());
+            WorktreeRemoteResponse existing = handler.handle(WorktreeRemoteRequest.builder().action("create")
+                    .slug("remote-created").repoUrl(repoUrl).baseBranch("main").build());
 
             assertThat(created.isSuccess()).isTrue();
             assertThat(created.getError()).isNull();
@@ -298,20 +268,16 @@ class WorktreeCompatibilityTest {
         String previousHome = System.getProperty("openjiuwen.home");
         System.setProperty("openjiuwen.home", remoteHome.toString());
         try {
-            InProcessMessager leaderMessager = new InProcessMessager(
-                    MessagerTransportConfig.builder().nodeId("leader-node").build());
-            InProcessMessager workerMessager = new InProcessMessager(
-                    MessagerTransportConfig.builder().nodeId("worker-node").build());
-            WorktreeManager remoteManager = new WorktreeManager(WorktreeConfig.builder()
-                    .baseDir(tempDir.resolve("remote-backend-worktrees").toString())
-                    .build());
+            InProcessMessager leaderMessager =
+                new InProcessMessager(MessagerTransportConfig.builder().nodeId("leader-node").build());
+            InProcessMessager workerMessager =
+                new InProcessMessager(MessagerTransportConfig.builder().nodeId("worker-node").build());
+            WorktreeManager remoteManager = new WorktreeManager(
+                    WorktreeConfig.builder().baseDir(tempDir.resolve("remote-backend-worktrees").toString()).build());
             new WorktreeRemoteHandler(remoteManager).register(workerMessager);
 
-            RemoteWorktreeBackend backend = new RemoteWorktreeBackend(
-                    WorktreeConfig.builder().build(),
-                    leaderMessager,
-                    "worker-node",
-                    java.time.Duration.ofSeconds(5));
+            RemoteWorktreeBackend backend = new RemoteWorktreeBackend(WorktreeConfig.builder().build(), leaderMessager,
+                    "worker-node", java.time.Duration.ofSeconds(5));
 
             WorktreeCreateResult created = backend.create("rpc-created", source.toString(), "ignored-local-target");
             boolean exists = backend.exists(created.getWorktreePath());
@@ -393,18 +359,15 @@ class WorktreeCompatibilityTest {
         WorktreeManager manager = new WorktreeManager(WorktreeConfig.builder().build());
 
         assertThatThrownBy(() -> manager.enter("valid-slug", nonRepo.toString(), "m", "t"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("not in a git repository");
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("not in a git repository");
     }
 
     @Test
     void cleanupStaleWorktreesShouldRemoveOnlyExpiredCleanEphemeralWorktrees() throws Exception {
         Path repoRoot = createGitRepoWithOrigin();
         Path wtBase = tempDir.resolve("cleanup-worktrees");
-        WorktreeManager manager = new WorktreeManager(WorktreeConfig.builder()
-                .baseDir(wtBase.toString())
-                .cleanupAfterDays(30)
-                .build());
+        WorktreeManager manager =
+            new WorktreeManager(WorktreeConfig.builder().baseDir(wtBase.toString()).cleanupAfterDays(30).build());
         WorktreeSession expired = manager.enter("teammate-a1b2c3d4", repoRoot.toString(), "m1", "team");
         manager.exit("keep", false);
         WorktreeSession recent = manager.enter("teammate-b2c3d4e5", repoRoot.toString(), "m2", "team");
@@ -428,10 +391,8 @@ class WorktreeCompatibilityTest {
     void cleanupStaleWorktreesShouldSkipDirtyAndCurrentWorktrees() throws Exception {
         Path repoRoot = createGitRepoWithOrigin();
         Path wtBase = tempDir.resolve("cleanup-skip-worktrees");
-        WorktreeManager manager = new WorktreeManager(WorktreeConfig.builder()
-                .baseDir(wtBase.toString())
-                .cleanupAfterDays(30)
-                .build());
+        WorktreeManager manager =
+            new WorktreeManager(WorktreeConfig.builder().baseDir(wtBase.toString()).cleanupAfterDays(30).build());
         WorktreeSession dirty = manager.enter("teammate-c3d4e5f6", repoRoot.toString(), "m1", "team");
         manager.exit("keep", false);
         WorktreeSession current = manager.enter("agent-1234567", repoRoot.toString(), "m2", "team");
@@ -453,10 +414,8 @@ class WorktreeCompatibilityTest {
     void recoverWorktreeForMemberShouldRestoreExistingPersistentSession() throws Exception {
         Path repoRoot = createGitRepo();
         Path wtBase = tempDir.resolve("recover-worktrees");
-        WorktreeManager manager = new WorktreeManager(WorktreeConfig.builder()
-                .baseDir(wtBase.toString())
-                .lifecyclePolicy(WorktreeLifecyclePolicy.DURABLE)
-                .build());
+        WorktreeManager manager = new WorktreeManager(WorktreeConfig.builder().baseDir(wtBase.toString())
+                .lifecyclePolicy(WorktreeLifecyclePolicy.DURABLE).build());
         WorktreeSession created = manager.enter("teammate-abcdef12", repoRoot.toString(), "abcdef1234567890", "team-a");
         manager.exit("keep", false);
 
@@ -476,9 +435,8 @@ class WorktreeCompatibilityTest {
     @Test
     void recoverWorktreeForMemberShouldReturnNullWhenMissingOrOutsideGitRepo() throws Exception {
         Path repoRoot = createGitRepo();
-        WorktreeManager manager = new WorktreeManager(WorktreeConfig.builder()
-                .baseDir(tempDir.resolve("missing-worktrees").toString())
-                .build());
+        WorktreeManager manager = new WorktreeManager(
+                WorktreeConfig.builder().baseDir(tempDir.resolve("missing-worktrees").toString()).build());
 
         assertThat(manager.recoverWorktreeForMember("abcdef1234567890", "team-a", repoRoot.toString())).isNull();
 
@@ -519,10 +477,7 @@ class WorktreeCompatibilityTest {
         List<String> command = new ArrayList<>();
         command.add("git");
         command.addAll(List.of(args));
-        Process process = new ProcessBuilder(command)
-                .directory(cwd.toFile())
-                .redirectErrorStream(true)
-                .start();
+        Process process = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true).start();
         byte[] output = process.getInputStream().readAllBytes();
         int code = process.waitFor();
         return new GitResult(code, new String(output, java.nio.charset.StandardCharsets.UTF_8));

@@ -10,24 +10,27 @@ import java.util.Iterator;
  * Base class for parsing LLM output into the desired format.
  * <p>
  * Mirrors Python's {@code BaseOutputParser} ABC.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseOutputParser {
-
     /**
-     * Parse LLM output.
-     *
-     * @param inputs the assistant message or its content string
-     * @return parsed result
-     * @throws Exception if parsing fails
+     * parse.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public abstract Object parse(Object inputs) throws Exception;
 
     /**
-     * Parse streaming LLM output.
-     *
-     * @param streamingInputs an iterator of AssistantMessageChunk or String
-     * @return an iterator of parsed fragments
-     * @throws Exception if parsing fails
+     * streamParse.
+     * 
+     * @param streamingInputs streamingInputs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public abstract Iterator<Object> streamParse(Iterator<?> streamingInputs) throws Exception;
 }

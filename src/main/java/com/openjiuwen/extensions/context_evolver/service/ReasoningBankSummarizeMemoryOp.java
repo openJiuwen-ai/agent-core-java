@@ -15,12 +15,20 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
+/**
+ * ReasoningBankSummarizeMemoryOp
+ *
+ * @since 0.1.7
+ */
 class ReasoningBankSummarizeMemoryOp extends BaseOp {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * asyncExecute.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
         List<?> rawTrajectories = context.getList("trajectories");
         if (rawTrajectories == null || rawTrajectories.isEmpty()) {
@@ -68,6 +76,15 @@ class ReasoningBankSummarizeMemoryOp extends BaseOp {
         return CompletableFuture.completedFuture(null);
     }
 
+    /**
+     * buildSingleItems.
+     * 
+     * @param query query
+     * @param trajectory trajectory
+     * @param success success
+     * @return the result
+     * @since 0.1.7
+     */
     private List<ReasoningBankMemoryItem> buildSingleItems(String query, String trajectory, boolean success) {
         List<ReasoningBankMemoryItem> items = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
@@ -76,70 +93,66 @@ class ReasoningBankSummarizeMemoryOp extends BaseOp {
         String tool = SummaryFlowSupport.firstToolName(SummaryFlowSupport.toolNames(trajectory), actionLines);
         if (!actionLines.isEmpty()) {
             String action = SummaryFlowSupport.limit(actionLines.get(0), 160);
-            addItem(
-                items,
-                seen,
-                success
-                    ? "Use " + defaultToolName(tool, "the authoritative action") + " before answering"
-                    : "Re-evaluate " + defaultToolName(tool, "the first action") + " before answering",
-                success
-                    ? "Prefer the action path that directly surfaces the required evidence."
-                    : "A failed run needs an earlier pivot or verification step.",
-                success
-                    ? "Start with " + action
-                        + " to collect the authoritative evidence before drafting the final answer."
-                    : "The trajectory stalled after " + action
-                        + ". Validate the returned data and switch tools or filters when the evidence is incomplete.",
-                3
-            );
+            addItem(items, seen,
+                    success
+                            ? "Use " + defaultToolName(tool, "the authoritative action") + " before answering"
+                            : "Re-evaluate " + defaultToolName(tool, "the first action") + " before answering",
+                    success
+                            ? "Prefer the action path that directly surfaces the required evidence."
+                            : "A failed run needs an earlier pivot or verification step.",
+                    success
+                            ? "Start with " + action
+                                    + " to collect the authoritative evidence before drafting the final answer."
+                            : "The trajectory stalled after " + action
+                                    + ". Validate the returned data and switch tools or filters "
+                                    + "when the evidence is incomplete.",
+                    3);
         }
 
         List<String> observationKeys = SummaryFlowSupport.observationKeys(trajectory);
         if (!observationKeys.isEmpty()) {
             String keys = String.join(", ", observationKeys);
-            addItem(
-                items,
-                seen,
-                "Ground the answer in observed fields",
-                success
-                    ? "Read returned fields directly before composing the final answer."
-                    : "Check whether the observed fields really support the answer before continuing.",
-                success
-                    ? "Inspect the returned fields (" + keys
-                        + ") and map them directly into the requested output format."
-                    : "Inspect the returned fields (" + keys
-                        + ") and stop the current plan if they do not support the requested answer.",
-                3
-            );
+            addItem(items, seen, "Ground the answer in observed fields",
+                    success
+                            ? "Read returned fields directly before composing the final answer."
+                            : "Check whether the observed fields really support the answer before continuing.",
+                    success
+                            ? "Inspect the returned fields (" + keys
+                                    + ") and map them directly into the requested output format."
+                            : "Inspect the returned fields (" + keys
+                                    + ") and stop the current plan if they do not support the requested answer.",
+                    3);
         }
 
         String summary = SummaryFlowSupport.assistantSummary(trajectory);
-        addItem(
-            items,
-            seen,
-            success ? "Capture the reusable successful step" : "Capture the failure lesson",
-            success
-                ? "Store the final reusable reasoning step as a memory item."
-                : "Store the failed pattern as a prevention rule.",
-            summary.isBlank()
-                ? "For tasks like \"" + fallbackQueryHint(query)
-                    + "\", preserve the smallest reusable reasoning step from the trajectory."
-                : (success
-                    ? "For tasks like \"" + fallbackQueryHint(query)
-                        + "\", preserve this reusable successful step: " + summary
-                    : "For tasks like \"" + fallbackQueryHint(query)
-                        + "\", capture this lesson and avoid repeating it: " + summary),
-            3
-        );
+        addItem(items, seen, success ? "Capture the reusable successful step" : "Capture the failure lesson",
+                success
+                        ? "Store the final reusable reasoning step as a memory item."
+                        : "Store the failed pattern as a prevention rule.",
+                summary.isBlank()
+                        ? "For tasks like \"" + fallbackQueryHint(query)
+                                + "\", preserve the smallest reusable reasoning step from the trajectory."
+                        : (success
+                                ? "For tasks like \"" + fallbackQueryHint(query)
+                                        + "\", preserve this reusable successful step: " + summary
+                                : "For tasks like \"" + fallbackQueryHint(query)
+                                        + "\", capture this lesson and avoid repeating it: " + summary),
+                3);
 
         return items;
     }
 
-    private List<ReasoningBankMemoryItem> buildParallelItems(
-            String query,
-            List<String> trajectories,
-            RuntimeContext context
-    ) {
+    /**
+     * buildParallelItems.
+     * 
+     * @param query query
+     * @param trajectories trajectories
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<ReasoningBankMemoryItem> buildParallelItems(String query, List<String> trajectories,
+            RuntimeContext context) {
         List<ReasoningBankMemoryItem> items = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
         Set<String> successTools = new LinkedHashSet<>();
@@ -167,10 +180,8 @@ class ReasoningBankSummarizeMemoryOp extends BaseOp {
                 worstTrajectory = trajectory;
             }
 
-            String tool = SummaryFlowSupport.firstToolName(
-                SummaryFlowSupport.toolNames(trajectory),
-                SummaryFlowSupport.actionLines(trajectory)
-            );
+            String tool = SummaryFlowSupport.firstToolName(SummaryFlowSupport.toolNames(trajectory),
+                    SummaryFlowSupport.actionLines(trajectory));
             List<String> keys = SummaryFlowSupport.observationKeys(trajectory);
             if (success) {
                 sawSuccess = true;
@@ -188,60 +199,42 @@ class ReasoningBankSummarizeMemoryOp extends BaseOp {
         }
 
         if (!successTools.isEmpty()) {
-            addItem(
-                items,
-                seen,
-                "Reuse the successful tool path",
-                "Prefer actions that directly expose the needed evidence across trajectories.",
-                "Across the stronger trajectories, " + String.join(", ", successTools)
-                    + " surfaced the data needed to answer the task. Reuse that path before drafting "
-                    + "the final response.",
-                5
-            );
+            addItem(items, seen, "Reuse the successful tool path",
+                    "Prefer actions that directly expose the needed evidence across trajectories.",
+                    "Across the stronger trajectories, " + String.join(", ", successTools)
+                            + " surfaced the data needed to answer the task. Reuse that path before drafting "
+                            + "the final response.",
+                    5);
         }
 
         if (!failureTools.isEmpty()) {
-            addItem(
-                items,
-                seen,
-                "Pivot away from low-signal tool paths",
-                "Do not repeat trajectories that fail to surface usable evidence.",
-                "Lower-quality trajectories stalled around " + String.join(", ", failureTools)
-                    + ". When that happens, change the tool, filter, or verification step instead of "
-                    + "repeating the dead end.",
-                5
-            );
+            addItem(items, seen, "Pivot away from low-signal tool paths",
+                    "Do not repeat trajectories that fail to surface usable evidence.",
+                    "Lower-quality trajectories stalled around " + String.join(", ", failureTools)
+                            + ". When that happens, change the tool, filter, or verification step instead of "
+                            + "repeating the dead end.",
+                    5);
         }
 
-        String bestTool = SummaryFlowSupport.firstToolName(
-            SummaryFlowSupport.toolNames(bestTrajectory),
-            SummaryFlowSupport.actionLines(bestTrajectory)
-        );
-        String worstTool = SummaryFlowSupport.firstToolName(
-            SummaryFlowSupport.toolNames(worstTrajectory),
-            SummaryFlowSupport.actionLines(worstTrajectory)
-        );
+        String bestTool = SummaryFlowSupport.firstToolName(SummaryFlowSupport.toolNames(bestTrajectory),
+                SummaryFlowSupport.actionLines(bestTrajectory));
+        String worstTool = SummaryFlowSupport.firstToolName(SummaryFlowSupport.toolNames(worstTrajectory),
+                SummaryFlowSupport.actionLines(worstTrajectory));
         String comparativeContent = "Compare multiple trajectories for the same query and keep the path that exposes "
-            + "directly usable evidence.";
+                + "directly usable evidence.";
         if (!bestTool.isBlank() || !worstTool.isBlank()) {
             comparativeContent += " The stronger run relied on " + defaultToolName(bestTool, "a better tool path")
-                + " while the weaker run stalled around " + defaultToolName(worstTool, "a weaker tool path") + ".";
+                    + " while the weaker run stalled around " + defaultToolName(worstTool, "a weaker tool path") + ".";
         }
         if (!successKeys.isEmpty()) {
-            comparativeContent += " The successful runs grounded the answer in fields such as "
-                + String.join(", ", successKeys) + ".";
+            comparativeContent +=
+                " The successful runs grounded the answer in fields such as " + String.join(", ", successKeys) + ".";
         } else if (!failureKeys.isEmpty()) {
             comparativeContent += " The weaker runs never exposed enough fields to support a confident answer.";
         }
         if (sawSuccess || sawFailure) {
-            addItem(
-                items,
-                seen,
-                "Contrast successful and failed trajectories",
-                "Use cross-trajectory comparison to isolate the transferable difference.",
-                comparativeContent,
-                5
-            );
+            addItem(items, seen, "Contrast successful and failed trajectories",
+                    "Use cross-trajectory comparison to isolate the transferable difference.", comparativeContent, 5);
         }
 
         if (items.isEmpty()) {
@@ -250,6 +243,15 @@ class ReasoningBankSummarizeMemoryOp extends BaseOp {
         return items.size() > 5 ? new ArrayList<>(items.subList(0, 5)) : items;
     }
 
+    /**
+     * resolveLabel.
+     * 
+     * @param context context
+     * @param trajectory trajectory
+     * @param index index
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean resolveLabel(RuntimeContext context, String trajectory, int index) {
         List<?> labels = context.getList("label");
         if (labels != null && index < labels.size() && labels.get(index) instanceof Boolean label) {
@@ -266,39 +268,45 @@ class ReasoningBankSummarizeMemoryOp extends BaseOp {
         return inferSuccess(trajectory);
     }
 
+    /**
+     * inferSuccess.
+     * 
+     * @param trajectory trajectory
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean inferSuccess(String trajectory) {
         Boolean feedbackLabel = SummaryFlowSupport.feedbackLabel(trajectory);
         if (feedbackLabel != null) {
             return feedbackLabel;
         }
         String normalized = " " + SummaryFlowSupport.normalizeForMatch(trajectory) + " ";
-        if (normalized.contains(" status failure ")
-            || normalized.contains(" failed ")
-            || normalized.contains(" error ")
-            || normalized.contains(" unable ")
-            || normalized.contains(" cannot ")
-            || normalized.contains(" could not ")
-            || normalized.contains(" no result ")) {
+        if (normalized.contains(" status failure ") || normalized.contains(" failed ") || normalized.contains(" error ")
+                || normalized.contains(" unable ") || normalized.contains(" cannot ")
+                || normalized.contains(" could not ") || normalized.contains(" no result ")) {
             return false;
         }
-        if (normalized.contains(" status success ")
-            || normalized.contains(" successfully ")
-            || normalized.contains(" completed ")
-            || normalized.contains(" works ")
-            || normalized.contains(" correct ")) {
+        if (normalized.contains(" status success ") || normalized.contains(" successfully ")
+                || normalized.contains(" completed ") || normalized.contains(" works ")
+                || normalized.contains(" correct ")) {
             return true;
         }
         return !SummaryFlowSupport.assistantSummary(trajectory).isBlank();
     }
 
-    private void addItem(
-            List<ReasoningBankMemoryItem> items,
-            Set<String> seen,
-            String title,
-            String description,
-            String content,
-            int maxItems
-    ) {
+    /**
+     * addItem.
+     * 
+     * @param items items
+     * @param seen seen
+     * @param title title
+     * @param description description
+     * @param content content
+     * @param maxItems maxItems
+     * @since 0.1.7
+     */
+    private void addItem(List<ReasoningBankMemoryItem> items, Set<String> seen, String title, String description,
+            String content, int maxItems) {
         if (items.size() >= maxItems) {
             return;
         }
@@ -306,17 +314,29 @@ class ReasoningBankSummarizeMemoryOp extends BaseOp {
         if (normalizedKey.isBlank() || !seen.add(normalizedKey)) {
             return;
         }
-        items.add(new ReasoningBankMemoryItem(
-            SummaryFlowSupport.limit(title, 120),
-            SummaryFlowSupport.limit(description, 180),
-            SummaryFlowSupport.limit(content, 420)
-        ));
+        items.add(new ReasoningBankMemoryItem(SummaryFlowSupport.limit(title, 120),
+                SummaryFlowSupport.limit(description, 180), SummaryFlowSupport.limit(content, 420)));
     }
 
+    /**
+     * defaultToolName.
+     * 
+     * @param tool tool
+     * @param fallback fallback
+     * @return the result
+     * @since 0.1.7
+     */
     private String defaultToolName(String tool, String fallback) {
         return tool == null || tool.isBlank() ? fallback : tool;
     }
 
+    /**
+     * fallbackQueryHint.
+     * 
+     * @param query query
+     * @return the result
+     * @since 0.1.7
+     */
     private String fallbackQueryHint(String query) {
         String hint = SummaryFlowSupport.queryHint(query);
         return hint.isBlank() ? "similar tasks" : hint;

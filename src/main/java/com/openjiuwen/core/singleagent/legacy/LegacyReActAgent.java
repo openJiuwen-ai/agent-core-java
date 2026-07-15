@@ -30,24 +30,25 @@ import java.util.Map;
 
 /**
  * Backward-compatible wrapper over the modern ReActAgent.
+ * 
+ * @since 0.1.7
  */
 public class LegacyReActAgent extends BaseAgent {
-
     private final com.openjiuwen.core.singleagent.agents.ReActAgent delegate;
     private Model llm;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LegacyReActAgent.
+     * 
+     * @param agentConfig agentConfig
+     * @param workflows workflows
+     * @param tools tools
+     * @since 0.1.7
      */
     public LegacyReActAgent(LegacyReActAgentConfig agentConfig, List<Workflow> workflows, List<Tool> tools) {
         super(agentConfig);
-        this.delegate = new com.openjiuwen.core.singleagent.agents.ReActAgent(
-                AgentCard.builder()
-                        .id(agentConfig.getId())
-                        .name(agentConfig.getId())
-                        .description(agentConfig.getDescription())
-                        .build()
-        );
+        this.delegate = new com.openjiuwen.core.singleagent.agents.ReActAgent(AgentCard.builder()
+                .id(agentConfig.getId()).name(agentConfig.getId()).description(agentConfig.getDescription()).build());
         this.delegate.configure(toModernConfig(agentConfig));
         if (tools != null) {
             addTools(tools);
@@ -58,16 +59,22 @@ public class LegacyReActAgent extends BaseAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LegacyReActAgent.
+     * 
+     * @param agentConfig agentConfig
+     * @since 0.1.7
      */
     public LegacyReActAgent(LegacyReActAgentConfig agentConfig) {
         this(agentConfig, null, null);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addTools.
+     * 
+     * @param newTools newTools
+     * @since 0.1.7
      */
+    @Override
     public void addTools(List<Tool> newTools) {
         super.addTools(newTools);
         if (newTools != null) {
@@ -77,10 +84,13 @@ public class LegacyReActAgent extends BaseAgent {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addWorkflows.
+     * 
+     * @param newWorkflows newWorkflows
+     * @since 0.1.7
      */
+    @Override
     public void addWorkflows(List<Workflow> newWorkflows) {
         super.addWorkflows(newWorkflows);
         if (newWorkflows != null) {
@@ -91,12 +101,12 @@ public class LegacyReActAgent extends BaseAgent {
     }
 
     /**
-     * Override to also register provider-created workflow cards on the delegate.
+     * addWorkflowItems.
+     * 
+     * @param items items
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void addWorkflowItems(List<?> items) {
         super.addWorkflowItems(items);
         if (items != null) {
@@ -105,6 +115,8 @@ public class LegacyReActAgent extends BaseAgent {
                     delegate.getAbilityManager().add(factory.card());
                 } else if (item instanceof Workflow workflow) {
                     delegate.getAbilityManager().add(workflow.getCard());
+                } else {
+                    // no-op
                 }
             }
         }
@@ -112,13 +124,15 @@ public class LegacyReActAgent extends BaseAgent {
 
     /**
      * Call LLM for reasoning.
-     *
-     * <p>Mirrors Python's {@code LegacyReActAgent.call_model(user_input, session, is_first_call)}.</p>
-     *
-     * @param userInput   user input text
-     * @param session     current session
+     * <p>
+     * Mirrors Python's {@code LegacyReActAgent.call_model(user_input, session, is_first_call)}.
+     * </p>
+     * 
+     * @param userInput user input text
+     * @param session current session
      * @param isFirstCall whether this is the first call (adds user message to context)
      * @return LLM output as AssistantMessage
+     * @since 0.1.7
      */
     public AssistantMessage callModel(String userInput, Session session, boolean isFirstCall) {
         if (isFirstCall) {
@@ -126,10 +140,10 @@ public class LegacyReActAgent extends BaseAgent {
         }
 
         LegacyReActAgentConfig legacyConfig = (LegacyReActAgentConfig) getAgentConfig();
-        int maxRounds = legacyConfig.getConstrain() != null
-                ? legacyConfig.getConstrain().getReservedMaxChatRounds() : 10;
+        int maxRounds =
+            legacyConfig.getConstrain() != null ? legacyConfig.getConstrain().getReservedMaxChatRounds() : 10;
         List<com.openjiuwen.core.foundation.llm.schema.BaseMessage> chatHistory =
-                MessageUtils.getChatHistory(getContextEngine(), session, maxRounds);
+            MessageUtils.getChatHistory(getContextEngine(), session, maxRounds);
 
         List<Map<String, Object>> messages = new java.util.ArrayList<>();
 
@@ -153,8 +167,8 @@ public class LegacyReActAgent extends BaseAgent {
         }
 
         // Get tools
-        List<ToolInfo> toolInfos = com.openjiuwen.core.runner.Runner.resourceMgr()
-                .getToolInfos(null, null, legacyConfig.getId(), TagMatchStrategy.ALL);
+        List<ToolInfo> toolInfos = com.openjiuwen.core.runner.Runner.resourceMgr().getToolInfos(null, null,
+                legacyConfig.getId(), TagMatchStrategy.ALL);
 
         // Legacy agent owns its own LLM configuration, matching Python's LegacyReActAgent._get_llm().
         Model llmModel = getLlm(legacyConfig);
@@ -164,10 +178,7 @@ public class LegacyReActAgent extends BaseAgent {
         }
         AssistantMessage llmOutput;
         try {
-            llmOutput = llmModel.invoke(
-                    messages, toolInfos, null, null,
-                    modelName, null, null, null, null, null
-            );
+            llmOutput = llmModel.invoke(messages, toolInfos, null, null, modelName, null, null, null, null, null);
         } catch (Exception e) {
             throw new RuntimeException("LLM call failed", e);
         }
@@ -177,10 +188,15 @@ public class LegacyReActAgent extends BaseAgent {
         return llmOutput;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object invoke(Map<String, Object> inputs, Session session) {
         AgentSessionApi effectiveSession = toAgentSession(inputs, session);
         try {
@@ -192,19 +208,21 @@ public class LegacyReActAgent extends BaseAgent {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Iterator<Object> stream(Map<String, Object> inputs, Session session) {
         AgentSessionApi effectiveSession = toAgentSession(inputs, session);
         Iterator<Object> iterator = delegate.stream(inputs, effectiveSession, List.of(StreamMode.OUTPUT));
         if (session == null) {
             return new Iterator<>() {
                 @Override
-                /**
-                 * Auto-generated for codecheck compliance.
-                 */
                 public boolean hasNext() {
                     boolean hasNext = iterator.hasNext();
                     if (!hasNext) {
@@ -214,9 +232,6 @@ public class LegacyReActAgent extends BaseAgent {
                 }
 
                 @Override
-                /**
-                 * Auto-generated for codecheck compliance.
-                 */
                 public Object next() {
                     return iterator.next();
                 }
@@ -226,22 +241,29 @@ public class LegacyReActAgent extends BaseAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createReActAgentConfig.
+     * 
+     * @param agentId agentId
+     * @param agentVersion agentVersion
+     * @param description description
+     * @param model model
+     * @param promptTemplate promptTemplate
+     * @return the result
+     * @since 0.1.7
      */
-    public static LegacyReActAgentConfig createReActAgentConfig(String agentId,
-                                                                String agentVersion,
-                                                                String description,
-                                                                ModelConfig model,
-                                                                List<Map<String, String>> promptTemplate) {
-        return LegacyReActAgentConfig.builder()
-                .id(agentId)
-                .version(agentVersion)
-                .description(description)
-                .model(model)
-                .promptTemplate(promptTemplate != null ? promptTemplate : List.of())
-                .build();
+    public static LegacyReActAgentConfig createReActAgentConfig(String agentId, String agentVersion, String description,
+            ModelConfig model, List<Map<String, String>> promptTemplate) {
+        return LegacyReActAgentConfig.builder().id(agentId).version(agentVersion).description(description).model(model)
+                .promptTemplate(promptTemplate != null ? promptTemplate : List.of()).build();
     }
 
+    /**
+     * getLlm.
+     * 
+     * @param legacyConfig legacyConfig
+     * @return the result
+     * @since 0.1.7
+     */
     private Model getLlm(LegacyReActAgentConfig legacyConfig) {
         if (llm == null) {
             ModelConfig model = legacyConfig.getModel();
@@ -254,18 +276,12 @@ public class LegacyReActAgent extends BaseAgent {
             String apiBase = modelInfo.getApiBase() != null ? modelInfo.getApiBase() : "";
             String provider = model.modelProvider() != null ? model.modelProvider() : "";
 
-            ModelClientConfig modelClientConfig = ModelClientConfig.builder()
-                    .clientId(HashUtil.generateKey(apiKey, apiBase, provider))
-                    .clientProvider(provider)
-                    .apiKey(apiKey)
-                    .apiBase(apiBase)
-                    .verifySsl(false)
-                    .build();
+            ModelClientConfig modelClientConfig =
+                ModelClientConfig.builder().clientId(HashUtil.generateKey(apiKey, apiBase, provider))
+                        .clientProvider(provider).apiKey(apiKey).apiBase(apiBase).verifySsl(false).build();
 
-            ModelRequestConfig modelRequestConfig = ModelRequestConfig.builder()
-                    .modelName(modelInfo.getModelName())
-                    .temperature(modelInfo.getTemperature())
-                    .topP(modelInfo.getTopP())
+            ModelRequestConfig modelRequestConfig = ModelRequestConfig.builder().modelName(modelInfo.getModelName())
+                    .temperature(modelInfo.getTemperature()).topP(modelInfo.getTopP())
                     .extraFields(modelInfo.getExtraFields() != null
                             ? new java.util.LinkedHashMap<>(modelInfo.getExtraFields())
                             : new java.util.LinkedHashMap<>())
@@ -276,17 +292,25 @@ public class LegacyReActAgent extends BaseAgent {
         return llm;
     }
 
+    /**
+     * toModernConfig.
+     * 
+     * @param legacyConfig legacyConfig
+     * @return the result
+     * @since 0.1.7
+     */
     private static ReActAgentConfig toModernConfig(LegacyReActAgentConfig legacyConfig) {
-        ReActAgentConfig config = ReActAgentConfig.builder()
-                .memScopeId(legacyConfig.getMemoryScopeId())
+        ReActAgentConfig config = ReActAgentConfig.builder().memScopeId(legacyConfig.getMemoryScopeId())
                 .promptTemplateName(legacyConfig.getPromptTemplateName())
                 .promptTemplate(legacyConfig.getPromptTemplate())
                 .maxIterations(legacyConfig.getConstrain() != null ? legacyConfig.getConstrain().getMaxIteration() : 5)
                 .contextEngineConfig(ContextEngineConfig.builder()
                         .defaultWindowRoundNum(legacyConfig.getConstrain() != null
-                                ? legacyConfig.getConstrain().getReservedMaxChatRounds() : 10)
+                                ? legacyConfig.getConstrain().getReservedMaxChatRounds()
+                                : 10)
                         .maxContextMessageNum((legacyConfig.getConstrain() != null
-                                ? legacyConfig.getConstrain().getReservedMaxChatRounds() : 10) * 2)
+                                ? legacyConfig.getConstrain().getReservedMaxChatRounds()
+                                : 10) * 2)
                         .build())
                 .build();
 
@@ -300,17 +324,11 @@ public class LegacyReActAgent extends BaseAgent {
             config.setModelName(modelInfo.getModelName());
             config.setApiKey(modelInfo.getApiKey());
             config.setApiBase(modelInfo.getApiBase());
-            config.setModelClientConfig(ModelClientConfig.builder()
-                    .clientId(HashUtil.generateKey(apiKey, apiBase, provider))
-                    .clientProvider(provider)
-                    .apiKey(apiKey)
-                    .apiBase(apiBase)
-                    .verifySsl(false)
-                    .build());
-            config.setModelConfigObj(ModelRequestConfig.builder()
-                    .modelName(modelInfo.getModelName())
-                    .temperature(modelInfo.getTemperature())
-                    .topP(modelInfo.getTopP())
+            config.setModelClientConfig(
+                    ModelClientConfig.builder().clientId(HashUtil.generateKey(apiKey, apiBase, provider))
+                            .clientProvider(provider).apiKey(apiKey).apiBase(apiBase).verifySsl(false).build());
+            config.setModelConfigObj(ModelRequestConfig.builder().modelName(modelInfo.getModelName())
+                    .temperature(modelInfo.getTemperature()).topP(modelInfo.getTopP())
                     .extraFields(modelInfo.getExtraFields() != null
                             ? new java.util.LinkedHashMap<>(modelInfo.getExtraFields())
                             : new java.util.LinkedHashMap<>())
@@ -319,6 +337,14 @@ public class LegacyReActAgent extends BaseAgent {
         return config;
     }
 
+    /**
+     * toAgentSession.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private AgentSessionApi toAgentSession(Map<String, Object> inputs, Session session) {
         if (session instanceof AgentSessionApi agentSessionApi) {
             return agentSessionApi;

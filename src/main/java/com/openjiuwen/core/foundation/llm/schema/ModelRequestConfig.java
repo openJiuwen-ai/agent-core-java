@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,6 +22,8 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code ModelRequestConfig} model.
  * Supports extra fields via {@link #extraFields}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -28,7 +31,6 @@ import java.util.Map;
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ModelRequestConfig {
-
     @Builder.Default
     @JsonProperty("model")
     private String modelName = "";
@@ -49,22 +51,33 @@ public class ModelRequestConfig {
 
     private Integer seed;
 
-    /** Extra fields that are not part of the standard config. */
+    /**
+     * Extra fields that are not part of the standard config.
+     * 
+     * @since 0.1.7
+     */
     @Builder.Default
     private Map<String, Object> extraFields = new HashMap<>();
 
-    @JsonAnyGetter
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtraFields.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonAnyGetter
     public Map<String, Object> getExtraFields() {
         return extraFields;
     }
 
-    @JsonAnySetter
     /**
-     * Auto-generated for codecheck compliance.
+     * setExtraField.
+     * 
+     * @param key key
+     * @param value value
+     * @since 0.1.7
      */
+    @JsonAnySetter
     public void setExtraField(String key, Object value) {
         if (extraFields == null) {
             extraFields = new HashMap<>();

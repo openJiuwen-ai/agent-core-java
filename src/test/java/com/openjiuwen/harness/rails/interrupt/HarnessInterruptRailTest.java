@@ -1,4 +1,8 @@
+
 package com.openjiuwen.harness.rails.interrupt;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -12,11 +16,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-
 class HarnessInterruptRailTest {
-
     @Test
     void addPolicyAndGetToolsMirrorPythonStyleApi() {
         TestRail rail = new TestRail();
@@ -49,18 +49,14 @@ class HarnessInterruptRailTest {
     }
 
     private AgentCallbackContext context(String toolName, String toolArgs) {
-        return AgentCallbackContext.builder()
-                .session(AgentSessionApi.create("harness-session", null, null))
+        return AgentCallbackContext.builder().session(AgentSessionApi.create("harness-session", null, null))
                 .inputs(ToolCallInputs.builder()
                         .toolCall(ToolCall.builder().id(toolName + "-call").name(toolName).arguments(toolArgs).build())
-                        .toolName(toolName)
-                        .toolArgs(toolArgs)
-                        .build())
+                        .toolName(toolName).toolArgs(toolArgs).build())
                 .build();
     }
 
     private static final class TestRail extends BaseInterruptRail {
-
         private TestRail() {
             super(List.of("ask_user"));
         }
@@ -69,10 +65,8 @@ class HarnessInterruptRailTest {
         protected InterruptDecision resolveInterrupt(AgentCallbackContext ctx, ToolCall toolCall, Object userInput) {
             if (userInput == null) {
                 return interrupt(com.openjiuwen.core.singleagent.interrupt.InterruptRequest.builder()
-                        .interruptId(toolCall.getId())
-                        .message("name?")
-                        .context(Map.of("tool_call_id", toolCall.getId()))
-                        .build());
+                        .interruptId(toolCall.getId()).message("name?")
+                        .context(Map.of("tool_call_id", toolCall.getId())).build());
             }
             return approve("{\"response\":\"" + userInput + "\"}");
         }

@@ -5,6 +5,7 @@
 package com.openjiuwen.agentevolving.agent_rl.config.onlineconfig;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -13,6 +14,8 @@ import java.util.Map;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.onlineconfig.GatewayServiceConfig.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -25,10 +28,18 @@ public class GatewayServiceConfig {
     private String logLevel = "info";
     private double healthTimeout = 30.0;
     private boolean isDisableTrajectoryCollection = true;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, String> env = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validate.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         VLLMServiceConfig.validateOptionalPort(port, "gateway.port");
@@ -36,43 +47,102 @@ public class GatewayServiceConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRedis_url.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getRedis_url() { return getRedisUrl(); }
+    public String getRedis_url() {
+        return getRedisUrl();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setRedis_url.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setRedis_url(String value) { setRedisUrl(value); }
+    public void setRedis_url(String value) {
+        setRedisUrl(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getRecord_dir.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getRecord_dir() { return getRecordDir(); }
+    public String getRecord_dir() {
+        return getRecordDir();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setRecord_dir.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setRecord_dir(String value) { setRecordDir(value); }
+    public void setRecord_dir(String value) {
+        setRecordDir(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getLog_level.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getLog_level() { return getLogLevel(); }
+    public String getLog_level() {
+        return getLogLevel();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setLog_level.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setLog_level(String value) { setLogLevel(value); }
+    public void setLog_level(String value) {
+        setLogLevel(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getHealth_timeout.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public double getHealth_timeout() { return getHealthTimeout(); }
+    public double getHealth_timeout() {
+        return getHealthTimeout();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setHealth_timeout.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setHealth_timeout(double value) { setHealthTimeout(value); }
+    public void setHealth_timeout(double value) {
+        setHealthTimeout(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * isDisable_trajectory_collection.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public boolean isDisable_trajectory_collection() { return isDisableTrajectoryCollection(); }
+    public boolean isDisable_trajectory_collection() {
+        return isDisableTrajectoryCollection();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setDisable_trajectory_collection.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setDisable_trajectory_collection(boolean value) { setDisableTrajectoryCollection(value); }
+    public void setDisable_trajectory_collection(boolean value) {
+        setDisableTrajectoryCollection(value);
+    }
 }

@@ -7,6 +7,8 @@ package com.openjiuwen.core.controller.legacy.config;
 /**
  * Config of Proactive Identifier Component.
  * Mirrors Python's {@code ProactiveIdentifierConfig}.
+ * 
+ * @since 0.1.7
  */
 public class ProactiveIdentifierConfig {
 }

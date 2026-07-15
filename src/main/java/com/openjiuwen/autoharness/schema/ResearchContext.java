@@ -14,19 +14,29 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Public class ResearchContext used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class ResearchContext used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class ResearchContext {
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Experience> experiences = new ArrayList<>();
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, String> sourceFiles = new LinkedHashMap<>();
     @Builder.Default
     private String gapReport = null;

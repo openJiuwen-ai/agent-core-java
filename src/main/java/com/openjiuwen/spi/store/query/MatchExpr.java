@@ -6,15 +6,21 @@ package com.openjiuwen.spi.store.query;
 
 /**
  * Expression for text match operations (prefix, suffix, infix, exact).
+ * 
+ * @since 0.1.7
  */
 public class MatchExpr extends QueryExpr {
-
     private final String field;
     private final String value;
     private final MatchMode matchMode;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MatchExpr.
+     * 
+     * @param field field
+     * @param value value
+     * @param matchMode matchMode
+     * @since 0.1.7
      */
     public MatchExpr(String field, String value, MatchMode matchMode) {
         this.field = field;
@@ -23,37 +29,54 @@ public class MatchExpr extends QueryExpr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MatchExpr.
+     * 
+     * @param field field
+     * @param value value
+     * @since 0.1.7
      */
     public MatchExpr(String field, String value) {
         this(field, value, MatchMode.EXACT);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getField() {
         return field;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMatchMode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public MatchMode getMatchMode() {
         return matchMode;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toExpr.
+     * 
+     * @param database database
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object toExpr(String database) {
         return QueryLanguageRegistry.get(database).applyTextMatch(this);
     }

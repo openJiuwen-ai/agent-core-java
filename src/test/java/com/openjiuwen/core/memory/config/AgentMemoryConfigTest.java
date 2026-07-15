@@ -1,12 +1,12 @@
-package com.openjiuwen.core.memory.config;
 
-import org.junit.jupiter.api.Test;
+package com.openjiuwen.core.memory.config;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class AgentMemoryConfigTest {
+import org.junit.jupiter.api.Test;
 
+class AgentMemoryConfigTest {
     @Test
     void defaultsEnableAllPythonFragmentMemoryTypes() {
         AgentMemoryConfig config = AgentMemoryConfig.builder().build();
@@ -21,11 +21,8 @@ class AgentMemoryConfigTest {
 
     @Test
     void fragmentTypesCanBeDisabledIndependently() {
-        AgentMemoryConfig config = AgentMemoryConfig.builder()
-                .enableUserProfile(false)
-                .enableSemanticMemory(true)
-                .enableEpisodicMemory(false)
-                .build();
+        AgentMemoryConfig config = AgentMemoryConfig.builder().enableUserProfile(false).enableSemanticMemory(true)
+                .enableEpisodicMemory(false).build();
 
         assertFalse(config.isMemoryTypeEnabled("user_profile"));
         assertTrue(config.isMemoryTypeEnabled("semantic_memory"));
@@ -34,9 +31,7 @@ class AgentMemoryConfigTest {
 
     @Test
     void legacyFragmentSwitchStillDisablesAllFragmentTypes() {
-        AgentMemoryConfig config = AgentMemoryConfig.builder()
-                .enableFragmentMemory(false)
-                .build();
+        AgentMemoryConfig config = AgentMemoryConfig.builder().enableFragmentMemory(false).build();
 
         assertFalse(config.isMemoryTypeEnabled("user_profile"));
         assertFalse(config.isMemoryTypeEnabled("semantic_memory"));

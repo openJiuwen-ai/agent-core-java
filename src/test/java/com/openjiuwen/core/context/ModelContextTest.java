@@ -1,10 +1,12 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.context;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.context.context.SessionModelContext;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
 import com.openjiuwen.core.context.token.TokenCounter;
@@ -25,17 +27,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Comprehensive tests for {@link ModelContext} (via {@link SessionModelContext}).
  * <p>
  * Ported from Python's {@code test_context_model.py}.
  */
 class ModelContextTest {
-
     // ===================== Helper Methods =====================
-
     private ModelContext createContext() {
         return createContext(null, 100, null, null, false, false, null);
     }
@@ -48,43 +46,27 @@ class ModelContextTest {
         return createContext(history, windowMessageLimit, null, null, false, false, null);
     }
 
-    private ModelContext createContext(
-            List<BaseMessage> history,
-            int windowMessageLimit,
-            Integer dialogueRound,
-            Integer maxContextMessageNum,
-            boolean enableReload,
-            boolean enableKvCacheRelease,
+    private ModelContext createContext(List<BaseMessage> history, int windowMessageLimit, Integer dialogueRound,
+            Integer maxContextMessageNum, boolean enableReload, boolean enableKvCacheRelease,
             TokenCounter tokenCounter) {
-
-        ContextEngineConfig config = ContextEngineConfig.builder()
-                .defaultWindowMessageNum(windowMessageLimit)
-                .defaultWindowRoundNum(dialogueRound)
-                .maxContextMessageNum(maxContextMessageNum)
-                .enableReload(enableReload)
-                .enableKvCacheRelease(enableKvCacheRelease)
-                .build();
+        ContextEngineConfig config = ContextEngineConfig.builder().defaultWindowMessageNum(windowMessageLimit)
+                .defaultWindowRoundNum(dialogueRound).maxContextMessageNum(maxContextMessageNum)
+                .enableReload(enableReload).enableKvCacheRelease(enableKvCacheRelease).build();
         ContextEngine engine = new ContextEngine(config);
-        return engine.createContext("test_context", null,
-                null, history, tokenCounter);
+        return engine.createContext("test_context", null, null, history, tokenCounter);
     }
 
     private List<BaseMessage> userMessages(int count) {
-        return IntStream.range(0, count)
-                .mapToObj(i -> (BaseMessage) new UserMessage("test-" + i))
-                .toList();
+        return IntStream.range(0, count).mapToObj(i -> (BaseMessage) new UserMessage("test-" + i)).toList();
     }
 
     private List<BaseMessage> historyMessages(int count) {
-        return IntStream.range(0, count)
-                .mapToObj(i -> (BaseMessage) new UserMessage("history-" + i))
-                .toList();
+        return IntStream.range(0, count).mapToObj(i -> (BaseMessage) new UserMessage("history-" + i)).toList();
     }
 
     private List<ToolCall> createToolCallList(List<String> ids) {
         return ids.stream()
-                .map(id -> ToolCall.builder().id(id).name("test-tool").type("function").arguments("").build())
-                .toList();
+                .map(id -> ToolCall.builder().id(id).name("test-tool").type("function").arguments("").build()).toList();
     }
 
     // ===================== Add Messages =====================
@@ -92,7 +74,6 @@ class ModelContextTest {
     @Nested
     @DisplayName("addMessages")
     class AddMessages {
-
         @Test
         @DisplayName("add one message")
         void testAddOneMessage() {
@@ -151,7 +132,6 @@ class ModelContextTest {
     @Nested
     @DisplayName("getMessages")
     class GetMessages {
-
         @Test
         @DisplayName("get empty messages")
         void testGetEmptyMessages() {
@@ -248,7 +228,6 @@ class ModelContextTest {
     @Nested
     @DisplayName("popMessages")
     class PopMessages {
-
         @Test
         @DisplayName("pop empty messages")
         void testPopEmptyMessages() {
@@ -406,7 +385,6 @@ class ModelContextTest {
     @Nested
     @DisplayName("setMessages")
     class SetMessages {
-
         @Test
         @DisplayName("set messages replaces all")
         void testSetMessages() {
@@ -460,7 +438,6 @@ class ModelContextTest {
     @Nested
     @DisplayName("clearMessages")
     class ClearMessages {
-
         @Test
         @DisplayName("clear with history=true clears all")
         void testClearWithHistoryTrue() {
@@ -488,7 +465,6 @@ class ModelContextTest {
     @Nested
     @DisplayName("getContextWindow")
     class GetContextWindowTests {
-
         @Test
         @DisplayName("empty context window")
         void testEmptyContextWindow() {
@@ -503,8 +479,7 @@ class ModelContextTest {
         @DisplayName("invalid window size throws")
         void testInvalidWindowSize() {
             ModelContext context = createContext();
-            assertThrows(BaseError.class, () ->
-                    context.getContextWindow(null, null, -1, null));
+            assertThrows(BaseError.class, () -> context.getContextWindow(null, null, -1, null));
         }
 
         @Test
@@ -535,9 +510,8 @@ class ModelContextTest {
         @DisplayName("limited window size truncates system messages")
         void testLimitedWindowSizeTruncatesSysMessages() {
             List<BaseMessage> msgList = userMessages(100);
-            List<BaseMessage> sysMsgs = List.of(
-                    new SystemMessage("system message-1"),
-                    new SystemMessage("system message-2"));
+            List<BaseMessage> sysMsgs =
+                List.of(new SystemMessage("system message-1"), new SystemMessage("system message-2"));
             ModelContext context = createContext(null, 1);
             context.addMessages(msgList);
             ContextWindow window = context.getContextWindow(sysMsgs, null, null, null);
@@ -548,9 +522,7 @@ class ModelContextTest {
         @Test
         @DisplayName("window validates leading ToolMessages stripped")
         void testWindowStripsLeadingToolMessages() {
-            List<BaseMessage> toolMsgs = List.of(
-                    new ToolMessage("tool-0", "tc-0"),
-                    new ToolMessage("tool-1", "tc-1"),
+            List<BaseMessage> toolMsgs = List.of(new ToolMessage("tool-0", "tc-0"), new ToolMessage("tool-1", "tc-1"),
                     new ToolMessage("tool-2", "tc-2"));
             List<BaseMessage> userMsgs = userMessages(10);
             List<BaseMessage> allMsgs = new ArrayList<>(toolMsgs);
@@ -562,8 +534,7 @@ class ModelContextTest {
             ContextWindow window = context.getContextWindow(sysMsgs, null, null, null);
 
             assertEquals(sysMsgs, window.getSystemMessages());
-            assertTrue(window.getContextMessages().stream()
-                    .noneMatch(m -> m instanceof ToolMessage));
+            assertTrue(window.getContextMessages().stream().noneMatch(m -> m instanceof ToolMessage));
         }
 
         @Test
@@ -580,35 +551,26 @@ class ModelContextTest {
         @DisplayName("invalid dialogue round throws")
         void testInvalidDialogueRound() {
             ModelContext context = createContext();
-            assertThrows(BaseError.class, () ->
-                    context.getContextWindow(null, null, null, 0));
+            assertThrows(BaseError.class, () -> context.getContextWindow(null, null, null, 0));
         }
 
         @Test
         @DisplayName("dialogue round limits returned messages")
         void testDialogueRoundLimit() {
             ModelContext context = createContext(null, 100, 1, null, false, false, null);
-            List<BaseMessage> d1 = List.of(
-                    new UserMessage("user-1"),
+            List<BaseMessage> d1 = List.of(new UserMessage("user-1"),
                     AssistantMessage.builder().content("a1")
                             .toolCalls(createToolCallList(List.of("tc-1", "tc-2", "tc-3"))).build(),
-                    new ToolMessage("tool-1", "tc-1"),
-                    new ToolMessage("tool-2", "tc-2"),
-                    new ToolMessage("tool-3", "tc-3"),
-                    new AssistantMessage("assistant-2"));
-            List<BaseMessage> d2 = List.of(
-                    new UserMessage("user-2"),
-                    AssistantMessage.builder().content("a3")
-                            .toolCalls(createToolCallList(List.of("tc-1", "tc-2"))).build(),
-                    new ToolMessage("tool-4", "tc-1"),
-                    new ToolMessage("tool-5", "tc-2"),
+                    new ToolMessage("tool-1", "tc-1"), new ToolMessage("tool-2", "tc-2"),
+                    new ToolMessage("tool-3", "tc-3"), new AssistantMessage("assistant-2"));
+            List<BaseMessage> d2 = List.of(new UserMessage("user-2"),
+                    AssistantMessage.builder().content("a3").toolCalls(createToolCallList(List.of("tc-1", "tc-2")))
+                            .build(),
+                    new ToolMessage("tool-4", "tc-1"), new ToolMessage("tool-5", "tc-2"),
                     new AssistantMessage("assistant-4"));
-            List<BaseMessage> d3 = List.of(
-                    new UserMessage("user-3"),
-                    AssistantMessage.builder().content("a3")
-                            .toolCalls(createToolCallList(List.of("tc-1"))).build(),
-                    new ToolMessage("tool-6", "tc-1"),
-                    new AssistantMessage("assistant-5"));
+            List<BaseMessage> d3 = List.of(new UserMessage("user-3"),
+                    AssistantMessage.builder().content("a3").toolCalls(createToolCallList(List.of("tc-1"))).build(),
+                    new ToolMessage("tool-6", "tc-1"), new AssistantMessage("assistant-5"));
 
             List<BaseMessage> messages = new ArrayList<>();
             messages.addAll(d1);
@@ -645,24 +607,18 @@ class ModelContextTest {
         @DisplayName("incomplete dialogue round")
         void testIncompleteDialogueRound() {
             ModelContext context = createContext(null, 100, 1, null, false, false, null);
-            List<BaseMessage> d1 = List.of(
-                    new UserMessage("user-1"),
+            List<BaseMessage> d1 = List.of(new UserMessage("user-1"),
                     AssistantMessage.builder().content("a1")
                             .toolCalls(createToolCallList(List.of("tc-1", "tc-2", "tc-3"))).build(),
-                    new ToolMessage("tool-1", "tc-1"),
-                    new ToolMessage("tool-2", "tc-2"),
-                    new ToolMessage("tool-3", "tc-3"),
-                    new AssistantMessage("assistant-2"),
+                    new ToolMessage("tool-1", "tc-1"), new ToolMessage("tool-2", "tc-2"),
+                    new ToolMessage("tool-3", "tc-3"), new AssistantMessage("assistant-2"),
                     new UserMessage("user-1-1"));
-            List<BaseMessage> d2 = List.of(
-                    new UserMessage("user-2"),
-                    AssistantMessage.builder().content("a3")
-                            .toolCalls(createToolCallList(List.of("tc-1", "tc-2"))).build(),
-                    new ToolMessage("tool-4", "tc-1"),
-                    new ToolMessage("tool-5", "tc-2"),
+            List<BaseMessage> d2 = List.of(new UserMessage("user-2"),
+                    AssistantMessage.builder().content("a3").toolCalls(createToolCallList(List.of("tc-1", "tc-2")))
+                            .build(),
+                    new ToolMessage("tool-4", "tc-1"), new ToolMessage("tool-5", "tc-2"),
                     new AssistantMessage("assistant-4"));
-            List<BaseMessage> d3 = List.of(
-                    new UserMessage("user-3"));
+            List<BaseMessage> d3 = List.of(new UserMessage("user-3"));
 
             List<BaseMessage> messages = new ArrayList<>();
             messages.addAll(d1);
@@ -712,7 +668,6 @@ class ModelContextTest {
     @Nested
     @DisplayName("statistic")
     class Statistics {
-
         @Test
         @DisplayName("statistic counts messages by role")
         void testStatisticCountsByRole() {
@@ -763,40 +718,31 @@ class ModelContextTest {
 
             // Round with tool calls
             context = createContext();
-            context.addMessages(List.of(
-                    new UserMessage("u1"),
-                    AssistantMessage.builder().content("")
-                            .toolCalls(createToolCallList(List.of("tc-1"))).build(),
-                    new ToolMessage("result", "tc-1"),
-                    new AssistantMessage("a-final")));
+            context.addMessages(List.of(new UserMessage("u1"),
+                    AssistantMessage.builder().content("").toolCalls(createToolCallList(List.of("tc-1"))).build(),
+                    new ToolMessage("result", "tc-1"), new AssistantMessage("a-final")));
             assertEquals(1, context.statistic().getTotalDialogues());
 
             // Two rounds
             context = createContext();
-            context.addMessages(List.of(
-                    new UserMessage("u1"), new AssistantMessage("a1"),
-                    new UserMessage("u2"), new AssistantMessage("a2")));
+            context.addMessages(List.of(new UserMessage("u1"), new AssistantMessage("a1"), new UserMessage("u2"),
+                    new AssistantMessage("a2")));
             assertEquals(2, context.statistic().getTotalDialogues());
 
             // System + user + assistant: system is not a round
             context = createContext();
-            context.addMessages(List.of(
-                    new SystemMessage("sys"),
-                    new UserMessage("u1"), new AssistantMessage("a1")));
+            context.addMessages(List.of(new SystemMessage("sys"), new UserMessage("u1"), new AssistantMessage("a1")));
             assertEquals(1, context.statistic().getTotalDialogues());
 
             // Three rounds
             context = createContext();
-            context.addMessages(List.of(
-                    new UserMessage("u1"), new AssistantMessage("a1"),
-                    new UserMessage("u2"), new AssistantMessage("a2"),
-                    new UserMessage("u3"), new AssistantMessage("a3")));
+            context.addMessages(List.of(new UserMessage("u1"), new AssistantMessage("a1"), new UserMessage("u2"),
+                    new AssistantMessage("a2"), new UserMessage("u3"), new AssistantMessage("a3")));
             assertEquals(3, context.statistic().getTotalDialogues());
 
             // Context window stat also counts dialogues
             context = createContext();
-            context.addMessages(List.of(
-                    new UserMessage("u1"), new AssistantMessage("a1")));
+            context.addMessages(List.of(new UserMessage("u1"), new AssistantMessage("a1")));
             ContextWindow window = context.getContextWindow();
             assertEquals(1, window.getStatistic().getTotalDialogues());
         }
@@ -847,7 +793,6 @@ class ModelContextTest {
     @Nested
     @DisplayName("maxContextMessageNum")
     class MaxContextMessageNum {
-
         @Test
         @DisplayName("triggers resize when exceeded")
         void testMaxContextMessageNumTriggersResize() {
@@ -872,7 +817,6 @@ class ModelContextTest {
     @Nested
     @DisplayName("enableReload")
     class EnableReload {
-
         @Test
         @DisplayName("adds reloader system prompt")
         void testEnableReloadAddsPrompt() {
@@ -907,7 +851,6 @@ class ModelContextTest {
     @Nested
     @DisplayName("enableKvCacheRelease")
     class KvCacheRelease {
-
         @Test
         @DisplayName("creates KV cache manager when enabled")
         void testEnableKvCacheRelease() {
@@ -932,7 +875,6 @@ class ModelContextTest {
     @Nested
     @DisplayName("reloaderTool")
     class ReloaderToolTests {
-
         @Test
         @DisplayName("offload then reload returns content")
         void testOffloadThenReload() throws Exception {
@@ -940,8 +882,8 @@ class ModelContextTest {
             List<BaseMessage> msgs = List.of(new UserMessage("secret"), new AssistantMessage("reply"));
             ((SessionModelContext) context).offloadMessages("handle-1", msgs);
             var tool = context.reloaderTool();
-            Object result = tool.invoke(
-                    java.util.Map.of("offload_handle", "handle-1", "offload_type", "in_memory"), null);
+            Object result =
+                tool.invoke(java.util.Map.of("offload_handle", "handle-1", "offload_type", "in_memory"), null);
             String resultStr = result.toString();
             assertTrue(resultStr.contains("handle-1"));
         }
@@ -951,8 +893,8 @@ class ModelContextTest {
         void testNonexistentHandle() throws Exception {
             ModelContext context = createContext();
             var tool = context.reloaderTool();
-            Object result = tool.invoke(
-                    java.util.Map.of("offload_handle", "nonexistent", "offload_type", "in_memory"), null);
+            Object result =
+                tool.invoke(java.util.Map.of("offload_handle", "nonexistent", "offload_type", "in_memory"), null);
             String resultStr = result.toString();
             assertTrue(resultStr.contains("Failed to reload"));
             assertTrue(resultStr.contains("nonexistent"));
@@ -973,7 +915,6 @@ class ModelContextTest {
     @Nested
     @DisplayName("saveState / loadState")
     class SaveLoadState {
-
         @Test
         @DisplayName("save state structure")
         void testSaveStateStructure() {

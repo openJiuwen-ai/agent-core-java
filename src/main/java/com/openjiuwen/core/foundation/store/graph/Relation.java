@@ -8,6 +8,8 @@ import java.util.Map;
 
 /**
  * Edge / Relation entity representing relationships between entity nodes.
+ * 
+ * @since 0.1.7
  */
 public class Relation extends NamedGraphObject {
     private int validSince = -1;
@@ -18,98 +20,139 @@ public class Relation extends NamedGraphObject {
     private Object rhs;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Relation.
+     * 
+     * @since 0.1.7
      */
     public Relation() {
         setObjType("Relation");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValidSince.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getValidSince() {
         return validSince;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setValidSince.
+     * 
+     * @param validSince validSince
+     * @since 0.1.7
      */
     public void setValidSince(int validSince) {
         this.validSince = validSince;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValidUntil.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getValidUntil() {
         return validUntil;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setValidUntil.
+     * 
+     * @param validUntil validUntil
+     * @since 0.1.7
      */
     public void setValidUntil(int validUntil) {
         this.validUntil = validUntil;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOffsetSince.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getOffsetSince() {
         return offsetSince;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setOffsetSince.
+     * 
+     * @param offsetSince offsetSince
+     * @since 0.1.7
      */
     public void setOffsetSince(int offsetSince) {
         this.offsetSince = offsetSince;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOffsetUntil.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getOffsetUntil() {
         return offsetUntil;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setOffsetUntil.
+     * 
+     * @param offsetUntil offsetUntil
+     * @since 0.1.7
      */
     public void setOffsetUntil(int offsetUntil) {
         this.offsetUntil = offsetUntil;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLhs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getLhs() {
         return lhs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLhs.
+     * 
+     * @param lhs lhs
+     * @since 0.1.7
      */
     public void setLhs(Object lhs) {
         this.lhs = lhs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRhs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getRhs() {
         return rhs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setRhs.
+     * 
+     * @param rhs rhs
+     * @since 0.1.7
      */
     public void setRhs(Object rhs) {
         this.rhs = rhs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateConnectedEntities.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Relation updateConnectedEntities() {
         for (Object connectedNode : java.util.List.of(lhs, rhs)) {
@@ -123,12 +166,12 @@ public class Relation extends NamedGraphObject {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> toMap() {
         Map<String, Object> result = super.toMap();
         result.put("valid_since", validSince);
@@ -140,6 +183,14 @@ public class Relation extends NamedGraphObject {
         return result;
     }
 
+    /**
+     * entityId.
+     * 
+     * @param value value
+     * @param fieldName fieldName
+     * @return the result
+     * @since 0.1.7
+     */
     private static String entityId(Object value, String fieldName) {
         if (value instanceof String id) {
             return id;

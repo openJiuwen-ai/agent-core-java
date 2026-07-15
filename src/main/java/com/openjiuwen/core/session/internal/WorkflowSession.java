@@ -11,9 +11,7 @@ import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.state.State;
 import com.openjiuwen.core.session.state.InMemoryState;
-import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
-import com.openjiuwen.core.session.tracer.Tracer;
 
 import java.util.UUID;
 
@@ -21,9 +19,10 @@ import java.util.UUID;
  * Internal workflow session implementation.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.internal.workflow.WorkflowSession}.
+ * 
+ * @since 0.1.7
  */
 public class WorkflowSession extends BaseSession {
-
     private final String sessionIdField;
     private final BaseSession parent;
     private final Config configField;
@@ -35,10 +34,17 @@ public class WorkflowSession extends BaseSession {
     private String workflowId;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowSession.
+     * 
+     * @param workflowId workflowId
+     * @param parent parent
+     * @param sessionId sessionId
+     * @param state state
+     * @param callbackManager callbackManager
+     * @since 0.1.7
      */
     public WorkflowSession(String workflowId, BaseSession parent, String sessionId, State state,
-                           CallbackManager callbackManager) {
+            CallbackManager callbackManager) {
         this.workflowId = workflowId != null ? workflowId : "";
         this.parent = parent;
 
@@ -59,14 +65,21 @@ public class WorkflowSession extends BaseSession {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowSession.
+     * 
+     * @param workflowId workflowId
+     * @param parent parent
+     * @since 0.1.7
      */
     public WorkflowSession(String workflowId, BaseSession parent) {
         this(workflowId, parent, null, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowSession.
+     * 
+     * @param workflowId workflowId
+     * @since 0.1.7
      */
     public WorkflowSession(String workflowId) {
         this(workflowId, null, null, null, null);
@@ -75,6 +88,8 @@ public class WorkflowSession extends BaseSession {
     /**
      * Compatibility constructor for translated tests that only need an empty
      * workflow session with generated identifiers.
+     * 
+     * @since 0.1.7
      */
     public WorkflowSession() {
         this(null, null, null, null, null);
@@ -82,6 +97,9 @@ public class WorkflowSession extends BaseSession {
 
     /**
      * Compatibility factory mirroring the Python-style helper.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static WorkflowSession create() {
         return new WorkflowSession();
@@ -89,13 +107,20 @@ public class WorkflowSession extends BaseSession {
 
     /**
      * Compatibility factory for translated tests that want to control sessionId.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public static WorkflowSession create(String sessionId) {
         return new WorkflowSession(null, null, sessionId, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStreamWriterManager.
+     * 
+     * @param streamWriterManager streamWriterManager
+     * @since 0.1.7
      */
     public void setStreamWriterManager(StreamWriterManager streamWriterManager) {
         if (this.streamWriterManagerField == null) {
@@ -104,14 +129,20 @@ public class WorkflowSession extends BaseSession {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTracer.
+     * 
+     * @param tracer tracer
+     * @since 0.1.7
      */
     public void setTracer(Object tracer) {
         this.tracerField = tracer;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setActorManager.
+     * 
+     * @param actorManager actorManager
+     * @since 0.1.7
      */
     public void setActorManager(ActorManager actorManager) {
         if (this.actorManagerField == null) {
@@ -120,99 +151,139 @@ public class WorkflowSession extends BaseSession {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWorkflowId.
+     * 
+     * @param workflowId workflowId
+     * @since 0.1.7
      */
     public void setWorkflowId(String workflowId) {
         this.workflowId = workflowId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * workflowId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String workflowId() {
         return workflowId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * mainWorkflowId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String mainWorkflowId() {
         return workflowId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * workflowNestingDepth.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int workflowNestingDepth() {
         return 0;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public BaseSession parent() {
         return parent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * actorManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public ActorManager actorManager() {
         return actorManagerField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Config config() {
         return configField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * state.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public State state() {
         return stateField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * tracer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object tracer() {
         return tracerField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * streamWriterManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public StreamWriterManager streamWriterManager() {
         return streamWriterManagerField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * callbackManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public CallbackManager callbackManager() {
         return callbackManagerField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * sessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String sessionId() {
         return sessionIdField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * checkpointer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object checkpointer() {
         if (parent != null) {
             return parent.checkpointer();
@@ -220,10 +291,12 @@ public class WorkflowSession extends BaseSession {
         return CheckpointerFactory.getCheckpointer();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void close() {
         if (actorManagerField != null) {
             actorManagerField.shutdown();

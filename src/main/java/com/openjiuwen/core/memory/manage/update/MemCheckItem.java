@@ -14,6 +14,8 @@ import java.util.Map;
 
 /**
  * Represents a single memory check result item.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -24,5 +26,10 @@ public class MemCheckItem {
     private String infoText;
     private CheckResult result;
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, String> relatedInfos = new LinkedHashMap<>();
 }

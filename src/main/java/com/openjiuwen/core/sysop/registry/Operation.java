@@ -15,8 +15,9 @@ import java.lang.annotation.Target;
  * Annotation for registering a class as an operation in the OperationRegistry.
  * <p>
  * Mirrors Python's {@code @operation} decorator in {@code sys_operation/registry.py}.
- *
- * <p>Usage:
+ * <p>
+ * Usage:
+ * 
  * <pre>
  * {@literal @}Operation(name = "shell", mode = OperationMode.LOCAL, description = "local shell operation")
  * public class LocalShellOperation extends BaseShellOperation { ... }
@@ -26,12 +27,27 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Operation {
 
-    /** Unique identifier for the operation (e.g., "fs", "shell", "code"). */
+    /**
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     String name();
 
-    /** Running mode (LOCAL or SANDBOX). */
+    /**
+     * Running mode (LOCAL or SANDBOX).
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     OperationMode mode();
 
-    /** Human-readable description. */
+    /**
+     * Human-readable description.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     String description() default "";
 }

@@ -17,15 +17,20 @@ import java.util.Map;
  * once all inputs are available.
  * <p>
  * Mirrors Python's {@code TemplateBatchProcessor} from {@code end_comp.py}.
+ * 
+ * @since 0.1.7
  */
 public class TemplateBatchProcessor {
-
     private final TemplateProcessor template;
     private final Map<String, Object> inputs;
     private volatile boolean rendered = false;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TemplateBatchProcessor.
+     * 
+     * @param template template
+     * @param inputs inputs
+     * @since 0.1.7
      */
     public TemplateBatchProcessor(TemplateProcessor template, Map<String, Object> inputs) {
         this.template = template;
@@ -33,7 +38,10 @@ public class TemplateBatchProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isRendered.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isRendered() {
         return rendered;
@@ -44,6 +52,11 @@ public class TemplateBatchProcessor {
      * Streams through the template processor and concatenates all frame data.
      * <p>
      * Mirrors Python's {@code TemplateBatchProcessor.render(inputs, session)}.
+     * 
+     * @param additionalInputs additionalInputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public String render(Map<String, Object> additionalInputs, NodeSessionApi session) {
         rendered = true;

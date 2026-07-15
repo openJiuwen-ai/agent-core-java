@@ -10,18 +10,30 @@ import java.nio.file.Path;
 import java.util.Map;
 
 /**
- * Auto-generated for codecheck compliance.
+ * PermissionFactory.
+ * 
+ * @since 0.1.7
  */
 public final class PermissionFactory {
+    /**
+     * PermissionFactory.
+     * 
+     * @since 0.1.7
+     */
     private PermissionFactory() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildPermissionInterruptRail.
+     * 
+     * @param permissions permissions
+     * @param host host
+     * @param workspaceRoot workspaceRoot
+     * @return the result
+     * @since 0.1.7
      */
     public static PermissionInterruptRail buildPermissionInterruptRail(Map<String, Object> permissions,
-                                                                      ToolPermissionHost host,
-                                                                      Path workspaceRoot) {
+            ToolPermissionHost host, Path workspaceRoot) {
         PermissionEngine engine = new PermissionEngine(permissions, workspaceRoot);
         ToolPermissionHost effectiveHost = host != null ? host : ToolPermissionHost.builder().build();
         return new PermissionInterruptRail(engine, effectiveHost);

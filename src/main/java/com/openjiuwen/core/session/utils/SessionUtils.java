@@ -15,19 +15,54 @@ import java.util.regex.Pattern;
  * Session utility methods for nested path operations and dict manipulation.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.utils}.
+ * 
+ * @since 0.1.7
  */
 public final class SessionUtils {
-
     private static final int REGEX_MAX_LENGTH = 1000;
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern REF_PATTERN = Pattern.compile("\\$\\{([^{}]*)}");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern INDEX_PATTERN = Pattern.compile("\\[(-?\\d+)]|\\['([^']*)']");
+
+    /**
+     * NESTED_PATH_SPLIT.
+     * 
+     * @since 0.1.7
+     */
     public static final String NESTED_PATH_SPLIT = ".";
+
+    /**
+     * NESTED_PATH_LIST_SPLIT.
+     * 
+     * @since 0.1.7
+     */
     public static final String NESTED_PATH_LIST_SPLIT = "[";
 
+    /**
+     * SessionUtils.
+     * 
+     * @since 0.1.7
+     */
     private SessionUtils() {
     }
 
     /**
      * Check if a string is a reference path like "${xxx.yyy}".
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isRefPath(String path) {
         return path != null && path.length() > 3 && path.startsWith("${") && path.endsWith("}");
@@ -36,6 +71,10 @@ public final class SessionUtils {
     /**
      * Extract the origin key from a reference structure.
      * e.g. "${start123.p2}" → "start123.p2"
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public static String extractOriginKey(String key) {
         if (key == null || !key.contains("$")) {
@@ -50,37 +89,37 @@ public final class SessionUtils {
     }
 
     /**
-     * Split a nested path into components.
-     * e.g. "a.b.c[1].d" → ["a", "b", "c", 1, "d"]
+     * splitNestedPath.
+     * 
+     * @param nestedKey nestedKey
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static List<Object> splitNestedPath(String nestedKey) {
         if (nestedKey == null || !(nestedKey instanceof String)) {
             return List.of();
         }
-        if (!nestedKey.contains(NESTED_PATH_SPLIT)
-                && !nestedKey.contains(NESTED_PATH_LIST_SPLIT)
+        if (!nestedKey.contains(NESTED_PATH_SPLIT) && !nestedKey.contains(NESTED_PATH_LIST_SPLIT)
                 && !nestedKey.contains("['")) {
             return List.of();
         }
         List<Object> result = new ArrayList<>();
         String[] parts = nestedKey.split("\\.", -1);
-        Pattern indexPattern = Pattern.compile("\\[(-?\\d+)]|\\['([^']*)']");
         for (String part : parts) {
             if (part.contains("[")) {
                 String basePart = part.split("\\[")[0];
                 if (!basePart.isEmpty()) {
                     result.add(basePart);
                 }
-                Matcher m = indexPattern.matcher(part);
+                Matcher m = INDEX_PATTERN.matcher(part);
                 while (m.find()) {
                     if (m.group(1) != null) {
                         result.add(Integer.parseInt(m.group(1)));
                     } else if (m.group(2) != null) {
                         result.add(m.group(2));
+                    } else {
+                        // no-op
                     }
                 }
             } else {
@@ -91,12 +130,14 @@ public final class SessionUtils {
     }
 
     /**
-     * Get a value by nested path from a source map.
+     * getValueByNestedPath.
+     * 
+     * @param nestedKey nestedKey
+     * @param source source
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static Object getValueByNestedPath(String nestedKey, Map<String, Object> source) {
         Object[] result = rootToPath(nestedKey, source, false);
         if (result[1] == null) {
@@ -124,13 +165,15 @@ public final class SessionUtils {
     }
 
     /**
-     * Navigate from root to the final path position.
-     * Returns [key, container] where container[key] is the target.
+     * rootToPath.
+     * 
+     * @param nestedPath nestedPath
+     * @param source source
+     * @param createIfAbsent createIfAbsent
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static Object[] rootToPath(String nestedPath, Object source, boolean createIfAbsent) {
         List<Object> paths = splitNestedPath(nestedPath);
         if (paths.isEmpty()) {
@@ -190,13 +233,14 @@ public final class SessionUtils {
     }
 
     /**
-     * Update source dict by update dict.
-     * Note: source is unnested structure, update keys may be nested.
+     * updateDict.
+     * 
+     * @param update update
+     * @param source source
+     * @param ignoreDelete ignoreDelete
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static void updateDict(Map<String, Object> update, Map<String, Object> source, boolean ignoreDelete) {
         List<Object[]> removed = new ArrayList<>();
         for (Map.Entry<String, Object> entry : update.entrySet()) {
@@ -218,15 +262,24 @@ public final class SessionUtils {
 
     /**
      * Update source dict by update dict (default: don't ignore delete).
+     * 
+     * @param update update
+     * @param source source
+     * @since 0.1.7
      */
     public static void updateDict(Map<String, Object> update, Map<String, Object> source) {
         updateDict(update, source, false);
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * updateByKey.
+     * 
+     * @param key key
+     * @param newValue newValue
+     * @param source source
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public static void updateByKey(Object key, Object newValue, Object source) {
         if (source instanceof Map map) {
             Object existing = map.get(key);
@@ -265,10 +318,14 @@ public final class SessionUtils {
         }
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteByKey.
+     * 
+     * @param key key
+     * @param source source
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public static void deleteByKey(Object key, Object source) {
         if (source instanceof Map map) {
             map.remove(key);
@@ -278,16 +335,19 @@ public final class SessionUtils {
             if (index >= 0 && index < writableList.size()) {
                 writableList.set(index, null);
             }
+        } else {
+            // no-op
         }
     }
 
     /**
-     * Expand nested structure.
+     * expandNestedStructure.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static Object expandNestedStructure(Object data) {
         if (data instanceof List list) {
             List<Object> result = new ArrayList<>();
@@ -307,6 +367,8 @@ public final class SessionUtils {
                     @SuppressWarnings("unchecked")
                     List<Object> writableList = (List<Object>) list;
                     writableList.set(index, expandedValue);
+                } else {
+                    // no-op
                 }
             }
             return result;
@@ -314,28 +376,42 @@ public final class SessionUtils {
         return data;
     }
 
+    /**
+     * normalizeListIndex.
+     * 
+     * @param index index
+     * @param size size
+     * @return the result
+     * @since 0.1.7
+     */
     private static int normalizeListIndex(int index, int size) {
         return index < 0 ? size + index : index;
     }
 
     /**
-     * Get value by schema (supports str, list, dict schemas).
+     * getBySchema.
+     * 
+     * @param schema schema
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static Object getBySchema(Object schema, Map<String, Object> data) {
         return getBySchema(schema, data, null, true);
     }
 
     /**
-     * Get value by schema with optional nested path prefix.
+     * getBySchema.
+     * 
+     * @param schema schema
+     * @param data data
+     * @param nestedPath nestedPath
+     * @param isRoot isRoot
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static Object getBySchema(Object schema, Map<String, Object> data, String nestedPath, boolean isRoot) {
         if (nestedPath != null && !nestedPath.isEmpty()) {
             Object nested = getValueByNestedPath(nestedPath, data);
@@ -379,11 +455,12 @@ public final class SessionUtils {
 
     /**
      * Safely extend a list container to accommodate a target index.
-     *
-     * @param container   the list to extend
+     * 
+     * @param container the list to extend
      * @param targetIndex the target index that must be reachable
      * @param isFinalIndex if true, fills the target position with an empty map; otherwise empty list
      * @return true if extension succeeded or was not needed
+     * @since 0.1.7
      */
     public static boolean safeExtendContainer(List<Object> container, int targetIndex, boolean isFinalIndex) {
         if (container == null) {
@@ -412,18 +489,15 @@ public final class SessionUtils {
     }
 
     /**
-     * Navigate through a nested list structure using a path of indexes.
-     * Returns [adjustedIndex, container] or [null, null] on failure.
-     *
-     * @param indexes       list of integer indexes
-     * @param source        the root list
-     * @param createIfAbsent if true, extend lists to reach target
-     * @return Object array [Integer index, List container]
+     * rootToIndex.
+     * 
+     * @param indexes indexes
+     * @param source source
+     * @param createIfAbsent createIfAbsent
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static Object[] rootToIndex(List<Integer> indexes, List<Object> source, boolean createIfAbsent) {
         if (indexes == null) {
             throw new IllegalArgumentException("indexes must be a list");
@@ -517,10 +591,22 @@ public final class SessionUtils {
 
     /**
      * Sentinel class for representing end frame markers.
+     * 
+     * @since 0.1.7
      */
     public static final class EndFrame {
+        /**
+         * MESSAGE.
+         * 
+         * @since 0.1.7
+         */
         public static final String MESSAGE = "all streaming outputs finish";
 
+        /**
+         * EndFrame.
+         * 
+         * @since 0.1.7
+         */
         private EndFrame() {
         }
     }

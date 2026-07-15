@@ -6,15 +6,21 @@ package com.openjiuwen.spi.store.query;
 
 /**
  * Expression for comparison operations (==, !=, &gt;, &lt;, &gt;=, &lt;=).
+ * 
+ * @since 0.1.7
  */
 public class ComparisonExpr extends QueryExpr {
-
     private final String field;
     private final String operator;
     private final Object value;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ComparisonExpr.
+     * 
+     * @param field field
+     * @param operator operator
+     * @param value value
+     * @since 0.1.7
      */
     public ComparisonExpr(String field, String operator, Object value) {
         this.field = field;
@@ -23,30 +29,43 @@ public class ComparisonExpr extends QueryExpr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getField() {
         return field;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOperator.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getOperator() {
         return operator;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getValue() {
         return value;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toExpr.
+     * 
+     * @param database database
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object toExpr(String database) {
         return QueryLanguageRegistry.get(database).applyComparison(this);
     }

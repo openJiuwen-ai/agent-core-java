@@ -11,8 +11,18 @@ import com.openjiuwen.core.session.Session;
 
 /**
  * Legacy intent detector contract.
+ * 
+ * @since 0.1.7
  */
 public interface IntentDetector {
-
+    /**
+     * detect.
+     * 
+     * @param event event
+     * @param session session
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     IntentDetectionController.Intent detect(Event event, Session session, ReasonerConfig config);
 }

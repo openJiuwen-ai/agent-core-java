@@ -13,14 +13,17 @@ import java.util.List;
  * Generated when task execution is completed, containing task results.
  * <p>
  * Mirrors Python's {@code TaskCompletionEvent}.
+ * 
+ * @since 0.1.7
  */
 public class TaskCompletionEvent extends Event {
-
     private List<DataFrame> taskResult;
     private Task task;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskCompletionEvent.
+     * 
+     * @since 0.1.7
      */
     public TaskCompletionEvent() {
         super(EventType.TASK_COMPLETION);
@@ -28,7 +31,11 @@ public class TaskCompletionEvent extends Event {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskCompletionEvent.
+     * 
+     * @param taskResult taskResult
+     * @param task task
+     * @since 0.1.7
      */
     public TaskCompletionEvent(List<DataFrame> taskResult, Task task) {
         super(EventType.TASK_COMPLETION);
@@ -37,28 +44,40 @@ public class TaskCompletionEvent extends Event {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskResult.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<DataFrame> getTaskResult() {
         return taskResult;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTaskResult.
+     * 
+     * @param taskResult taskResult
+     * @since 0.1.7
      */
     public void setTaskResult(List<DataFrame> taskResult) {
         this.taskResult = taskResult != null ? taskResult : new ArrayList<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTask.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Task getTask() {
         return task;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTask.
+     * 
+     * @param task task
+     * @since 0.1.7
      */
     public void setTask(Task task) {
         this.task = task;

@@ -15,13 +15,20 @@ import java.util.Set;
 
 /**
  * Local lexical reranker based on token overlap.
+ * 
+ * @since 0.1.7
  */
 public class LexicalReranker implements Reranker {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * rerank.
+     * 
+     * @param query query
+     * @param candidates candidates
+     * @param topK topK
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<RetrievalResult> rerank(String query, List<RetrievalResult> candidates, int topK) {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
@@ -36,6 +43,14 @@ public class LexicalReranker implements Reranker {
         return results.size() <= topK ? results : new ArrayList<>(results.subList(0, topK));
     }
 
+    /**
+     * score.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static double score(Set<String> left, Set<String> right) {
         if (left.isEmpty() || right.isEmpty()) {
             return 0.0;
@@ -49,6 +64,13 @@ public class LexicalReranker implements Reranker {
         return overlap / Math.sqrt((double) left.size() * right.size());
     }
 
+    /**
+     * tokens.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     private static Set<String> tokens(String text) {
         Set<String> tokens = new LinkedHashSet<>();
         if (text == null) {

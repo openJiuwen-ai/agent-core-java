@@ -5,11 +5,14 @@
 package com.openjiuwen.agentevolving.agent_rl.config.offlineconfig;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.offlineconfig.VerlDataHydraOverlay.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -18,7 +21,12 @@ public class VerlDataHydraOverlay {
     private boolean isFilterOverlongPrompts = false;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isFilter_overlong_prompts.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public boolean isFilter_overlong_prompts() { return isFilterOverlongPrompts(); }
+    public boolean isFilter_overlong_prompts() {
+        return isFilterOverlongPrompts();
+    }
 }

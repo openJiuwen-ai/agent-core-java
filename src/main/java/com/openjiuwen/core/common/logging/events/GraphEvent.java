@@ -10,7 +10,11 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Graph execution related event. */
+/**
+ * Graph execution related event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -23,16 +27,21 @@ public class GraphEvent extends BaseLogEvent {
     private Object chunk;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GraphEvent.
+     * 
+     * @since 0.1.7
      */
     public GraphEvent() {
         super();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "graph_id", graphId);
         putIfNotNull(map, "node_id", nodeId);

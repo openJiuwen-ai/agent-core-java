@@ -9,6 +9,8 @@ import java.util.Set;
 
 /**
  * Coroutine-task status enumeration.
+ * 
+ * @since 0.1.7
  */
 public enum TaskStatus {
     PENDING("pending"),
@@ -19,10 +21,11 @@ public enum TaskStatus {
     TIMEOUT("timeout");
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TERMINAL_STATES.
+     * 
+     * @since 0.1.7
      */
-    public static final Set<TaskStatus> TERMINAL_STATES =
-            EnumSet.of(COMPLETED, FAILED, CANCELLED, TIMEOUT);
+    public static final Set<TaskStatus> TERMINAL_STATES = EnumSet.of(COMPLETED, FAILED, CANCELLED, TIMEOUT);
 
     private final String value;
 
@@ -31,7 +34,10 @@ public enum TaskStatus {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

@@ -9,12 +9,19 @@ import lombok.experimental.SuperBuilder;
 
 /**
  * Result type for background shell command execution.
+ * 
+ * @since 0.1.7
  */
 @SuperBuilder
 @NoArgsConstructor
 public class ExecuteCmdBackgroundResult extends BaseResult<ExecuteCmdBackgroundData> {
     /**
-     * Auto-generated for codecheck compliance.
+     * ExecuteCmdBackgroundResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
      */
     public ExecuteCmdBackgroundResult(int code, String message, ExecuteCmdBackgroundData data) {
         super(code, message, data);

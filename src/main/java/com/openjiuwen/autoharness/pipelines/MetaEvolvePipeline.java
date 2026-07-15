@@ -19,55 +19,58 @@ import java.util.List;
 
 /**
  * Public class MetaEvolvePipeline used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class MetaEvolvePipeline extends BasePipeline {
     /**
-     * Auto-generated for codecheck compliance.
+     * NAME.
+     * 
+     * @since 0.1.7
      */
     public static final String NAME = "meta_evolve_pipeline";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String name() {
         return NAME;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * description.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String description() {
         return "Default meta evolve pipeline.";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * expectedOutputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<String> expectedOutputs() {
         return List.of("session_results");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Object> stream(BaseExecutionContext ctx) {
         if (!(ctx instanceof SessionContext sessionContext)) {
             throw new IllegalArgumentException("MetaEvolvePipeline requires SessionContext");
@@ -88,24 +91,23 @@ public class MetaEvolvePipeline extends BasePipeline {
     }
 
     void populateTaskPlanFromInputTasks(SessionContext ctx, List<?> tasks) {
-        List<OptimizationTask> planned = tasks.stream()
-                .filter(OptimizationTask.class::isInstance)
-                .map(OptimizationTask.class::cast)
-                .toList();
-        ctx.putArtifact("task_plan", TaskPlanArtifact.builder()
-                .tasks(planned)
-                .rawPlan("")
-                .build());
+        List<OptimizationTask> planned =
+            tasks.stream().filter(OptimizationTask.class::isInstance).map(OptimizationTask.class::cast).toList();
+        ctx.putArtifact("task_plan", TaskPlanArtifact.builder().tasks(planned).rawPlan("").build());
     }
 
     void storeSessionResults(SessionContext ctx) {
-        ctx.putArtifact("session_results", SessionResultsArtifact.builder()
-                .results(ctx.getOrchestrator().getResults())
-                .build());
+        ctx.putArtifact("session_results",
+                SessionResultsArtifact.builder().results(ctx.getOrchestrator().getResults()).build());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runAssessAndPlanStream.
+     * 
+     * @param ctx ctx
+     * @param events events
+     * @return the result
+     * @since 0.1.7
      */
     public boolean runAssessAndPlanStream(SessionContext ctx, List<Object> events) {
         String originalWorkspace = ctx.getOrchestrator().getConfig().getWorkspace();
@@ -130,7 +132,11 @@ public class MetaEvolvePipeline extends BasePipeline {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runTaskPipelineStream.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> runTaskPipelineStream(SessionContext ctx) {
         Object rawPlan = ctx.requireArtifact("task_plan");
@@ -138,9 +144,8 @@ public class MetaEvolvePipeline extends BasePipeline {
             throw new IllegalArgumentException("task_plan must be TaskPlanArtifact");
         }
         List<Object> events = new ArrayList<>();
-        List<OptimizationTask> tasks = taskPlan.getTasks().stream()
-                .limit(ctx.getOrchestrator().getConfig().getMaxTasksPerSession())
-                .toList();
+        List<OptimizationTask> tasks =
+            taskPlan.getTasks().stream().limit(ctx.getOrchestrator().getConfig().getMaxTasksPerSession()).toList();
         for (OptimizationTask task : tasks) {
             if (ctx.getOrchestrator().getBudget().shouldStop()) {
                 break;
@@ -154,7 +159,11 @@ public class MetaEvolvePipeline extends BasePipeline {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runLearningsStageStream.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> runLearningsStageStream(SessionContext ctx) {
         LearningsStage stage = new LearningsStage();

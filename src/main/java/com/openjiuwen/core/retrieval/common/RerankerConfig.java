@@ -10,9 +10,10 @@ import java.util.Map;
 
 /**
  * Reranker model configuration aligned with the Python implementation.
+ * 
+ * @since 0.1.7
  */
 public class RerankerConfig {
-
     private String apiKey = "";
     private String apiBase;
     private String modelName = "";
@@ -20,44 +21,67 @@ public class RerankerConfig {
     private double temperature = 0.95;
     private double topP = 0.1;
     private List<Integer> yesNoIds;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> extraBody = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RerankerConfig.
+     * 
+     * @since 0.1.7
      */
     public RerankerConfig() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RerankerConfig.
+     * 
+     * @param apiBase apiBase
+     * @since 0.1.7
      */
     public RerankerConfig(String apiBase) {
         setApiBase(apiBase);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getApiKey.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getApiKey() {
         return apiKey;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setApiKey.
+     * 
+     * @param apiKey apiKey
+     * @since 0.1.7
      */
     public void setApiKey(String apiKey) {
         this.apiKey = apiKey == null ? "" : apiKey;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getApiBase.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getApiBase() {
         return apiBase;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setApiBase.
+     * 
+     * @param apiBase apiBase
+     * @since 0.1.7
      */
     public void setApiBase(String apiBase) {
         RetrievalValidation.requireNonBlank(apiBase, "RerankerConfig.apiBase");
@@ -65,28 +89,40 @@ public class RerankerConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getModelName() {
         return modelName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setModelName.
+     * 
+     * @param modelName modelName
+     * @since 0.1.7
      */
     public void setModelName(String modelName) {
         this.modelName = modelName == null ? "" : modelName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTimeout.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getTimeout() {
         return timeout;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTimeout.
+     * 
+     * @param timeout timeout
+     * @since 0.1.7
      */
     public void setTimeout(double timeout) {
         if (timeout <= 0.0) {
@@ -96,56 +132,80 @@ public class RerankerConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTemperature.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getTemperature() {
         return temperature;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTemperature.
+     * 
+     * @param temperature temperature
+     * @since 0.1.7
      */
     public void setTemperature(double temperature) {
         this.temperature = temperature;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTopP.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getTopP() {
         return topP;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTopP.
+     * 
+     * @param topP topP
+     * @since 0.1.7
      */
     public void setTopP(double topP) {
         this.topP = topP;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getYesNoIds.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Integer> getYesNoIds() {
         return yesNoIds == null ? null : List.copyOf(yesNoIds);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setYesNoIds.
+     * 
+     * @param yesNoIds yesNoIds
+     * @since 0.1.7
      */
     public void setYesNoIds(List<Integer> yesNoIds) {
         this.yesNoIds = yesNoIds == null ? null : List.copyOf(yesNoIds);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtraBody.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getExtraBody() {
         return new LinkedHashMap<>(extraBody);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setExtraBody.
+     * 
+     * @param extraBody extraBody
+     * @since 0.1.7
      */
     public void setExtraBody(Map<String, Object> extraBody) {
         this.extraBody = extraBody == null ? new LinkedHashMap<>() : new LinkedHashMap<>(extraBody);

@@ -13,24 +13,35 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Auto-generated for codecheck compliance.
+ * CommitScope.
+ * 
+ * @since 0.1.7
  */
 public final class CommitScope {
     private static final Pattern TEST_FILE_RE = Pattern.compile("(tests/(?:unit_tests|system_tests)/[^\\s:'\"]+\\.py)");
-    private static final List<String> ALLOWED_EDIT_PREFIXES = List.of(
-            "openjiuwen/harness/",
-            "openjiuwen/core/",
-            "tests/",
-            "examples/",
-            "docs/en/",
-            "docs/zh/"
-    );
 
+    /**
+     * List.of.
+     * 
+     * @since 0.1.7
+     */
+    private static final List<String> ALLOWED_EDIT_PREFIXES =
+        List.of("openjiuwen/harness/", "openjiuwen/core/", "tests/", "examples/", "docs/en/", "docs/zh/");
+
+    /**
+     * CommitScope.
+     * 
+     * @since 0.1.7
+     */
     private CommitScope() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isDocumentationFile.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isDocumentationFile(String path) {
         String normalized = normalizePath(path);
@@ -38,14 +49,22 @@ public final class CommitScope {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAllowedDocumentationFile.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isAllowedDocumentationFile(String path) {
         return isDocumentationFile(path) && isAllowedRepoEditPath(path);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deriveTestFiles.
+     * 
+     * @param taskFiles taskFiles
+     * @return the result
+     * @since 0.1.7
      */
     public static List<String> deriveTestFiles(List<String> taskFiles) {
         Set<String> derived = new LinkedHashSet<>();
@@ -58,14 +77,18 @@ public final class CommitScope {
             int lastDot = fileName.lastIndexOf('.');
             String stem = lastDot >= 0 ? fileName.substring(0, lastDot) : fileName;
             String testName = "test_" + stem + ".py";
-            derived.add("tests/unit_tests/**/" + testName);
-            derived.add("tests/system_tests/**/" + testName);
+            derived.add("tests/unit_tests" + testName);
         }
         return new ArrayList<>(derived);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isDerivedTestFile.
+     * 
+     * @param sourceFiles sourceFiles
+     * @param candidate candidate
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isDerivedTestFile(List<String> sourceFiles, String candidate) {
         String normalizedCandidate = normalizePath(candidate);
@@ -93,7 +116,12 @@ public final class CommitScope {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extractVerifyRelatedFiles.
+     * 
+     * @param ciResult ciResult
+     * @param fixLogs fixLogs
+     * @return the result
+     * @since 0.1.7
      */
     public static List<String> extractVerifyRelatedFiles(CIGateResult ciResult, String fixLogs) {
         List<String> texts = new ArrayList<>();
@@ -116,7 +144,12 @@ public final class CommitScope {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deriveLegacyRelatedTestFiles.
+     * 
+     * @param editedFiles editedFiles
+     * @param verifyRelatedFiles verifyRelatedFiles
+     * @return the result
+     * @since 0.1.7
      */
     public static List<String> deriveLegacyRelatedTestFiles(List<String> editedFiles, List<String> verifyRelatedFiles) {
         Set<String> verifySet = new LinkedHashSet<>();
@@ -138,7 +171,11 @@ public final class CommitScope {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAllowedRepoEditPath.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isAllowedRepoEditPath(String path) {
         String normalized = normalizePath(path);
@@ -157,6 +194,13 @@ public final class CommitScope {
         return path.trim().replace('\\', '/');
     }
 
+    /**
+     * isNonTestSourceFile.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isNonTestSourceFile(String path) {
         if (path.isBlank() || !path.endsWith(".py")) {
             return false;

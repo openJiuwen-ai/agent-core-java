@@ -1,6 +1,11 @@
+
 package com.openjiuwen.autoharness.infra;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
+
 import com.openjiuwen.autoharness.schema.AutoHarnessConfig;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -12,12 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.tuple;
-
-import static org.assertj.core.api.Assertions.assertThat;
-
 class InfraCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
@@ -58,16 +58,10 @@ class InfraCompatibilityTest {
     @Test
     void fixLoopShouldStopWhenCiPassesOrEvaluatorApproves() throws Exception {
         FixLoopController loop = new FixLoopController(2, 2);
-        FixLoopResult passInPhase1 = loop.run(
-                () -> new FixLoopController.SimpleCheckResult(true, ""),
-                () -> null,
-                null
-        );
-        FixLoopResult passInPhase2 = loop.run(
-                () -> new FixLoopController.SimpleCheckResult(false, "err"),
-                () -> null,
-                () -> new FixLoopController.SimpleApprovalResult(true)
-        );
+        FixLoopResult passInPhase1 =
+            loop.run(() -> new FixLoopController.SimpleCheckResult(true, ""), () -> null, null);
+        FixLoopResult passInPhase2 = loop.run(() -> new FixLoopController.SimpleCheckResult(false, "err"), () -> null,
+                () -> new FixLoopController.SimpleApprovalResult(true));
 
         assertThat(passInPhase1.isSuccess()).isTrue();
         assertThat(passInPhase2.isSuccess()).isTrue();
@@ -84,44 +78,29 @@ class InfraCompatibilityTest {
 
         int[] calls = {0};
         FixLoopController retryLoop = new FixLoopController(5, 0);
-        FixLoopResult passAfterRetries = retryLoop.run(
-                () -> new FixLoopController.SimpleCheckResult(++calls[0] >= 3, "lint error"),
-                errors -> {
-                },
-                null
-        );
+        FixLoopResult passAfterRetries =
+            retryLoop.run(() -> new FixLoopController.SimpleCheckResult(++calls[0] >= 3, "lint error"), errors -> {
+            }, null);
         assertThat(passAfterRetries.isSuccess()).isTrue();
         assertThat(passAfterRetries.getAttempts()).isEqualTo(3);
-        assertThat(passAfterRetries.getErrorLog()).containsExactly(
-                "Phase 1 attempt 1: lint error",
-                "Phase 1 attempt 2: lint error"
-        );
+        assertThat(passAfterRetries.getErrorLog()).containsExactly("Phase 1 attempt 1: lint error",
+                "Phase 1 attempt 2: lint error");
 
         FixLoopController exhaustedLoop = new FixLoopController(2, 0);
-        FixLoopResult exhausted = exhaustedLoop.run(
-                () -> new FixLoopController.SimpleCheckResult(false, "fail"),
-                errors -> {
-                },
-                null
-        );
+        FixLoopResult exhausted =
+            exhaustedLoop.run(() -> new FixLoopController.SimpleCheckResult(false, "fail"), errors -> {
+            }, null);
         assertThat(exhausted.isSuccess()).isFalse();
         assertThat(exhausted.getAttempts()).isEqualTo(2);
         assertThat(exhausted.getPhase()).isEqualTo(1);
-        assertThat(exhausted.getErrorLog()).containsExactly(
-                "Phase 1 attempt 1: fail",
-                "Phase 1 attempt 2: fail"
-        );
+        assertThat(exhausted.getErrorLog()).containsExactly("Phase 1 attempt 1: fail", "Phase 1 attempt 2: fail");
 
         FixLoopController timeoutLoop = new FixLoopController(1, 0, 0.01);
-        FixLoopResult timeout = timeoutLoop.run(
-                () -> {
-                    Thread.sleep(100);
-                    return new FixLoopController.SimpleCheckResult(true, "");
-                },
-                errors -> {
-                },
-                null
-        );
+        FixLoopResult timeout = timeoutLoop.run(() -> {
+            Thread.sleep(100);
+            return new FixLoopController.SimpleCheckResult(true, "");
+        }, errors -> {
+        }, null);
         assertThat(timeout.isSuccess()).isFalse();
         assertThat(timeout.getErrorLog()).containsExactly("Phase 1 attempt 1: CI timeout");
     }
@@ -130,27 +109,18 @@ class InfraCompatibilityTest {
     void fixLoopShouldMirrorPythonPhase2ReviewLoop() throws Exception {
         int[] reviewCalls = {0};
         FixLoopController loop = new FixLoopController(1, 3);
-        FixLoopResult approved = loop.run(
-                () -> new FixLoopController.SimpleCheckResult(false, "err"),
-                errors -> {
-                },
-                () -> new FixLoopController.SimpleApprovalResult(++reviewCalls[0] >= 2)
-        );
+        FixLoopResult approved = loop.run(() -> new FixLoopController.SimpleCheckResult(false, "err"), errors -> {
+        }, () -> new FixLoopController.SimpleApprovalResult(++reviewCalls[0] >= 2));
 
         assertThat(approved.isSuccess()).isTrue();
         assertThat(approved.getPhase()).isEqualTo(2);
         assertThat(approved.getAttempts()).isEqualTo(3);
-        assertThat(approved.getErrorLog()).containsExactly(
-                "Phase 1 attempt 1: err",
-                "Phase 2 attempt 1: evaluator rejected"
-        );
+        assertThat(approved.getErrorLog()).containsExactly("Phase 1 attempt 1: err",
+                "Phase 2 attempt 1: evaluator rejected");
 
-        FixLoopResult noEvaluator = new FixLoopController(1, 3).run(
-                () -> new FixLoopController.SimpleCheckResult(false, "err"),
-                errors -> {
-                },
-                null
-        );
+        FixLoopResult noEvaluator =
+            new FixLoopController(1, 3).run(() -> new FixLoopController.SimpleCheckResult(false, "err"), errors -> {
+            }, null);
         assertThat(noEvaluator.isSuccess()).isFalse();
         assertThat(noEvaluator.getPhase()).isEqualTo(1);
     }
@@ -168,29 +138,17 @@ class InfraCompatibilityTest {
                     required: false
                 """);
 
-        CIGateRunner runner = new CIGateRunner(
-                tempDir.toString(),
-                configPath.toString(),
-                "",
-                "printf install-ok"
-        );
+        CIGateRunner runner = new CIGateRunner(tempDir.toString(), configPath.toString(), "", "printf install-ok");
         CIGateResult result = runner.run("all");
         GitOperations git = new GitOperations(tempDir.toString(), "origin", "main");
         WorktreeManager worktree = new WorktreeManager(tempDir.toString());
 
         assertThat(result.isPassed()).isTrue();
-        assertThat(result.getExecutedCommands()).containsExactly(
-                "printf install-ok",
-                "printf lint-ok",
-                "printf test-ok"
-        );
+        assertThat(result.getExecutedCommands()).containsExactly("printf install-ok", "printf lint-ok",
+                "printf test-ok");
         assertThat(result.getGateOutputs()).containsExactly("[lint]\nlint-ok", "[test]\ntest-ok");
-        assertThat(result.getGates())
-                .extracting("name", "passed", "output")
-                .containsExactly(
-                        tuple("lint", true, "lint-ok"),
-                        tuple("test", true, "test-ok")
-                );
+        assertThat(result.getGates()).extracting("name", "passed", "output")
+                .containsExactly(tuple("lint", true, "lint-ok"), tuple("test", true, "test-ok"));
         assertThat(git.describeSyncPlan()).contains("remote=origin");
         assertThat(worktree.worktreePath("feature-a").toString()).contains("feature-a");
     }
@@ -211,27 +169,19 @@ class InfraCompatibilityTest {
         Files.createDirectories(tempDir.resolve("tests/unit_tests"));
         Files.writeString(tempDir.resolve("tests/unit_tests/test_foo.py"), "def test_foo(): pass\n");
 
-        GitOperations git = new GitOperations(tempDir.toString(), "origin", "main",
-                "", "openJiuwen", "agent-core", "bot-user", "secret-token", "", "");
+        GitOperations git = new GitOperations(tempDir.toString(), "origin", "main", "", "openJiuwen", "agent-core",
+                "bot-user", "secret-token", "", "");
 
         Map<String, List<String>> status = git.collectStatus();
 
-        assertThat(status.get("dirty_files")).containsExactly(
-                "openjiuwen/core/foo.py",
-                "openjiuwen/core/new.py",
-                "tests/unit_tests/test_foo.py"
-        );
-        assertThat(status.get("tracked_modified_files")).containsExactly(
-                "openjiuwen/core/foo.py",
-                "openjiuwen/core/new.py"
-        );
+        assertThat(status.get("dirty_files")).containsExactly("openjiuwen/core/foo.py", "openjiuwen/core/new.py",
+                "tests/unit_tests/test_foo.py");
+        assertThat(status.get("tracked_modified_files")).containsExactly("openjiuwen/core/foo.py",
+                "openjiuwen/core/new.py");
         assertThat(status.get("untracked_files")).containsExactly("tests/unit_tests/test_foo.py");
         assertThat(status.get("renamed_files")).containsExactly("openjiuwen/core/new.py");
         assertThat(git.statusPorcelain()).contains(" M openjiuwen/core/foo.py");
-        assertThat(git.diffNameOnly("HEAD")).containsExactly(
-                "openjiuwen/core/foo.py",
-                "openjiuwen/core/new.py"
-        );
+        assertThat(git.diffNameOnly("HEAD")).containsExactly("openjiuwen/core/foo.py", "openjiuwen/core/new.py");
         assertThat(git.diffStat()).contains("openjiuwen/core/foo.py");
         assertThat(git.currentHead()).isNotBlank();
         assertThat(git.currentBranch()).isNotBlank();
@@ -253,8 +203,8 @@ class InfraCompatibilityTest {
         run(repo, "git", "add", "README.md");
         run(repo, "git", "commit", "-m", "init");
 
-        GitOperations git = new GitOperations(repo.toString(), "origin", "develop",
-                "", "openJiuwen", "agent-core", "bot-user", "secret-token", "", "");
+        GitOperations git = new GitOperations(repo.toString(), "origin", "develop", "", "openJiuwen", "agent-core",
+                "bot-user", "secret-token", "", "");
 
         Map<String, Object> pushed = git.push("feature-branch");
 
@@ -267,13 +217,11 @@ class InfraCompatibilityTest {
 
     @Test
     void gitOperationsCreatePrShouldFailFastWithoutGitCodeToken() {
-        GitOperations git = new GitOperations(tempDir.toString(), "origin", "develop",
-                "fork-owner", "openJiuwen", "agent-core", "bot-user", "", "", "");
+        GitOperations git = new GitOperations(tempDir.toString(), "origin", "develop", "fork-owner", "openJiuwen",
+                "agent-core", "bot-user", "", "", "");
 
-        Map<String, Object> result = git.createPr(
-                "test(auto-harness): draft",
-                "/kind task\n\n## Summary\n- no token",
-                "auto-harness/no-token");
+        Map<String, Object> result =
+            git.createPr("test(auto-harness): draft", "/kind task\n\n## Summary\n- no token", "auto-harness/no-token");
 
         assertThat(result).containsEntry("success", false);
         assertThat(result).containsEntry("error", "missing GitCode token");
@@ -364,9 +312,8 @@ class InfraCompatibilityTest {
 
         assertThat(result.isPassed()).isTrue();
         assertThat(result.getExecutedCommands()).containsExactly("printf lint-ok", "printf test-ok");
-        assertThat(result.getGates())
-                .extracting("name", "passed")
-                .containsExactly(tuple("lint", true), tuple("test", true));
+        assertThat(result.getGates()).extracting("name", "passed").containsExactly(tuple("lint", true),
+                tuple("test", true));
         assertThat(blank.isPassed()).isFalse();
         assertThat(blank.getExecutedCommands()).isEmpty();
         assertThat(blank.getErrors()).isEqualTo("No gate matched action=");
@@ -404,9 +351,8 @@ class InfraCompatibilityTest {
 
         assertThat(result.isPassed()).isFalse();
         assertThat(result.getErrors()).contains("[lint]").contains("E501 line too long");
-        assertThat(result.getGates())
-                .extracting("name", "passed")
-                .containsExactly(tuple("lint", false), tuple("test", true));
+        assertThat(result.getGates()).extracting("name", "passed").containsExactly(tuple("lint", false),
+                tuple("test", true));
     }
 
     @Test
@@ -435,13 +381,9 @@ class InfraCompatibilityTest {
         CIGateResult result = runner.run("all");
 
         assertThat(result.isPassed()).isTrue();
-        assertThat(result.getExecutedCommands()).containsExactly(
-                python + " -m pytest tests/unit_tests/harness/",
-                python + " -m pytest -q",
-                "PATH=\"/tmp/bin:$PATH\" " + python + " -m pytest"
-        );
-        assertThat(result.getGateOutputs())
-                .contains("[test]\nPY:-m pytest tests/unit_tests/harness/");
+        assertThat(result.getExecutedCommands()).containsExactly(python + " -m pytest tests/unit_tests/harness/",
+                python + " -m pytest -q", "PATH=\"/tmp/bin:$PATH\" " + python + " -m pytest");
+        assertThat(result.getGateOutputs()).contains("[test]\nPY:-m pytest tests/unit_tests/harness/");
     }
 
     @Test
@@ -472,10 +414,7 @@ class InfraCompatibilityTest {
         assertThat(output).contains("PY=" + python);
         assertThat(output).contains("VENV=" + venv);
         assertThat(output).contains("CI=1");
-        String pathLine = output.lines()
-                .filter(line -> line.startsWith("PATH="))
-                .findFirst()
-                .orElseThrow();
+        String pathLine = output.lines().filter(line -> line.startsWith("PATH=")).findFirst().orElseThrow();
         assertThat(pathLine).startsWith("PATH=" + binDir);
     }
 
@@ -517,7 +456,8 @@ class InfraCompatibilityTest {
 
         assertThat(result.isPassed()).isFalse();
         assertThat(result.getErrors()).contains("AssertionError: expected value");
-        assertThat(result.getErrors()).contains("FAILED tests/unit_tests/core/foundation/tool/test_api_param_mapper.py::test_x");
+        assertThat(result.getErrors())
+                .contains("FAILED tests/unit_tests/core/foundation/tool/test_api_param_mapper.py::test_x");
         assertThat(result.getErrors()).doesNotContain("test session starts");
         assertThat(result.getErrors()).doesNotContain("PydanticDeprecatedSince20");
         assertThat(result.getErrors()).doesNotContain("Generated html report");
@@ -560,12 +500,9 @@ class InfraCompatibilityTest {
 
     @Test
     void worktreeHelpersShouldMirrorPythonWorkspacePlanningSlice() {
-        AutoHarnessConfig config = AutoHarnessConfig.builder()
-                .workspace(tempDir.resolve("workspace").toString())
-                .dataDir(tempDir.resolve("data").toString())
-                .upstreamRepo("agent-core")
-                .repoUrl("https://gitcode.com/openJiuwen/agent-core.git")
-                .build();
+        AutoHarnessConfig config = AutoHarnessConfig.builder().workspace(tempDir.resolve("workspace").toString())
+                .dataDir(tempDir.resolve("data").toString()).upstreamRepo("agent-core")
+                .repoUrl("https://gitcode.com/openJiuwen/agent-core.git").build();
         WorktreeManager manager = new WorktreeManager(config);
         Path managedWorktree = config.worktreesPath().resolve("old-fix-timeout");
         String porcelain = """
@@ -580,11 +517,7 @@ class InfraCompatibilityTest {
                 worktree %s
                 HEAD 1234abcd
                 branch refs/heads/auto-harness/fix-timeout
-                """.formatted(
-                managedWorktree,
-                tempDir.resolve("repo"),
-                tempDir.resolve("foreign/fix-timeout")
-        );
+                """.formatted(managedWorktree, tempDir.resolve("repo"), tempDir.resolve("foreign/fix-timeout"));
 
         assertThat(WorktreeManager.slugify("fix timeout bug")).isEqualTo("fix-timeout-bug");
         assertThat(WorktreeManager.slugify("add: feature/new!")).isEqualTo("add-feature-new");
@@ -595,20 +528,20 @@ class InfraCompatibilityTest {
         assertThat(manager.branchNameForTopic("fix timeout bug")).isEqualTo("auto-harness/fix-timeout-bug");
         assertThat(manager.worktreeNameForTopic(123L, "fix timeout bug")).isEqualTo("123-fix-timeout-bug");
         assertThat(manager.worktreePath("feature-a")).isEqualTo(config.worktreesPath().resolve("feature-a"));
-        assertThat(manager.readonlySnapshotPath(456L, "assess")).isEqualTo(config.worktreesPath().resolve("456-assess"));
+        assertThat(manager.readonlySnapshotPath(456L, "assess"))
+                .isEqualTo(config.worktreesPath().resolve("456-assess"));
         assertThat(manager.baseRepoPath()).isEqualTo(config.cacheRepoPath());
-        assertThat(manager.isManagedWorktreePath(config.worktreesPath().resolve("123-fix-timeout-bug").toString())).isTrue();
+        assertThat(manager.isManagedWorktreePath(config.worktreesPath().resolve("123-fix-timeout-bug").toString()))
+                .isTrue();
         assertThat(manager.isManagedWorktreePath(tempDir.resolve("foreign/worktree").toString())).isFalse();
         assertThat(WorktreeManager.parseWorktreeListPorcelain(porcelain))
                 .extracting(WorktreeManager.WorktreeEntry::path, WorktreeManager.WorktreeEntry::branch)
-                .containsExactly(
-                        tuple(managedWorktree.toString(), "refs/heads/auto-harness/fix-timeout"),
+                .containsExactly(tuple(managedWorktree.toString(), "refs/heads/auto-harness/fix-timeout"),
                         tuple(tempDir.resolve("repo").toString(), "refs/heads/develop"),
-                        tuple(tempDir.resolve("foreign/fix-timeout").toString(), "refs/heads/auto-harness/fix-timeout")
-                );
+                        tuple(tempDir.resolve("foreign/fix-timeout").toString(),
+                                "refs/heads/auto-harness/fix-timeout"));
         assertThat(manager.managedEntriesForBranch(porcelain, "auto-harness/fix-timeout"))
-                .extracting(WorktreeManager.WorktreeEntry::path)
-                .containsExactly(managedWorktree.toString());
+                .extracting(WorktreeManager.WorktreeEntry::path).containsExactly(managedWorktree.toString());
         assertThat(manager.hasUnmanagedEntryForBranch(porcelain, "auto-harness/fix-timeout")).isTrue();
         assertThat(manager.hasUnmanagedEntryForBranch(porcelain, "refs/heads/develop")).isTrue();
         assertThat(manager.hasUnmanagedEntryForBranch(porcelain, "auto-harness/unknown")).isFalse();
@@ -616,26 +549,22 @@ class InfraCompatibilityTest {
 
     @Test
     void configShouldDeriveWorktreeAndCacheRepoPaths() {
-        AutoHarnessConfig fromDataDir = AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data").toString())
-                .upstreamRepo("agent-core")
-                .build();
-        AutoHarnessConfig fromRepoUrl = AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data2").toString())
-                .upstreamRepo("")
-                .repoUrl("https://gitcode.com/openJiuwen/custom-repo.git")
-                .build();
-        AutoHarnessConfig withLocalRepo = AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data3").toString())
-                .localRepo(tempDir.resolve("local-repo").toString())
-                .build();
+        AutoHarnessConfig fromDataDir =
+            AutoHarnessConfig.builder().dataDir(tempDir.resolve("data").toString()).upstreamRepo("agent-core").build();
+        AutoHarnessConfig fromRepoUrl = AutoHarnessConfig.builder().dataDir(tempDir.resolve("data2").toString())
+                .upstreamRepo("").repoUrl("https://gitcode.com/openJiuwen/custom-repo.git").build();
+        AutoHarnessConfig withLocalRepo = AutoHarnessConfig.builder().dataDir(tempDir.resolve("data3").toString())
+                .localRepo(tempDir.resolve("local-repo").toString()).build();
         WorktreeManager manager = new WorktreeManager(withLocalRepo);
 
         assertThat(fromDataDir.resolveRepoName()).isEqualTo("agent-core");
-        assertThat(fromDataDir.worktreesPath()).isEqualTo(tempDir.resolve("data/worktrees").toAbsolutePath().normalize());
-        assertThat(fromDataDir.cacheRepoPath()).isEqualTo(tempDir.resolve("data/repo/agent-core").toAbsolutePath().normalize());
+        assertThat(fromDataDir.worktreesPath())
+                .isEqualTo(tempDir.resolve("data/worktrees").toAbsolutePath().normalize());
+        assertThat(fromDataDir.cacheRepoPath())
+                .isEqualTo(tempDir.resolve("data/repo/agent-core").toAbsolutePath().normalize());
         assertThat(fromRepoUrl.resolveRepoName()).isEqualTo("custom-repo");
-        assertThat(withLocalRepo.cacheRepoPath()).isEqualTo(tempDir.resolve("data3/repo/agent-core").toAbsolutePath().normalize());
+        assertThat(withLocalRepo.cacheRepoPath())
+                .isEqualTo(tempDir.resolve("data3/repo/agent-core").toAbsolutePath().normalize());
         assertThat(manager.baseRepoPath()).isEqualTo(tempDir.resolve("local-repo").toAbsolutePath().normalize());
     }
 
@@ -653,15 +582,9 @@ class InfraCompatibilityTest {
         run(local, "git", "commit", "-m", "init");
         run(local, "git", "push", "-u", "origin", "develop");
 
-        AutoHarnessConfig config = AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data").toString())
-                .localRepo(local.toString())
-                .gitBaseBranch("develop")
-                .gitUserName("test-user")
-                .gitUserEmail("test@example.com")
-                .gitcodeUsername("bot-user")
-                .gitcodeToken("secret-token")
-                .build();
+        AutoHarnessConfig config = AutoHarnessConfig.builder().dataDir(tempDir.resolve("data").toString())
+                .localRepo(local.toString()).gitBaseBranch("develop").gitUserName("test-user")
+                .gitUserEmail("test@example.com").gitcodeUsername("bot-user").gitcodeToken("secret-token").build();
         WorktreeManager manager = new WorktreeManager(config);
 
         Path wt = manager.prepare("fix timeout");
@@ -701,13 +624,8 @@ class InfraCompatibilityTest {
         run(local, "git", "push", "-u", "origin", "develop");
 
         WorktreeManager manager = new WorktreeManager(AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data-fork").toString())
-                .localRepo(local.toString())
-                .gitBaseBranch("develop")
-                .gitRemote("myfork")
-                .forkOwner("TestOwner")
-                .upstreamRepo("agent-core")
-                .build());
+                .dataDir(tempDir.resolve("data-fork").toString()).localRepo(local.toString()).gitBaseBranch("develop")
+                .gitRemote("myfork").forkOwner("TestOwner").upstreamRepo("agent-core").build());
 
         Path wt = manager.prepare("test remote");
 
@@ -728,9 +646,7 @@ class InfraCompatibilityTest {
         run(repo, "git", "init");
 
         WorktreeManager manager = new WorktreeManager(AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data-cleanup-failure").toString())
-                .localRepo(repo.toString())
-                .build());
+                .dataDir(tempDir.resolve("data-cleanup-failure").toString()).localRepo(repo.toString()).build());
 
         manager.cleanup(notWorktree.toString());
 
@@ -744,9 +660,7 @@ class InfraCompatibilityTest {
         run(repo, "git", "init");
 
         WorktreeManager manager = new WorktreeManager(AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data-cleanup-missing").toString())
-                .localRepo(repo.toString())
-                .build());
+                .dataDir(tempDir.resolve("data-cleanup-missing").toString()).localRepo(repo.toString()).build());
         Path missing = tempDir.resolve("missing_worktree");
 
         manager.cleanup(missing.toString());
@@ -770,12 +684,8 @@ class InfraCompatibilityTest {
         String originHead = runCapture(local, "git", "rev-parse", "origin/develop");
 
         WorktreeManager manager = new WorktreeManager(AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data-readonly").toString())
-                .localRepo(local.toString())
-                .gitBaseBranch("develop")
-                .gitcodeUsername("bot-user")
-                .gitcodeToken("secret-token")
-                .build());
+                .dataDir(tempDir.resolve("data-readonly").toString()).localRepo(local.toString())
+                .gitBaseBranch("develop").gitcodeUsername("bot-user").gitcodeToken("secret-token").build());
 
         Path snapshot = manager.prepareReadonlySnapshot("assess");
 
@@ -805,15 +715,12 @@ class InfraCompatibilityTest {
         run(local, "git", "push", "-u", "origin", "develop");
         run(local, "git", "worktree", "add", "-b", "auto-harness/fix-timeout", foreign.toString(), "origin/develop");
 
-        WorktreeManager manager = new WorktreeManager(AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data-unmanaged").toString())
-                .localRepo(local.toString())
-                .gitBaseBranch("develop")
-                .build());
+        WorktreeManager manager =
+            new WorktreeManager(AutoHarnessConfig.builder().dataDir(tempDir.resolve("data-unmanaged").toString())
+                    .localRepo(local.toString()).gitBaseBranch("develop").build());
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> manager.prepare("fix timeout"))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("unmanaged worktree");
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("unmanaged worktree");
     }
 
     @Test
@@ -830,11 +737,8 @@ class InfraCompatibilityTest {
         run(seed, "git", "commit", "-m", "base");
         run(seed, "git", "push", "-u", "origin", "develop");
 
-        AutoHarnessConfig config = AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data-cache").toString())
-                .repoUrl(origin.toString())
-                .gitBaseBranch("develop")
-                .build();
+        AutoHarnessConfig config = AutoHarnessConfig.builder().dataDir(tempDir.resolve("data-cache").toString())
+                .repoUrl(origin.toString()).gitBaseBranch("develop").build();
         WorktreeManager manager = new WorktreeManager(config);
 
         Path base = manager.ensureBaseRepo();
@@ -864,9 +768,7 @@ class InfraCompatibilityTest {
         run(local, "git", "remote", "add", "origin", tempDir.resolve("missing-origin.git").toString());
 
         WorktreeManager manager = new WorktreeManager(AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data-local-fetch-failure").toString())
-                .localRepo(local.toString())
-                .build());
+                .dataDir(tempDir.resolve("data-local-fetch-failure").toString()).localRepo(local.toString()).build());
 
         Path base = manager.ensureBaseRepo();
 
@@ -875,10 +777,9 @@ class InfraCompatibilityTest {
 
     @Test
     void worktreeEnsureBaseRepoShouldContinueWhenCacheRepoFetchFails() throws Exception {
-        AutoHarnessConfig config = AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data-cache-fetch-failure").toString())
-                .repoUrl(tempDir.resolve("unused-origin.git").toString())
-                .build();
+        AutoHarnessConfig config =
+            AutoHarnessConfig.builder().dataDir(tempDir.resolve("data-cache-fetch-failure").toString())
+                    .repoUrl(tempDir.resolve("unused-origin.git").toString()).build();
         Path cache = config.cacheRepoPath();
         Files.createDirectories(cache);
         run(cache, "git", "init");
@@ -892,15 +793,12 @@ class InfraCompatibilityTest {
 
     @Test
     void worktreeEnsureBaseRepoShouldFailWhenInitialCloneFails() {
-        WorktreeManager manager = new WorktreeManager(AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("data-clone-failure").toString())
-                .repoUrl(tempDir.resolve("missing-clone-origin.git").toString())
-                .gitBaseBranch("develop")
-                .build());
+        WorktreeManager manager =
+            new WorktreeManager(AutoHarnessConfig.builder().dataDir(tempDir.resolve("data-clone-failure").toString())
+                    .repoUrl(tempDir.resolve("missing-clone-origin.git").toString()).gitBaseBranch("develop").build());
 
         org.assertj.core.api.Assertions.assertThatThrownBy(manager::ensureBaseRepo)
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("git clone")
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("git clone")
                 .hasMessageContaining("failed");
     }
 
@@ -933,69 +831,48 @@ class InfraCompatibilityTest {
 
     @Test
     void commitScopeShouldDeriveAndMatchRelatedTests() {
-        List<String> derived = CommitScope.deriveTestFiles(List.of(
-                "openjiuwen/auto_harness/schema.py",
-                "tests/unit_tests/auto_harness/test_schema.py",
-                "openjiuwen/auto_harness/__init__.py"
-        ));
+        List<String> derived = CommitScope.deriveTestFiles(List.of("openjiuwen/auto_harness/schema.py",
+                "tests/unit_tests/auto_harness/test_schema.py", "openjiuwen/auto_harness/__init__.py"));
 
-        assertThat(derived).containsExactly(
-                "tests/unit_tests/**/test_schema.py",
-                "tests/system_tests/**/test_schema.py"
-        );
-        assertThat(CommitScope.isDerivedTestFile(
-                List.of("openjiuwen/auto_harness/schema.py"),
-                "tests/unit_tests/auto_harness/test_schema.py"
-        )).isTrue();
-        assertThat(CommitScope.isDerivedTestFile(
-                List.of("openjiuwen/auto_harness/schema.py"),
-                "tests/unit_tests/auto_harness/test_other.py"
-        )).isFalse();
-        assertThat(CommitScope.deriveTestFiles(List.of(
-                "openjiuwen/auto_harness/__init__.py",
-                "tests/unit_tests/auto_harness/test_schema.py"
-        ))).isEmpty();
+        assertThat(derived).containsExactly("tests/unit_tests/**/test_schema.py",
+                "tests/system_tests/**/test_schema.py");
+        assertThat(CommitScope.isDerivedTestFile(List.of("openjiuwen/auto_harness/schema.py"),
+                "tests/unit_tests/auto_harness/test_schema.py")).isTrue();
+        assertThat(CommitScope.isDerivedTestFile(List.of("openjiuwen/auto_harness/schema.py"),
+                "tests/unit_tests/auto_harness/test_other.py")).isFalse();
+        assertThat(CommitScope.deriveTestFiles(
+                List.of("openjiuwen/auto_harness/__init__.py", "tests/unit_tests/auto_harness/test_schema.py")))
+                .isEmpty();
     }
 
     @Test
     void commitScopeShouldExtractVerifyRelatedFilesAndAllowedDocs() {
         CIGateResult result = CIGateResult.builder()
                 .errors("FAILED tests/unit_tests/auto_harness/test_schema.py::test_x")
-                .gateOutputs(List.of("See tests/system_tests/auto_harness/test_pipeline.py for more details"))
-                .build();
+                .gateOutputs(List.of("See tests/system_tests/auto_harness/test_pipeline.py for more details")).build();
 
-        assertThat(CommitScope.extractVerifyRelatedFiles(result, "re-run tests/unit_tests/auto_harness/test_schema.py now"))
-                .containsExactly(
-                        "tests/unit_tests/auto_harness/test_schema.py",
-                        "tests/system_tests/auto_harness/test_pipeline.py"
-                );
+        assertThat(CommitScope.extractVerifyRelatedFiles(result,
+                "re-run tests/unit_tests/auto_harness/test_schema.py now"))
+                .containsExactly("tests/unit_tests/auto_harness/test_schema.py",
+                        "tests/system_tests/auto_harness/test_pipeline.py");
         assertThat(CommitScope.deriveLegacyRelatedTestFiles(
-                List.of(
-                        "tests/unit_tests/auto_harness/test_schema.py",
-                        "tests/unit_tests/auto_harness/test_other.py"
-                ),
-                List.of("tests/unit_tests/auto_harness/test_schema.py")
-        )).containsExactly("tests/unit_tests/auto_harness/test_schema.py");
+                List.of("tests/unit_tests/auto_harness/test_schema.py", "tests/unit_tests/auto_harness/test_other.py"),
+                List.of("tests/unit_tests/auto_harness/test_schema.py")))
+                .containsExactly("tests/unit_tests/auto_harness/test_schema.py");
         assertThat(CommitScope.isAllowedDocumentationFile("docs/en/guide.md")).isTrue();
         assertThat(CommitScope.isAllowedDocumentationFile("docs/auto-harness-agent-design.md")).isFalse();
         assertThat(CommitScope.isAllowedDocumentationFile("README.md")).isFalse();
     }
 
     private static void run(Path cwd, String... command) throws Exception {
-        Process process = new ProcessBuilder(command)
-                .directory(cwd.toFile())
-                .redirectErrorStream(true)
-                .start();
+        Process process = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int code = process.waitFor();
         assertThat(code).as(String.join(" ", command) + "\n" + output).isZero();
     }
 
     private static String runCapture(Path cwd, String... command) throws Exception {
-        Process process = new ProcessBuilder(command)
-                .directory(cwd.toFile())
-                .redirectErrorStream(true)
-                .start();
+        Process process = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int code = process.waitFor();
         assertThat(code).as(String.join(" ", command) + "\n" + output).isZero();

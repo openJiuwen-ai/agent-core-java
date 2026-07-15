@@ -8,10 +8,15 @@ import com.openjiuwen.core.common.exception.StatusCode;
 
 /**
  * Raised when the same task id is registered twice.
+ * 
+ * @since 0.1.7
  */
 public class DuplicateTaskError extends TaskError {
     /**
-     * Auto-generated for codecheck compliance.
+     * DuplicateTaskError.
+     * 
+     * @param msg msg
+     * @since 0.1.7
      */
     public DuplicateTaskError(String msg) {
         super(StatusCode.AGENT_CONTROLLER_TASK_PARAM_ERROR, msg);

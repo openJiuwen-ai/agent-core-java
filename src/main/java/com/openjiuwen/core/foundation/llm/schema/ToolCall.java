@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.io.Serial;
 import java.io.Serializable;
 
@@ -13,8 +14,9 @@ import java.io.Serializable;
  * Represents a tool call from LLM output.
  * <p>
  * Mirrors Python's {@code ToolCall} model from the foundation LLM schema.
- *
+ * 
  * @see <a href="https://platform.openai.com/docs/api-reference/chat/object">OpenAI Tool Call</a>
+ * @since 0.1.7
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ToolCall implements Serializable {
@@ -38,13 +40,22 @@ public class ToolCall implements Serializable {
     private Integer index;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolCall.
+     * 
+     * @since 0.1.7
      */
     public ToolCall() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolCall.
+     * 
+     * @param id id
+     * @param type type
+     * @param name name
+     * @param arguments arguments
+     * @param index index
+     * @since 0.1.7
      */
     public ToolCall(String id, String type, String name, String arguments, Integer index) {
         this.id = id;
@@ -55,84 +66,119 @@ public class ToolCall implements Serializable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getId() {
         return id;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setId.
+     * 
+     * @param id id
+     * @since 0.1.7
      */
     public void setId(String id) {
         this.id = id;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getType() {
         return type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setType.
+     * 
+     * @param type type
+     * @since 0.1.7
      */
     public void setType(String type) {
         this.type = type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setName.
+     * 
+     * @param name name
+     * @since 0.1.7
      */
     public void setName(String name) {
         this.name = name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getArguments.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getArguments() {
         return arguments;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setArguments.
+     * 
+     * @param arguments arguments
+     * @since 0.1.7
      */
     public void setArguments(String arguments) {
         this.arguments = arguments;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndex.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getIndex() {
         return index;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setIndex.
+     * 
+     * @param index index
+     * @since 0.1.7
      */
     public void setIndex(Integer index) {
         this.index = index;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder {
         private String id;
@@ -142,7 +188,11 @@ public class ToolCall implements Serializable {
         private Integer index;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * id.
+         * 
+         * @param id id
+         * @return the result
+         * @since 0.1.7
          */
         public Builder id(String id) {
             this.id = id;
@@ -150,7 +200,11 @@ public class ToolCall implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * type.
+         * 
+         * @param type type
+         * @return the result
+         * @since 0.1.7
          */
         public Builder type(String type) {
             this.type = type;
@@ -158,7 +212,11 @@ public class ToolCall implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
          */
         public Builder name(String name) {
             this.name = name;
@@ -166,7 +224,11 @@ public class ToolCall implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * arguments.
+         * 
+         * @param arguments arguments
+         * @return the result
+         * @since 0.1.7
          */
         public Builder arguments(String arguments) {
             this.arguments = arguments;
@@ -174,7 +236,11 @@ public class ToolCall implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * index.
+         * 
+         * @param index index
+         * @return the result
+         * @since 0.1.7
          */
         public Builder index(Integer index) {
             this.index = index;
@@ -182,7 +248,10 @@ public class ToolCall implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public ToolCall build() {
             return new ToolCall(id, type, name, arguments, index);

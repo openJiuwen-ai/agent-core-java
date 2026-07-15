@@ -17,6 +17,7 @@ import com.openjiuwen.autoharness.schema.ExperienceType;
 import com.openjiuwen.autoharness.schema.OptimizationTask;
 import com.openjiuwen.autoharness.schema.StageResult;
 import com.openjiuwen.autoharness.schema.TaskPlanArtifact;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,63 +33,64 @@ import java.util.Map;
 
 /**
  * Public class PlanStage used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class PlanStage extends SessionStage {
     private static final Logger LOG = LoggerFactory.getLogger(PlanStage.class);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String name() {
         return "plan";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * description.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String description() {
         return "Plan optimization tasks.";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * consumes.
+     *
+     * @return List<String>
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public java.util.List<String> consumes() {
         return java.util.List.of("assessment");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * produces.
+     *
+     * @return List<String>
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public java.util.List<String> produces() {
         return java.util.List.of("task_plan");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * run.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public StageResult run(BaseExecutionContext ctx) {
         List<Object> events = stream(ctx);
         for (int index = events.size() - 1; index >= 0; index--) {
@@ -96,19 +98,17 @@ public class PlanStage extends SessionStage {
                 return result;
             }
         }
-        return StageResult.builder()
-                .status("failed")
-                .error("plan stage did not return StageResult")
-                .build();
+        return StageResult.builder().status("failed").error("plan stage did not return StageResult").build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Object> stream(BaseExecutionContext ctx) {
         if (!(ctx instanceof SessionContext sessionContext)) {
             return List.of(stageResultFromPlanText(""));
@@ -137,11 +137,15 @@ public class PlanStage extends SessionStage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runPlanStream.
+     * 
+     * @param config config
+     * @param assessment assessment
+     * @param experienceStore experienceStore
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<Object> runPlanStream(
-            AutoHarnessConfig config,
-            String assessment,
+    public static List<Object> runPlanStream(AutoHarnessConfig config, String assessment,
             ExperienceStore experienceStore) {
         Object agent = AutoHarnessFactory.createPlanAgent(config);
         String query = buildPlanQuery(config, assessment, safeRecent(experienceStore));
@@ -149,34 +153,44 @@ public class PlanStage extends SessionStage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildPlanQuery.
+     * 
+     * @param config config
+     * @param assessment assessment
+     * @param recentExperiences recentExperiences
+     * @return the result
+     * @since 0.1.7
      */
     public static String buildPlanQuery(AutoHarnessConfig config, String assessment, List<?> recentExperiences) {
         AutoHarnessConfig effective = config != null ? config : AutoHarnessConfig.builder().build();
         String experiencesText = formatExperiences(recentExperiences);
-        return "本轮目标:\n"
-                + valueOrDefault(effective.getOptimizationGoal(), "无") + "\n\n"
-                + "重点竞品:\n"
-                + valueOrDefault(effective.getCompetitor(), "无") + "\n\n"
-                + EditScope.renderEditScope("本轮任务规划必须遵守的范围") + "\n\n"
-                + "评估报告:\n" + value(assessment) + "\n\n"
-                + "近期经验:\n" + experiencesText + "\n\n"
-                + "配置任务上限: " + effective.getMaxTasksPerSession() + "\n"
-                + "规划阶段实际输出上限: 1\n"
-                + "自驱动槽位: " + effective.getSelfDrivenSlots() + "\n"
-                + "你本轮只能输出 1 个最高优先级任务，不要输出多个候选。"
-                + "你输出的每个任务 `files` 都必须只包含上述范围内的路径。"
-                + "如果某个候选任务需要改动范围外源码目录，直接丢弃该任务，"
-                + "不要输出到计划里。\n";
+        return "本轮目标:\n" + valueOrDefault(effective.getOptimizationGoal(), "无") + "\n\n" + "重点竞品:\n"
+                + valueOrDefault(effective.getCompetitor(), "无") + "\n\n" + EditScope.renderEditScope("本轮任务规划必须遵守的范围")
+                + "\n\n" + "评估报告:\n" + value(assessment) + "\n\n" + "近期经验:\n" + experiencesText + "\n\n" + "配置任务上限: "
+                + effective.getMaxTasksPerSession() + "\n" + "规划阶段实际输出上限: 1\n" + "自驱动槽位: "
+                + effective.getSelfDrivenSlots() + "\n" + "你本轮只能输出 1 个最高优先级任务，不要输出多个候选。"
+                + "你输出的每个任务 `files` 都必须只包含上述范围内的路径。" + "如果某个候选任务需要改动范围外源码目录，直接丢弃该任务，" + "不要输出到计划里。\n";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stageResultFromPlanText.
+     * 
+     * @param planText planText
+     * @return the result
+     * @since 0.1.7
      */
     public static StageResult stageResultFromPlanText(String planText) {
         return stageResultFromPlanText(planText, List.of());
     }
 
+    /**
+     * stageResultFromPlanText.
+     * 
+     * @param planText planText
+     * @param initialMessages initialMessages
+     * @return the result
+     * @since 0.1.7
+     */
     private static StageResult stageResultFromPlanText(String planText, List<String> initialMessages) {
         List<OptimizationTask> tasks = Parsers.parseTasks(planText);
         ArrayList<String> messages = new ArrayList<>(initialMessages == null ? List.of() : initialMessages);
@@ -188,14 +202,18 @@ public class PlanStage extends SessionStage {
             messages.add("规划阶段未生成任务，session 结束");
         }
         return StageResult.builder()
-                .artifacts(Map.of("task_plan", TaskPlanArtifact.builder()
-                        .tasks(tasks)
-                        .rawPlan(value(planText))
-                        .build()))
-                .messages(messages)
-                .build();
+                .artifacts(
+                        Map.of("task_plan", TaskPlanArtifact.builder().tasks(tasks).rawPlan(value(planText)).build()))
+                .messages(messages).build();
     }
 
+    /**
+     * formatExperiences.
+     * 
+     * @param recentExperiences recentExperiences
+     * @return the result
+     * @since 0.1.7
+     */
     private static String formatExperiences(List<?> recentExperiences) {
         if (recentExperiences == null || recentExperiences.isEmpty()) {
             return "无";
@@ -212,6 +230,13 @@ public class PlanStage extends SessionStage {
         return String.join("\n", lines);
     }
 
+    /**
+     * assessmentText.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
+     */
     private static String assessmentText(BaseExecutionContext ctx) {
         Object assessmentArtifact = ctx.getArtifact("assessment", null);
         if (assessmentArtifact instanceof AssessmentArtifact artifact) {
@@ -220,6 +245,13 @@ public class PlanStage extends SessionStage {
         return assessmentArtifact == null ? "" : String.valueOf(assessmentArtifact);
     }
 
+    /**
+     * safeRecent.
+     * 
+     * @param store store
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Experience> safeRecent(ExperienceStore store) {
         try {
             return store == null ? List.of() : store.listRecent(5);
@@ -228,14 +260,20 @@ public class PlanStage extends SessionStage {
         }
     }
 
+    /**
+     * streamAgent.
+     * 
+     * @param agent agent
+     * @param query query
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> streamAgent(Object agent, String query) {
         if (agent == null) {
             return List.of();
         }
         try {
-            Object stream = agent.getClass()
-                    .getMethod("stream", Map.class)
-                    .invoke(agent, Map.of("query", query));
+            Object stream = agent.getClass().getMethod("stream", Map.class).invoke(agent, Map.of("query", query));
             if (stream instanceof Iterator<?> iterator) {
                 List<Object> events = new ArrayList<>();
                 while (iterator.hasNext()) {
@@ -256,6 +294,13 @@ public class PlanStage extends SessionStage {
         return List.of();
     }
 
+    /**
+     * writeLatestPlan.
+     * 
+     * @param path path
+     * @param content content
+     * @since 0.1.7
+     */
     private static void writeLatestPlan(Path path, String content) {
         try {
             Files.createDirectories(path.getParent());
@@ -265,14 +310,36 @@ public class PlanStage extends SessionStage {
         }
     }
 
+    /**
+     * typeValue.
+     * 
+     * @param type type
+     * @return the result
+     * @since 0.1.7
+     */
     private static String typeValue(ExperienceType type) {
         return type == null ? "insight" : type.name().toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * value.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String value(String value) {
         return value == null ? "" : value;
     }
 
+    /**
+     * valueOrDefault.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static String valueOrDefault(String value, String defaultValue) {
         return value == null || value.isBlank() ? defaultValue : value;
     }

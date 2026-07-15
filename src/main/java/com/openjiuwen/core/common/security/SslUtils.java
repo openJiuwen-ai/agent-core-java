@@ -7,7 +7,6 @@ package com.openjiuwen.core.common.security;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 
-import javax.net.ssl.*;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -17,25 +16,38 @@ import java.security.KeyStore;
 import java.security.SecureRandom;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.util.List;
 import java.util.Locale;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
 
 /**
  * SSL utilities — creates strict SSL contexts for secure HTTPS communication.
  * <p>
  * Enforces TLS 1.2+ with strong cipher suites, mirroring the Python implementation.
+ * 
+ * @since 0.1.7
  */
 public final class SslUtils {
     private static final String[] TLS_12_PLUS_PROTOCOLS = {"TLSv1.3", "TLSv1.2"};
 
+    /**
+     * SslUtils.
+     * 
+     * @since 0.1.7
+     */
     private SslUtils() {
     }
 
     /**
      * Create a strict {@link SSLContext} optionally loading a CA certificate.
-     *
+     * 
      * @param sslCertPath path to the CA cert file (PEM), or null
      * @return configured SSLContext
+     * @since 0.1.7
      */
     public static SSLContext createStrictSslContext(String sslCertPath) {
         try {
@@ -45,8 +57,8 @@ public final class SslUtils {
                 // Validate cert directory before resolving the cert path
                 String safeCertDir = System.getenv("SAFE_CERT_DIR");
                 if (safeCertDir == null || safeCertDir.isBlank()) {
-                    throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                        "SAFE_CERT_DIR is not set", null, null, null);
+                    throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED, "SAFE_CERT_DIR is not set",
+                            null, null, null);
                 }
 
                 Path certPath = Path.of(sslCertPath).toRealPath();
@@ -54,14 +66,14 @@ public final class SslUtils {
                 Path safePrefix = Path.of(safeCertDir).toRealPath();
                 if (!certPath.startsWith(safePrefix)) {
                     throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                        "certificate path is outside the allowed directory", null, null, null);
+                            "certificate path is outside the allowed directory", null, null, null);
                 }
 
                 // Validate file size
                 long size = Files.size(certPath);
                 if (size == 0 || size > 1024 * 1024) {
-                    throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                        "file size is invalid", null, null, null);
+                    throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED, "file size is invalid",
+                            null, null, null);
                 }
 
                 // Load the CA certificate
@@ -75,8 +87,7 @@ public final class SslUtils {
                 ks.load(null, null);
                 ks.setCertificateEntry("ca", caCert);
 
-                TrustManagerFactory tmf = TrustManagerFactory.getInstance(
-                    TrustManagerFactory.getDefaultAlgorithm());
+                TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
                 tmf.init(ks);
 
                 ctx.init(null, tmf.getTrustManagers(), null);
@@ -89,41 +100,33 @@ public final class SslUtils {
             throw e;
         } catch (Exception e) {
             throw ErrorHelper.buildError(StatusCode.COMMON_SSL_CONTEXT_INIT_FAILED,
-                "failed to create SSL context: " + e.getMessage(), null, e, null);
+                    "failed to create SSL context: " + e.getMessage(), null, e, null);
         }
     }
 
     /**
      * Create an insecure SSL context that trusts every certificate.
      * Intended only for explicit verify=false scenarios to mirror Python behaviour.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static SSLContext createInsecureSslContext() {
         try {
-            TrustManager[] trustAllManagers = new TrustManager[]{
-                    new X509TrustManager() {
-                        @Override
-                        /**
-                         * Auto-generated for codecheck compliance.
-                         */
-                        public void checkClientTrusted(X509Certificate[] chain, String authType) {
-                        }
+            TrustManager[] trustAllManagers = new TrustManager[]{new X509TrustManager() {
+                @Override
+                public void checkClientTrusted(X509Certificate[] chain, String authType) {
+                }
 
-                        @Override
-                        /**
-                         * Auto-generated for codecheck compliance.
-                         */
-                        public void checkServerTrusted(X509Certificate[] chain, String authType) {
-                        }
+                @Override
+                public void checkServerTrusted(X509Certificate[] chain, String authType) {
+                }
 
-                        @Override
-                        /**
-                         * Auto-generated for codecheck compliance.
-                         */
-                        public X509Certificate[] getAcceptedIssuers() {
-                            return new X509Certificate[0];
-                        }
-                    }
-            };
+                @Override
+                public X509Certificate[] getAcceptedIssuers() {
+                    return new X509Certificate[0];
+                }
+            }};
             SSLContext ctx = SSLContext.getInstance("TLS");
             ctx.init(null, trustAllManagers, new SecureRandom());
             return ctx;
@@ -135,16 +138,15 @@ public final class SslUtils {
 
     /**
      * Configure SSL behavior for an {@link HttpClient.Builder} targeting the given URL.
-     *
-     * @param builder     client builder to configure
-     * @param targetUrl   request target URL
-     * @param verifySsl   whether to verify the remote certificate chain
+     * 
+     * @param builder client builder to configure
+     * @param targetUrl request target URL
+     * @param verifySsl whether to verify the remote certificate chain
      * @param sslCertPath optional CA certificate path
+     * @since 0.1.7
      */
-    public static void configureHttpClientSsl(HttpClient.Builder builder,
-                                              String targetUrl,
-                                              boolean verifySsl,
-                                              String sslCertPath) {
+    public static void configureHttpClientSsl(HttpClient.Builder builder, String targetUrl, boolean verifySsl,
+            String sslCertPath) {
         if (builder == null || targetUrl == null || targetUrl.isBlank()) {
             return;
         }
@@ -168,6 +170,12 @@ public final class SslUtils {
         }
     }
 
+    /**
+     * tls12PlusParameters.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static SSLParameters tls12PlusParameters() {
         SSLParameters sslParameters = new SSLParameters();
         sslParameters.setProtocols(TLS_12_PLUS_PROTOCOLS);
@@ -176,19 +184,20 @@ public final class SslUtils {
 
     /**
      * Get SSL config based on environment variables.
-     *
+     * 
      * @param verifySwitchEnv env var name for verify switch
-     * @param sslCertEnv      env var name for cert path
-     * @param triggerValues   values that disable SSL verification
-     * @param urlIsHttps      whether the target URL uses HTTPS
+     * @param sslCertEnv env var name for cert path
+     * @param triggerValues values that disable SSL verification
+     * @param urlIsHttps whether the target URL uses HTTPS
      * @return three-element array: [sslVerify, sslCertPath, explicitlyEnabled] (Boolean, String, Boolean).
      *         When the verify switch is not explicitly set, returns {true, null, false}
      *         to indicate "use default SSL context" (trust system CAs).
      *         When explicitly set to a trigger value (e.g. "false"), returns {false, null, false}.
      *         When explicitly set to a truthy value, returns {true, sslCertPath, true}.
+     * @since 0.1.7
      */
-    public static Object[] getSslConfig(String verifySwitchEnv, String sslCertEnv,
-                                        java.util.List<String> triggerValues, boolean urlIsHttps) {
+    public static Object[] getSslConfig(String verifySwitchEnv, String sslCertEnv, java.util.List<String> triggerValues,
+            boolean urlIsHttps) {
         if (!urlIsHttps) {
             return new Object[]{false, null, false};
         }
@@ -206,6 +215,13 @@ public final class SslUtils {
         return new Object[]{true, sslCert, true};
     }
 
+    /**
+     * readEnvOrProperty.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     private static String readEnvOrProperty(String key) {
         String envValue = System.getenv(key);
         if (envValue != null && !envValue.isBlank()) {

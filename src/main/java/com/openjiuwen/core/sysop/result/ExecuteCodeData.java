@@ -13,14 +13,14 @@ import lombok.NoArgsConstructor;
  * Code execution result data model.
  * <p>
  * Mirrors Python's {@code ExecuteCodeData}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ExecuteCodeData {
-
-    /** Original code executed. */
     private String codeContent;
 
     /** Programming language of the original code. */

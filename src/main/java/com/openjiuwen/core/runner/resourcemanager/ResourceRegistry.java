@@ -8,19 +8,58 @@ package com.openjiuwen.core.runner.resourcemanager;
  * Central registry holding all sub-managers for different resource types.
  * <p>
  * Mirrors Python's {@code ResourceRegistry} in {@code resources_manager/resource_registry.py}.
+ * 
+ * @since 0.1.7
  */
 public class ResourceRegistry {
-
     private final ToolMgr toolMgr = new ToolMgr();
+
+    /**
+     * WorkflowMgr.
+     * 
+     * @since 0.1.7
+     */
     private final WorkflowMgr workflowMgr = new WorkflowMgr();
+
+    /**
+     * PromptMgr.
+     * 
+     * @since 0.1.7
+     */
     private final PromptMgr promptMgr = new PromptMgr();
+
+    /**
+     * ModelMgr.
+     * 
+     * @since 0.1.7
+     */
     private final ModelMgr modelMgr = new ModelMgr();
+
+    /**
+     * AgentMgr<>.
+     * 
+     * @since 0.1.7
+     */
     private final AgentMgr<Object> agentMgr = new AgentMgr<>();
+
+    /**
+     * AgentGroupMgr<>.
+     * 
+     * @since 0.1.7
+     */
     private final AgentGroupMgr<Object> agentGroupMgr = new AgentGroupMgr<>();
+
+    /**
+     * SysOperationMgr.
+     * 
+     * @since 0.1.7
+     */
     private final SysOperationMgr sysOperationMgr = new SysOperationMgr();
 
     /**
      * Clear all registered resources across all sub-managers.
+     * 
+     * @since 0.1.7
      */
     public void clearAll() {
         toolMgr.release();
@@ -33,7 +72,10 @@ public class ResourceRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeById.
+     * 
+     * @param resourceId resourceId
+     * @since 0.1.7
      */
     public void removeById(String resourceId) {
         if (toolMgr.removeTool(resourceId) != null) {
@@ -58,49 +100,70 @@ public class ResourceRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * tool.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ToolMgr tool() {
         return toolMgr;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * prompt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public PromptMgr prompt() {
         return promptMgr;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * model.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ModelMgr model() {
         return modelMgr;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * workflow.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public WorkflowMgr workflow() {
         return workflowMgr;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * agent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AgentMgr<Object> agent() {
         return agentMgr;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * agentGroup.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AgentGroupMgr<Object> agentGroup() {
         return agentGroupMgr;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * sysOperation.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public SysOperationMgr sysOperation() {
         return sysOperationMgr;

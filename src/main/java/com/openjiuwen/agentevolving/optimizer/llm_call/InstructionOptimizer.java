@@ -26,17 +26,18 @@ import java.util.stream.Collectors;
 
 /**
  * Optimizes LLM prompts using textual gradients.
- *
- * <p>Uses LLM to:
+ * <p>
+ * Uses LLM to:
  * <ol>
- *   <li>backward(): Generate textual gradients explaining why prompts failed</li>
- *   <li>update(): Generate improved prompts based on gradients</li>
+ * <li>backward(): Generate textual gradients explaining why prompts failed</li>
+ * <li>update(): Generate improved prompts based on gradients</li>
  * </ol>
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.llm_call.instruction_optimizer.InstructionOptimizer}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.llm_call.instruction_optimizer.InstructionOptimizer}.
+ * 
+ * @since 0.1.7
  */
 public class InstructionOptimizer extends LLMCallOptimizerBase {
-
     private static final String SYSTEM_PROMPT = "system_prompt";
     private static final String USER_PROMPT = "user_prompt";
     private static final String TOOLS_DESCRIPTION = "None";
@@ -50,9 +51,10 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
 
     /**
      * Create instruction optimizer.
-     *
-     * @param modelConfig       LLM request configuration
+     * 
+     * @param modelConfig LLM request configuration
      * @param modelClientConfig LLM client configuration
+     * @since 0.1.7
      */
     public InstructionOptimizer(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         this(new Model(modelClientConfig, modelConfig));
@@ -62,26 +64,24 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
         super();
         this.model = Objects.requireNonNull(model, "model");
         this.promptInstructionOptimizeTemplate = PromptTemplate.builder()
-                .content(InstructionOptimizerTemplates.PROMPT_INSTRUCTION_OPTIMIZE_TEMPLATE)
-                .build();
+                .content(InstructionOptimizerTemplates.PROMPT_INSTRUCTION_OPTIMIZE_TEMPLATE).build();
         this.promptInstructionOptimizeBothTemplate = PromptTemplate.builder()
-                .content(InstructionOptimizerTemplates.PROMPT_INSTRUCTION_OPTIMIZE_BOTH_TEMPLATE)
-                .build();
+                .content(InstructionOptimizerTemplates.PROMPT_INSTRUCTION_OPTIMIZE_BOTH_TEMPLATE).build();
         this.createPromptTextualGradientTemplate = PromptTemplate.builder()
-                .content(InstructionOptimizerTemplates.CREATE_PROMPT_TEXTUAL_GRADIENT_TEMPLATE)
-                .build();
-        this.createBadCaseTemplate = PromptTemplate.builder()
-                .content(InstructionOptimizerTemplates.CREATE_BAD_CASE_TEMPLATE)
-                .build();
-        this.placeholderRestoreTemplate = PromptTemplate.builder()
-                .content(InstructionOptimizerTemplates.PLACEHOLDER_RESTORE_TEMPLATE)
-                .build();
+                .content(InstructionOptimizerTemplates.CREATE_PROMPT_TEXTUAL_GRADIENT_TEMPLATE).build();
+        this.createBadCaseTemplate =
+            PromptTemplate.builder().content(InstructionOptimizerTemplates.CREATE_BAD_CASE_TEMPLATE).build();
+        this.placeholderRestoreTemplate =
+            PromptTemplate.builder().content(InstructionOptimizerTemplates.PLACEHOLDER_RESTORE_TEMPLATE).build();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * doBackward.
+     * 
+     * @param evaluatedCases evaluatedCases
+     * @since 0.1.7
      */
+    @Override
     protected void doBackward(List<EvaluatedCase> evaluatedCases) {
         for (Map.Entry<String, TextualParameter> entry : parameters.entrySet()) {
             String opId = entry.getKey();
@@ -101,10 +101,13 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * doStep.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected Updates doStep() {
         Updates updates = new Updates();
 
@@ -137,6 +140,8 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
                 if (value != null) {
                     updates.put(opId, USER_PROMPT, value);
                 }
+            } else {
+                // no-op
             }
         }
 
@@ -144,7 +149,11 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invokeModel.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
      */
     protected String invokeModel(List<?> messages) {
         try {
@@ -155,18 +164,32 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
         }
     }
 
+    /**
+     * generateTextualGradient.
+     * 
+     * @param op op
+     * @return the result
+     * @since 0.1.7
+     */
     private String generateTextualGradient(Object op) {
         PromptTemplate systemTemplate = getPromptTemplate(op, SYSTEM_PROMPT);
         PromptTemplate userTemplate = getPromptTemplate(op, USER_PROMPT);
-        List<?> messages = createPromptTextualGradientTemplate.format(Map.of(
-                SYSTEM_PROMPT, TuneUtils.getContentStringFromTemplate(systemTemplate),
-                USER_PROMPT, TuneUtils.getContentStringFromTemplate(userTemplate),
-                "bad_cases", formatBadCases(),
-                "tools_description", TOOLS_DESCRIPTION
-        )).toMessages();
+        List<?> messages = createPromptTextualGradientTemplate
+                .format(Map.of(SYSTEM_PROMPT, TuneUtils.getContentStringFromTemplate(systemTemplate), USER_PROMPT,
+                        TuneUtils.getContentStringFromTemplate(userTemplate), "bad_cases", formatBadCases(),
+                        "tools_description", TOOLS_DESCRIPTION))
+                .toMessages();
         return invokeModel(messages);
     }
 
+    /**
+     * optimizeBoth.
+     * 
+     * @param op op
+     * @param param param
+     * @return the result
+     * @since 0.1.7
+     */
     private String[] optimizeBoth(Object op, TextualParameter param) {
         PromptTemplate systemTemplate = getPromptTemplate(op, SYSTEM_PROMPT);
         PromptTemplate userTemplate = getPromptTemplate(op, USER_PROMPT);
@@ -174,13 +197,10 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
         String userPrompt = TuneUtils.getContentStringFromTemplate(userTemplate);
         String gradient = nullToEmpty(param.getGradient(SYSTEM_PROMPT));
 
-        List<?> messages = promptInstructionOptimizeBothTemplate.format(Map.of(
-                SYSTEM_PROMPT, systemPrompt,
-                USER_PROMPT, userPrompt,
-                "bad_cases", formatBadCases(),
-                "reflections_on_bad_cases", gradient,
-                "tools_description", TOOLS_DESCRIPTION
-        )).toMessages();
+        List<?> messages = promptInstructionOptimizeBothTemplate
+                .format(Map.of(SYSTEM_PROMPT, systemPrompt, USER_PROMPT, userPrompt, "bad_cases", formatBadCases(),
+                        "reflections_on_bad_cases", gradient, "tools_description", TOOLS_DESCRIPTION))
+                .toMessages();
 
         String response = invokeModel(messages);
         String optimizedSystemPrompt = extractTag(response, "SYSTEM_PROMPT_OPTIMIZED");
@@ -196,17 +216,24 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
         return new String[]{optimizedSystemPrompt, optimizedUserPrompt};
     }
 
+    /**
+     * optimizeSingle.
+     * 
+     * @param op op
+     * @param param param
+     * @param promptType promptType
+     * @return the result
+     * @since 0.1.7
+     */
     private String optimizeSingle(Object op, TextualParameter param, String promptType) {
         PromptTemplate targetTemplate = getPromptTemplate(op, promptType);
         String targetPrompt = TuneUtils.getContentStringFromTemplate(targetTemplate);
         String gradient = nullToEmpty(param.getGradient(promptType));
 
-        List<?> messages = promptInstructionOptimizeTemplate.format(Map.of(
-                "prompt_instruction", targetPrompt,
-                "bad_cases", formatBadCases(),
-                "reflections_on_bad_cases", gradient,
-                "tools_description", TOOLS_DESCRIPTION
-        )).toMessages();
+        List<?> messages = promptInstructionOptimizeTemplate
+                .format(Map.of("prompt_instruction", targetPrompt, "bad_cases", formatBadCases(),
+                        "reflections_on_bad_cases", gradient, "tools_description", TOOLS_DESCRIPTION))
+                .toMessages();
 
         String response = invokeModel(messages);
         String optimized = extractTag(response, "PROMPT_OPTIMIZED");
@@ -216,36 +243,56 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
         return null;
     }
 
+    /**
+     * formatBadCases.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String formatBadCases() {
         StringJoiner joiner = new StringJoiner("");
         for (EvaluatedCase evaluatedCase : getBadCases()) {
-            PromptTemplate formatted = createBadCaseTemplate.format(Map.of(
-                    "question", String.valueOf(evaluatedCase.getInputs()),
-                    "label", String.valueOf(evaluatedCase.getLabel()),
-                    "answer", String.valueOf(evaluatedCase.getAnswer()),
-                    "reason", String.valueOf(evaluatedCase.getReason())
-            ));
+            PromptTemplate formatted =
+                createBadCaseTemplate.format(Map.of("question", String.valueOf(evaluatedCase.getInputs()), "label",
+                        String.valueOf(evaluatedCase.getLabel()), "answer", String.valueOf(evaluatedCase.getAnswer()),
+                        "reason", String.valueOf(evaluatedCase.getReason())));
             Object content = formatted.getContent();
             if (content instanceof String text) {
                 joiner.add(text);
             } else if (content != null) {
                 joiner.add(String.valueOf(content));
+            } else {
+                // no-op
             }
         }
         return joiner.toString();
     }
 
+    /**
+     * extractTag.
+     * 
+     * @param response response
+     * @param tag tag
+     * @return the result
+     * @since 0.1.7
+     */
     private String extractTag(String response, String tag) {
         Pattern pattern = Pattern.compile("<" + tag + ">(.*?)</" + tag + ">", Pattern.DOTALL);
         Matcher matcher = pattern.matcher(nullToEmpty(response));
         if (!matcher.find()) {
             return null;
         }
-        return matcher.group(1)
-                .replace("<prompt_base>", "")
-                .replace("</prompt_base>", "");
+        return matcher.group(1).replace("<prompt_base>", "").replace("</prompt_base>", "");
     }
 
+    /**
+     * restorePlaceholders.
+     * 
+     * @param originalPrompt originalPrompt
+     * @param optimizedPrompt optimizedPrompt
+     * @return the result
+     * @since 0.1.7
+     */
     private String restorePlaceholders(String originalPrompt, String optimizedPrompt) {
         List<String> originalKeys = new PromptAssembler(originalPrompt, "{{", "}}").getInputKeys();
         List<String> optimizedKeys = new PromptAssembler(optimizedPrompt, "{{", "}}").getInputKeys();
@@ -256,25 +303,30 @@ public class InstructionOptimizer extends LLMCallOptimizerBase {
             return optimizedPrompt;
         }
 
-        String restoredPrompt = invokeModel(placeholderRestoreTemplate.format(Map.of(
-                "original_prompt", originalPrompt,
-                "revised_prompt", optimizedPrompt,
-                "all_placeholders", originalKeys.toString(),
-                "missing_placeholders", missing.toString()
-        )).toMessages());
+        String restoredPrompt =
+            invokeModel(placeholderRestoreTemplate
+                    .format(Map.of("original_prompt", originalPrompt, "revised_prompt", optimizedPrompt,
+                            "all_placeholders", originalKeys.toString(), "missing_placeholders", missing.toString()))
+                    .toMessages());
 
         List<String> restoredKeys = new PromptAssembler(restoredPrompt, "{{", "}}").getInputKeys();
         LinkedHashSet<String> stillMissing = new LinkedHashSet<>(originalKeys);
         stillMissing.removeAll(restoredKeys);
         if (!stillMissing.isEmpty()) {
-            String appendedPlaceholders = stillMissing.stream()
-                    .map(placeholder -> "{{" + placeholder + "}}")
-                    .collect(Collectors.joining("\n"));
+            String appendedPlaceholders =
+                stillMissing.stream().map(placeholder -> "{{" + placeholder + "}}").collect(Collectors.joining("\n"));
             return restoredPrompt + "\n" + appendedPlaceholders;
         }
         return restoredPrompt;
     }
 
+    /**
+     * nullToEmpty.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String nullToEmpty(String value) {
         return value != null ? value : "";
     }

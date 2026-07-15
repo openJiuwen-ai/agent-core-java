@@ -17,24 +17,36 @@ import java.util.logging.Logger;
 
 /**
  * Public class WorktreeManager used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class WorktreeManager {
     private static final Logger LOGGER = Logger.getLogger(WorktreeManager.class.getName());
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern NON_SLUG_CHARS = Pattern.compile("[^a-zA-Z0-9\\u4e00-\\u9fff]+");
     private final AutoHarnessConfig config;
     private final Map<String, String> gitEnv;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorktreeManager.
+     * 
+     * @param workspace workspace
+     * @since 0.1.7
      */
     public WorktreeManager(String workspace) {
         this(AutoHarnessConfig.builder().workspace(workspace).build());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorktreeManager.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public WorktreeManager(AutoHarnessConfig config) {
         this.config = Objects.requireNonNull(config, "config");
@@ -42,29 +54,41 @@ public class WorktreeManager {
     }
 
     /**
- * Public record WorktreeEntry used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record WorktreeEntry(String path, String branch) {
+     * Public record WorktreeEntry used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record WorktreeEntry(String path, String branch) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * worktreePath.
+     * 
+     * @param slug slug
+     * @return the result
+     * @since 0.1.7
      */
     public Path worktreePath(String slug) {
         return config.worktreesPath().resolve(slug).normalize();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * readonlySnapshotPath.
+     * 
+     * @param timestamp timestamp
+     * @param label label
+     * @return the result
+     * @since 0.1.7
      */
     public Path readonlySnapshotPath(long timestamp, String label) {
         return config.worktreesPath().resolve(timestamp + "-" + safeLabel(label)).normalize();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * baseRepoPath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path baseRepoPath() {
         if (hasText(config.getLocalRepo())) {
@@ -74,7 +98,11 @@ public record WorktreeEntry(String path, String branch) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isManagedWorktreePath.
+     * 
+     * @param worktreePath worktreePath
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isManagedWorktreePath(String worktreePath) {
         if (!hasText(worktreePath)) {
@@ -86,21 +114,34 @@ public record WorktreeEntry(String path, String branch) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * branchNameForTopic.
+     * 
+     * @param topic topic
+     * @return the result
+     * @since 0.1.7
      */
     public String branchNameForTopic(String topic) {
         return "auto-harness/" + slugify(topic);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * worktreeNameForTopic.
+     * 
+     * @param timestamp timestamp
+     * @param topic topic
+     * @return the result
+     * @since 0.1.7
      */
     public String worktreeNameForTopic(long timestamp, String topic) {
         return timestamp + "-" + slugify(topic);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * slugify.
+     * 
+     * @param topic topic
+     * @return the result
+     * @since 0.1.7
      */
     public static String slugify(String topic) {
         String value = topic == null ? "" : topic;
@@ -114,7 +155,11 @@ public record WorktreeEntry(String path, String branch) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseWorktreeListPorcelain.
+     * 
+     * @param output output
+     * @return the result
+     * @since 0.1.7
      */
     public static List<WorktreeEntry> parseWorktreeListPorcelain(String output) {
         if (output == null || output.isBlank()) {
@@ -151,7 +196,12 @@ public record WorktreeEntry(String path, String branch) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * managedEntriesForBranch.
+     * 
+     * @param porcelainOutput porcelainOutput
+     * @param branchName branchName
+     * @return the result
+     * @since 0.1.7
      */
     public List<WorktreeEntry> managedEntriesForBranch(String porcelainOutput, String branchName) {
         if (!hasText(branchName)) {
@@ -172,7 +222,12 @@ public record WorktreeEntry(String path, String branch) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasUnmanagedEntryForBranch.
+     * 
+     * @param porcelainOutput porcelainOutput
+     * @param branchName branchName
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasUnmanagedEntryForBranch(String porcelainOutput, String branchName) {
         if (!hasText(branchName)) {
@@ -194,7 +249,11 @@ public record WorktreeEntry(String path, String branch) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * prepare.
+     * 
+     * @param topic topic
+     * @return the result
+     * @since 0.1.7
      */
     public Path prepare(String topic) {
         Path base = ensureBaseRepo();
@@ -203,8 +262,7 @@ public record WorktreeEntry(String path, String branch) {
         String branchName = "auto-harness/" + slug;
         Path wtPath = config.worktreesPath().resolve(timestamp + "-" + slug).normalize();
         dropExistingBranch(base, branchName);
-        runGitOrThrow(base, "worktree", "add", "-b", branchName, wtPath.toString(),
-                "origin/" + defaultBaseBranch());
+        runGitOrThrow(base, "worktree", "add", "-b", branchName, wtPath.toString(), "origin/" + defaultBaseBranch());
         if (hasText(config.getGitUserName())) {
             runGit(wtPath, "config", "user.name", config.getGitUserName());
         }
@@ -222,7 +280,11 @@ public record WorktreeEntry(String path, String branch) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * prepareReadonlySnapshot.
+     * 
+     * @param label label
+     * @return the result
+     * @since 0.1.7
      */
     public Path prepareReadonlySnapshot(String label) {
         Path base = ensureBaseRepo();
@@ -233,7 +295,10 @@ public record WorktreeEntry(String path, String branch) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * cleanup.
+     * 
+     * @param worktreePath worktreePath
+     * @since 0.1.7
      */
     public void cleanup(String worktreePath) {
         if (!hasText(worktreePath)) {
@@ -250,7 +315,10 @@ public record WorktreeEntry(String path, String branch) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ensureBaseRepo.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path ensureBaseRepo() {
         Path base = baseRepoPath();
@@ -276,12 +344,16 @@ public record WorktreeEntry(String path, String branch) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * dropExistingBranch.
+     * 
+     * @param base base
+     * @param branchName branchName
+     * @since 0.1.7
      */
     public void dropExistingBranch(Path base, String branchName) {
         runGitOrThrow(base, "worktree", "prune");
-        GitOperations.GitCommandResult showRef = runGit(base, "show-ref", "--verify", "--quiet",
-                "refs/heads/" + branchName);
+        GitOperations.GitCommandResult showRef =
+            runGit(base, "show-ref", "--verify", "--quiet", "refs/heads/" + branchName);
         if (showRef.code() != 0) {
             return;
         }
@@ -295,8 +367,8 @@ public record WorktreeEntry(String path, String branch) {
                 continue;
             }
             if (!isManagedWorktreePath(entry.path())) {
-                throw new IllegalStateException("existing auto-harness branch is checked out in unmanaged worktree: "
-                        + entry.path());
+                throw new IllegalStateException(
+                        "existing auto-harness branch is checked out in unmanaged worktree: " + entry.path());
             }
             runGitOrThrow(base, "worktree", "remove", "--force", entry.path());
         }
@@ -304,7 +376,12 @@ public record WorktreeEntry(String path, String branch) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runGit.
+     * 
+     * @param cwd cwd
+     * @param args args
+     * @return the result
+     * @since 0.1.7
      */
     public GitOperations.GitCommandResult runGit(Path cwd, String... args) {
         ProcessBuilder builder = new ProcessBuilder(command(args));
@@ -320,18 +397,28 @@ public record WorktreeEntry(String path, String branch) {
         } catch (IOException ex) {
             return new GitOperations.GitCommandResult(1, ex.getMessage() == null ? "" : ex.getMessage());
         } catch (InterruptedException ex) {
-
             return new GitOperations.GitCommandResult(1, ex.getMessage() == null ? "" : ex.getMessage());
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * gitEnv.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, String> gitEnv() {
         return Map.copyOf(gitEnv);
     }
 
+    /**
+     * runGitOrThrow.
+     * 
+     * @param cwd cwd
+     * @param args args
+     * @return the result
+     * @since 0.1.7
+     */
     private GitOperations.GitCommandResult runGitOrThrow(Path cwd, String... args) {
         GitOperations.GitCommandResult result = runGit(cwd, args);
         if (result.code() != 0) {
@@ -340,10 +427,23 @@ public record WorktreeEntry(String path, String branch) {
         return result;
     }
 
+    /**
+     * defaultBaseBranch.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String defaultBaseBranch() {
         return hasText(config.getGitBaseBranch()) ? config.getGitBaseBranch() : "develop";
     }
 
+    /**
+     * command.
+     * 
+     * @param args args
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> command(String... args) {
         List<String> command = new ArrayList<>();
         command.add("git");
@@ -351,11 +451,25 @@ public record WorktreeEntry(String path, String branch) {
         return command;
     }
 
+    /**
+     * safeLabel.
+     * 
+     * @param label label
+     * @return the result
+     * @since 0.1.7
+     */
     private static String safeLabel(String label) {
         String normalized = slugify(label);
         return normalized.isBlank() ? "assess" : normalized;
     }
 
+    /**
+     * hasText.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
     }

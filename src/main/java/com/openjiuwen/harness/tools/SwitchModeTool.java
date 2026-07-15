@@ -12,21 +12,28 @@ import java.util.Map;
 
 /**
  * Public class SwitchModeTool used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class SwitchModeTool {
     private final DeepAgent agent;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SwitchModeTool.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     public SwitchModeTool(DeepAgent agent) {
         this.agent = agent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * switchMode.
+     * 
+     * @param mode mode
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput switchMode(String mode) {
         if (mode == null) {
@@ -43,12 +50,7 @@ public class SwitchModeTool {
         }
         AgentMode previous = agent.getCurrentMode();
         agent.setMode(nextMode);
-        return ToolOutput.builder()
-                .success(true)
-                .data(Map.of(
-                        "previous_mode", previous.name().toLowerCase(Locale.ROOT),
-                        "current_mode", nextMode.name().toLowerCase(Locale.ROOT)
-                ))
-                .build();
+        return ToolOutput.builder().success(true).data(Map.of("previous_mode", previous.name().toLowerCase(Locale.ROOT),
+                "current_mode", nextMode.name().toLowerCase(Locale.ROOT))).build();
     }
 }

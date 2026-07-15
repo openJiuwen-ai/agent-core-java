@@ -7,12 +7,23 @@ package com.openjiuwen.core.sysop.result;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-/** Result type for write file operation. */
+/**
+ * Result type for write file operation.
+ * 
+ * @since 0.1.7
+ */
 @SuperBuilder
 @NoArgsConstructor
 public class WriteFileResult extends BaseResult<WriteFileData> {
     /**
-     * Auto-generated for codecheck compliance.
+     * WriteFileResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
      */
-    public WriteFileResult(int code, String message, WriteFileData data) { super(code, message, data); }
+    public WriteFileResult(int code, String message, WriteFileData data) {
+        super(code, message, data);
+    }
 }

@@ -9,11 +9,13 @@ import com.fasterxml.jackson.annotation.JsonValue;
 
 /**
  * Controller type enumeration.
- *
- * <p>Defines the supported controller types for agent orchestration.</p>
+ * <p>
+ * Defines the supported controller types for agent orchestration.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public enum ControllerType {
-
     REACT_CONTROLLER("react"),
     WORKFLOW_CONTROLLER("workflow"),
     UNDEFINED("undefined");
@@ -24,24 +26,25 @@ public enum ControllerType {
         this.value = value;
     }
 
-    @JsonValue
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonValue
     public String getValue() {
         return value;
     }
 
     /**
-     * Parse a string value into the corresponding {@link ControllerType}.
-     *
-     * @param value the string representation
-     * @return the matching enum constant, or {@link #UNDEFINED} if no match
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     @JsonCreator
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static ControllerType fromValue(String value) {
         for (ControllerType type : values()) {
             if (type.value.equals(value)) {

@@ -11,32 +11,35 @@ import java.util.Map;
 
 /**
  * Tool execution error — may carry a {@link BaseCard} reference.
+ * 
+ * @since 0.1.7
  */
 public class ToolError extends ExecutionError {
-
     private final BaseCard card;
 
     /**
      * Creates a ToolError with full details including card reference.
-     *
-     * @param status  the status code
-     * @param msg     optional custom message
+     * 
+     * @param status the status code
+     * @param msg optional custom message
      * @param details optional additional details
-     * @param cause   optional root cause
-     * @param card    the tool card that caused the error
-     * @param params  template parameters for message rendering
+     * @param cause optional root cause
+     * @param card the tool card that caused the error
+     * @param params template parameters for message rendering
+     * @since 0.1.7
      */
-    public ToolError(StatusCode status, String msg, Object details, Throwable cause,
-                     BaseCard card, Map<String, Object> params) {
+    public ToolError(StatusCode status, String msg, Object details, Throwable cause, BaseCard card,
+            Map<String, Object> params) {
         super(status, msg, mergeCardDetails(details, card), cause, params);
         this.card = card != null ? card.copy() : null;
     }
 
     /**
      * Creates a ToolError with status and parameters.
-     *
+     * 
      * @param status the status code
      * @param params template parameters for message rendering
+     * @since 0.1.7
      */
     public ToolError(StatusCode status, Map<String, Object> params) {
         super(status, params);
@@ -45,8 +48,9 @@ public class ToolError extends ExecutionError {
 
     /**
      * Creates a ToolError with status only.
-     *
+     * 
      * @param status the status code
+     * @since 0.1.7
      */
     public ToolError(StatusCode status) {
         super(status);
@@ -55,13 +59,22 @@ public class ToolError extends ExecutionError {
 
     /**
      * Gets the tool card that caused this error.
-     *
+     * 
      * @return the tool card, or null if not available
+     * @since 0.1.7
      */
     public BaseCard getCard() {
         return card;
     }
 
+    /**
+     * mergeCardDetails.
+     * 
+     * @param details details
+     * @param card card
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object mergeCardDetails(Object details, BaseCard card) {
         if (card == null) {
             return details;

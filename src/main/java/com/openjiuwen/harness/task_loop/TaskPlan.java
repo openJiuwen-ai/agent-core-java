@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.openjiuwen.core.common.security.JsonUtils;
 import com.openjiuwen.harness.tools.TodoItem;
 import com.openjiuwen.harness.tools.TodoStatus;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -23,24 +24,33 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.io.IOException;
 
+/**
+ * Public class TaskPlan used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class TaskPlan used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class TaskPlan {
     @Builder.Default
     private String goal = "";
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<TodoItem> tasks = new ArrayList<>();
     private String currentTaskId;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTask.
+     * 
+     * @param taskId taskId
+     * @return the result
+     * @since 0.1.7
      */
     public TodoItem getTask(String taskId) {
         if (taskId == null || tasks == null) {
@@ -55,7 +65,10 @@ public class TaskPlan {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNextTask.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TodoItem getNextTask() {
         if (tasks == null || tasks.isEmpty()) {
@@ -80,7 +93,10 @@ public class TaskPlan {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addTask.
+     * 
+     * @param task task
+     * @since 0.1.7
      */
     public void addTask(TodoItem task) {
         if (task == null) {
@@ -93,7 +109,10 @@ public class TaskPlan {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * markInProgress.
+     * 
+     * @param taskId taskId
+     * @since 0.1.7
      */
     public void markInProgress(String taskId) {
         TodoItem task = getTask(taskId);
@@ -104,14 +123,21 @@ public class TaskPlan {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * markCompleted.
+     * 
+     * @param taskId taskId
+     * @since 0.1.7
      */
     public void markCompleted(String taskId) {
         markCompleted(taskId, "");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * markCompleted.
+     * 
+     * @param taskId taskId
+     * @param summary summary
+     * @since 0.1.7
      */
     public void markCompleted(String taskId, String summary) {
         TodoItem task = getTask(taskId);
@@ -125,14 +151,21 @@ public class TaskPlan {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * markCancelled.
+     * 
+     * @param taskId taskId
+     * @since 0.1.7
      */
     public void markCancelled(String taskId) {
         markCancelled(taskId, "");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * markCancelled.
+     * 
+     * @param taskId taskId
+     * @param reason reason
+     * @since 0.1.7
      */
     public void markCancelled(String taskId, String reason) {
         TodoItem task = getTask(taskId);
@@ -146,7 +179,10 @@ public class TaskPlan {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getProgressSummary.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getProgressSummary() {
         int total = tasks == null ? 0 : tasks.size();
@@ -155,7 +191,10 @@ public class TaskPlan {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMarkdown.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String toMarkdown() {
         StringBuilder out = new StringBuilder();
@@ -167,9 +206,7 @@ public class TaskPlan {
             if (task == null) {
                 continue;
             }
-            out.append("- [")
-                    .append(mark(task.getStatus()))
-                    .append("] ")
+            out.append("- [").append(mark(task.getStatus())).append("] ")
                     .append(task.getContent() == null ? "" : task.getContent());
             if (task.getResultSummary() != null && !task.getResultSummary().isBlank()) {
                 out.append(" - ").append(task.getResultSummary());
@@ -180,7 +217,10 @@ public class TaskPlan {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> data = new LinkedHashMap<>();
@@ -191,7 +231,11 @@ public class TaskPlan {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * save.
+     * 
+     * @param path path
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public void save(Path path) throws IOException {
         if (path == null) {
@@ -204,41 +248,48 @@ public class TaskPlan {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * load.
+     * 
+     * @param path path
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public static TaskPlan load(Path path) throws IOException {
         if (path == null || !Files.exists(path)) {
             return TaskPlan.builder().build();
         }
-        Map<String, Object> data = JsonUtils.getMapper().readValue(
-                Files.readString(path),
-                new TypeReference<Map<String, Object>>() {}
-        );
+        Map<String, Object> data =
+            JsonUtils.getMapper().readValue(Files.readString(path), new TypeReference<Map<String, Object>>() {
+            });
         return fromMap(data);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromMap.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public static TaskPlan fromMap(Map<String, Object> data) {
         if (data == null || data.isEmpty()) {
             return TaskPlan.builder().build();
         }
         List<TodoItem> parsedTasks = parseTasks(data.get("tasks"));
-        return TaskPlan.builder()
-                .goal(string(data.get("goal")))
-                .tasks(parsedTasks)
-                .currentTaskId(stringOrNull(firstNonNull(data, new String[] {"current_task_id", "currentTaskId"})))
+        return TaskPlan.builder().goal(string(data.get("goal"))).tasks(parsedTasks)
+                .currentTaskId(stringOrNull(firstNonNull(data, new String[]{"current_task_id", "currentTaskId"})))
                 .build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromObject.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static TaskPlan fromObject(Object value) {
         if (value instanceof TaskPlan plan) {
             return plan;
@@ -249,6 +300,13 @@ public class TaskPlan {
         return TaskPlan.builder().build();
     }
 
+    /**
+     * parseTasks.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<TodoItem> parseTasks(Object raw) {
         if (raw instanceof List<?> list) {
             List<TodoItem> parsed = new ArrayList<>();
@@ -257,6 +315,8 @@ public class TaskPlan {
                     parsed.add(todoItem);
                 } else if (item instanceof Map<?, ?> map) {
                     parsed.add(JsonUtils.getMapper().convertValue(map, TodoItem.class));
+                } else {
+                    // no-op
                 }
             }
             return parsed;
@@ -264,9 +324,17 @@ public class TaskPlan {
         if (raw == null) {
             return new ArrayList<>();
         }
-        return JsonUtils.getMapper().convertValue(raw, new TypeReference<List<TodoItem>>() {});
+        return JsonUtils.getMapper().convertValue(raw, new TypeReference<List<TodoItem>>() {
+        });
     }
 
+    /**
+     * mark.
+     * 
+     * @param status status
+     * @return the result
+     * @since 0.1.7
+     */
     private static String mark(TodoStatus status) {
         if (status == TodoStatus.DONE || status == TodoStatus.COMPLETED) {
             return "x";
@@ -280,6 +348,14 @@ public class TaskPlan {
         return " ";
     }
 
+    /**
+     * firstNonNull.
+     * 
+     * @param source source
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object firstNonNull(Map<String, Object> source, String[] keys) {
         for (String key : keys) {
             Object value = source.get(key);
@@ -290,15 +366,35 @@ public class TaskPlan {
         return nullValue();
     }
 
+    /**
+     * string.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String string(Object value) {
         return value == null ? "" : String.valueOf(value);
     }
 
+    /**
+     * stringOrNull.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringOrNull(Object value) {
         return value == null ? null : String.valueOf(value);
     }
+
+    /**
+     * nullValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static <T> T nullValue() {
         return null;
     }
-
 }

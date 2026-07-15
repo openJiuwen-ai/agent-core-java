@@ -1,4 +1,7 @@
+
 package com.openjiuwen.core.runner.spawn;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -9,19 +12,17 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class SpawnProcessCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
     @Test
     void messageProtocolShouldRoundTripJsonLineMessagesAndSkipLogs() throws Exception {
         Path file = tempDir.resolve("messages.jsonl");
-        Files.writeString(file, "plain log line\n"
-                + "{\"type\":\"DONE\",\"payload\":{\"ok\":true},\"timestamp\":\"2026-01-01T00:00:00Z\","
-                + "\"message_id\":\"m1\"}\n");
+        Files.writeString(file,
+                "plain log line\n"
+                        + "{\"type\":\"DONE\",\"payload\":{\"ok\":true},\"timestamp\":\"2026-01-01T00:00:00Z\","
+                        + "\"message_id\":\"m1\"}\n");
 
         Message message = MessageProtocol.deserializeMessageFromStream(Files.newBufferedReader(file));
 
@@ -32,11 +33,8 @@ class SpawnProcessCompatibilityTest {
 
     @Test
     void spawnedProcessHandleShouldShutdownWithAckLikePythonHandle() throws Exception {
-        SpawnedProcessHandle handle = new SpawnedProcessHandle(
-                "ack-child",
-                startJavaFixture("ack"),
-                SpawnConfig.builder().shutdownTimeout(1.0).build()
-        );
+        SpawnedProcessHandle handle = new SpawnedProcessHandle("ack-child", startJavaFixture("ack"),
+                SpawnConfig.builder().shutdownTimeout(1.0).build());
 
         boolean graceful = handle.shutdown(1.0);
 
@@ -46,11 +44,8 @@ class SpawnProcessCompatibilityTest {
 
     @Test
     void spawnedProcessHandleShouldKeepStderrSeparateFromProtocolStdout() throws Exception {
-        SpawnedProcessHandle handle = new SpawnedProcessHandle(
-                "stderr-child",
-                startJavaFixture("stderr"),
-                SpawnConfig.builder().shutdownTimeout(1.0).build()
-        );
+        SpawnedProcessHandle handle = new SpawnedProcessHandle("stderr-child", startJavaFixture("stderr"),
+                SpawnConfig.builder().shutdownTimeout(1.0).build());
 
         Message done = handle.receiveMessage();
 
@@ -62,11 +57,8 @@ class SpawnProcessCompatibilityTest {
 
     @Test
     void spawnedProcessHealthCheckShouldFireUnhealthyOnceAfterFailures() throws Exception {
-        SpawnedProcessHandle handle = new SpawnedProcessHandle(
-                "silent-child",
-                startJavaFixture("silent"),
-                SpawnConfig.builder().healthCheckInterval(0.05).healthCheckTimeout(0.05).build()
-        );
+        SpawnedProcessHandle handle = new SpawnedProcessHandle("silent-child", startJavaFixture("silent"),
+                SpawnConfig.builder().healthCheckInterval(0.05).healthCheckTimeout(0.05).build());
         handle.setMaxHealthFailures(1);
         AtomicInteger callbacks = new AtomicInteger();
         handle.setOnUnhealthy(callbacks::incrementAndGet);
@@ -84,15 +76,8 @@ class SpawnProcessCompatibilityTest {
     @Test
     void runnerSpawnAgentShouldLaunchChildProcessAndReturnDoneMessage() {
         SpawnedProcessHandle handle = com.openjiuwen.core.runner.Runner.spawnAgent(
-                new ClassAgentSpawnConfig(
-                        "",
-                        EchoAgent.class.getName(),
-                        java.util.Map.of()
-                ),
-                java.util.Map.of("query", "hello child"),
-                null,
-                null
-        );
+                new ClassAgentSpawnConfig("", EchoAgent.class.getName(), java.util.Map.of()),
+                java.util.Map.of("query", "hello child"), null, null);
 
         Message done = handle.receiveMessage();
         int exitCode = handle.waitForCompletion();
@@ -105,23 +90,13 @@ class SpawnProcessCompatibilityTest {
     @Test
     void childProcessShouldHandleMultipleInputMessagesBeforeShutdown() {
         SpawnedProcessHandle handle = com.openjiuwen.core.runner.Runner.spawnAgent(
-                new ClassAgentSpawnConfig(
-                        "",
-                        EchoAgent.class.getName(),
-                        java.util.Map.of()
-                ),
-                java.util.Map.of("query", "first"),
-                null,
-                null
-        );
+                new ClassAgentSpawnConfig("", EchoAgent.class.getName(), java.util.Map.of()),
+                java.util.Map.of("query", "first"), null, null);
 
         Message first = handle.receiveMessage();
-        handle.sendMessage(Message.builder()
-                .type(MessageType.INPUT)
-                .payload(java.util.Map.of(
-                        "agent_config", java.util.Map.of(
-                                "agent_kind", "class_agent",
-                                "agent_class", EchoAgent.class.getName()),
+        handle.sendMessage(Message.builder().type(MessageType.INPUT)
+                .payload(java.util.Map.of("agent_config",
+                        java.util.Map.of("agent_kind", "class_agent", "agent_class", EchoAgent.class.getName()),
                         "inputs", java.util.Map.of("query", "second")))
                 .build());
         Message second = handle.receiveMessage();
@@ -136,25 +111,14 @@ class SpawnProcessCompatibilityTest {
     @Test
     void childProcessShouldEmitStreamChunksBeforeDoneForStreamingInput() {
         SpawnedProcessHandle handle = com.openjiuwen.core.runner.Runner.spawnAgent(
-                new ClassAgentSpawnConfig(
-                        "",
-                        StreamingAgent.class.getName(),
-                        java.util.Map.of()
-                ),
-                java.util.Map.of("query", "first"),
-                null,
-                null
-        );
+                new ClassAgentSpawnConfig("", StreamingAgent.class.getName(), java.util.Map.of()),
+                java.util.Map.of("query", "first"), null, null);
         assertThat(handle.receiveMessage().getType()).isEqualTo(MessageType.DONE);
 
-        handle.sendMessage(Message.builder()
-                .type(MessageType.INPUT)
-                .payload(java.util.Map.of(
-                        "agent_config", java.util.Map.of(
-                                "agent_kind", "class_agent",
-                                "agent_class", StreamingAgent.class.getName()),
-                        "inputs", java.util.Map.of("query", "streamed"),
-                        "streaming", true))
+        handle.sendMessage(Message.builder().type(MessageType.INPUT)
+                .payload(java.util.Map.of("agent_config",
+                        java.util.Map.of("agent_kind", "class_agent", "agent_class", StreamingAgent.class.getName()),
+                        "inputs", java.util.Map.of("query", "streamed"), "streaming", true))
                 .build());
 
         Message firstChunk = handle.receiveMessage();
@@ -173,15 +137,9 @@ class SpawnProcessCompatibilityTest {
     @Test
     void runnerSpawnAgentShouldStartHealthCheckWhenSpawnConfigIsProvided() {
         SpawnedProcessHandle handle = com.openjiuwen.core.runner.Runner.spawnAgent(
-                new ClassAgentSpawnConfig(
-                        "",
-                        LongRunningAgent.class.getName(),
-                        java.util.Map.of()
-                ),
-                java.util.Map.of("query", "wait"),
-                "spawn-session",
-                SpawnConfig.builder().healthCheckInterval(0.05).healthCheckTimeout(0.2).build()
-        );
+                new ClassAgentSpawnConfig("", LongRunningAgent.class.getName(), java.util.Map.of()),
+                java.util.Map.of("query", "wait"), "spawn-session",
+                SpawnConfig.builder().healthCheckInterval(0.05).healthCheckTimeout(0.2).build());
 
         assertThat(handle.isHealthCheckRunning()).isTrue();
         assertThat(handle.isAlive()).isTrue();
@@ -192,15 +150,9 @@ class SpawnProcessCompatibilityTest {
     @Test
     void childProcessShouldRespondToHealthCheckWhileAgentIsRunningLikePythonLoop() throws Exception {
         SpawnedProcessHandle handle = com.openjiuwen.core.runner.Runner.spawnAgent(
-                new ClassAgentSpawnConfig(
-                        "",
-                        LongRunningAgent.class.getName(),
-                        java.util.Map.of()
-                ),
-                java.util.Map.of("query", "wait"),
-                "spawn-session",
-                SpawnConfig.builder().healthCheckInterval(0.05).healthCheckTimeout(0.2).build()
-        );
+                new ClassAgentSpawnConfig("", LongRunningAgent.class.getName(), java.util.Map.of()),
+                java.util.Map.of("query", "wait"), "spawn-session",
+                SpawnConfig.builder().healthCheckInterval(0.05).healthCheckTimeout(0.2).build());
         handle.setMaxHealthFailures(1);
         AtomicInteger callbacks = new AtomicInteger();
         handle.setOnUnhealthy(callbacks::incrementAndGet);
@@ -217,15 +169,8 @@ class SpawnProcessCompatibilityTest {
     @Test
     void childProcessShouldRedirectPlainStdoutAwayFromProtocolStreamLikePythonSpawnedProcess() throws Exception {
         SpawnedProcessHandle handle = com.openjiuwen.core.runner.Runner.spawnAgent(
-                new ClassAgentSpawnConfig(
-                        "",
-                        NoisyStdoutAgent.class.getName(),
-                        java.util.Map.of()
-                ),
-                java.util.Map.of("query", "noise"),
-                null,
-                null
-        );
+                new ClassAgentSpawnConfig("", NoisyStdoutAgent.class.getName(), java.util.Map.of()),
+                java.util.Map.of("query", "noise"), null, null);
 
         Message done = handle.receiveMessage();
 
@@ -237,18 +182,11 @@ class SpawnProcessCompatibilityTest {
 
     @Test
     void spawnProcessShouldPassLoggingConfigAsJsonEnvLikePythonProcessManager() {
-        SpawnAgentConfig config = new ClassAgentSpawnConfig(
-                "",
-                EchoAgent.class.getName(),
-                java.util.Map.of()
-        );
+        SpawnAgentConfig config = new ClassAgentSpawnConfig("", EchoAgent.class.getName(), java.util.Map.of());
         config.setLoggingConfig(java.util.Map.of("member_name", "worker-1", "level", "INFO"));
 
-        SpawnedProcessHandle handle = SpawnProcesses.spawnProcess(
-                config.toPayload(),
-                java.util.Map.of("query", "json-env"),
-                null
-        );
+        SpawnedProcessHandle handle =
+            SpawnProcesses.spawnProcess(config.toPayload(), java.util.Map.of("query", "json-env"), null);
         Message done = handle.receiveMessage();
 
         assertThat(done.getType()).isEqualTo(MessageType.DONE);
@@ -258,16 +196,10 @@ class SpawnProcessCompatibilityTest {
 
     @Test
     void healthCheckShouldNotConsumeNonHealthOutputLikePythonHandleWaitLoop() throws Exception {
-        SpawnedProcessHandle handle = new SpawnedProcessHandle(
-                "done-then-health",
-                startJavaFixture("done-then-health"),
-                SpawnConfig.builder().healthCheckTimeout(0.05).build()
-        );
+        SpawnedProcessHandle handle = new SpawnedProcessHandle("done-then-health", startJavaFixture("done-then-health"),
+                SpawnConfig.builder().healthCheckTimeout(0.05).build());
 
-        Message healthCheck = Message.builder()
-                .type(MessageType.HEALTH_CHECK)
-                .payload(java.util.Map.of())
-                .build();
+        Message healthCheck = Message.builder().type(MessageType.HEALTH_CHECK).payload(java.util.Map.of()).build();
         handle.sendMessage(healthCheck);
         Thread.sleep(80L);
 
@@ -281,13 +213,9 @@ class SpawnProcessCompatibilityTest {
     private Process startJavaFixture(String mode) throws Exception {
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String classpath = System.getProperty("java.class.path");
-        return new ProcessBuilder(List.of(
-                java,
-                "-cp",
-                classpath,
-                SpawnProcessCompatibilityTest.FixtureChild.class.getName(),
-                mode
-        )).start();
+        return new ProcessBuilder(
+                List.of(java, "-cp", classpath, SpawnProcessCompatibilityTest.FixtureChild.class.getName(), mode))
+                .start();
     }
 
     private static void waitForCallback(AtomicInteger callbacks) throws InterruptedException {
@@ -389,12 +317,12 @@ class SpawnProcessCompatibilityTest {
         }
 
         @SuppressWarnings("unchecked")
-        public java.util.Iterator<Object> stream(java.util.Map<String, Object> inputs, com.openjiuwen.core.session.AgentSessionApi session) {
+        public java.util.Iterator<Object> stream(java.util.Map<String, Object> inputs,
+                com.openjiuwen.core.session.AgentSessionApi session) {
             String query = String.valueOf(inputs.get("query"));
-            return java.util.List.<Object>of(
-                    java.util.Map.of("chunk", query + "-1"),
-                    java.util.Map.of("chunk", query + "-2")
-            ).iterator();
+            return java.util.List
+                    .<Object>of(java.util.Map.of("chunk", query + "-1"), java.util.Map.of("chunk", query + "-2"))
+                    .iterator();
         }
     }
 }

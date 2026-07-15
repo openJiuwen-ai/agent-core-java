@@ -1,15 +1,19 @@
+
 package com.openjiuwen.core.memory.manage.mem_model;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.memory.migration.MigrationPlan;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
 import com.openjiuwen.core.memory.migration.operation.OperationMetadata;
 import com.openjiuwen.core.memory.support.TestDbStore;
+
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -19,11 +23,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import javax.sql.DataSource;
 
 class DbModelTest {
-
     private Map<String, List<BaseOperation>> originalSqlOperations;
 
     @BeforeEach
@@ -45,11 +47,9 @@ class DbModelTest {
         DbModel.createTables(dbStore);
 
         try (Connection connection = dbStore.getEngine().getConnection();
-             Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery(
-                     "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC'"
-             )) {
-
+                Statement statement = connection.createStatement();
+                ResultSet resultSet = statement.executeQuery(
+                        "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC'")) {
             List<String> tableNames = new ArrayList<>();
             while (resultSet.next()) {
                 tableNames.add(resultSet.getString(1).toLowerCase());
@@ -80,10 +80,12 @@ class DbModelTest {
         DbModel.createTables(dbStore);
 
         try (Connection connection = dbStore.getEngine().getConnection();
-             Statement statement = connection.createStatement()) {
+                Statement statement = connection.createStatement()) {
             statement.executeUpdate("DELETE FROM memory_meta");
-            statement.executeUpdate("INSERT INTO memory_meta (table_name, schema_version) VALUES ('user_message', '1')");
-            statement.executeUpdate("INSERT INTO memory_meta (table_name, schema_version) VALUES ('scope_user_mapping', '2')");
+            statement
+                    .executeUpdate("INSERT INTO memory_meta (table_name, schema_version) VALUES ('user_message', '1')");
+            statement.executeUpdate(
+                    "INSERT INTO memory_meta (table_name, schema_version) VALUES ('scope_user_mapping', '2')");
         }
 
         MigrationPlan.getSqlRegistry().register("user_messages", new TestOperation(10, "user message v10"));
@@ -98,21 +100,13 @@ class DbModelTest {
     void createTablesDoesNotBackfillMetaForPreexistingBusinessTables() throws Exception {
         TestDbStore dbStore = new TestDbStore(createDataSource());
         try (Connection connection = dbStore.getEngine().getConnection();
-             Statement statement = connection.createStatement()) {
-            statement.executeUpdate("CREATE TABLE user_message ("
-                    + "message_id VARCHAR(64) PRIMARY KEY,"
-                    + "user_id VARCHAR(64) NOT NULL,"
-                    + "scope_id VARCHAR(64) NOT NULL,"
-                    + "content VARCHAR(4096) NOT NULL,"
-                    + "session_id VARCHAR(64),"
-                    + "role VARCHAR(32),"
-                    + "timestamp VARCHAR(32)"
-                    + ")");
-            statement.executeUpdate("CREATE TABLE scope_user_mapping ("
-                    + "user_id VARCHAR(64) NOT NULL,"
-                    + "scope_id VARCHAR(64) NOT NULL,"
-                    + "PRIMARY KEY (user_id, scope_id)"
-                    + ")");
+                Statement statement = connection.createStatement()) {
+            statement.executeUpdate("CREATE TABLE user_message (" + "message_id VARCHAR(64) PRIMARY KEY,"
+                    + "user_id VARCHAR(64) NOT NULL," + "scope_id VARCHAR(64) NOT NULL,"
+                    + "content VARCHAR(4096) NOT NULL," + "session_id VARCHAR(64)," + "role VARCHAR(32),"
+                    + "timestamp VARCHAR(32)" + ")");
+            statement.executeUpdate("CREATE TABLE scope_user_mapping (" + "user_id VARCHAR(64) NOT NULL,"
+                    + "scope_id VARCHAR(64) NOT NULL," + "PRIMARY KEY (user_id, scope_id)" + ")");
         }
 
         MigrationPlan.getSqlRegistry().register("user_messages", new TestOperation(5, "user message v5"));
@@ -126,8 +120,8 @@ class DbModelTest {
     private static Map<String, String> readMemoryMeta(DataSource dataSource) throws Exception {
         Map<String, String> meta = new LinkedHashMap<>();
         try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery("SELECT table_name, schema_version FROM memory_meta")) {
+                Statement statement = connection.createStatement();
+                ResultSet resultSet = statement.executeQuery("SELECT table_name, schema_version FROM memory_meta")) {
             while (resultSet.next()) {
                 meta.put(resultSet.getString(1), resultSet.getString(2));
             }

@@ -1,10 +1,16 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.retrieval.common.Document;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -15,12 +21,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class AutoFileParserTest {
-
     @TempDir
     Path tempDir;
 
@@ -41,7 +42,8 @@ class AutoFileParserTest {
         Path csv = tempDir.resolve("table.csv");
         Files.writeString(csv, "a,b\n1,2\n", StandardCharsets.UTF_8);
         Path html = tempDir.resolve("page.html");
-        Files.writeString(html, "<html><body><article>" + "w".repeat(120) + "</article></body></html>", StandardCharsets.UTF_8);
+        Files.writeString(html, "<html><body><article>" + "w".repeat(120) + "</article></body></html>",
+                StandardCharsets.UTF_8);
 
         AutoFileParser parser = new AutoFileParser();
 
@@ -58,7 +60,8 @@ class AutoFileParserTest {
         Path unsupported = tempDir.resolve("sample.xyz");
         Files.writeString(unsupported, "data", StandardCharsets.UTF_8);
 
-        assertThrows(BaseError.class, () -> parser.parse(tempDir.resolve("missing.txt").toString(), "doc-1", null, Map.of()));
+        assertThrows(BaseError.class,
+                () -> parser.parse(tempDir.resolve("missing.txt").toString(), "doc-1", null, Map.of()));
         assertThrows(BaseError.class, () -> parser.parse(unsupported.toString(), "doc-1", null, Map.of()));
     }
 }

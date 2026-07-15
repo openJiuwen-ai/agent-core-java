@@ -1,9 +1,12 @@
+
 package com.openjiuwen.harness.subagents;
 
-import com.openjiuwen.core.foundation.store.base_embedding.EmbeddingConfig;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.store.base_embedding.EmbeddingConfig;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
@@ -20,16 +23,14 @@ import com.openjiuwen.harness.rails.interrupt.AskUserRail;
 import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
+
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class SubagentsCompatibilityTest {
-
     @Test
     void buildPlanAgentConfigShouldExposeExpectedDefaults() {
         SubAgentConfig config = PlanAgentFactory.buildPlanAgentConfig("en");
@@ -42,18 +43,13 @@ class SubagentsCompatibilityTest {
         assertThat(config.getMaxIterations()).isEqualTo(25);
         assertThat(config.hasRail(SysOperationRail.class)).isTrue();
         assertThat(config.hasRail(SecurityRail.class)).isTrue();
-        assertThat(config.getRails().stream()
-                .filter(SecurityRail.class::isInstance)
-                .map(SecurityRail.class::cast)
+        assertThat(config.getRails().stream().filter(SecurityRail.class::isInstance).map(SecurityRail.class::cast)
                 .allMatch(SecurityRail::isReadOnly)).isTrue();
-        assertThat(config.getMetadata())
-                .containsEntry("readonly", true)
-                .containsEntry("write_tools_forbidden", true)
-                .containsEntry("requires_critical_files", true)
-                .containsEntry("critical_files_min", 3)
+        assertThat(config.getMetadata()).containsEntry("readonly", true).containsEntry("write_tools_forbidden", true)
+                .containsEntry("requires_critical_files", true).containsEntry("critical_files_min", 3)
                 .containsEntry("critical_files_max", 5);
-        assertThat((List<String>) config.getMetadata().get("forbidden_operations"))
-                .contains("write_file", "edit_file", "git commit");
+        assertThat((List<String>) config.getMetadata().get("forbidden_operations")).contains("write_file", "edit_file",
+                "git commit");
         assertThat(config.isRestrictToWorkDir()).isFalse();
     }
 
@@ -68,16 +64,12 @@ class SubagentsCompatibilityTest {
         assertThat(config.getSystemPrompt()).contains("Issue independent grep and read operations in parallel");
         assertThat(config.hasRail(SysOperationRail.class)).isTrue();
         assertThat(config.hasRail(SecurityRail.class)).isTrue();
-        assertThat(config.getRails().stream()
-                .filter(SecurityRail.class::isInstance)
-                .map(SecurityRail.class::cast)
+        assertThat(config.getRails().stream().filter(SecurityRail.class::isInstance).map(SecurityRail.class::cast)
                 .allMatch(SecurityRail::isReadOnly)).isTrue();
-        assertThat(config.getMetadata())
-                .containsEntry("readonly", true)
-                .containsEntry("write_tools_forbidden", true)
+        assertThat(config.getMetadata()).containsEntry("readonly", true).containsEntry("write_tools_forbidden", true)
                 .containsEntry("allowed_shell_intent", "read_only");
-        assertThat((List<String>) config.getMetadata().get("recommended_tools"))
-                .contains("glob", "grep", "read_file", "list_files", "bash");
+        assertThat((List<String>) config.getMetadata().get("recommended_tools")).contains("glob", "grep", "read_file",
+                "list_files", "bash");
     }
 
     @Test
@@ -92,15 +84,13 @@ class SubagentsCompatibilityTest {
         assertThat(research.getCard().getName()).isEqualTo("research_agent");
         assertThat(verification.getCard().getName()).isEqualTo("verification_agent");
         assertThat(code.getConfig().getSystemPrompt()).contains("AI Coding Agent", "don't guess file contents");
-        assertThat(research.getConfig().getSystemPrompt()).contains("research assistant", "Only return the final research results");
-        assertThat(verification.getConfig().getSystemPrompt())
-                .contains("adversarial verification specialist")
-                .contains("Command run")
-                .contains("VERDICT: PASS");
+        assertThat(research.getConfig().getSystemPrompt()).contains("research assistant",
+                "Only return the final research results");
+        assertThat(verification.getConfig().getSystemPrompt()).contains("adversarial verification specialist")
+                .contains("Command run").contains("VERDICT: PASS");
         assertThat(verification.getConfig().getMaxIterations()).isEqualTo(40);
-        assertThat(code.getConfig().getRails().stream().map(Object::getClass).toList())
-                .contains(SysOperationRail.class, AgentModeRail.class, AskUserRail.class,
-                        ConfirmInterruptRail.class, CodingMemoryRail.class);
+        assertThat(code.getConfig().getRails().stream().map(Object::getClass).toList()).contains(SysOperationRail.class,
+                AgentModeRail.class, AskUserRail.class, ConfirmInterruptRail.class, CodingMemoryRail.class);
         assertThat(code.getConfig().getSubagents()).hasSize(2);
     }
 
@@ -111,44 +101,30 @@ class SubagentsCompatibilityTest {
         assertThat(config.getAgentCard().getDescription()).contains("senior software engineer");
         assertThat(config.getSystemPrompt()).contains("Use tools whenever possible");
         assertThat(config.getMaxIterations()).isEqualTo(15);
-        assertThat(config.getMetadata())
-                .containsEntry("requires_ask_user", true)
-                .containsEntry("requires_confirm_interrupt", true)
-                .containsEntry("supports_coding_memory", true)
+        assertThat(config.getMetadata()).containsEntry("requires_ask_user", true)
+                .containsEntry("requires_confirm_interrupt", true).containsEntry("supports_coding_memory", true)
                 .containsEntry("enable_task_planning", true);
         assertThat(config.hasRail(SysOperationRail.class)).isTrue();
         assertThat(config.hasRail(AgentModeRail.class)).isTrue();
         assertThat(config.hasRail(AskUserRail.class)).isTrue();
         assertThat(config.hasRail(ConfirmInterruptRail.class)).isTrue();
         assertThat(config.hasRail(CodingMemoryRail.class)).isTrue();
-        assertThat(config.getSubagents())
-                .hasSize(2)
+        assertThat(config.getSubagents()).hasSize(2)
                 .allSatisfy(item -> assertThat(item).isInstanceOf(SubAgentConfig.class));
-        assertThat(config.getSubagents().stream()
-                .map(SubAgentConfig.class::cast)
-                .map(SubAgentConfig::getFactoryName))
+        assertThat(config.getSubagents().stream().map(SubAgentConfig.class::cast).map(SubAgentConfig::getFactoryName))
                 .containsExactly("explore_agent", "plan_agent");
     }
 
     @Test
     void buildCodeAgentConfigShouldApplyEmbeddingConfigToCodingMemoryRail() {
-        EmbeddingConfig embeddingConfig = new EmbeddingConfig(
-                "embedding-test",
-                "https://example.invalid/embeddings",
-                "test-key"
-        );
+        EmbeddingConfig embeddingConfig =
+            new EmbeddingConfig("embedding-test", "https://example.invalid/embeddings", "test-key");
 
-        SubAgentConfig config = CodeAgentFactory.buildCodeAgentConfig("en", Map.of(
-                "embedding_config", embeddingConfig,
-                "coding_memory_dir", "/tmp/code-memory",
-                "coding_memory_proactive", false
-        ));
+        SubAgentConfig config = CodeAgentFactory.buildCodeAgentConfig("en", Map.of("embedding_config", embeddingConfig,
+                "coding_memory_dir", "/tmp/code-memory", "coding_memory_proactive", false));
 
-        CodingMemoryRail rail = config.getRails().stream()
-                .filter(CodingMemoryRail.class::isInstance)
-                .map(CodingMemoryRail.class::cast)
-                .findFirst()
-                .orElseThrow();
+        CodingMemoryRail rail = config.getRails().stream().filter(CodingMemoryRail.class::isInstance)
+                .map(CodingMemoryRail.class::cast).findFirst().orElseThrow();
         assertThat(rail.embeddingConfig()).isSameAs(embeddingConfig);
         assertThat(rail.isProactive()).isFalse();
         assertThat(rail.codingMemoryDir()).isEqualTo("/tmp/code-memory");
@@ -160,9 +136,8 @@ class SubagentsCompatibilityTest {
         MemoryRail memoryRail = new MemoryRail();
         SysOperationRail customSysOperationRail = new SysOperationRail();
 
-        SubAgentConfig config = CodeAgentFactory.buildCodeAgentConfig("en", Map.of(
-                "custom_rails", List.of(memoryRail, customSysOperationRail)
-        ));
+        SubAgentConfig config = CodeAgentFactory.buildCodeAgentConfig("en",
+                Map.of("custom_rails", List.of(memoryRail, customSysOperationRail)));
 
         assertThat(config.getRails()).contains(memoryRail, customSysOperationRail);
         assertThat(config.getRails().get(0)).isSameAs(memoryRail);
@@ -177,19 +152,15 @@ class SubagentsCompatibilityTest {
     @Test
     void buildCodeAgentConfigShouldSupportAppendAndReplaceRailMergeModes() {
         MemoryRail appended = new MemoryRail();
-        SubAgentConfig appendConfig = CodeAgentFactory.buildCodeAgentConfig("en", Map.of(
-                "custom_rails", List.of(appended),
-                "rails_merge_mode", "append"
-        ));
+        SubAgentConfig appendConfig = CodeAgentFactory.buildCodeAgentConfig("en",
+                Map.of("custom_rails", List.of(appended), "rails_merge_mode", "append"));
 
         assertThat(appendConfig.getRails().get(0)).isInstanceOf(SysOperationRail.class);
         assertThat(appendConfig.getRails().get(appendConfig.getRails().size() - 1)).isSameAs(appended);
 
         SkillUseRail replacement = new SkillUseRail();
-        SubAgentConfig replaceConfig = CodeAgentFactory.buildCodeAgentConfig("en", Map.of(
-                "custom_rails", List.of(replacement),
-                "rails_merge_mode", "replace"
-        ));
+        SubAgentConfig replaceConfig = CodeAgentFactory.buildCodeAgentConfig("en",
+                Map.of("custom_rails", List.of(replacement), "rails_merge_mode", "replace"));
 
         assertThat(replaceConfig.getRails()).containsExactly(replacement);
         assertThat(replaceConfig.hasRail(SysOperationRail.class)).isFalse();
@@ -204,9 +175,12 @@ class SubagentsCompatibilityTest {
         MemoryRail verificationMemory = new MemoryRail();
 
         SubAgentConfig plan = PlanAgentFactory.buildPlanAgentConfig("en", Map.of("custom_rails", List.of(planMemory)));
-        SubAgentConfig explore = ExploreAgentFactory.buildExploreAgentConfig("en", Map.of("custom_rails", List.of(exploreMemory)));
-        SubAgentConfig research = ResearchAgentFactory.buildResearchAgentConfig("en", Map.of("custom_rails", List.of(researchMemory)));
-        SubAgentConfig verification = VerificationAgentFactory.buildVerificationAgentConfig("en", Map.of("custom_rails", List.of(verificationMemory)));
+        SubAgentConfig explore =
+            ExploreAgentFactory.buildExploreAgentConfig("en", Map.of("custom_rails", List.of(exploreMemory)));
+        SubAgentConfig research =
+            ResearchAgentFactory.buildResearchAgentConfig("en", Map.of("custom_rails", List.of(researchMemory)));
+        SubAgentConfig verification = VerificationAgentFactory.buildVerificationAgentConfig("en",
+                Map.of("custom_rails", List.of(verificationMemory)));
 
         assertThat(plan.getRails()).contains(planMemory);
         assertThat(plan.hasRail(SysOperationRail.class)).isTrue();
@@ -225,12 +199,8 @@ class SubagentsCompatibilityTest {
     @Test
     void builtInSubagentFactoriesShouldApplyCommonFactoryKwargsOverrides() {
         ToolCard toolCard = ToolCard.builder().name("inspect").description("inspect").build();
-        McpServerConfig mcp = McpServerConfig.builder()
-                .serverId("mcp-a")
-                .serverName("MCP A")
-                .clientType("stdio")
-                .serverPath("stdio://fixture")
-                .build();
+        McpServerConfig mcp = McpServerConfig.builder().serverId("mcp-a").serverName("MCP A").clientType("stdio")
+                .serverPath("stdio://fixture").build();
         Object model = new Object();
         Object backend = new Object();
         SysOperation sysOperation = new SysOperation(SysOperationCard.builder().id("sys-a").name("sys-a").build());
@@ -281,25 +251,14 @@ class SubagentsCompatibilityTest {
 
     @Test
     void codingMemoryRailShouldKeepEmbeddingConfigInRuntimeToolContext() {
-        EmbeddingConfig embeddingConfig = new EmbeddingConfig(
-                "embedding-test",
-                "https://example.invalid/embeddings",
-                "test-key"
-        );
-        SubAgentConfig config = CodeAgentFactory.buildCodeAgentConfig("en", Map.of(
-                "embedding_config", embeddingConfig,
-                "coding_memory_dir", "/tmp/code-memory"
-        ));
-        CodingMemoryRail rail = config.getRails().stream()
-                .filter(CodingMemoryRail.class::isInstance)
-                .map(CodingMemoryRail.class::cast)
-                .findFirst()
-                .orElseThrow();
-        DeepAgent agent = com.openjiuwen.harness.factory.HarnessFactory.createDeepAgent(
-                config.getAgentCard(),
-                config.toDeepAgentConfig(),
-                Workspace.builder().rootPath("./repo").language("en").build()
-        );
+        EmbeddingConfig embeddingConfig =
+            new EmbeddingConfig("embedding-test", "https://example.invalid/embeddings", "test-key");
+        SubAgentConfig config = CodeAgentFactory.buildCodeAgentConfig("en",
+                Map.of("embedding_config", embeddingConfig, "coding_memory_dir", "/tmp/code-memory"));
+        CodingMemoryRail rail = config.getRails().stream().filter(CodingMemoryRail.class::isInstance)
+                .map(CodingMemoryRail.class::cast).findFirst().orElseThrow();
+        DeepAgent agent = com.openjiuwen.harness.factory.HarnessFactory.createDeepAgent(config.getAgentCard(),
+                config.toDeepAgentConfig(), Workspace.builder().rootPath("./repo").language("en").build());
 
         agent.ensureInitialized();
 
@@ -310,14 +269,13 @@ class SubagentsCompatibilityTest {
     @Test
     void buildBrowserAgentConfigShouldExposePythonDirectControlPromptDefaults() {
         com.openjiuwen.harness.tools.browser.BrowserRuntimeSettings settings =
-                com.openjiuwen.harness.tools.browser.BrowserRuntimeSettings.builder().build();
+            com.openjiuwen.harness.tools.browser.BrowserRuntimeSettings.builder().build();
 
         SubAgentConfig config = BrowserAgentFactory.buildBrowserAgentConfig(settings, "en");
 
         assertThat(config.getAgentCard().getName()).isEqualTo("browser_agent");
         assertThat(config.getAgentCard().getDescription()).contains("Playwright MCP tools");
-        assertThat(config.getSystemPrompt())
-                .contains("browser automation agent")
+        assertThat(config.getSystemPrompt()).contains("browser automation agent")
                 .contains("Plan and decide at this agent level")
                 .contains("Do not assume a nested browser worker or browser_run_task wrapper exists");
         assertThat(config.getFactoryKwargs()).containsEntry("settings", settings);
@@ -328,14 +286,10 @@ class SubagentsCompatibilityTest {
         Object model = new Object();
         Object backend = new Object();
         SubAgentConfig config = SubAgentConfig.builder()
-                .agentCard(com.openjiuwen.core.singleagent.schema.AgentCard.builder().name("worker").description("d").build())
-                .model(model)
-                .backend(backend)
-                .promptMode("compact")
-                .skills(List.of("java", "testing"))
-                .skillDirectories(List.of("/repo/skills"))
-                .factoryKwargs(Map.of("embedding_config", "local"))
-                .build();
+                .agentCard(com.openjiuwen.core.singleagent.schema.AgentCard.builder().name("worker").description("d")
+                        .build())
+                .model(model).backend(backend).promptMode("compact").skills(List.of("java", "testing"))
+                .skillDirectories(List.of("/repo/skills")).factoryKwargs(Map.of("embedding_config", "local")).build();
 
         DeepAgentConfig deepConfig = config.toDeepAgentConfig();
 
@@ -352,19 +306,12 @@ class SubagentsCompatibilityTest {
         Object model = new Object();
         Object backend = new Object();
         SubAgentConfig worker = SubAgentConfig.builder()
-                .agentCard(com.openjiuwen.core.singleagent.schema.AgentCard.builder().name("worker").description("d").build())
-                .model(model)
-                .backend(backend)
-                .promptMode("compact")
-                .skills(List.of("java"))
-                .factoryKwargs(Map.of("backend_mode", "isolated"))
-                .build();
-        DeepAgent parent = com.openjiuwen.harness.factory.HarnessFactory.createDeepAgent(
-                DeepAgentConfig.builder()
-                        .workspacePath("./repo")
-                        .subagents(List.of(worker))
-                        .build()
-        );
+                .agentCard(com.openjiuwen.core.singleagent.schema.AgentCard.builder().name("worker").description("d")
+                        .build())
+                .model(model).backend(backend).promptMode("compact").skills(List.of("java"))
+                .factoryKwargs(Map.of("backend_mode", "isolated")).build();
+        DeepAgent parent = com.openjiuwen.harness.factory.HarnessFactory
+                .createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo").subagents(List.of(worker)).build());
 
         DeepAgent child = parent.createSubagent("worker", "session-a");
 
@@ -378,16 +325,11 @@ class SubagentsCompatibilityTest {
     @Test
     void createConfiguredSubagentShouldApplyConcreteModelToRuntimeAgent() {
         Model model = org.mockito.Mockito.mock(Model.class);
-        SubAgentConfig worker = SubAgentConfig.builder()
-                .agentCard(com.openjiuwen.core.singleagent.schema.AgentCard.builder().name("worker").description("d").build())
-                .model(model)
-                .build();
-        DeepAgent parent = com.openjiuwen.harness.factory.HarnessFactory.createDeepAgent(
-                DeepAgentConfig.builder()
-                        .workspacePath("./repo")
-                        .subagents(List.of(worker))
-                        .build()
-        );
+        SubAgentConfig worker = SubAgentConfig.builder().agentCard(
+                com.openjiuwen.core.singleagent.schema.AgentCard.builder().name("worker").description("d").build())
+                .model(model).build();
+        DeepAgent parent = com.openjiuwen.harness.factory.HarnessFactory
+                .createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo").subagents(List.of(worker)).build());
 
         DeepAgent child = parent.createSubagent("worker", "session-a");
 
@@ -396,30 +338,15 @@ class SubagentsCompatibilityTest {
 
     @Test
     void createConfiguredSubagentShouldApplyTypedModelAndBackendConfigs() {
-        ModelRequestConfig modelConfig = ModelRequestConfig.builder()
-                .modelName("gpt-test")
-                .temperature(0.2)
-                .topP(0.9)
-                .maxTokens(128)
-                .build();
-        ModelClientConfig backendConfig = ModelClientConfig.builder()
-                .clientProvider("openai")
-                .apiKey("test-key")
-                .apiBase("https://example.invalid/v1")
-                .verifySsl(false)
-                .headers(Map.of("x-test", "1"))
-                .build();
-        SubAgentConfig worker = SubAgentConfig.builder()
-                .agentCard(com.openjiuwen.core.singleagent.schema.AgentCard.builder().name("worker").description("d").build())
-                .model(modelConfig)
-                .backend(backendConfig)
-                .build();
-        DeepAgent parent = com.openjiuwen.harness.factory.HarnessFactory.createDeepAgent(
-                DeepAgentConfig.builder()
-                        .workspacePath("./repo")
-                        .subagents(List.of(worker))
-                        .build()
-        );
+        ModelRequestConfig modelConfig =
+            ModelRequestConfig.builder().modelName("gpt-test").temperature(0.2).topP(0.9).maxTokens(128).build();
+        ModelClientConfig backendConfig = ModelClientConfig.builder().clientProvider("openai").apiKey("test-key")
+                .apiBase("https://example.invalid/v1").verifySsl(false).headers(Map.of("x-test", "1")).build();
+        SubAgentConfig worker = SubAgentConfig.builder().agentCard(
+                com.openjiuwen.core.singleagent.schema.AgentCard.builder().name("worker").description("d").build())
+                .model(modelConfig).backend(backendConfig).build();
+        DeepAgent parent = com.openjiuwen.harness.factory.HarnessFactory
+                .createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo").subagents(List.of(worker)).build());
 
         DeepAgent child = parent.createSubagent("worker", "session-a");
 
@@ -433,17 +360,11 @@ class SubagentsCompatibilityTest {
 
     @Test
     void createConfiguredSubagentShouldApplyPromptModeToRuntimePromptBuilder() {
-        SubAgentConfig worker = SubAgentConfig.builder()
-                .agentCard(com.openjiuwen.core.singleagent.schema.AgentCard.builder().name("worker").description("d").build())
-                .systemPrompt("base identity")
-                .promptMode("none")
-                .build();
-        DeepAgent parent = com.openjiuwen.harness.factory.HarnessFactory.createDeepAgent(
-                DeepAgentConfig.builder()
-                        .workspacePath("./repo")
-                        .subagents(List.of(worker))
-                        .build()
-        );
+        SubAgentConfig worker = SubAgentConfig.builder().agentCard(
+                com.openjiuwen.core.singleagent.schema.AgentCard.builder().name("worker").description("d").build())
+                .systemPrompt("base identity").promptMode("none").build();
+        DeepAgent parent = com.openjiuwen.harness.factory.HarnessFactory
+                .createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo").subagents(List.of(worker)).build());
 
         DeepAgent child = parent.createSubagent("worker", "session-a");
         child.getAgent().addPromptBuilderSection("tools", "tool guidance", 20);
@@ -457,24 +378,14 @@ class SubagentsCompatibilityTest {
     @Test
     void createConfiguredSubagentShouldInheritParentRuntimeFallbacks() {
         Model model = org.mockito.Mockito.mock(Model.class);
-        ModelClientConfig backendConfig = ModelClientConfig.builder()
-                .clientProvider("openai")
-                .apiKey("test-key")
-                .apiBase("https://example.invalid/v1")
-                .build();
-        SubAgentConfig worker = SubAgentConfig.builder()
-                .agentCard(com.openjiuwen.core.singleagent.schema.AgentCard.builder().name("worker").description("d").build())
-                .systemPrompt("base identity")
-                .build();
-        DeepAgent parent = com.openjiuwen.harness.factory.HarnessFactory.createDeepAgent(
-                DeepAgentConfig.builder()
-                        .workspacePath("./repo")
-                        .model(model)
-                        .backend(backendConfig)
-                        .promptMode("minimal")
-                        .subagents(List.of(worker))
-                        .build()
-        );
+        ModelClientConfig backendConfig = ModelClientConfig.builder().clientProvider("openai").apiKey("test-key")
+                .apiBase("https://example.invalid/v1").build();
+        SubAgentConfig worker = SubAgentConfig.builder().agentCard(
+                com.openjiuwen.core.singleagent.schema.AgentCard.builder().name("worker").description("d").build())
+                .systemPrompt("base identity").build();
+        DeepAgent parent = com.openjiuwen.harness.factory.HarnessFactory
+                .createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo").model(model).backend(backendConfig)
+                        .promptMode("minimal").subagents(List.of(worker)).build());
 
         DeepAgent child = parent.createSubagent("worker", "session-a");
 

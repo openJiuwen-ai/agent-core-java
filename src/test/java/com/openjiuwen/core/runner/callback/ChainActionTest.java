@@ -1,10 +1,11 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.runner.callback;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for ChainAction enum values.
@@ -12,7 +13,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @DisplayName("ChainAction Enum Tests")
 class ChainActionTest {
-
     @Test
     @DisplayName("ChainAction has correct values")
     void testChainActionValues() {

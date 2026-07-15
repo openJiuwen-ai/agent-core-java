@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * Java equivalent of the Python Singleton metaclass. Subclasses are guaranteed
  * to have exactly one instance per concrete class.
- *
+ * 
  * <pre>{@code
  * public class MyService extends SingletonSupport<MyService> {
  *     public static MyService getInstance() {
@@ -19,25 +19,21 @@ import java.util.concurrent.ConcurrentHashMap;
  *     }
  * }
  * }</pre>
- *
- * @param <T> the singleton type
+ * 
+ * @since 0.1.7
  */
 public abstract class SingletonSupport<T> {
-
     private static final ConcurrentHashMap<Class<?>, Object> INSTANCES = new ConcurrentHashMap<>();
 
     /**
-     * Get or create the singleton instance.
-     *
-     * @param clazz   the concrete class
-     * @param factory supplier for new instance creation
-     * @param <T>     type
-     * @return the singleton instance
+     * getInstance.
+     * 
+     * @param clazz clazz
+     * @param factory factory
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static <T> T getInstance(Class<T> clazz, java.util.function.Supplier<T> factory) {
         Object instance = INSTANCES.get(clazz);
         if (instance == null) {
@@ -52,7 +48,12 @@ public abstract class SingletonSupport<T> {
         return (T) instance;
     }
 
-    /** Reset a specific singleton — primarily for testing. */
+    /**
+     * Reset a specific singleton — primarily for testing.
+     * 
+     * @param clazz clazz
+     * @since 0.1.7
+     */
     public static void reset(Class<?> clazz) {
         INSTANCES.remove(clazz);
     }

@@ -23,31 +23,40 @@ import java.util.Map;
 
 /**
  * Backward-compatible facade mirroring Python's {@code LLMController}.
+ * 
+ * @since 0.1.7
  */
 public class LlmController {
-
-    private static final DateTimeFormatter TIMESTAMP_FORMATTER =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private LlmAgentConfig agentConfig;
     private ContextEngine contextEngine;
     private LlmEventHandler eventHandler;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LlmController.
+     * 
+     * @since 0.1.7
      */
     public LlmController() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LlmController.
+     * 
+     * @param config config
+     * @param contextEngine contextEngine
+     * @since 0.1.7
      */
     public LlmController(LlmAgentConfig config, ContextEngine contextEngine) {
         configure(config, contextEngine);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setupFromAgent.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     public void setupFromAgent(LlmAgent agent) {
         if (agent == null) {
@@ -58,7 +67,12 @@ public class LlmController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * handleEvent.
+     * 
+     * @param event event
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> handleEvent(Event event, AgentSessionApi session) {
         ensureConfigured();
@@ -66,7 +80,11 @@ public class LlmController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createMessage.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     public Event createMessage(Map<String, Object> inputs) {
         Map<String, Object> normalized = new LinkedHashMap<>();
@@ -81,7 +99,10 @@ public class LlmController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLlmControllerPromptTemplate.
+     * 
+     * @param promptTemplate promptTemplate
+     * @since 0.1.7
      */
     public void setLlmControllerPromptTemplate(List<Map<String, String>> promptTemplate) {
         ensureConfigured();
@@ -89,28 +110,40 @@ public class LlmController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setPromptTemplate.
+     * 
+     * @param promptTemplate promptTemplate
+     * @since 0.1.7
      */
     public void setPromptTemplate(List<Map<String, String>> promptTemplate) {
         setLlmControllerPromptTemplate(promptTemplate);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public LlmAgentConfig getAgentConfig() {
         return agentConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContextEngine.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ContextEngine getContextEngine() {
         return contextEngine;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEventHandler.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public LlmEventHandler getEventHandler() {
         ensureConfigured();
@@ -118,7 +151,11 @@ public class LlmController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * convertTimestamp.
+     * 
+     * @param utcTimestamp utcTimestamp
+     * @return the result
+     * @since 0.1.7
      */
     public static String convertTimestamp(String utcTimestamp) {
         if (utcTimestamp == null || utcTimestamp.isBlank()) {
@@ -126,22 +163,32 @@ public class LlmController {
         }
         try {
             LocalDateTime parsed = LocalDateTime.parse(utcTimestamp, TIMESTAMP_FORMATTER);
-            return parsed.atOffset(ZoneOffset.UTC)
-                    .atZoneSameInstant(ZoneId.systemDefault())
+            return parsed.atOffset(ZoneOffset.UTC).atZoneSameInstant(ZoneId.systemDefault())
                     .format(TIMESTAMP_FORMATTER);
         } catch (DateTimeParseException e) {
             return utcTimestamp;
         }
     }
 
+    /**
+     * configure.
+     * 
+     * @param config config
+     * @param contextEngine contextEngine
+     * @since 0.1.7
+     */
     private void configure(LlmAgentConfig config, ContextEngine contextEngine) {
         this.agentConfig = config;
-        this.contextEngine = contextEngine != null
-                ? contextEngine
-                : new ContextEngine(ContextEngineConfig.builder().build());
+        this.contextEngine =
+            contextEngine != null ? contextEngine : new ContextEngine(ContextEngineConfig.builder().build());
         this.eventHandler = config != null ? new LlmEventHandler(config, this.contextEngine) : null;
     }
 
+    /**
+     * ensureConfigured.
+     * 
+     * @since 0.1.7
+     */
     private void ensureConfigured() {
         if (eventHandler == null) {
             throw new IllegalStateException("LlmController is not configured with agent config");

@@ -4,5 +4,10 @@
 
 package com.openjiuwen.agentteams.interaction;
 
+/**
+ * MentionRoute.
+ * 
+ * @since 0.1.7
+ */
 public record MentionRoute(String target, String body) {
 }

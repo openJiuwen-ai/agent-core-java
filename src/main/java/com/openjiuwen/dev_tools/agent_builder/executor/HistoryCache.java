@@ -9,34 +9,50 @@ import java.util.List;
 
 /**
  * Public class HistoryCache used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class HistoryCache {
     /**
-     * Auto-generated for codecheck compliance.
+     * DEFAULT_MAX_HISTORY_SIZE.
+     * 
+     * @since 0.1.7
      */
     public static final int DEFAULT_MAX_HISTORY_SIZE = 100;
 
     private final int maxHistorySize;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<DialogueMessage> history = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HistoryCache.
+     * 
+     * @since 0.1.7
      */
     public HistoryCache() {
         this(DEFAULT_MAX_HISTORY_SIZE);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HistoryCache.
+     * 
+     * @param maxHistorySize maxHistorySize
+     * @since 0.1.7
      */
     public HistoryCache(int maxHistorySize) {
         this.maxHistorySize = maxHistorySize;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addMessage.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     public void addMessage(DialogueMessage message) {
         history.add(message);
@@ -46,14 +62,21 @@ public class HistoryCache {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getHistory.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<DialogueMessage> getHistory() {
         return new ArrayList<>(history);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMessages.
+     * 
+     * @param k k
+     * @return the result
+     * @since 0.1.7
      */
     public List<java.util.Map<String, String>> getMessages(int k) {
         if (k < 0 || k >= history.size()) {
@@ -63,14 +86,19 @@ public class HistoryCache {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMaxHistorySize.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getMaxHistorySize() {
         return maxHistorySize;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clear.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         history.clear();

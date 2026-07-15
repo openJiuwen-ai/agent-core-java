@@ -9,7 +9,6 @@ import com.openjiuwen.core.memory.external.Mem0MemoryProvider;
 import com.openjiuwen.core.memory.external.MemoryProvider;
 import com.openjiuwen.core.memory.external.OpenJiuwenMemoryProvider;
 import com.openjiuwen.core.memory.external.OpenVikingMemoryProvider;
-
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
@@ -43,6 +42,7 @@ import com.openjiuwen.harness.tools.WebFetchWebpageTool;
 import com.openjiuwen.harness.tools.WebFreeSearchTool;
 import com.openjiuwen.harness.tools.WebPaidSearchTool;
 import com.openjiuwen.harness.workspace.Workspace;
+
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
@@ -62,15 +62,47 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 
 /**
- * Auto-generated for codecheck compliance.
+ * HarnessConfigBuilder.
+ * 
+ * @since 0.1.7
  */
 public final class HarnessConfigBuilder {
     private static final Map<String, Function<Path, List<Object>>> BUILTIN_TOOLS = new LinkedHashMap<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, BiFunction<Path, HarnessConfig.RailResourceSchema, Object>> BUILTIN_RAILS =
-            new LinkedHashMap<>();
+        new LinkedHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, HarnessToolProvider> TOOL_ENTRY_POINTS = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, HarnessRailProvider> RAIL_ENTRY_POINTS = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<Class<?>, String> TOOL_CLASS_TO_GROUP = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<Class<?>, String> RAIL_CLASS_TO_NAME = new ConcurrentHashMap<>();
 
     static {
@@ -136,25 +168,40 @@ public final class HarnessConfigBuilder {
         RAIL_CLASS_TO_NAME.put(TeamSkillRail.class, "team_skill");
     }
 
+    /**
+     * HarnessConfigBuilder.
+     * 
+     * @since 0.1.7
+     */
     private HarnessConfigBuilder() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerToolProvider.
+     * 
+     * @param provider provider
+     * @since 0.1.7
      */
     public static void registerToolProvider(HarnessToolProvider provider) {
         TOOL_ENTRY_POINTS.put(provider.name(), provider);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerRailProvider.
+     * 
+     * @param provider provider
+     * @since 0.1.7
      */
     public static void registerRailProvider(HarnessRailProvider provider) {
         RAIL_ENTRY_POINTS.put(provider.name(), provider);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * build.
+     * 
+     * @param isResolved isResolved
+     * @return the result
+     * @since 0.1.7
      */
     public static DeepAgent build(ResolvedHarnessConfig isResolved) {
         HarnessConfig config = isResolved.config();
@@ -163,72 +210,65 @@ public final class HarnessConfigBuilder {
         List<Object> rails = resolveRails(config.getResources(), workspaceRoot);
         List<McpServerConfig> mcps = resolveMcps(config.getResources());
 
-        DeepAgentConfig deepConfig = DeepAgentConfig.builder()
-                .systemPrompt(isResolved.systemPrompt() != null ? isResolved.systemPrompt() : "")
-                .maxIterations(config.getMaxIterations() != null ? config.getMaxIterations() : 15)
-                .language(config.getLanguage() != null ? config.getLanguage() : "cn")
-                .workspacePath(workspaceRoot.toString())
-                .completionTimeout(config.getCompletionTimeout())
-                .tools(new ArrayList<>(tools))
-                .rails(new ArrayList<>(rails))
-                .mcps(new ArrayList<>(mcps))
-                .extraPromptSections(toPromptSections(isResolved.extraSections()))
-                .skillDirectories(resolveSkillDirs(config.getResources(), isResolved.sourcePath()))
-                .skillMode(resolveSkillMode(config.getResources()))
-                .build();
+        DeepAgentConfig deepConfig =
+            DeepAgentConfig.builder().systemPrompt(isResolved.systemPrompt() != null ? isResolved.systemPrompt() : "")
+                    .maxIterations(config.getMaxIterations() != null ? config.getMaxIterations() : 15)
+                    .language(config.getLanguage() != null ? config.getLanguage() : "cn")
+                    .workspacePath(workspaceRoot.toString()).completionTimeout(config.getCompletionTimeout())
+                    .tools(new ArrayList<>(tools)).rails(new ArrayList<>(rails)).mcps(new ArrayList<>(mcps))
+                    .extraPromptSections(toPromptSections(isResolved.extraSections()))
+                    .skillDirectories(resolveSkillDirs(config.getResources(), isResolved.sourcePath()))
+                    .skillMode(resolveSkillMode(config.getResources())).build();
 
-        AgentCard card = AgentCard.builder()
-                .id(config.getId())
+        AgentCard card = AgentCard.builder().id(config.getId())
                 .name(config.getName() != null && !config.getName().isBlank() ? config.getName() : "harness_agent")
-                .description(config.getDescription() != null ? config.getDescription() : "")
-                .build();
+                .description(config.getDescription() != null ? config.getDescription() : "").build();
 
         writeFileSections(isResolved.fileSections(), workspaceRoot, deepConfig.getLanguage());
-        return HarnessFactory.createDeepAgent(card, deepConfig, Workspace.builder()
-                .rootPath(workspaceRoot.toString())
-                .language(deepConfig.getLanguage())
-                .build());
+        return HarnessFactory.createDeepAgent(card, deepConfig,
+                Workspace.builder().rootPath(workspaceRoot.toString()).language(deepConfig.getLanguage()).build());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateHarnessConfigYaml.
+     * 
+     * @param card card
+     * @param systemPrompt systemPrompt
+     * @param tools tools
+     * @param rails rails
+     * @param language language
+     * @param maxIterations maxIterations
+     * @param completionTimeout completionTimeout
+     * @return the result
+     * @since 0.1.7
      */
-    public static String generateHarnessConfigYaml(AgentCard card,
-                                                   String systemPrompt,
-                                                   List<Object> tools,
-                                                   List<Object> rails,
-                                                   String language,
-                                                   Integer maxIterations,
-                                                   Double completionTimeout) {
+    public static String generateHarnessConfigYaml(AgentCard card, String systemPrompt, List<Object> tools,
+            List<Object> rails, String language, Integer maxIterations, Double completionTimeout) {
         HarnessConfig.PromptsSchema prompts = null;
         if (systemPrompt != null && !systemPrompt.isBlank()) {
-            prompts = HarnessConfig.PromptsSchema.builder()
-                    .sections(List.of(HarnessConfig.SectionSchema.builder()
-                            .name("identity")
-                            .priority(10)
-                            .content(Map.of("cn", systemPrompt, "en", systemPrompt))
-                            .build()))
+            prompts = HarnessConfig.PromptsSchema.builder().sections(List.of(HarnessConfig.SectionSchema.builder()
+                    .name("identity").priority(10).content(Map.of("cn", systemPrompt, "en", systemPrompt)).build()))
                     .build();
         }
 
-        HarnessConfig.ResourcesSchema resources = HarnessConfig.ResourcesSchema.builder()
-                .tools(toToolSpecs(tools))
-                .rails(toRailSpecs(rails))
-                .build();
+        HarnessConfig.ResourcesSchema resources =
+            HarnessConfig.ResourcesSchema.builder().tools(toToolSpecs(tools)).rails(toRailSpecs(rails)).build();
 
-        HarnessConfig config = HarnessConfig.builder()
-                .id(card != null ? card.getId() : null)
-                .name(card != null ? card.getName() : null)
-                .description(card != null ? card.getDescription() : null)
-                .language(language != null ? language : "cn")
-                .maxIterations(maxIterations)
-                .completionTimeout(completionTimeout)
-                .prompts(prompts)
-                .resources(resources.hasAny() ? resources : null)
+        HarnessConfig config = HarnessConfig.builder().id(card != null ? card.getId() : null)
+                .name(card != null ? card.getName() : null).description(card != null ? card.getDescription() : null)
+                .language(language != null ? language : "cn").maxIterations(maxIterations)
+                .completionTimeout(completionTimeout).prompts(prompts).resources(resources.hasAny() ? resources : null)
                 .build();
         return new Yaml().dump(config.toYamlMap());
     }
 
+    /**
+     * resolveWorkspaceRoot.
+     * 
+     * @param isResolved isResolved
+     * @return the result
+     * @since 0.1.7
+     */
     private static Path resolveWorkspaceRoot(ResolvedHarnessConfig isResolved) {
         HarnessConfig.WorkspaceSchema workspace = isResolved.config().getWorkspace();
         if (workspace != null && workspace.getRootPath() != null && !workspace.getRootPath().isBlank()) {
@@ -237,6 +277,14 @@ public final class HarnessConfigBuilder {
         return isResolved.sourcePath().getParent().toAbsolutePath().normalize();
     }
 
+    /**
+     * resolveTools.
+     * 
+     * @param resources resources
+     * @param workspaceRoot workspaceRoot
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> resolveTools(HarnessConfig.ResourcesSchema resources, Path workspaceRoot) {
         if (resources == null || resources.getTools().isEmpty()) {
             return List.of();
@@ -266,6 +314,14 @@ public final class HarnessConfigBuilder {
         return tools;
     }
 
+    /**
+     * resolveRails.
+     * 
+     * @param resources resources
+     * @param workspaceRoot workspaceRoot
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> resolveRails(HarnessConfig.ResourcesSchema resources, Path workspaceRoot) {
         if (resources == null || resources.getRails().isEmpty()) {
             return List.of();
@@ -290,50 +346,85 @@ public final class HarnessConfigBuilder {
         return rails;
     }
 
+    /**
+     * createProgressiveToolRail.
+     * 
+     * @param root root
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static ProgressiveToolRail createProgressiveToolRail(Path root, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = railConfig(spec);
-        return new ProgressiveToolRail(
-                stringList(config.get("default_visible_tools")),
-                stringList(config.get("always_visible_tools")),
-                intValue(config.get("max_loaded_tools"), 20)
-        );
+        return new ProgressiveToolRail(stringList(config.get("default_visible_tools")),
+                stringList(config.get("always_visible_tools")), intValue(config.get("max_loaded_tools"), 20));
     }
 
+    /**
+     * createTaskPlanningRail.
+     * 
+     * @param root root
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static TaskPlanningRail createTaskPlanningRail(Path root, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = railConfig(spec);
-        return new TaskPlanningRail(
-                booleanValue(config.get("enable_progress_repeat"), false),
-                intValue(config.get("list_tool_call_interval"), 20),
-                stringMap(config.get("model_selection"))
-        );
+        return new TaskPlanningRail(booleanValue(config.get("enable_progress_repeat"), false),
+                intValue(config.get("list_tool_call_interval"), 20), stringMap(config.get("model_selection")));
     }
 
+    /**
+     * createTaskCompletionRail.
+     * 
+     * @param root root
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static TaskCompletionRail createTaskCompletionRail(Path root, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = railConfig(spec);
-        return new TaskCompletionRail(
-                stringValue(config.get("task_instruction"), null),
-                stringValue(config.get("completion_promise"), null),
-                intValue(config.get("required_confirmations"), 1),
-                booleanValue(config.get("allow_promise_details"), false),
-                optionalInteger(config.get("max_rounds")),
-                optionalDuration(config)
-        );
+        return new TaskCompletionRail(stringValue(config.get("task_instruction"), null),
+                stringValue(config.get("completion_promise"), null), intValue(config.get("required_confirmations"), 1),
+                booleanValue(config.get("allow_promise_details"), false), optionalInteger(config.get("max_rounds")),
+                optionalDuration(config));
     }
 
+    /**
+     * createContextProcessorRail.
+     * 
+     * @param root root
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static ContextProcessorRail createContextProcessorRail(Path root, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = railConfig(spec);
-        return new ContextProcessorRail(
-                booleanValue(config.get("preset"), true),
-                stringList(config.get("processor_keys")),
-                booleanValue(config.get("session_memory_enabled"), false)
-        );
+        return new ContextProcessorRail(booleanValue(config.get("preset"), true),
+                stringList(config.get("processor_keys")), booleanValue(config.get("session_memory_enabled"), false));
     }
 
+    /**
+     * createMemoryRail.
+     * 
+     * @param root root
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static MemoryRail createMemoryRail(Path root, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = railConfig(spec);
         return new MemoryRail(null, booleanValue(config.get("isProactive"), true));
     }
 
+    /**
+     * createCodingMemoryRail.
+     * 
+     * @param root root
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static CodingMemoryRail createCodingMemoryRail(Path root, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = railConfig(spec);
         String configuredDir = stringValue(config.get("coding_memory_dir"), null);
@@ -343,21 +434,33 @@ public final class HarnessConfigBuilder {
         return new CodingMemoryRail(configuredDir, null, booleanValue(config.get("isProactive"), true));
     }
 
+    /**
+     * createExternalMemoryRail.
+     * 
+     * @param root root
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static ExternalMemoryRail createExternalMemoryRail(Path root, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = railConfig(spec);
         MemoryProvider provider = createMemoryProvider(config);
-        return new ExternalMemoryRail(
-                provider,
-                stringValue(firstPresent(config, new String[] {"user_id", "userId"}), "__default__"),
-                stringValue(firstPresent(config, new String[] {"scope_id", "scopeId"}), "__default__"),
-                stringValue(firstPresent(config, new String[] {"session_id", "sessionId"}), "__default__")
-        );
+        return new ExternalMemoryRail(provider,
+                stringValue(firstPresent(config, new String[]{"user_id", "userId"}), "__default__"),
+                stringValue(firstPresent(config, new String[]{"scope_id", "scopeId"}), "__default__"),
+                stringValue(firstPresent(config, new String[]{"session_id", "sessionId"}), "__default__"));
     }
 
+    /**
+     * createMemoryProvider.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     private static MemoryProvider createMemoryProvider(Map<String, Object> config) {
-        String providerName = stringValue(
-                firstPresent(config, new String[] {"provider", "provider_name", "providerName"}),
-                "");
+        String providerName =
+            stringValue(firstPresent(config, new String[]{"provider", "provider_name", "providerName"}), "");
         if (providerName.isBlank()) {
             return nullValue();
         }
@@ -369,8 +472,15 @@ public final class HarnessConfigBuilder {
         };
     }
 
+    /**
+     * providerConfig.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> providerConfig(Map<String, Object> config) {
-        Object nested = firstPresent(config, new String[] {"provider_config", "providerConfig", "config"});
+        Object nested = firstPresent(config, new String[]{"provider_config", "providerConfig", "config"});
         if (nested instanceof Map<?, ?> map) {
             Map<String, Object> result = new LinkedHashMap<>();
             for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -387,31 +497,49 @@ public final class HarnessConfigBuilder {
         return result;
     }
 
+    /**
+     * createVerificationRail.
+     * 
+     * @param root root
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static VerificationRail createVerificationRail(Path root, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = railConfig(spec);
         List<String> allowedTools = stringList(config.get("allowed_tools"));
         return allowedTools.isEmpty() ? new VerificationRail() : new VerificationRail(Set.copyOf(allowedTools));
     }
 
+    /**
+     * createSkillUseRail.
+     * 
+     * @param root root
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static SkillUseRail createSkillUseRail(Path root, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = railConfig(spec);
         List<String> skillDirs = stringList(config.get("skills_dir"));
         if (skillDirs.isEmpty()) {
             skillDirs = stringList(config.get("skills_dirs"));
         }
-        return new SkillUseRail(
-                skillDirs.stream().map(dir -> resolveRootPath(root, dir)).toList(),
-                stringValue(config.get("skill_mode"), "auto_list"),
-                stringList(config.get("enabled_skills")),
-                stringList(config.get("disabled_skills")),
-                remoteSkillSources(config)
-        );
+        return new SkillUseRail(skillDirs.stream().map(dir -> resolveRootPath(root, dir)).toList(),
+                stringValue(config.get("skill_mode"), "auto_list"), stringList(config.get("enabled_skills")),
+                stringList(config.get("disabled_skills")), remoteSkillSources(config));
     }
 
+    /**
+     * remoteSkillSources.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<SkillUseRail.RemoteSkillSource> remoteSkillSources(Map<String, Object> config) {
-        Object raw = firstPresent(
-                config,
-                new String[] {"remote_skills", "remoteSkills", "github_skills", "githubSkills"});
+        Object raw =
+            firstPresent(config, new String[]{"remote_skills", "remoteSkills", "github_skills", "githubSkills"});
         if (raw == null) {
             return List.of();
         }
@@ -422,24 +550,35 @@ public final class HarnessConfigBuilder {
                 result.add(remoteSkillSourceFromString(spec));
             } else if (entry instanceof Map<?, ?> map) {
                 result.add(remoteSkillSourceFromMap(map));
+            } else {
+                // no-op
             }
         }
         return result;
     }
 
+    /**
+     * remoteSkillSourceFromString.
+     * 
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static SkillUseRail.RemoteSkillSource remoteSkillSourceFromString(String spec) {
         String[] parts = spec.split("#", 2);
         String ref = parts.length > 1 ? parts[1] : "HEAD";
         String[] pathParts = parts[0].split("/", 3);
-        return new SkillUseRail.RemoteSkillSource(
-                pathParts.length > 0 ? pathParts[0] : "",
-                pathParts.length > 1 ? pathParts[1] : "",
-                ref,
-                pathParts.length > 2 ? pathParts[2] : "",
-                ""
-        );
+        return new SkillUseRail.RemoteSkillSource(pathParts.length > 0 ? pathParts[0] : "",
+                pathParts.length > 1 ? pathParts[1] : "", ref, pathParts.length > 2 ? pathParts[2] : "", "");
     }
 
+    /**
+     * remoteSkillSourceFromMap.
+     * 
+     * @param source source
+     * @return the result
+     * @since 0.1.7
+     */
     private static SkillUseRail.RemoteSkillSource remoteSkillSourceFromMap(Map<?, ?> source) {
         Map<String, Object> map = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : source.entrySet()) {
@@ -447,9 +586,9 @@ public final class HarnessConfigBuilder {
                 map.put(String.valueOf(entry.getKey()), entry.getValue());
             }
         }
-        String repoValue = stringValue(firstPresent(map, new String[] {"repo", "repository"}), "");
-        String owner = stringValue(firstPresent(map, new String[] {"owner", "repo_owner", "repoOwner"}), "");
-        String repo = stringValue(firstPresent(map, new String[] {"name", "repo_name", "repoName"}), "");
+        String repoValue = stringValue(firstPresent(map, new String[]{"repo", "repository"}), "");
+        String owner = stringValue(firstPresent(map, new String[]{"owner", "repo_owner", "repoOwner"}), "");
+        String repo = stringValue(firstPresent(map, new String[]{"name", "repo_name", "repoName"}), "");
         if (!repoValue.isBlank()) {
             String[] parts = repoValue.split("/", 2);
             if (owner.isBlank() && parts.length > 0) {
@@ -459,48 +598,75 @@ public final class HarnessConfigBuilder {
                 repo = parts[1];
             }
         }
-        return new SkillUseRail.RemoteSkillSource(
-                owner,
-                repo,
-                stringValue(firstPresent(map, new String[] {"ref", "tree_ref", "treeRef", "branch"}), "HEAD"),
-                stringValue(firstPresent(map, new String[] {"directory", "dir", "path"}), ""),
-                stringValue(firstPresent(map, new String[] {"token", "github_token", "githubToken"}), "")
-        );
+        return new SkillUseRail.RemoteSkillSource(owner, repo,
+                stringValue(firstPresent(map, new String[]{"ref", "tree_ref", "treeRef", "branch"}), "HEAD"),
+                stringValue(firstPresent(map, new String[]{"directory", "dir", "path"}), ""),
+                stringValue(firstPresent(map, new String[]{"token", "github_token", "githubToken"}), ""));
     }
 
+    /**
+     * createSkillCreateRail.
+     * 
+     * @param root root
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static SkillCreateRail createSkillCreateRail(Path root, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = railConfig(spec);
-        return new SkillCreateRail(
-                resolveRootPath(root, stringValue(config.get("skills_dir"), "skills")),
-                stringValue(config.get("language"), "cn"),
-                booleanValue(config.get("auto_trigger"), true),
-                intValue(config.get("tool_call_threshold"), 10),
-                intValue(config.get("tool_diversity_threshold"), 5)
-        );
+        return new SkillCreateRail(resolveRootPath(root, stringValue(config.get("skills_dir"), "skills")),
+                stringValue(config.get("language"), "cn"), booleanValue(config.get("auto_trigger"), true),
+                intValue(config.get("tool_call_threshold"), 10), intValue(config.get("tool_diversity_threshold"), 5));
     }
 
+    /**
+     * createTeamSkillCreateRail.
+     * 
+     * @param root root
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static TeamSkillCreateRail createTeamSkillCreateRail(Path root, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = railConfig(spec);
-        return new TeamSkillCreateRail(
-                resolveRootPath(root, stringValue(config.get("skills_dir"), "skills")),
-                stringValue(config.get("language"), "cn"),
-                booleanValue(config.get("auto_trigger"), true),
-                intValue(config.get("min_team_members_for_create"), 2)
-        );
+        return new TeamSkillCreateRail(resolveRootPath(root, stringValue(config.get("skills_dir"), "skills")),
+                stringValue(config.get("language"), "cn"), booleanValue(config.get("auto_trigger"), true),
+                intValue(config.get("min_team_members_for_create"), 2));
     }
 
+    /**
+     * createTeamSkillRail.
+     * 
+     * @param root root
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static TeamSkillRail createTeamSkillRail(Path root, HarnessConfig.RailResourceSchema spec) {
         Map<String, Object> config = railConfig(spec);
-        return new TeamSkillRail(
-                resolveRootPath(root, stringValue(config.get("skills_dir"), "skills")),
-                stringValue(config.get("language"), "cn")
-        );
+        return new TeamSkillRail(resolveRootPath(root, stringValue(config.get("skills_dir"), "skills")),
+                stringValue(config.get("language"), "cn"));
     }
 
+    /**
+     * railConfig.
+     * 
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> railConfig(HarnessConfig.RailResourceSchema spec) {
         return spec != null && spec.getConfig() != null ? spec.getConfig() : Map.of();
     }
 
+    /**
+     * resolveRootPath.
+     * 
+     * @param root root
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
     private static String resolveRootPath(Path root, String path) {
         if (path == null || path.isBlank()) {
             return root.resolve("skills").toString();
@@ -509,10 +675,26 @@ public final class HarnessConfigBuilder {
         return candidate.isAbsolute() ? candidate.toString() : root.resolve(candidate).toString();
     }
 
+    /**
+     * stringValue.
+     * 
+     * @param isValue isValue
+     * @param isFallback isFallback
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringValue(Object isValue, String isFallback) {
         return isValue == null || String.valueOf(isValue).isBlank() ? isFallback : String.valueOf(isValue);
     }
 
+    /**
+     * firstPresent.
+     * 
+     * @param config config
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object firstPresent(Map<String, Object> config, String[] keys) {
         if (config == null) {
             return nullValue();
@@ -525,28 +707,37 @@ public final class HarnessConfigBuilder {
         return nullValue();
     }
 
+    /**
+     * stringList.
+     * 
+     * @param isValue isValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> stringList(Object isValue) {
         if (isValue == null) {
             return List.of();
         }
         if (isValue instanceof List<?> list) {
-            return list.stream()
-                    .filter(item -> item != null && !String.valueOf(item).isBlank())
-                    .map(String::valueOf)
+            return list.stream().filter(item -> item != null && !String.valueOf(item).isBlank()).map(String::valueOf)
                     .toList();
         }
         if (isValue instanceof String raw) {
             if (raw.isBlank()) {
                 return List.of();
             }
-            return java.util.Arrays.stream(raw.split(","))
-                    .map(String::trim)
-                    .filter(item -> !item.isBlank())
-                    .toList();
+            return java.util.Arrays.stream(raw.split(",")).map(String::trim).filter(item -> !item.isBlank()).toList();
         }
         return List.of(String.valueOf(isValue));
     }
 
+    /**
+     * stringMap.
+     * 
+     * @param isValue isValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, String> stringMap(Object isValue) {
         if (!(isValue instanceof Map<?, ?> source)) {
             return Map.of();
@@ -564,6 +755,14 @@ public final class HarnessConfigBuilder {
         return result;
     }
 
+    /**
+     * intValue.
+     * 
+     * @param isValue isValue
+     * @param isFallback isFallback
+     * @return the result
+     * @since 0.1.7
+     */
     private static int intValue(Object isValue, int isFallback) {
         Integer parsed = optionalInteger(isValue);
         if (parsed != null) {
@@ -572,6 +771,13 @@ public final class HarnessConfigBuilder {
         return isFallback;
     }
 
+    /**
+     * optionalInteger.
+     * 
+     * @param isValue isValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static Integer optionalInteger(Object isValue) {
         if (isValue == null || String.valueOf(isValue).isBlank()) {
             return nullValue();
@@ -582,6 +788,14 @@ public final class HarnessConfigBuilder {
         return Integer.parseInt(String.valueOf(isValue));
     }
 
+    /**
+     * booleanValue.
+     * 
+     * @param isValue isValue
+     * @param isFallback isFallback
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean booleanValue(Object isValue, boolean isFallback) {
         if (isValue == null || String.valueOf(isValue).isBlank()) {
             return isFallback;
@@ -592,6 +806,13 @@ public final class HarnessConfigBuilder {
         return Boolean.parseBoolean(String.valueOf(isValue));
     }
 
+    /**
+     * optionalDuration.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     private static Duration optionalDuration(Map<String, Object> config) {
         Object seconds = config.get("timeout_seconds");
         if (seconds != null) {
@@ -604,6 +825,13 @@ public final class HarnessConfigBuilder {
         return nullValue();
     }
 
+    /**
+     * longValue.
+     * 
+     * @param isValue isValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static long longValue(Object isValue) {
         if (isValue instanceof Number number) {
             return number.longValue();
@@ -611,6 +839,13 @@ public final class HarnessConfigBuilder {
         return Long.parseLong(String.valueOf(isValue));
     }
 
+    /**
+     * resolveMcps.
+     * 
+     * @param resources resources
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<McpServerConfig> resolveMcps(HarnessConfig.ResourcesSchema resources) {
         if (resources == null || resources.getMcps().isEmpty()) {
             return List.of();
@@ -623,17 +858,22 @@ public final class HarnessConfigBuilder {
             }
             cmdParts.addAll(spec.getArgs());
             result.add(McpServerConfig.builder()
-                    .serverName(spec.getCommand() == null || spec.getCommand().isBlank()
-                            ? "mcp_server"
-                            : spec.getCommand())
+                    .serverName(
+                            spec.getCommand() == null || spec.getCommand().isBlank() ? "mcp_server" : spec.getCommand())
                     .serverPath(String.join(" ", cmdParts))
                     .clientType(spec.getType() != null ? spec.getType() : "stdio")
-                    .params(new LinkedHashMap<>(spec.getEnv()))
-                    .build());
+                    .params(new LinkedHashMap<>(spec.getEnv())).build());
         }
         return result;
     }
 
+    /**
+     * toPromptSections.
+     * 
+     * @param sections sections
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Map<String, Object>> toPromptSections(List<ResolvedSection> sections) {
         List<Map<String, Object>> result = new ArrayList<>();
         for (ResolvedSection section : sections) {
@@ -646,15 +886,29 @@ public final class HarnessConfigBuilder {
         return result;
     }
 
+    /**
+     * resolveSkillDirs.
+     * 
+     * @param resources resources
+     * @param sourcePath sourcePath
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> resolveSkillDirs(HarnessConfig.ResourcesSchema resources, Path sourcePath) {
         if (resources == null || resources.getSkills() == null || resources.getSkills().getDirs().isEmpty()) {
             return List.of();
         }
         return resources.getSkills().getDirs().stream()
-                .map(dir -> sourcePath.getParent().resolve(dir).toAbsolutePath().normalize().toString())
-                .toList();
+                .map(dir -> sourcePath.getParent().resolve(dir).toAbsolutePath().normalize().toString()).toList();
     }
 
+    /**
+     * resolveSkillMode.
+     * 
+     * @param resources resources
+     * @return the result
+     * @since 0.1.7
+     */
     private static String resolveSkillMode(HarnessConfig.ResourcesSchema resources) {
         if (resources == null || resources.getSkills() == null || resources.getSkills().getMode() == null) {
             return "all";
@@ -662,6 +916,14 @@ public final class HarnessConfigBuilder {
         return resources.getSkills().getMode();
     }
 
+    /**
+     * writeFileSections.
+     * 
+     * @param fileSections fileSections
+     * @param workspaceRoot workspaceRoot
+     * @param language language
+     * @since 0.1.7
+     */
     private static void writeFileSections(List<ResolvedFileSection> fileSections, Path workspaceRoot, String language) {
         if (fileSections == null || fileSections.isEmpty()) {
             return;
@@ -684,6 +946,14 @@ public final class HarnessConfigBuilder {
         }
     }
 
+    /**
+     * pickLanguage.
+     * 
+     * @param content content
+     * @param language language
+     * @return the result
+     * @since 0.1.7
+     */
     private static String pickLanguage(Map<String, String> content, String language) {
         if (content == null || content.isEmpty()) {
             return nullValue();
@@ -698,6 +968,15 @@ public final class HarnessConfigBuilder {
         return content.get("en");
     }
 
+    /**
+     * instantiateTool.
+     * 
+     * @param module module
+     * @param className className
+     * @param workspaceRoot workspaceRoot
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object instantiateTool(String module, String className, Path workspaceRoot) {
         try {
             Class<?> type = Class.forName(module + "." + className);
@@ -712,6 +991,14 @@ public final class HarnessConfigBuilder {
         }
     }
 
+    /**
+     * instantiateNoArgs.
+     * 
+     * @param module module
+     * @param className className
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object instantiateNoArgs(String module, String className) {
         try {
             Class<?> type = Class.forName(module + "." + className);
@@ -721,6 +1008,14 @@ public final class HarnessConfigBuilder {
         }
     }
 
+    /**
+     * resolveToolEntryPoint.
+     * 
+     * @param name name
+     * @param workspaceRoot workspaceRoot
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object resolveToolEntryPoint(String name, Path workspaceRoot) {
         HarnessToolProvider provider = TOOL_ENTRY_POINTS.get(name);
         if (provider != null) {
@@ -735,6 +1030,13 @@ public final class HarnessConfigBuilder {
         throw new IllegalArgumentException("Harness tool entry point not found: " + name);
     }
 
+    /**
+     * resolveRailEntryPoint.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object resolveRailEntryPoint(String name) {
         HarnessRailProvider provider = RAIL_ENTRY_POINTS.get(name);
         if (provider != null) {
@@ -749,6 +1051,13 @@ public final class HarnessConfigBuilder {
         throw new IllegalArgumentException("Harness rail entry point not found: " + name);
     }
 
+    /**
+     * toToolSpecs.
+     * 
+     * @param tools tools
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<HarnessConfig.ToolResourceSchema> toToolSpecs(List<Object> tools) {
         if (tools == null || tools.isEmpty()) {
             return List.of();
@@ -762,22 +1071,23 @@ public final class HarnessConfigBuilder {
                     builtinGroups.add(group);
                 }
             } else {
-                extras.add(HarnessConfig.ToolResourceSchema.builder()
-                        .type("package")
-                        .module(tool.getClass().getPackageName())
-                        .className(tool.getClass().getSimpleName())
-                        .build());
+                extras.add(HarnessConfig.ToolResourceSchema.builder().type("package")
+                        .module(tool.getClass().getPackageName()).className(tool.getClass().getSimpleName()).build());
             }
         }
         if (!builtinGroups.isEmpty()) {
-            extras.add(0, HarnessConfig.ToolResourceSchema.builder()
-                    .type("builtin")
-                    .names(builtinGroups)
-                    .build());
+            extras.add(0, HarnessConfig.ToolResourceSchema.builder().type("builtin").names(builtinGroups).build());
         }
         return extras;
     }
 
+    /**
+     * toRailSpecs.
+     * 
+     * @param rails rails
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<HarnessConfig.RailResourceSchema> toRailSpecs(List<Object> rails) {
         if (rails == null || rails.isEmpty()) {
             return List.of();
@@ -786,22 +1096,23 @@ public final class HarnessConfigBuilder {
         for (Object rail : rails) {
             String name = RAIL_CLASS_TO_NAME.get(rail.getClass());
             if (name != null) {
-                specs.add(HarnessConfig.RailResourceSchema.builder()
-                        .type("builtin")
-                        .name(name)
-                        .config(toRailConfig(rail))
-                        .build());
+                specs.add(HarnessConfig.RailResourceSchema.builder().type("builtin").name(name)
+                        .config(toRailConfig(rail)).build());
             } else {
-                specs.add(HarnessConfig.RailResourceSchema.builder()
-                        .type("package")
-                        .module(rail.getClass().getPackageName())
-                        .className(rail.getClass().getSimpleName())
-                        .build());
+                specs.add(HarnessConfig.RailResourceSchema.builder().type("package")
+                        .module(rail.getClass().getPackageName()).className(rail.getClass().getSimpleName()).build());
             }
         }
         return specs;
     }
 
+    /**
+     * toRailConfig.
+     * 
+     * @param rail rail
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> toRailConfig(Object rail) {
         Map<String, Object> config = new LinkedHashMap<>();
         if (rail instanceof ProgressiveToolRail progressive) {
@@ -899,36 +1210,86 @@ public final class HarnessConfigBuilder {
         return config;
     }
 
+    /**
+     * putIfNotEmpty.
+     * 
+     * @param config config
+     * @param key key
+     * @param values values
+     * @since 0.1.7
+     */
     private static void putIfNotEmpty(Map<String, Object> config, String key, List<String> values) {
         if (values != null && !values.isEmpty()) {
             config.put(key, values);
         }
     }
 
+    /**
+     * putIfNotBlank.
+     * 
+     * @param config config
+     * @param key key
+     * @param isValue isValue
+     * @since 0.1.7
+     */
     private static void putIfNotBlank(Map<String, Object> config, String key, String isValue) {
         if (isValue != null && !isValue.isBlank()) {
             config.put(key, isValue);
         }
     }
 
+    /**
+     * putIfTrue.
+     * 
+     * @param config config
+     * @param key key
+     * @param isValue isValue
+     * @since 0.1.7
+     */
     private static void putIfTrue(Map<String, Object> config, String key, boolean isValue) {
         if (isValue) {
             config.put(key, true);
         }
     }
 
+    /**
+     * putIfFalse.
+     * 
+     * @param config config
+     * @param key key
+     * @param isValue isValue
+     * @since 0.1.7
+     */
     private static void putIfFalse(Map<String, Object> config, String key, boolean isValue) {
         if (!isValue) {
             config.put(key, false);
         }
     }
 
+    /**
+     * putIfNotDefault.
+     * 
+     * @param config config
+     * @param key key
+     * @param isValue isValue
+     * @param defaultValue defaultValue
+     * @since 0.1.7
+     */
     private static void putIfNotDefault(Map<String, Object> config, String key, int isValue, int defaultValue) {
         if (isValue != defaultValue) {
             config.put(key, isValue);
         }
     }
 
+    /**
+     * putIfNotDefault.
+     * 
+     * @param config config
+     * @param key key
+     * @param isValue isValue
+     * @param defaultValue defaultValue
+     * @since 0.1.7
+     */
     private static void putIfNotDefault(Map<String, Object> config, String key, String isValue, String defaultValue) {
         if (isValue != null && !isValue.equalsIgnoreCase(defaultValue)) {
             config.put(key, isValue);
@@ -936,28 +1297,59 @@ public final class HarnessConfigBuilder {
     }
 
     /**
- * Public interface HarnessToolProvider used by the Java parity implementation.
- *
- * @since 1.0
- */
-public interface HarnessToolProvider {
+     * Public interface HarnessToolProvider used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public interface HarnessToolProvider {
+        /**
+         * name.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         String name();
 
+        /**
+         * create.
+         * 
+         * @param workspaceRoot workspaceRoot
+         * @return the result
+         * @since 0.1.7
+         */
         Object create(Path workspaceRoot);
     }
 
     /**
- * Public interface HarnessRailProvider used by the Java parity implementation.
- *
- * @since 1.0
- */
-public interface HarnessRailProvider {
+     * Public interface HarnessRailProvider used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public interface HarnessRailProvider {
+        /**
+         * name.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         String name();
 
+        /**
+         * create.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         Object create();
     }
+
+    /**
+     * nullValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static <T> T nullValue() {
         return null;
     }
-
 }

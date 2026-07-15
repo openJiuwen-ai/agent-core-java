@@ -15,23 +15,38 @@ import java.util.Set;
  * Manages all channels and message routing between Pregel nodes.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.channels.ChannelManager}.
+ * 
+ * @since 0.1.7
  */
 public class ChannelManager {
-
-    /** Maps routing key → Channel. */
     private final Map<String, Channel> mapKeyToChannel = new HashMap<>();
 
-    /** Maps node name → list of Channels. */
+    /**
+     * Maps node name → list of Channels.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, List<Channel>> mapNodeToChannels = new HashMap<>();
 
-    /** Set of node names that are ready to execute. */
+    /**
+     * Set of node names that are ready to execute.
+     * 
+     * @since 0.1.7
+     */
     private final Set<String> readyNodeNames = new HashSet<>();
 
-    /** Message buffer for next flush. */
+    /**
+     * Message buffer for next flush.
+     * 
+     * @since 0.1.7
+     */
     private final List<Message> buffer = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ChannelManager.
+     * 
+     * @param channels channels
+     * @since 0.1.7
      */
     public ChannelManager(List<Channel> channels) {
         for (Channel ch : channels) {
@@ -47,6 +62,9 @@ public class ChannelManager {
 
     /**
      * Add a message to the buffer for the next flush.
+     * 
+     * @param msg msg
+     * @since 0.1.7
      */
     public void bufferMessage(Message msg) {
         buffer.add(msg);
@@ -54,6 +72,9 @@ public class ChannelManager {
 
     /**
      * Check if the message buffer is empty.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isEmpty() {
         return buffer.isEmpty();
@@ -61,6 +82,8 @@ public class ChannelManager {
 
     /**
      * Flush buffered messages into channels and update ready nodes.
+     * 
+     * @since 0.1.7
      */
     public void flush() {
         Set<String> updatedNodes = new HashSet<>();
@@ -88,6 +111,9 @@ public class ChannelManager {
 
     /**
      * Get names of all nodes that are ready to execute.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getReadyNodes() {
         return new ArrayList<>(readyNodeNames);
@@ -95,6 +121,9 @@ public class ChannelManager {
 
     /**
      * Consume (clear) all ready channels for the given node.
+     * 
+     * @param nodeName nodeName
+     * @since 0.1.7
      */
     public void consume(String nodeName) {
         List<Channel> channels = mapNodeToChannels.get(nodeName);
@@ -111,6 +140,9 @@ public class ChannelManager {
 
     /**
      * Create a snapshot of all channel states for persistence.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> snapshot() {
         Map<String, Object> snap = new HashMap<>();
@@ -136,12 +168,12 @@ public class ChannelManager {
     }
 
     /**
-     * Restore channel states from a snapshot.
+     * restore.
+     * 
+     * @param snapshotMap snapshotMap
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void restore(Map<String, Object> snapshotMap) {
         if (snapshotMap == null) {
             return;
@@ -171,11 +203,21 @@ public class ChannelManager {
 
     /**
      * Get the raw buffer (for error state persistence).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Message> getBuffer() {
         return buffer;
     }
 
+    /**
+     * isEmptyCollection.
+     * 
+     * @param obj obj
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isEmptyCollection(Object obj) {
         if (obj instanceof List<?> list) {
             return list.isEmpty();

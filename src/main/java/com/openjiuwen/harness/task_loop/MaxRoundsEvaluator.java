@@ -6,48 +6,52 @@ package com.openjiuwen.harness.task_loop;
 
 /**
  * Public class MaxRoundsEvaluator used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class MaxRoundsEvaluator implements StopConditionEvaluator {
     private final int maxRounds;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MaxRoundsEvaluator.
+     * 
+     * @param maxRounds maxRounds
+     * @since 0.1.7
      */
     public MaxRoundsEvaluator(int maxRounds) {
         this.maxRounds = maxRounds;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String name() {
         return "MaxRounds";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shouldStop.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean shouldStop(StopEvaluationContext context) {
         return context != null && context.getIteration() >= maxRounds;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public java.util.Map<String, Object> getState() {
         return java.util.Map.of("max_rounds", maxRounds);
     }

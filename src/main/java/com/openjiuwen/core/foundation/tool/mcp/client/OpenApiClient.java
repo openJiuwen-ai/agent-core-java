@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.tool.mcp.McpClient;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.foundation.tool.mcp.McpToolCard;
+
 import org.yaml.snakeyaml.Yaml;
 
 import java.net.URI;
@@ -18,7 +19,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -36,27 +36,55 @@ import java.util.Optional;
  * with proper parameter schemas, descriptions, and output schemas. Mirrors Python's
  * {@code OpenApiClient} capabilities including {@code load_conf()}, {@code ToolManager},
  * parameter schema extraction, and output schema extraction.
+ * 
+ * @since 0.1.7
  */
 public class OpenApiClient implements McpClient {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final McpServerConfig config;
+
+    /**
+     * HttpClient.newHttpClient.
+     * 
+     * @since 0.1.7
+     */
     private final HttpClient httpClient = HttpClient.newHttpClient();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Operation> operations = new LinkedHashMap<>();
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Integer> usedNames = new HashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OpenApiClient.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public OpenApiClient(McpServerConfig config) {
         this.config = config;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * connect.
+     * 
+     * @param retryTimes retryTimes
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public boolean connect(int retryTimes, float timeout) throws Exception {
         operations.clear();
         usedNames.clear();
@@ -67,45 +95,57 @@ public class OpenApiClient implements McpClient {
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * disconnect.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean disconnect(float timeout) {
         operations.clear();
         usedNames.clear();
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * listTools.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<Object> listTools(float timeout) {
         return new ArrayList<>(operations.values().stream().map(Operation::card).toList());
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * callTool.
+     * 
+     * @param toolName toolName
+     * @param arguments arguments
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
         Operation operation = operations.get(toolName);
         if (operation == null) {
             throw new IllegalArgumentException("OpenAPI tool not found: " + toolName);
         }
         String url = resolveUrl(operation, arguments);
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "application/json");
-        if (timeout != McpServerConfig.NO_TIMEOUT && timeout > 0) {
+        HttpRequest.Builder builder =
+            HttpRequest.newBuilder().uri(URI.create(url)).header("Content-Type", "application/json");
+        if (Float.compare(timeout, McpServerConfig.NO_TIMEOUT) != 0 && timeout > 0) {
             builder.timeout(Duration.ofMillis((long) (timeout * 1000)));
         }
 
         // Separate path params from body params
-        Map<String, Object> bodyArgs = arguments == null
-                ? Map.of()
-                : new LinkedHashMap<>(arguments);
+        Map<String, Object> bodyArgs = arguments == null ? Map.of() : new LinkedHashMap<>(arguments);
         // Remove path parameters from body
         if (operation.pathParams != null) {
             for (String pp : operation.pathParams) {
@@ -123,8 +163,7 @@ public class OpenApiClient implements McpClient {
                     if (!first) {
                         sb.append("&");
                     }
-                    sb.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8))
-                            .append("=")
+                    sb.append(URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)).append("=")
                             .append(URLEncoder.encode(String.valueOf(entry.getValue()), StandardCharsets.UTF_8));
                     first = false;
                 }
@@ -133,26 +172,33 @@ public class OpenApiClient implements McpClient {
             builder.GET();
         } else {
             builder.method(operation.method,
-                    HttpRequest.BodyPublishers.ofString(
-                            MAPPER.writeValueAsString(bodyArgs), StandardCharsets.UTF_8));
+                    HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(bodyArgs), StandardCharsets.UTF_8));
         }
-        HttpResponse<String> response = httpClient.send(builder.build(),
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        HttpResponse<String> response =
+            httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         return response.body();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolInfo.
+     * 
+     * @param toolName toolName
+     * @param timeout timeout
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Optional<Object> getToolInfo(String toolName, float timeout) {
         return Optional.ofNullable(operations.get(toolName)).map(Operation::card);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getServerPath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getServerPath() {
         return config.getServerPath();
     }
@@ -160,10 +206,11 @@ public class OpenApiClient implements McpClient {
     /**
      * Load and parse an OpenAPI spec from a file path.
      * Mirrors Python's {@code load_conf()} function.
-     *
+     * 
      * @param filePath path to the JSON/YAML file
      * @return parsed spec as a Map
      * @throws Exception if file doesn't exist, is a symlink, or has unsupported format
+     * @since 0.1.7
      */
     public static Map<String, Object> loadConf(String filePath) throws Exception {
         Path path = Path.of(filePath).toAbsolutePath().normalize();
@@ -182,12 +229,12 @@ public class OpenApiClient implements McpClient {
 
         Map<String, Object> data;
         if (suffix.endsWith(".json")) {
-            data = MAPPER.readValue(content, new TypeReference<>() {});
+            data = MAPPER.readValue(content, new TypeReference<>() {
+            });
         } else if (suffix.endsWith(".yaml") || suffix.endsWith(".yml")) {
             data = new Yaml().load(content);
         } else {
-            throw new IllegalArgumentException(
-                    "Only supports .json/.yaml/.yml, current extension: " + suffix);
+            throw new IllegalArgumentException("Only supports .json/.yaml/.yml, current extension: " + suffix);
         }
 
         if (data == null || !(data instanceof Map)) {
@@ -197,12 +244,19 @@ public class OpenApiClient implements McpClient {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * loadSpec.
+     * 
+     * @param spec spec
+     * @param sourcePath sourcePath
+     * @since 0.1.7
+     */
     private void loadSpec(Map<String, Object> spec, String sourcePath) {
         String baseUrl = extractBaseUrl(spec);
         Map<String, Object> paths = spec.get("paths") instanceof Map<?, ?> map ? castMap(map) : Map.of();
         Map<String, Object> components = spec.get("components") instanceof Map<?, ?> map ? castMap(map) : Map.of();
-        Map<String, Object> componentSchemas = components.get("schemas") instanceof Map<?, ?> map
-                ? castMap(map) : Map.of();
+        Map<String, Object> componentSchemas =
+            components.get("schemas") instanceof Map<?, ?> map ? castMap(map) : Map.of();
 
         for (Map.Entry<String, Object> pathEntry : paths.entrySet()) {
             if (!(pathEntry.getValue() instanceof Map<?, ?> methodsMap)) {
@@ -218,8 +272,8 @@ public class OpenApiClient implements McpClient {
                 String baseName = operationId != null
                         ? String.valueOf(operationId).split("__")[0]
                         : (operation.get("summary") != null
-                        ? String.valueOf(operation.get("summary"))
-                        : httpMethod + "_" + pathEntry.getKey().replace('/', '_'));
+                                ? String.valueOf(operation.get("summary"))
+                                : httpMethod + "_" + pathEntry.getKey().replace('/', '_'));
                 // Truncate to 64 characters
                 if (baseName.length() > 64) {
                     baseName = baseName.substring(0, 64);
@@ -227,8 +281,7 @@ public class OpenApiClient implements McpClient {
                 String toolName = getUniqueName(baseName);
 
                 // Build input parameter schema from parameters + requestBody
-                Map<String, Object> inputSchema = buildInputSchema(
-                        operation, pathEntry.getKey(), componentSchemas);
+                Map<String, Object> inputSchema = buildInputSchema(operation, pathEntry.getKey(), componentSchemas);
 
                 // Extract output schema from responses
                 Map<String, Object> outputSchema = extractOutputSchema(operation, componentSchemas);
@@ -239,23 +292,22 @@ public class OpenApiClient implements McpClient {
                 // Collect path parameter names
                 List<String> pathParams = extractPathParamNames(pathEntry.getKey());
 
-                operations.put(toolName, new Operation(
-                        httpMethod,
-                        pathEntry.getKey(),
-                        baseUrl,
-                        pathParams,
-                        McpToolCard.builder()
-                                .name(toolName)
-                                .description(description)
-                                .serverName(config.getServerName())
-                                .serverId(config.getServerId())
-                                .inputParams(inputSchema)
-                                .build()
-                ));
+                operations.put(toolName,
+                        new Operation(httpMethod, pathEntry.getKey(), baseUrl, pathParams,
+                                McpToolCard.builder().name(toolName).description(description)
+                                        .serverName(config.getServerName()).serverId(config.getServerId())
+                                        .inputParams(inputSchema).build()));
             }
         }
     }
 
+    /**
+     * getUniqueName.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
+     */
     private String getUniqueName(String name) {
         int count = usedNames.merge(name, 1, Integer::sum);
         if (count == 1) {
@@ -265,9 +317,17 @@ public class OpenApiClient implements McpClient {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> buildInputSchema(Map<String, Object> operation,
-                                                  String pathTemplate,
-                                                  Map<String, Object> componentSchemas) {
+    /**
+     * buildInputSchema.
+     * 
+     * @param operation operation
+     * @param pathTemplate pathTemplate
+     * @param componentSchemas componentSchemas
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, Object> buildInputSchema(Map<String, Object> operation, String pathTemplate,
+            Map<String, Object> componentSchemas) {
         Map<String, Object> properties = new LinkedHashMap<>();
         List<String> required = new ArrayList<>();
 
@@ -284,7 +344,8 @@ public class OpenApiClient implements McpClient {
                     continue;
                 }
                 Map<String, Object> schema = param.get("schema") instanceof Map<?, ?> s
-                        ? resolveRef(castMap(s), componentSchemas) : new LinkedHashMap<>(Map.of("type", "string"));
+                        ? resolveRef(castMap(s), componentSchemas)
+                        : new LinkedHashMap<>(Map.of("type", "string"));
                 Object desc = param.get("description");
                 if (desc != null) {
                     schema.put("description", String.valueOf(desc));
@@ -342,8 +403,16 @@ public class OpenApiClient implements McpClient {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * extractOutputSchema.
+     * 
+     * @param operation operation
+     * @param componentSchemas componentSchemas
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> extractOutputSchema(Map<String, Object> operation,
-                                                     Map<String, Object> componentSchemas) {
+            Map<String, Object> componentSchemas) {
         Object responsesObj = operation.get("responses");
         if (!(responsesObj instanceof Map<?, ?> responses)) {
             return Map.of();
@@ -383,6 +452,13 @@ public class OpenApiClient implements McpClient {
         return Map.of();
     }
 
+    /**
+     * buildDescription.
+     * 
+     * @param operation operation
+     * @return the result
+     * @since 0.1.7
+     */
     private static String buildDescription(Map<String, Object> operation) {
         Object description = operation.get("description");
         Object summary = operation.get("summary");
@@ -395,6 +471,13 @@ public class OpenApiClient implements McpClient {
         return "";
     }
 
+    /**
+     * extractPathParamNames.
+     * 
+     * @param pathTemplate pathTemplate
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> extractPathParamNames(String pathTemplate) {
         List<String> params = new ArrayList<>();
         int start = pathTemplate.indexOf('{');
@@ -409,6 +492,14 @@ public class OpenApiClient implements McpClient {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * resolveRef.
+     * 
+     * @param schema schema
+     * @param componentSchemas componentSchemas
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> resolveRef(Map<String, Object> schema, Map<String, Object> componentSchemas) {
         Object ref = schema.get("$ref");
         if (ref instanceof String refStr) {
@@ -423,6 +514,14 @@ public class OpenApiClient implements McpClient {
         return new LinkedHashMap<>(schema);
     }
 
+    /**
+     * resolveUrl.
+     * 
+     * @param operation operation
+     * @param arguments arguments
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveUrl(Operation operation, Map<String, Object> arguments) {
         String path = operation.path;
         Map<String, Object> args = arguments == null ? Map.of() : arguments;
@@ -434,10 +533,16 @@ public class OpenApiClient implements McpClient {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * extractBaseUrl.
+     * 
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private String extractBaseUrl(Map<String, Object> spec) {
         Object serversObj = spec.get("servers");
-        if (serversObj instanceof List<?> servers && !servers.isEmpty()
-                && servers.get(0) instanceof Map<?, ?> server) {
+        if (serversObj instanceof List<?> servers && !servers.isEmpty() && servers.get(0) instanceof Map<?, ?> server) {
             Object url = server.get("url");
             if (url != null) {
                 return String.valueOf(url).replaceAll("/+$", "");
@@ -447,6 +552,13 @@ public class OpenApiClient implements McpClient {
         return explicitBaseUrl == null ? "" : String.valueOf(explicitBaseUrl).replaceAll("/+$", "");
     }
 
+    /**
+     * castMap.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> castMap(Map<?, ?> map) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -455,7 +567,16 @@ public class OpenApiClient implements McpClient {
         return result;
     }
 
-    private record Operation(String method, String path, String baseUrl,
-                              List<String> pathParams, McpToolCard card) {
+    /**
+     * Operation.
+     * 
+     * @param method method
+     * @param path path
+     * @param baseUrl baseUrl
+     * @param pathParams pathParams
+     * @param card card
+     * @since 0.1.7
+     */
+    private record Operation(String method, String path, String baseUrl, List<String> pathParams, McpToolCard card) {
     }
 }

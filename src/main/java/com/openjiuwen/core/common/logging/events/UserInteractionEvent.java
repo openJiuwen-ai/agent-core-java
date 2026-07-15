@@ -10,7 +10,11 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** User interaction related event. */
+/**
+ * User interaction related event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -21,17 +25,22 @@ public class UserInteractionEvent extends BaseLogEvent {
     private String feedbackContent;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * UserInteractionEvent.
+     * 
+     * @since 0.1.7
      */
     public UserInteractionEvent() {
         super();
         setModuleType(ModuleType.USER);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "user_id", userId);
         putIfNotNull(map, "input_content", inputContent);

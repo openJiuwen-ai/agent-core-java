@@ -20,19 +20,26 @@ import java.util.List;
  * Message utilities for adding and retrieving messages in the context engine.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.common.utils.message_utils.MessageUtils}.
+ * 
+ * @since 0.1.7
  */
 public final class MessageUtils {
-
+    /**
+     * MessageUtils.
+     * 
+     * @since 0.1.7
+     */
     private MessageUtils() {
     }
 
     /**
      * Check if a user message should be added (deduplication).
-     *
-     * @param query         user input
+     * 
+     * @param query user input
      * @param contextEngine context engine
-     * @param session       session instance
+     * @param session session instance
      * @return true if the message should be added
+     * @since 0.1.7
      */
     public static boolean shouldAddUserMessage(String query, ContextEngine contextEngine, Session session) {
         ModelContext agentContext = contextEngine.getContext("default_context_id", session.getSessionId());
@@ -56,10 +63,11 @@ public final class MessageUtils {
 
     /**
      * Add a user message to the chat history.
-     *
-     * @param query         user input
+     * 
+     * @param query user input
      * @param contextEngine context engine
-     * @param session       session instance
+     * @param session session instance
+     * @since 0.1.7
      */
     public static void addUserMessage(Object query, ContextEngine contextEngine, Session session) {
         String queryStr = query != null ? query.toString() : "";
@@ -79,10 +87,11 @@ public final class MessageUtils {
 
     /**
      * Add an assistant message to the chat history.
-     *
-     * @param aiMessage     assistant message object
+     * 
+     * @param aiMessage assistant message object
      * @param contextEngine context engine
-     * @param session       session instance
+     * @param session session instance
+     * @since 0.1.7
      */
     public static void addAiMessage(AssistantMessage aiMessage, ContextEngine contextEngine, Session session) {
         if (aiMessage != null) {
@@ -95,10 +104,11 @@ public final class MessageUtils {
 
     /**
      * Add a tool message to the chat history.
-     *
-     * @param toolMessage   tool message object
+     * 
+     * @param toolMessage tool message object
      * @param contextEngine context engine
-     * @param session       session instance
+     * @param session session instance
+     * @since 0.1.7
      */
     public static void addToolMessage(ToolMessage toolMessage, ContextEngine contextEngine, Session session) {
         if (toolMessage != null) {
@@ -111,14 +121,15 @@ public final class MessageUtils {
 
     /**
      * Add a message to a specific workflow's chat history.
-     *
-     * @param message       message object
-     * @param workflowId    workflow ID
+     * 
+     * @param message message object
+     * @param workflowId workflow ID
      * @param contextEngine context engine
-     * @param session       session instance
+     * @param session session instance
+     * @since 0.1.7
      */
-    public static void addWorkflowMessage(BaseMessage message, String workflowId,
-                                           ContextEngine contextEngine, Session session) {
+    public static void addWorkflowMessage(BaseMessage message, String workflowId, ContextEngine contextEngine,
+            Session session) {
         ModelContext workflowContext = contextEngine.getContext(workflowId, session.getSessionId());
         if (workflowContext != null) {
             workflowContext.addMessages(List.of(message));
@@ -127,11 +138,12 @@ public final class MessageUtils {
 
     /**
      * Get chat history, limited by max rounds.
-     *
+     * 
      * @param contextEngine context engine
-     * @param session       session instance
-     * @param maxRounds     maximum number of dialogue rounds to return
+     * @param session session instance
+     * @param maxRounds maximum number of dialogue rounds to return
      * @return chat history message list
+     * @since 0.1.7
      */
     public static List<BaseMessage> getChatHistory(ContextEngine contextEngine, Session session, int maxRounds) {
         ModelContext agentContext = contextEngine.getContext("default_context_id", session.getSessionId());

@@ -12,37 +12,47 @@ import java.util.function.BiFunction;
  * <p>
  * Applies a modifier function to transform arguments before callback execution.
  * The modifier receives (args, kwargs) and returns a two-element Object array: [newArgs, newKwargs].
+ * 
+ * @since 0.1.7
  */
 public class ParamModifyFilter extends EventFilter {
-
-    /**
-     * Modifier that takes (args, kwargs) and returns a two-element array: [newArgs, newKwargs].
-     * Element [0] should be Object[] (new args), element [1] should be Map&lt;String, Object&gt; (new kwargs).
-     */
     private final BiFunction<Object[], Map<String, Object>, Object[]> modifier;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ParamModifyFilter.
+     * 
+     * @param modifier modifier
+     * @since 0.1.7
      */
     public ParamModifyFilter(BiFunction<Object[], Map<String, Object>, Object[]> modifier) {
         this(modifier, "ParamModify");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ParamModifyFilter.
+     * 
+     * @param modifier modifier
+     * @param name name
+     * @since 0.1.7
      */
     public ParamModifyFilter(BiFunction<Object[], Map<String, Object>, Object[]> modifier, String name) {
         super(name);
         this.modifier = modifier;
     }
 
+    /**
+     * filter.
+     * 
+     * @param event event
+     * @param callback callback
+     * @param args args
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     @SuppressWarnings("unchecked")
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public FilterResult filter(String event, CallbackInfo callback,
-                                Object[] args, Map<String, Object> kwargs) {
+    public FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs) {
         try {
             Object[] modified = modifier.apply(args, kwargs);
             Object[] newArgs = (Object[]) modified[0];

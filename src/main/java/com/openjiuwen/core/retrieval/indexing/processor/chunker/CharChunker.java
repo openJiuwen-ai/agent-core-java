@@ -9,20 +9,29 @@ import java.util.List;
 
 /**
  * Character window chunker.
+ * 
+ * @since 0.1.7
  */
 public class CharChunker extends Chunker {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * CharChunker.
+     * 
+     * @param chunkSize chunkSize
+     * @param chunkOverlap chunkOverlap
+     * @since 0.1.7
      */
     public CharChunker(int chunkSize, int chunkOverlap) {
         super(chunkSize, chunkOverlap);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * chunkText.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<String> chunkText(String text) {
         if (text == null || text.isEmpty()) {
             return List.of();

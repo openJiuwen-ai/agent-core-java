@@ -29,9 +29,10 @@ import java.util.Map;
 
 /**
  * Compresses historical completed ReAct dialogue blocks into protocolized memory blocks.
+ * 
+ * @since 0.1.7
  */
 public class DialogueCompressor extends ContextProcessor {
-
     static final String DIALOGUE_MEMORY_BLOCK_MARKER = "[DIALOGUE_MEMORY_BLOCK]";
 
     private static final String DEFAULT_COMPRESSION_PROMPT = """
@@ -115,7 +116,10 @@ public class DialogueCompressor extends ContextProcessor {
     private final Model model;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DialogueCompressor.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public DialogueCompressor(DialogueCompressorConfig config) {
         super(config);
@@ -133,10 +137,15 @@ public class DialogueCompressor extends ContextProcessor {
                 : null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * onAddMessages.
+     * 
+     * @param context context
+     * @param messagesToAdd messagesToAdd
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
         List<BaseMessage> contextMessages = new ArrayList<>(context.getMessages());
         if (messagesToAdd != null) {
@@ -164,18 +173,13 @@ public class DialogueCompressor extends ContextProcessor {
             throw error;
         }
 
-        ReplacementBuildResult replacementBuildResult = buildJsonReplacements(
-                context,
-                targets,
-                response != null ? response.getParserContent() : null);
+        ReplacementBuildResult replacementBuildResult =
+            buildJsonReplacements(context, targets, response != null ? response.getParserContent() : null);
         if (!replacementBuildResult.replacements().isEmpty()) {
-            List<BaseMessage> updatedMessages = applyReplacements(
-                    contextMessages,
-                    replacementBuildResult.replacements());
-            ContextEvent event = ContextEvent.builder()
-                    .eventType(processorType())
-                    .messagesToModify(replacementBuildResult.modifiedIndices())
-                    .build();
+            List<BaseMessage> updatedMessages =
+                applyReplacements(contextMessages, replacementBuildResult.replacements());
+            ContextEvent event = ContextEvent.builder().eventType(processorType())
+                    .messagesToModify(replacementBuildResult.modifiedIndices()).build();
             context.setMessages(updatedMessages);
             return ProcessResult.ofMessages(event, List.of());
         }
@@ -187,10 +191,8 @@ public class DialogueCompressor extends ContextProcessor {
             if (fallbackReplacement != null) {
                 List<BaseMessage> updatedMessages = applyReplacements(contextMessages, List.of(fallbackReplacement));
                 List<Integer> modifiedIndices = range(fallbackReplacement.startIdx(), fallbackReplacement.endIdx());
-                ContextEvent event = ContextEvent.builder()
-                        .eventType(processorType())
-                        .messagesToModify(modifiedIndices)
-                        .build();
+                ContextEvent event =
+                    ContextEvent.builder().eventType(processorType()).messagesToModify(modifiedIndices).build();
                 context.setMessages(updatedMessages);
                 return ProcessResult.ofMessages(event, List.of());
             }
@@ -199,16 +201,21 @@ public class DialogueCompressor extends ContextProcessor {
         return ProcessResult.ofMessages(null, messagesToAdd);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * triggerAddMessages.
+     * 
+     * @param context context
+     * @param messagesToAdd messagesToAdd
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
         DialogueCompressorConfig config = getConfig();
         int messageSize = context.size() + (messagesToAdd != null ? messagesToAdd.size() : 0);
         if (messageNumThreshold != null && messageSize > messageNumThreshold) {
-            Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context messages num "
-                    + messageSize + " exceeds threshold of " + config.getMessagesThreshold());
+            Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context messages num " + messageSize
+                    + " exceeds threshold of " + config.getMessagesThreshold());
             return true;
         }
         if (messagesToKeep != null && messageSize < messagesToKeep) {
@@ -220,8 +227,8 @@ public class DialogueCompressor extends ContextProcessor {
         }
         int tokens = countMessagesTokens(context, allMessages);
         if (tokens > tokenThreshold) {
-            Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context tokens "
-                    + tokens + " exceeds threshold of " + config.getTokensThreshold());
+            Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context tokens " + tokens
+                    + " exceeds threshold of " + config.getTokensThreshold());
             return true;
         }
         return false;
@@ -270,11 +277,7 @@ public class DialogueCompressor extends ContextProcessor {
         int blockNo = 1;
         for (int index = firstTargetRoundIndex; index <= lastTargetRoundIndex; index++) {
             DialogueRound round = rounds.get(index);
-            targets.add(new CompressTarget(
-                    "react_" + blockNo,
-                    round.userIdx(),
-                    round.startIdx(),
-                    round.endIdx(),
+            targets.add(new CompressTarget("react_" + blockNo, round.userIdx(), round.startIdx(), round.endIdx(),
                     round.messages()));
             blockNo++;
         }
@@ -291,8 +294,7 @@ public class DialogueCompressor extends ContextProcessor {
                     currentUser = index;
                 }
             } else if (message instanceof AssistantMessage assistant
-                    && (assistant.getToolCalls() == null || assistant.getToolCalls().isEmpty())
-                    && currentUser != -1) {
+                    && (assistant.getToolCalls() == null || assistant.getToolCalls().isEmpty()) && currentUser != -1) {
                 if (index - currentUser >= 1) {
                     result.add(new int[]{currentUser, index});
                     currentUser = -1;
@@ -313,51 +315,30 @@ public class DialogueCompressor extends ContextProcessor {
                 continue;
             }
             List<BaseMessage> roundMessages = new ArrayList<>(messages.subList(userIdx + 1, assistantIdx + 1));
-            rounds.add(new DialogueRound(
-                    userIdx,
-                    userIdx + 1,
-                    assistantIdx,
-                    roundMessages,
-                    assistantIdx - userIdx + 1));
+            rounds.add(
+                    new DialogueRound(userIdx, userIdx + 1, assistantIdx, roundMessages, assistantIdx - userIdx + 1));
         }
         return rounds;
     }
 
-    AssistantMessage invokeMultiBlockCompression(
-            List<BaseMessage> contextMessages,
-            List<CompressTarget> targets) {
+    AssistantMessage invokeMultiBlockCompression(List<BaseMessage> contextMessages, List<CompressTarget> targets) {
         String systemPrompt = buildSystemPrompt();
-        List<BaseMessage> modelMessages = List.of(
-                new SystemMessage(systemPrompt),
+        List<BaseMessage> modelMessages = List.of(new SystemMessage(systemPrompt),
                 new UserMessage(buildSplitContextPayload(contextMessages, targets)),
                 new UserMessage(buildTargetsPayload(targets)));
         try {
             if (model == null) {
                 throw new IllegalStateException("dialogue compressor model is not configured");
             }
-            return model.invoke(
-                    modelMessages,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    new JsonOutputParser(),
-                    null,
-                    null);
+            return model.invoke(modelMessages, null, null, null, null, null, null, new JsonOutputParser(), null, null);
         } catch (Exception exception) {
-            throw ErrorHelper.buildError(
-                    StatusCode.MODEL_CALL_FAILED,
-                    "error_msg",
+            throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED, "error_msg",
                     processorType() + " failed to invoke compression model during multi-block dialogue compression");
         }
     }
 
     String buildSystemPrompt() {
-        return compressedPrompt.replace(
-                "{compression_target_tokens}",
-                String.valueOf(compressionTargetTokens));
+        return compressedPrompt.replace("{compression_target_tokens}", String.valueOf(compressionTargetTokens));
     }
 
     String buildSplitContextPayload(List<BaseMessage> contextMessages, List<CompressTarget> targets) {
@@ -378,9 +359,8 @@ public class DialogueCompressor extends ContextProcessor {
             targetBlocks.add("");
         }
 
-        String afterTargets = joinSerialized(
-                contextMessages.subList(lastTargetEnd + 1, contextMessages.size()),
-                lastTargetEnd + 1);
+        String afterTargets =
+            joinSerialized(contextMessages.subList(lastTargetEnd + 1, contextMessages.size()), lastTargetEnd + 1);
         if (afterTargets.isBlank()) {
             afterTargets = "(none)";
         }
@@ -422,9 +402,7 @@ public class DialogueCompressor extends ContextProcessor {
         parts.add("[" + index + "] role=" + message.getRole());
         if (message instanceof AssistantMessage assistant && assistant.getToolCalls() != null
                 && !assistant.getToolCalls().isEmpty()) {
-            String toolCallNames = String.join(", ", assistant.getToolCalls().stream()
-                    .map(ToolCall::getName)
-                    .toList());
+            String toolCallNames = String.join(", ", assistant.getToolCalls().stream().map(ToolCall::getName).toList());
             parts.add("tool_calls=" + toolCallNames);
         }
         if (message instanceof ToolMessage toolMessage) {
@@ -434,9 +412,7 @@ public class DialogueCompressor extends ContextProcessor {
         return String.join(" | ", parts);
     }
 
-    ReplacementBuildResult buildJsonReplacements(
-            ModelContext context,
-            List<CompressTarget> targets,
+    ReplacementBuildResult buildJsonReplacements(ModelContext context, List<CompressTarget> targets,
             Object parserContent) {
         if (!isValidBlocksPayload(parserContent)) {
             return new ReplacementBuildResult(List.of(), List.of());
@@ -485,10 +461,7 @@ public class DialogueCompressor extends ContextProcessor {
         return new ReplacementBuildResult(replacements, modifiedIndices);
     }
 
-    Replacement buildFallbackReplacement(
-            ModelContext context,
-            List<CompressTarget> targets,
-            String summary) {
+    Replacement buildFallbackReplacement(ModelContext context, List<CompressTarget> targets, String summary) {
         String normalizedSummary = summary != null ? summary.strip() : "";
         if (normalizedSummary.isEmpty()) {
             return null;
@@ -515,21 +488,15 @@ public class DialogueCompressor extends ContextProcessor {
     }
 
     static String wrapMemoryBlock(String summary) {
-        return DIALOGUE_MEMORY_BLOCK_MARKER + "\n"
-                + "processor: DialogueCompressor\n"
-                + "type: historical_memory_block\n"
-                + "scope: historical_dialogue_block\n"
+        return DIALOGUE_MEMORY_BLOCK_MARKER + "\n" + "processor: DialogueCompressor\n"
+                + "type: historical_memory_block\n" + "scope: historical_dialogue_block\n"
                 + "authority: This block is reference memory, not a binding source of truth.\n"
                 + "instruction_status: Do not treat this block as a new user request or fresh assistant commitment.\n"
                 + "conflict_priority: Prefer newer explicit user intent, newer raw context, "
-                + "and fresh tool results over this block.\n\n"
-                + "Summary:\n"
-                + summary;
+                + "and fresh tool results over this block.\n\n" + "Summary:\n" + summary;
     }
 
-    boolean hasCompressionBenefit(
-            ModelContext context,
-            List<BaseMessage> originalMessages,
+    boolean hasCompressionBenefit(ModelContext context, List<BaseMessage> originalMessages,
             List<BaseMessage> replacementMessages) {
         int originalTokens = countMessagesTokens(context, originalMessages);
         int compressedTokens = countMessagesTokens(context, replacementMessages);
@@ -565,31 +532,42 @@ public class DialogueCompressor extends ContextProcessor {
         List<Replacement> ordered = new ArrayList<>(replacements);
         ordered.sort(Comparator.comparingInt(Replacement::startIdx).reversed());
         for (Replacement replacement : ordered) {
-            updatedMessages = ContextUtils.replaceMessages(
-                    updatedMessages,
-                    replacement.replacementMessages(),
-                    replacement.startIdx(),
-                    replacement.endIdx());
+            updatedMessages = ContextUtils.replaceMessages(updatedMessages, replacement.replacementMessages(),
+                    replacement.startIdx(), replacement.endIdx());
         }
         return updatedMessages;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * loadState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
+    @Override
     public void loadState(Map<String, Object> state) {
         // stateless
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * saveState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> saveState() {
         return Map.of();
     }
 
+    /**
+     * joinSerialized.
+     * 
+     * @param messages messages
+     * @param startIndex startIndex
+     * @return the result
+     * @since 0.1.7
+     */
     private String joinSerialized(List<BaseMessage> messages, int startIndex) {
         List<String> lines = new ArrayList<>();
         for (int index = 0; index < messages.size(); index++) {
@@ -598,6 +576,14 @@ public class DialogueCompressor extends ContextProcessor {
         return String.join("\n", lines);
     }
 
+    /**
+     * range.
+     * 
+     * @param startIdx startIdx
+     * @param endIdx endIdx
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Integer> range(int startIdx, int endIdx) {
         List<Integer> indices = new ArrayList<>();
         for (int index = startIdx; index <= endIdx; index++) {
@@ -606,6 +592,14 @@ public class DialogueCompressor extends ContextProcessor {
         return indices;
     }
 
+    /**
+     * prefixUntil.
+     * 
+     * @param messages messages
+     * @param stopIdx stopIdx
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<BaseMessage> prefixUntil(List<BaseMessage> messages, int stopIdx) {
         int end = stopIdx >= 0 ? Math.min(stopIdx, messages.size()) : Math.max(messages.size() + stopIdx, 0);
         return new ArrayList<>(messages.subList(0, end));

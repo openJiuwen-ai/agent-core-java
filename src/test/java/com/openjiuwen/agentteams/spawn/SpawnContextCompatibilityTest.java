@@ -1,12 +1,12 @@
+
 package com.openjiuwen.agentteams.spawn;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 public class SpawnContextCompatibilityTest {
-
     @AfterEach
     void cleanup() {
         SpawnContext.resetSessionId(null);

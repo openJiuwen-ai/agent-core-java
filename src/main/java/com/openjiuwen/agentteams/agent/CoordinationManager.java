@@ -15,6 +15,7 @@ import com.openjiuwen.agentteams.schema.team.TeamLifecycle;
 import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.agentteams.tools.TeamMessageManager;
 import com.openjiuwen.core.common.logging.Loggers;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -22,276 +23,353 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
-/** Coordination handoff and lifecycle wiring mirroring Python {@code coordination_manager.py}. */
+/**
+ * Coordination handoff and lifecycle wiring mirroring Python {@code coordination_manager.py}.
+ * 
+ * @since 0.1.7
+ */
 public class CoordinationManager {
-  private static final List<String> TRANSPORT_TOPICS =
-      List.of("team:%s", "team:task", "team:message", "team:broadcast");
+    private static final List<String> TRANSPORT_TOPICS =
+        List.of("team:%s", "team:task", "team:message", "team:broadcast");
 
-  private final TeamAgent host;
-  private final TeamBackend teamBackend;
-  private final TeamMessageManager messageManager;
-  private final Consumer<String> leaderInputSink;
-  private final List<String> subscribedTopics = new ArrayList<>();
+    private final TeamAgent host;
+    private final TeamBackend teamBackend;
+    private final TeamMessageManager messageManager;
+    private final Consumer<String> leaderInputSink;
 
-  /** Auto-generated for codecheck compliance. */
-  public CoordinationManager(
-      TeamBackend teamBackend,
-      TeamMessageManager messageManager,
-      Consumer<String> leaderInputSink) {
-    this(null, teamBackend, messageManager, leaderInputSink);
-  }
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
+    private final List<String> subscribedTopics = new ArrayList<>();
 
-  /** Auto-generated for codecheck compliance. */
-  public CoordinationManager(
-      TeamAgent host,
-      TeamBackend teamBackend,
-      TeamMessageManager messageManager,
-      Consumer<String> leaderInputSink) {
-    this.host = host;
-    this.teamBackend = teamBackend;
-    this.messageManager = messageManager;
-    this.leaderInputSink = leaderInputSink;
-  }
+    /**
+     * CoordinationManager.
+     * 
+     * @param teamBackend teamBackend
+     * @param messageManager messageManager
+     * @param leaderInputSink leaderInputSink
+     * @since 0.1.7
+     */
+    public CoordinationManager(TeamBackend teamBackend, TeamMessageManager messageManager,
+            Consumer<String> leaderInputSink) {
+        this(null, teamBackend, messageManager, leaderInputSink);
+    }
 
-  /** Auto-generated for codecheck compliance. */
-  public List<String> subscribedTopics() {
-    return List.copyOf(subscribedTopics);
-  }
+    /**
+     * CoordinationManager.
+     * 
+     * @param host host
+     * @param teamBackend teamBackend
+     * @param messageManager messageManager
+     * @param leaderInputSink leaderInputSink
+     * @since 0.1.7
+     */
+    public CoordinationManager(TeamAgent host, TeamBackend teamBackend, TeamMessageManager messageManager,
+            Consumer<String> leaderInputSink) {
+        this.host = host;
+        this.teamBackend = teamBackend;
+        this.messageManager = messageManager;
+        this.leaderInputSink = leaderInputSink;
+    }
 
-  /** Auto-generated for codecheck compliance. */
-  public void start() {
-    String who = host != null ? host.resolveLocalMemberName() : "null";
-    Loggers.AGENT.info("CoordinationManager.start() called for member={} role={}",
-        who, host != null && host.getContext() != null ? host.getContext().getRole() : "?");
-    if (host == null) {
-      return;
+    /**
+     * subscribedTopics.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public List<String> subscribedTopics() {
+        return List.copyOf(subscribedTopics);
     }
-    if (host.getContext() != null) {
-      host.getContext().setLifecycle(TeamLifecycle.RUNNING);
-    }
-    if (host.getContext() != null
-        && host.getContext().getRole() == com.openjiuwen.agentteams.schema.team.TeamRole.LEADER) {
-      host.persistLeaderConfigToSession();
-      host.recoverTeam();
-    }
-    teamBackend.updateMemberStatus(host.resolveLocalMemberName(), MemberStatus.READY);
-    if (host.getCoordinatorLoop() != null && !host.getCoordinatorLoop().isRunning()) {
-      host.getCoordinatorLoop().start();
-    }
-    subscribeTransport();
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  public void pause() {
-    if (host == null) {
-      return;
+    /**
+     * start.
+     * 
+     * @since 0.1.7
+     */
+    public void start() {
+        String who = host != null ? host.resolveLocalMemberName() : "null";
+        Loggers.AGENT.info("CoordinationManager.start() called for member={} role={}", who,
+                host != null && host.getContext() != null ? host.getContext().getRole() : "?");
+        if (host == null) {
+            return;
+        }
+        if (host.getContext() != null) {
+            host.getContext().setLifecycle(TeamLifecycle.RUNNING);
+        }
+        if (host.getContext() != null
+                && host.getContext().getRole() == com.openjiuwen.agentteams.schema.team.TeamRole.LEADER) {
+            host.persistLeaderConfigToSession();
+            host.recoverTeam();
+        }
+        teamBackend.updateMemberStatus(host.resolveLocalMemberName(), MemberStatus.READY);
+        if (host.getCoordinatorLoop() != null && !host.getCoordinatorLoop().isRunning()) {
+            host.getCoordinatorLoop().start();
+        }
+        subscribeTransport();
     }
-    host.persistAllocatorState();
-    publishTeamStandby();
-    unsubscribeTransport();
-    if (host.getCoordinatorLoop() != null) {
-      host.getCoordinatorLoop().stop();
-    }
-    if (host.getStreamController() != null) {
-      host.getStreamController().closeStream();
-    }
-    if (host.getContext() != null) {
-      host.getContext().setLifecycle(TeamLifecycle.PAUSED);
-    }
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  public void stop() {
-    if (host == null) {
-      return;
+    /**
+     * pause.
+     * 
+     * @since 0.1.7
+     */
+    public void pause() {
+        if (host == null) {
+            return;
+        }
+        host.persistAllocatorState();
+        publishTeamStandby();
+        unsubscribeTransport();
+        if (host.getCoordinatorLoop() != null) {
+            host.getCoordinatorLoop().stop();
+        }
+        if (host.getStreamController() != null) {
+            host.getStreamController().closeStream();
+        }
+        if (host.getContext() != null) {
+            host.getContext().setLifecycle(TeamLifecycle.PAUSED);
+        }
     }
-    host.persistAllocatorState();
-    unsubscribeTransport();
-    if (host.getSpawnManager() != null) {
-      host.getSpawnManager().cancelRecoveryTasks();
-      host.getSpawnManager().shutdownAllHandles();
-    }
-    if (host.getMemoryManager() != null) {
-      host.getMemoryManager().close();
-    }
-    if (host.getCoordinatorLoop() != null) {
-      host.getCoordinatorLoop().stop();
-    }
-    if (host.getStreamController() != null) {
-      host.getStreamController().closeStream();
-    }
-    if (host.getContext() != null) {
-      host.getContext().setLifecycle(TeamLifecycle.COMPLETED);
-    }
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  public void subscribeTransport() {
-    String who = host != null ? host.resolveLocalMemberName() : "null";
-    if (host == null) {
-      Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP host=null for {}", who);
-      return;
+    /**
+     * stop.
+     * 
+     * @since 0.1.7
+     */
+    public void stop() {
+        if (host == null) {
+            return;
+        }
+        host.persistAllocatorState();
+        unsubscribeTransport();
+        if (host.getSpawnManager() != null) {
+            host.getSpawnManager().cancelRecoveryTasks();
+            host.getSpawnManager().shutdownAllHandles();
+        }
+        if (host.getMemoryManager() != null) {
+            host.getMemoryManager().close();
+        }
+        if (host.getCoordinatorLoop() != null) {
+            host.getCoordinatorLoop().stop();
+        }
+        if (host.getStreamController() != null) {
+            host.getStreamController().closeStream();
+        }
+        if (host.getContext() != null) {
+            host.getContext().setLifecycle(TeamLifecycle.COMPLETED);
+        }
     }
-    if (host.getCoordinatorLoop() == null) {
-      Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP coordinatorLoop=null for {}", who);
-      return;
-    }
-    if (teamBackend.getMessager() == null) {
-      Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP messager=null for {}", who);
-      return;
-    }
-    if (!subscribedTopics.isEmpty()) {
-      Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP already subscribed for {}", who);
-      return;
-    }
-    Loggers.AGENT.info("CoordinationManager.subscribeTransport: subscribing for member={}", who);
-    Messager messager = teamBackend.getMessager();
-    messager
-        .registerDirectMessageHandler(
-            message -> {
-              host.getCoordinatorLoop().enqueue(message);
-              return CompletableFuture.completedFuture(null);
-            })
-        .join();
-    for (String topicTemplate : TRANSPORT_TOPICS) {
-      String topic = topicTemplate.formatted(teamBackend.getTeamName());
-      messager.subscribe(topic, this::handleTransportEvent).join();
-      subscribedTopics.add(topic);
-    }
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  public void unsubscribeTransport() {
-    if (teamBackend.getMessager() == null) {
-      subscribedTopics.clear();
-      return;
+    /**
+     * subscribeTransport.
+     * 
+     * @since 0.1.7
+     */
+    public void subscribeTransport() {
+        String who = host != null ? host.resolveLocalMemberName() : "null";
+        if (host == null) {
+            Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP host=null for {}", who);
+            return;
+        }
+        if (host.getCoordinatorLoop() == null) {
+            Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP coordinatorLoop=null for {}", who);
+            return;
+        }
+        if (teamBackend.getMessager() == null) {
+            Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP messager=null for {}", who);
+            return;
+        }
+        if (!subscribedTopics.isEmpty()) {
+            Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP already subscribed for {}", who);
+            return;
+        }
+        Loggers.AGENT.info("CoordinationManager.subscribeTransport: subscribing for member={}", who);
+        Messager messager = teamBackend.getMessager();
+        messager.registerDirectMessageHandler(message -> {
+            host.getCoordinatorLoop().enqueue(message);
+            return CompletableFuture.completedFuture(null);
+        }).join();
+        for (String topicTemplate : TRANSPORT_TOPICS) {
+            String topic = topicTemplate.formatted(teamBackend.getTeamName());
+            messager.subscribe(topic, this::handleTransportEvent).join();
+            subscribedTopics.add(topic);
+        }
     }
-    Messager messager = teamBackend.getMessager();
-    try {
-      messager.unregisterDirectMessageHandler().join();
-    } catch (RuntimeException ignored) {
-      // Python cleanup logs and continues when a transport backend is already gone.
-    }
-    for (String topic : List.copyOf(subscribedTopics)) {
-      try {
-        messager.unsubscribe(topic).join();
-      } catch (RuntimeException ignored) {
-        // Best-effort cleanup.
-      }
-    }
-    subscribedTopics.clear();
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  public void enqueueUserInput(Object inputs) {
-    if (host == null || host.getCoordinatorLoop() == null) {
-      return;
+    /**
+     * unsubscribeTransport.
+     * 
+     * @since 0.1.7
+     */
+    public void unsubscribeTransport() {
+        if (teamBackend.getMessager() == null) {
+            subscribedTopics.clear();
+            return;
+        }
+        Messager messager = teamBackend.getMessager();
+        try {
+            messager.unregisterDirectMessageHandler().join();
+        } catch (RuntimeException ignored) {
+        }
+        for (String topic : List.copyOf(subscribedTopics)) {
+            try {
+                messager.unsubscribe(topic).join();
+            } catch (RuntimeException ignored) {
+                // Best-effort cleanup.
+            }
+        }
+        subscribedTopics.clear();
     }
-    Object query = inputs;
-    if (inputs instanceof Map<?, ?> map) {
-      query = map.containsKey("query") ? map.get("query") : "";
-    }
-    host.getCoordinatorLoop()
-        .enqueue(
-            InnerEventMessage.builder()
-                .eventType(InnerEventType.USER_INPUT)
-                .payload(Map.of("content", query != null ? String.valueOf(query) : ""))
-                .build());
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  public void wakeMailboxIfInterruptCleared() {
-    if (host == null || host.hasPendingInterrupt() || host.getCoordinatorLoop() == null) {
-      return;
+    /**
+     * enqueueUserInput.
+     * 
+     * @param inputs inputs
+     * @since 0.1.7
+     */
+    public void enqueueUserInput(Object inputs) {
+        if (host == null || host.getCoordinatorLoop() == null) {
+            return;
+        }
+        Object query = inputs;
+        if (inputs instanceof Map<?, ?> map) {
+            query = map.containsKey("query") ? map.get("query") : "";
+        }
+        host.getCoordinatorLoop().enqueue(InnerEventMessage.builder().eventType(InnerEventType.USER_INPUT)
+                .payload(Map.of("content", query != null ? String.valueOf(query) : "")).build());
     }
-    host.getCoordinatorLoop()
-        .enqueue(InnerEventMessage.builder().eventType(InnerEventType.POLL_MAILBOX).build());
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  public UserInputHandoff handoffUserInput(String query, String leaderMemberName) {
-    Optional<MentionRoute> mention = Router.parseMention(query);
-    if (mention.isPresent() && teamBackend.hasMember(mention.get().target())) {
-      String target = mention.get().target();
-      String body = mention.get().body();
-      String messageId = new UserInbox(messageManager).direct(target, body).join();
-      return new UserInputHandoff("direct", target, body, messageId);
+    /**
+     * wakeMailboxIfInterruptCleared.
+     * 
+     * @since 0.1.7
+     */
+    public void wakeMailboxIfInterruptCleared() {
+        if (host == null || host.hasPendingInterrupt() || host.getCoordinatorLoop() == null) {
+            return;
+        }
+        host.getCoordinatorLoop().enqueue(InnerEventMessage.builder().eventType(InnerEventType.POLL_MAILBOX).build());
     }
-    UserInbox.deliverToLeader(leaderInputSink, query);
-    return new UserInputHandoff("leader", leaderMemberName, query, null);
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  public String broadcastFromUser(String content) {
-    return new UserInbox(messageManager).broadcast(content).join();
-  }
+    /**
+     * handoffUserInput.
+     * 
+     * @param query query
+     * @param leaderMemberName leaderMemberName
+     * @return the result
+     * @since 0.1.7
+     */
+    public UserInputHandoff handoffUserInput(String query, String leaderMemberName) {
+        Optional<MentionRoute> mention = Router.parseMention(query);
+        if (mention.isPresent() && teamBackend.hasMember(mention.get().target())) {
+            String target = mention.get().target();
+            String body = mention.get().body();
+            String messageId = new UserInbox(messageManager).direct(target, body).join();
+            return new UserInputHandoff("direct", target, body, messageId);
+        }
+        UserInbox.deliverToLeader(leaderInputSink, query);
+        return new UserInputHandoff("leader", leaderMemberName, query, null);
+    }
 
-  /** Auto-generated for codecheck compliance. */
-  public String handoffHumanAgentInput(String content, String to, String sender) {
-    return new HumanAgentInbox(teamBackend, messageManager).send(content, to, sender).join();
-  }
+    /**
+     * broadcastFromUser.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
+     */
+    public String broadcastFromUser(String content) {
+        return new UserInbox(messageManager).broadcast(content).join();
+    }
 
-  private CompletableFuture<Void> handleTransportEvent(EventMessage event) {
-    if (event == null) {
-      return CompletableFuture.completedFuture(null);
+    /**
+     * handoffHumanAgentInput.
+     * 
+     * @param content content
+     * @param to to
+     * @param sender sender
+     * @return the result
+     * @since 0.1.7
+     */
+    public String handoffHumanAgentInput(String content, String to, String sender) {
+        return new HumanAgentInbox(teamBackend, messageManager).send(content, to, sender).join();
     }
-    notifyEventListeners(event);
-    String localMember = host != null ? host.resolveLocalMemberName() : null;
-    String eventType = event.getEventType();
-    // Skip events published by this member (echo suppression).
-    // Since each member now has a unique nodeId (= memberName), this correctly
-    // filters only the member's own events while letting everything else through.
-    if (localMember != null && localMember.equals(event.getSenderId())) {
-      return CompletableFuture.completedFuture(null);
-    }
-    if (host != null && host.getCoordinatorLoop() != null) {
-      // Log all transport events for visibility — previously only logged task_* and
-      // broadcast, but "message" events (from send_message) are critical for leader
-      // to receive analyst reports.
-      Loggers.AGENT.info(
-          "CoordinationManager: enqueuing event type={} senderId={} for member={}",
-          eventType, event.getSenderId(), localMember);
-      host.getCoordinatorLoop().enqueue(event);
-    }
-    return CompletableFuture.completedFuture(null);
-  }
 
-  private void notifyEventListeners(EventMessage event) {
-    if (host == null) {
-      return;
+    /**
+     * handleTransportEvent.
+     * 
+     * @param event event
+     * @return the result
+     * @since 0.1.7
+     */
+    private CompletableFuture<Void> handleTransportEvent(EventMessage event) {
+        if (event == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        notifyEventListeners(event);
+        String localMember = host != null ? host.resolveLocalMemberName() : null;
+        String eventType = event.getEventType();
+        // Skip events published by this member (echo suppression).
+        // Since each member now has a unique nodeId (= memberName), this correctly
+        // filters only the member's own events while letting everything else through.
+        if (localMember != null && localMember.equals(event.getSenderId())) {
+            return CompletableFuture.completedFuture(null);
+        }
+        if (host != null && host.getCoordinatorLoop() != null) {
+            // Log all transport events for visibility — previously only logged task_* and
+            // broadcast, but "message" events (from send_message) are critical for leader
+            // to receive analyst reports.
+            Loggers.AGENT.info("CoordinationManager: enqueuing event type={} senderId={} for member={}", eventType,
+                    event.getSenderId(), localMember);
+            host.getCoordinatorLoop().enqueue(event);
+        }
+        return CompletableFuture.completedFuture(null);
     }
-    for (Object listener : host.eventListeners()) {
-      if (listener instanceof java.util.function.Consumer<?> consumer) {
-        @SuppressWarnings("unchecked")
-        java.util.function.Consumer<EventMessage> eventConsumer =
-            (java.util.function.Consumer<EventMessage>) consumer;
-        eventConsumer.accept(event);
-      }
-    }
-  }
 
-  private void publishTeamStandby() {
-    if (host == null
-        || host.getContext() == null
-        || host.getContext().getRole() != com.openjiuwen.agentteams.schema.team.TeamRole.LEADER) {
-      return;
+    /**
+     * notifyEventListeners.
+     * 
+     * @param event event
+     * @since 0.1.7
+     */
+    private void notifyEventListeners(EventMessage event) {
+        if (host == null) {
+            return;
+        }
+        for (Object listener : host.eventListeners()) {
+            if (listener instanceof java.util.function.Consumer<?> consumer) {
+                @SuppressWarnings("unchecked")
+                java.util.function.Consumer<EventMessage> eventConsumer =
+                    (java.util.function.Consumer<EventMessage>) consumer;
+                eventConsumer.accept(event);
+            }
+        }
     }
-    teamBackend
-        .getMessager()
-        .publish(
-            "team:" + teamBackend.getTeamName(),
-            EventMessage.builder()
-                .eventType("team_standby")
-                .payload(Map.of("team_name", teamBackend.getTeamName()))
-                .build())
-        .join();
-  }
 
-  /**
-   * Public record UserInputHandoff used by the Java parity implementation.
-   *
-   * @since 1.0
-   */
-  public record UserInputHandoff(
-      String route, String target, String deliveredContent, String messageId) {}
+    /**
+     * publishTeamStandby.
+     * 
+     * @since 0.1.7
+     */
+    private void publishTeamStandby() {
+        if (host == null || host.getContext() == null
+                || host.getContext().getRole() != com.openjiuwen.agentteams.schema.team.TeamRole.LEADER) {
+            return;
+        }
+        teamBackend
+                .getMessager().publish("team:" + teamBackend.getTeamName(), EventMessage.builder()
+                        .eventType("team_standby").payload(Map.of("team_name", teamBackend.getTeamName())).build())
+                .join();
+    }
+
+    /**
+     * Public record UserInputHandoff used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record UserInputHandoff(String route, String target, String deliveredContent, String messageId) {
+    }
 }

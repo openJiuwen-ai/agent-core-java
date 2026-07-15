@@ -6,15 +6,16 @@ package com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox;
 
 /**
  * Exception thrown when a sandbox operation fails on the jiuwenbox server.
- *
- * @since 2026-01-01
+ * 
  * @version 1.0
+ * @since 0.1.7
  */
 public class SandboxOperationException extends RuntimeException {
     /**
-     * Constructs a SandboxOperationException with a detail message.
-     *
-     * @param message the detail message
+     * SandboxOperationException.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     public SandboxOperationException(String message) {
         super(message);
@@ -22,9 +23,10 @@ public class SandboxOperationException extends RuntimeException {
 
     /**
      * Constructs a SandboxOperationException with a detail message and cause.
-     *
+     * 
      * @param message the detail message
      * @param cause the underlying cause
+     * @since 0.1.7
      */
     public SandboxOperationException(String message, Throwable cause) {
         super(message, cause);
@@ -32,8 +34,9 @@ public class SandboxOperationException extends RuntimeException {
 
     /**
      * Constructs a SandboxOperationException with a cause.
-     *
+     * 
      * @param cause the underlying cause
+     * @since 0.1.7
      */
     public SandboxOperationException(Throwable cause) {
         super(cause);

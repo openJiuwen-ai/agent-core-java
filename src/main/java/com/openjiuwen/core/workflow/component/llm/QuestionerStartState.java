@@ -9,11 +9,14 @@ package com.openjiuwen.core.workflow.component.llm;
  * <p>
  * Mirrors Python's {@code QuestionerStartState} – a subclass of {@code QuestionerState}
  * fixed to {@link ExecutionStatus#START}. Transitions: can move to INTERACT or END.
+ * 
+ * @since 0.1.7
  */
 public class QuestionerStartState extends QuestionerState {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * QuestionerStartState.
+     * 
+     * @since 0.1.7
      */
     public QuestionerStartState() {
         super();
@@ -22,6 +25,10 @@ public class QuestionerStartState extends QuestionerState {
 
     /**
      * Create from an existing {@link QuestionerState}.
+     * 
+     * @param state state
+     * @return the result
+     * @since 0.1.7
      */
     public static QuestionerStartState fromState(QuestionerState state) {
         QuestionerStartState s = new QuestionerStartState();
@@ -33,10 +40,14 @@ public class QuestionerStartState extends QuestionerState {
         return s;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * handleEvent.
+     * 
+     * @param event event
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public QuestionerState handleEvent(QuestionerEvent event) {
         return switch (event) {
             case USER_INTERACT_EVENT -> QuestionerInteractState.fromState(this);

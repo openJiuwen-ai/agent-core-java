@@ -1,19 +1,20 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
-
-import com.openjiuwen.core.common.exception.BaseError;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class CharChunkerTest {
+import com.openjiuwen.core.common.exception.BaseError;
 
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+class CharChunkerTest {
     @Test
     void fixedSizeChunking() {
         CharChunker chunker = new CharChunker(10, 0);

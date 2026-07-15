@@ -15,21 +15,21 @@ import java.util.function.Function;
  * Stream writer that validates and writes stream data to a StreamEmitter.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.stream.writer.StreamWriter}.
- *
- * @param <S> the schema type
+ * 
+ * @since 0.1.7
  */
 public class StreamWriter<S extends StreamSchema> {
-
     private final StreamEmitter streamEmitter;
     private final Class<S> schemaType;
     private final Function<Map<String, Object>, S> validator;
 
     /**
      * Create a new StreamWriter.
-     *
+     * 
      * @param streamEmitter the emitter to write to
-     * @param schemaType    the schema class
-     * @param validator     function to validate/convert a map to the schema type
+     * @param schemaType the schema class
+     * @param validator function to validate/convert a map to the schema type
+     * @since 0.1.7
      */
     public StreamWriter(StreamEmitter streamEmitter, Class<S> schemaType, Function<Map<String, Object>, S> validator) {
         if (streamEmitter == null) {
@@ -41,19 +41,16 @@ public class StreamWriter<S extends StreamSchema> {
     }
 
     /**
-     * Write stream data. Validates and emits the data.
-     *
-     * @param streamData the data to write (either a schema instance or a map)
+     * write.
+     * 
+     * @param streamData streamData
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void write(Object streamData) {
         if (streamData == null) {
-            throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_WRITE_STREAM_VALIDATION_ERROR,
-                    "stream_type", schemaType.getSimpleName(),
-                    "reason", "stream data is null");
+            throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_WRITE_STREAM_VALIDATION_ERROR, "stream_type",
+                    schemaType.getSimpleName(), "reason", "stream data is null");
         }
 
         S validatedData;
@@ -63,27 +60,26 @@ public class StreamWriter<S extends StreamSchema> {
             } else if (streamData instanceof Map) {
                 validatedData = validator.apply((Map<String, Object>) streamData);
             } else {
-                throw new IllegalArgumentException(
-                        "stream data must be " + schemaType.getSimpleName() + " or Map, got " + streamData.getClass().getSimpleName());
+                throw new IllegalArgumentException("stream data must be " + schemaType.getSimpleName() + " or Map, got "
+                        + streamData.getClass().getSimpleName());
             }
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_WRITE_STREAM_VALIDATION_ERROR,
-                    "stream_type", schemaType.getSimpleName(),
-                    "reason", e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_WRITE_STREAM_VALIDATION_ERROR, "stream_type",
+                    schemaType.getSimpleName(), "reason", e.getMessage());
         }
 
         try {
             doWrite(validatedData);
         } catch (Exception error) {
-            throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_WRITE_STREAM_ERROR,
-                    "reason", error.getMessage());
+            throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_WRITE_STREAM_ERROR, "reason", error.getMessage());
         }
     }
 
     /**
      * Perform the actual write. Can be overridden by subclasses.
-     *
+     * 
      * @param validatedData the validated data
+     * @since 0.1.7
      */
     protected void doWrite(S validatedData) {
         if (streamEmitter != null && !streamEmitter.isClosed()) {

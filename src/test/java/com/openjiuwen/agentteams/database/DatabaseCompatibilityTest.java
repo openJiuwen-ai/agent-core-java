@@ -1,24 +1,25 @@
+
 package com.openjiuwen.agentteams.database;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.agentteams.spawn.SpawnContext;
 import com.openjiuwen.agentteams.tools.database.DatabaseConfig;
 import com.openjiuwen.agentteams.tools.database.DatabaseType;
 import com.openjiuwen.agentteams.tools.database.GraphMutationResult;
 import com.openjiuwen.agentteams.tools.database.RuntimeCleanupResult;
-import com.openjiuwen.agentteams.tools.database.TeamDatabase;
 import com.openjiuwen.agentteams.tools.database.TaskDependencyRecord;
 import com.openjiuwen.agentteams.tools.database.TaskMutationResult;
+import com.openjiuwen.agentteams.tools.database.TeamDatabase;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.util.List;
 import java.nio.file.Path;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import java.util.List;
 
 class DatabaseCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
@@ -32,34 +33,24 @@ class DatabaseCompatibilityTest {
 
     @Test
     void databaseShouldNormalizePostgresqlAndMysqlConnectionStringsButRejectFallbackInitialization() {
-        TeamDatabase postgres = new TeamDatabase(DatabaseConfig.builder()
-                .dbType(DatabaseType.POSTGRESQL)
-                .connectionString("postgresql://user:pass@localhost:5432/team_db")
-                .build());
-        TeamDatabase mysql = new TeamDatabase(DatabaseConfig.builder()
-                .dbType(DatabaseType.MYSQL)
-                .connectionString("mysql://user:pass@localhost:3306/team_db")
-                .build());
+        TeamDatabase postgres = new TeamDatabase(DatabaseConfig.builder().dbType(DatabaseType.POSTGRESQL)
+                .connectionString("postgresql://user:pass@localhost:5432/team_db").build());
+        TeamDatabase mysql = new TeamDatabase(DatabaseConfig.builder().dbType(DatabaseType.MYSQL)
+                .connectionString("mysql://user:pass@localhost:3306/team_db").build());
 
         assertThat(postgres.normalizedJdbcConnectionString())
                 .isEqualTo("jdbc:postgresql://user:pass@localhost:5432/team_db");
-        assertThat(mysql.normalizedJdbcConnectionString())
-                .isEqualTo("jdbc:mysql://user:pass@localhost:3306/team_db");
-        assertThatThrownBy(postgres::initialize)
-                .isInstanceOf(UnsupportedOperationException.class)
+        assertThat(mysql.normalizedJdbcConnectionString()).isEqualTo("jdbc:mysql://user:pass@localhost:3306/team_db");
+        assertThatThrownBy(postgres::initialize).isInstanceOf(UnsupportedOperationException.class)
                 .hasMessageContaining("POSTGRESQL team database backend requires a JDBC DAO implementation");
-        assertThatThrownBy(() -> new TeamDatabase(DatabaseConfig.builder()
-                .dbType(DatabaseType.POSTGRESQL)
-                .connectionString("postgresql+asyncpg://user:pass@localhost/db")
-                .build()).normalizedJdbcConnectionString())
-                .isInstanceOf(IllegalArgumentException.class)
+        assertThatThrownBy(() -> new TeamDatabase(DatabaseConfig.builder().dbType(DatabaseType.POSTGRESQL)
+                .connectionString("postgresql+asyncpg://user:pass@localhost/db").build())
+                .normalizedJdbcConnectionString()).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("PostgreSQL connectionString");
-        assertThatThrownBy(() -> new TeamDatabase(DatabaseConfig.builder()
-                .dbType(DatabaseType.MYSQL)
-                .connectionString("")
-                .build()).normalizedJdbcConnectionString())
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("MySQL requires");
+        assertThatThrownBy(
+                () -> new TeamDatabase(DatabaseConfig.builder().dbType(DatabaseType.MYSQL).connectionString("").build())
+                        .normalizedJdbcConnectionString())
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("MySQL requires");
     }
 
     @Test
@@ -68,7 +59,8 @@ class DatabaseCompatibilityTest {
         db.initialize();
 
         assertThat(db.team.createTeam("team-a", "Team A", "leader")).isTrue();
-        assertThat(db.member.createMember("leader", "team-a", "Leader", "{}", "busy", null, null, "build", null, null)).isTrue();
+        assertThat(db.member.createMember("leader", "team-a", "Leader", "{}", "busy", null, null, "build", null, null))
+                .isTrue();
         assertThat(db.message.createMessage("msg-1", "team-a", "leader", "hello", "member1", false, false)).isTrue();
         assertThat(db.task.createTask("dep-1", "team-a", "Dep", "Dependency", "pending")).isTrue();
         assertThat(db.task.createTask("task-1", "team-a", "Task", "Content", "pending")).isTrue();
@@ -87,18 +79,8 @@ class DatabaseCompatibilityTest {
         TeamDatabase db = new TeamDatabase(DatabaseConfig.builder().build());
         db.initialize();
         db.team.createTeam("team-status", "Team Status", "leader");
-        assertThat(db.member.createMember(
-                "member-1",
-                "team-status",
-                "Member One",
-                "{}",
-                "ready",
-                null,
-                "idle",
-                "build",
-                null,
-                null
-        )).isTrue();
+        assertThat(db.member.createMember("member-1", "team-status", "Member One", "{}", "ready", null, "idle", "build",
+                null, null)).isTrue();
 
         assertThat(db.member.updateMemberStatus("member-1", "team-status", "busy")).isTrue();
         assertThat(db.member.updateMemberExecutionStatus("member-1", "team-status", "running")).isTrue();
@@ -124,10 +106,8 @@ class DatabaseCompatibilityTest {
         assertThat(first.isOk()).isTrue();
         assertThat(db.task.getDependencies("A")).containsExactly("B");
 
-        GraphMutationResult cycle = db.task.mutateDependencyGraph("team-graph", List.of(
-                List.of("B", "C"),
-                List.of("C", "A")
-        ));
+        GraphMutationResult cycle =
+            db.task.mutateDependencyGraph("team-graph", List.of(List.of("B", "C"), List.of("C", "A")));
         assertThat(cycle.isOk()).isFalse();
         assertThat(cycle.getReason()).contains("Circular dependency");
         assertThat(db.task.getDependencies("B")).isEmpty();
@@ -151,16 +131,13 @@ class DatabaseCompatibilityTest {
 
         assertThat(db.task.getUnresolvedDependenciesCount("blocked")).isEqualTo(1);
         assertThat(db.task.getUnresolvedDependenciesCount("ready")).isZero();
-        assertThat(db.task.getTasksDependingOn("dep-done"))
-                .extracting(task -> task.getTaskId())
+        assertThat(db.task.getTasksDependingOn("dep-done")).extracting(task -> task.getTaskId())
                 .containsExactlyInAnyOrder("blocked", "ready");
 
         List<com.openjiuwen.agentteams.tools.database.TaskRecord> refreshed =
-                db.task.verifyAndFixTaskConsistency("team-deps");
+            db.task.verifyAndFixTaskConsistency("team-deps");
 
-        assertThat(refreshed)
-                .extracting(task -> task.getTaskId())
-                .containsExactly("ready");
+        assertThat(refreshed).extracting(task -> task.getTaskId()).containsExactly("ready");
         assertThat(db.task.getTask("ready").getStatus()).isEqualTo("pending");
         assertThat(db.task.getTask("blocked").getStatus()).isEqualTo("blocked");
         db.close();
@@ -179,9 +156,7 @@ class DatabaseCompatibilityTest {
 
         assertThat(completed).isNotNull();
         assertThat(completed.getTask().getTaskId()).isEqualTo("A");
-        assertThat(completed.getUnblockedTasks())
-                .extracting(task -> task.getTaskId())
-                .containsExactly("B");
+        assertThat(completed.getUnblockedTasks()).extracting(task -> task.getTaskId()).containsExactly("B");
         assertThat(db.task.getTask("B").getStatus()).isEqualTo("pending");
 
         db.task.createTask("C", "team-mutation", "C", "content", "pending");
@@ -191,9 +166,7 @@ class DatabaseCompatibilityTest {
 
         assertThat(cancelled).isNotNull();
         assertThat(cancelled.getTask().getTaskId()).isEqualTo("C");
-        assertThat(cancelled.getUnblockedTasks())
-                .extracting(task -> task.getTaskId())
-                .containsExactly("D");
+        assertThat(cancelled.getUnblockedTasks()).extracting(task -> task.getTaskId()).containsExactly("D");
         assertThat(db.task.getTask("D").getStatus()).isEqualTo("pending");
         db.close();
     }
@@ -207,35 +180,20 @@ class DatabaseCompatibilityTest {
         db.task.createTask("taskB", "team-bidir", "B", "content", "pending");
         db.task.addDependency("taskB", "taskA");
 
-        boolean created = db.task.addTaskWithBidirectionalDependencies(
-                "taskM",
-                "team-bidir",
-                "Middle",
-                "content",
-                "blocked",
-                List.of("taskA"),
-                List.of("taskB")
-        );
+        boolean created = db.task.addTaskWithBidirectionalDependencies("taskM", "team-bidir", "Middle", "content",
+                "blocked", List.of("taskA"), List.of("taskB"));
 
         assertThat(created).isTrue();
         assertThat(db.task.getTask("taskM").getStatus()).isEqualTo("pending");
         assertThat(db.task.getTaskDependencies("taskM"))
                 .extracting(TaskDependencyRecord::getDependsOnTaskId, TaskDependencyRecord::isResolved)
                 .containsExactly(org.assertj.core.groups.Tuple.tuple("taskA", true));
-        assertThat(db.task.getTaskDependencies("taskB"))
-                .extracting(TaskDependencyRecord::getDependsOnTaskId)
+        assertThat(db.task.getTaskDependencies("taskB")).extracting(TaskDependencyRecord::getDependsOnTaskId)
                 .containsExactlyInAnyOrder("taskA", "taskM");
         assertThat(db.task.getTask("taskB").getStatus()).isEqualTo("blocked");
 
-        boolean cycle = db.task.addTaskWithBidirectionalDependencies(
-                "taskC",
-                "team-bidir",
-                "Cycle",
-                "content",
-                "blocked",
-                List.of("taskB"),
-                List.of("taskA")
-        );
+        boolean cycle = db.task.addTaskWithBidirectionalDependencies("taskC", "team-bidir", "Cycle", "content",
+                "blocked", List.of("taskB"), List.of("taskA"));
 
         assertThat(cycle).isFalse();
         assertThat(db.task.getTask("taskC")).isNull();
@@ -265,8 +223,10 @@ class DatabaseCompatibilityTest {
         TeamDatabase db = new TeamDatabase(DatabaseConfig.builder().build());
         db.initialize();
         db.team.createTeam("team-dao-gap", "Team DAO Gap", "leader");
-        db.member.createMember("member-a", "team-dao-gap", "Member A", "{}", "ready", null, "idle", "build", null, null);
-        db.member.createMember("member-b", "team-dao-gap", "Member B", "{}", "busy", null, "running", "build", null, null);
+        db.member.createMember("member-a", "team-dao-gap", "Member A", "{}", "ready", null, "idle", "build", null,
+                null);
+        db.member.createMember("member-b", "team-dao-gap", "Member B", "{}", "busy", null, "running", "build", null,
+                null);
         db.message.createMessage("direct-1", "team-dao-gap", "leader", "direct", "member-a", false, false);
         db.message.createMessage("broadcast-1", "team-dao-gap", "leader", "broadcast", null, true, false);
         db.task.createTask("assigned", "team-dao-gap", "Assigned", "content", "pending");
@@ -282,8 +242,7 @@ class DatabaseCompatibilityTest {
         assertThat(db.message.getTeamMessages("team-dao-gap", true)).extracting(message -> message.getMessageId())
                 .containsExactly("broadcast-1");
         assertThat(db.task.getTasksByAssignee("team-dao-gap", "member-a", "claimed"))
-                .extracting(task -> task.getTaskId())
-                .containsExactly("assigned");
+                .extracting(task -> task.getTaskId()).containsExactly("assigned");
         assertThat(db.task.getTasksByAssignee("team-dao-gap", "member-a", "pending")).isEmpty();
         db.close();
     }
@@ -319,8 +278,7 @@ class DatabaseCompatibilityTest {
             List<String> dropped = db.dropCurSessionTables();
 
             assertThat(dropped).containsExactlyElementsOf(TeamDatabase.sessionTableNames("java-session-recreate"));
-            assertThatThrownBy(() -> db.task.getTask("task-1"))
-                    .isInstanceOf(IllegalStateException.class)
+            assertThatThrownBy(() -> db.task.getTask("task-1")).isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("Session tables are not created");
 
             assertThat(db.createCurSessionTables()).isTrue();
@@ -387,7 +345,8 @@ class DatabaseCompatibilityTest {
 
             assertThat(dropped).containsExactlyElementsOf(TeamDatabase.sessionTableNames("java-drop-target"));
             assertThat(db.activeDynamicTables()).containsAll(TeamDatabase.sessionTableNames("java-drop-other"));
-            assertThat(db.activeDynamicTables()).doesNotContainAnyElementsOf(TeamDatabase.sessionTableNames("java-drop-target"));
+            assertThat(db.activeDynamicTables())
+                    .doesNotContainAnyElementsOf(TeamDatabase.sessionTableNames("java-drop-target"));
         } finally {
             db.close();
             SpawnContext.resetSessionId(token);
@@ -411,8 +370,7 @@ class DatabaseCompatibilityTest {
 
             RuntimeCleanupResult result = db.cleanupAllRuntimeState();
 
-            assertThat(result.getDeletedTables())
-                    .containsAll(TeamDatabase.sessionTableNames("java-cleanup-a"))
+            assertThat(result.getDeletedTables()).containsAll(TeamDatabase.sessionTableNames("java-cleanup-a"))
                     .containsAll(TeamDatabase.sessionTableNames("java-cleanup-b"));
             assertThat(result.getClearedTables()).containsExactly("team_info", "team_member");
             assertThat(db.activeDynamicTables()).isEmpty();
@@ -427,16 +385,15 @@ class DatabaseCompatibilityTest {
     @Test
     void sqliteDatabaseShouldPersistStaticAndDynamicSessionRowsAcrossInstances() {
         Path dbPath = tempDir.resolve("team-persistent.db");
-        DatabaseConfig config = DatabaseConfig.builder()
-                .dbType(DatabaseType.SQLITE)
-                .connectionString(dbPath.toString())
-                .build();
+        DatabaseConfig config =
+            DatabaseConfig.builder().dbType(DatabaseType.SQLITE).connectionString(dbPath.toString()).build();
         SpawnContext.SessionToken token = SpawnContext.setSessionId("sqlite-session-main");
         try {
             TeamDatabase first = new TeamDatabase(config);
             first.initialize();
             first.team.createTeam("team-sqlite", "Team SQLite", "leader", "desc", "prompt");
-            first.member.createMember("leader", "team-sqlite", "Leader", "{}", "ready", "leader desc", "idle", "build", "prompt", null);
+            first.member.createMember("leader", "team-sqlite", "Leader", "{}", "ready", "leader desc", "idle", "build",
+                    "prompt", null);
             first.task.createTask("dep", "team-sqlite", "Dep", "content", "claimed");
             first.task.createTask("task", "team-sqlite", "Task", "content", "blocked");
             first.task.addDependency("task", "dep");

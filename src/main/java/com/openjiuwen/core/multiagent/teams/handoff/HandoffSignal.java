@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.multiagent.teams.handoff;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.session.Session;
@@ -15,21 +16,28 @@ import java.util.Map;
 
 /**
  * Public record HandoffSignal used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public record HandoffSignal(String target, String message, String reason) {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * HANDOFF_TARGET_KEY.
+     * 
+     * @since 0.1.7
      */
     public static final String HANDOFF_TARGET_KEY = "__handoff_to__";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * HANDOFF_MESSAGE_KEY.
+     * 
+     * @since 0.1.7
      */
     public static final String HANDOFF_MESSAGE_KEY = "__handoff_message__";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * HANDOFF_REASON_KEY.
+     * 
+     * @since 0.1.7
      */
     public static final String HANDOFF_REASON_KEY = "__handoff_reason__";
 
@@ -37,14 +45,23 @@ public record HandoffSignal(String target, String message, String reason) {
     private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extract.
+     * 
+     * @param result result
+     * @return the result
+     * @since 0.1.7
      */
     public static HandoffSignal extract(Object result) {
         return extract(result, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extract.
+     * 
+     * @param result result
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public static HandoffSignal extract(Object result, Session session) {
         Map<String, Object> payload = findPayload(result);
@@ -64,6 +81,13 @@ public record HandoffSignal(String target, String message, String reason) {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * findPayload.
+     * 
+     * @param result result
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> findPayload(Object result) {
         if (!(result instanceof Map<?, ?> raw)) {
             return Map.of();
@@ -80,18 +104,14 @@ public record HandoffSignal(String target, String message, String reason) {
         return Map.of();
     }
 
-    /**
-     * Recover a handoff payload from the agent session's message history.
-     *
-     * <p>When the LLM emits a {@code transfer_to_xxx} tool call and then
-     * produces a follow-up text message, the final result dict no longer
-     * carries {@link #HANDOFF_TARGET_KEY}. Python's
-     * {@code _find_handoff_from_session} walks the session's tool messages
-     * to recover the signal; this method mirrors that fallback so the
-     * handoff chain continues into the target agent instead of terminating
-     * on the triage agent's acknowledgement text.</p>
-     */
     @SuppressWarnings("unchecked")
+    /**
+     * findHandoffFromSession.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> findHandoffFromSession(Session session) {
         if (session == null) {
             return Collections.emptyMap();
@@ -130,14 +150,11 @@ public record HandoffSignal(String target, String message, String reason) {
     }
 
     /**
-     * Parse a tool message's content into a handoff payload map.
-     *
-     * <p>Java tools store their result via {@code String.valueOf(result)},
-     * producing a Java map literal such as
-     * {@code {__handoff_to__=billing_support, __handoff_message__=, ...}}.
-     * Python and some Java tools emit JSON instead. This helper accepts both
-     * shapes so parity holds regardless of which tool implementation produced
-     * the message.</p>
+     * parseHandoffContent.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
     private static Map<String, Object> parseHandoffContent(Object content) {
         if (content instanceof Map<?, ?> map && map.containsKey(HANDOFF_TARGET_KEY)) {
@@ -158,6 +175,13 @@ public record HandoffSignal(String target, String message, String reason) {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * toStrMap.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> toStrMap(Map<?, ?> map) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : map.entrySet()) {
@@ -166,13 +190,20 @@ public record HandoffSignal(String target, String message, String reason) {
         return result;
     }
 
+    /**
+     * tryParseJson.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> tryParseJson(String text) {
         try {
             Object parsed = JSON_MAPPER.readValue(text, Object.class);
             if (parsed instanceof Map<?, ?> map) {
                 return toStrMap(map);
             }
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             // Not JSON; fall through to Java map literal parsing.
         }
         return null;
@@ -181,6 +212,10 @@ public record HandoffSignal(String target, String message, String reason) {
     /**
      * Parse Java's {@code Map.toString()} output such as
      * {@code {__handoff_to__=billing_support, __handoff_reason__=用户质疑...}}.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     private static Map<String, Object> tryParseJavaMapString(String text) {
         String trimmed = text.trim();
@@ -244,6 +279,14 @@ public record HandoffSignal(String target, String message, String reason) {
         return result;
     }
 
+    /**
+     * putEntry.
+     * 
+     * @param result result
+     * @param rawKey rawKey
+     * @param rawValue rawValue
+     * @since 0.1.7
+     */
     private static void putEntry(Map<String, Object> result, String rawKey, String rawValue) {
         String key = rawKey.strip();
         String value = rawValue.strip();
@@ -257,6 +300,13 @@ public record HandoffSignal(String target, String message, String reason) {
         }
     }
 
+    /**
+     * normalize.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalize(Object value) {
         if (!(value instanceof String text) || text.isBlank()) {
             return null;

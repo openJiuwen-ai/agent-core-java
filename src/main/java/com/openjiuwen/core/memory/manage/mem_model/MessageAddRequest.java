@@ -13,6 +13,8 @@ import java.time.OffsetDateTime;
 
 /**
  * Request object for adding a message.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -25,5 +27,10 @@ public class MessageAddRequest {
     private String role;
     private String sessionId;
     @Builder.Default
+    /**
+     * OffsetDateTime.now.
+     * 
+     * @since 0.1.7
+     */
     private OffsetDateTime timestamp = OffsetDateTime.now();
 }

@@ -11,16 +11,27 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Map;
 
 /**
- * Auto-generated for codecheck compliance.
+ * BrowserJsonUtils.
+ * 
+ * @since 0.1.7
  */
 public final class BrowserJsonUtils {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * BrowserJsonUtils.
+     * 
+     * @since 0.1.7
+     */
     private BrowserJsonUtils() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extractJsonObject.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> extractJsonObject(String text) {
         if (text == null || text.isBlank()) {
@@ -36,7 +47,8 @@ public final class BrowserJsonUtils {
             normalized = normalized.substring(0, normalized.length() - 3).trim();
         }
         try {
-            return MAPPER.readValue(normalized, new TypeReference<Map<String, Object>>() {});
+            return MAPPER.readValue(normalized, new TypeReference<Map<String, Object>>() {
+            });
         } catch (JsonProcessingException ex) {
             return Map.of();
         }

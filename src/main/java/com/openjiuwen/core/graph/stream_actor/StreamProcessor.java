@@ -30,22 +30,44 @@ import java.util.function.Consumer;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.stream_actor.base.StreamProcessor}.
  * Uses BlockingQueue instead of asyncio.Queue, and Iterator instead of AsyncGenerator.
+ * 
+ * @since 0.1.7
  */
 public class StreamProcessor {
-
     private static final LoggerProtocol logger = Loggers.GRAPH;
 
-    /** Sentinel object to mark end of stream */
+    /**
+     * END_SENTINEL.
+     * 
+     * @since 0.1.7
+     */
     public static final Object END_SENTINEL = new Object();
 
     private final String nodeId;
+
+    /**
+     * LinkedBlockingQueue<>.
+     * 
+     * @since 0.1.7
+     */
     private final BlockingQueue<StreamPayload> queue = new LinkedBlockingQueue<>();
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, List<BlockingQueue<Object>>> processorQueues = new HashMap<>();
     private final Set<String> sources;
     private final long timeoutSeconds;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * StreamProcessor.
+     * 
+     * @param nodeId nodeId
+     * @param sources sources
+     * @param streamGeneratorTimeoutSeconds streamGeneratorTimeoutSeconds
+     * @since 0.1.7
      */
     public StreamProcessor(String nodeId, List<String> sources, long streamGeneratorTimeoutSeconds) {
         this.nodeId = nodeId;
@@ -56,8 +78,9 @@ public class StreamProcessor {
     /**
      * Main processing loop. Reads from the queue and dispatches to processor queues.
      * Should be run on a virtual thread.
-     *
+     * 
      * @param ability the component ability being processed
+     * @since 0.1.7
      */
     public void run(ComponentAbility ability) {
         Set<String> handleMap = new HashSet<>();
@@ -116,25 +139,23 @@ public class StreamProcessor {
 
     /**
      * Receive a stream message for processing.
-     *
+     * 
      * @param payload the stream payload
+     * @since 0.1.7
      */
     public void receive(StreamPayload payload) {
         queue.offer(payload);
     }
 
     /**
-     * Create a generator (iterator) map based on the schema.
-     * Each leaf path in the schema that references a stream variable gets a BlockingQueue-backed iterator.
-     *
-     * @param schema         the input schema map
-     * @param streamCallback optional callback for each consumed chunk
-     * @return a map of iterators for stream consumption
+     * generator.
+     * 
+     * @param schema schema
+     * @param streamCallback streamCallback
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> generator(Map<String, Object> schema, Consumer<Object> streamCallback) {
         if (schema == null || schema.isEmpty()) {
             return Collections.emptyMap();
@@ -153,9 +174,8 @@ public class StreamProcessor {
                 continue;
             }
 
-            inputs.add(new AbstractMap.SimpleEntry<>(
-                    keyPath,
-                    createIterator(pathStr, (String) refPath, streamCallback)));
+            inputs.add(
+                    new AbstractMap.SimpleEntry<>(keyPath, createIterator(pathStr, (String) refPath, streamCallback)));
         }
 
         return DictUtils.rebuildDict(inputs);
@@ -163,6 +183,12 @@ public class StreamProcessor {
 
     /**
      * Create a blocking iterator backed by a queue for a specific schema path.
+     * 
+     * @param kPath kPath
+     * @param rPath rPath
+     * @param streamCallback streamCallback
+     * @return the result
+     * @since 0.1.7
      */
     private Iterator<Object> createIterator(String kPath, String rPath, Consumer<Object> streamCallback) {
         BlockingQueue<Object> iterQueue = new LinkedBlockingQueue<>();
@@ -171,11 +197,7 @@ public class StreamProcessor {
         return new Iterator<>() {
             private Object next = null;
             private boolean done = false;
-
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public boolean hasNext() {
                 if (done) {
                     return false;
@@ -192,8 +214,7 @@ public class StreamProcessor {
                     }
                     if (msg == null) {
                         // Timeout
-                        logger.warning("Receive chunk timeout {}s of [{}.{}]",
-                                timeoutSeconds, nodeId, kPath);
+                        logger.warning("Receive chunk timeout {}s of [{}.{}]", timeoutSeconds, nodeId, kPath);
                         done = true;
                         return false;
                     }
@@ -213,9 +234,6 @@ public class StreamProcessor {
             }
 
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Object next() {
                 if (next == null && !hasNext()) {
                     throw new java.util.NoSuchElementException();
@@ -236,6 +254,13 @@ public class StreamProcessor {
         return path.equals(sourceId) || path.startsWith(sourceId + ".");
     }
 
+    /**
+     * getUniqueSourceKey.
+     * 
+     * @param payload payload
+     * @return the result
+     * @since 0.1.7
+     */
     private static String getUniqueSourceKey(StreamPayload payload) {
         String sourceId = getProducerId(payload.getMessage());
         String ability = payload.getSourceAbility().name();

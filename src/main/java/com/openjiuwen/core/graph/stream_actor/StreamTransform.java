@@ -13,20 +13,19 @@ import java.util.function.Function;
  * Utility class for transforming stream data using schemas or transformers.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.stream_actor.manager.StreamTransform}.
+ * 
+ * @since 0.1.7
  */
 public class StreamTransform {
-
     /**
-     * Transform a message using a user-defined transformer function.
-     *
-     * @param originMessage the original message
-     * @param transformer   the transformer function
-     * @return the transformed message
+     * getByDefinedTransformer.
+     * 
+     * @param originMessage originMessage
+     * @param transformer transformer
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object getByDefinedTransformer(Object originMessage, Object transformer) {
         if (transformer instanceof Function) {
             return ((Function<Object, Object>) transformer).apply(originMessage);
@@ -35,16 +34,14 @@ public class StreamTransform {
     }
 
     /**
-     * Transform a message using a default schema-based approach.
-     *
-     * @param originMessage     the original message (Map)
-     * @param streamInputsSchema the schema used to extract fields
-     * @return the transformed message
+     * getByDefaultTransformer.
+     * 
+     * @param originMessage originMessage
+     * @param streamInputsSchema streamInputsSchema
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object getByDefaultTransformer(Object originMessage, Object streamInputsSchema) {
         if (originMessage instanceof Map && streamInputsSchema != null) {
             return SessionUtils.getBySchema(streamInputsSchema, (Map<String, Object>) originMessage);

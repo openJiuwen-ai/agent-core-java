@@ -12,20 +12,22 @@ import java.util.Map;
 
 /**
  * Public record Allocation used by the Java parity implementation.
- *
- * @since 1.0
+ * @since 0.1.7
  */
 public record Allocation(ModelPoolEntry entry, int groupIndex) {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * toTeamModelConfig.
+     * @return the result
+     * @since 0.1.7
      */
     public TeamModelConfig toTeamModelConfig() {
         return entry.toTeamModelConfig();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toDbRef.
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toDbRef() {
         Map<String, Object> payload = new LinkedHashMap<>();

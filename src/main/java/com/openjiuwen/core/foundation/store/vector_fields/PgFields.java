@@ -8,14 +8,24 @@ import com.openjiuwen.spi.store.vector.CollectionSchema;
 
 /**
  * PGVector-compatible field helpers.
+ * 
+ * @since 0.1.7
  */
 public final class PgFields {
-
+    /**
+     * PgFields.
+     * 
+     * @since 0.1.7
+     */
     private PgFields() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * defaultSchema.
+     * 
+     * @param dimension dimension
+     * @return the result
+     * @since 0.1.7
      */
     public static CollectionSchema defaultSchema(int dimension) {
         return BaseVectorFields.defaultSchema("embedding", dimension);

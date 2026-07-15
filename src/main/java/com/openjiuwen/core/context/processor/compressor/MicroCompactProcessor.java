@@ -19,10 +19,15 @@ import java.util.Map;
 
 /**
  * Clear stale tool results while keeping recent ones per tool.
+ * 
+ * @since 0.1.7
  */
 public class MicroCompactProcessor extends ContextProcessor {
     /**
-     * Auto-generated for codecheck compliance.
+     * MicroCompactProcessor.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public MicroCompactProcessor(MicroCompactProcessorConfig config) {
         super(config);
@@ -30,12 +35,14 @@ public class MicroCompactProcessor extends ContextProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * triggerAddMessages.
+     * 
+     * @param context context
+     * @param messagesToAdd messagesToAdd
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
         List<BaseMessage> allMessages = new ArrayList<>(context.getMessages());
         if (messagesToAdd != null) {
@@ -48,12 +55,14 @@ public class MicroCompactProcessor extends ContextProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * onAddMessages.
+     * 
+     * @param context context
+     * @param messagesToAdd messagesToAdd
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
         MicroCompactProcessorConfig config = getConfig();
         List<BaseMessage> allMessages = new ArrayList<>(context.getMessages());
@@ -91,49 +100,60 @@ public class MicroCompactProcessor extends ContextProcessor {
 
         context.setMessages(updatedMessages);
         return ProcessResult.ofMessages(
-                ContextEvent.builder()
-                        .eventType(processorType())
-                        .messagesToModify(modifiedIndices)
-                        .build(),
-                List.of());
+                ContextEvent.builder().eventType(processorType()).messagesToModify(modifiedIndices).build(), List.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void loadState(Map<String, Object> state) {
         // stateless
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * saveState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> saveState() {
         return Map.of();
     }
 
+    /**
+     * hasAnyToolExceedThreshold.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean hasAnyToolExceedThreshold(List<BaseMessage> messages) {
         MicroCompactProcessorConfig config = getConfig();
         Map<String, List<Integer>> grouped = collectCompactableIndicesByTool(messages);
-        return grouped.values().stream().anyMatch(indices ->
-                indices.size() > config.getTriggerThreshold() + config.getKeepRecentPerTool());
+        return grouped.values().stream()
+                .anyMatch(indices -> indices.size() > config.getTriggerThreshold() + config.getKeepRecentPerTool());
     }
 
+    /**
+     * collectFlatIndicesForCompact.
+     * 
+     * @param messages messages
+     * @param isForce isForce
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Integer> collectFlatIndicesForCompact(List<BaseMessage> messages, boolean isForce) {
         MicroCompactProcessorConfig config = getConfig();
         Map<String, List<Integer>> grouped = collectCompactableIndicesByTool(messages);
         List<Integer> result = new ArrayList<>();
         for (List<Integer> indices : grouped.values()) {
-            int threshold = isForce ? config.getKeepRecentPerTool()
-                    : config.getTriggerThreshold() + config.getKeepRecentPerTool();
+            int threshold =
+                isForce ? config.getKeepRecentPerTool() : config.getTriggerThreshold() + config.getKeepRecentPerTool();
             if (indices.size() > threshold) {
                 if (config.getKeepRecentPerTool() > 0) {
                     result.addAll(indices.subList(0, indices.size() - config.getKeepRecentPerTool()));
@@ -145,6 +165,13 @@ public class MicroCompactProcessor extends ContextProcessor {
         return result;
     }
 
+    /**
+     * collectCompactableIndicesByTool.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, List<Integer>> collectCompactableIndicesByTool(List<BaseMessage> messages) {
         MicroCompactProcessorConfig config = getConfig();
         Map<String, List<Integer>> result = new LinkedHashMap<>();
@@ -164,6 +191,13 @@ public class MicroCompactProcessor extends ContextProcessor {
         return result;
     }
 
+    /**
+     * apiRound.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean apiRound(List<BaseMessage> messages) {
         if (messages == null || messages.isEmpty()) {
             return false;

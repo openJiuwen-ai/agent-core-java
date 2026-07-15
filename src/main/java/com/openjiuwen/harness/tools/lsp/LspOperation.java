@@ -6,8 +6,8 @@ package com.openjiuwen.harness.tools.lsp;
 
 /**
  * Public enum LspOperation used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum LspOperation {
     GO_TO_DEFINITION("goToDefinition"),
@@ -26,14 +26,21 @@ public enum LspOperation {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * value.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String value() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static LspOperation fromValue(String value) {
         for (LspOperation operation : values()) {

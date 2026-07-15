@@ -10,21 +10,31 @@ import com.openjiuwen.core.session.BaseSession;
  * Condition that always evaluates to true.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.condition.condition.AlwaysTrue}.
+ * 
+ * @since 0.1.7
  */
 public class AlwaysTrue extends Condition {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * doInvoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object doInvoke(Object inputs, BaseSession session) {
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * traceInfo.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object traceInfo(BaseSession session) {
         return "True";
     }

@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Retry directive produced by on_exception rails.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

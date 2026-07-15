@@ -9,6 +9,8 @@ import lombok.EqualsAndHashCode;
 
 /**
  * Retrieval strategy during add memory.
+ * 
+ * @since 0.1.7
  */
 @Data
 @EqualsAndHashCode(callSuper = true)

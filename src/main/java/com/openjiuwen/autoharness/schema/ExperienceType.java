@@ -11,8 +11,8 @@ import java.util.Locale;
 
 /**
  * Public enum ExperienceType used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum ExperienceType {
     OPTIMIZATION("optimization"),
@@ -26,23 +26,24 @@ public enum ExperienceType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * value.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @JsonValue
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String value() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     @JsonCreator
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static ExperienceType fromValue(String value) {
         if (value == null) {
             return null;

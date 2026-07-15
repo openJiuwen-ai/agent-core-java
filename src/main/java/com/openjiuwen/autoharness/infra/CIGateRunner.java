@@ -21,15 +21,29 @@ import java.util.regex.Pattern;
 
 /**
  * Public class CIGateRunner used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class CIGateRunner {
     /**
-     * Auto-generated for codecheck compliance.
+     * DEFAULT_CONFIG_RESOURCE.
+     * 
+     * @since 0.1.7
      */
     public static final String DEFAULT_CONFIG_RESOURCE = "/com/openjiuwen/autoharness/resources/ci_gate.yaml";
+
+    /**
+     * Map.of.
+     * 
+     * @since 0.1.7
+     */
     private static final Map<String, String> ACTION_ALIASES = Map.of("check", "lint");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern MAKE_SEGMENT_PATTERN = Pattern.compile("(^|\\s)make\\s+");
 
     private String workspace;
@@ -40,7 +54,13 @@ public class CIGateRunner {
     private boolean isPrepared = false;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CIGateRunner.
+     * 
+     * @param workspace workspace
+     * @param configPath configPath
+     * @param pythonExecutable pythonExecutable
+     * @param installCommand installCommand
+     * @since 0.1.7
      */
     public CIGateRunner(String workspace, String configPath, String pythonExecutable, String installCommand) {
         this.workspace = workspace;
@@ -51,30 +71,37 @@ public class CIGateRunner {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWorkspace.
+     * 
+     * @param workspace workspace
+     * @since 0.1.7
      */
     public void setWorkspace(String workspace) {
         this.workspace = workspace;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * run.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public CIGateResult run() {
         return run("all");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * run.
+     * 
+     * @param action action
+     * @return the result
+     * @since 0.1.7
      */
     public CIGateResult run(String action) {
         String normalizedAction = action == null ? "all" : action.trim();
         if (matchGates(normalizedAction).isEmpty()) {
-            return CIGateResult.builder()
-                    .isPassed(false)
-                    .executedCommands(List.of())
-                    .errors("No gate matched action=" + normalizedAction)
-                    .build();
+            return CIGateResult.builder().isPassed(false).executedCommands(List.of())
+                    .errors("No gate matched action=" + normalizedAction).build();
         }
         List<GateDefinition> matchedGates = matchGates(normalizedAction);
         List<String> commands = new ArrayList<>();
@@ -86,11 +113,8 @@ public class CIGateRunner {
             if (ex instanceof InterruptedException) {
 
             }
-            return CIGateResult.builder()
-                    .isPassed(false)
-                    .executedCommands(commands)
-                    .errors("CI gate install command failed: " + value(ex.getMessage()))
-                    .build();
+            return CIGateResult.builder().isPassed(false).executedCommands(commands)
+                    .errors("CI gate install command failed: " + value(ex.getMessage())).build();
         }
         boolean isAllPassed = true;
         List<String> errors = new ArrayList<>();
@@ -109,15 +133,18 @@ public class CIGateRunner {
                 errors.add("[" + gate.name() + "]\n" + result.output().strip());
             }
         }
-        return CIGateResult.builder()
-                .isPassed(isAllPassed)
-                .executedCommands(commands)
-                .gateOutputs(outputs)
-                .gates(gateResults)
-                .errors(String.join("\n\n", errors))
-                .build();
+        return CIGateResult.builder().isPassed(isAllPassed).executedCommands(commands).gateOutputs(outputs)
+                .gates(gateResults).errors(String.join("\n\n", errors)).build();
     }
 
+    /**
+     * ensureEnvironment.
+     * 
+     * @param executedCommands executedCommands
+     * @throws IOException IOException
+     * @throws InterruptedException InterruptedException
+     * @since 0.1.7
+     */
     private void ensureEnvironment(List<String> executedCommands) throws IOException, InterruptedException {
         if (isPrepared) {
             return;
@@ -134,6 +161,14 @@ public class CIGateRunner {
         isPrepared = true;
     }
 
+    /**
+     * runGateCommand.
+     * 
+     * @param name name
+     * @param command command
+     * @return the result
+     * @since 0.1.7
+     */
     private GateRunResult runGateCommand(String name, String command) {
         try {
             ProcessResult result = runShell(command);
@@ -150,6 +185,15 @@ public class CIGateRunner {
         }
     }
 
+    /**
+     * runShell.
+     * 
+     * @param command command
+     * @return the result
+     * @throws IOException IOException
+     * @throws InterruptedException InterruptedException
+     * @since 0.1.7
+     */
     private ProcessResult runShell(String command) throws IOException, InterruptedException {
         ProcessBuilder builder = new ProcessBuilder("bash", "-c", command);
         builder.directory(Path.of(workspace == null || workspace.isBlank() ? "." : workspace).toFile());
@@ -164,9 +208,8 @@ public class CIGateRunner {
                 Path envRoot = binDir.getParent();
                 builder.environment().put("VIRTUAL_ENV", value(envRoot == null ? null : envRoot.toString()));
                 String existingPath = builder.environment().getOrDefault("PATH", "");
-                builder.environment().put("PATH", existingPath.isBlank()
-                        ? binDir.toString()
-                        : binDir + ":" + existingPath);
+                builder.environment().put("PATH",
+                        existingPath.isBlank() ? binDir.toString() : binDir + ":" + existingPath);
             }
         }
         Process process = builder.start();
@@ -179,6 +222,13 @@ public class CIGateRunner {
         return new ProcessResult(process.exitValue(), output);
     }
 
+    /**
+     * normalizeCommand.
+     * 
+     * @param command command
+     * @return the result
+     * @since 0.1.7
+     */
     private String normalizeCommand(String command) {
         String stripped = value(command).strip();
         String python = shellQuote(resolvePythonExecutable());
@@ -215,6 +265,12 @@ public class CIGateRunner {
         return (python + " -m pytest " + testFlags).strip();
     }
 
+    /**
+     * resolvePythonExecutable.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolvePythonExecutable() {
         if (!pythonExecutable.isBlank() && Files.isRegularFile(Path.of(pythonExecutable))) {
             return pythonExecutable;
@@ -228,6 +284,13 @@ public class CIGateRunner {
         return "python";
     }
 
+    /**
+     * sanitizeFailureOutput.
+     * 
+     * @param output output
+     * @return the result
+     * @since 0.1.7
+     */
     private static String sanitizeFailureOutput(String output) {
         String raw = value(output);
         if (raw.isBlank()) {
@@ -261,11 +324,25 @@ public class CIGateRunner {
         return sections.isEmpty() ? raw.strip() : String.join("\n\n", sections);
     }
 
+    /**
+     * indexOfMakeSegment.
+     * 
+     * @param command command
+     * @return the result
+     * @since 0.1.7
+     */
     private static int indexOfMakeSegment(String command) {
         java.util.regex.Matcher matcher = MAKE_SEGMENT_PATTERN.matcher(command);
         return matcher.find() ? matcher.start() + matcher.group(1).length() : -1;
     }
 
+    /**
+     * splitShellLike.
+     * 
+     * @param command command
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> splitShellLike(String command) {
         List<String> parts = new ArrayList<>();
         StringBuilder current = new StringBuilder();
@@ -295,6 +372,13 @@ public class CIGateRunner {
         return parts;
     }
 
+    /**
+     * shellQuote.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String shellQuote(String value) {
         if (value == null || value.isBlank()) {
             return "''";
@@ -306,6 +390,13 @@ public class CIGateRunner {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * loadGates.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
     private List<GateDefinition> loadGates(String path) {
         try {
             Object loaded;
@@ -352,16 +443,28 @@ public class CIGateRunner {
         }
     }
 
+    /**
+     * matchGates.
+     * 
+     * @param action action
+     * @return the result
+     * @since 0.1.7
+     */
     private List<GateDefinition> matchGates(String action) {
         if ("all".equals(action)) {
             return List.copyOf(gates);
         }
         String target = ACTION_ALIASES.getOrDefault(action, action);
-        return gates.stream()
-                .filter(gate -> gate.name().equals(target))
-                .toList();
+        return gates.stream().filter(gate -> gate.name().equals(target)).toList();
     }
 
+    /**
+     * castMap.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> castMap(Map<?, ?> raw) {
         Map<String, Object> converted = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : raw.entrySet()) {
@@ -373,38 +476,58 @@ public class CIGateRunner {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkspace.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getWorkspace() {
         return workspace;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfigPath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getConfigPath() {
         return configPath;
     }
 
     /**
- * Public record GateDefinition used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record GateDefinition(String name, String command, boolean isRequired) {
+     * Public record GateDefinition used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record GateDefinition(String name, String command, boolean isRequired) {
     }
 
     /**
- * Public record GateRunResult used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record GateRunResult(String name, boolean isPassed, String output) {
+     * Public record GateRunResult used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record GateRunResult(String name, boolean isPassed, String output) {
     }
 
+    /**
+     * ProcessResult.
+     * 
+     * @param code code
+     * @param output output
+     * @since 0.1.7
+     */
     private record ProcessResult(int code, String output) {
     }
 
+    /**
+     * value.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String value(String value) {
         return value == null ? "" : value;
     }

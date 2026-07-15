@@ -1,7 +1,11 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.indexing.processor.splitter;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
 
@@ -9,11 +13,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.assertj.core.api.Assertions.assertThat;
-
 class SentenceSplitterTest {
-
     @Test
     void splitTextHandlesChinesePunctuationWithoutSpaces() {
         SentenceSplitter splitter = new SentenceSplitter(3, 0, null, "auto");
@@ -25,11 +25,9 @@ class SentenceSplitterTest {
 
     @Test
     void splitTextUsesTokenizerForEnglishWindowing() {
-        Function<String, List<String>> tokenizer = text -> Arrays.stream(text.replaceAll("[^A-Za-z0-9\\s]", " ")
-                        .trim()
-                        .split("\\s+"))
-                .filter(part -> !part.isBlank())
-                .toList();
+        Function<String, List<String>> tokenizer =
+            text -> Arrays.stream(text.replaceAll("[^A-Za-z0-9\\s]", " ").trim().split("\\s+"))
+                    .filter(part -> !part.isBlank()).toList();
         SentenceSplitter splitter = new SentenceSplitter(4, 0, tokenizer, "en");
 
         List<String> chunks = splitter.splitText("Alpha beta. Gamma delta.");
@@ -39,7 +37,8 @@ class SentenceSplitterTest {
 
     @Test
     void splitSpansShouldReturnStartAndEndOffsets() {
-        SentenceSplitter splitter = new SentenceSplitter(5, 0, text -> Arrays.stream(text.split("\\s+")).toList(), "en");
+        SentenceSplitter splitter =
+            new SentenceSplitter(5, 0, text -> Arrays.stream(text.split("\\s+")).toList(), "en");
 
         List<SplitSpan> spans = splitter.splitSpans("one two three four five. six seven.");
 
@@ -52,7 +51,8 @@ class SentenceSplitterTest {
 
     @Test
     void splitTextShouldCarryOverlapSentencesByTokenCount() {
-        SentenceSplitter splitter = new SentenceSplitter(4, 3, text -> Arrays.stream(text.split("\\s+")).toList(), "en");
+        SentenceSplitter splitter =
+            new SentenceSplitter(4, 3, text -> Arrays.stream(text.split("\\s+")).toList(), "en");
 
         List<String> chunks = splitter.splitText("w1 w2. w3 w4. w5 w6.");
 
@@ -66,9 +66,7 @@ class SentenceSplitterTest {
         Function<String, List<String>> tokenizer = text -> Arrays.stream(text.split("\\s+")).toList();
         Function<List<String>, String> decoder = tokens -> String.join(" ", tokens);
         SentenceSplitter splitter = new SentenceSplitter(10, 0, tokenizer, "en", decoder);
-        String longSentence = String.join(" ", java.util.stream.IntStream.range(0, 25)
-                .mapToObj(i -> "w" + i)
-                .toList());
+        String longSentence = String.join(" ", java.util.stream.IntStream.range(0, 25).mapToObj(i -> "w" + i).toList());
 
         List<SplitSpan> spans = splitter.splitSpans(longSentence);
 
@@ -84,9 +82,7 @@ class SentenceSplitterTest {
     void longSentenceWithoutDecoderShouldStaySingleChunk() {
         Function<String, List<String>> tokenizer = text -> Arrays.stream(text.split("\\s+")).toList();
         SentenceSplitter splitter = new SentenceSplitter(10, 0, tokenizer, "en");
-        String longSentence = String.join(" ", java.util.stream.IntStream.range(0, 25)
-                .mapToObj(i -> "w" + i)
-                .toList());
+        String longSentence = String.join(" ", java.util.stream.IntStream.range(0, 25).mapToObj(i -> "w" + i).toList());
 
         assertThat(splitter.splitText(longSentence)).containsExactly(longSentence);
     }

@@ -9,17 +9,27 @@ import com.openjiuwen.core.common.logging.Loggers;
 /**
  * Database engine abstraction layer for connection pool management,
  * transaction handling, and per-session dynamic table lifecycle.
- *
- * <p>Mirrors Python tools/database/engine.py. Provides abstracted
- * initialization and cleanup operations for the team database.</p>
+ * <p>
+ * Mirrors Python tools/database/engine.py. Provides abstracted
+ * initialization and cleanup operations for the team database.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public final class DatabaseEngine {
-
+    /**
+     * DatabaseEngine.
+     * 
+     * @since 0.1.7
+     */
     private DatabaseEngine() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentTimeMillis.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static long getCurrentTimeMillis() {
         return System.currentTimeMillis();
@@ -28,9 +38,10 @@ public final class DatabaseEngine {
     /**
      * Initialize a database engine from configuration.
      * Mirrors Python initialize_engine(config).
-     *
+     * 
      * @param config the database configuration
      * @return initialized TeamDatabase
+     * @since 0.1.7
      */
     public static TeamDatabase initializeEngine(DatabaseConfig config) {
         if (config == null || config.getDbType() == null) {
@@ -51,16 +62,16 @@ public final class DatabaseEngine {
             Loggers.AGENT.info("Database engine initialized: type={}", dbType);
             return db;
         } else {
-            throw new IllegalArgumentException(
-                    "Unsupported database type: " + dbType);
+            throw new IllegalArgumentException("Unsupported database type: " + dbType);
         }
     }
 
     /**
      * Create per-session dynamic tables.
      * Mirrors Python create_cur_session_tables(engine).
-     *
+     * 
      * @param db the team database
+     * @since 0.1.7
      */
     public static void createCurSessionTables(TeamDatabase db) {
         if (db != null) {
@@ -71,8 +82,9 @@ public final class DatabaseEngine {
     /**
      * Drop per-session dynamic tables.
      * Mirrors Python drop_cur_session_tables(engine).
-     *
+     * 
      * @param db the team database
+     * @since 0.1.7
      */
     public static void dropCurSessionTables(TeamDatabase db) {
         if (db != null) {
@@ -83,9 +95,10 @@ public final class DatabaseEngine {
     /**
      * Cleanup all runtime state — drop dynamic tables, clear static tables.
      * Mirrors Python cleanup_all_runtime_state(engine).
-     *
+     * 
      * @param db the team database
      * @return summary of cleanup operation
+     * @since 0.1.7
      */
     public static String cleanupAllRuntimeState(TeamDatabase db) {
         if (db == null) {
@@ -99,9 +112,10 @@ public final class DatabaseEngine {
     /**
      * Drop dynamic tables for a specific session.
      * Mirrors Python drop_session_tables_by_id(engine, session_id).
-     *
-     * @param db        the team database
+     * 
+     * @param db the team database
      * @param sessionId the session ID
+     * @since 0.1.7
      */
     public static void dropSessionTablesById(TeamDatabase db, String sessionId) {
         if (db != null) {

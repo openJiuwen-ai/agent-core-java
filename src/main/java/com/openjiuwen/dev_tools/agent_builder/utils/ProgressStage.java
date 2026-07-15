@@ -6,8 +6,8 @@ package com.openjiuwen.dev_tools.agent_builder.utils;
 
 /**
  * Public enum ProgressStage used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum ProgressStage {
     INITIALIZING("initializing"),
@@ -23,7 +23,10 @@ public enum ProgressStage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

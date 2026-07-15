@@ -1,19 +1,20 @@
+
 package com.openjiuwen.agentevolving.agent_rl;
-
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.common.exception.StatusCode;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class RewardRegistrySliceTest {
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Set;
+
+class RewardRegistrySliceTest {
     @Test
     void registerAndGetReturnSameCallable() {
         RewardRegistry registry = new RewardRegistry();

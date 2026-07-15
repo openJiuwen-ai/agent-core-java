@@ -1,6 +1,10 @@
+
 package com.openjiuwen.harness.tools;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.harness.lsp.LspExampleSupport;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -8,10 +12,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class LspExampleSupportTest {
-
     @TempDir
     Path tempDir;
 

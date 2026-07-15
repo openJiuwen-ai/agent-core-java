@@ -23,35 +23,59 @@ import java.util.function.Function;
 
 /**
  * Base class for guardrails that integrate with {@link CallbackFramework}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseGuardrail {
-
+    /**
+     * LOGGER.
+     * 
+     * @since 0.1.7
+     */
     protected static final LoggerProtocol LOGGER = Loggers.RUNNER;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * events.
+     * 
+     * @since 0.1.7
      */
     protected final List<String> events = new ArrayList<>();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * registeredCallbacks.
+     * 
+     * @since 0.1.7
      */
     protected final Map<String, Function<Map<String, Object>, Object>> registeredCallbacks = new ConcurrentHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * backend.
+     * 
+     * @since 0.1.7
      */
     protected GuardrailBackend backend;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * framework.
+     * 
+     * @since 0.1.7
      */
     protected CallbackFramework framework;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * enableLogging.
+     * 
+     * @since 0.1.7
      */
     protected boolean enableLogging = true;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseGuardrail.
+     * 
+     * @param backend backend
+     * @param events events
+     * @param enableLogging enableLogging
+     * @since 0.1.7
      */
     protected BaseGuardrail(GuardrailBackend backend, List<String> events, boolean enableLogging) {
         this.backend = backend;
@@ -63,19 +87,29 @@ public abstract class BaseGuardrail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * defaultEvents.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected abstract List<String> defaultEvents();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listenEvents.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> listenEvents() {
         return new ArrayList<>(events);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * withEvents.
+     * 
+     * @param events events
+     * @return the result
+     * @since 0.1.7
      */
     public BaseGuardrail withEvents(List<String> events) {
         this.events.clear();
@@ -86,7 +120,11 @@ public abstract class BaseGuardrail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setBackend.
+     * 
+     * @param backend backend
+     * @return the result
+     * @since 0.1.7
      */
     public BaseGuardrail setBackend(GuardrailBackend backend) {
         this.backend = backend;
@@ -94,21 +132,30 @@ public abstract class BaseGuardrail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getBackend.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public GuardrailBackend getBackend() {
         return backend;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isEnableLogging.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isEnableLogging() {
         return enableLogging;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEnableLogging.
+     * 
+     * @param enableLogging enableLogging
+     * @since 0.1.7
      */
     public void setEnableLogging(boolean enableLogging) {
         this.enableLogging = enableLogging;
@@ -116,12 +163,18 @@ public abstract class BaseGuardrail {
 
     /**
      * Perform detection for an event. Subclasses may override.
+     * 
+     * @param eventName eventName
+     * @param args args
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public GuardrailResult detect(String eventName, Object[] args, Map<String, Object> kwargs) throws Exception {
         if (backend == null) {
-            throw new IllegalStateException(
-                    "No backend configured for " + getClass().getSimpleName()
-                            + ". Either set a backend or override detect().");
+            throw new IllegalStateException("No backend configured for " + getClass().getSimpleName()
+                    + ". Either set a backend or override detect().");
         }
 
         Map<String, Object> analysisData = new LinkedHashMap<>();
@@ -139,16 +192,15 @@ public abstract class BaseGuardrail {
         if (assessment == null || !assessment.isHasRisk()) {
             return GuardrailResult.pass(assessment != null ? assessment.getDetails() : null);
         }
-        return GuardrailResult.block(
-                assessment.getRiskLevel(),
-                assessment.getRiskType(),
-                assessment.getDetails(),
-                null
-        );
+        return GuardrailResult.block(assessment.getRiskLevel(), assessment.getRiskType(), assessment.getDetails(),
+                null);
     }
 
     /**
      * Register this guardrail with a callback framework.
+     * 
+     * @param framework framework
+     * @since 0.1.7
      */
     public void register(CallbackFramework framework) {
         this.framework = Objects.requireNonNull(framework, "framework");
@@ -159,6 +211,8 @@ public abstract class BaseGuardrail {
                 hookData.put("_raise", runtimeException);
             } else if (error instanceof Throwable throwable) {
                 hookData.put("_raise", new RuntimeException(throwable));
+            } else {
+                // no-op
             }
         };
 
@@ -172,7 +226,8 @@ public abstract class BaseGuardrail {
                     if (!result.isSafe()) {
                         Map<String, Object> params = new LinkedHashMap<>();
                         params.put("risk_type", result.getRiskType() == null ? "unknown" : result.getRiskType());
-                        params.put("risk_level", result.getRiskLevel() == null ? "UNKNOWN" : result.getRiskLevel().name());
+                        params.put("risk_level",
+                                result.getRiskLevel() == null ? "UNKNOWN" : result.getRiskLevel().name());
                         params.put("event", event);
                         if (result.getDetails() != null) {
                             params.putAll(result.getDetails());
@@ -188,8 +243,8 @@ public abstract class BaseGuardrail {
             };
 
             framework.register(event, callback, 100, false, "guardrail",
-                    Set.of("guardrail", getClass().getSimpleName()),
-                    null, null, null, 0, 0.0, null, callbackName(event));
+                    Set.of("guardrail", getClass().getSimpleName()), null, null, null, 0, 0.0, null,
+                    callbackName(event));
             registeredCallbacks.put(event, callback);
 
             if (enableLogging) {
@@ -200,6 +255,8 @@ public abstract class BaseGuardrail {
 
     /**
      * Unregister this guardrail from the previously registered framework.
+     * 
+     * @since 0.1.7
      */
     public void unregister() {
         if (framework == null) {
@@ -211,6 +268,13 @@ public abstract class BaseGuardrail {
         registeredCallbacks.clear();
     }
 
+    /**
+     * callbackName.
+     * 
+     * @param event event
+     * @return the result
+     * @since 0.1.7
+     */
     private String callbackName(String event) {
         return getClass().getSimpleName() + ":" + event;
     }

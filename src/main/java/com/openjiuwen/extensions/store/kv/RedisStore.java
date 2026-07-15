@@ -6,6 +6,7 @@ package com.openjiuwen.extensions.store.kv;
 
 import com.openjiuwen.spi.store.BaseKVStore;
 import com.openjiuwen.spi.store.KVStorePipeline;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,14 +29,15 @@ import java.util.Optional;
 
 /**
  * Redis-based key-value store implementation.
- *
- * <p>This implementation provides a high-performance, distributed key-value store
+ * <p>
+ * This implementation provides a high-performance, distributed key-value store
  * backed by Redis. Supports both standalone Redis and Redis Cluster modes.
- *
- * <p>Mirrors Python's {@code openjiuwen.extensions.store.kv.redis_store.RedisStore}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.extensions.store.kv.redis_store.RedisStore}.
+ * 
+ * @since 0.1.7
  */
 public class RedisStore extends BaseKVStore {
-
     private static final Logger logger = LoggerFactory.getLogger(RedisStore.class);
 
     private final Object redisClient;
@@ -43,30 +45,42 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * Initialize RedisStore with a Redis client (standalone or cluster).
-     *
+     * 
      * @param redisClient The Redis client instance (Jedis, Lettuce, or Redisson)
+     * @since 0.1.7
      */
     public RedisStore(Object redisClient) {
         this.redisClient = Objects.requireNonNull(redisClient, "redisClient must not be null");
         this.isCluster = detectClusterMode(redisClient);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * set.
+     * 
+     * @param key key
+     * @param value value
+     * @since 0.1.7
      */
+    @Override
     public void set(String key, Object value) {
         setInternal(key, value, null);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * exclusiveSet.
+     * 
+     * @param key key
+     * @param value value
+     * @param expiry expiry
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean exclusiveSet(String key, Object value, Integer expiry) {
         requireKey(key);
         try {
-            InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"exclusiveSet", "setIfAbsent"}, key, value, expiry);
+            InvocationOutcome outcome =
+                tryInvoke(redisClient, new String[]{"exclusiveSet", "setIfAbsent"}, key, value, expiry);
             boolean expiryApplied = outcome.handled();
             if (!outcome.handled()) {
                 outcome = tryInvoke(redisClient, new String[]{"set"}, key, value, Boolean.TRUE, expiry);
@@ -97,10 +111,14 @@ public class RedisStore extends BaseKVStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object get(String key) {
         requireKey(key);
         try {
@@ -113,10 +131,14 @@ public class RedisStore extends BaseKVStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * isExists.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean isExists(String key) {
         requireKey(key);
         try {
@@ -124,21 +146,28 @@ public class RedisStore extends BaseKVStore {
             return asBoolean(outcome.value());
         } catch (Exception e) {
             logger.error("Failed to check key existence: {}, error: {}", key, e.getMessage());
-            throw new RuntimeException("Failed to check key existence: " + key, e);
+            throw new IllegalStateException("Failed to check key existence: " + key, e);
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * exists.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public boolean exists(String key) {
         return isExists(key);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * delete.
+     * 
+     * @param key key
+     * @since 0.1.7
      */
+    @Override
     public void delete(String key) {
         requireKey(key);
         try {
@@ -150,10 +179,14 @@ public class RedisStore extends BaseKVStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getByPrefix.
+     * 
+     * @param prefix prefix
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> getByPrefix(String prefix) {
         try {
             logger.debug("Getting keys by prefix: {}", prefix);
@@ -172,10 +205,14 @@ public class RedisStore extends BaseKVStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteByPrefix.
+     * 
+     * @param prefix prefix
+     * @param batchSize batchSize
+     * @since 0.1.7
      */
+    @Override
     public void deleteByPrefix(String prefix, Integer batchSize) {
         try {
             logger.debug("Deleting keys by prefix: {}", prefix);
@@ -190,10 +227,14 @@ public class RedisStore extends BaseKVStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * mget.
+     * 
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<Object> mget(List<String> keys) {
         if (keys == null || keys.isEmpty()) {
             return new ArrayList<>();
@@ -209,10 +250,15 @@ public class RedisStore extends BaseKVStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * batchDelete.
+     * 
+     * @param keys keys
+     * @param batchSize batchSize
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public int batchDelete(List<String> keys, Integer batchSize) {
         if (keys == null || keys.isEmpty()) {
             return 0;
@@ -234,10 +280,13 @@ public class RedisStore extends BaseKVStore {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * pipeline.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public KVStorePipeline pipeline() {
         return new KVStorePipeline(operations -> {
             List<Object> results = new ArrayList<>(operations.size());
@@ -261,9 +310,10 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * Refresh TTL (Time To Live) for given keys.
-     *
-     * @param keys       a list of keys to refresh TTL for
+     * 
+     * @param keys a list of keys to refresh TTL for
      * @param ttlSeconds the TTL value in seconds
+     * @since 0.1.7
      */
     public void refreshTtl(List<String> keys, int ttlSeconds) {
         if (keys == null || keys.isEmpty() || ttlSeconds <= 0) {
@@ -284,17 +334,33 @@ public class RedisStore extends BaseKVStore {
 
     /**
      * Check if the Redis client is in cluster mode.
-     *
+     * 
      * @return true if cluster mode, otherwise false
+     * @since 0.1.7
      */
     public boolean isCluster() {
         return isCluster;
     }
 
+    /**
+     * detectClusterMode.
+     * 
+     * @param client client
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean detectClusterMode(Object client) {
         return client.getClass().getSimpleName().contains("Cluster");
     }
 
+    /**
+     * setInternal.
+     * 
+     * @param key key
+     * @param value value
+     * @param expiry expiry
+     * @since 0.1.7
+     */
     private void setInternal(String key, Object value, Integer expiry) {
         requireKey(key);
         try {
@@ -306,7 +372,8 @@ public class RedisStore extends BaseKVStore {
 
             boolean expiryApplied = false;
             if (expiry != null && expiry > 0) {
-                InvocationOutcome combinedSet = tryInvoke(redisClient, new String[]{"set"}, key, value, Boolean.FALSE, expiry);
+                InvocationOutcome combinedSet =
+                    tryInvoke(redisClient, new String[]{"set"}, key, value, Boolean.FALSE, expiry);
                 if (!combinedSet.handled()) {
                     combinedSet = tryInvoke(redisClient, new String[]{"set"}, key, value, expiry);
                 }
@@ -329,15 +396,24 @@ public class RedisStore extends BaseKVStore {
         }
     }
 
+    /**
+     * setBinaryValue.
+     * 
+     * @param key key
+     * @param value value
+     * @param expiry expiry
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private void setBinaryValue(String key, byte[] value, Integer expiry) throws Exception {
         byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
         boolean expiryApplied = false;
         if (expiry != null && expiry > 0) {
             InvocationOutcome combinedSet =
-                    tryInvoke(redisClient, new String[]{"set"}, byte[].class, keyBytes, value, expiry);
+                tryInvoke(redisClient, new String[]{"set"}, byte[].class, keyBytes, value, expiry);
             if (!combinedSet.handled()) {
-                combinedSet = tryInvoke(
-                        redisClient, new String[]{"set"}, byte[].class, keyBytes, value, Boolean.FALSE, expiry);
+                combinedSet =
+                    tryInvoke(redisClient, new String[]{"set"}, byte[].class, keyBytes, value, Boolean.FALSE, expiry);
             }
             if (combinedSet.handled()) {
                 expiryApplied = true;
@@ -358,6 +434,12 @@ public class RedisStore extends BaseKVStore {
         }
     }
 
+    /**
+     * requireKey.
+     * 
+     * @param key key
+     * @since 0.1.7
+     */
     private void requireKey(String key) {
         Objects.requireNonNull(key, "key must not be null");
     }
@@ -365,6 +447,11 @@ public class RedisStore extends BaseKVStore {
     /**
      * Prefer binary GET when String GET mis-decodes binary payloads (Jedis {@code get(String)} vs
      * {@code get(byte[])}). For plain text values both APIs agree and String is returned.
+     * 
+     * @param key key
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     private Object getValuePreferringBinaryKey(String key) throws Exception {
         Object stringValue = null;
@@ -394,6 +481,14 @@ public class RedisStore extends BaseKVStore {
         return binaryValue;
     }
 
+    /**
+     * preferBinaryOverString.
+     * 
+     * @param bytes bytes
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean preferBinaryOverString(byte[] bytes, String text) {
         if (bytes.length >= 2 && bytes[0] == (byte) 0xAC && bytes[1] == (byte) 0xED) {
             return true;
@@ -404,6 +499,13 @@ public class RedisStore extends BaseKVStore {
         return !text.equals(new String(bytes, StandardCharsets.UTF_8));
     }
 
+    /**
+     * extractExpiry.
+     * 
+     * @param operation operation
+     * @return the result
+     * @since 0.1.7
+     */
     private Integer extractExpiry(Object[] operation) {
         if (operation.length <= 3 || operation[3] == null) {
             return null;
@@ -415,6 +517,14 @@ public class RedisStore extends BaseKVStore {
         return Integer.parseInt(String.valueOf(expiry));
     }
 
+    /**
+     * tryMget.
+     * 
+     * @param keys keys
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private List<Object> tryMget(List<String> keys) throws Exception {
         try {
             InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"mget"}, keys);
@@ -438,12 +548,21 @@ public class RedisStore extends BaseKVStore {
         return fallback;
     }
 
+    /**
+     * deleteChunk.
+     * 
+     * @param keys keys
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private int deleteChunk(List<String> keys) throws Exception {
         if (keys.isEmpty()) {
             return 0;
         }
 
-        InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"delete", "del"}, (Object) keys.toArray(String[]::new));
+        InvocationOutcome outcome =
+            tryInvoke(redisClient, new String[]{"delete", "del"}, (Object) keys.toArray(String[]::new));
         if (!outcome.handled()) {
             outcome = tryInvoke(redisClient, new String[]{"delete", "del"}, keys);
         }
@@ -462,6 +581,14 @@ public class RedisStore extends BaseKVStore {
         return deleted;
     }
 
+    /**
+     * scanKeys.
+     * 
+     * @param prefix prefix
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private List<String> scanKeys(String prefix) throws Exception {
         String pattern = prefix + "*";
         InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"scanIter", "keys", "scan"}, pattern);
@@ -480,6 +607,15 @@ public class RedisStore extends BaseKVStore {
         return extractKeys(outcome.value(), prefix);
     }
 
+    /**
+     * refreshTtlViaClientPipeline.
+     * 
+     * @param keys keys
+     * @param ttlSeconds ttlSeconds
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private boolean refreshTtlViaClientPipeline(List<String> keys, int ttlSeconds) throws Exception {
         InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"pipeline", "pipelined"});
         if (!outcome.handled() || outcome.value() == null) {
@@ -498,6 +634,14 @@ public class RedisStore extends BaseKVStore {
         return executeOutcome.handled();
     }
 
+    /**
+     * expireKey.
+     * 
+     * @param key key
+     * @param ttlSeconds ttlSeconds
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private void expireKey(String key, int ttlSeconds) throws Exception {
         InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"expire"}, key, ttlSeconds);
         if (!outcome.handled()) {
@@ -505,6 +649,14 @@ public class RedisStore extends BaseKVStore {
         }
     }
 
+    /**
+     * normalizeBulkValues.
+     * 
+     * @param rawValues rawValues
+     * @param requestedKeys requestedKeys
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> normalizeBulkValues(Object rawValues, List<String> requestedKeys) {
         if (rawValues instanceof Map<?, ?> map) {
             List<Object> ordered = new ArrayList<>(requestedKeys.size());
@@ -526,6 +678,14 @@ public class RedisStore extends BaseKVStore {
         return normalized;
     }
 
+    /**
+     * extractKeys.
+     * 
+     * @param rawKeys rawKeys
+     * @param prefix prefix
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> extractKeys(Object rawKeys, String prefix) {
         LinkedHashSet<String> keys = new LinkedHashSet<>();
         for (Object candidate : toObjectList(rawKeys)) {
@@ -537,6 +697,13 @@ public class RedisStore extends BaseKVStore {
         return new ArrayList<>(keys);
     }
 
+    /**
+     * toObjectList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> toObjectList(Object value) {
         if (value == null) {
             return Collections.emptyList();
@@ -577,6 +744,13 @@ public class RedisStore extends BaseKVStore {
         return List.of(value);
     }
 
+    /**
+     * normalizeKey.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private String normalizeKey(Object value) {
         if (value == null) {
             return null;
@@ -590,6 +764,13 @@ public class RedisStore extends BaseKVStore {
         return String.valueOf(value);
     }
 
+    /**
+     * normalizeValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private Object normalizeValue(Object value) {
         if (value == null) {
             return null;
@@ -621,6 +802,13 @@ public class RedisStore extends BaseKVStore {
         return value;
     }
 
+    /**
+     * asBoolean.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean asBoolean(Object value) {
         if (value == null) {
             return false;
@@ -639,6 +827,14 @@ public class RedisStore extends BaseKVStore {
         return true;
     }
 
+    /**
+     * asDeleteCount.
+     * 
+     * @param value value
+     * @param fallbackCount fallbackCount
+     * @return the result
+     * @since 0.1.7
+     */
     private int asDeleteCount(Object value, int fallbackCount) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -649,6 +845,16 @@ public class RedisStore extends BaseKVStore {
         return asBoolean(value) ? fallbackCount : 0;
     }
 
+    /**
+     * invokeRequired.
+     * 
+     * @param target target
+     * @param methodNames methodNames
+     * @param args args
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private InvocationOutcome invokeRequired(Object target, String[] methodNames, Object... args) throws Exception {
         InvocationOutcome outcome = tryInvoke(target, methodNames, args);
         if (!outcome.handled()) {
@@ -657,12 +863,33 @@ public class RedisStore extends BaseKVStore {
         return outcome;
     }
 
+    /**
+     * tryInvoke.
+     * 
+     * @param target target
+     * @param methodNames methodNames
+     * @param args args
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private InvocationOutcome tryInvoke(Object target, String[] methodNames, Object... args) throws Exception {
         return tryInvoke(target, methodNames, null, args);
     }
 
-    private InvocationOutcome tryInvoke(
-            Object target, String[] methodNames, Class<?> requiredFirstParamType, Object... args) throws Exception {
+    /**
+     * tryInvoke.
+     * 
+     * @param target target
+     * @param methodNames methodNames
+     * @param requiredFirstParamType requiredFirstParamType
+     * @param args args
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    private InvocationOutcome tryInvoke(Object target, String[] methodNames, Class<?> requiredFirstParamType,
+            Object... args) throws Exception {
         MethodMatch bestMatch = null;
         for (int nameIndex = 0; nameIndex < methodNames.length; nameIndex++) {
             String methodName = methodNames[nameIndex];
@@ -709,6 +936,15 @@ public class RedisStore extends BaseKVStore {
         }
     }
 
+    /**
+     * prepareMethodMatch.
+     * 
+     * @param method method
+     * @param args args
+     * @param namePreference namePreference
+     * @return the result
+     * @since 0.1.7
+     */
     private Optional<MethodMatch> prepareMethodMatch(Method method, Object[] args, int namePreference) {
         Class<?>[] parameterTypes = method.getParameterTypes();
         boolean isVarArgs = method.isVarArgs();
@@ -775,6 +1011,14 @@ public class RedisStore extends BaseKVStore {
         return Optional.of(new MethodMatch(method, invocationArgs, score));
     }
 
+    /**
+     * convertArgument.
+     * 
+     * @param argument argument
+     * @param targetType targetType
+     * @return the result
+     * @since 0.1.7
+     */
     private Optional<ArgumentMatch> convertArgument(Object argument, Class<?> targetType) {
         if (argument == null) {
             return targetType.isPrimitive() ? Optional.empty() : Optional.of(new ArgumentMatch(null, 1));
@@ -836,10 +1080,25 @@ public class RedisStore extends BaseKVStore {
         return Optional.empty();
     }
 
+    /**
+     * isAssignable.
+     * 
+     * @param targetType targetType
+     * @param candidateType candidateType
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isAssignable(Class<?> targetType, Class<?> candidateType) {
         return boxType(targetType).isAssignableFrom(boxType(candidateType));
     }
 
+    /**
+     * boxType.
+     * 
+     * @param type type
+     * @return the result
+     * @since 0.1.7
+     */
     private Class<?> boxType(Class<?> type) {
         if (!type.isPrimitive()) {
             return type;
@@ -857,15 +1116,37 @@ public class RedisStore extends BaseKVStore {
         };
     }
 
+    /**
+     * InvocationOutcome.
+     * 
+     * @param handled handled
+     * @param value value
+     * @since 0.1.7
+     */
     private record InvocationOutcome(boolean handled, Object value) {
         private static InvocationOutcome notHandled() {
             return new InvocationOutcome(false, null);
         }
     }
 
+    /**
+     * MethodMatch.
+     * 
+     * @param method method
+     * @param arguments arguments
+     * @param score score
+     * @since 0.1.7
+     */
     private record MethodMatch(Method method, Object[] arguments, int score) {
     }
 
+    /**
+     * ArgumentMatch.
+     * 
+     * @param value value
+     * @param score score
+     * @since 0.1.7
+     */
     private record ArgumentMatch(Object value, int score) {
     }
 }

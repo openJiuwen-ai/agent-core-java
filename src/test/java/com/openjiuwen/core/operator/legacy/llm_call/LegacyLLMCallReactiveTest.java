@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.operator.legacy.llm_call;
 
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
@@ -16,8 +18,9 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 
-import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
+
+import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -28,13 +31,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * 验证 Legacy LLMCall.invokeAsync / streamAsync 正确委托到同步 invoke / stream。
  */
 class LegacyLLMCallReactiveTest {
-
     private static final String TEST_PROVIDER = "legacy-llmcall-reactive-test-provider";
 
     private static LLMCall newLLMCall(FakeModelClient client) {
@@ -49,12 +49,9 @@ class LegacyLLMCallReactiveTest {
                 return client;
             }
         });
-        ModelClientConfig clientConfig = ModelClientConfig.builder()
-                .clientId("legacy-llmcall-reactive-test")
-                .clientProvider(TEST_PROVIDER)
-                .apiKey("test-key")
-                .apiBase("mirror://legacy-llmcall-reactive-test")
-                .build();
+        ModelClientConfig clientConfig =
+            ModelClientConfig.builder().clientId("legacy-llmcall-reactive-test").clientProvider(TEST_PROVIDER)
+                    .apiKey("test-key").apiBase("mirror://legacy-llmcall-reactive-test").build();
         Model model = new Model(clientConfig, ModelRequestConfig.builder().modelName("test-model").build());
         return new LLMCall("test-model", model, "system", "{{query}}");
     }
@@ -67,19 +64,14 @@ class LegacyLLMCallReactiveTest {
 
         FakeModelClient() {
             super(ModelRequestConfig.builder().modelName("test-model").build(),
-                    ModelClientConfig.builder()
-                            .clientId("legacy-llmcall-reactive-test")
-                            .clientProvider(TEST_PROVIDER)
-                            .apiKey("test-key")
-                            .apiBase("mirror://legacy-llmcall-reactive-test")
-                            .build());
+                    ModelClientConfig.builder().clientId("legacy-llmcall-reactive-test").clientProvider(TEST_PROVIDER)
+                            .apiKey("test-key").apiBase("mirror://legacy-llmcall-reactive-test").build());
         }
 
         @Override
-        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP,
-                                       String model, Integer maxTokens, String stop,
-                                       BaseOutputParser outputParser, Float timeout,
-                                       Map<String, Object> kwargs) throws Exception {
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+                Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) throws Exception {
             if (invokeError != null) {
                 throw invokeError;
             }
@@ -87,34 +79,29 @@ class LegacyLLMCallReactiveTest {
         }
 
         @Override
-        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature,
-                                                       Float topP, String model, Integer maxTokens,
-                                                       String stop, BaseOutputParser outputParser,
-                                                       Float timeout, Map<String, Object> kwargs) {
+        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+                String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             return streamResult;
         }
 
         @Override
-        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model,
-                                                      String size, String negativePrompt, int n,
-                                                      boolean promptExtend, boolean watermark, int seed,
-                                                      Map<String, Object> kwargs) {
+        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model,
-                                                       String voice, String languageType,
-                                                       Map<String, Object> kwargs) {
+        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+                String languageType, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
         @Override
-        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl,
-                                                      String audioUrl, String model, String size,
-                                                      String resolution, int duration, boolean promptExtend,
-                                                      boolean watermark, String negativePrompt, Integer seed,
-                                                      Map<String, Object> kwargs) {
+        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
     }
@@ -127,8 +114,7 @@ class LegacyLLMCallReactiveTest {
         LLMCall llmCall = newLLMCall(client);
 
         StepVerifier.create(llmCall.invokeAsync(Map.of("query", "hi"), null, null, null))
-                .expectNextMatches(msg -> "hello".equals(msg.getContent()))
-                .verifyComplete();
+                .expectNextMatches(msg -> "hello".equals(msg.getContent())).verifyComplete();
     }
 
     /** invokeAsync 抛出的异常对象身份不变，不被 Reactor 包装。 */
@@ -140,8 +126,7 @@ class LegacyLLMCallReactiveTest {
         LLMCall llmCall = newLLMCall(client);
 
         StepVerifier.create(llmCall.invokeAsync(Map.of("query", "hi"), null, null, null))
-                .expectErrorMatches(t -> t == boom)
-                .verify();
+                .expectErrorMatches(t -> t == boom).verify();
     }
 
     /** streamAsync 按序发射 stream() 迭代器中的全部 chunk。 */
@@ -158,10 +143,8 @@ class LegacyLLMCallReactiveTest {
         LLMCall llmCall = newLLMCall(client);
 
         StepVerifier.create(llmCall.streamAsync(Map.of("query", "hi"), null, null, null))
-                .expectNextMatches(c -> "a".equals(c.getContent()))
-                .expectNextMatches(c -> "b".equals(c.getContent()))
-                .expectNextMatches(c -> "c".equals(c.getContent()))
-                .verifyComplete();
+                .expectNextMatches(c -> "a".equals(c.getContent())).expectNextMatches(c -> "b".equals(c.getContent()))
+                .expectNextMatches(c -> "c".equals(c.getContent())).verifyComplete();
     }
 
     /** 取消订阅后无限流必须立刻停止（允许至多 1 个已在途的多余发射）。 */
@@ -186,10 +169,8 @@ class LegacyLLMCallReactiveTest {
         };
         LLMCall llmCall = newLLMCall(client);
 
-        StepVerifier.create(llmCall.streamAsync(Map.of("query", "hi"), null, null, null), 4)
-                .expectNextCount(4)
-                .thenCancel()
-                .verify(Duration.ofSeconds(5));
+        StepVerifier.create(llmCall.streamAsync(Map.of("query", "hi"), null, null, null), 4).expectNextCount(4)
+                .thenCancel().verify(Duration.ofSeconds(5));
 
         assertTrue(streamCalled.await(1, TimeUnit.SECONDS));
         int afterCancel = emitted.get();

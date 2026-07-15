@@ -1,14 +1,15 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session;
 
-import com.openjiuwen.core.session.internal.AgentSession;
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.InMemoryState;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
-import com.openjiuwen.core.session.state.WorkflowStateCollection;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -18,19 +19,15 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for AgentSessionApi state operations.
  * <p>
  * Ported from Python's {@code test_session.py::TestSession::test_agent_session}.
  */
 class AgentSessionApiTest {
-
     @Nested
     @DisplayName("AgentSessionApi state operations")
     class StateOps {
-
         @Test
         @DisplayName("update and get state")
         void testUpdateAndGet() {
@@ -150,7 +147,6 @@ class AgentSessionApiTest {
     @Nested
     @DisplayName("NodeSessionApi state operations")
     class NodeSessionApiOps {
-
         @Test
         @DisplayName("node session update and commit cycle")
         void testUpdateAndCommit() {

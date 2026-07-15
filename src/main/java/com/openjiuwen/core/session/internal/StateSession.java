@@ -14,20 +14,27 @@ import java.util.Map;
  * Abstract session providing state and stream delegation to the inner session.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.internal.wrapper.StateSession}.
+ * 
+ * @since 0.1.7
  */
 public abstract class StateSession extends WrappedSession {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * StateSession.
+     * 
+     * @param inner inner
+     * @since 0.1.7
      */
     protected StateSession(BaseSession inner) {
         super(inner);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * executableId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String executableId() {
         if (inner instanceof NodeSession) {
             return ((NodeSession) inner).executableId();
@@ -35,28 +42,38 @@ public abstract class StateSession extends WrappedSession {
         return inner.sessionId();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * sessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String sessionId() {
         return inner.sessionId();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateState.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @Override
     public void updateState(Map<String, Object> data) {
         if (inner.state() != null) {
             inner.state().update(data);
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object getState(Object key) {
         if (inner.state() != null) {
             return inner.state().get(key);
@@ -64,20 +81,27 @@ public abstract class StateSession extends WrappedSession {
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateGlobalState.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @Override
     public void updateGlobalState(Map<String, Object> data) {
         if (inner.state() != null) {
             inner.state().updateGlobal(data);
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getGlobalState.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object getGlobalState(Object key) {
         if (inner.state() != null) {
             return inner.state().getGlobal(key);
@@ -85,10 +109,13 @@ public abstract class StateSession extends WrappedSession {
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * streamWriter.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public StreamWriter<?> streamWriter() {
         if (inner.streamWriterManager() != null) {
             return inner.streamWriterManager().getOutputWriter();
@@ -96,10 +123,13 @@ public abstract class StateSession extends WrappedSession {
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * customWriter.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public StreamWriter<?> customWriter() {
         if (inner.streamWriterManager() != null) {
             return inner.streamWriterManager().getCustomWriter();
@@ -107,30 +137,36 @@ public abstract class StateSession extends WrappedSession {
         return null;
     }
 
+    /**
+     * writeStream.
+     * 
+     * @param data data
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings({"unchecked", "rawtypes"})
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void writeStream(Object data) {
-        StreamWriter writer = (StreamWriter) streamWriter();
+        StreamWriter<?> writer = streamWriter();
         if (writer != null) {
             writer.write(data);
         }
     }
 
+    /**
+     * writeCustomStream.
+     * 
+     * @param data data
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings({"unchecked", "rawtypes"})
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void writeCustomStream(Map<String, Object> data) {
-        StreamWriter writer = (StreamWriter) customWriter();
+        StreamWriter<?> writer = customWriter();
         if (writer != null) {
             writer.write(data);
             return;
         }
-        StreamWriter outputWriter = (StreamWriter) streamWriter();
+        StreamWriter<?> outputWriter = streamWriter();
         if (outputWriter != null) {
             outputWriter.write(new OutputSchema("custom", 0, data));
         }

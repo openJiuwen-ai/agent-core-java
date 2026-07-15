@@ -9,20 +9,30 @@ import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 
 /**
  * Base class for retrievers backed by a vector store.
+ * 
+ * @since 0.1.7
  */
 public abstract class AbstractStoreBackedRetriever extends AbstractRetriever {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * vectorStore.
+     * 
+     * @since 0.1.7
      */
     protected final VectorStore vectorStore;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * embedModel.
+     * 
+     * @since 0.1.7
      */
     protected final Embedding embedModel;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AbstractStoreBackedRetriever.
+     * 
+     * @param vectorStore vectorStore
+     * @param embedModel embedModel
+     * @since 0.1.7
      */
     protected AbstractStoreBackedRetriever(VectorStore vectorStore, Embedding embedModel) {
         this.vectorStore = vectorStore;
@@ -30,23 +40,32 @@ public abstract class AbstractStoreBackedRetriever extends AbstractRetriever {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getVectorStore.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public VectorStore getVectorStore() {
         return vectorStore;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEmbedModel.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Embedding getEmbedModel() {
         return embedModel;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getIndexType() {
         return vectorStore.getIndexType();
     }

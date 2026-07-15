@@ -1,7 +1,11 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.session.NodeSessionApi;
@@ -19,16 +23,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Workflow visualization system tests aligned with Python's draw/to_mermaid behavior.
  * These tests are local-only and verify the production Mermaid generation path.
  */
 @Tag("system-test")
 class WorkflowVisualizationSystemTest {
-
     static class PassthroughComponent extends WorkflowComponent {
         @Override
         public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
@@ -42,10 +42,8 @@ class WorkflowVisualizationSystemTest {
         String mermaid = withWorkflowDrawableEnabled(() -> {
             Workflow flow = new Workflow();
             flow.setStartComp("start", new Start(), Map.of("value", "${value}"), null);
-            flow.addWorkflowComp("process", new PassthroughComponent(),
-                    Map.of("value", "${start.value}"), null);
-            flow.setEndComp("end", new PassthroughComponent(),
-                    Map.of("result", "${process.value}"), null);
+            flow.addWorkflowComp("process", new PassthroughComponent(), Map.of("value", "${start.value}"), null);
+            flow.setEndComp("end", new PassthroughComponent(), Map.of("result", "${process.value}"), null);
             flow.addConnection("start", "process");
             flow.addConnection("process", "end");
             return flow.draw("linear-workflow", "mermaid", false);
@@ -65,16 +63,15 @@ class WorkflowVisualizationSystemTest {
         String expanded = withWorkflowDrawableEnabled(() -> {
             Workflow innerFlow = new Workflow();
             innerFlow.setStartComp("inner_start", new Start(), Map.of("value", "${value}"), null);
-            innerFlow.setEndComp("inner_end", new PassthroughComponent(),
-                    Map.of("result", "${inner_start.value}"), null);
+            innerFlow.setEndComp("inner_end", new PassthroughComponent(), Map.of("result", "${inner_start.value}"),
+                    null);
             innerFlow.addConnection("inner_start", "inner_end");
 
             Workflow outerFlow = new Workflow();
             outerFlow.setStartComp("start", new Start(), Map.of("value", "${value}"), null);
-            outerFlow.addWorkflowComp("sub", new SubWorkflowComponentImpl(innerFlow),
-                    Map.of("value", "${start.value}"), null);
-            outerFlow.setEndComp("end", new PassthroughComponent(),
-                    Map.of("result", "${sub.result}"), null);
+            outerFlow.addWorkflowComp("sub", new SubWorkflowComponentImpl(innerFlow), Map.of("value", "${start.value}"),
+                    null);
+            outerFlow.setEndComp("end", new PassthroughComponent(), Map.of("result", "${sub.result}"), null);
             outerFlow.addConnection("start", "sub");
             outerFlow.addConnection("sub", "end");
             return outerFlow.draw("nested", "mermaid", true);

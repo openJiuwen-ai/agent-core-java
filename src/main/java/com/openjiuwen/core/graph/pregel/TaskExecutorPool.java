@@ -23,20 +23,42 @@ import java.util.concurrent.TimeoutException;
  * Pool for executing Pregel node tasks concurrently using virtual threads.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.task.TaskExecutorPool}.
+ * 
+ * @since 0.1.7
  */
 public class TaskExecutorPool {
-
     private static final LoggerProtocol logger = Loggers.GRAPH;
     private static final long CANCEL_GRACE_TIMEOUT_MS = 5000;
 
     private final PregelConfig config;
     private final ExecutorService executor;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<Message> succeedMessages = new ArrayList<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, PendingNode> failed = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<CompletableFuture<Object>, RunningTask> runningTasks = new ConcurrentHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskExecutorPool.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public TaskExecutorPool(PregelConfig config) {
         this.config = config;
@@ -45,6 +67,10 @@ public class TaskExecutorPool {
 
     /**
      * Submit a node for execution.
+     * 
+     * @param node node
+     * @param version version
+     * @since 0.1.7
      */
     public void submit(PregelNode node, int version) {
         CompletableFuture<Void> completion = new CompletableFuture<>();
@@ -61,15 +87,12 @@ public class TaskExecutorPool {
     }
 
     /**
-     * Wait for all submitted tasks to complete.
-     * Uses FIRST_EXCEPTION semantics: once the first task fails, cancel remaining tasks.
-     * <p>
-     * Mirrors Python's {@code asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)}.
+     * waitAll.
+     * 
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void waitAll() throws Exception {
         if (runningTasks.isEmpty()) {
             return;
@@ -167,6 +190,8 @@ public class TaskExecutorPool {
                         }
                     } else if (result instanceof List<?> msgs) {
                         succeedMessages.addAll((List<Message>) msgs);
+                    } else {
+                        // no-op
                     }
                 }
             } else {
@@ -181,11 +206,15 @@ public class TaskExecutorPool {
             throw firstErrExc;
         } else if (interruptExc != null) {
             throw interruptExc;
+        } else {
+            // no-op
         }
     }
 
     /**
      * Cancel all running tasks.
+     * 
+     * @since 0.1.7
      */
     public void cancelAll() {
         for (Map.Entry<CompletableFuture<Object>, RunningTask> entry : runningTasks.entrySet()) {
@@ -197,6 +226,8 @@ public class TaskExecutorPool {
 
     /**
      * Clear all result collections.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         succeedMessages.clear();
@@ -205,19 +236,32 @@ public class TaskExecutorPool {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSucceedMessages.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Message> getSucceedMessages() {
         return succeedMessages;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFailed.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, PendingNode> getFailed() {
         return failed;
     }
 
+    /**
+     * commitFailure.
+     * 
+     * @param node node
+     * @param exc exc
+     * @since 0.1.7
+     */
     private void commitFailure(PregelNode node, Exception exc) {
         String name = node.getName();
         if (!failed.containsKey(name)) {
@@ -228,6 +272,13 @@ public class TaskExecutorPool {
         }
     }
 
+    /**
+     * unwrapException.
+     * 
+     * @param t t
+     * @return the result
+     * @since 0.1.7
+     */
     private static Throwable unwrapException(Throwable t) {
         while (t instanceof RuntimeException && t.getCause() != null && t != t.getCause()) {
             t = t.getCause();
@@ -238,6 +289,12 @@ public class TaskExecutorPool {
         return t;
     }
 
+    /**
+     * cancelPendingFutures.
+     * 
+     * @param pendingFutures pendingFutures
+     * @since 0.1.7
+     */
     private void cancelPendingFutures(List<CompletableFuture<Object>> pendingFutures) {
         for (CompletableFuture<Object> future : pendingFutures) {
             if (!future.isDone()) {
@@ -246,6 +303,12 @@ public class TaskExecutorPool {
         }
     }
 
+    /**
+     * awaitActualCompletion.
+     * 
+     * @param pendingFutures pendingFutures
+     * @since 0.1.7
+     */
     private void awaitActualCompletion(List<CompletableFuture<Object>> pendingFutures) {
         if (pendingFutures.isEmpty()) {
             return;
@@ -261,8 +324,8 @@ public class TaskExecutorPool {
             return;
         }
         try {
-            CompletableFuture.allOf(completions.toArray(new CompletableFuture[0]))
-                    .get(CANCEL_GRACE_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            CompletableFuture.allOf(completions.toArray(new CompletableFuture[0])).get(CANCEL_GRACE_TIMEOUT_MS,
+                    TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             logger.warning("Timed out waiting for cancelled graph tasks to stop");
         } catch (Exception e) {
@@ -270,10 +333,24 @@ public class TaskExecutorPool {
         }
     }
 
+    /**
+     * isCancellation.
+     * 
+     * @param throwable throwable
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isCancellation(Throwable throwable) {
         return throwable instanceof CancellationException || throwable instanceof InterruptedException;
     }
 
+    /**
+     * RunningTask.
+     * 
+     * @param node node
+     * @param completion completion
+     * @since 0.1.7
+     */
     private record RunningTask(PregelNode node, CompletableFuture<Void> completion) {
     }
 }

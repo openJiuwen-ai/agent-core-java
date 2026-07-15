@@ -17,31 +17,45 @@ import java.util.Set;
 
 /**
  * Playbook data structures for ACE algorithm.
- *
- * <p>Mirrors Python's {@code openjiuwen.extensions.context_evolver.summary.task.ace.playbook}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.extensions.context_evolver.summary.task.ace.playbook}.
+ * 
+ * @since 0.1.7
  */
 public class Playbook {
-
     private final Map<String, Bullet> bullets = new LinkedHashMap<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, List<String>> sections = new LinkedHashMap<>();
     private int nextId = 0;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addBullet.
+     * 
+     * @param section section
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
     public Bullet addBullet(String section, String content) {
         return addBullet(section, content, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addBullet.
+     * 
+     * @param section section
+     * @param content content
+     * @param bulletId bulletId
+     * @param metadata metadata
+     * @return the result
+     * @since 0.1.7
      */
-    public Bullet addBullet(
-            String section,
-            String content,
-            String bulletId,
-            Map<String, Integer> metadata
-    ) {
+    public Bullet addBullet(String section, String content, String bulletId, Map<String, Integer> metadata) {
         String resolvedSection = normalizeSection(section);
         String resolvedBulletId = bulletId != null && !bulletId.isBlank() ? bulletId : generateId(resolvedSection);
         Bullet bullet = new Bullet(resolvedBulletId, resolvedSection, content != null ? content : "");
@@ -52,7 +66,13 @@ public class Playbook {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateBullet.
+     * 
+     * @param bulletId bulletId
+     * @param content content
+     * @param metadata metadata
+     * @return the result
+     * @since 0.1.7
      */
     public Bullet updateBullet(String bulletId, String content, Map<String, Integer> metadata) {
         Bullet bullet = bullets.get(bulletId);
@@ -70,7 +90,13 @@ public class Playbook {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * tagBullet.
+     * 
+     * @param bulletId bulletId
+     * @param tag tag
+     * @param increment increment
+     * @return the result
+     * @since 0.1.7
      */
     public Bullet tagBullet(String bulletId, String tag, int increment) {
         Bullet bullet = bullets.get(bulletId);
@@ -82,7 +108,10 @@ public class Playbook {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeBullet.
+     * 
+     * @param bulletId bulletId
+     * @since 0.1.7
      */
     public void removeBullet(String bulletId) {
         Bullet bullet = bullets.remove(bulletId);
@@ -99,28 +128,41 @@ public class Playbook {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getBullet.
+     * 
+     * @param bulletId bulletId
+     * @return the result
+     * @since 0.1.7
      */
     public Bullet getBullet(String bulletId) {
         return bullets.get(bulletId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * bullets.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Bullet> bullets() {
         return new ArrayList<>(bullets.values());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * bulletIds.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> bulletIds() {
         return new ArrayList<>(bullets.keySet());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadBullet.
+     * 
+     * @param bullet bullet
+     * @since 0.1.7
      */
     public void loadBullet(Bullet bullet) {
         if (bullet == null) {
@@ -134,37 +176,42 @@ public class Playbook {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setNextId.
+     * 
+     * @param nextId nextId
+     * @since 0.1.7
      */
     public void setNextId(int nextId) {
         this.nextId = Math.max(0, nextId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * asPrompt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String asPrompt() {
         List<String> lines = new ArrayList<>();
-        sections.entrySet().stream()
-            .sorted(Map.Entry.comparingByKey())
-            .forEach(entry -> {
-                lines.add("## " + entry.getKey());
-                for (String bulletId : entry.getValue()) {
-                    Bullet bullet = bullets.get(bulletId);
-                    if (bullet == null) {
-                        continue;
-                    }
-                    lines.add("- [" + bullet.getId() + "] " + bullet.getContent()
-                        + " (helpful=" + bullet.getHelpful()
-                        + ", harmful=" + bullet.getHarmful()
-                        + ", neutral=" + bullet.getNeutral() + ")");
+        sections.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+            lines.add("## " + entry.getKey());
+            for (String bulletId : entry.getValue()) {
+                Bullet bullet = bullets.get(bulletId);
+                if (bullet == null) {
+                    continue;
                 }
-            });
+                lines.add("- [" + bullet.getId() + "] " + bullet.getContent() + " (helpful=" + bullet.getHelpful()
+                        + ", harmful=" + bullet.getHarmful() + ", neutral=" + bullet.getNeutral() + ")");
+            }
+        });
         return String.join("\n", lines);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stats.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> stats() {
         Map<String, Integer> tags = new LinkedHashMap<>();
@@ -180,7 +227,11 @@ public class Playbook {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * makePlaybookExcerpt.
+     * 
+     * @param bulletIds bulletIds
+     * @return the result
+     * @since 0.1.7
      */
     public String makePlaybookExcerpt(List<String> bulletIds) {
         List<String> lines = new ArrayList<>();
@@ -201,15 +252,23 @@ public class Playbook {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * lowScoreComparator.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Comparator<Bullet> lowScoreComparator() {
-        return Comparator
-            .comparingInt((Bullet bullet) -> bullet.getHelpful() - bullet.getHarmful())
-            .thenComparing(Bullet::getUpdatedAt)
-            .thenComparing(Bullet::getId);
+        return Comparator.comparingInt((Bullet bullet) -> bullet.getHelpful() - bullet.getHarmful())
+                .thenComparing(Bullet::getUpdatedAt).thenComparing(Bullet::getId);
     }
 
+    /**
+     * generateId.
+     * 
+     * @param section section
+     * @return the result
+     * @since 0.1.7
+     */
     private String generateId(String section) {
         this.nextId += 1;
         String normalizedSection = normalizeSection(section);
@@ -217,12 +276,21 @@ public class Playbook {
         return prefix + "-" + String.format(Locale.ROOT, "%05d", nextId);
     }
 
+    /**
+     * normalizeSection.
+     * 
+     * @param section section
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizeSection(String section) {
         return section != null && !section.isBlank() ? section : "general";
     }
 
     /**
      * Single playbook entry.
+     * 
+     * @since 0.1.7
      */
     public static class Bullet {
         private final String id;
@@ -235,34 +303,33 @@ public class Playbook {
         private String updatedAt;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Bullet.
+         * 
+         * @param id id
+         * @param section section
+         * @param content content
+         * @since 0.1.7
          */
         public Bullet(String id, String section, String content) {
-            this(
-                id,
-                normalizeSection(section),
-                content != null ? content : "",
-                0,
-                0,
-                0,
-                Instant.now().toString(),
-                Instant.now().toString()
-            );
+            this(id, normalizeSection(section), content != null ? content : "", 0, 0, 0, Instant.now().toString(),
+                    Instant.now().toString());
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Bullet.
+         * 
+         * @param id id
+         * @param section section
+         * @param content content
+         * @param helpful helpful
+         * @param harmful harmful
+         * @param neutral neutral
+         * @param createdAt createdAt
+         * @param updatedAt updatedAt
+         * @since 0.1.7
          */
-        public Bullet(
-                String id,
-                String section,
-                String content,
-                int helpful,
-                int harmful,
-                int neutral,
-                String createdAt,
-                String updatedAt
-        ) {
+        public Bullet(String id, String section, String content, int helpful, int harmful, int neutral,
+                String createdAt, String updatedAt) {
             this.id = id;
             this.section = normalizeSection(section);
             this.content = content != null ? content : "";
@@ -274,7 +341,10 @@ public class Playbook {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * applyMetadata.
+         * 
+         * @param metadata metadata
+         * @since 0.1.7
          */
         public void applyMetadata(Map<String, Integer> metadata) {
             if (metadata == null || metadata.isEmpty()) {
@@ -295,7 +365,11 @@ public class Playbook {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * tag.
+         * 
+         * @param tag tag
+         * @param increment increment
+         * @since 0.1.7
          */
         public void tag(String tag, int increment) {
             switch (tag) {
@@ -308,70 +382,99 @@ public class Playbook {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * touch.
+         * 
+         * @since 0.1.7
          */
         public void touch() {
             updatedAt = Instant.now().toString();
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getId.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getId() {
             return id;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getSection.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getSection() {
             return section;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getContent.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getContent() {
             return content;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * setContent.
+         * 
+         * @param content content
+         * @since 0.1.7
          */
         public void setContent(String content) {
             this.content = content != null ? content : "";
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getHelpful.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public int getHelpful() {
             return helpful;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getHarmful.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public int getHarmful() {
             return harmful;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getNeutral.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public int getNeutral() {
             return neutral;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getCreatedAt.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getCreatedAt() {
             return createdAt;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getUpdatedAt.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getUpdatedAt() {
             return updatedAt;
@@ -380,6 +483,8 @@ public class Playbook {
 
     /**
      * Delta operation for playbook updates.
+     * 
+     * @since 0.1.7
      */
     public static class DeltaOperation {
         private final String type;
@@ -389,9 +494,17 @@ public class Playbook {
         private final Map<String, Integer> metadata;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * DeltaOperation.
+         * 
+         * @param type type
+         * @param section section
+         * @param content content
+         * @param bulletId bulletId
+         * @param metadata metadata
+         * @since 0.1.7
          */
-        public DeltaOperation(String type, String section, String content, String bulletId, Map<String, Integer> metadata) {
+        public DeltaOperation(String type, String section, String content, String bulletId,
+                Map<String, Integer> metadata) {
             this.type = type != null ? type : "ADD";
             this.section = section != null ? section : "";
             this.content = content;
@@ -399,10 +512,14 @@ public class Playbook {
             this.metadata = metadata != null ? new LinkedHashMap<>(metadata) : new LinkedHashMap<>();
         }
 
-        @SuppressWarnings("unchecked")
         /**
-         * Auto-generated for codecheck compliance.
+         * fromJson.
+         * 
+         * @param payload payload
+         * @return the result
+         * @since 0.1.7
          */
+        @SuppressWarnings("unchecked")
         public static DeltaOperation fromJson(Map<String, Object> payload) {
             Map<String, Integer> metadata = new LinkedHashMap<>();
             Object metadataValue = payload.get("metadata");
@@ -418,21 +535,23 @@ public class Playbook {
                         } catch (NumberFormatException ignored) {
                             // Skip invalid metadata values.
                         }
+                    } else {
+                        // no-op
                     }
                 }
             }
 
-            return new DeltaOperation(
-                String.valueOf(payload.getOrDefault("type", "ADD")),
-                String.valueOf(payload.getOrDefault("section", "")),
-                payload.get("content") != null ? String.valueOf(payload.get("content")) : null,
-                payload.get("bullet_id") != null ? String.valueOf(payload.get("bullet_id")) : null,
-                metadata
-            );
+            return new DeltaOperation(String.valueOf(payload.getOrDefault("type", "ADD")),
+                    String.valueOf(payload.getOrDefault("section", "")),
+                    payload.get("content") != null ? String.valueOf(payload.get("content")) : null,
+                    payload.get("bullet_id") != null ? String.valueOf(payload.get("bullet_id")) : null, metadata);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * toJson.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Object> toJson() {
             Map<String, Object> data = new LinkedHashMap<>();
@@ -451,35 +570,50 @@ public class Playbook {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getType.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getType() {
             return type;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getSection.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getSection() {
             return section;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getContent.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getContent() {
             return content;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getBulletId.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getBulletId() {
             return bulletId;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getMetadata.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Integer> getMetadata() {
             return new LinkedHashMap<>(metadata);
@@ -488,13 +622,19 @@ public class Playbook {
 
     /**
      * Bundle of curator reasoning and operations.
+     * 
+     * @since 0.1.7
      */
     public static class DeltaBatch {
         private final String reasoning;
         private final List<DeltaOperation> operations;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * DeltaBatch.
+         * 
+         * @param reasoning reasoning
+         * @param operations operations
+         * @since 0.1.7
          */
         public DeltaBatch(String reasoning, List<DeltaOperation> operations) {
             this.reasoning = reasoning != null ? reasoning : "";
@@ -502,7 +642,11 @@ public class Playbook {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * fromJson.
+         * 
+         * @param payload payload
+         * @return the result
+         * @since 0.1.7
          */
         public static DeltaBatch fromJson(Map<String, Object> payload) {
             List<DeltaOperation> operations = new ArrayList<>();
@@ -522,7 +666,10 @@ public class Playbook {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * toJson.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Map<String, Object> toJson() {
             Map<String, Object> data = new LinkedHashMap<>();
@@ -536,14 +683,20 @@ public class Playbook {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getReasoning.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getReasoning() {
             return reasoning;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getOperations.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<DeltaOperation> getOperations() {
             return new ArrayList<>(operations);

@@ -1,15 +1,15 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent.rail;
 
-import org.junit.jupiter.api.Test;
-
 import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
 
 /**
  * Unit tests for {@link AgentCallbackEvent}.
  */
 class AgentCallbackEventTest {
-
     @Test
     void testEnumValues() {
         AgentCallbackEvent[] values = AgentCallbackEvent.values();
@@ -65,9 +65,7 @@ class AgentCallbackEventTest {
 
     @Test
     void testValueOf() {
-        assertThat(AgentCallbackEvent.valueOf("BEFORE_INVOKE"))
-                .isEqualTo(AgentCallbackEvent.BEFORE_INVOKE);
-        assertThat(AgentCallbackEvent.valueOf("ON_TOOL_EXCEPTION"))
-                .isEqualTo(AgentCallbackEvent.ON_TOOL_EXCEPTION);
+        assertThat(AgentCallbackEvent.valueOf("BEFORE_INVOKE")).isEqualTo(AgentCallbackEvent.BEFORE_INVOKE);
+        assertThat(AgentCallbackEvent.valueOf("ON_TOOL_EXCEPTION")).isEqualTo(AgentCallbackEvent.ON_TOOL_EXCEPTION);
     }
 }

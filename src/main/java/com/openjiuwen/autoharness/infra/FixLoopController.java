@@ -15,8 +15,8 @@ import java.util.concurrent.TimeoutException;
 
 /**
  * Public class FixLoopController used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class FixLoopController {
     private final int phase1MaxRetries;
@@ -24,21 +24,32 @@ public class FixLoopController {
     private final double timeoutPerAttemptSecs;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * FixLoopController.
+     * 
+     * @since 0.1.7
      */
     public FixLoopController() {
         this(10, 9, 600.0);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * FixLoopController.
+     * 
+     * @param phase1MaxRetries phase1MaxRetries
+     * @param phase2MaxRetries phase2MaxRetries
+     * @since 0.1.7
      */
     public FixLoopController(int phase1MaxRetries, int phase2MaxRetries) {
         this(phase1MaxRetries, phase2MaxRetries, 600.0);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * FixLoopController.
+     * 
+     * @param phase1MaxRetries phase1MaxRetries
+     * @param phase2MaxRetries phase2MaxRetries
+     * @param timeoutPerAttemptSecs timeoutPerAttemptSecs
+     * @since 0.1.7
      */
     public FixLoopController(int phase1MaxRetries, int phase2MaxRetries, double timeoutPerAttemptSecs) {
         this.phase1MaxRetries = phase1MaxRetries;
@@ -47,20 +58,32 @@ public class FixLoopController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * run.
+     * 
+     * @param ciRunner ciRunner
+     * @param agentFixer agentFixer
+     * @param evaluator evaluator
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public FixLoopResult run(Callable<SimpleCheckResult> ciRunner,
-                             Callable<Void> agentFixer,
-                             Callable<SimpleApprovalResult> evaluator) throws Exception {
+    public FixLoopResult run(Callable<SimpleCheckResult> ciRunner, Callable<Void> agentFixer,
+            Callable<SimpleApprovalResult> evaluator) throws Exception {
         return run(ciRunner, errors -> agentFixer.call(), evaluator);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * run.
+     * 
+     * @param ciRunner ciRunner
+     * @param agentFixer agentFixer
+     * @param evaluator evaluator
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public FixLoopResult run(Callable<SimpleCheckResult> ciRunner,
-                             AgentFixer agentFixer,
-                             Callable<SimpleApprovalResult> evaluator) throws Exception {
+    public FixLoopResult run(Callable<SimpleCheckResult> ciRunner, AgentFixer agentFixer,
+            Callable<SimpleApprovalResult> evaluator) throws Exception {
         FixLoopResult result = FixLoopResult.builder().build();
         for (int i = 1; i <= phase1MaxRetries; i++) {
             result.setAttempts(i);
@@ -117,17 +140,19 @@ public class FixLoopController {
         return result;
     }
 
+    /**
+     * callWithTimeout.
+     * 
+     * @param callable callable
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private <T> T callWithTimeout(Callable<T> callable) throws Exception {
         if (timeoutPerAttemptSecs <= 0) {
             throw new TimeoutException("timed out");
         }
-        ExecutorService executor = new ThreadPoolExecutor(
-                1,
-                1,
-                0L,
-                TimeUnit.MILLISECONDS,
-                new ArrayBlockingQueue<>(1)
-        );
+        ExecutorService executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
         Future<T> future = executor.submit(callable);
         try {
             return future.get(timeoutMillis(), TimeUnit.MILLISECONDS);
@@ -145,14 +170,35 @@ public class FixLoopController {
         }
     }
 
+    /**
+     * runWithTimeout.
+     * 
+     * @param callable callable
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private void runWithTimeout(Callable<Void> callable) throws Exception {
         callWithTimeout(callable);
     }
 
+    /**
+     * timeoutMillis.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private long timeoutMillis() {
         return Math.max(1L, (long) Math.ceil(timeoutPerAttemptSecs * 1000.0));
     }
 
+    /**
+     * truncate.
+     * 
+     * @param text text
+     * @param limit limit
+     * @return the result
+     * @since 0.1.7
+     */
     private static String truncate(String text, int limit) {
         String value = text == null ? "" : text;
         if (limit < 0 || value.length() <= limit) {
@@ -161,30 +207,46 @@ public class FixLoopController {
         return value.substring(0, limit);
     }
 
+    /**
+     * hasText.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
     }
 
     /**
- * Public interface AgentFixer used by the Java parity implementation.
- *
- * @since 1.0
- */
+     * Public interface AgentFixer used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
     @FunctionalInterface
-public interface AgentFixer {
+    public interface AgentFixer {
+        /**
+         * fix.
+         * 
+         * @param errors errors
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         void fix(String errors) throws Exception;
     }
 
     /**
- * Public record SimpleCheckResult used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record SimpleCheckResult(boolean isPassed, String errors) {}
+     * Public record SimpleCheckResult used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record SimpleCheckResult(boolean isPassed, String errors) {
+    }
     /**
- * Public record SimpleApprovalResult used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record SimpleApprovalResult(boolean isApproved) {}
+     * Public record SimpleApprovalResult used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record SimpleApprovalResult(boolean isApproved) {
+    }
 }

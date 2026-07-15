@@ -10,11 +10,18 @@ import com.openjiuwen.core.sysop.sandbox.providers.BaseShellProvider;
 
 /**
  * AIO shell provider — SPI skeleton.
- *
- * @since 2026-01-01
+ * 
  * @version 1.0
+ * @since 0.1.7
  */
 public class AioShellProvider extends BaseShellProvider {
+    /**
+     * AioShellProvider.
+     * 
+     * @param endpoint endpoint
+     * @param config config
+     * @since 0.1.7
+     */
     public AioShellProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
         super(endpoint, config);
     }

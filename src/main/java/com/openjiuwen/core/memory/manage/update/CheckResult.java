@@ -6,6 +6,8 @@ package com.openjiuwen.core.memory.manage.update;
 
 /**
  * Result of memory check operation.
+ * 
+ * @since 0.1.7
  */
 public enum CheckResult {
     REDUNDANT("redundant"),
@@ -19,14 +21,21 @@ public enum CheckResult {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static CheckResult fromValue(String value) {
         for (CheckResult cr : values()) {

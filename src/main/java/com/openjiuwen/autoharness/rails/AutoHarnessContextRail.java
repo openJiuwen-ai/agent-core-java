@@ -11,50 +11,63 @@ import java.util.List;
 
 /**
  * Auto-harness context rail.
- *
- * <p>Reuses {@link ContextProcessorRail} processor installation but disables prompt-section
- * injection/removal that would conflict with auto-harness identity prompts.</p>
+ * <p>
+ * Reuses {@link ContextProcessorRail} processor installation but disables prompt-section
+ * injection/removal that would conflict with auto-harness identity prompts.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class AutoHarnessContextRail extends ContextProcessorRail {
     /**
-     * Auto-generated for codecheck compliance.
+     * AutoHarnessContextRail.
+     * 
+     * @since 0.1.7
      */
     public AutoHarnessContextRail() {
         super();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AutoHarnessContextRail.
+     * 
+     * @param isPreset isPreset
+     * @since 0.1.7
      */
     public AutoHarnessContextRail(boolean isPreset) {
         super(isPreset, List.of(), false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AutoHarnessContextRail.
+     * 
+     * @param isPreset isPreset
+     * @param processorKeys processorKeys
+     * @param isSessionMemoryEnabled isSessionMemoryEnabled
+     * @since 0.1.7
      */
     public AutoHarnessContextRail(boolean isPreset, List<String> processorKeys, boolean isSessionMemoryEnabled) {
         super(isPreset, processorKeys, isSessionMemoryEnabled);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * beforeModelCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void beforeModelCall(AgentCallbackContext ctx) {
         // Python AutoHarnessContextRail intentionally skips workspace/context prompt injection.
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * uninit.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void uninit(Object agent) {
         // Keep installed prompt sections untouched on teardown, matching Python's noop uninit.
     }

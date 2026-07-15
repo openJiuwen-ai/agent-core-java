@@ -14,9 +14,10 @@ import com.openjiuwen.core.controller.ControllerConfig;
  * Reduces parameter passing complexity and improves maintainability.
  * <p>
  * Mirrors Python's {@code TaskExecutorDependencies} dataclass.
+ * 
+ * @since 0.1.7
  */
 public class TaskExecutorDependencies {
-
     private final ControllerConfig config;
     private final Object abilityManager;
     private final ContextEngine contextEngine;
@@ -24,15 +25,17 @@ public class TaskExecutorDependencies {
     private final EventQueue eventQueue;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskExecutorDependencies.
+     * 
+     * @param config config
+     * @param abilityManager abilityManager
+     * @param contextEngine contextEngine
+     * @param taskManager taskManager
+     * @param eventQueue eventQueue
+     * @since 0.1.7
      */
-    public TaskExecutorDependencies(
-            ControllerConfig config,
-            Object abilityManager,
-            ContextEngine contextEngine,
-            TaskManager taskManager,
-            EventQueue eventQueue
-    ) {
+    public TaskExecutorDependencies(ControllerConfig config, Object abilityManager, ContextEngine contextEngine,
+            TaskManager taskManager, EventQueue eventQueue) {
         this.config = config;
         this.abilityManager = abilityManager;
         this.contextEngine = contextEngine;
@@ -41,35 +44,50 @@ public class TaskExecutorDependencies {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ControllerConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAbilityManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getAbilityManager() {
         return abilityManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContextEngine.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ContextEngine getContextEngine() {
         return contextEngine;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TaskManager getTaskManager() {
         return taskManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEventQueue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public EventQueue getEventQueue() {
         return eventQueue;

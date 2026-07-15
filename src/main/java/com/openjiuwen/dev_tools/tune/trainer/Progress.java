@@ -14,9 +14,10 @@ import java.util.stream.StreamSupport;
 
 /**
  * Mirrors Python's openjiuwen.dev_tools.tune.trainer.base.Progress.
+ * 
+ * @since 0.1.7
  */
 public class Progress {
-
     private int currentEpoch;
     private int maxEpoch;
     private int currentBatchIter;
@@ -26,7 +27,9 @@ public class Progress {
     private double currentEpochScore;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Progress.
+     * 
+     * @since 0.1.7
      */
     public Progress() {
         this.currentEpoch = 0;
@@ -39,15 +42,19 @@ public class Progress {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Progress.
+     * 
+     * @param currentEpoch currentEpoch
+     * @param maxEpoch maxEpoch
+     * @param currentBatchIter currentBatchIter
+     * @param maxBatchIter maxBatchIter
+     * @param bestScore bestScore
+     * @param bestBatchScore bestBatchScore
+     * @param currentEpochScore currentEpochScore
+     * @since 0.1.7
      */
-    public Progress(int currentEpoch,
-                    int maxEpoch,
-                    int currentBatchIter,
-                    int maxBatchIter,
-                    double bestScore,
-                    double bestBatchScore,
-                    double currentEpochScore) {
+    public Progress(int currentEpoch, int maxEpoch, int currentBatchIter, int maxBatchIter, double bestScore,
+            double bestBatchScore, double currentEpochScore) {
         this.currentEpoch = Math.max(0, currentEpoch);
         this.maxEpoch = Math.max(0, maxEpoch);
         this.currentBatchIter = Math.max(0, currentBatchIter);
@@ -58,193 +65,215 @@ public class Progress {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentEpoch.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getCurrentEpoch() {
         return currentEpoch;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCurrentEpoch.
+     * 
+     * @param currentEpoch currentEpoch
+     * @since 0.1.7
      */
     public void setCurrentEpoch(int currentEpoch) {
         this.currentEpoch = Math.max(0, currentEpoch);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMaxEpoch.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getMaxEpoch() {
         return maxEpoch;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMaxEpoch.
+     * 
+     * @param maxEpoch maxEpoch
+     * @since 0.1.7
      */
     public void setMaxEpoch(int maxEpoch) {
         this.maxEpoch = Math.max(0, maxEpoch);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentBatchIter.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getCurrentBatchIter() {
         return currentBatchIter;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCurrentBatchIter.
+     * 
+     * @param currentBatchIter currentBatchIter
+     * @since 0.1.7
      */
     public void setCurrentBatchIter(int currentBatchIter) {
         this.currentBatchIter = Math.max(0, currentBatchIter);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMaxBatchIter.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getMaxBatchIter() {
         return maxBatchIter;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMaxBatchIter.
+     * 
+     * @param maxBatchIter maxBatchIter
+     * @since 0.1.7
      */
     public void setMaxBatchIter(int maxBatchIter) {
         this.maxBatchIter = Math.max(0, maxBatchIter);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getBestScore.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getBestScore() {
         return bestScore;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setBestScore.
+     * 
+     * @param bestScore bestScore
+     * @since 0.1.7
      */
     public void setBestScore(double bestScore) {
         this.bestScore = clamp(bestScore);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getBestBatchScore.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getBestBatchScore() {
         return bestBatchScore;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setBestBatchScore.
+     * 
+     * @param bestBatchScore bestBatchScore
+     * @since 0.1.7
      */
     public void setBestBatchScore(double bestBatchScore) {
         this.bestBatchScore = clamp(bestBatchScore);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentEpochScore.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getCurrentEpochScore() {
         return currentEpochScore;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCurrentEpochScore.
+     * 
+     * @param currentEpochScore currentEpochScore
+     * @since 0.1.7
      */
     public void setCurrentEpochScore(double currentEpochScore) {
         this.currentEpochScore = clamp(currentEpochScore);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runEpoch.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Stream<Integer> runEpoch() {
-        return StreamSupport.stream(
-                Spliterators.spliteratorUnknownSize(
-                        new Iterator<Integer>() {
-                            private int epoch = 1;
+        return StreamSupport.stream(Spliterators.spliteratorUnknownSize(new Iterator<Integer>() {
+            private int epoch = 1;
+            @Override
+            public boolean hasNext() {
+                return epoch <= maxEpoch;
+            }
 
-                            /**
-                             * Auto-generated for codecheck compliance.
-                             */
-                            @Override
-                            /**
-                             * Auto-generated for codecheck compliance.
-                             */
-                            public boolean hasNext() {
-                                return epoch <= maxEpoch;
-                            }
-
-                            /**
-                             * Auto-generated for codecheck compliance.
-                             */
-                            @Override
-                            /**
-                             * Auto-generated for codecheck compliance.
-                             */
-                            public Integer next() {
-                                currentEpoch = epoch;
-                                return epoch++;
-                            }
-                        },
-                        Spliterator.ORDERED
-                ),
-                false
-        );
+            @Override
+            public Integer next() {
+                currentEpoch = epoch;
+                return epoch++;
+            }
+        }, Spliterator.ORDERED), false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runBatch.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Stream<Integer> runBatch() {
         bestBatchScore = 0.0d;
-        return StreamSupport.stream(
-                Spliterators.spliteratorUnknownSize(
-                        new Iterator<Integer>() {
-                            private int batchIter = 0;
+        return StreamSupport.stream(Spliterators.spliteratorUnknownSize(new Iterator<Integer>() {
+            private int batchIter = 0;
+            @Override
+            public boolean hasNext() {
+                return batchIter < maxBatchIter;
+            }
 
-                            /**
-                             * Auto-generated for codecheck compliance.
-                             */
-                            @Override
-                            /**
-                             * Auto-generated for codecheck compliance.
-                             */
-                            public boolean hasNext() {
-                                return batchIter < maxBatchIter;
-                            }
-
-                            /**
-                             * Auto-generated for codecheck compliance.
-                             */
-                            @Override
-                            /**
-                             * Auto-generated for codecheck compliance.
-                             */
-                            public Integer next() {
-                                currentBatchIter = batchIter;
-                                return batchIter++;
-                            }
-                        },
-                        Spliterator.ORDERED
-                ),
-                false
-        );
+            @Override
+            public Integer next() {
+                currentBatchIter = batchIter;
+                return batchIter++;
+            }
+        }, Spliterator.ORDERED), false);
     }
 
+    /**
+     * clamp.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static double clamp(double value) {
         return Math.max(0.0d, Math.min(1.0d, value));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static final class Builder {
         private int currentEpoch = 0;
@@ -255,11 +284,20 @@ public class Progress {
         private double bestBatchScore = 0.0d;
         private double currentEpochScore = 0.0d;
 
+        /**
+         * Builder.
+         * 
+         * @since 0.1.7
+         */
         private Builder() {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * currentEpoch.
+         * 
+         * @param currentEpoch currentEpoch
+         * @return the result
+         * @since 0.1.7
          */
         public Builder currentEpoch(int currentEpoch) {
             this.currentEpoch = currentEpoch;
@@ -267,7 +305,11 @@ public class Progress {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * maxEpoch.
+         * 
+         * @param maxEpoch maxEpoch
+         * @return the result
+         * @since 0.1.7
          */
         public Builder maxEpoch(int maxEpoch) {
             this.maxEpoch = maxEpoch;
@@ -275,7 +317,11 @@ public class Progress {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * currentBatchIter.
+         * 
+         * @param currentBatchIter currentBatchIter
+         * @return the result
+         * @since 0.1.7
          */
         public Builder currentBatchIter(int currentBatchIter) {
             this.currentBatchIter = currentBatchIter;
@@ -283,7 +329,11 @@ public class Progress {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * maxBatchIter.
+         * 
+         * @param maxBatchIter maxBatchIter
+         * @return the result
+         * @since 0.1.7
          */
         public Builder maxBatchIter(int maxBatchIter) {
             this.maxBatchIter = maxBatchIter;
@@ -291,7 +341,11 @@ public class Progress {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * bestScore.
+         * 
+         * @param bestScore bestScore
+         * @return the result
+         * @since 0.1.7
          */
         public Builder bestScore(double bestScore) {
             this.bestScore = bestScore;
@@ -299,7 +353,11 @@ public class Progress {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * bestBatchScore.
+         * 
+         * @param bestBatchScore bestBatchScore
+         * @return the result
+         * @since 0.1.7
          */
         public Builder bestBatchScore(double bestBatchScore) {
             this.bestBatchScore = bestBatchScore;
@@ -307,7 +365,11 @@ public class Progress {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * currentEpochScore.
+         * 
+         * @param currentEpochScore currentEpochScore
+         * @return the result
+         * @since 0.1.7
          */
         public Builder currentEpochScore(double currentEpochScore) {
             this.currentEpochScore = currentEpochScore;
@@ -315,10 +377,14 @@ public class Progress {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Progress build() {
-            return new Progress(currentEpoch, maxEpoch, currentBatchIter, maxBatchIter, bestScore, bestBatchScore, currentEpochScore);
+            return new Progress(currentEpoch, maxEpoch, currentBatchIter, maxBatchIter, bestScore, bestBatchScore,
+                    currentEpochScore);
         }
     }
 }

@@ -11,18 +11,23 @@ import java.util.function.Supplier;
  * Generic base class for resource managers that use provider-based registration.
  * <p>
  * Mirrors Python's {@code AbstractManager} in {@code resources_manager/abstract_manager.py}.
- *
- * @param <T> the type of resource this manager handles
+ * 
+ * @since 0.1.7
  */
 public abstract class AbstractManager<T> {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * providers.
+     * 
+     * @since 0.1.7
      */
     protected final ConcurrentHashMap<String, Supplier<? extends T>> providers = new ConcurrentHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerResourceProvider.
+     * 
+     * @param resourceId resourceId
+     * @param resource resource
+     * @since 0.1.7
      */
     protected void registerResourceProvider(String resourceId, Supplier<? extends T> resource) {
         if (providers.containsKey(resourceId)) {
@@ -32,7 +37,11 @@ public abstract class AbstractManager<T> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getResource.
+     * 
+     * @param resourceId resourceId
+     * @return the result
+     * @since 0.1.7
      */
     protected T getResource(String resourceId) {
         Supplier<? extends T> provider = providers.get(resourceId);
@@ -43,7 +52,11 @@ public abstract class AbstractManager<T> {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * unregisterResourceProvider.
+     * 
+     * @param resourceId resourceId
+     * @return the result
+     * @since 0.1.7
      */
     protected Supplier<? extends T> unregisterResourceProvider(String resourceId) {
         return providers.remove(resourceId);
@@ -51,6 +64,8 @@ public abstract class AbstractManager<T> {
 
     /**
      * Clear all registered providers.
+     * 
+     * @since 0.1.7
      */
     protected void clearProviders() {
         providers.clear();

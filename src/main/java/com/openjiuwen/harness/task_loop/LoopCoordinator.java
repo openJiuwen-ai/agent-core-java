@@ -11,8 +11,8 @@ import java.util.Map;
 
 /**
  * Public class LoopCoordinator used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class LoopCoordinator {
     private final List<StopConditionEvaluator> evaluators;
@@ -24,21 +24,28 @@ public class LoopCoordinator {
     private Map<String, Object> lastResult;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LoopCoordinator.
+     * 
+     * @since 0.1.7
      */
     public LoopCoordinator() {
         this(List.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LoopCoordinator.
+     * 
+     * @param evaluators evaluators
+     * @since 0.1.7
      */
     public LoopCoordinator(List<StopConditionEvaluator> evaluators) {
         this.evaluators = new ArrayList<>(evaluators);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * reset.
+     * 
+     * @since 0.1.7
      */
     public void reset() {
         iteration = 0;
@@ -51,14 +58,19 @@ public class LoopCoordinator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * incrementIteration.
+     * 
+     * @since 0.1.7
      */
     public void incrementIteration() {
         iteration += 1;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addTokenUsage.
+     * 
+     * @param tokens tokens
+     * @since 0.1.7
      */
     public void addTokenUsage(int tokens) {
         if (tokens > 0) {
@@ -67,33 +79,37 @@ public class LoopCoordinator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLastResult.
+     * 
+     * @param result result
+     * @since 0.1.7
      */
     public void setLastResult(Map<String, Object> result) {
         this.lastResult = result;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * requestAbort.
+     * 
+     * @since 0.1.7
      */
     public void requestAbort() {
         isAborted = true;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shouldContinue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean shouldContinue() {
         if (isAborted) {
             stopReason = "Aborted";
             return false;
         }
-        StopEvaluationContext ctx = StopEvaluationContext.builder()
-                .iteration(iteration)
-                .tokenUsage(tokenUsage)
-                .elapsedSeconds((System.currentTimeMillis() - startMillis) / 1000.0)
-                .lastResult(lastResult)
-                .build();
+        StopEvaluationContext ctx = StopEvaluationContext.builder().iteration(iteration).tokenUsage(tokenUsage)
+                .elapsedSeconds((System.currentTimeMillis() - startMillis) / 1000.0).lastResult(lastResult).build();
         for (StopConditionEvaluator evaluator : evaluators) {
             if (evaluator.shouldStop(ctx)) {
                 stopReason = evaluator.name();
@@ -104,18 +120,21 @@ public class LoopCoordinator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCompletionPromiseEvaluator.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public CompletionPromiseEvaluator getCompletionPromiseEvaluator() {
-        return evaluators.stream()
-                .filter(CompletionPromiseEvaluator.class::isInstance)
-                .map(CompletionPromiseEvaluator.class::cast)
-                .findFirst()
-                .orElse(null);
+        return evaluators.stream().filter(CompletionPromiseEvaluator.class::isInstance)
+                .map(CompletionPromiseEvaluator.class::cast).findFirst().orElse(null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getState() {
         Map<String, Object> evaluatorStates = new LinkedHashMap<>();
@@ -134,7 +153,10 @@ public class LoopCoordinator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadState.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     public void loadState(Map<String, Object> data) {
         if (data == null || data.isEmpty()) {
@@ -165,21 +187,30 @@ public class LoopCoordinator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentIteration.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getCurrentIteration() {
         return iteration;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAborted.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isAborted() {
         return isAborted;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStopReason.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getStopReason() {
         return stopReason;

@@ -33,15 +33,24 @@ import java.util.Map;
 
 /**
  * Token-budget driven round-level fallback compressor.
+ * 
+ * @since 0.1.7
  */
 public class RoundLevelCompressor extends ContextProcessor {
-
     static final String COMPRESS_LEVEL = "compress_level";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * ROUND_LEVEL_FALLBACK_MARKER.
+     * 
+     * @since 0.1.7
      */
     public static final String ROUND_LEVEL_FALLBACK_MARKER = "[ROUND_LEVEL_MEMORY_BLOCK]";
 
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static final String DEFAULT_ROUND_COMPRESSION_PROMPT = """
@@ -105,7 +114,10 @@ public class RoundLevelCompressor extends ContextProcessor {
     private Model model;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RoundLevelCompressor.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public RoundLevelCompressor(RoundLevelCompressorConfig config) {
         super(config);
@@ -123,12 +135,14 @@ public class RoundLevelCompressor extends ContextProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * triggerAddMessages.
+     * 
+     * @param context context
+     * @param messagesToAdd messagesToAdd
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
         List<BaseMessage> allMessages = new ArrayList<>(context.getMessages());
         if (messagesToAdd != null) {
@@ -136,111 +150,87 @@ public class RoundLevelCompressor extends ContextProcessor {
         }
         int totalTokens = countContextWindowTokens(null, allMessages, null, context);
         if (totalTokens > triggerTotalTokens) {
-            Loggers.CONTEXT_ENGINE.info("[" + processorType()
-                    + " triggered] estimated context window tokens " + totalTokens
-                    + " exceeds trigger_total_tokens " + triggerTotalTokens);
+            Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] estimated context window tokens "
+                    + totalTokens + " exceeds trigger_total_tokens " + triggerTotalTokens);
             return true;
         }
         return false;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * onAddMessages.
+     * 
+     * @param context context
+     * @param messagesToAdd messagesToAdd
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
         List<BaseMessage> allMessages = new ArrayList<>(context.getMessages());
         if (messagesToAdd != null) {
             allMessages.addAll(messagesToAdd);
         }
-        List<BaseMessage> compressedMessages = compressUntilTarget(
-                allMessages,
-                context,
-                null,
-                null,
-                keepRecentMessages,
-                false);
+        List<BaseMessage> compressedMessages =
+            compressUntilTarget(allMessages, context, null, null, keepRecentMessages, false);
         if (compressedMessages.equals(allMessages)) {
             return ProcessResult.ofMessages(null, messagesToAdd);
         }
         context.setMessages(compressedMessages);
-        ContextEvent event = ContextEvent.builder()
-                .eventType(processorType())
-                .messagesToModify(range(0, allMessages.size() - 1))
-                .build();
+        ContextEvent event = ContextEvent.builder().eventType(processorType())
+                .messagesToModify(range(0, allMessages.size() - 1)).build();
         return ProcessResult.ofMessages(event, List.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * triggerGetContextWindow.
+     * 
+     * @param context context
+     * @param contextWindow contextWindow
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean triggerGetContextWindow(ModelContext context, ContextWindow contextWindow) {
-        return countContextWindowTokens(
-                contextWindow.getSystemMessages(),
-                contextWindow.getContextMessages(),
-                contextWindow.getTools(),
-                context) > triggerTotalTokens;
+        return countContextWindowTokens(contextWindow.getSystemMessages(), contextWindow.getContextMessages(),
+                contextWindow.getTools(), context) > triggerTotalTokens;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * onGetContextWindow.
+     * 
+     * @param context context
+     * @param contextWindow contextWindow
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public ProcessResult onGetContextWindow(ModelContext context, ContextWindow contextWindow) {
-        int totalTokens = countContextWindowTokens(
-                contextWindow.getSystemMessages(),
-                contextWindow.getContextMessages(),
-                contextWindow.getTools(),
-                context);
+        int totalTokens = countContextWindowTokens(contextWindow.getSystemMessages(),
+                contextWindow.getContextMessages(), contextWindow.getTools(), context);
         if (totalTokens <= targetTotalTokens) {
             return ProcessResult.ofContextWindow(null, contextWindow);
         }
 
-        List<BaseMessage> compressedMessages = compressUntilTarget(
-                contextWindow.getContextMessages(),
-                context,
-                contextWindow.getSystemMessages(),
-                contextWindow.getTools(),
-                0,
-                false);
+        List<BaseMessage> compressedMessages = compressUntilTarget(contextWindow.getContextMessages(), context,
+                contextWindow.getSystemMessages(), contextWindow.getTools(), 0, false);
         int originalContextLen = contextWindow.getContextMessages().size();
         contextWindow.setContextMessages(compressedMessages);
         context.setMessages(compressedMessages);
-        ContextEvent event = ContextEvent.builder()
-                .eventType(processorType())
-                .messagesToModify(range(0, originalContextLen - 1))
-                .build();
+        ContextEvent event = ContextEvent.builder().eventType(processorType())
+                .messagesToModify(range(0, originalContextLen - 1)).build();
         return ProcessResult.ofContextWindow(event, contextWindow);
     }
 
-    List<BaseMessage> compressUntilTarget(
-            List<BaseMessage> contextMessages,
-            ModelContext context,
-            List<BaseMessage> systemMessages,
-            List<ToolInfo> tools,
-            int keepRecent,
-            boolean isForce) {
+    List<BaseMessage> compressUntilTarget(List<BaseMessage> contextMessages, ModelContext context,
+            List<BaseMessage> systemMessages, List<ToolInfo> tools, int keepRecent, boolean isForce) {
         List<BaseMessage> working = new ArrayList<>(contextMessages);
         if (!isForce && isUnderContextWindowBudget(systemMessages, working, tools, context)) {
             return working;
         }
 
-        List<BaseMessage> recursiveUpdated = runRecursiveCompression(
-                working,
-                context,
-                systemMessages,
-                tools,
-                keepRecent);
+        List<BaseMessage> recursiveUpdated =
+            runRecursiveCompression(working, context, systemMessages, tools, keepRecent);
         if (recursiveUpdated != null) {
             working = recursiveUpdated;
         }
@@ -248,14 +238,8 @@ public class RoundLevelCompressor extends ContextProcessor {
             return working;
         }
 
-        List<BaseMessage> aggressiveKeepRecent = runAggressivePhase(
-                working,
-                context,
-                systemMessages,
-                tools,
-                keepRecent,
-                secondPassTargetTokens,
-                "aggressive_keep_recent");
+        List<BaseMessage> aggressiveKeepRecent = runAggressivePhase(working, context, systemMessages, tools, keepRecent,
+                secondPassTargetTokens, "aggressive_keep_recent");
         if (aggressiveKeepRecent != null) {
             working = aggressiveKeepRecent;
         }
@@ -263,14 +247,8 @@ public class RoundLevelCompressor extends ContextProcessor {
             return working;
         }
 
-        List<BaseMessage> aggressiveFull = runAggressivePhase(
-                working,
-                context,
-                systemMessages,
-                tools,
-                0,
-                thirdPassTargetTokens,
-                "aggressive_full_context");
+        List<BaseMessage> aggressiveFull = runAggressivePhase(working, context, systemMessages, tools, 0,
+                thirdPassTargetTokens, "aggressive_full_context");
         if (aggressiveFull != null) {
             working = aggressiveFull;
         }
@@ -280,12 +258,8 @@ public class RoundLevelCompressor extends ContextProcessor {
         return truncateToTarget(working, context, systemMessages, tools);
     }
 
-    List<BaseMessage> runRecursiveCompression(
-            List<BaseMessage> messages,
-            ModelContext context,
-            List<BaseMessage> systemMessages,
-            List<ToolInfo> tools,
-            int keepRecent) {
+    List<BaseMessage> runRecursiveCompression(List<BaseMessage> messages, ModelContext context,
+            List<BaseMessage> systemMessages, List<ToolInfo> tools, int keepRecent) {
         List<BaseMessage> working = new ArrayList<>(messages);
         boolean isChanged = false;
 
@@ -293,16 +267,8 @@ public class RoundLevelCompressor extends ContextProcessor {
         if (compressEnd >= 0) {
             List<CompressTarget> rawTargets = buildRawTargets(working, compressEnd);
             if (!rawTargets.isEmpty()) {
-                List<BaseMessage> updated = applyLlmPhase(
-                        working,
-                        context,
-                        systemMessages,
-                        tools,
-                        rawTargets,
-                        firstPassTargetTokens,
-                        false,
-                        "l0_to_l1",
-                        keepRecent);
+                List<BaseMessage> updated = applyLlmPhase(working, context, systemMessages, tools, rawTargets,
+                        firstPassTargetTokens, false, "l0_to_l1", keepRecent);
                 if (updated != null) {
                     working = updated;
                     isChanged = true;
@@ -319,16 +285,9 @@ public class RoundLevelCompressor extends ContextProcessor {
             if (mergeTargets.isEmpty()) {
                 break;
             }
-            List<BaseMessage> updated = applyLlmPhase(
-                    working,
-                    context,
-                    systemMessages,
-                    tools,
-                    mergeTargets,
-                    firstPassTargetTokens,
-                    false,
-                    "recursive_merge_l" + mergeTargets.get(0).currentLevel()
-                            + "_to_l" + mergeTargets.get(0).nextLevel(),
+            List<BaseMessage> updated = applyLlmPhase(working, context, systemMessages, tools, mergeTargets,
+                    firstPassTargetTokens, false, "recursive_merge_l" + mergeTargets.get(0).currentLevel() + "_to_l"
+                            + mergeTargets.get(0).nextLevel(),
                     keepRecent);
             if (updated == null || updated.equals(working)) {
                 break;
@@ -339,13 +298,8 @@ public class RoundLevelCompressor extends ContextProcessor {
         return isChanged ? working : null;
     }
 
-    List<BaseMessage> runAggressivePhase(
-            List<BaseMessage> messages,
-            ModelContext context,
-            List<BaseMessage> systemMessages,
-            List<ToolInfo> tools,
-            int keepRecent,
-            int targetTokens,
+    List<BaseMessage> runAggressivePhase(List<BaseMessage> messages, ModelContext context,
+            List<BaseMessage> systemMessages, List<ToolInfo> tools, int keepRecent, int targetTokens,
             String phaseName) {
         int compressEnd = messages.size() - keepRecent - 1;
         if (compressEnd < 0) {
@@ -355,15 +309,7 @@ public class RoundLevelCompressor extends ContextProcessor {
         if (targets.isEmpty()) {
             return nullValue();
         }
-        return applyLlmPhase(
-                messages,
-                context,
-                systemMessages,
-                tools,
-                targets,
-                targetTokens,
-                true,
-                phaseName,
+        return applyLlmPhase(messages, context, systemMessages, tools, targets, targetTokens, true, phaseName,
                 keepRecent);
     }
 
@@ -388,15 +334,8 @@ public class RoundLevelCompressor extends ContextProcessor {
                 break;
             }
             endIdx = protectedEndIdx;
-            targets.add(new CompressTarget(
-                    "block_" + blockNo,
-                    l0BlockEnd.scope(),
-                    startIdx,
-                    endIdx,
-                    new ArrayList<>(messages.subList(startIdx, endIdx + 1)),
-                    0,
-                    1,
-                    1));
+            targets.add(new CompressTarget("block_" + blockNo, l0BlockEnd.scope(), startIdx, endIdx,
+                    new ArrayList<>(messages.subList(startIdx, endIdx + 1)), 0, 1, 1));
             blockNo++;
             cursor = endIdx + 1;
         }
@@ -416,8 +355,7 @@ public class RoundLevelCompressor extends ContextProcessor {
             }
         }
         if (tailToolIds.isEmpty()) {
-            if (messages.get(endIdx) instanceof AssistantMessage assistant
-                    && assistant.getToolCalls() != null
+            if (messages.get(endIdx) instanceof AssistantMessage assistant && assistant.getToolCalls() != null
                     && !assistant.getToolCalls().isEmpty()) {
                 return endIdx - 1;
             }
@@ -425,8 +363,7 @@ public class RoundLevelCompressor extends ContextProcessor {
         }
         for (int index = startIdx; index <= endIdx; index++) {
             BaseMessage message = messages.get(index);
-            if (!(message instanceof AssistantMessage assistant)
-                    || assistant.getToolCalls() == null
+            if (!(message instanceof AssistantMessage assistant) || assistant.getToolCalls() == null
                     || assistant.getToolCalls().isEmpty()) {
                 continue;
             }
@@ -436,10 +373,8 @@ public class RoundLevelCompressor extends ContextProcessor {
                 }
             }
         }
-        if (protectedEndIdx == endIdx
-                && messages.get(endIdx) instanceof AssistantMessage assistant
-                && assistant.getToolCalls() != null
-                && !assistant.getToolCalls().isEmpty()) {
+        if (protectedEndIdx == endIdx && messages.get(endIdx) instanceof AssistantMessage assistant
+                && assistant.getToolCalls() != null && !assistant.getToolCalls().isEmpty()) {
             protectedEndIdx = endIdx - 1;
         }
         return protectedEndIdx;
@@ -482,15 +417,8 @@ public class RoundLevelCompressor extends ContextProcessor {
             for (int cursor = index; cursor <= endIdx; cursor++) {
                 level = Math.max(level, getCompressLevel(messages.get(cursor)));
             }
-            targets.add(new CompressTarget(
-                    "memory_" + blockNo,
-                    "existing_round_level_block",
-                    index,
-                    endIdx,
-                    new ArrayList<>(messages.subList(index, endIdx + 1)),
-                    level,
-                    level + 1,
-                    1));
+            targets.add(new CompressTarget("memory_" + blockNo, "existing_round_level_block", index, endIdx,
+                    new ArrayList<>(messages.subList(index, endIdx + 1)), level, level + 1, 1));
             blockNo++;
             index = endIdx + 1;
         }
@@ -531,41 +459,25 @@ public class RoundLevelCompressor extends ContextProcessor {
                 continue;
             }
             if (group.size() >= 2) {
-                mergedTargets.add(buildMergeTarget(
-                        group,
-                        messages,
-                        isResolved.candidateLevel(),
-                        mergedTargets.size() + 1));
+                mergedTargets
+                        .add(buildMergeTarget(group, messages, isResolved.candidateLevel(), mergedTargets.size() + 1));
             }
             group = new ArrayList<>();
             group.add(target);
         }
         if (group.size() >= 2) {
-            mergedTargets.add(buildMergeTarget(
-                    group,
-                    messages,
-                    isResolved.candidateLevel(),
-                    mergedTargets.size() + 1));
+            mergedTargets.add(buildMergeTarget(group, messages, isResolved.candidateLevel(), mergedTargets.size() + 1));
         }
         return mergedTargets;
     }
 
-    CompressTarget buildMergeTarget(
-            List<CompressTarget> group,
-            List<BaseMessage> messages,
-            int candidateLevel,
+    CompressTarget buildMergeTarget(List<CompressTarget> group, List<BaseMessage> messages, int candidateLevel,
             int groupNo) {
         CompressTarget first = group.get(0);
         CompressTarget last = group.get(group.size() - 1);
-        return new CompressTarget(
-                "merge_" + candidateLevel + "_" + groupNo,
-                "recursive_merge",
-                first.startIdx(),
-                last.endIdx(),
-                new ArrayList<>(messages.subList(first.startIdx(), last.endIdx() + 1)),
-                candidateLevel,
-                candidateLevel + 1,
-                group.size());
+        return new CompressTarget("merge_" + candidateLevel + "_" + groupNo, "recursive_merge", first.startIdx(),
+                last.endIdx(), new ArrayList<>(messages.subList(first.startIdx(), last.endIdx() + 1)), candidateLevel,
+                candidateLevel + 1, group.size());
     }
 
     EffectiveMergeLevels resolveEffectiveMergeLevels(List<CompressTarget> memoryTargets) {
@@ -589,15 +501,10 @@ public class RoundLevelCompressor extends ContextProcessor {
                 if (level == highestLevel || levelCounts.get(level) != 1) {
                     continue;
                 }
-                Integer nextHigherLevel = orderedLevels.stream()
-                        .filter(candidate -> candidate > level)
-                        .findFirst()
-                        .orElse(null);
-                String blockId = effectiveLevels.entrySet().stream()
-                        .filter(entry -> entry.getValue().equals(level))
-                        .map(Map.Entry::getKey)
-                        .findFirst()
-                        .orElse(null);
+                Integer nextHigherLevel =
+                    orderedLevels.stream().filter(candidate -> candidate > level).findFirst().orElse(null);
+                String blockId = effectiveLevels.entrySet().stream().filter(entry -> entry.getValue().equals(level))
+                        .map(Map.Entry::getKey).findFirst().orElse(null);
                 if (nextHigherLevel != null && blockId != null) {
                     effectiveLevels.put(blockId, nextHigherLevel);
                     isChanged = true;
@@ -607,34 +514,17 @@ public class RoundLevelCompressor extends ContextProcessor {
             if (isChanged) {
                 continue;
             }
-            Integer candidateLevel = orderedLevels.stream()
-                    .filter(level -> levelCounts.get(level) >= 2)
-                    .findFirst()
-                    .orElse(null);
+            Integer candidateLevel =
+                orderedLevels.stream().filter(level -> levelCounts.get(level) >= 2).findFirst().orElse(null);
             return new EffectiveMergeLevels(effectiveLevels, candidateLevel);
         }
     }
 
-    List<BaseMessage> applyLlmPhase(
-            List<BaseMessage> messages,
-            ModelContext context,
-            List<BaseMessage> systemMessages,
-            List<ToolInfo> tools,
-            List<CompressTarget> targets,
-            int targetTokens,
-            boolean isAggressive,
-            String phaseName,
-            int keepRecentMessages) {
-        List<BaseMessage> modelMessages = prepareRoundCompressionMessages(
-                messages,
-                targets,
-                context,
-                phaseName,
-                targetTokens,
-                isAggressive,
-                keepRecentMessages,
-                systemMessages,
-                tools);
+    List<BaseMessage> applyLlmPhase(List<BaseMessage> messages, ModelContext context, List<BaseMessage> systemMessages,
+            List<ToolInfo> tools, List<CompressTarget> targets, int targetTokens, boolean isAggressive,
+            String phaseName, int keepRecentMessages) {
+        List<BaseMessage> modelMessages = prepareRoundCompressionMessages(messages, targets, context, phaseName,
+                targetTokens, isAggressive, keepRecentMessages, systemMessages, tools);
         if (modelMessages == null) {
             Loggers.CONTEXT_ENGINE.warning("[RoundLevelCompressor] phase=" + phaseName
                     + " skipped because compression call budget is impossible");
@@ -644,19 +534,13 @@ public class RoundLevelCompressor extends ContextProcessor {
         try {
             response = invokeCompressionModel(modelMessages);
         } catch (RuntimeException exception) {
-            throw ErrorHelper.buildError(
-                    StatusCode.MODEL_CALL_FAILED,
-                    "error_msg",
+            throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED, "error_msg",
                     processorType() + " failed to invoke compression model during phase=" + phaseName);
         }
 
-        List<Replacement> replacements = buildJsonReplacements(
-                context,
-                targets,
-                response != null ? response.getParserContent() : null);
-        if (replacements.isEmpty()
-                && response != null
-                && response.getContentAsString() != null
+        List<Replacement> replacements =
+            buildJsonReplacements(context, targets, response != null ? response.getParserContent() : null);
+        if (replacements.isEmpty() && response != null && response.getContentAsString() != null
                 && !response.getContentAsString().strip().isEmpty()) {
             Replacement fallback = buildRawFallbackReplacement(context, targets, response.getContentAsString().strip());
             if (fallback != null) {
@@ -664,57 +548,40 @@ public class RoundLevelCompressor extends ContextProcessor {
             }
         }
         if (replacements.isEmpty()) {
-            Loggers.CONTEXT_ENGINE.warning("[RoundLevelCompressor] phase=" + phaseName
-                    + " produced no valid replacements");
+            Loggers.CONTEXT_ENGINE
+                    .warning("[RoundLevelCompressor] phase=" + phaseName + " produced no valid replacements");
             return nullValue();
         }
         List<BaseMessage> updatedMessages = applyReplacements(messages, replacements);
         Loggers.CONTEXT_ENGINE.info("[RoundLevelCompressor] phase=" + phaseName + " context_window_tokens "
-                + countContextWindowTokens(systemMessages, messages, tools, context)
-                + " -> " + countContextWindowTokens(systemMessages, updatedMessages, tools, context));
+                + countContextWindowTokens(systemMessages, messages, tools, context) + " -> "
+                + countContextWindowTokens(systemMessages, updatedMessages, tools, context));
         return updatedMessages;
     }
 
+    /**
+     * invokeCompressionModel.
+     * 
+     * @param modelMessages modelMessages
+     * @return the result
+     * @since 0.1.7
+     */
     private AssistantMessage invokeCompressionModel(List<BaseMessage> modelMessages) {
         try {
-            return getModel().invoke(
-                    modelMessages,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    new JsonOutputParser(),
-                    null,
+            return getModel().invoke(modelMessages, null, null, null, null, null, null, new JsonOutputParser(), null,
                     null);
         } catch (Exception exception) {
             throw new IllegalStateException(exception);
         }
     }
 
-    List<BaseMessage> prepareRoundCompressionMessages(
-            List<BaseMessage> contextMessages,
-            List<CompressTarget> targets,
-            ModelContext context,
-            String phaseName,
-            int targetTokens,
-            boolean isAggressive,
-            int keepRecentMessages,
-            List<BaseMessage> systemMessages,
-            List<ToolInfo> tools) {
-        String systemPrompt = isAggressive
-                ? DEFAULT_AGGRESSIVE_ROUND_COMPRESSION_PROMPT
-                : DEFAULT_ROUND_COMPRESSION_PROMPT;
-        String promptText = buildCompressionUserPrompt(
-                contextMessages,
-                targets,
-                context,
-                phaseName,
-                targetTokens,
-                keepRecentMessages,
-                systemMessages,
-                tools);
+    List<BaseMessage> prepareRoundCompressionMessages(List<BaseMessage> contextMessages, List<CompressTarget> targets,
+            ModelContext context, String phaseName, int targetTokens, boolean isAggressive, int keepRecentMessages,
+            List<BaseMessage> systemMessages, List<ToolInfo> tools) {
+        String systemPrompt =
+            isAggressive ? DEFAULT_AGGRESSIVE_ROUND_COMPRESSION_PROMPT : DEFAULT_ROUND_COMPRESSION_PROMPT;
+        String promptText = buildCompressionUserPrompt(contextMessages, targets, context, phaseName, targetTokens,
+                keepRecentMessages, systemMessages, tools);
         if (isUnderCompressionCallBudget(systemPrompt, promptText, context)) {
             return List.of(new SystemMessage(systemPrompt), new UserMessage(promptText));
         }
@@ -725,15 +592,9 @@ public class RoundLevelCompressor extends ContextProcessor {
         return List.of(new SystemMessage(systemPrompt), new UserMessage(compactPrompt));
     }
 
-    String buildCompressionUserPrompt(
-            List<BaseMessage> contextMessages,
-            List<CompressTarget> targets,
-            ModelContext context,
-            String phaseName,
-            int targetTokens,
-            int keepRecentMessages,
-            List<BaseMessage> systemMessages,
-            List<ToolInfo> tools) {
+    String buildCompressionUserPrompt(List<BaseMessage> contextMessages, List<CompressTarget> targets,
+            ModelContext context, String phaseName, int targetTokens, int keepRecentMessages,
+            List<BaseMessage> systemMessages, List<ToolInfo> tools) {
         java.util.Set<Integer> targetIndices = new java.util.LinkedHashSet<>();
         for (CompressTarget target : targets) {
             for (int index = target.startIdx(); index <= target.endIdx(); index++) {
@@ -771,30 +632,17 @@ public class RoundLevelCompressor extends ContextProcessor {
         }
         int currentWindowTokens = countContextWindowTokens(systemMessages, contextMessages, tools, context);
 
-        return String.join("\n", List.of(
-                "[Compression Task]",
-                "- phase: " + phaseName,
-                "- target_summary_tokens: " + targetTokens,
-                "- keep_recent_messages: " + keepRecentMessages,
-                "- selected_blocks: " + targets.size(),
-                "- current_context_window_tokens: " + currentWindowTokens,
+        return String.join("\n", List.of("[Compression Task]", "- phase: " + phaseName,
+                "- target_summary_tokens: " + targetTokens, "- keep_recent_messages: " + keepRecentMessages,
+                "- selected_blocks: " + targets.size(), "- current_context_window_tokens: " + currentWindowTokens,
                 "- compression_call_budget_limit: " + compressionCallMaxTokens,
-                "- selected_range: [" + firstTargetIdx + ", " + lastTargetIdx + "]",
-                "",
-                "[Reference Context]",
-                referenceLines.isEmpty() ? "(none)" : String.join("\n", referenceLines),
-                "",
-                "[Selected Targets]",
-                targetLines.isEmpty() ? "(none)" : String.join("\n", targetLines).stripTrailing(),
-                "",
-                "[Protected Recent Context]",
-                recentLines.isEmpty() ? "(none)" : String.join("\n", recentLines),
-                "",
-                "[Output Contract]",
-                "- Return valid JSON only.",
+                "- selected_range: [" + firstTargetIdx + ", " + lastTargetIdx + "]", "", "[Reference Context]",
+                referenceLines.isEmpty() ? "(none)" : String.join("\n", referenceLines), "", "[Selected Targets]",
+                targetLines.isEmpty() ? "(none)" : String.join("\n", targetLines).stripTrailing(), "",
+                "[Protected Recent Context]", recentLines.isEmpty() ? "(none)" : String.join("\n", recentLines), "",
+                "[Output Contract]", "- Return valid JSON only.",
                 "- Use schema: {\"blocks\": [{\"block_id\": \"...\", \"summary\": \"...\"}]}",
-                "- Emit exactly one summary for each selected block_id.",
-                "- Do not emit undeclared block_ids.",
+                "- Emit exactly one summary for each selected block_id.", "- Do not emit undeclared block_ids.",
                 "- Target content must appear only in [Selected Targets], not elsewhere.",
                 "- Preserve the user's original requirements, constraints, acceptance criteria, and preferences "
                         + "as completely as possible.",
@@ -826,10 +674,7 @@ public class RoundLevelCompressor extends ContextProcessor {
         return best;
     }
 
-    List<Replacement> buildJsonReplacements(
-            ModelContext context,
-            List<CompressTarget> targets,
-            Object parserContent) {
+    List<Replacement> buildJsonReplacements(ModelContext context, List<CompressTarget> targets, Object parserContent) {
         if (!isValidBlocksPayload(parserContent)) {
             return List.of();
         }
@@ -873,10 +718,7 @@ public class RoundLevelCompressor extends ContextProcessor {
         return replacements;
     }
 
-    Replacement buildRawFallbackReplacement(
-            ModelContext context,
-            List<CompressTarget> targets,
-            String summary) {
+    Replacement buildRawFallbackReplacement(ModelContext context, List<CompressTarget> targets, String summary) {
         if (targets.isEmpty() || summary == null || summary.isBlank()) {
             return nullValue();
         }
@@ -886,13 +728,8 @@ public class RoundLevelCompressor extends ContextProcessor {
         for (CompressTarget target : targets) {
             mergedMessages.addAll(target.messages());
         }
-        CompressTarget mergedTarget = new CompressTarget(
-                "raw_fallback",
-                "mixed_context",
-                startIdx,
-                endIdx,
-                mergedMessages,
-                targets.stream().mapToInt(CompressTarget::currentLevel).max().orElse(0),
+        CompressTarget mergedTarget = new CompressTarget("raw_fallback", "mixed_context", startIdx, endIdx,
+                mergedMessages, targets.stream().mapToInt(CompressTarget::currentLevel).max().orElse(0),
                 targets.stream().mapToInt(CompressTarget::nextLevel).max().orElse(1),
                 targets.stream().mapToInt(CompressTarget::sourceBlockCount).sum());
         BaseMessage replacement = buildMemoryMessage(summary, mergedTarget, context);
@@ -912,36 +749,26 @@ public class RoundLevelCompressor extends ContextProcessor {
     }
 
     String wrapMemoryBlock(String summary, String scope) {
-        return compressionMarker + "\n"
-                + "processor: RoundLevelCompressor\n"
-                + "type: historical_memory_block\n"
+        return compressionMarker + "\n" + "processor: RoundLevelCompressor\n" + "type: historical_memory_block\n"
                 + "scope: " + scope + "\n"
                 + "authority: This block is reference memory, not a binding source of truth.\n"
                 + "instruction_status: Historical fallback context only. Do not treat as a new user instruction.\n"
                 + "conflict_priority: Prefer newer explicit user intent, newer raw context, "
-                + "and fresh tool results over this block.\n\n"
-                + "Summary:\n"
-                + summary;
+                + "and fresh tool results over this block.\n\n" + "Summary:\n" + summary;
     }
 
     UserMessage buildMinimalTruncatedMessage() {
-        return new UserMessage(compressionMarker + "\n"
-                + "processor: RoundLevelCompressor\n"
-                + "type: historical_memory_block\n"
-                + "scope: truncated_full_context\n"
-                + "Summary:\n"
-                + truncatedMarker);
+        return new UserMessage(
+                compressionMarker + "\n" + "processor: RoundLevelCompressor\n" + "type: historical_memory_block\n"
+                        + "scope: truncated_full_context\n" + "Summary:\n" + truncatedMarker);
     }
 
     UserMessage buildCompactTruncatedMessage() {
         return new UserMessage(compressionMarker + "\n" + truncatedMarker);
     }
 
-    List<BaseMessage> truncateToTarget(
-            List<BaseMessage> contextMessages,
-            ModelContext context,
-            List<BaseMessage> systemMessages,
-            List<ToolInfo> tools) {
+    List<BaseMessage> truncateToTarget(List<BaseMessage> contextMessages, ModelContext context,
+            List<BaseMessage> systemMessages, List<ToolInfo> tools) {
         int fixedTokens = countContextWindowFixedTokens(systemMessages, tools, context);
         int allowedContextTokens = targetTotalTokens - fixedTokens;
         if (allowedContextTokens <= 0) {
@@ -961,9 +788,8 @@ public class RoundLevelCompressor extends ContextProcessor {
         List<BaseMessage> bestMessages = List.of();
         while (low <= high) {
             int middle = (low + high) / 2;
-            String candidateContent = wrapMemoryBlock(
-                    buildHeadTailTruncatedText(serialized, middle),
-                    "truncated_full_context");
+            String candidateContent =
+                wrapMemoryBlock(buildHeadTailTruncatedText(serialized, middle), "truncated_full_context");
             List<BaseMessage> candidateMessages = List.of(new UserMessage(candidateContent));
             int candidateTokens = countContextWindowTokens(systemMessages, candidateMessages, tools, context);
             if (candidateTokens <= targetTotalTokens) {
@@ -1004,11 +830,8 @@ public class RoundLevelCompressor extends ContextProcessor {
         return truncatedMarker;
     }
 
-    int countContextWindowTokens(
-            List<BaseMessage> systemMessages,
-            List<BaseMessage> contextMessages,
-            List<ToolInfo> tools,
-            ModelContext context) {
+    int countContextWindowTokens(List<BaseMessage> systemMessages, List<BaseMessage> contextMessages,
+            List<ToolInfo> tools, ModelContext context) {
         TokenCounter tokenCounter = context.tokenCounter();
         List<BaseMessage> allMessages = new ArrayList<>();
         if (systemMessages != null) {
@@ -1022,8 +845,8 @@ public class RoundLevelCompressor extends ContextProcessor {
                 return tokenCounter.countMessages(allMessages)
                         + tokenCounter.countTools(tools != null ? tools : List.of());
             } catch (RuntimeException exception) {
-                Loggers.CONTEXT_ENGINE.warning("[" + processorType()
-                        + "] token_counter failed, fallback to estimate: " + exception.getMessage());
+                Loggers.CONTEXT_ENGINE.warning("[" + processorType() + "] token_counter failed, fallback to estimate: "
+                        + exception.getMessage());
             }
         }
         int total = allMessages.stream().mapToInt(ContextUtils::estimateMessageTokens).sum();
@@ -1044,18 +867,15 @@ public class RoundLevelCompressor extends ContextProcessor {
             try {
                 return tokenCounter.countMessages(messages);
             } catch (RuntimeException exception) {
-                Loggers.CONTEXT_ENGINE.warning("[" + processorType()
-                        + "] compression token counting fallback: " + exception.getMessage());
+                Loggers.CONTEXT_ENGINE.warning(
+                        "[" + processorType() + "] compression token counting fallback: " + exception.getMessage());
             }
         }
         return messages.stream().mapToInt(ContextUtils::estimateMessageTokens).sum();
     }
 
-    boolean isUnderContextWindowBudget(
-            List<BaseMessage> systemMessages,
-            List<BaseMessage> contextMessages,
-            List<ToolInfo> tools,
-            ModelContext context) {
+    boolean isUnderContextWindowBudget(List<BaseMessage> systemMessages, List<BaseMessage> contextMessages,
+            List<ToolInfo> tools, ModelContext context) {
         return countContextWindowTokens(systemMessages, contextMessages, tools, context) <= targetTotalTokens;
     }
 
@@ -1063,9 +883,7 @@ public class RoundLevelCompressor extends ContextProcessor {
         return countCompressionCallTokens(systemPrompt, promptText, context) <= compressionCallMaxTokens;
     }
 
-    boolean hasCompressionBenefit(
-            ModelContext context,
-            List<BaseMessage> originalMessages,
+    boolean hasCompressionBenefit(ModelContext context, List<BaseMessage> originalMessages,
             List<BaseMessage> replacementMessages) {
         int originalTokens = countMessageTokens(originalMessages, context);
         int replacementTokens = countMessageTokens(replacementMessages, context);
@@ -1078,8 +896,8 @@ public class RoundLevelCompressor extends ContextProcessor {
             try {
                 return tokenCounter.countMessages(messages);
             } catch (RuntimeException exception) {
-                Loggers.CONTEXT_ENGINE.warning("[" + processorType()
-                        + "] token_counter failed, fallback to estimate: " + exception.getMessage());
+                Loggers.CONTEXT_ENGINE.warning("[" + processorType() + "] token_counter failed, fallback to estimate: "
+                        + exception.getMessage());
             }
         }
         return messages.stream().mapToInt(ContextUtils::estimateMessageTokens).sum();
@@ -1090,9 +908,8 @@ public class RoundLevelCompressor extends ContextProcessor {
         parts.add("[" + index + "] role=" + message.getRole());
         if (message instanceof AssistantMessage assistant && assistant.getToolCalls() != null
                 && !assistant.getToolCalls().isEmpty()) {
-            parts.add("tool_calls=" + String.join(
-                    ", ",
-                    assistant.getToolCalls().stream().map(ToolCall::getName).toList()));
+            parts.add("tool_calls="
+                    + String.join(", ", assistant.getToolCalls().stream().map(ToolCall::getName).toList()));
         }
         if (message instanceof ToolMessage toolMessage) {
             parts.add("tool_call_id=" + toolMessage.getToolCallId());
@@ -1123,8 +940,7 @@ public class RoundLevelCompressor extends ContextProcessor {
 
     int findRoundLevelBlockEnd(List<BaseMessage> messages, int start, int compressEnd) {
         int endIdx = start;
-        while (endIdx + 1 <= compressEnd
-                && messages.get(endIdx + 1) instanceof AssistantMessage assistant
+        while (endIdx + 1 <= compressEnd && messages.get(endIdx + 1) instanceof AssistantMessage assistant
                 && (assistant.getToolCalls() == null || assistant.getToolCalls().isEmpty())
                 && looksLikeAck(assistant)) {
             endIdx++;
@@ -1134,8 +950,7 @@ public class RoundLevelCompressor extends ContextProcessor {
 
     static boolean looksLikeAck(BaseMessage message) {
         return message instanceof AssistantMessage
-                && "Understood. I have recorded this compressed context."
-                        .equals(toText(message.getContent()).strip());
+                && "Understood. I have recorded this compressed context.".equals(toText(message.getContent()).strip());
     }
 
     static boolean isValidBlocksPayload(Object parserContent) {
@@ -1147,10 +962,7 @@ public class RoundLevelCompressor extends ContextProcessor {
         List<Replacement> ordered = new ArrayList<>(replacements);
         ordered.sort(Comparator.comparingInt(Replacement::startIdx).reversed());
         for (Replacement replacement : ordered) {
-            updated = ContextUtils.replaceMessages(
-                    updated,
-                    replacement.replacementMessages(),
-                    replacement.startIdx(),
+            updated = ContextUtils.replaceMessages(updated, replacement.replacementMessages(), replacement.startIdx(),
                     replacement.endIdx());
         }
         return updated;
@@ -1183,23 +995,23 @@ public class RoundLevelCompressor extends ContextProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void loadState(Map<String, Object> state) {
         // stateless
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * saveState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> saveState() {
         return Map.of();
     }
@@ -1212,15 +1024,8 @@ public class RoundLevelCompressor extends ContextProcessor {
         return values;
     }
 
-    record CompressTarget(
-            String blockId,
-            String scope,
-            int startIdx,
-            int endIdx,
-            List<BaseMessage> messages,
-            int currentLevel,
-            int nextLevel,
-            int sourceBlockCount) {
+    record CompressTarget(String blockId, String scope, int startIdx, int endIdx, List<BaseMessage> messages,
+            int currentLevel, int nextLevel, int sourceBlockCount) {
     }
 
     record L0BlockEnd(int endIdx, String scope) {
@@ -1231,8 +1036,14 @@ public class RoundLevelCompressor extends ContextProcessor {
 
     record Replacement(int startIdx, int endIdx, List<BaseMessage> replacementMessages) {
     }
+
+    /**
+     * nullValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static <T> T nullValue() {
         return null;
     }
-
 }

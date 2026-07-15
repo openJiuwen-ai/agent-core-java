@@ -14,8 +14,8 @@ import lombok.EqualsAndHashCode;
  * Configuration for the Memory Retrieval workflow component.
  * <p>
  * Mirrors Python's {@code MemoryRetrievalCompConfig}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 @Data
 @EqualsAndHashCode(callSuper = true)

@@ -18,13 +18,18 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Loads the persisted ACE playbook for the current user.
+ * 
+ * @since 0.1.7
  */
 public class LoadPlaybookOp extends BaseOp {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * asyncExecute.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
         Playbook playbook = new Playbook();
         String userId = context.getString("user_id", "default");
@@ -39,23 +44,15 @@ public class LoadPlaybookOp extends BaseOp {
         filter.put("workspace_id", userId);
         filter.put("type", "ace_memory");
 
-        List<VectorNode> existingNodes = vectorStore.getAll(filter).stream()
-            .sorted(Comparator.comparing(VectorNode::getId))
-            .toList();
+        List<VectorNode> existingNodes =
+            vectorStore.getAll(filter).stream().sorted(Comparator.comparing(VectorNode::getId)).toList();
 
         int maxCounter = 0;
         for (VectorNode node : existingNodes) {
             ACEMemory memory = ACEMemory.fromVectorNode(node);
-            playbook.loadBullet(new Playbook.Bullet(
-                memory.getId(),
-                memory.getSection(),
-                memory.getContent(),
-                memory.getHelpful(),
-                memory.getHarmful(),
-                memory.getNeutral(),
-                memory.getCreatedAt().toString(),
-                memory.getUpdatedAt().toString()
-            ));
+            playbook.loadBullet(new Playbook.Bullet(memory.getId(), memory.getSection(), memory.getContent(),
+                    memory.getHelpful(), memory.getHarmful(), memory.getNeutral(), memory.getCreatedAt().toString(),
+                    memory.getUpdatedAt().toString()));
             maxCounter = Math.max(maxCounter, AceUtils.trailingCounter(memory.getId()));
         }
 

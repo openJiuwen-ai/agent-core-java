@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
@@ -22,21 +23,19 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+/**
+ * Public class AutoHarnessConfig used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class AutoHarnessConfig used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class AutoHarnessConfig {
-    private static final List<String> DEFAULT_IMMUTABLE_FILES = List.of(
-            "openjiuwen/auto_harness/prompts/identity.md",
-            "openjiuwen/auto_harness/resources/ci_gate.yaml",
-            "openjiuwen/harness/rails/security/prompt_security_rail.py"
-    );
+    private static final List<String> DEFAULT_IMMUTABLE_FILES =
+        List.of("openjiuwen/auto_harness/prompts/identity.md", "openjiuwen/auto_harness/resources/ci_gate.yaml",
+                "openjiuwen/harness/rails/security/prompt_security_rail.py");
 
     @Builder.Default
     private String workspace = "";
@@ -66,6 +65,11 @@ public class AutoHarnessConfig {
     @Builder.Default
     private String dataDir = "";
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> skillsDirs = new ArrayList<>();
     @Builder.Default
     private String localRepo = "";
@@ -108,35 +112,59 @@ public class AutoHarnessConfig {
     @Builder.Default
     private String configPath = "";
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> stageRegistrars = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> pipelineRegistrars = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> immutableFiles = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> highImpactPrefixes = new ArrayList<>(List.of("openjiuwen/core/"));
     @Builder.Default
-    private Map<String, Integer> agentIterations = new LinkedHashMap<>(Map.of(
-            "implement", 30,
-            "assess", 30,
-            "plan", 15,
-            "select_pipeline", 10,
-            "eval", 10,
-            "pr_draft", 5,
-            "learnings", 5,
-            "explore_subagent", 20,
-            "browser_subagent", 20
-    ));
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @param 20 20
+     * @since 0.1.7
+     */
+    private Map<String, Integer> agentIterations =
+        new LinkedHashMap<>(Map.of("implement", 30, "assess", 30, "plan", 15, "select_pipeline", 10, "eval", 10,
+                "pr_draft", 5, "learnings", 5, "explore_subagent", 20, "browser_subagent", 20));
 
     /**
-     * Auto-generated for codecheck compliance.
+     * workspacePath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path workspacePath() {
         return normalizePath(hasText(workspace) ? workspace : ".");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * experiencePath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path experiencePath() {
         if (hasText(experienceDir)) {
@@ -149,7 +177,10 @@ public class AutoHarnessConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * worktreesPath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path worktreesPath() {
         if (hasText(dataDir)) {
@@ -159,7 +190,10 @@ public class AutoHarnessConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runsPath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path runsPath() {
         if (hasText(dataDir)) {
@@ -169,7 +203,10 @@ public class AutoHarnessConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * cacheRepoPath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path cacheRepoPath() {
         if (hasText(dataDir)) {
@@ -179,32 +216,34 @@ public class AutoHarnessConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildProjectProfile.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ProjectProfile buildProjectProfile() {
-        return ProjectProfile.builder()
-                .repoUrl(repoUrl)
-                .immutableFiles(resolveImmutableFiles())
+        return ProjectProfile.builder().repoUrl(repoUrl).immutableFiles(resolveImmutableFiles())
                 .highImpactPrefixes(new ArrayList<>(highImpactPrefixes))
-                .defaultBaseBranch(hasText(gitBaseBranch) ? gitBaseBranch.trim() : "develop")
-                .build();
+                .defaultBaseBranch(hasText(gitBaseBranch) ? gitBaseBranch.trim() : "develop").build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildPaths.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AutoHarnessPaths buildPaths() {
-        return AutoHarnessPaths.builder()
-                .dataDir(hasText(dataDir) ? normalizePath(dataDir).toString() : "")
-                .experienceDir(experiencePath().toString())
-                .worktreesDir(worktreesPath().toString())
-                .runsDir(runsPath().toString())
-                .cacheRepoDir(cacheRepoPath().toString())
-                .build();
+        return AutoHarnessPaths.builder().dataDir(hasText(dataDir) ? normalizePath(dataDir).toString() : "")
+                .experienceDir(experiencePath().toString()).worktreesDir(worktreesPath().toString())
+                .runsDir(runsPath().toString()).cacheRepoDir(cacheRepoPath().toString()).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveRepoName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String resolveRepoName() {
         for (String candidate : new String[]{upstreamRepo, repoUrlStem()}) {
@@ -216,7 +255,10 @@ public class AutoHarnessConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveImmutableFiles.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> resolveImmutableFiles() {
         if (immutableFiles != null && !immutableFiles.isEmpty()) {
@@ -226,7 +268,10 @@ public class AutoHarnessConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveGitcodeUsername.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String resolveGitcodeUsername() {
         if (hasText(gitcodeUsername)) {
@@ -239,20 +284,24 @@ public class AutoHarnessConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveGitcodeToken.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String resolveGitcodeToken() {
         if (hasText(gitcodeToken)) {
             return gitcodeToken.trim();
         }
-        return System.getenv().getOrDefault(
-                hasText(gitcodeTokenEnv) ? gitcodeTokenEnv.trim() : "GITCODE_ACCESS_TOKEN",
-                ""
-        );
+        return System.getenv().getOrDefault(hasText(gitcodeTokenEnv) ? gitcodeTokenEnv.trim() : "GITCODE_ACCESS_TOKEN",
+                "");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveCiGatePythonExecutable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String resolveCiGatePythonExecutable() {
         if (hasText(ciGatePythonExecutable)) {
@@ -270,7 +319,12 @@ public class AutoHarnessConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveAgentIterations.
+     * 
+     * @param stageName stageName
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public int resolveAgentIterations(String stageName, int defaultValue) {
         if (agentIterations == null || !hasText(stageName)) {
@@ -284,7 +338,11 @@ public class AutoHarnessConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadFromDict.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public static AutoHarnessConfig loadFromDict(Map<String, ?> data) {
         AutoHarnessConfig cfg = AutoHarnessConfig.builder().build();
@@ -304,24 +362,30 @@ public class AutoHarnessConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadAutoHarnessConfig.
+     * 
+     * @param configPath configPath
+     * @return the result
+     * @since 0.1.7
      */
     public static AutoHarnessConfig loadAutoHarnessConfig(String configPath) {
         return loadAutoHarnessConfig(configPath, "");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadAutoHarnessConfig.
+     * 
+     * @param configPath configPath
+     * @param workspaceHint workspaceHint
+     * @return the result
+     * @since 0.1.7
      */
     public static AutoHarnessConfig loadAutoHarnessConfig(String configPath, String workspaceHint) {
         Path path = Path.of(configPath);
         if (!Files.isRegularFile(path)) {
             boolean isBootstrapped = bootstrapConfigFile(path);
-            AutoHarnessConfig cfg = AutoHarnessConfig.builder()
-                    .configPath(path.toString())
-                    .isConfigBootstrapped(isBootstrapped)
-                    .suggestedLocalRepo(detectLocalRepo(workspaceHint))
-                    .build();
+            AutoHarnessConfig cfg = AutoHarnessConfig.builder().configPath(path.toString())
+                    .isConfigBootstrapped(isBootstrapped).suggestedLocalRepo(detectLocalRepo(workspaceHint)).build();
             if (!hasText(cfg.getDataDir())) {
                 cfg.setDataDir(path.getParent() == null ? "" : path.getParent().toString());
             }
@@ -332,10 +396,8 @@ public class AutoHarnessConfig {
         try (InputStream stream = Files.newInputStream(path)) {
             loaded = new Yaml().load(stream);
         } catch (IOException | RuntimeException e) {
-            AutoHarnessConfig cfg = AutoHarnessConfig.builder()
-                    .configPath(path.toString())
-                    .suggestedLocalRepo(detectLocalRepo(workspaceHint))
-                    .build();
+            AutoHarnessConfig cfg = AutoHarnessConfig.builder().configPath(path.toString())
+                    .suggestedLocalRepo(detectLocalRepo(workspaceHint)).build();
             if (!hasText(cfg.getDataDir())) {
                 cfg.setDataDir(path.getParent() == null ? "" : path.getParent().toString());
             }
@@ -352,13 +414,23 @@ public class AutoHarnessConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isPlaceholderLocalRepo.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isPlaceholderLocalRepo(String path) {
         String normalized = path == null ? "" : path.trim();
         return normalized.equals("./agent-core") || normalized.equals("./repo");
     }
 
+    /**
+     * repoUrlStem.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String repoUrlStem() {
         if (!hasText(repoUrl)) {
             return "";
@@ -369,18 +441,46 @@ public class AutoHarnessConfig {
         return stem.trim();
     }
 
+    /**
+     * removeGitSuffix.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String removeGitSuffix(String value) {
         return value.endsWith(".git") ? value.substring(0, value.length() - 4) : value;
     }
 
+    /**
+     * hasText.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
     }
 
+    /**
+     * normalizePath.
+     * 
+     * @param rawPath rawPath
+     * @return the result
+     * @since 0.1.7
+     */
     private static Path normalizePath(String rawPath) {
         return Path.of(rawPath).toAbsolutePath().normalize();
     }
 
+    /**
+     * venvPython.
+     * 
+     * @param root root
+     * @return the result
+     * @since 0.1.7
+     */
     private static Path venvPython(String root) {
         if (!hasText(root)) {
             return Path.of("");
@@ -388,6 +488,13 @@ public class AutoHarnessConfig {
         return normalizePath(root).resolve(".venv").resolve("bin").resolve(executableName("python"));
     }
 
+    /**
+     * putTopLevel.
+     * 
+     * @param cfg cfg
+     * @param data data
+     * @since 0.1.7
+     */
     private static void putTopLevel(AutoHarnessConfig cfg, Map<String, ?> data) {
         setString(data, "data_dir", cfg::setDataDir);
         setString(data, "local_repo", cfg::setLocalRepo);
@@ -405,6 +512,13 @@ public class AutoHarnessConfig {
         setStringList(data, "high_impact_prefixes", cfg::setHighImpactPrefixes);
     }
 
+    /**
+     * putGit.
+     * 
+     * @param cfg cfg
+     * @param git git
+     * @since 0.1.7
+     */
     private static void putGit(AutoHarnessConfig cfg, Map<String, ?> git) {
         setString(git, "remote", cfg::setGitRemote);
         setString(git, "base_branch", cfg::setGitBaseBranch);
@@ -415,12 +529,26 @@ public class AutoHarnessConfig {
         setString(git, "upstream_repo", cfg::setUpstreamRepo);
     }
 
+    /**
+     * putGitcode.
+     * 
+     * @param cfg cfg
+     * @param gitcode gitcode
+     * @since 0.1.7
+     */
     private static void putGitcode(AutoHarnessConfig cfg, Map<String, ?> gitcode) {
         setString(gitcode, "username", cfg::setGitcodeUsername);
         setString(gitcode, "access_token", cfg::setGitcodeToken);
         setString(gitcode, "access_token_env", cfg::setGitcodeTokenEnv);
     }
 
+    /**
+     * putBudget.
+     * 
+     * @param cfg cfg
+     * @param budget budget
+     * @since 0.1.7
+     */
     private static void putBudget(AutoHarnessConfig cfg, Map<String, ?> budget) {
         setDouble(budget, "session_secs", cfg::setSessionBudgetSecs);
         setDouble(budget, "cost_limit_usd", cfg::setCostLimitUsd);
@@ -430,17 +558,38 @@ public class AutoHarnessConfig {
         setInt(budget, "self_driven_slots", cfg::setSelfDrivenSlots);
     }
 
+    /**
+     * putCiGate.
+     * 
+     * @param cfg cfg
+     * @param ciGate ciGate
+     * @since 0.1.7
+     */
     private static void putCiGate(AutoHarnessConfig cfg, Map<String, ?> ciGate) {
         setString(ciGate, "config_path", cfg::setCiGateConfig);
         setString(ciGate, "python_executable", cfg::setCiGatePythonExecutable);
         setString(ciGate, "install_command", cfg::setCiGateInstallCommand);
     }
 
+    /**
+     * putFixLoop.
+     * 
+     * @param cfg cfg
+     * @param fixLoop fixLoop
+     * @since 0.1.7
+     */
     private static void putFixLoop(AutoHarnessConfig cfg, Map<String, ?> fixLoop) {
         setInt(fixLoop, "phase1_max_retries", cfg::setFixPhase1MaxRetries);
         setInt(fixLoop, "phase2_max_retries", cfg::setFixPhase2MaxRetries);
     }
 
+    /**
+     * putAgentIterations.
+     * 
+     * @param cfg cfg
+     * @param agent agent
+     * @since 0.1.7
+     */
     private static void putAgentIterations(AutoHarnessConfig cfg, Map<String, ?> agent) {
         if (agent.isEmpty()) {
             return;
@@ -455,11 +604,25 @@ public class AutoHarnessConfig {
         cfg.setAgentIterations(iterations);
     }
 
+    /**
+     * putExtensions.
+     * 
+     * @param cfg cfg
+     * @param extensions extensions
+     * @since 0.1.7
+     */
     private static void putExtensions(AutoHarnessConfig cfg, Map<String, ?> extensions) {
         setStringList(extensions, "stage_registrars", cfg::setStageRegistrars);
         setStringList(extensions, "pipeline_registrars", cfg::setPipelineRegistrars);
     }
 
+    /**
+     * asMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, ?> asMap(Object value) {
         if (!(value instanceof Map<?, ?> raw)) {
             return Map.of();
@@ -473,15 +636,29 @@ public class AutoHarnessConfig {
         return converted;
     }
 
+    /**
+     * setString.
+     * 
+     * @param data data
+     * @param key key
+     * @param setter setter
+     * @since 0.1.7
+     */
     private static void setString(Map<String, ?> data, String key, java.util.function.Consumer<String> setter) {
         if (data.containsKey(key) && data.get(key) != null) {
             setter.accept(String.valueOf(data.get(key)));
         }
     }
 
-    private static void setStringList(
-            Map<String, ?> data,
-            String key,
+    /**
+     * setStringList.
+     * 
+     * @param data data
+     * @param key key
+     * @param setter setter
+     * @since 0.1.7
+     */
+    private static void setStringList(Map<String, ?> data, String key,
             java.util.function.Consumer<List<String>> setter) {
         Object value = data.get(key);
         if (value instanceof List<?> list) {
@@ -489,6 +666,14 @@ public class AutoHarnessConfig {
         }
     }
 
+    /**
+     * setDouble.
+     * 
+     * @param data data
+     * @param key key
+     * @param setter setter
+     * @since 0.1.7
+     */
     private static void setDouble(Map<String, ?> data, String key, java.util.function.DoubleConsumer setter) {
         Double value = toDouble(data.get(key));
         if (value != null) {
@@ -496,6 +681,14 @@ public class AutoHarnessConfig {
         }
     }
 
+    /**
+     * setInt.
+     * 
+     * @param data data
+     * @param key key
+     * @param setter setter
+     * @since 0.1.7
+     */
     private static void setInt(Map<String, ?> data, String key, java.util.function.IntConsumer setter) {
         Integer value = toInteger(data.get(key));
         if (value != null) {
@@ -503,6 +696,13 @@ public class AutoHarnessConfig {
         }
     }
 
+    /**
+     * toDouble.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Double toDouble(Object value) {
         if (value instanceof Number number) {
             return number.doubleValue();
@@ -517,6 +717,13 @@ public class AutoHarnessConfig {
         return null;
     }
 
+    /**
+     * toInteger.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Integer toInteger(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -531,6 +738,13 @@ public class AutoHarnessConfig {
         return null;
     }
 
+    /**
+     * bootstrapConfigFile.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean bootstrapConfigFile(Path path) {
         try {
             if (path.getParent() != null) {
@@ -544,9 +758,16 @@ public class AutoHarnessConfig {
         }
     }
 
+    /**
+     * readBundledConfigTemplate.
+     * 
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private static String readBundledConfigTemplate() throws IOException {
-        try (InputStream stream = AutoHarnessConfig.class.getResourceAsStream(
-                "/openjiuwen/auto_harness/resources/config.yaml")) {
+        try (InputStream stream =
+            AutoHarnessConfig.class.getResourceAsStream("/openjiuwen/auto_harness/resources/config.yaml")) {
             if (stream != null) {
                 return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
             }
@@ -554,6 +775,13 @@ public class AutoHarnessConfig {
         return "# Auto-Harness config\n# local_repo: \"./agent-core\"\n";
     }
 
+    /**
+     * detectLocalRepo.
+     * 
+     * @param workspaceHint workspaceHint
+     * @return the result
+     * @since 0.1.7
+     */
     private static String detectLocalRepo(String workspaceHint) {
         List<Path> candidates = new ArrayList<>();
         if (hasText(workspaceHint)) {
@@ -574,13 +802,25 @@ public class AutoHarnessConfig {
         return "";
     }
 
+    /**
+     * looksLikeRepoRoot.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean looksLikeRepoRoot(Path path) {
-        return Files.isDirectory(path)
-                && Files.exists(path.resolve(".git"))
-                && Files.isRegularFile(path.resolve("pyproject.toml"))
-                && Files.isDirectory(path.resolve("openjiuwen"));
+        return Files.isDirectory(path) && Files.exists(path.resolve(".git"))
+                && Files.isRegularFile(path.resolve("pyproject.toml")) && Files.isDirectory(path.resolve("openjiuwen"));
     }
 
+    /**
+     * executableName.
+     * 
+     * @param command command
+     * @return the result
+     * @since 0.1.7
+     */
     private static String executableName(String command) {
         return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win") ? command + ".exe" : command;
     }

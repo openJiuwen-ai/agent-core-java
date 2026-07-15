@@ -4,10 +4,20 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCodeResult;
 import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,18 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 class JiuwenBoxCodeProviderTest {
-
     private JiuwenBoxClient mockClient;
     private JiuwenBoxCodeProvider provider;
 
@@ -54,7 +53,8 @@ class JiuwenBoxCodeProviderTest {
         hooks.clear();
     }
 
-    private JiuwenBoxCodeProvider createProviderWithMockClient(SandboxEndpoint endpoint, SandboxGatewayConfig config) throws Exception {
+    private JiuwenBoxCodeProvider createProviderWithMockClient(SandboxEndpoint endpoint, SandboxGatewayConfig config)
+            throws Exception {
         JiuwenBoxCodeProvider prov = new JiuwenBoxCodeProvider(endpoint, config);
         Field mixinField = JiuwenBoxCodeProvider.class.getDeclaredField("mixin");
         mixinField.setAccessible(true);
@@ -77,24 +77,19 @@ class JiuwenBoxCodeProviderTest {
     @DisplayName("buildCodeCommand for python uses base64 encoding and python3 -c")
     void testBuildCodeCommandPython() throws Exception {
         String code = "print('hello')";
-        String expectedBase64 = Base64.getEncoder().encodeToString(
-                code.getBytes(StandardCharsets.UTF_8));
+        String expectedBase64 = Base64.getEncoder().encodeToString(code.getBytes(StandardCharsets.UTF_8));
 
         when(mockClient.exec(anyString(), anyList(), any(), any(), anyMap(), any()))
                 .thenReturn(makeExecResponse("hello", "", 0));
 
-        SandboxEndpoint endpoint = SandboxEndpoint.builder()
-                .baseUrl("http://mock-server:8080")
-                .sandboxId("sb-code-test")
-                .build();
-        SandboxGatewayConfig config = SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .baseUrl("http://mock-server:8080")
-                        .sandboxType("jiuwenbox")
-                        .extraParams(new LinkedHashMap<>())
-                        .build())
-                .build();
+        SandboxEndpoint endpoint =
+            SandboxEndpoint.builder().baseUrl("http://mock-server:8080").sandboxId("sb-code-test").build();
+        SandboxGatewayConfig config =
+            SandboxGatewayConfig.builder()
+                    .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
+                            .baseUrl("http://mock-server:8080").sandboxType("jiuwenbox")
+                            .extraParams(new LinkedHashMap<>()).build())
+                    .build();
         provider = createProviderWithMockClient(endpoint, config);
 
         provider.executeCode(code, "python", 30, null, null);
@@ -110,18 +105,14 @@ class JiuwenBoxCodeProviderTest {
         when(mockClient.exec(anyString(), anyList(), any(), any(), anyMap(), any()))
                 .thenReturn(makeExecResponse("hi", "", 0));
 
-        SandboxEndpoint endpoint = SandboxEndpoint.builder()
-                .baseUrl("http://mock-server:8080")
-                .sandboxId("sb-code-test")
-                .build();
-        SandboxGatewayConfig config = SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .baseUrl("http://mock-server:8080")
-                        .sandboxType("jiuwenbox")
-                        .extraParams(new LinkedHashMap<>())
-                        .build())
-                .build();
+        SandboxEndpoint endpoint =
+            SandboxEndpoint.builder().baseUrl("http://mock-server:8080").sandboxId("sb-code-test").build();
+        SandboxGatewayConfig config =
+            SandboxGatewayConfig.builder()
+                    .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
+                            .baseUrl("http://mock-server:8080").sandboxType("jiuwenbox")
+                            .extraParams(new LinkedHashMap<>()).build())
+                    .build();
         provider = createProviderWithMockClient(endpoint, config);
 
         provider.executeCode(code, "javascript", 30, null, null);
@@ -135,18 +126,14 @@ class JiuwenBoxCodeProviderTest {
         when(mockClient.exec(anyString(), anyList(), any(), any(), anyMap(), any()))
                 .thenReturn(makeExecResponse("output", "", 0));
 
-        SandboxEndpoint endpoint = SandboxEndpoint.builder()
-                .baseUrl("http://mock-server:8080")
-                .sandboxId("sb-code-test")
-                .build();
-        SandboxGatewayConfig config = SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .baseUrl("http://mock-server:8080")
-                        .sandboxType("jiuwenbox")
-                        .extraParams(new LinkedHashMap<>())
-                        .build())
-                .build();
+        SandboxEndpoint endpoint =
+            SandboxEndpoint.builder().baseUrl("http://mock-server:8080").sandboxId("sb-code-test").build();
+        SandboxGatewayConfig config =
+            SandboxGatewayConfig.builder()
+                    .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
+                            .baseUrl("http://mock-server:8080").sandboxType("jiuwenbox")
+                            .extraParams(new LinkedHashMap<>()).build())
+                    .build();
         provider = createProviderWithMockClient(endpoint, config);
 
         ExecuteCodeResult result = provider.executeCode("print(1)", "python", 30, null, null);
@@ -163,18 +150,14 @@ class JiuwenBoxCodeProviderTest {
         when(mockClient.exec(anyString(), anyList(), any(), any(), anyMap(), any()))
                 .thenReturn(makeExecResponse("", "", 0));
 
-        SandboxEndpoint endpoint = SandboxEndpoint.builder()
-                .baseUrl("http://mock-server:8080")
-                .sandboxId("sb-code-test")
-                .build();
-        SandboxGatewayConfig config = SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .baseUrl("http://mock-server:8080")
-                        .sandboxType("jiuwenbox")
-                        .extraParams(new LinkedHashMap<>())
-                        .build())
-                .build();
+        SandboxEndpoint endpoint =
+            SandboxEndpoint.builder().baseUrl("http://mock-server:8080").sandboxId("sb-code-test").build();
+        SandboxGatewayConfig config =
+            SandboxGatewayConfig.builder()
+                    .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
+                            .baseUrl("http://mock-server:8080").sandboxType("jiuwenbox")
+                            .extraParams(new LinkedHashMap<>()).build())
+                    .build();
         provider = createProviderWithMockClient(endpoint, config);
 
         Map<String, String> userEnv = Map.of("MY_VAR", "my_value");
@@ -193,19 +176,13 @@ class JiuwenBoxCodeProviderTest {
         extraParams.put("fallback_on_failure", true);
         extraParams.put("root_path", System.getProperty("java.io.tmpdir"));
 
-        SandboxEndpoint endpoint = SandboxEndpoint.builder()
-                .baseUrl("http://mock-server:8080")
-                .sandboxId("sb-code-test")
-                .build();
+        SandboxEndpoint endpoint =
+            SandboxEndpoint.builder().baseUrl("http://mock-server:8080").sandboxId("sb-code-test").build();
         SandboxGatewayConfig config = SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .baseUrl("http://mock-server:8080")
-                        .sandboxType("jiuwenbox")
-                        .extraParams(extraParams)
-                        .build())
-                .params(Map.of("root_path", System.getProperty("java.io.tmpdir"),
-                        "shell_allowlist", List.of("python3")))
+                .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
+                        .baseUrl("http://mock-server:8080").sandboxType("jiuwenbox").extraParams(extraParams).build())
+                .params(Map.of("root_path", System.getProperty("java.io.tmpdir"), "shell_allowlist",
+                        List.of("python3")))
                 .build();
         provider = createProviderWithMockClient(endpoint, config);
 

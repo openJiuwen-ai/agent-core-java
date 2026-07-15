@@ -28,13 +28,14 @@ import java.util.Map;
  * workflow/plugin schemas, memory config, and constraint settings.
  * <p>
  * Mirrors Python's {@code LegacyReActAgentConfig} used by LLMAgent.
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 public class LlmAgentConfig {
-
     private String id;
 
     @Builder.Default
@@ -49,9 +50,19 @@ public class LlmAgentConfig {
     private ControllerType controllerType = ControllerType.REACT_CONTROLLER;
 
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<WorkflowSchema> workflows = new ArrayList<>();
 
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<PluginSchema> plugins = new ArrayList<>();
 
     private ModelConfig model;
@@ -64,9 +75,19 @@ public class LlmAgentConfig {
     @Builder.Default
     @JsonProperty("prompt_template")
     @JsonAlias("promptTemplate")
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Map<String, String>> promptTemplate = new ArrayList<>();
 
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> tools = new ArrayList<>();
 
     @Builder.Default
@@ -77,9 +98,19 @@ public class LlmAgentConfig {
     @Builder.Default
     @JsonProperty("agent_memory_config")
     @JsonAlias("agentMemoryConfig")
+    /**
+     * AgentMemoryConfig.builder.
+     * 
+     * @since 0.1.7
+     */
     private AgentMemoryConfig agentMemoryConfig = AgentMemoryConfig.builder().build();
 
     @Builder.Default
+    /**
+     * ConstrainConfig.builder.
+     * 
+     * @since 0.1.7
+     */
     private ConstrainConfig constrain = ConstrainConfig.builder().build();
 
     @JsonProperty("context_engine_config")
@@ -90,10 +121,13 @@ public class LlmAgentConfig {
     @JsonAlias("defaultResponse")
     private DefaultResponse defaultResponse;
 
-    @JsonProperty("context_window_limit")
     /**
-     * Auto-generated for codecheck compliance.
+     * getContextWindowLimit.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonProperty("context_window_limit")
     public int getContextWindowLimit() {
         return constrain != null ? constrain.getReservedMaxChatRounds() : 10;
     }

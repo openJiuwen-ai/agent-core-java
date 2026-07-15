@@ -16,31 +16,31 @@ import java.util.Map;
 
 /**
  * Public class LspRail used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class LspRail extends DeepAgentRail {
     private Tool lspTool;
     private LSPServerManager manager;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * priority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int priority() {
         return 60;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * init.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void init(Object agent) {
         if (!(agent instanceof DeepAgent deepAgent) || lspTool != null) {
             return;
@@ -48,22 +48,19 @@ public class LspRail extends DeepAgentRail {
         manager = new LSPServerManager();
         manager.setWorkspaceRoot(deepAgent.getWorkspace().root().toString());
         LspTool tool = new LspTool(deepAgent.getWorkspace().root().toString(), manager);
-        ToolCard card = ToolMetadataRegistry.buildToolCard(
-                toolName(),
-                deepAgent.getCard().getId() + "." + toolName(),
-                deepAgent.getWorkspace().getLanguage()
-        );
+        ToolCard card = ToolMetadataRegistry.buildToolCard(toolName(), deepAgent.getCard().getId() + "." + toolName(),
+                deepAgent.getWorkspace().getLanguage());
         lspTool = new LocalFunction(card, inputs -> tool.invoke(inputs != null ? inputs : Map.of()));
         deepAgent.registerHarnessTool(lspTool);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * uninit.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void uninit(Object agent) {
         if (lspTool != null && agent instanceof DeepAgent deepAgent) {
             deepAgent.unregisterHarnessTool(lspTool);
@@ -76,35 +73,50 @@ public class LspRail extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toolName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String toolName() {
         return "lsp";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isRegistered.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isRegistered() {
         return lspTool != null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasActiveManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasActiveManager() {
         return manager != null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public LSPServerManager getManager() {
         return manager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * describe.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String describe() {
         return "Register and expose LSP code intelligence tool metadata";

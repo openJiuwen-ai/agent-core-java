@@ -17,36 +17,42 @@ import java.io.ObjectOutputStream;
  * Abstract serializer for graph state persistence.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.store.serde.Serializer}.
+ * 
+ * @since 0.1.7
  */
 public abstract class Serializer {
-
     /**
-     * Serialize an object to a typed byte representation.
-     *
-     * @param obj the object to serialize
-     * @return a pair of (type tag, byte data)
+     * dumpsTyped.
+     * 
+     * @param obj obj
+     * @return the result
+     * @since 0.1.7
      */
     public abstract TypedBytes dumpsTyped(Object obj);
 
     /**
      * Deserialize a typed byte representation back to an object.
-     *
+     * 
      * @param data the typed bytes
      * @return the deserialized object
+     * @since 0.1.7
      */
     public abstract Object loadsTyped(TypedBytes data);
 
     /**
      * Container for typed serialized data.
+     * 
+     * @since 0.1.7
      */
     public record TypedBytes(String type, byte[] data) {
     }
 
     /**
      * Create a serializer of the given type.
-     *
+     * 
      * @param typeName serializer type name ("json" or "java")
      * @return the serializer instance
+     * @since 0.1.7
      */
     public static Serializer create(String typeName) {
         if ("json".equals(typeName)) {
@@ -60,15 +66,20 @@ public abstract class Serializer {
 
     /**
      * JSON-based serializer implementation using Jackson.
+     * 
+     * @since 0.1.7
      */
     public static class JsonSerializer extends Serializer {
-
         private static final ObjectMapper MAPPER = new ObjectMapper();
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * dumpsTyped.
+         * 
+         * @param obj obj
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public TypedBytes dumpsTyped(Object obj) {
             try {
                 byte[] bytes = MAPPER.writeValueAsBytes(obj);
@@ -78,10 +89,14 @@ public abstract class Serializer {
             }
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * loadsTyped.
+         * 
+         * @param data data
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public Object loadsTyped(TypedBytes data) {
             if (data == null) {
                 return null;
@@ -104,16 +119,21 @@ public abstract class Serializer {
      * as the equivalent of Python's pickle module.
      * <p>
      * Note: objects must implement {@link java.io.Serializable} to be serialized.
+     * 
+     * @since 0.1.7
      */
     public static class JavaNativeSerializer extends Serializer {
-
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * dumpsTyped.
+         * 
+         * @param obj obj
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public TypedBytes dumpsTyped(Object obj) {
             try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-                 ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+                    ObjectOutputStream oos = new ObjectOutputStream(bos)) {
                 oos.writeObject(obj);
                 oos.flush();
                 return new TypedBytes("java", bos.toByteArray());
@@ -122,10 +142,14 @@ public abstract class Serializer {
             }
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * loadsTyped.
+         * 
+         * @param data data
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public Object loadsTyped(TypedBytes data) {
             if (data == null) {
                 return null;
@@ -134,7 +158,7 @@ public abstract class Serializer {
                 return null;
             }
             try (ByteArrayInputStream bis = new ByteArrayInputStream(data.data());
-                 ObjectInputStream ois = new ObjectInputStream(bis)) {
+                    ObjectInputStream ois = new ObjectInputStream(bis)) {
                 return ois.readObject();
             } catch (IOException | ClassNotFoundException e) {
                 throw new RuntimeException("Failed to deserialize object with Java native serialization", e);

@@ -5,6 +5,7 @@
 package com.openjiuwen.core.singleagent.rail;
 
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,6 +16,8 @@ import java.util.List;
 
 /**
  * Input data for BEFORE/AFTER_MODEL_CALL events.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -22,6 +25,11 @@ import java.util.List;
 @AllArgsConstructor
 public class ModelCallInputs implements EventInputs {
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Object> messages = new ArrayList<>();
     private List<ToolInfo> tools;
     private Object response;

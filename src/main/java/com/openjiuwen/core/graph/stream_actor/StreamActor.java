@@ -28,28 +28,51 @@ import java.util.function.Consumer;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.stream_actor.base.StreamActor}.
  * Uses Virtual Threads and CompletableFuture instead of asyncio tasks.
+ * 
+ * @since 0.1.7
  */
 public class StreamActor {
-
     private static final LoggerProtocol logger = Loggers.GRAPH;
     private static final long SHUTDOWN_TIMEOUT_MS = 5000;
 
-    private static final ExecutorService VIRTUAL_EXECUTOR =
-            Executors.newCachedThreadPool();
+    /**
+     * Executors.newCachedThreadPool.
+     * 
+     * @since 0.1.7
+     */
+    private static final ExecutorService VIRTUAL_EXECUTOR = Executors.newCachedThreadPool();
 
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<ComponentAbility, StreamProcessor> processors = new HashMap<>();
     private Future<?> task;
     private CompletableFuture<Void> taskCompletion;
     private CompletableFuture<Void> taskError;
     private final StreamConsumer vertex;
     private final String nodeId;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<RunningTask> runningTasks = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * StreamActor.
+     * 
+     * @param nodeId nodeId
+     * @param vertex vertex
+     * @param abilities abilities
+     * @param sources sources
+     * @param streamGeneratorTimeoutSeconds streamGeneratorTimeoutSeconds
+     * @since 0.1.7
      */
-    public StreamActor(String nodeId, StreamConsumer vertex, List<ComponentAbility> abilities,
-                       List<String> sources, long streamGeneratorTimeoutSeconds) {
+    public StreamActor(String nodeId, StreamConsumer vertex, List<ComponentAbility> abilities, List<String> sources,
+            long streamGeneratorTimeoutSeconds) {
         this.nodeId = nodeId;
         this.vertex = vertex;
         for (ComponentAbility ability : abilities) {
@@ -59,17 +82,18 @@ public class StreamActor {
 
     /**
      * Send a stream message to this actor.
-     *
-     * @param message       the stream message (Map with single producer→content entry)
+     * 
+     * @param message the stream message (Map with single producer→content entry)
      * @param sourceAbility the ability that produced this message (STREAM/TRANSFORM)
-     * @param firstFrame    whether this is the first frame of a new stream
-     * @param producerId    the ID of the producer node
+     * @param firstFrame whether this is the first frame of a new stream
+     * @param producerId the ID of the producer node
+     * @since 0.1.7
      */
-    public synchronized void send(
-            Object message, ComponentAbility sourceAbility, boolean firstFrame, String producerId) {
+    public synchronized void send(Object message, ComponentAbility sourceAbility, boolean firstFrame,
+            String producerId) {
         if (!vertex.shouldHandleMessage()) {
-            logger.warning("Discard chunk send from [{}], {}[{}] unable to handle",
-                    producerId, nodeId, sourceAbility.name());
+            logger.warning("Discard chunk send from [{}], {}[{}] unable to handle", producerId, nodeId,
+                    sourceAbility.name());
             return;
         }
 
@@ -79,13 +103,13 @@ public class StreamActor {
                 logger.warning("Exception occurred while sending chunk of node [{}]", nodeId, taskFailure(task));
             }
             if (taskError != null && taskError.isDone() && taskError.isCompletedExceptionally()) {
-                logger.warning("Discard chunk send from [{}], {}[{}] occur exception",
-                        producerId, nodeId, sourceAbility.name());
+                logger.warning("Discard chunk send from [{}], {}[{}] occur exception", producerId, nodeId,
+                        sourceAbility.name());
                 return;
             }
             if (!firstFrame || !vertex.isDone()) {
-                logger.warning("Discard chunk send from [{}], {}[{}] vertex is done",
-                        producerId, nodeId, sourceAbility.name());
+                logger.warning("Discard chunk send from [{}], {}[{}] vertex is done", producerId, nodeId,
+                        sourceAbility.name());
                 return;
             }
 
@@ -136,19 +160,17 @@ public class StreamActor {
     }
 
     /**
-     * Get a generator (iterator) for consuming stream data for a specific ability.
-     *
-     * @param ability        the ability type (COLLECT/TRANSFORM)
-     * @param schema         the input schema for structuring the stream data
-     * @param streamCallback optional callback invoked for each consumed chunk
-     * @return a map of iterators matching the schema structure
+     * generator.
+     * 
+     * @param ability ability
+     * @param schema schema
+     * @param streamCallback streamCallback
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> generator(ComponentAbility ability, Map<String, Object> schema,
-                                          Consumer<Object> streamCallback) {
+            Consumer<Object> streamCallback) {
         StreamProcessor processor = processors.get(ability);
         if (processor == null) {
             return Map.of();
@@ -158,6 +180,8 @@ public class StreamActor {
 
     /**
      * Wait until the stream call and all processor tasks complete.
+     * 
+     * @since 0.1.7
      */
     public synchronized void awaitCompletion() {
         if (taskCompletion != null) {
@@ -170,6 +194,8 @@ public class StreamActor {
 
     /**
      * Shutdown the stream actor, cancelling all running tasks.
+     * 
+     * @since 0.1.7
      */
     public synchronized void shutdown() {
         logger.debug("Begin to shutdown stream actor task for {}", nodeId);
@@ -201,12 +227,25 @@ public class StreamActor {
         }
     }
 
+    /**
+     * errorCallback.
+     * 
+     * @param error error
+     * @since 0.1.7
+     */
     private void errorCallback(Exception error) {
         if (error != null && taskError != null && !taskError.isDone()) {
             taskError.completeExceptionally(error);
         }
     }
 
+    /**
+     * taskFailure.
+     * 
+     * @param future future
+     * @return the result
+     * @since 0.1.7
+     */
     private static Throwable taskFailure(Future<?> future) {
         try {
             future.get();
@@ -221,6 +260,13 @@ public class StreamActor {
         }
     }
 
+    /**
+     * awaitCompletion.
+     * 
+     * @param completion completion
+     * @param taskName taskName
+     * @since 0.1.7
+     */
     private void awaitCompletion(CompletableFuture<Void> completion, String taskName) {
         try {
             completion.get(SHUTDOWN_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -235,9 +281,14 @@ public class StreamActor {
         }
     }
 
-    private record RunningTask(
-            ComponentAbility ability,
-            Future<?> future,
-            CompletableFuture<Void> completion) {
+    /**
+     * RunningTask.
+     * 
+     * @param ability ability
+     * @param future future
+     * @param completion completion
+     * @since 0.1.7
+     */
+    private record RunningTask(ComponentAbility ability, Future<?> future, CompletableFuture<Void> completion) {
     }
 }

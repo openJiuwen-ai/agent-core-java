@@ -22,21 +22,35 @@ import java.lang.reflect.Method;
 import java.util.List;
 
 /**
- * Auto-generated for codecheck compliance.
+ * BuiltinRegistries.
+ * 
+ * @since 0.1.7
  */
 public final class BuiltinRegistries {
+    /**
+     * BuiltinRegistries.
+     * 
+     * @since 0.1.7
+     */
     private BuiltinRegistries() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildStageRegistry.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static StageRegistry buildStageRegistry() {
         return buildStageRegistry(AutoHarnessConfig.builder().build());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildStageRegistry.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public static StageRegistry buildStageRegistry(AutoHarnessConfig config) {
         StageRegistry registry = new StageRegistry();
@@ -54,14 +68,22 @@ public final class BuiltinRegistries {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildPipelineRegistry.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static PipelineRegistry buildPipelineRegistry() {
         return buildPipelineRegistry(AutoHarnessConfig.builder().build(), buildStageRegistry());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildPipelineRegistry.
+     * 
+     * @param config config
+     * @param stageRegistry stageRegistry
+     * @return the result
+     * @since 0.1.7
      */
     public static PipelineRegistry buildPipelineRegistry(AutoHarnessConfig config, StageRegistry stageRegistry) {
         PipelineRegistry registry = new PipelineRegistry();
@@ -75,32 +97,55 @@ public final class BuiltinRegistries {
         return registry;
     }
 
+    /**
+     * registerStage.
+     * 
+     * @param registry registry
+     * @param stage stage
+     * @since 0.1.7
+     */
     private static void registerStage(StageRegistry registry, BaseStage stage) {
-        registry.register(StageSpec.builder()
-                .name(stage.name())
-                .stageCls(stage.getClass())
-                .scope(stage.scope())
-                .consumes(stage.consumes())
-                .produces(stage.produces())
-                .description(stage.description())
-                .build());
+        registry.register(StageSpec.builder().name(stage.name()).stageCls(stage.getClass()).scope(stage.scope())
+                .consumes(stage.consumes()).produces(stage.produces()).description(stage.description()).build());
     }
 
+    /**
+     * invokeStageRegistrar.
+     * 
+     * @param path path
+     * @param registry registry
+     * @since 0.1.7
+     */
     private static void invokeStageRegistrar(String path, StageRegistry registry) {
         Method method = loadRegistrar(path);
-        invoke(method, new Object[] {registry});
+        invoke(method, new Object[]{registry});
     }
 
+    /**
+     * invokePipelineRegistrar.
+     * 
+     * @param path path
+     * @param registry registry
+     * @param stageRegistry stageRegistry
+     * @since 0.1.7
+     */
     private static void invokePipelineRegistrar(String path, PipelineRegistry registry, StageRegistry stageRegistry) {
         Method method = loadRegistrar(path);
         int parameterCount = method.getParameterCount();
         if (parameterCount >= 2) {
-            invoke(method, new Object[] {registry, stageRegistry});
+            invoke(method, new Object[]{registry, stageRegistry});
         } else {
-            invoke(method, new Object[] {registry});
+            invoke(method, new Object[]{registry});
         }
     }
 
+    /**
+     * loadRegistrar.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
     private static Method loadRegistrar(String path) {
         String value = path == null ? "" : path.trim();
         int split = value.indexOf(':');
@@ -123,6 +168,13 @@ public final class BuiltinRegistries {
         }
     }
 
+    /**
+     * invoke.
+     * 
+     * @param method method
+     * @param args args
+     * @since 0.1.7
+     */
     private static void invoke(Method method, Object[] args) {
         try {
             method.invoke(null, args);
@@ -137,6 +189,13 @@ public final class BuiltinRegistries {
         }
     }
 
+    /**
+     * safe.
+     * 
+     * @param values values
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> safe(List<String> values) {
         return values == null ? List.of() : values;
     }

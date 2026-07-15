@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Gateway response wrapper.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -24,7 +26,10 @@ public class GatewayResponse {
     private Object data;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isSuccess.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isSuccess() {
         return code == 0;

@@ -20,78 +20,100 @@ import java.util.Map;
  * Component that wraps a sub-workflow and delegates execution to it.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.workflow_comp.SubWorkflowComponent}.
+ * 
+ * @since 0.1.7
  */
 public class SubWorkflowComponentImpl extends WorkflowComponent implements SubWorkflowComponent {
-
     private static final String SUB_WORKFLOW_COMPONENT = "sub_workflow";
 
     private final Workflow subWorkflow;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SubWorkflowComponentImpl.
+     * 
+     * @param subWorkflow subWorkflow
+     * @since 0.1.7
      */
     public SubWorkflowComponentImpl(Workflow subWorkflow) {
         if (subWorkflow == null) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_SUB_WORKFLOW_PARAM_INVALID,
-                    "error_msg", "sub_workflow is None");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_SUB_WORKFLOW_PARAM_INVALID, "error_msg",
+                    "sub_workflow is None");
         }
         this.subWorkflow = subWorkflow;
     }
 
+    /**
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : Map.of();
-        return subWorkflow.invokeSubWorkflow(
-                inputsMap.get(Constant.INPUTS_KEY),
-                session,
-                context,
+        return subWorkflow.invokeSubWorkflow(inputsMap.get(Constant.INPUTS_KEY), session, context,
                 inputsMap.get(Constant.CONFIG_KEY));
     }
 
+    /**
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Iterator<Object> stream(Object inputs, NodeSessionApi session, ModelContext context) {
         Map<String, Object> inputsMap = (inputs instanceof Map) ? (Map<String, Object>) inputs : Map.of();
-        return (Iterator<Object>) (Iterator<?>) subWorkflow.streamSubWorkflow(
-                inputsMap.get(Constant.INPUTS_KEY),
-                session,
-                context,
-                inputsMap.get(Constant.CONFIG_KEY));
+        return (Iterator<Object>) (Iterator<?>) subWorkflow.streamSubWorkflow(inputsMap.get(Constant.INPUTS_KEY),
+                session, context, inputsMap.get(Constant.CONFIG_KEY));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * graphInvoker.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean graphInvoker() {
         return true;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * componentType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String componentType() {
         return SUB_WORKFLOW_COMPONENT;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSubWorkflow.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Workflow getSubWorkflow() {
         return subWorkflow;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getSubWorkflowInternal.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public HasDrawable getSubWorkflowInternal() {
         // The Drawable accesses workflow._internal which is the BaseWorkflow
         // This is kept as HasDrawable interface — Workflow would need to expose internal

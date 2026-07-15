@@ -18,27 +18,39 @@ import java.util.function.Consumer;
  * Builder for constructing a {@link Pregel} graph engine.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.builder.PregelBuilder}.
+ * 
+ * @since 0.1.7
  */
 public class PregelBuilder {
-
     private final Map<String, PregelNode> nodes = new LinkedHashMap<>();
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<Channel> channels = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PregelBuilder.
+     * 
+     * @since 0.1.7
      */
     public PregelBuilder() {
-        addNode(PregelConstants.START, (Runnable) () -> { }, new ArrayList<>());
-        addNode(PregelConstants.END, (Runnable) () -> { }, new ArrayList<>());
+        addNode(PregelConstants.START, (Runnable) () -> {
+        }, new ArrayList<>());
+        addNode(PregelConstants.END, (Runnable) () -> {
+        }, new ArrayList<>());
     }
 
     /**
      * Add a node to the graph.
-     *
-     * @param name    node name
-     * @param fn      node execution function
+     * 
+     * @param name node name
+     * @param fn node execution function
      * @param routers list of routers for the node
      * @return this builder
+     * @since 0.1.7
      */
     public PregelBuilder addNode(String name, Object fn, List<IRouter> routers) {
         if (routers == null) {
@@ -51,10 +63,11 @@ public class PregelBuilder {
 
     /**
      * Add a node with no initial routers.
-     *
+     * 
      * @param name node name
-     * @param fn   node execution function
+     * @param fn node execution function
      * @return this builder
+     * @since 0.1.7
      */
     public PregelBuilder addNode(String name, Object fn) {
         return addNode(name, fn, new ArrayList<>());
@@ -65,14 +78,15 @@ public class PregelBuilder {
      * <p>
      * Supported patterns:
      * <ul>
-     *   <li>N to 1 (barrier): multiple start nodes converge to a single end node</li>
-     *   <li>1 to N (multi-static): single start fans out to multiple end nodes</li>
-     *   <li>1 to 1 (static): single start to single end</li>
+     * <li>N to 1 (barrier): multiple start nodes converge to a single end node</li>
+     * <li>1 to N (multi-static): single start fans out to multiple end nodes</li>
+     * <li>1 to 1 (static): single start to single end</li>
      * </ul>
-     *
+     * 
      * @param start single node name or collection of node names
-     * @param end   single node name or collection of node names
+     * @param end single node name or collection of node names
      * @return this builder
+     * @since 0.1.7
      */
     public PregelBuilder addEdge(Object start, Object end) {
         if (start instanceof Collection && end instanceof String) {
@@ -96,18 +110,18 @@ public class PregelBuilder {
             String endNode = (String) end;
             nodes.get(startNode).getRouters().add(new StaticRouter(List.of(endNode)));
         } else {
-            throw new IllegalArgumentException(
-                    String.format("Unsupported edge format: %s -> %s", start, end));
+            throw new IllegalArgumentException(String.format("Unsupported edge format: %s -> %s", start, end));
         }
         return this;
     }
 
     /**
      * Add a conditional branch from a source node using a selector function.
-     *
-     * @param src      source node name
+     * 
+     * @param src source node name
      * @param selector function that determines which node to route to
      * @return this builder
+     * @since 0.1.7
      */
     public PregelBuilder addBranch(String src, java.util.function.Function<Object, Object> selector) {
         nodes.get(src).getRouters().add(new ConditionalRouter(selector));
@@ -116,10 +130,11 @@ public class PregelBuilder {
 
     /**
      * Build the Pregel engine.
-     *
-     * @param store             optional state store
+     * 
+     * @param store optional state store
      * @param afterStepCallback optional callback invoked after each super-step
      * @return a configured Pregel instance
+     * @since 0.1.7
      */
     public Pregel build(Store store, Consumer<PregelLoop> afterStepCallback) {
         return new Pregel(nodes, channels, store, afterStepCallback);
@@ -127,14 +142,22 @@ public class PregelBuilder {
 
     /**
      * Build the Pregel engine with no store or callback.
-     *
+     * 
      * @return a configured Pregel instance
+     * @since 0.1.7
      */
     public Pregel build() {
         return build(null, null);
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * toStringCollection.
+     * 
+     * @param obj obj
+     * @return the result
+     * @since 0.1.7
+     */
     private Collection<String> toStringCollection(Object obj) {
         if (obj instanceof Collection) {
             return (Collection<String>) obj;

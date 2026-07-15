@@ -8,51 +8,77 @@ import java.util.List;
 
 /**
  * Public class RuntimeCleanupResult used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class RuntimeCleanupResult {
     private final List<String> deletedTables;
     private final List<String> clearedTables;
 
+    /**
+     * RuntimeCleanupResult.
+     * 
+     * @param builder builder
+     * @since 0.1.7
+     */
     private RuntimeCleanupResult(Builder builder) {
         this.deletedTables = builder.deletedTables != null ? List.copyOf(builder.deletedTables) : List.of();
         this.clearedTables = builder.clearedTables != null ? List.copyOf(builder.clearedTables) : List.of();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDeletedTables.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getDeletedTables() {
         return deletedTables;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getClearedTables.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getClearedTables() {
         return clearedTables;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static final class Builder {
         private List<String> deletedTables;
         private List<String> clearedTables;
 
+        /**
+         * Builder.
+         * 
+         * @since 0.1.7
+         */
         private Builder() {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * deletedTables.
+         * 
+         * @param deletedTables deletedTables
+         * @return the result
+         * @since 0.1.7
          */
         public Builder deletedTables(List<String> deletedTables) {
             this.deletedTables = deletedTables;
@@ -60,7 +86,11 @@ public class RuntimeCleanupResult {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * clearedTables.
+         * 
+         * @param clearedTables clearedTables
+         * @return the result
+         * @since 0.1.7
          */
         public Builder clearedTables(List<String> clearedTables) {
             this.clearedTables = clearedTables;
@@ -68,7 +98,10 @@ public class RuntimeCleanupResult {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public RuntimeCleanupResult build() {
             return new RuntimeCleanupResult(this);

@@ -19,45 +19,52 @@ import java.util.Map;
  * JSON-backed file store with the same read/merge semantics as {@link MemoryStore}.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.store.FileStore}.
+ * 
+ * @since 0.1.7
  */
 public class FileStore extends Store {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Path storePath;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * FileStore.
+     * 
+     * @since 0.1.7
      */
     public FileStore() {
         this(Path.of("session_store.json"));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * FileStore.
+     * 
+     * @param storePath storePath
+     * @since 0.1.7
      */
     public FileStore(Path storePath) {
         this.storePath = storePath.toAbsolutePath().normalize();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * read.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public synchronized Object read(Object key) {
         return SessionUtils.getBySchema(key, loadData());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * write.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public synchronized void write(Map<String, Object> value) {
         Map<String, Object> data = loadData();
         SessionUtils.updateDict(value, data);
@@ -65,23 +72,32 @@ public class FileStore extends Store {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStorePath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path getStorePath() {
         return storePath;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDataSnapshot.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public synchronized Map<String, Object> getDataSnapshot() {
         return new LinkedHashMap<>(loadData());
     }
 
+    /**
+     * loadData.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> loadData() {
         if (!Files.exists(storePath)) {
             return new LinkedHashMap<>();
@@ -98,6 +114,12 @@ public class FileStore extends Store {
         }
     }
 
+    /**
+     * persist.
+     * 
+     * @param data data
+     * @since 0.1.7
+     */
     private void persist(Map<String, Object> data) {
         try {
             if (storePath.getParent() != null) {

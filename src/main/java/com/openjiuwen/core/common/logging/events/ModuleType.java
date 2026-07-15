@@ -4,7 +4,11 @@
 
 package com.openjiuwen.core.common.logging.events;
 
-/** Module type enumeration. */
+/**
+ * Module type enumeration.
+ * 
+ * @since 0.1.7
+ */
 public enum ModuleType {
     AGENT("agent"),
     WORKFLOW("workflow"),
@@ -27,7 +31,10 @@ public enum ModuleType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

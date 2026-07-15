@@ -1,5 +1,19 @@
+
 package com.openjiuwen.harness;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+
+import com.openjiuwen.core.controller.modules.TaskFilter;
+import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
+import com.openjiuwen.core.controller.schema.DataFrame;
+import com.openjiuwen.core.controller.schema.EventType;
+import com.openjiuwen.core.controller.schema.TaskStatus;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -23,13 +37,6 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.controller.modules.TaskFilter;
-import com.openjiuwen.core.controller.schema.ControllerOutputChunk;
-import com.openjiuwen.core.controller.schema.DataFrame;
-import com.openjiuwen.core.controller.schema.EventType;
-import com.openjiuwen.core.controller.schema.TaskStatus;
-import com.openjiuwen.harness.rails.interrupt.BaseInterruptRail;
-import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.rails.SecurityRail;
@@ -39,35 +46,29 @@ import com.openjiuwen.harness.rails.SubagentRail;
 import com.openjiuwen.harness.rails.SysOperationRail;
 import com.openjiuwen.harness.rails.TaskCompletionRail;
 import com.openjiuwen.harness.rails.TaskPlanningRail;
+import com.openjiuwen.harness.rails.interrupt.BaseInterruptRail;
+import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
 import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.subagents.SubAgentConfig;
 import com.openjiuwen.harness.task_loop.CustomPredicateEvaluator;
 import com.openjiuwen.harness.workspace.Workspace;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Collections;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.when;
-
 class HarnessCompatibilityTest {
-
     private static final String HARNESS_INTERRUPT_PROVIDER = "HarnessInterruptRegression";
     private static final AtomicBoolean HARNESS_INTERRUPT_FACTORY_REGISTERED = new AtomicBoolean(false);
 
@@ -94,13 +95,9 @@ class HarnessCompatibilityTest {
                     .thenAnswer(invocation -> {
                         Object rawMessages = invocation.getArgument(0);
                         String text = extractLastMessageText(rawMessages);
-                        return AssistantMessage.builder()
-                                .content(prefix + text)
-                                .usageMetadata(UsageMetadata.builder()
-                                        .inputTokens(inputTokens)
-                                        .outputTokens(outputTokens)
-                                        .totalTokens(inputTokens + outputTokens)
-                                        .build())
+                        return AssistantMessage.builder().content(prefix + text)
+                                .usageMetadata(UsageMetadata.builder().inputTokens(inputTokens)
+                                        .outputTokens(outputTokens).totalTokens(inputTokens + outputTokens).build())
                                 .build();
                     });
         } catch (Exception ex) {
@@ -111,12 +108,8 @@ class HarnessCompatibilityTest {
     }
 
     private static Tool blockingTool(String name, CountDownLatch entered, CountDownLatch release) {
-        return new Tool(ToolCard.builder()
-                .id(name)
-                .name(name)
-                .description("blocking test tool")
-                .inputParams(Map.of("type", "object", "properties", Map.of()))
-                .build()) {
+        return new Tool(ToolCard.builder().id(name).name(name).description("blocking test tool")
+                .inputParams(Map.of("type", "object", "properties", Map.of())).build()) {
             @Override
             public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
                 entered.countDown();
@@ -137,26 +130,18 @@ class HarnessCompatibilityTest {
             when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                     .thenAnswer(invocation -> {
                         String text = extractLastMessageText(invocation.getArgument(0));
-                        return AssistantMessage.builder()
-                                .content(prefix + text)
-                                .usageMetadata(UsageMetadata.builder()
-                                        .inputTokens(inputTokens)
-                                        .outputTokens(outputTokens)
-                                        .totalTokens(inputTokens + outputTokens)
-                                        .build())
+                        return AssistantMessage.builder().content(prefix + text)
+                                .usageMetadata(UsageMetadata.builder().inputTokens(inputTokens)
+                                        .outputTokens(outputTokens).totalTokens(inputTokens + outputTokens).build())
                                 .build();
                     });
             when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                     .thenAnswer(invocation -> {
                         String text = extractLastMessageText(invocation.getArgument(0));
                         AssistantMessageChunk first = AssistantMessageChunk.builder().content("delta:" + text).build();
-                        AssistantMessageChunk second = AssistantMessageChunk.builder()
-                                .content(prefix + text)
-                                .usageMetadata(UsageMetadata.builder()
-                                        .inputTokens(inputTokens)
-                                        .outputTokens(outputTokens)
-                                        .totalTokens(inputTokens + outputTokens)
-                                        .build())
+                        AssistantMessageChunk second = AssistantMessageChunk.builder().content(prefix + text)
+                                .usageMetadata(UsageMetadata.builder().inputTokens(inputTokens)
+                                        .outputTokens(outputTokens).totalTokens(inputTokens + outputTokens).build())
                                 .build();
                         return List.<AssistantMessageChunk>of(first, second).iterator();
                     });
@@ -167,36 +152,31 @@ class HarnessCompatibilityTest {
         return model;
     }
 
-    private static Model installStreamingToolCallModel(DeepAgent agent, String toolName, int inputTokens, int outputTokens) {
+    private static Model installStreamingToolCallModel(DeepAgent agent, String toolName, int inputTokens,
+            int outputTokens) {
         Model model = Mockito.mock(Model.class);
         try {
             when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
-                    .thenAnswer(invocation -> buildToolCallStreamingAnswer(invocation.getArgument(0), toolName, inputTokens, outputTokens));
+                    .thenAnswer(invocation -> buildToolCallStreamingAnswer(invocation.getArgument(0), toolName,
+                            inputTokens, outputTokens));
             when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                     .thenAnswer(invocation -> {
                         Object rawMessages = invocation.getArgument(0);
                         String toolText = extractLastRoleText(rawMessages, "tool");
                         if (toolText == null) {
                             String query = extractLastMessageText(rawMessages);
-                            AssistantMessageChunk toolCallChunk = AssistantMessageChunk.builder()
-                                    .toolCalls(List.of(ToolCall.builder()
-                                            .id("stream-tool-call")
-                                            .name(toolName)
-                                            .arguments("{\"value\":\"" + escapeJson(query) + "\"}")
-                                            .build()))
-                                    .build();
+                            AssistantMessageChunk toolCallChunk =
+                                AssistantMessageChunk.builder()
+                                        .toolCalls(List.of(ToolCall.builder().id("stream-tool-call").name(toolName)
+                                                .arguments("{\"value\":\"" + escapeJson(query) + "\"}").build()))
+                                        .build();
                             return List.<AssistantMessageChunk>of(toolCallChunk).iterator();
                         }
-                        AssistantMessageChunk first = AssistantMessageChunk.builder()
-                                .content("delta-final:" + toolText)
-                                .build();
-                        AssistantMessageChunk second = AssistantMessageChunk.builder()
-                                .content("final:" + toolText)
-                                .usageMetadata(UsageMetadata.builder()
-                                        .inputTokens(inputTokens)
-                                        .outputTokens(outputTokens)
-                                        .totalTokens(inputTokens + outputTokens)
-                                        .build())
+                        AssistantMessageChunk first =
+                            AssistantMessageChunk.builder().content("delta-final:" + toolText).build();
+                        AssistantMessageChunk second = AssistantMessageChunk.builder().content("final:" + toolText)
+                                .usageMetadata(UsageMetadata.builder().inputTokens(inputTokens)
+                                        .outputTokens(outputTokens).totalTokens(inputTokens + outputTokens).build())
                                 .build();
                         return List.<AssistantMessageChunk>of(first, second).iterator();
                     });
@@ -207,11 +187,13 @@ class HarnessCompatibilityTest {
         return model;
     }
 
-    private static Model installFragmentedStreamingToolCallModel(DeepAgent agent, String toolName, int inputTokens, int outputTokens) {
+    private static Model installFragmentedStreamingToolCallModel(DeepAgent agent, String toolName, int inputTokens,
+            int outputTokens) {
         Model model = Mockito.mock(Model.class);
         try {
             when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
-                    .thenAnswer(invocation -> buildToolCallStreamingAnswer(invocation.getArgument(0), toolName, inputTokens, outputTokens));
+                    .thenAnswer(invocation -> buildToolCallStreamingAnswer(invocation.getArgument(0), toolName,
+                            inputTokens, outputTokens));
             when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                     .thenAnswer(invocation -> {
                         Object rawMessages = invocation.getArgument(0);
@@ -219,31 +201,20 @@ class HarnessCompatibilityTest {
                         if (toolText == null) {
                             String query = extractLastMessageText(rawMessages);
                             AssistantMessageChunk first = AssistantMessageChunk.builder()
-                                    .toolCalls(List.of(ToolCall.builder()
-                                            .id("fragment-tool-call")
-                                            .name("lookup_")
-                                            .arguments("{\"value\":\"" + escapeJson(query.substring(0, 7)))
-                                            .build()))
+                                    .toolCalls(List.of(ToolCall.builder().id("fragment-tool-call").name("lookup_")
+                                            .arguments("{\"value\":\"" + escapeJson(query.substring(0, 7))).build()))
                                     .build();
-                            AssistantMessageChunk second = AssistantMessageChunk.builder()
-                                    .toolCalls(List.of(ToolCall.builder()
-                                            .id("fragment-tool-call")
-                                            .name("status")
-                                            .arguments(escapeJson(query.substring(7)) + "\"}")
-                                            .build()))
+                            AssistantMessageChunk second = AssistantMessageChunk
+                                    .builder().toolCalls(List.of(ToolCall.builder().id("fragment-tool-call")
+                                            .name("status").arguments(escapeJson(query.substring(7)) + "\"}").build()))
                                     .build();
                             return List.<AssistantMessageChunk>of(first, second).iterator();
                         }
-                        AssistantMessageChunk first = AssistantMessageChunk.builder()
-                                .content("delta-fragment-final:" + toolText)
-                                .build();
-                        AssistantMessageChunk second = AssistantMessageChunk.builder()
-                                .content("final:" + toolText)
-                                .usageMetadata(UsageMetadata.builder()
-                                        .inputTokens(inputTokens)
-                                        .outputTokens(outputTokens)
-                                        .totalTokens(inputTokens + outputTokens)
-                                        .build())
+                        AssistantMessageChunk first =
+                            AssistantMessageChunk.builder().content("delta-fragment-final:" + toolText).build();
+                        AssistantMessageChunk second = AssistantMessageChunk.builder().content("final:" + toolText)
+                                .usageMetadata(UsageMetadata.builder().inputTokens(inputTokens)
+                                        .outputTokens(outputTokens).totalTokens(inputTokens + outputTokens).build())
                                 .build();
                         return List.<AssistantMessageChunk>of(first, second).iterator();
                     });
@@ -254,74 +225,53 @@ class HarnessCompatibilityTest {
         return model;
     }
 
-    private static AssistantMessage buildToolCallStreamingAnswer(Object rawMessages, String toolName, int inputTokens, int outputTokens) {
+    private static AssistantMessage buildToolCallStreamingAnswer(Object rawMessages, String toolName, int inputTokens,
+            int outputTokens) {
         String toolText = extractLastRoleText(rawMessages, "tool");
         if (toolText == null) {
             String query = extractLastMessageText(rawMessages);
-            return AssistantMessage.builder()
-                    .content("")
-                    .toolCalls(List.of(ToolCall.builder()
-                            .id("stream-tool-call")
-                            .name(toolName)
-                            .arguments("{\"value\":\"" + escapeJson(query) + "\"}")
-                            .build()))
-                    .build();
+            return AssistantMessage.builder().content("").toolCalls(List.of(ToolCall.builder().id("stream-tool-call")
+                    .name(toolName).arguments("{\"value\":\"" + escapeJson(query) + "\"}").build())).build();
         }
-        return AssistantMessage.builder()
-                .content("final:" + toolText)
-                .usageMetadata(UsageMetadata.builder()
-                        .inputTokens(inputTokens)
-                        .outputTokens(outputTokens)
-                        .totalTokens(inputTokens + outputTokens)
-                        .build())
+        return AssistantMessage.builder().content("final:" + toolText).usageMetadata(UsageMetadata.builder()
+                .inputTokens(inputTokens).outputTokens(outputTokens).totalTokens(inputTokens + outputTokens).build())
                 .build();
     }
 
     private static Model installSequentialStreamingToolCallModel(DeepAgent agent, int inputTokens, int outputTokens) {
         Model model = Mockito.mock(Model.class);
         try {
-            when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
-                    .thenAnswer(invocation -> buildSequentialStreamingAnswer(invocation.getArgument(0), inputTokens, outputTokens));
+            when(model.invoke(any(), any(), any(), any(), any(), any(), any(), any(), any(), any())).thenAnswer(
+                    invocation -> buildSequentialStreamingAnswer(invocation.getArgument(0), inputTokens, outputTokens));
             when(model.stream(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                     .thenAnswer(invocation -> {
                         Object rawMessages = invocation.getArgument(0);
                         List<String> toolTexts = extractRoleTexts(rawMessages, "tool");
                         if (toolTexts.isEmpty()) {
                             String query = extractLastMessageText(rawMessages);
-                            return List.<AssistantMessageChunk>of(
-                                    AssistantMessageChunk.builder()
-                                            .toolCalls(List.of(ToolCall.builder()
-                                                    .id("seq-tool-call-1")
-                                                    .name("lookup_status")
-                                                    .arguments("{\"value\":\"" + escapeJson(query) + "#1\"}")
-                                                    .build()))
-                                            .build()
-                            ).iterator();
+                            return List.<AssistantMessageChunk>of(AssistantMessageChunk.builder()
+                                    .toolCalls(List.of(ToolCall.builder().id("seq-tool-call-1").name("lookup_status")
+                                            .arguments("{\"value\":\"" + escapeJson(query) + "#1\"}").build()))
+                                    .build()).iterator();
                         }
                         if (toolTexts.size() == 1) {
                             String firstTool = toolTexts.get(0);
-                            return List.<AssistantMessageChunk>of(
-                                    AssistantMessageChunk.builder()
-                                            .toolCalls(List.of(ToolCall.builder()
-                                                    .id("seq-tool-call-2")
-                                                    .name("lookup_status")
-                                                    .arguments("{\"value\":\"" + escapeJson(firstTool) + "#2\"}")
-                                                    .build()))
-                                            .build()
-                            ).iterator();
+                            return List.<AssistantMessageChunk>of(AssistantMessageChunk.builder()
+                                    .toolCalls(List.of(ToolCall.builder().id("seq-tool-call-2").name("lookup_status")
+                                            .arguments("{\"value\":\"" + escapeJson(firstTool) + "#2\"}").build()))
+                                    .build()).iterator();
                         }
                         String secondTool = toolTexts.get(toolTexts.size() - 1);
-                        return List.<AssistantMessageChunk>of(
-                                AssistantMessageChunk.builder().content("delta-seq-final:" + secondTool).build(),
-                                AssistantMessageChunk.builder()
-                                        .content("final:" + secondTool)
-                                        .usageMetadata(UsageMetadata.builder()
-                                                .inputTokens(inputTokens)
-                                                .outputTokens(outputTokens)
-                                                .totalTokens(inputTokens + outputTokens)
+                        return List
+                                .<AssistantMessageChunk>of(
+                                        AssistantMessageChunk.builder().content("delta-seq-final:" + secondTool)
+                                                .build(),
+                                        AssistantMessageChunk.builder().content("final:" + secondTool)
+                                                .usageMetadata(UsageMetadata.builder().inputTokens(inputTokens)
+                                                        .outputTokens(outputTokens)
+                                                        .totalTokens(inputTokens + outputTokens).build())
                                                 .build())
-                                        .build()
-                        ).iterator();
+                                .iterator();
                     });
         } catch (Exception ex) {
             throw new RuntimeException(ex);
@@ -330,52 +280,31 @@ class HarnessCompatibilityTest {
         return model;
     }
 
-    private static AssistantMessage buildSequentialStreamingAnswer(Object rawMessages, int inputTokens, int outputTokens) {
+    private static AssistantMessage buildSequentialStreamingAnswer(Object rawMessages, int inputTokens,
+            int outputTokens) {
         List<String> toolTexts = extractRoleTexts(rawMessages, "tool");
         if (toolTexts.isEmpty()) {
             String query = extractLastMessageText(rawMessages);
-            return AssistantMessage.builder()
-                    .content("")
-                    .toolCalls(List.of(ToolCall.builder()
-                            .id("seq-tool-call-1")
-                            .name("lookup_status")
-                            .arguments("{\"value\":\"" + escapeJson(query) + "#1\"}")
-                            .build()))
+            return AssistantMessage
+                    .builder().content("").toolCalls(List.of(ToolCall.builder().id("seq-tool-call-1")
+                            .name("lookup_status").arguments("{\"value\":\"" + escapeJson(query) + "#1\"}").build()))
                     .build();
         }
         if (toolTexts.size() == 1) {
-            return AssistantMessage.builder()
-                    .content("")
-                    .toolCalls(List.of(ToolCall.builder()
-                            .id("seq-tool-call-2")
-                            .name("lookup_status")
-                            .arguments("{\"value\":\"" + escapeJson(toolTexts.get(0)) + "#2\"}")
-                            .build()))
+            return AssistantMessage.builder().content("").toolCalls(List.of(ToolCall.builder().id("seq-tool-call-2")
+                    .name("lookup_status").arguments("{\"value\":\"" + escapeJson(toolTexts.get(0)) + "#2\"}").build()))
                     .build();
         }
         String secondTool = toolTexts.get(toolTexts.size() - 1);
-        return AssistantMessage.builder()
-                .content("final:" + secondTool)
-                .usageMetadata(UsageMetadata.builder()
-                        .inputTokens(inputTokens)
-                        .outputTokens(outputTokens)
-                        .totalTokens(inputTokens + outputTokens)
-                        .build())
+        return AssistantMessage.builder().content("final:" + secondTool).usageMetadata(UsageMetadata.builder()
+                .inputTokens(inputTokens).outputTokens(outputTokens).totalTokens(inputTokens + outputTokens).build())
                 .build();
     }
 
     private static Tool createEchoTool(String name) {
-        ToolCard card = ToolCard.builder()
-                .id(name + "_tool")
-                .name(name)
-                .description("echo tool")
-                .inputParams(Map.of(
-                        "type", "object",
-                        "properties", Map.of(
-                                "value", Map.of("type", "string")
-                        ),
-                        "required", List.of("value")
-                ))
+        ToolCard card = ToolCard.builder().id(name + "_tool").name(name).description("echo tool")
+                .inputParams(Map.of("type", "object", "properties", Map.of("value", Map.of("type", "string")),
+                        "required", List.of("value")))
                 .build();
         return new LocalFunction(card, (inputs, kwargs) -> {
             Session session = (Session) kwargs.get("session");
@@ -403,8 +332,7 @@ class HarnessCompatibilityTest {
         List<String> texts = new java.util.ArrayList<>();
         if (rawMessages instanceof List<?> messages && !messages.isEmpty()) {
             for (Object item : messages) {
-                if (item instanceof BaseMessage baseMessage
-                        && role.equals(baseMessage.getRole())
+                if (item instanceof BaseMessage baseMessage && role.equals(baseMessage.getRole())
                         && baseMessage.getContent() != null) {
                     texts.add(String.valueOf(baseMessage.getContent()));
                 }
@@ -418,26 +346,18 @@ class HarnessCompatibilityTest {
     }
 
     private static Tool createHarnessAskUserTool() {
-        ToolCard card = ToolCard.builder()
-                .id("harness_ask_user_tool")
-                .name("ask_user")
-                .description("collect user input")
-                .inputParams(Map.of(
-                        "type", "object",
-                        "properties", Map.of(
-                                "response", Map.of("type", "string", "description", "user response")
-                        ),
-                        "required", List.of("response")
-                ))
-                .build();
+        ToolCard card =
+            ToolCard.builder().id("harness_ask_user_tool").name("ask_user").description("collect user input")
+                    .inputParams(Map.of("type", "object", "properties",
+                            Map.of("response", Map.of("type", "string", "description", "user response")), "required",
+                            List.of("response")))
+                    .build();
 
         return new LocalFunction(card, (inputs, kwargs) -> {
             Session session = (Session) kwargs.get("session");
             if (session != null) {
-                session.updateState(Map.of(
-                        "tool_saw_session", Boolean.TRUE,
-                        "tool_session_id", session.getSessionId()
-                ));
+                session.updateState(
+                        Map.of("tool_saw_session", Boolean.TRUE, "tool_session_id", session.getSessionId()));
             }
             String response = String.valueOf(inputs.get("response"));
             return "response=" + response + ",session=" + (session != null ? session.getSessionId() : "null");
@@ -498,11 +418,8 @@ class HarnessCompatibilityTest {
         @Override
         protected InterruptDecision resolveInterrupt(AgentCallbackContext ctx, ToolCall toolCall, Object userInput) {
             if (userInput == null) {
-                return interrupt(InterruptRequest.builder()
-                        .interruptId(toolCall.getId())
-                        .message("Please provide your name")
-                        .context(Map.of("tool_call_id", toolCall.getId()))
-                        .build());
+                return interrupt(InterruptRequest.builder().interruptId(toolCall.getId())
+                        .message("Please provide your name").context(Map.of("tool_call_id", toolCall.getId())).build());
             }
             String escaped = String.valueOf(userInput).replace("\\", "\\\\").replace("\"", "\\\"");
             return approve("{\"response\":\"" + escaped + "\"}");
@@ -525,7 +442,6 @@ class HarnessCompatibilityTest {
 
     private static final class HarnessInterruptTestModelClient
             extends com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient {
-
         private HarnessInterruptTestModelClient(
                 com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig modelConfig,
                 com.openjiuwen.core.foundation.llm.schema.ModelClientConfig modelClientConfig) {
@@ -534,56 +450,46 @@ class HarnessCompatibilityTest {
 
         @Override
         public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
-                                       Integer maxTokens, String stop,
-                                       com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser outputParser,
-                                       Float timeout, Map<String, Object> kwargs) {
+                Integer maxTokens, String stop,
+                com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             List<BaseMessage> messageList = toMessages(messages);
             String lastToolContent = findLastContent(messageList, "tool");
             if (lastToolContent == null) {
-                return AssistantMessage.builder()
-                        .content("")
-                        .toolCalls(List.of(ToolCall.builder()
-                                .id("ask-user-call")
-                                .name("ask_user")
-                                .arguments("{\"question\":\"Please provide your name\"}")
-                                .build()))
-                        .build();
+                return AssistantMessage.builder().content("").toolCalls(List.of(ToolCall.builder().id("ask-user-call")
+                        .name("ask_user").arguments("{\"question\":\"Please provide your name\"}").build())).build();
             }
             return new AssistantMessage("FINAL:" + lastToolContent);
         }
 
         @Override
         public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
-                                                      String model, Integer maxTokens, String stop,
-                                                      com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser outputParser,
-                                                      Float timeout, Map<String, Object> kwargs) {
+                String model, Integer maxTokens, String stop,
+                com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             return List.<AssistantMessageChunk>of().iterator();
         }
 
         @Override
         public com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse generateImage(
-                List<com.openjiuwen.core.foundation.llm.schema.UserMessage> messages,
-                String model, String size, String negativePrompt, int n,
-                boolean promptExtend, boolean watermark, int seed,
+                List<com.openjiuwen.core.foundation.llm.schema.UserMessage> messages, String model, String size,
+                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
                 Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
         @Override
         public com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse generateSpeech(
-                List<com.openjiuwen.core.foundation.llm.schema.UserMessage> messages,
-                String model, String voice, String languageType,
-                Map<String, Object> kwargs) {
+                List<com.openjiuwen.core.foundation.llm.schema.UserMessage> messages, String model, String voice,
+                String languageType, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
         @Override
         public com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse generateVideo(
-                List<com.openjiuwen.core.foundation.llm.schema.UserMessage> messages,
-                String imgUrl, String audioUrl, String model, String size,
-                String resolution, int duration, boolean promptExtend,
-                boolean watermark, String negativePrompt, Integer seed,
-                Map<String, Object> kwargs) {
+                List<com.openjiuwen.core.foundation.llm.schema.UserMessage> messages, String imgUrl, String audioUrl,
+                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
@@ -619,16 +525,11 @@ class HarnessCompatibilityTest {
 
     @Test
     void factoryShouldCreateDeepAgentWithConfigAndWorkspace() {
-        DeepAgentConfig config = DeepAgentConfig.builder()
-                .systemPrompt("You are a coding agent.")
-                .workspacePath("./workspace")
-                .defaultMode(AgentMode.PLAN)
-                .build();
-        DeepAgent agent = HarnessFactory.createDeepAgent(
-                AgentCard.builder().name("deep").description("Deep Agent").build(),
-                config,
-                Workspace.builder().rootPath("./workspace").language("cn").build()
-        );
+        DeepAgentConfig config = DeepAgentConfig.builder().systemPrompt("You are a coding agent.")
+                .workspacePath("./workspace").defaultMode(AgentMode.PLAN).build();
+        DeepAgent agent =
+            HarnessFactory.createDeepAgent(AgentCard.builder().name("deep").description("Deep Agent").build(), config,
+                    Workspace.builder().rootPath("./workspace").language("cn").build());
 
         assertThat(agent.getConfig().getDefaultMode()).isEqualTo(AgentMode.PLAN);
         assertThat(agent.getWorkspace().root().toString()).contains("workspace");
@@ -648,11 +549,8 @@ class HarnessCompatibilityTest {
 
     @Test
     void deepAgentShouldRunMinimalTaskLoopWhenEnabled() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .maxIterations(4)
-                .build());
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(4).build());
         agent.ensureInitialized();
         installEchoModel(agent, "model:", 3, 5);
         agent.getLoopController().enqueueFollowUp("continue");
@@ -663,8 +561,10 @@ class HarnessCompatibilityTest {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> rounds = (List<Map<String, Object>>) result.get("rounds");
         assertThat(rounds).hasSize(2);
-        assertThat(rounds.get(0)).containsEntry("round", 1).containsEntry("is_follow_up", false).containsEntry("output", "model:Start task loop.");
-        assertThat(rounds.get(1)).containsEntry("round", 2).containsEntry("is_follow_up", true).containsEntry("output", "model:continue");
+        assertThat(rounds.get(0)).containsEntry("round", 1).containsEntry("is_follow_up", false).containsEntry("output",
+                "model:Start task loop.");
+        assertThat(rounds.get(1)).containsEntry("round", 2).containsEntry("is_follow_up", true).containsEntry("output",
+                "model:continue");
         assertThat(rounds.get(1)).containsEntry("query", "continue");
         @SuppressWarnings("unchecked")
         Map<String, Object> loopState = (Map<String, Object>) result.get("loop_state");
@@ -673,61 +573,36 @@ class HarnessCompatibilityTest {
 
     @Test
     void factoryShouldAutoInjectDefaultTaskCompletionRailForTaskLoop() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .build());
+        DeepAgent agent = HarnessFactory
+                .createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).build());
 
-        assertThat(agent.getConfig().getRails())
-                .anyMatch(TaskCompletionRail.class::isInstance);
+        assertThat(agent.getConfig().getRails()).anyMatch(TaskCompletionRail.class::isInstance);
     }
 
     @Test
     void factoryShouldKeepUserTaskCompletionRailWhenTaskLoopEnabled() {
-        TaskCompletionRail configured = new TaskCompletionRail(
-                "Solve: {query}",
-                "DONE",
-                2,
-                true,
-                4,
-                Duration.ofSeconds(5)
-        );
+        TaskCompletionRail configured =
+            new TaskCompletionRail("Solve: {query}", "DONE", 2, true, 4, Duration.ofSeconds(5));
 
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .rails(List.of(configured))
-                .build());
+        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo")
+                .enableTaskLoop(true).rails(List.of(configured)).build());
 
-        assertThat(agent.getConfig().getRails())
-                .filteredOn(TaskCompletionRail.class::isInstance)
+        assertThat(agent.getConfig().getRails()).filteredOn(TaskCompletionRail.class::isInstance)
                 .containsExactly(configured);
     }
 
     @Test
     @SuppressWarnings("unchecked")
     void taskCompletionRailShouldDriveTaskLoopStopEvaluators() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .maxIterations(5)
-                .rails(List.of(new TaskCompletionRail(
-                        null,
-                        "DONE",
-                        2,
-                        true,
-                        4,
-                        Duration.ofSeconds(30)
-                )))
-                .build());
+        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo")
+                .enableTaskLoop(true).maxIterations(5)
+                .rails(List.of(new TaskCompletionRail(null, "DONE", 2, true, 4, Duration.ofSeconds(30)))).build());
         agent.ensureInitialized();
         installEchoModel(agent, "", 2, 4);
         agent.getLoopController().enqueueFollowUp("<promise>DONE with details</promise>");
 
-        Map<String, Object> result = agent.invoke(Map.of(
-                "query", "<promise>DONE with details</promise>",
-                "conversation_id", "completion-session"
-        ));
+        Map<String, Object> result = agent.invoke(
+                Map.of("query", "<promise>DONE with details</promise>", "conversation_id", "completion-session"));
 
         List<Map<String, Object>> rounds = (List<Map<String, Object>>) result.get("rounds");
         assertThat(rounds).hasSize(2);
@@ -735,9 +610,7 @@ class HarnessCompatibilityTest {
         assertThat(loopState).containsEntry("stop_reason", "CompletionPromise");
         Map<String, Object> evaluatorStates = (Map<String, Object>) loopState.get("evaluator_states");
         Map<String, Object> completionState = (Map<String, Object>) evaluatorStates.get("CompletionPromise");
-        assertThat(completionState)
-                .containsEntry("completed", true)
-                .containsEntry("confirmation_count", 2)
+        assertThat(completionState).containsEntry("completed", true).containsEntry("confirmation_count", 2)
                 .containsEntry("required_confirmations", 2);
         assertThat(loopState).containsEntry("token_usage", 12);
         assertThat(evaluatorStates).containsKeys("MaxRounds", "Timeout");
@@ -746,19 +619,10 @@ class HarnessCompatibilityTest {
     @Test
     @SuppressWarnings("unchecked")
     void taskCompletionRailShouldApplyInstructionToFirstTaskLoopRoundOnly() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .maxIterations(3)
-                .rails(List.of(new TaskCompletionRail(
-                        "Solve carefully: {query}",
-                        null,
-                        1,
-                        false,
-                        null,
-                        null
-                )))
-                .build());
+        DeepAgent agent = HarnessFactory
+                .createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(3)
+                        .rails(List.of(new TaskCompletionRail("Solve carefully: {query}", null, 1, false, null, null)))
+                        .build());
         agent.ensureInitialized();
         installEchoModel(agent, "", 1, 2);
         agent.getLoopController().enqueueFollowUp("follow up");
@@ -778,21 +642,10 @@ class HarnessCompatibilityTest {
     @Test
     @SuppressWarnings("unchecked")
     void taskCompletionRailShouldAppendExtraStopEvaluators() {
-        TaskCompletionRail rail = new TaskCompletionRail(
-                null,
-                null,
-                1,
-                false,
-                null,
-                null,
-                List.of(new CustomPredicateEvaluator("StopAfterTwo", ctx -> ctx.getIteration() >= 2))
-        );
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .maxIterations(5)
-                .rails(List.of(rail))
-                .build());
+        TaskCompletionRail rail = new TaskCompletionRail(null, null, 1, false, null, null,
+                List.of(new CustomPredicateEvaluator("StopAfterTwo", ctx -> ctx.getIteration() >= 2)));
+        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo")
+                .enableTaskLoop(true).maxIterations(5).rails(List.of(rail)).build());
         agent.ensureInitialized();
         installEchoModel(agent, "", 1, 1);
         agent.getLoopController().enqueueFollowUp("two");
@@ -809,30 +662,22 @@ class HarnessCompatibilityTest {
     @Test
     @SuppressWarnings("unchecked")
     void deepAgentTaskLoopShouldUseCoreEventQueueAndScheduler() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .maxIterations(1)
-                .build());
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(1).build());
         agent.ensureInitialized();
         installEchoModel(agent, "", 2, 3);
 
-        Map<String, Object> result = agent.invoke(Map.of(
-                "query", "core scheduled round",
-                "conversation_id", "core-scheduled-session"
-        ));
+        Map<String, Object> result =
+            agent.invoke(Map.of("query", "core scheduled round", "conversation_id", "core-scheduled-session"));
 
         List<Map<String, Object>> rounds = (List<Map<String, Object>>) result.get("rounds");
         assertThat(rounds).hasSize(1);
-        assertThat(rounds.get(0))
-                .containsEntry("output", "core scheduled round")
-                .containsEntry("is_follow_up", false);
+        assertThat(rounds.get(0)).containsEntry("output", "core scheduled round").containsEntry("is_follow_up", false);
         UsageMetadata usageMetadata = (UsageMetadata) rounds.get(0).get("usage_metadata");
         assertThat(usageMetadata.getInputTokens()).isEqualTo(2);
         assertThat(usageMetadata.getOutputTokens()).isEqualTo(3);
         assertThat(usageMetadata.getTotalTokens()).isEqualTo(5);
-        assertThat(agent.getTaskManager().getTask(TaskFilter.byTaskId("deep_agent_task_1")))
-                .singleElement()
+        assertThat(agent.getTaskManager().getTask(TaskFilter.byTaskId("deep_agent_task_1"))).singleElement()
                 .satisfies(task -> {
                     assertThat(task.getStatus()).isEqualTo(TaskStatus.COMPLETED);
                     assertThat(task.getSessionId()).isEqualTo("core-scheduled-session");
@@ -844,18 +689,14 @@ class HarnessCompatibilityTest {
 
     @Test
     void deepAgentSteerShouldPublishToTaskLoopSteeringQueue() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .maxIterations(1)
-                .build());
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(1).build());
         agent.ensureInitialized();
         AgentSessionApi session = new AgentSessionApi("steer-session", null, agent.getCard());
 
         agent.steer("inspect changed files", session);
 
-        assertThat(agent.getLoopController().drainSteering("steer-session"))
-                .containsExactly("inspect changed files");
+        assertThat(agent.getLoopController().drainSteering("steer-session")).containsExactly("inspect changed files");
     }
 
     @Test
@@ -865,12 +706,9 @@ class HarnessCompatibilityTest {
         CountDownLatch releaseTool = new CountDownLatch(1);
         List<List<BaseMessage>> modelCalls = Collections.synchronizedList(new ArrayList<>());
         String toolName = "blocking_status";
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .maxIterations(3)
-                .tools(List.of(blockingTool(toolName, toolEntered, releaseTool)))
-                .build());
+        DeepAgent agent =
+            HarnessFactory.createDeepAgent(DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true)
+                    .maxIterations(3).tools(List.of(blockingTool(toolName, toolEntered, releaseTool))).build());
         agent.ensureInitialized();
         Model model = Mockito.mock(Model.class);
         AtomicBoolean firstCall = new AtomicBoolean(true);
@@ -879,13 +717,9 @@ class HarnessCompatibilityTest {
                     List<BaseMessage> messages = new ArrayList<>((List<BaseMessage>) invocation.getArgument(0));
                     modelCalls.add(messages);
                     if (firstCall.getAndSet(false)) {
-                        return AssistantMessage.builder()
-                                .content("")
-                                .toolCalls(List.of(ToolCall.builder()
-                                        .id("blocking-call")
-                                        .name(toolName)
-                                        .arguments("{}")
-                                        .build()))
+                        return AssistantMessage.builder().content("")
+                                .toolCalls(List.of(
+                                        ToolCall.builder().id("blocking-call").name(toolName).arguments("{}").build()))
                                 .build();
                     }
                     return AssistantMessage.builder().content("done").build();
@@ -893,11 +727,11 @@ class HarnessCompatibilityTest {
         agent.getAgent().setLlm(model);
         AgentSessionApi session = new AgentSessionApi("steer-inner-session", null, agent.getCard());
 
-        Thread invokeThread = new Thread(() -> agent.stream(Map.of(
-                "query", "run tool then continue",
-                "conversation_id", "steer-inner-session"
-        ), session, List.of(StreamMode.OUTPUT)).forEachRemaining(ignored -> {
-        }), "steer-inner-test");
+        Thread invokeThread = new Thread(
+                () -> agent.stream(Map.of("query", "run tool then continue", "conversation_id", "steer-inner-session"),
+                        session, List.of(StreamMode.OUTPUT)).forEachRemaining(ignored -> {
+                        }),
+                "steer-inner-test");
         invokeThread.start();
         assertThat(toolEntered.await(10, TimeUnit.SECONDS)).isTrue();
 
@@ -915,222 +749,176 @@ class HarnessCompatibilityTest {
 
     @Test
     void deepAgentTaskLoopStreamShouldEmitSchedulerChunksAndFinalAnswer() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .maxIterations(1)
-                .build());
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(1).build());
         agent.ensureInitialized();
         installStreamingModel(agent, "", 2, 2);
 
         List<Object> chunks = new java.util.ArrayList<>();
-        agent.stream(Map.of(
-                "query", "stream scheduled round",
-                "conversation_id", "stream-session"
-        )).forEachRemaining(chunks::add);
+        agent.stream(Map.of("query", "stream scheduled round", "conversation_id", "stream-session"))
+                .forEachRemaining(chunks::add);
 
-        assertThat(chunks)
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
-                    ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
-                    assertThat(outputChunk.getControllerPayload().getType())
-                            .isEqualTo("processing");
-                    assertThat(outputChunk.getControllerPayload().getMetadata())
-                            .containsEntry("stream_kind", "inner_agent");
-                    assertThat(outputChunk.getControllerPayload().getData())
-                            .singleElement()
-                            .isInstanceOf(DataFrame.JsonDataFrame.class);
-                    DataFrame.JsonDataFrame frame = (DataFrame.JsonDataFrame) outputChunk.getControllerPayload().getData().get(0);
-                    assertThat(frame.data())
-                            .containsEntry("delta", "delta:stream scheduled round")
-                            .doesNotContainKey("output");
-                })
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
-                    ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
-                    assertThat(outputChunk.getControllerPayload().getType())
-                            .isEqualTo(EventType.TASK_COMPLETION.getValue());
-                })
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(OutputSchema.class);
-                    OutputSchema output = (OutputSchema) chunk;
-                    assertThat(output.getType()).isEqualTo("answer");
-                    assertThat(output.getPayload().toString()).contains("stream scheduled round");
-                });
+        assertThat(chunks).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
+            ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
+            assertThat(outputChunk.getControllerPayload().getType()).isEqualTo("processing");
+            assertThat(outputChunk.getControllerPayload().getMetadata()).containsEntry("stream_kind", "inner_agent");
+            assertThat(outputChunk.getControllerPayload().getData()).singleElement()
+                    .isInstanceOf(DataFrame.JsonDataFrame.class);
+            DataFrame.JsonDataFrame frame =
+                (DataFrame.JsonDataFrame) outputChunk.getControllerPayload().getData().get(0);
+            assertThat(frame.data()).containsEntry("delta", "delta:stream scheduled round").doesNotContainKey("output");
+        }).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
+            ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
+            assertThat(outputChunk.getControllerPayload().getType()).isEqualTo(EventType.TASK_COMPLETION.getValue());
+        }).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(OutputSchema.class);
+            OutputSchema output = (OutputSchema) chunk;
+            assertThat(output.getType()).isEqualTo("answer");
+            assertThat(output.getPayload().toString()).contains("stream scheduled round");
+        });
     }
 
     @Test
     void deepAgentTaskLoopStreamShouldYieldProcessingChunkBeforeCompletion() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .maxIterations(1)
-                .build());
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(1).build());
         agent.ensureInitialized();
         installStreamingModel(agent, "", 2, 2);
 
-        Iterator<Object> iterator = agent.stream(Map.of(
-                "query", "stream progressively",
-                "conversation_id", "progressive-stream-session"
-        ));
+        Iterator<Object> iterator =
+            agent.stream(Map.of("query", "stream progressively", "conversation_id", "progressive-stream-session"));
 
         List<Object> firstChunks = takeChunks(iterator, 2);
         assertThat(firstChunks).isNotEmpty();
         assertThat(firstChunks.get(0)).isInstanceOf(ControllerOutputChunk.class);
         ControllerOutputChunk processingChunk = (ControllerOutputChunk) firstChunks.get(0);
         assertThat(processingChunk.getControllerPayload().getType()).isEqualTo("processing");
-        DataFrame.JsonDataFrame frame = (DataFrame.JsonDataFrame) processingChunk.getControllerPayload().getData().get(0);
+        DataFrame.JsonDataFrame frame =
+            (DataFrame.JsonDataFrame) processingChunk.getControllerPayload().getData().get(0);
         assertThat(frame.data()).containsEntry("delta", "delta:stream progressively");
 
         List<Object> remainingChunks = new java.util.ArrayList<>();
         iterator.forEachRemaining(remainingChunks::add);
-        assertThat(remainingChunks)
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
-                    ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
-                    assertThat(outputChunk.getControllerPayload().getType())
-                            .isEqualTo(EventType.TASK_COMPLETION.getValue());
-                })
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(OutputSchema.class);
-                    OutputSchema output = (OutputSchema) chunk;
-                    assertThat(output.getType()).isEqualTo("answer");
-                    assertThat(output.getPayload().toString()).contains("stream progressively");
-                });
+        assertThat(remainingChunks).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
+            ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
+            assertThat(outputChunk.getControllerPayload().getType()).isEqualTo(EventType.TASK_COMPLETION.getValue());
+        }).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(OutputSchema.class);
+            OutputSchema output = (OutputSchema) chunk;
+            assertThat(output.getType()).isEqualTo("answer");
+            assertThat(output.getPayload().toString()).contains("stream progressively");
+        });
     }
 
     @Test
     void deepAgentTaskLoopStreamShouldEmitInnerToolCallChunksBeforeFinalAnswer() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .maxIterations(2)
-                .build());
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(2).build());
         agent.ensureInitialized();
         agent.registerHarnessTool(createEchoTool("lookup_status"));
         installStreamingToolCallModel(agent, "lookup_status", 3, 4);
 
         List<Object> chunks = new java.util.ArrayList<>();
-        agent.stream(Map.of(
-                "query", "stream tool round",
-                "conversation_id", "stream-tool-session"
-        )).forEachRemaining(chunks::add);
+        agent.stream(Map.of("query", "stream tool round", "conversation_id", "stream-tool-session"))
+                .forEachRemaining(chunks::add);
 
-        assertThat(chunks)
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
-                    ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
-                    assertThat(outputChunk.getControllerPayload().getType()).isEqualTo("processing");
-                    assertThat(outputChunk.getControllerPayload().getMetadata())
-                            .containsEntry("stream_kind", "inner_agent");
-                    assertThat(outputChunk.getControllerPayload().getData())
-                            .singleElement()
-                            .isInstanceOf(DataFrame.JsonDataFrame.class);
-                    DataFrame.JsonDataFrame frame = (DataFrame.JsonDataFrame) outputChunk.getControllerPayload().getData().get(0);
-                    assertThat(frame.data()).containsKey("tool_calls").doesNotContainKey("output");
-                    assertThat((List<?>) frame.data().get("tool_calls"))
-                            .singleElement()
-                            .isInstanceOf(ToolCall.class);
-                    ToolCall toolCall = (ToolCall) ((List<?>) frame.data().get("tool_calls")).get(0);
-                    assertThat(toolCall.getName()).isEqualTo("lookup_status");
-                    assertThat(toolCall.getArguments()).contains("stream tool round");
-                })
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
-                    ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
-                    if (!"processing".equals(outputChunk.getControllerPayload().getType())) {
-                        throw new AssertionError("not processing chunk");
-                    }
-                    assertThat(outputChunk.getControllerPayload().getData())
-                            .singleElement()
-                            .isInstanceOf(DataFrame.JsonDataFrame.class);
-                    DataFrame.JsonDataFrame frame = (DataFrame.JsonDataFrame) outputChunk.getControllerPayload().getData().get(0);
-                    assertThat(frame.data()).containsEntry("delta", "delta-final:tool:stream tool round:stream-tool-session");
-                })
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(OutputSchema.class);
-                    OutputSchema output = (OutputSchema) chunk;
-                    assertThat(output.getType()).isEqualTo("answer");
-                    assertThat(output.getPayload().toString()).contains("final:tool:stream tool round:stream-tool-session");
-                });
+        assertThat(chunks).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
+            ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
+            assertThat(outputChunk.getControllerPayload().getType()).isEqualTo("processing");
+            assertThat(outputChunk.getControllerPayload().getMetadata()).containsEntry("stream_kind", "inner_agent");
+            assertThat(outputChunk.getControllerPayload().getData()).singleElement()
+                    .isInstanceOf(DataFrame.JsonDataFrame.class);
+            DataFrame.JsonDataFrame frame =
+                (DataFrame.JsonDataFrame) outputChunk.getControllerPayload().getData().get(0);
+            assertThat(frame.data()).containsKey("tool_calls").doesNotContainKey("output");
+            assertThat((List<?>) frame.data().get("tool_calls")).singleElement().isInstanceOf(ToolCall.class);
+            ToolCall toolCall = (ToolCall) ((List<?>) frame.data().get("tool_calls")).get(0);
+            assertThat(toolCall.getName()).isEqualTo("lookup_status");
+            assertThat(toolCall.getArguments()).contains("stream tool round");
+        }).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
+            ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
+            if (!"processing".equals(outputChunk.getControllerPayload().getType())) {
+                throw new AssertionError("not processing chunk");
+            }
+            assertThat(outputChunk.getControllerPayload().getData()).singleElement()
+                    .isInstanceOf(DataFrame.JsonDataFrame.class);
+            DataFrame.JsonDataFrame frame =
+                (DataFrame.JsonDataFrame) outputChunk.getControllerPayload().getData().get(0);
+            assertThat(frame.data()).containsEntry("delta", "delta-final:tool:stream tool round:stream-tool-session");
+        }).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(OutputSchema.class);
+            OutputSchema output = (OutputSchema) chunk;
+            assertThat(output.getType()).isEqualTo("answer");
+            assertThat(output.getPayload().toString()).contains("final:tool:stream tool round:stream-tool-session");
+        });
     }
 
     @Test
     void deepAgentTaskLoopStreamShouldExposeFragmentedToolCallChunksAndExecuteMergedCall() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .maxIterations(2)
-                .build());
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(2).build());
         agent.ensureInitialized();
         agent.registerHarnessTool(createEchoTool("lookup_status"));
         installFragmentedStreamingToolCallModel(agent, "lookup_status", 3, 4);
 
         List<Object> chunks = new java.util.ArrayList<>();
-        agent.stream(Map.of(
-                "query", "stream tool round",
-                "conversation_id", "fragment-tool-session"
-        )).forEachRemaining(chunks::add);
+        agent.stream(Map.of("query", "stream tool round", "conversation_id", "fragment-tool-session"))
+                .forEachRemaining(chunks::add);
 
-        assertThat(chunks)
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
-                    ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
-                    assertThat(outputChunk.getControllerPayload().getType()).isEqualTo("processing");
-                    assertThat(outputChunk.getControllerPayload().getData())
-                            .singleElement()
-                            .isInstanceOf(DataFrame.JsonDataFrame.class);
-                    DataFrame.JsonDataFrame frame = (DataFrame.JsonDataFrame) outputChunk.getControllerPayload().getData().get(0);
-                    assertThat(frame.data()).containsKey("tool_calls");
-                    ToolCall toolCall = (ToolCall) ((List<?>) frame.data().get("tool_calls")).get(0);
-                    assertThat(toolCall.getName()).isEqualTo("lookup_");
-                    assertThat(toolCall.getArguments()).contains("{\"value\":\"stream ");
-                })
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
-                    ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
-                    assertThat(outputChunk.getControllerPayload().getType()).isEqualTo("processing");
-                    assertThat(outputChunk.getControllerPayload().getData())
-                            .singleElement()
-                            .isInstanceOf(DataFrame.JsonDataFrame.class);
-                    DataFrame.JsonDataFrame frame = (DataFrame.JsonDataFrame) outputChunk.getControllerPayload().getData().get(0);
-                    assertThat(frame.data()).containsKey("tool_calls");
-                    ToolCall toolCall = (ToolCall) ((List<?>) frame.data().get("tool_calls")).get(0);
-                    assertThat(toolCall.getName()).isEqualTo("status");
-                    assertThat(toolCall.getArguments()).contains("tool round\"}");
-                })
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(OutputSchema.class);
-                    OutputSchema output = (OutputSchema) chunk;
-                    assertThat(output.getType()).isEqualTo("answer");
-                    assertThat(output.getPayload().toString()).contains("final:tool:stream tool round:fragment-tool-session");
-                });
+        assertThat(chunks).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
+            ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
+            assertThat(outputChunk.getControllerPayload().getType()).isEqualTo("processing");
+            assertThat(outputChunk.getControllerPayload().getData()).singleElement()
+                    .isInstanceOf(DataFrame.JsonDataFrame.class);
+            DataFrame.JsonDataFrame frame =
+                (DataFrame.JsonDataFrame) outputChunk.getControllerPayload().getData().get(0);
+            assertThat(frame.data()).containsKey("tool_calls");
+            ToolCall toolCall = (ToolCall) ((List<?>) frame.data().get("tool_calls")).get(0);
+            assertThat(toolCall.getName()).isEqualTo("lookup_");
+            assertThat(toolCall.getArguments()).contains("{\"value\":\"stream ");
+        }).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
+            ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
+            assertThat(outputChunk.getControllerPayload().getType()).isEqualTo("processing");
+            assertThat(outputChunk.getControllerPayload().getData()).singleElement()
+                    .isInstanceOf(DataFrame.JsonDataFrame.class);
+            DataFrame.JsonDataFrame frame =
+                (DataFrame.JsonDataFrame) outputChunk.getControllerPayload().getData().get(0);
+            assertThat(frame.data()).containsKey("tool_calls");
+            ToolCall toolCall = (ToolCall) ((List<?>) frame.data().get("tool_calls")).get(0);
+            assertThat(toolCall.getName()).isEqualTo("status");
+            assertThat(toolCall.getArguments()).contains("tool round\"}");
+        }).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(OutputSchema.class);
+            OutputSchema output = (OutputSchema) chunk;
+            assertThat(output.getType()).isEqualTo("answer");
+            assertThat(output.getPayload().toString()).contains("final:tool:stream tool round:fragment-tool-session");
+        });
     }
 
     @Test
     void deepAgentTaskLoopStreamShouldPreserveSequentialToolCallProcessingOrder() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./repo")
-                .enableTaskLoop(true)
-                .maxIterations(3)
-                .build());
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(3).build());
         agent.ensureInitialized();
         agent.registerHarnessTool(createEchoTool("lookup_status"));
         installSequentialStreamingToolCallModel(agent, 4, 5);
 
         List<Object> chunks = new java.util.ArrayList<>();
-        agent.stream(Map.of(
-                "query", "ordered round",
-                "conversation_id", "ordered-tool-session"
-        )).forEachRemaining(chunks::add);
+        agent.stream(Map.of("query", "ordered round", "conversation_id", "ordered-tool-session"))
+                .forEachRemaining(chunks::add);
 
-        List<Map<String, Object>> processingPayloads = chunks.stream()
-                .filter(ControllerOutputChunk.class::isInstance)
-                .map(ControllerOutputChunk.class::cast)
-                .filter(chunk -> "processing".equals(chunk.getControllerPayload().getType()))
-                .map(chunk -> (DataFrame.JsonDataFrame) chunk.getControllerPayload().getData().get(0))
-                .map(DataFrame.JsonDataFrame::data)
-                .toList();
+        List<Map<String, Object>> processingPayloads =
+            chunks.stream().filter(ControllerOutputChunk.class::isInstance).map(ControllerOutputChunk.class::cast)
+                    .filter(chunk -> "processing".equals(chunk.getControllerPayload().getType()))
+                    .map(chunk -> (DataFrame.JsonDataFrame) chunk.getControllerPayload().getData().get(0))
+                    .map(DataFrame.JsonDataFrame::data).toList();
 
         assertThat(processingPayloads).extracting(payload -> payload.containsKey("tool_calls"))
                 .containsSubsequence(true, true, false, false);
@@ -1138,61 +926,50 @@ class HarnessCompatibilityTest {
         ToolCall secondToolCall = (ToolCall) ((List<?>) processingPayloads.get(1).get("tool_calls")).get(0);
         assertThat(firstToolCall.getArguments()).contains("ordered round#1");
         assertThat(secondToolCall.getArguments()).contains("tool:ordered round#1:ordered-tool-session#2");
-        assertThat(processingPayloads.get(2)).containsEntry("delta", "delta-seq-final:tool:tool:ordered round#1:ordered-tool-session#2:ordered-tool-session");
-        assertThat(processingPayloads.get(3)).containsEntry("delta", "final:tool:tool:ordered round#1:ordered-tool-session#2:ordered-tool-session");
+        assertThat(processingPayloads.get(2)).containsEntry("delta",
+                "delta-seq-final:tool:tool:ordered round#1:ordered-tool-session#2:ordered-tool-session");
+        assertThat(processingPayloads.get(3)).containsEntry("delta",
+                "final:tool:tool:ordered round#1:ordered-tool-session#2:ordered-tool-session");
 
-        assertThat(chunks)
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(OutputSchema.class);
-                    OutputSchema output = (OutputSchema) chunk;
-                    assertThat(output.getType()).isEqualTo("answer");
-                    assertThat(output.getPayload().toString())
-                            .contains("final:tool:tool:ordered round#1:ordered-tool-session#2:ordered-tool-session");
-                });
+        assertThat(chunks).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(OutputSchema.class);
+            OutputSchema output = (OutputSchema) chunk;
+            assertThat(output.getType()).isEqualTo("answer");
+            assertThat(output.getPayload().toString())
+                    .contains("final:tool:tool:ordered round#1:ordered-tool-session#2:ordered-tool-session");
+        });
     }
 
     @Test
     void deepAgentTaskLoopStreamShouldSurfaceInterruptAndResumeToFinalAnswer() {
         DeepAgent agent = HarnessFactory.createDeepAgent(
-                AgentCard.builder().id("harness-interrupt-agent").name("harness-interrupt-agent").description("interrupt harness agent").build(),
-                DeepAgentConfig.builder()
-                        .workspacePath("./repo")
-                        .enableTaskLoop(true)
-                        .maxIterations(2)
+                AgentCard.builder().id("harness-interrupt-agent").name("harness-interrupt-agent")
+                        .description("interrupt harness agent").build(),
+                DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(2)
                         .rails(List.of(new HarnessAskUserInterruptRail()))
-                        .backend(Map.of(
-                                "client_provider", HARNESS_INTERRUPT_PROVIDER,
-                                "api_key", "test-key",
-                                "api_base", "mirror://single-agent-interrupt"
-                        ))
-                        .model(Map.of("model", "interrupt-test-model"))
-                        .build(),
-                null
-        );
+                        .backend(Map.of("client_provider", HARNESS_INTERRUPT_PROVIDER, "api_key", "test-key",
+                                "api_base", "mirror://single-agent-interrupt"))
+                        .model(Map.of("model", "interrupt-test-model")).build(),
+                null);
         agent.ensureInitialized();
         Tool askUserTool = createHarnessAskUserTool();
         Runner.resourceMgr().addTool(askUserTool, agent.getCard().getId());
         agent.getAgent().getAbilityManager().add(askUserTool.getCard());
 
-        List<Object> firstTurn = collect(agent.stream(Map.of(
-                "query", "start interrupt flow",
-                "conversation_id", "harness-interrupt-session"
-        )));
+        List<Object> firstTurn = collect(
+                agent.stream(Map.of("query", "start interrupt flow", "conversation_id", "harness-interrupt-session")));
 
-        assertThat(firstTurn)
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
-                    ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
-                    assertThat(outputChunk.getControllerPayload().getType())
-                            .isEqualTo(EventType.TASK_INTERACTION.getValue());
-                })
-                .anySatisfy(chunk -> {
-                    assertThat(chunk).isInstanceOf(OutputSchema.class);
-                    OutputSchema output = (OutputSchema) chunk;
-                    assertThat(output.getType()).isEqualTo("__interaction__");
-                    InteractionOutput interactionOutput = assertInstanceOf(InteractionOutput.class, output.getPayload());
-                    assertEquals("ask-user-call", interactionOutput.getId());
-                });
+        assertThat(firstTurn).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(ControllerOutputChunk.class);
+            ControllerOutputChunk outputChunk = (ControllerOutputChunk) chunk;
+            assertThat(outputChunk.getControllerPayload().getType()).isEqualTo(EventType.TASK_INTERACTION.getValue());
+        }).anySatisfy(chunk -> {
+            assertThat(chunk).isInstanceOf(OutputSchema.class);
+            OutputSchema output = (OutputSchema) chunk;
+            assertThat(output.getType()).isEqualTo("__interaction__");
+            InteractionOutput interactionOutput = assertInstanceOf(InteractionOutput.class, output.getPayload());
+            assertEquals("ask-user-call", interactionOutput.getId());
+        });
 
         OutputSchema interactionChunk = findInteractionChunk(firstTurn);
         assertNotNull(interactionChunk);
@@ -1200,17 +977,11 @@ class HarnessCompatibilityTest {
         InteractiveInput resumeInput = new InteractiveInput();
         resumeInput.update("ask-user-call", "Alice");
 
-        AgentSessionApi resumedSession = AgentSessionApi.create(
-                "harness-interrupt-session",
-                null,
-                agent.getCard(),
-                List.of(StreamMode.OUTPUT)
-        );
-        List<Object> secondTurn = collect(agent.stream(
-                Map.of("query", resumeInput, "conversation_id", "harness-interrupt-session"),
-                resumedSession,
-                List.of(StreamMode.OUTPUT)
-        ));
+        AgentSessionApi resumedSession =
+            AgentSessionApi.create("harness-interrupt-session", null, agent.getCard(), List.of(StreamMode.OUTPUT));
+        List<Object> secondTurn =
+            collect(agent.stream(Map.of("query", resumeInput, "conversation_id", "harness-interrupt-session"),
+                    resumedSession, List.of(StreamMode.OUTPUT)));
 
         String finalOutput = extractFinalOutput(secondTurn);
         assertTrue(finalOutput.contains("Alice"));
@@ -1228,28 +999,18 @@ class HarnessCompatibilityTest {
 
     @Test
     void factoryShouldApplyPythonStyleDefaultAssembly() {
-        DeepAgent agent = HarnessFactory.createDeepAgent(
-                AgentCard.builder().name("assembled").description("d").build(),
-                DeepAgentConfig.builder()
-                        .workspacePath("./repo")
-                        .language("en")
-                        .enableTaskPlanning(true)
-                        .addGeneralPurposeAgent(true)
-                        .skillDirectories(List.of("./repo/skills"))
-                        .skillMode("auto_list")
-                        .skills(List.of("java"))
-                        .build(),
-                null
-        );
+        DeepAgent agent = HarnessFactory.createDeepAgent(AgentCard.builder().name("assembled").description("d").build(),
+                DeepAgentConfig.builder().workspacePath("./repo").language("en").enableTaskPlanning(true)
+                        .addGeneralPurposeAgent(true).skillDirectories(List.of("./repo/skills")).skillMode("auto_list")
+                        .skills(List.of("java")).build(),
+                null);
 
         assertThat(agent.getCard().getId()).isNotBlank();
         assertThat(agent.getConfig().getSysOperation()).isNotNull();
-        assertThat(agent.getConfig().getRails().stream().map(Object::getClass).toList())
-                .contains(SecurityRail.class, TaskPlanningRail.class, SkillUseRail.class, SubagentRail.class);
+        assertThat(agent.getConfig().getRails().stream().map(Object::getClass).toList()).contains(SecurityRail.class,
+                TaskPlanningRail.class, SkillUseRail.class, SubagentRail.class);
         SkillUseRail skillUseRail = (SkillUseRail) agent.getConfig().getRails().stream()
-                .filter(SkillUseRail.class::isInstance)
-                .findFirst()
-                .orElseThrow();
+                .filter(SkillUseRail.class::isInstance).findFirst().orElseThrow();
         assertThat(skillUseRail.configuredSkillDirectories()).containsExactly("./repo/skills");
         assertThat(skillUseRail.skillMode()).isEqualTo("auto_list");
         assertThat(skillUseRail.enabledSkills()).containsExactly("java");
@@ -1259,24 +1020,18 @@ class HarnessCompatibilityTest {
         assertThat(generalPurpose.getAgentCard().getDescription()).contains("General-purpose agent");
         assertThat(generalPurpose.getSkills()).containsExactly("java");
         assertThat(generalPurpose.getPromptMode()).isNull();
-        assertThat(generalPurpose.getRails().stream().map(Object::getClass).toList())
-                .contains(SysOperationRail.class);
+        assertThat(generalPurpose.getRails().stream().map(Object::getClass).toList()).contains(SysOperationRail.class);
     }
 
     @Test
     void factoryShouldUseSessionRailForAsyncSubagents() {
         SubAgentConfig worker = SubAgentConfig.builder()
-                .agentCard(AgentCard.builder().name("worker").description("Worker").build())
-                .language("en")
-                .build();
+                .agentCard(AgentCard.builder().name("worker").description("Worker").build()).language("en").build();
 
-        DeepAgent agent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .enableAsyncSubagent(true)
-                .subagents(List.of(worker))
-                .build());
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                DeepAgentConfig.builder().enableAsyncSubagent(true).subagents(List.of(worker)).build());
 
-        assertThat(agent.getConfig().getRails().stream().map(Object::getClass).toList())
-                .contains(SessionRail.class)
+        assertThat(agent.getConfig().getRails().stream().map(Object::getClass).toList()).contains(SessionRail.class)
                 .doesNotContain(SubagentRail.class);
     }
 
@@ -1284,14 +1039,9 @@ class HarnessCompatibilityTest {
     void deepAgentShouldCreateConfiguredSubagentBySpec() {
         SubAgentConfig worker = SubAgentConfig.builder()
                 .agentCard(AgentCard.builder().name("worker").description("Configured worker").build())
-                .systemPrompt("Use configured prompt.")
-                .language("en")
-                .maxIterations(5)
-                .build();
-        DeepAgent parent = HarnessFactory.createDeepAgent(DeepAgentConfig.builder()
-                .workspacePath("./parent-workspace")
-                .subagents(List.of(worker))
-                .build());
+                .systemPrompt("Use configured prompt.").language("en").maxIterations(5).build();
+        DeepAgent parent = HarnessFactory.createDeepAgent(
+                DeepAgentConfig.builder().workspacePath("./parent-workspace").subagents(List.of(worker)).build());
 
         DeepAgent child = parent.createSubagent("worker", "child-session");
 

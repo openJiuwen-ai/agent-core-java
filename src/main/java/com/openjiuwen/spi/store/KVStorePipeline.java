@@ -12,46 +12,85 @@ import java.util.function.Function;
  * Pipeline for batch operations on a key-value store.
  * <p>
  * Mirrors Python's {@code BasedKVStorePipeline}.
+ * 
+ * @since 0.1.7
  */
 public class KVStorePipeline {
-
     private final Function<List<Object[]>, List<Object>> executorFunc;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<Object[]> operations = new ArrayList<>();
 
     /**
      * Construct a pipeline with a batch executor function.
-     *
+     * 
      * @param executorFunc function that executes a list of operations and returns results
+     * @since 0.1.7
      */
     public KVStorePipeline(Function<List<Object[]>, List<Object>> executorFunc) {
         this.executorFunc = executorFunc;
     }
 
-    /** Add a set operation to the pipeline. */
+    /**
+     * Add a set operation to the pipeline.
+     * 
+     * @param key key
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     public KVStorePipeline set(String key, Object value) {
         return set(key, value, null);
     }
 
-    /** Add a set operation to the pipeline with an optional expiry in seconds. */
+    /**
+     * Add a set operation to the pipeline with an optional expiry in seconds.
+     * 
+     * @param key key
+     * @param value value
+     * @param expiry expiry
+     * @return the result
+     * @since 0.1.7
+     */
     public KVStorePipeline set(String key, Object value, Integer expiry) {
         operations.add(new Object[]{"set", key, value, expiry});
         return this;
     }
 
-    /** Add a get operation to the pipeline. */
+    /**
+     * Add a get operation to the pipeline.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     public KVStorePipeline get(String key) {
         operations.add(new Object[]{"get", key});
         return this;
     }
 
-    /** Add an exists operation to the pipeline. */
+    /**
+     * Add an exists operation to the pipeline.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     public KVStorePipeline isExists(String key) {
         operations.add(new Object[]{"isExists", key});
         return this;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * exists.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public KVStorePipeline exists(String key) {
         return isExists(key);
@@ -59,8 +98,9 @@ public class KVStorePipeline {
 
     /**
      * Execute all queued operations and return their results.
-     *
+     * 
      * @return results in the order operations were added
+     * @since 0.1.7
      */
     public List<Object> execute() {
         List<Object> results = executorFunc.apply(new ArrayList<>(operations));

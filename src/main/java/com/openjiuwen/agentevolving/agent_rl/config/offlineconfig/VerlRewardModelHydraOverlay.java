@@ -5,11 +5,14 @@
 package com.openjiuwen.agentevolving.agent_rl.config.offlineconfig;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.offlineconfig.VerlRewardModelHydraOverlay.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -18,7 +21,12 @@ public class VerlRewardModelHydraOverlay {
     private String rewardManager = "naive";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReward_manager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getReward_manager() { return getRewardManager(); }
+    public String getReward_manager() {
+        return getRewardManager();
+    }
 }

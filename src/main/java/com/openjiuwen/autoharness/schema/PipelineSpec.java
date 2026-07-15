@@ -5,6 +5,7 @@
 package com.openjiuwen.autoharness.schema;
 
 import com.openjiuwen.autoharness.pipelines.BasePipeline;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,14 +14,14 @@ import lombok.NoArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Public class PipelineSpec used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder(toBuilder = true)
 @NoArgsConstructor
-/**
- * Public class PipelineSpec used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class PipelineSpec {
     private String name;
@@ -28,5 +29,10 @@ public class PipelineSpec {
     @Builder.Default
     private String description = "";
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> expectedOutputs = new ArrayList<>();
 }

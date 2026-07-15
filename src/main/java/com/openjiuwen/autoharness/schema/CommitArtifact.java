@@ -9,14 +9,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Public class CommitArtifact used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class CommitArtifact used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class CommitArtifact {
     private CommitFacts facts;
@@ -30,5 +30,4 @@ public class CommitArtifact {
     private boolean isCommitted = false;
     @Builder.Default
     private String error = "";
-
 }

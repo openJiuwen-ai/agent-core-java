@@ -5,11 +5,14 @@
 package com.openjiuwen.agentevolving.agent_rl.config.offlineconfig;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.offlineconfig.PersistenceConfig.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -22,15 +25,32 @@ public class PersistenceConfig {
     private boolean isSaveStepSummaries = true;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFlush_interval.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public int getFlush_interval() { return getFlushInterval(); }
+    public int getFlush_interval() {
+        return getFlushInterval();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * isSave_rollouts.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public boolean isSave_rollouts() { return isSaveRollouts(); }
+    public boolean isSave_rollouts() {
+        return isSaveRollouts();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * isSave_step_summaries.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public boolean isSave_step_summaries() { return isSaveStepSummaries(); }
+    public boolean isSave_step_summaries() {
+        return isSaveStepSummaries();
+    }
 }

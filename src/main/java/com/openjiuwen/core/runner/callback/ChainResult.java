@@ -11,14 +11,14 @@ import lombok.NoArgsConstructor;
 
 /**
  * Result of callback chain execution.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ChainResult {
-
-    /** Final action taken by the chain. */
     private ChainAction action;
 
     /** Final result value. */

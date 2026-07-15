@@ -11,13 +11,16 @@ import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
 import com.openjiuwen.core.memory.manage.mem_model.VariableUnit;
 import com.openjiuwen.spi.store.BaseKVStore;
 
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Manages variable memory using KV store.
+ * 
+ * @since 0.1.7
  */
 public class VariableManager extends BaseMemoryManager {
-
     private static final String SEPARATOR = "/";
     private static final String USER_VAR_PREFIX = "user_var";
     private static final String SESSION_VAR_PREFIX = "session_var";
@@ -26,7 +29,11 @@ public class VariableManager extends BaseMemoryManager {
     private final byte[] cryptoKey;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * VariableManager.
+     * 
+     * @param kvStore kvStore
+     * @param cryptoKey cryptoKey
+     * @since 0.1.7
      */
     public VariableManager(BaseKVStore kvStore, byte[] cryptoKey) {
         this.kvStore = kvStore;
@@ -35,12 +42,19 @@ public class VariableManager extends BaseMemoryManager {
         KvPrefixRegistry.getInstance().registerCurrent(SESSION_VAR_PREFIX);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addMemories.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memories memories
+     * @param llm llm
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
+    @Override
     public void addMemories(String userId, String scopeId, List<? extends BaseMemoryUnit> memories,
-                             Map.Entry<String, Model> llm, Map<String, Object> kwargs) {
+            Map.Entry<String, Model> llm, Map<String, Object> kwargs) {
         @SuppressWarnings("unchecked")
         List<VariableUnit> variableUnits = (List<VariableUnit>) (List<?>) memories;
         for (VariableUnit unit : variableUnits) {
@@ -54,17 +68,29 @@ public class VariableManager extends BaseMemoryManager {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * update.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @param newMemory newMemory
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
-    public void update(String userId, String scopeId, String memId, String newMemory,
-                        Map<String, Object> kwargs) {
+    @Override
+    public void update(String userId, String scopeId, String memId, String newMemory, Map<String, Object> kwargs) {
         MEMORY_LOGGER.warn("[{}] update not implemented for VariableManager", LogEventType.MEMORY_STORE);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateUserVariable.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param varName varName
+     * @param varMem varMem
+     * @since 0.1.7
      */
     public void updateUserVariable(String userId, String scopeId, String varName, String varMem) {
         if (kvStore == null) {
@@ -80,19 +106,32 @@ public class VariableManager extends BaseMemoryManager {
         kvStore.set(key, value);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * delete.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean delete(String userId, String scopeId, String memId, Map<String, Object> kwargs) {
         MEMORY_LOGGER.warn("[{}] delete not implemented for VariableManager", LogEventType.MEMORY_STORE);
         return false;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteByUserId.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean deleteByUserId(String userId, String scopeId, Map<String, Object> kwargs) {
         if (kvStore == null) {
             MEMORY_LOGGER.error("[{}] kv_store cannot be None", LogEventType.MEMORY_STORE);
@@ -106,7 +145,12 @@ public class VariableManager extends BaseMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteUserVariable.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param varName varName
+     * @since 0.1.7
      */
     public void deleteUserVariable(String userId, String scopeId, String varName) {
         if (kvStore == null) {
@@ -117,32 +161,50 @@ public class VariableManager extends BaseMemoryManager {
         kvStore.delete(key);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> get(String userId, String scopeId, String memId) {
         MEMORY_LOGGER.warn("[{}] get not implemented for VariableManager", LogEventType.MEMORY_STORE);
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * search.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param query query
+     * @param topK topK
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<Map<String, Object>> search(String userId, String scopeId, String query, int topK,
-                                             Map<String, Object> kwargs) {
+            Map<String, Object> kwargs) {
         MEMORY_LOGGER.warn("[{}] search not implemented for VariableManager", LogEventType.MEMORY_STORE);
         return null;
     }
 
     /**
-     * Query variable by user_id, scope_id, variable_name. Returns variable memory.
+     * queryVariable.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param name name
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, String> queryVariable(String userId, String scopeId, String name, String sessionId) {
         checkUserAndScopeId(userId, scopeId);
         if (name == null || name.isBlank()) {
@@ -161,8 +223,8 @@ public class VariableManager extends BaseMemoryManager {
 
         String key;
         if (sessionId != null) {
-            key = SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId
-                    + SEPARATOR + sessionId + SEPARATOR + name;
+            key = SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + sessionId + SEPARATOR
+                    + name;
         } else {
             key = USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + name;
         }
@@ -175,14 +237,31 @@ public class VariableManager extends BaseMemoryManager {
 
     // ---- Private Helpers ----
 
+    /**
+     * makeVariableKey.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param varName varName
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
+     */
     private String makeVariableKey(String userId, String scopeId, String varName, String sessionId) {
         if (sessionId != null) {
-            return SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId
-                    + SEPARATOR + sessionId + SEPARATOR + varName;
+            return SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + sessionId + SEPARATOR
+                    + varName;
         }
         return USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + varName;
     }
 
+    /**
+     * checkUserAndScopeId.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @since 0.1.7
+     */
     private void checkUserAndScopeId(String userId, String scopeId) {
         if (userId == null || userId.isBlank()) {
             MEMORY_LOGGER.error("[{}] user_id is empty for variable operation", LogEventType.MEMORY_RETRIEVE);
@@ -192,6 +271,14 @@ public class VariableManager extends BaseMemoryManager {
         }
     }
 
+    /**
+     * checkExist.
+     * 
+     * @param variableDict variableDict
+     * @param variableName variableName
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean checkExist(Map<String, String> variableDict, String variableName) {
         if (variableDict == null || variableDict.isEmpty()) {
             return false;

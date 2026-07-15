@@ -7,12 +7,23 @@ package com.openjiuwen.core.sysop.result;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-/** Result type for upload file operation. */
+/**
+ * Result type for upload file operation.
+ * 
+ * @since 0.1.7
+ */
 @SuperBuilder
 @NoArgsConstructor
 public class UploadFileResult extends BaseResult<UploadFileData> {
     /**
-     * Auto-generated for codecheck compliance.
+     * UploadFileResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
      */
-    public UploadFileResult(int code, String message, UploadFileData data) { super(code, message, data); }
+    public UploadFileResult(int code, String message, UploadFileData data) {
+        super(code, message, data);
+    }
 }

@@ -11,6 +11,8 @@ import java.util.Map;
 
 /**
  * Final result returned by a guardrail.
+ * 
+ * @since 0.1.7
  */
 @Value
 @Builder
@@ -22,38 +24,39 @@ public class GuardrailResult {
     Map<String, Object> modifiedData;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * pass.
+     * 
+     * @param details details
+     * @return the result
+     * @since 0.1.7
      */
     public static GuardrailResult pass(Map<String, Object> details) {
-        return GuardrailResult.builder()
-                .isSafe(true)
-                .riskLevel(RiskLevel.SAFE)
-                .details(details)
-                .build();
+        return GuardrailResult.builder().isSafe(true).riskLevel(RiskLevel.SAFE).details(details).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * pass.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static GuardrailResult pass() {
         return pass(null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * block.
+     * 
+     * @param riskLevel riskLevel
+     * @param riskType riskType
+     * @param details details
+     * @param modifiedData modifiedData
+     * @return the result
+     * @since 0.1.7
      */
-    public static GuardrailResult block(
-            RiskLevel riskLevel,
-            String riskType,
-            Map<String, Object> details,
-            Map<String, Object> modifiedData
-    ) {
-        return GuardrailResult.builder()
-                .isSafe(false)
-                .riskLevel(riskLevel)
-                .riskType(riskType)
-                .details(details)
-                .modifiedData(modifiedData)
-                .build();
+    public static GuardrailResult block(RiskLevel riskLevel, String riskType, Map<String, Object> details,
+            Map<String, Object> modifiedData) {
+        return GuardrailResult.builder().isSafe(false).riskLevel(riskLevel).riskType(riskType).details(details)
+                .modifiedData(modifiedData).build();
     }
 }

@@ -11,50 +11,76 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Reference-counted resource base class.
+ * 
+ * @since 0.1.7
  */
 public abstract class RefCountedResource implements AutoCloseable {
     private final AtomicInteger refCount = new AtomicInteger(1);
+
+    /**
+     * System.currentTimeMillis.
+     * 
+     * @since 0.1.7
+     */
     private final long createdAtMillis = System.currentTimeMillis();
     private volatile long lastUsedMillis = createdAtMillis;
     private volatile boolean isClosed;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRefCount.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getRefCount() {
         return refCount.get();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLastUsedMillis.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public long getLastUsedMillis() {
         return lastUsedMillis;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCreatedAtMillis.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public long getCreatedAtMillis() {
         return createdAtMillis;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isClosed.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isClosed() {
         return isClosed;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ageMillis.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public long ageMillis() {
         return isClosed ? 0L : Math.max(0L, System.currentTimeMillis() - createdAtMillis);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * incrementRef.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int incrementRef() {
         if (isClosed) {
@@ -65,7 +91,10 @@ public abstract class RefCountedResource implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * decrementRef.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean decrementRef() {
         if (isClosed) {
@@ -76,12 +105,12 @@ public abstract class RefCountedResource implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public synchronized void close() throws Exception {
         if (isClosed) {
             return;
@@ -95,12 +124,18 @@ public abstract class RefCountedResource implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * doClose.
+     * 
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     protected abstract void doClose() throws Exception;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStats.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getStats() {
         Map<String, Object> stats = new LinkedHashMap<>();

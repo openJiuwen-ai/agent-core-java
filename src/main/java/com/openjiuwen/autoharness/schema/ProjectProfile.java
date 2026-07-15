@@ -12,14 +12,14 @@ import lombok.NoArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Public class ProjectProfile used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class ProjectProfile used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class ProjectProfile {
     @Builder.Default
@@ -31,12 +31,25 @@ public class ProjectProfile {
     @Builder.Default
     private String platform = "gitcode";
     @Builder.Default
-    private List<String> immutableFiles = new ArrayList<>(List.of(
-            "openjiuwen/auto_harness/prompts/identity.md",
-            "openjiuwen/auto_harness/resources/ci_gate.yaml",
-            "openjiuwen/harness/rails/security/prompt_security_rail.py"
-    ));
+    /**
+     * ArrayList<>.
+     * 
+     * @param "openjiuwen/harness/rails/security/prompt_security_rail.py"
+     *            "openjiuwen/harness/rails/security/prompt_security_rail.py"
+     *            "openjiuwen/harness/rails/security/prompt_security_rail.py"
+     *            "openjiuwen/harness/rails/security/prompt_security_rail.py"
+     *            "openjiuwen/harness/rails/security/prompt_security_rail.py"
+     * @since 0.1.7
+     */
+    private List<String> immutableFiles = new ArrayList<>(
+            List.of("openjiuwen/auto_harness/prompts/identity.md", "openjiuwen/auto_harness/resources/ci_gate.yaml",
+                    "openjiuwen/harness/rails/security/prompt_security_rail.py"));
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> highImpactPrefixes = new ArrayList<>(List.of("openjiuwen/core/"));
     @Builder.Default
     private String defaultBaseBranch = "develop";

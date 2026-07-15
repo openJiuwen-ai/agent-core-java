@@ -12,13 +12,19 @@ import java.util.Map;
 
 /**
  * Unified exception for ability execution failures.
+ * 
+ * @since 0.1.7
  */
 public class AbilityExecutionError extends AgentError {
-
     private final ToolMessage toolMessage;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AbilityExecutionError.
+     * 
+     * @param status status
+     * @param msg msg
+     * @param toolMessage toolMessage
+     * @since 0.1.7
      */
     public AbilityExecutionError(StatusCode status, String msg, ToolMessage toolMessage) {
         super(status, msg, null, null, Map.of("error_msg", msg));
@@ -26,7 +32,13 @@ public class AbilityExecutionError extends AgentError {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AbilityExecutionError.
+     * 
+     * @param status status
+     * @param msg msg
+     * @param cause cause
+     * @param toolMessage toolMessage
+     * @since 0.1.7
      */
     public AbilityExecutionError(StatusCode status, String msg, Throwable cause, ToolMessage toolMessage) {
         super(status, msg, null, cause, Map.of("error_msg", msg));
@@ -34,7 +46,10 @@ public class AbilityExecutionError extends AgentError {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolMessage.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ToolMessage getToolMessage() {
         return toolMessage;

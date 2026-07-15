@@ -5,6 +5,7 @@
 package com.openjiuwen.agentevolving.agent_rl;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -13,6 +14,8 @@ import java.util.List;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.schemas.RolloutMessage.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -24,27 +27,40 @@ public class RolloutMessage {
     private String startTime;
     private String endTime;
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Rollout> rolloutInfo = new ArrayList<>();
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Double> rewardList = new ArrayList<>();
     private Double globalReward;
     private int turnCount = 0;
     private Integer roundNum;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RolloutMessage.
+     * 
+     * @param taskId taskId
+     * @param originTaskId originTaskId
+     * @param rolloutId rolloutId
+     * @param startTime startTime
+     * @param endTime endTime
+     * @param rolloutInfo rolloutInfo
+     * @param rewardList rewardList
+     * @param globalReward globalReward
+     * @param turnCount turnCount
+     * @param roundNum roundNum
+     * @since 0.1.7
      */
-    public RolloutMessage(
-            String taskId,
-            String originTaskId,
-            String rolloutId,
-            String startTime,
-            String endTime,
-            List<Rollout> rolloutInfo,
-            List<Double> rewardList,
-            Double globalReward,
-            int turnCount,
-            Integer roundNum
-    ) {
+    public RolloutMessage(String taskId, String originTaskId, String rolloutId, String startTime, String endTime,
+            List<Rollout> rolloutInfo, List<Double> rewardList, Double globalReward, int turnCount, Integer roundNum) {
         this.taskId = taskId;
         this.originTaskId = originTaskId;
         this.rolloutId = rolloutId;
@@ -58,14 +74,20 @@ public class RolloutMessage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRollout_info.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Rollout> getRollout_info() {
         return getRolloutInfo();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReward_list.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Double> getReward_list() {
         return getRewardList();

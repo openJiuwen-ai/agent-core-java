@@ -6,23 +6,26 @@ package com.openjiuwen.core.singleagent.legacy.config;
 
 /**
  * Backward-compatible alias for {@link LegacyReActAgentConfig}.
- *
- * <p>Mirrors Python's {@code ReActAgentConfig = LegacyReActAgentConfig} alias
- * in {@code single_agent/legacy/config.py}.</p>
- *
+ * <p>
+ * Mirrors Python's {@code ReActAgentConfig = LegacyReActAgentConfig} alias
+ * in {@code single_agent/legacy/config.py}.
+ * </p>
+ * 
  * @deprecated Use {@link LegacyReActAgentConfig} or the modern
  *             {@code openjiuwen.core.singleagent.agents.ReActAgentConfig} instead.
+ * @since 0.1.7
  */
 @Deprecated(since = "0.1.7", forRemoval = true)
 public class ReActAgentConfig extends LegacyReActAgentConfig {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * ReActAgentConfig.
+     * 
+     * @since 0.1.7
      */
+    @SuppressWarnings({"deprecation", "removal"})
     public ReActAgentConfig() {
         super();
-        com.openjiuwen.core.singleagent.legacy.LegacyApi
-                .emitDeprecationWarning("ReActAgentConfig",
-                        "openjiuwen.core.singleagent.agents.ReActAgentConfig");
+        com.openjiuwen.core.singleagent.legacy.LegacyApi.emitDeprecationWarning("ReActAgentConfig",
+                "openjiuwen.core.singleagent.agents.ReActAgentConfig");
     }
 }

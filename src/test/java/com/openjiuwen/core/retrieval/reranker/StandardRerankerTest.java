@@ -1,10 +1,18 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.reranker;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.openjiuwen.core.retrieval.common.RerankerConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalResult;
+
 import org.junit.jupiter.api.Test;
 
 import java.net.http.HttpClient;
@@ -13,14 +21,7 @@ import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 class StandardRerankerTest {
-
     @Test
     void initNormalizesBaseUrl() {
         RerankerConfig config = new RerankerConfig();
@@ -67,10 +68,8 @@ class StandardRerankerTest {
         when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(response);
 
         StandardReranker reranker = new StandardReranker(config(), 3, null, httpClient);
-        List<RetrievalResult> results = reranker.rerank(
-                "query",
-                List.of(new RetrievalResult("doc one", 0.0), new RetrievalResult("doc two", 0.0)),
-                2);
+        List<RetrievalResult> results = reranker.rerank("query",
+                List.of(new RetrievalResult("doc one", 0.0), new RetrievalResult("doc two", 0.0)), 2);
 
         assertEquals("doc two", results.get(0).getText());
     }

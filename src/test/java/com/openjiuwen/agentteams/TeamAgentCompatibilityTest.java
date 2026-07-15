@@ -1,7 +1,11 @@
+
 package com.openjiuwen.agentteams;
 
-import com.openjiuwen.agentteams.agent.TeamAgent;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.agentteams.agent.StreamController;
+import com.openjiuwen.agentteams.agent.TeamAgent;
 import com.openjiuwen.agentteams.factory.TeamFactory;
 import com.openjiuwen.agentteams.interaction.HumanAgentNotEnabledError;
 import com.openjiuwen.agentteams.interaction.Router;
@@ -11,12 +15,13 @@ import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.TeamLifecycle;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
-import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.memory.team.TeamMemoryConfig;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptEntry;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -27,20 +32,14 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 public class TeamAgentCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
     @Test
     void specShouldInjectDefaultLeaderWhenMissing() {
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("research-team")
-                .members(List.of(TeamMemberSpec.builder().name("analyst").role(TeamRole.MEMBER).build()))
-                .build();
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("research-team")
+                .members(List.of(TeamMemberSpec.builder().name("analyst").role(TeamRole.MEMBER).build())).build();
 
         spec.build();
 
@@ -51,20 +50,16 @@ public class TeamAgentCompatibilityTest {
 
     @Test
     void specShouldRejectReservedUserPseudoMemberName() {
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("bad-team")
-                .members(List.of(TeamMemberSpec.builder().name(TeamConstants.USER_PSEUDO_MEMBER_NAME).build()))
-                .build();
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("bad-team")
+                .members(List.of(TeamMemberSpec.builder().name(TeamConstants.USER_PSEUDO_MEMBER_NAME).build())).build();
 
-        assertThatThrownBy(spec::validate)
-                .isInstanceOf(IllegalArgumentException.class)
+        assertThatThrownBy(spec::validate).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Reserved team member name");
     }
 
     @Test
     void routerShouldParseMentionAndReportReservedNames() {
-        assertThat(Router.parseMention("@dev-1 please start task 123"))
-                .get()
+        assertThat(Router.parseMention("@dev-1 please start task 123")).get()
                 .extracting(route -> route.target(), route -> route.body())
                 .containsExactly("dev-1", "please start task 123");
         assertThat(Router.parseMention("@dev-1")).isEmpty();
@@ -76,14 +71,11 @@ public class TeamAgentCompatibilityTest {
 
     @Test
     void teamFactoryShouldRouteMentionToMemberAndRestoreSnapshotState() {
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("support-team")
-                .description("Support coordination team")
-                .members(List.of(
-                        TeamMemberSpec.builder().name("dispatcher").role(TeamRole.LEADER).build(),
-                        TeamMemberSpec.builder().name("resolver").role(TeamRole.MEMBER).build()
-                ))
-                .modelPool(List.of(ModelPoolEntry.builder().modelId("gpt-4").provider("openai").modelName("gpt-4").build()))
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("support-team").description("Support coordination team")
+                .members(List.of(TeamMemberSpec.builder().name("dispatcher").role(TeamRole.LEADER).build(),
+                        TeamMemberSpec.builder().name("resolver").role(TeamRole.MEMBER).build()))
+                .modelPool(List
+                        .of(ModelPoolEntry.builder().modelId("gpt-4").provider("openai").modelName("gpt-4").build()))
                 .build();
 
         TeamAgent agent = TeamFactory.createAgentTeam(spec);
@@ -98,8 +90,7 @@ public class TeamAgentCompatibilityTest {
         assertThat(result.get("message_id")).isNotNull();
         assertThat(agent.getContext().getLifecycle()).isEqualTo(TeamLifecycle.RUNNING);
         assertThat(agent.getLeaderInbox()).isEmpty();
-        assertThat(agent.getMessageManager().getMessages("resolver", false))
-                .singleElement()
+        assertThat(agent.getMessageManager().getMessages("resolver", false)).singleElement()
                 .extracting(message -> message.getFromMemberName(), message -> message.getContent())
                 .containsExactly(TeamConstants.USER_PSEUDO_MEMBER_NAME, "Route a refund request.");
 
@@ -107,20 +98,17 @@ public class TeamAgentCompatibilityTest {
         TeamAgent recovered = TeamFactory.recoverAgentTeam(snapshot);
         assertThat(recovered.getSpec().getName()).isEqualTo("support-team");
         assertThat(recovered.getContext().getTeamId()).isEqualTo("support-team");
-        assertThat(recovered.getMessageManager().getMessages("resolver", false))
-                .singleElement()
+        assertThat(recovered.getMessageManager().getMessages("resolver", false)).singleElement()
                 .extracting(message -> message.getFromMemberName(), message -> message.getContent())
                 .containsExactly(TeamConstants.USER_PSEUDO_MEMBER_NAME, "Route a refund request.");
     }
 
     @Test
     void teamAgentShouldFallbackToLeaderInboxForPlainText() {
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("leader-team")
-                .members(List.of(
-                        TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build(),
-                        TeamMemberSpec.builder().name("dev-1").role(TeamRole.MEMBER).build()
-                ))
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("leader-team")
+                .members(List.of(TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
+                        .role(TeamRole.LEADER).build(),
+                        TeamMemberSpec.builder().name("dev-1").role(TeamRole.MEMBER).build()))
                 .build();
 
         TeamAgent agent = TeamFactory.createAgentTeam(spec);
@@ -134,15 +122,13 @@ public class TeamAgentCompatibilityTest {
 
     @Test
     void teamAgentShouldSupportUserBroadcastAndHumanAgentMessages() {
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("hitt-team")
-                .humanAgentEnabled(true)
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("hitt-team").humanAgentEnabled(true)
                 .members(List.of(
-                        TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build(),
+                        TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER)
+                                .build(),
                         TeamMemberSpec.builder().name("human_designer").role(TeamRole.HUMAN_AGENT).build(),
                         TeamMemberSpec.builder().name("human_pm").role(TeamRole.HUMAN_AGENT).build(),
-                        TeamMemberSpec.builder().name("dev-1").role(TeamRole.MEMBER).build()
-                ))
+                        TeamMemberSpec.builder().name("dev-1").role(TeamRole.MEMBER).build()))
                 .build();
 
         TeamAgent agent = TeamFactory.createAgentTeam(spec);
@@ -154,25 +140,21 @@ public class TeamAgentCompatibilityTest {
         assertThat(broadcastId).isNotBlank();
         assertThat(directHumanId).isNotBlank();
         assertThat(defaultHumanId).isNotBlank();
-        assertThat(agent.getMessageManager().getBroadcastMessages(false))
-                .singleElement()
+        assertThat(agent.getMessageManager().getBroadcastMessages(false)).singleElement()
                 .extracting(message -> message.getFromMemberName(), message -> message.getContent())
                 .containsExactly(TeamConstants.USER_PSEUDO_MEMBER_NAME, "everyone read this");
         assertThat(agent.getMessageManager().getMessages(TeamConstants.DEFAULT_LEADER_MEMBER_NAME, false))
-                .singleElement()
-                .extracting(message -> message.getFromMemberName(), message -> message.getContent())
+                .singleElement().extracting(message -> message.getFromMemberName(), message -> message.getContent())
                 .containsExactly("human_pm", "on it");
-        assertThat(agent.getMessageManager().getMessages("dev-1", false))
-                .singleElement()
+        assertThat(agent.getMessageManager().getMessages("dev-1", false)).singleElement()
                 .extracting(message -> message.getFromMemberName(), message -> message.getContent())
                 .containsExactly("human_designer", "looking");
     }
 
     @Test
     void humanAgentInboxShouldRejectMissingOrUnknownHumanMembers() {
-        TeamAgentSpec noHumanSpec = TeamAgentSpec.builder()
-                .name("no-human-team")
-                .members(List.of(TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build()))
+        TeamAgentSpec noHumanSpec = TeamAgentSpec.builder().name("no-human-team").members(List.of(
+                TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build()))
                 .build();
         TeamAgent noHumanAgent = TeamFactory.createAgentTeam(noHumanSpec);
 
@@ -180,31 +162,28 @@ public class TeamAgentCompatibilityTest {
                 .isInstanceOf(HumanAgentNotEnabledError.class)
                 .hasMessageContaining("No human-agent member is registered");
 
-        TeamAgentSpec multiHumanSpec = TeamAgentSpec.builder()
-                .name("multi-human-team")
-                .humanAgentEnabled(true)
+        TeamAgentSpec multiHumanSpec = TeamAgentSpec.builder().name("multi-human-team").humanAgentEnabled(true)
                 .members(List.of(
-                        TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build(),
+                        TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER)
+                                .build(),
                         TeamMemberSpec.builder().name("human_designer").role(TeamRole.HUMAN_AGENT).build(),
-                        TeamMemberSpec.builder().name("human_pm").role(TeamRole.HUMAN_AGENT).build()
-                ))
+                        TeamMemberSpec.builder().name("human_pm").role(TeamRole.HUMAN_AGENT).build()))
                 .build();
         TeamAgent multiHumanAgent = TeamFactory.createAgentTeam(multiHumanSpec);
 
-        assertThatThrownBy(() -> multiHumanAgent.humanAgentSay("spoof", TeamConstants.DEFAULT_LEADER_MEMBER_NAME, "ghost"))
-                .isInstanceOf(UnknownHumanAgentError.class)
-                .hasMessageContaining("registered human-agent member");
+        assertThatThrownBy(
+                () -> multiHumanAgent.humanAgentSay("spoof", TeamConstants.DEFAULT_LEADER_MEMBER_NAME, "ghost"))
+                .isInstanceOf(UnknownHumanAgentError.class).hasMessageContaining("registered human-agent member");
     }
 
     @Test
     void teamAgentShouldUpdateModelPoolAndResumeWithNewSessionId() {
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("research-team")
-                .members(List.of(TeamMemberSpec.builder().name("lead").role(TeamRole.LEADER).build()))
-                .build();
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("research-team")
+                .members(List.of(TeamMemberSpec.builder().name("lead").role(TeamRole.LEADER).build())).build();
 
         TeamAgent agent = TeamFactory.createAgentTeam(spec);
-        agent.updateModelPool(List.of(ModelPoolEntry.builder().modelId("claude").provider("anthropic").modelName("claude-sonnet").weight(2).build()));
+        agent.updateModelPool(List.of(ModelPoolEntry.builder().modelId("claude").provider("anthropic")
+                .modelName("claude-sonnet").weight(2).build()));
         TeamFactory.resumePersistentTeam(agent, "team-session-001");
 
         assertThat(agent.getSpec().getModelPool()).hasSize(1);
@@ -216,12 +195,10 @@ public class TeamAgentCompatibilityTest {
 
     @Test
     void teamFactoryShouldRecoverSnapshotSessionIdAndRuntimeTraces() {
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("snapshot-team")
-                .members(List.of(
-                        TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build(),
-                        TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).build()
-                ))
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("snapshot-team")
+                .members(List.of(TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
+                        .role(TeamRole.LEADER).build(),
+                        TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).build()))
                 .build();
 
         TeamAgent agent = TeamFactory.createAgentTeam(spec);
@@ -243,32 +220,23 @@ public class TeamAgentCompatibilityTest {
         Files.writeString(workspace.resolve("memory").resolve("MEMORY.md"), "leader remembers escalation policy");
         Path sharedDir = tempDir.resolve("team-memory");
 
-        TeamAgentSpec spec = TeamAgentSpec.builder()
-                .name("memory-team")
-                .lifecycle("persistent")
-                .language("en")
-                .members(List.of(
-                        TeamMemberSpec.builder().name("lead").role(TeamRole.LEADER).build(),
-                        TeamMemberSpec.builder().name("worker").role(TeamRole.MEMBER).build()
-                ))
-                .memory(TeamMemoryConfig.builder()
-                        .enabled(true)
-                        .sharedMemory(true)
-                        .scenario("general")
-                        .teamMemoryDir(sharedDir.toString())
-                        .build())
+        TeamAgentSpec spec = TeamAgentSpec.builder().name("memory-team").lifecycle("persistent").language("en")
+                .members(List.of(TeamMemberSpec.builder().name("lead").role(TeamRole.LEADER).build(),
+                        TeamMemberSpec.builder().name("worker").role(TeamRole.MEMBER).build()))
+                .memory(TeamMemoryConfig.builder().enabled(true).sharedMemory(true).scenario("general")
+                        .teamMemoryDir(sharedDir.toString()).build())
                 .build();
 
-        TeamAgent agent = new TeamAgent().configure(spec, com.openjiuwen.agentteams.schema.team.TeamRuntimeContext.builder()
-                .teamId("memory-team")
-                .metadata(new java.util.LinkedHashMap<>(Map.of("workspace_path", workspace.toString())))
-                .build());
+        TeamAgent agent = new TeamAgent().configure(spec,
+                com.openjiuwen.agentteams.schema.team.TeamRuntimeContext.builder().teamId("memory-team")
+                        .metadata(new java.util.LinkedHashMap<>(Map.of("workspace_path", workspace.toString())))
+                        .build());
         Map<String, Object> result = agent.dispatchTask("policy");
 
         assertThat(result).containsEntry("team_id", "memory-team");
         assertThat(agent.getMemoryManager()).isNotNull();
-        assertThat(agent.getMemoryManager().getOwnedToolNames())
-                .contains("memory_search", "memory_get", "read_memory", "write_memory", "edit_memory");
+        assertThat(agent.getMemoryManager().getOwnedToolNames()).contains("memory_search", "memory_get", "read_memory",
+                "write_memory", "edit_memory");
         assertThat(agent.getDeepAgent().getAgent().getSystemPromptBuilder().hasSection("team_memory")).isTrue();
         assertThat(agent.getDeepAgent().getAgent().getSystemPromptBuilder().getSection("team_memory").render("en"))
                 .contains("leader remembers escalation policy");
@@ -280,18 +248,17 @@ public class TeamAgentCompatibilityTest {
 
     @Test
     void teamAgentShouldQueueInputAndInterruptResumeDuringInFlightRound() {
-        TeamAgent agent = TeamFactory.createAgentTeam(TeamAgentSpec.builder()
-                .name("stream-window-team")
-                .members(List.of(
-                        TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build(),
-                        TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).build()
-                ))
+        TeamAgent agent = TeamFactory.createAgentTeam(TeamAgentSpec.builder().name("stream-window-team")
+                .members(List.of(TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
+                        .role(TeamRole.LEADER).build(),
+                        TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).build()))
                 .build());
-        agent.getAgentSession().updateState(Map.of(ToolInterruptionState.INTERRUPTION_KEY, ToolInterruptionState.builder()
-                .interruptedTools(List.of(ToolInterruptEntry.builder()
-                        .request(InterruptRequest.builder().interruptId("call-1").build())
-                        .build()))
-                .build()));
+        agent.getAgentSession()
+                .updateState(Map.of(ToolInterruptionState.INTERRUPTION_KEY,
+                        ToolInterruptionState.builder()
+                                .interruptedTools(List.of(ToolInterruptEntry.builder()
+                                        .request(InterruptRequest.builder().interruptId("call-1").build()).build()))
+                                .build()));
         agent.setInFlightRound(true);
 
         agent.deliverInput("normal mailbox message");
@@ -308,26 +275,21 @@ public class TeamAgentCompatibilityTest {
 
     @Test
     void streamShouldStartRoundThroughCoordinationQueueAndCloseAfterChunk() throws Exception {
-        TeamAgent agent = TeamFactory.createAgentTeam(TeamAgentSpec.builder()
-                .name("stream-coordination-team")
-                .members(List.of(
-                        TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build(),
-                        TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).build()
-                ))
+        TeamAgent agent = TeamFactory.createAgentTeam(TeamAgentSpec.builder().name("stream-coordination-team")
+                .members(List.of(TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
+                        .role(TeamRole.LEADER).build(),
+                        TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).build()))
                 .build());
         List<Map<String, Object>> streamedInputs = new ArrayList<>();
-        StreamController controller = new StreamController(
-                agent::getDeepAgent,
-                agent::resolveLocalMemberName,
+        StreamController controller = new StreamController(agent::getDeepAgent, agent::resolveLocalMemberName,
                 status -> agent.getTeamBackend().updateMemberStatus(agent.resolveLocalMemberName(), status),
-                ignored -> { },
-                agent::getAgentSession,
-                () -> { },
-                (deepAgent, inputs, sessionId) -> {
+                ignored -> {
+                }, agent::getAgentSession, () -> {
+                }, (deepAgent, inputs, sessionId) -> {
                     streamedInputs.add(new java.util.LinkedHashMap<>(inputs));
-                    return List.<Object>of(new OutputSchema("answer", 0, Map.of("output", inputs.get("query")))).iterator();
-                }
-        );
+                    return List.<Object>of(new OutputSchema("answer", 0, Map.of("output", inputs.get("query"))))
+                            .iterator();
+                });
         java.lang.reflect.Field field = TeamAgent.class.getDeclaredField("streamController");
         field.setAccessible(true);
         field.set(agent, controller);
@@ -336,12 +298,9 @@ public class TeamAgentCompatibilityTest {
 
         assertThat(iterator.hasNext()).isTrue();
         assertThat(iterator.next()).isInstanceOf(OutputSchema.class)
-                .extracting(chunk -> ((OutputSchema) chunk).getPayload())
-                .asString()
-                .contains("stream via queue");
+                .extracting(chunk -> ((OutputSchema) chunk).getPayload()).asString().contains("stream via queue");
         assertThat(iterator.hasNext()).isFalse();
-        assertThat(streamedInputs).singleElement()
-                .extracting(inputs -> inputs.get("query"))
+        assertThat(streamedInputs).singleElement().extracting(inputs -> inputs.get("query"))
                 .isEqualTo("stream via queue");
         assertThat(agent.getContext().getMetadata()).containsEntry("last_route", "stream_round");
         assertThat(agent.getContext().getMetadata()).doesNotContainKey("streaming_coordination");
@@ -350,12 +309,10 @@ public class TeamAgentCompatibilityTest {
 
     @Test
     void shutdownSelfShouldCancelStreamControllerAndCloseStream() {
-        TeamAgent agent = TeamFactory.createAgentTeam(TeamAgentSpec.builder()
-                .name("shutdown-stream-team")
-                .members(List.of(
-                        TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build(),
-                        TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).build()
-                ))
+        TeamAgent agent = TeamFactory.createAgentTeam(TeamAgentSpec.builder().name("shutdown-stream-team")
+                .members(List.of(TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
+                        .role(TeamRole.LEADER).build(),
+                        TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).build()))
                 .build());
 
         agent.shutdownSelf();

@@ -12,22 +12,30 @@ import java.util.Map;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.io_schema.ReasoningBankRetrievedMemory}.
+ * 
+ * @since 0.1.7
  */
 public class ReasoningBankRetrievedMemory {
-
     private String title;
     private String description;
     private String content;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ReasoningBankRetrievedMemory.
+     * 
+     * @since 0.1.7
      */
     public ReasoningBankRetrievedMemory() {
         // Default constructor
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ReasoningBankRetrievedMemory.
+     * 
+     * @param title title
+     * @param description description
+     * @param content content
+     * @since 0.1.7
      */
     public ReasoningBankRetrievedMemory(String title, String description, String content) {
         this.title = title;
@@ -36,7 +44,10 @@ public class ReasoningBankRetrievedMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -47,7 +58,11 @@ public class ReasoningBankRetrievedMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromVectorNode.
+     * 
+     * @param node node
+     * @return the result
+     * @since 0.1.7
      */
     public static ReasoningBankRetrievedMemory fromVectorNode(VectorNode node) {
         ReasoningBankMemory memory = ReasoningBankMemory.fromVectorNode(node);
@@ -56,35 +71,46 @@ public class ReasoningBankRetrievedMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromMap.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public static ReasoningBankRetrievedMemory fromMap(Map<String, Object> data) {
         if (data.containsKey("memory")) {
-            return fromVectorNode(new VectorNode("reasoning_bank", SchemaUtils.stringValue(data.get("query"), ""), null, data));
+            return fromVectorNode(
+                    new VectorNode("reasoning_bank", SchemaUtils.stringValue(data.get("query"), ""), null, data));
         }
-        return new ReasoningBankRetrievedMemory(
-            SchemaUtils.stringValue(data.get("title"), ""),
-            SchemaUtils.stringValue(data.get("description"), ""),
-            SchemaUtils.stringValue(data.get("content"), "")
-        );
+        return new ReasoningBankRetrievedMemory(SchemaUtils.stringValue(data.get("title"), ""),
+                SchemaUtils.stringValue(data.get("description"), ""), SchemaUtils.stringValue(data.get("content"), ""));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTitle.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTitle() {
         return title;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDescription() {
         return description;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getContent() {
         return content;

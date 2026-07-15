@@ -11,10 +11,10 @@ import java.util.UUID;
  * Base digital card — the root class for all card-like entities.
  * <p>
  * Java equivalent of Python's Pydantic {@code BaseCard}.
+ * 
+ * @since 0.1.7
  */
 public class BaseCard {
-
-    /** Unique identifier (UUID hex by default). */
     private String id = UUID.randomUUID().toString().replace("-", "");
 
     /** Name — also serves as the unique identifier in a namespace. */
@@ -24,13 +24,20 @@ public class BaseCard {
     private String description = "";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseCard.
+     * 
+     * @since 0.1.7
      */
     public BaseCard() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseCard.
+     * 
+     * @param id id
+     * @param name name
+     * @param description description
+     * @since 0.1.7
      */
     public BaseCard(String id, String name, String description) {
         if (id != null && !id.isBlank()) {
@@ -41,42 +48,60 @@ public class BaseCard {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getId() {
         return id;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setId.
+     * 
+     * @param id id
+     * @since 0.1.7
      */
     public void setId(String id) {
         this.id = id;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setName.
+     * 
+     * @param name name
+     * @since 0.1.7
      */
     public void setName(String name) {
         this.name = name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDescription() {
         return description;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDescription.
+     * 
+     * @param description description
+     * @since 0.1.7
      */
     public void setDescription(String description) {
         this.description = description;
@@ -84,6 +109,9 @@ public class BaseCard {
 
     /**
      * Override in subclasses to provide tool-specific information.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object toolInfo() {
         return null;
@@ -91,28 +119,31 @@ public class BaseCard {
 
     /**
      * Create a shallow copy of this card.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public BaseCard copy() {
-        return BaseCard.builder()
-            .id(this.id)
-            .name(this.name)
-            .description(this.description)
-            .build();
+        return BaseCard.builder().id(this.id).name(this.name).description(this.description).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String toString() {
         return "id=" + id + ",name=" + name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * equals.
+     * 
+     * @param other other
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public boolean equals(Object other) {
@@ -123,13 +154,15 @@ public class BaseCard {
             return false;
         }
         BaseCard baseCard = (BaseCard) other;
-        return Objects.equals(id, baseCard.id)
-                && Objects.equals(name, baseCard.name)
+        return Objects.equals(id, baseCard.id) && Objects.equals(name, baseCard.name)
                 && Objects.equals(description, baseCard.description);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hashCode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public int hashCode() {
@@ -137,31 +170,48 @@ public class BaseCard {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder {
         /**
-         * Auto-generated for codecheck compliance.
+         * id.
+         * 
+         * @since 0.1.7
          */
         protected String id;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @since 0.1.7
          */
         protected String name = "";
+
         /**
-         * Auto-generated for codecheck compliance.
+         * description.
+         * 
+         * @since 0.1.7
          */
         protected String description = "";
 
         /**
-         * Auto-generated for codecheck compliance.
+         * id.
+         * 
+         * @param id id
+         * @return the result
+         * @since 0.1.7
          */
         public Builder id(String id) {
             this.id = id;
@@ -169,7 +219,11 @@ public class BaseCard {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
          */
         public Builder name(String name) {
             this.name = name;
@@ -177,7 +231,11 @@ public class BaseCard {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * description.
+         * 
+         * @param description description
+         * @return the result
+         * @since 0.1.7
          */
         public Builder description(String description) {
             this.description = description;
@@ -185,7 +243,10 @@ public class BaseCard {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public BaseCard build() {
             return new BaseCard(id, name, description);

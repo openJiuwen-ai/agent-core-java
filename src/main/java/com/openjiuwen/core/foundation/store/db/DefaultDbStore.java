@@ -6,7 +6,6 @@ package com.openjiuwen.core.foundation.store.db;
 
 import com.openjiuwen.spi.store.BaseDbStore;
 
-import javax.sql.DataSource;
 import java.io.PrintWriter;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -14,31 +13,45 @@ import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.util.logging.Logger;
 
+import javax.sql.DataSource;
+
 /**
  * Lightweight JDBC-backed default DB store.
+ * 
+ * @since 0.1.7
  */
 public class DefaultDbStore extends BaseDbStore<DataSource> {
-
     private final DataSource dataSource;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DefaultDbStore.
+     * 
+     * @param jdbcUrl jdbcUrl
+     * @since 0.1.7
      */
     public DefaultDbStore(String jdbcUrl) {
         this(jdbcUrl, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DefaultDbStore.
+     * 
+     * @param jdbcUrl jdbcUrl
+     * @param username username
+     * @param password password
+     * @since 0.1.7
      */
     public DefaultDbStore(String jdbcUrl, String username, String password) {
         this.dataSource = new SimpleDriverManagerDataSource(jdbcUrl, username, password);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getEngine.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public DataSource getEngine() {
         return dataSource;
     }
@@ -50,81 +63,123 @@ public class DefaultDbStore extends BaseDbStore<DataSource> {
         private volatile PrintWriter logWriter;
         private volatile int loginTimeout;
 
+        /**
+         * SimpleDriverManagerDataSource.
+         * 
+         * @param jdbcUrl jdbcUrl
+         * @param username username
+         * @param password password
+         * @since 0.1.7
+         */
         private SimpleDriverManagerDataSource(String jdbcUrl, String username, String password) {
             this.jdbcUrl = jdbcUrl;
             this.username = username;
             this.password = password;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * getConnection.
+         * 
+         * @return the result
+         * @throws SQLException SQLException
+         * @since 0.1.7
          */
+        @Override
         public Connection getConnection() throws SQLException {
             return DriverManager.getConnection(jdbcUrl, username, password);
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * getConnection.
+         * 
+         * @param username username
+         * @param password password
+         * @return the result
+         * @throws SQLException SQLException
+         * @since 0.1.7
          */
+        @Override
         public Connection getConnection(String username, String password) throws SQLException {
             return DriverManager.getConnection(jdbcUrl, username, password);
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * unwrap.
+         * 
+         * @param iface iface
+         * @return the result
+         * @throws SQLException SQLException
+         * @since 0.1.7
          */
+        @Override
         public <T> T unwrap(Class<T> iface) throws SQLException {
             throw new SQLFeatureNotSupportedException();
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * isWrapperFor.
+         * 
+         * @param iface iface
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public boolean isWrapperFor(Class<?> iface) {
             return false;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * getLogWriter.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public PrintWriter getLogWriter() {
             return logWriter;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * setLogWriter.
+         * 
+         * @param out out
+         * @since 0.1.7
          */
+        @Override
         public void setLogWriter(PrintWriter out) {
             this.logWriter = out;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * setLoginTimeout.
+         * 
+         * @param seconds seconds
+         * @since 0.1.7
          */
+        @Override
         public void setLoginTimeout(int seconds) {
             this.loginTimeout = seconds;
             DriverManager.setLoginTimeout(seconds);
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * getLoginTimeout.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public int getLoginTimeout() {
             return loginTimeout;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * getParentLogger.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public Logger getParentLogger() {
             return Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
         }

@@ -10,54 +10,80 @@ import java.util.Map;
 
 /**
  * Public class PermissionEngine used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class PermissionEngine {
-  private final Map<String, Object> config;
-  private final Path workspaceRoot;
+    private final Map<String, Object> config;
+    private final Path workspaceRoot;
 
-  /** Auto-generated for codecheck compliance. */
-  public PermissionEngine(Map<String, Object> config, Path workspaceRoot) {
-    this.config = config != null ? config : new LinkedHashMap<>();
-    this.workspaceRoot = workspaceRoot;
-  }
-
-  /** Auto-generated for codecheck compliance. */
-  public Map.Entry<PermissionLevel, String> evaluateGlobalPolicyDirectly(
-      String toolName, Map<String, Object> toolArgs) {
-    if (!Boolean.TRUE.equals(config.getOrDefault("enabled", Boolean.FALSE))) {
-      return Map.entry(PermissionLevel.ALLOW, "disabled");
+    /**
+     * PermissionEngine.
+     * 
+     * @param config config
+     * @param workspaceRoot workspaceRoot
+     * @since 0.1.7
+     */
+    public PermissionEngine(Map<String, Object> config, Path workspaceRoot) {
+        this.config = config != null ? config : new LinkedHashMap<>();
+        this.workspaceRoot = workspaceRoot;
     }
-    @SuppressWarnings("unchecked")
-    Map<String, Object> tools = (Map<String, Object>) config.getOrDefault("tools", Map.of());
-    if (tools.containsKey(toolName)) {
-      return Map.entry(PermissionLevel.fromValue(tools.get(toolName)), "tools." + toolName);
+
+    /**
+     * evaluateGlobalPolicyDirectly.
+     * 
+     * @param toolName toolName
+     * @param toolArgs toolArgs
+     * @return the result
+     * @since 0.1.7
+     */
+    public Map.Entry<PermissionLevel, String> evaluateGlobalPolicyDirectly(String toolName,
+            Map<String, Object> toolArgs) {
+        if (!Boolean.TRUE.equals(config.getOrDefault("enabled", Boolean.FALSE))) {
+            return Map.entry(PermissionLevel.ALLOW, "disabled");
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tools = (Map<String, Object>) config.getOrDefault("tools", Map.of());
+        if (tools.containsKey(toolName)) {
+            return Map.entry(PermissionLevel.fromValue(tools.get(toolName)), "tools." + toolName);
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> defaults = (Map<String, Object>) config.getOrDefault("defaults", Map.of("*", "allow"));
+        return Map.entry(PermissionLevel.fromValue(defaults.getOrDefault("*", "allow")), "defaults.*");
     }
-    @SuppressWarnings("unchecked")
-    Map<String, Object> defaults =
-        (Map<String, Object>) config.getOrDefault("defaults", Map.of("*", "allow"));
-    return Map.entry(PermissionLevel.fromValue(defaults.getOrDefault("*", "allow")), "defaults.*");
-  }
 
-  /** Auto-generated for codecheck compliance. */
-  public PermissionCheckResult checkPermission(String toolName, Map<String, Object> toolArgs) {
-    Map.Entry<PermissionLevel, String> direct = evaluateGlobalPolicyDirectly(toolName, toolArgs);
-    PermissionLevel level = direct.getKey();
-    return PermissionCheckResult.builder()
-        .permission(level)
-        .matchedRule(direct.getValue())
-        .needsApproval(level == PermissionLevel.ASK)
-        .build();
-  }
+    /**
+     * checkPermission.
+     * 
+     * @param toolName toolName
+     * @param toolArgs toolArgs
+     * @return the result
+     * @since 0.1.7
+     */
+    public PermissionCheckResult checkPermission(String toolName, Map<String, Object> toolArgs) {
+        Map.Entry<PermissionLevel, String> direct = evaluateGlobalPolicyDirectly(toolName, toolArgs);
+        PermissionLevel level = direct.getKey();
+        return PermissionCheckResult.builder().permission(level).matchedRule(direct.getValue())
+                .needsApproval(level == PermissionLevel.ASK).build();
+    }
 
-  /** Auto-generated for codecheck compliance. */
-  public Path getWorkspaceRoot() {
-    return workspaceRoot;
-  }
+    /**
+     * getWorkspaceRoot.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public Path getWorkspaceRoot() {
+        return workspaceRoot;
+    }
 
-  /** Auto-generated for codecheck compliance. */
-  public Map<String, Object> getConfig() {
-    return config;
-  }
+    /**
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
+    public Map<String, Object> getConfig() {
+        return config;
+    }
 }

@@ -11,6 +11,8 @@ import java.util.Map;
 
 /**
  * Output of a guardrail backend analysis.
+ * 
+ * @since 0.1.7
  */
 @Value
 @Builder

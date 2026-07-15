@@ -6,6 +6,8 @@ package com.openjiuwen.core.memory.manage.mem_model;
 
 /**
  * Types of memory data.
+ * 
+ * @since 0.1.7
  */
 public enum MemoryType {
     USER_PROFILE("user_profile"),
@@ -22,14 +24,21 @@ public enum MemoryType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static MemoryType fromValue(String value) {
         for (MemoryType type : values()) {

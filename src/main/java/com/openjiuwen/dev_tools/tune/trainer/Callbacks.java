@@ -11,17 +11,19 @@ import java.util.List;
 
 /**
  * Training callback hooks for lifecycle events.
- *
- * <p>Mirrors Python's {@code Callbacks} in {@code openjiuwen.dev_tools.tune.trainer.base}.
+ * <p>
+ * Mirrors Python's {@code Callbacks} in {@code openjiuwen.dev_tools.tune.trainer.base}.
+ * 
+ * @since 0.1.7
  */
 public class Callbacks {
-
     /**
-     * Called at the beginning of training.
-     *
-     * @param agent the agent being trained
-     * @param progress the training progress
-     * @param evalInfo the evaluation information
+     * onTrainBegin.
+     * 
+     * @param agent agent
+     * @param progress progress
+     * @param evalInfo evalInfo
+     * @since 0.1.7
      */
     public void onTrainBegin(BaseAgent agent, Progress progress, List<EvaluatedCase> evalInfo) {
         // Default implementation does nothing
@@ -29,10 +31,11 @@ public class Callbacks {
 
     /**
      * Called at the end of training.
-     *
+     * 
      * @param agent the agent being trained
      * @param progress the training progress
      * @param evalInfo the evaluation information
+     * @since 0.1.7
      */
     public void onTrainEnd(BaseAgent agent, Progress progress, List<EvaluatedCase> evalInfo) {
         // Default implementation does nothing
@@ -40,9 +43,10 @@ public class Callbacks {
 
     /**
      * Called at the beginning of each epoch.
-     *
+     * 
      * @param agent the agent being trained
      * @param progress the training progress
+     * @since 0.1.7
      */
     public void onTrainEpochBegin(BaseAgent agent, Progress progress) {
         // Default implementation does nothing
@@ -50,10 +54,11 @@ public class Callbacks {
 
     /**
      * Called at the end of each epoch.
-     *
+     * 
      * @param agent the agent being trained
      * @param progress the training progress
      * @param evalInfo the evaluation information
+     * @since 0.1.7
      */
     public void onTrainEpochEnd(BaseAgent agent, Progress progress, List<EvaluatedCase> evalInfo) {
         // Default implementation does nothing

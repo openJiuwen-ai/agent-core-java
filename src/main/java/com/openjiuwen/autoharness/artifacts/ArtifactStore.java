@@ -9,15 +9,27 @@ import java.util.Map;
 
 /**
  * Public class ArtifactStore used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class ArtifactStore {
     private final Map<String, Object> session = new LinkedHashMap<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Map<String, Object>> task = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param name name
+     * @param taskId taskId
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public Object get(String name, String taskId, Object defaultValue) {
         if (taskId != null && !taskId.isBlank()) {
@@ -30,7 +42,12 @@ public class ArtifactStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * require.
+     * 
+     * @param name name
+     * @param taskId taskId
+     * @return the result
+     * @since 0.1.7
      */
     public Object require(String name, String taskId) {
         Object marker = new Object();
@@ -43,7 +60,12 @@ public class ArtifactStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * put.
+     * 
+     * @param name name
+     * @param value value
+     * @param taskId taskId
+     * @since 0.1.7
      */
     public void put(String name, Object value, String taskId) {
         if (taskId != null && !taskId.isBlank()) {
@@ -54,7 +76,11 @@ public class ArtifactStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * putMany.
+     * 
+     * @param artifacts artifacts
+     * @param taskId taskId
+     * @since 0.1.7
      */
     public void putMany(Map<String, Object> artifacts, String taskId) {
         if (artifacts == null || artifacts.isEmpty()) {
@@ -64,7 +90,12 @@ public class ArtifactStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * has.
+     * 
+     * @param name name
+     * @param taskId taskId
+     * @return the result
+     * @since 0.1.7
      */
     public boolean has(String name, String taskId) {
         Object marker = new Object();
@@ -72,7 +103,10 @@ public class ArtifactStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resetTask.
+     * 
+     * @param taskId taskId
+     * @since 0.1.7
      */
     public void resetTask(String taskId) {
         task.remove(taskId);

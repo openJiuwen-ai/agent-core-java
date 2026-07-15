@@ -13,11 +13,17 @@ import java.util.regex.Pattern;
  * Utility class for template operations: rendering and splitting.
  * <p>
  * Mirrors Python's {@code TemplateUtils} from {@code end_comp.py}.
+ * 
+ * @since 0.1.7
  */
 public class TemplateUtils {
-
     private static final Pattern TEMPLATE_VAR_PATTERN = Pattern.compile("(\\{\\{[^}]+\\}\\})");
 
+    /**
+     * TemplateUtils.
+     * 
+     * @since 0.1.7
+     */
     private TemplateUtils() {
     }
 
@@ -26,6 +32,11 @@ public class TemplateUtils {
      * Uses safe substitution – missing keys are replaced with empty string.
      * <p>
      * Mirrors Python's {@code TemplateUtils.render_template(template, inputs)}.
+     * 
+     * @param template template
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     public static String renderTemplate(String template, java.util.Map<String, Object> inputs) {
         if (template == null) {
@@ -55,6 +66,10 @@ public class TemplateUtils {
      * Empty segments are filtered out.
      * <p>
      * Mirrors Python's {@code TemplateUtils.render_template_to_list(template)}.
+     * 
+     * @param template template
+     * @return the result
+     * @since 0.1.7
      */
     public static List<String> renderTemplateToList(String template) {
         List<String> result = new ArrayList<>();

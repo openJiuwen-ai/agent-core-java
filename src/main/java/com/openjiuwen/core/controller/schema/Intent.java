@@ -20,9 +20,10 @@ import java.util.Map;
  * processing logic based on intent type.
  * <p>
  * Mirrors Python's {@code Intent(BaseModel)}.
+ * 
+ * @since 0.1.7
  */
 public class Intent {
-
     private IntentType intentType;
     private Event event;
     private String targetTaskId;
@@ -35,7 +36,12 @@ public class Intent {
     private String clarificationPrompt;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Intent.
+     * 
+     * @param intentType intentType
+     * @param event event
+     * @param targetTaskId targetTaskId
+     * @since 0.1.7
      */
     public Intent(IntentType intentType, Event event, String targetTaskId) {
         this.intentType = intentType;
@@ -47,12 +53,22 @@ public class Intent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Intent.
+     * 
+     * @param intentType intentType
+     * @param event event
+     * @param targetTaskId targetTaskId
+     * @param targetTaskDescription targetTaskDescription
+     * @param dependTaskId dependTaskId
+     * @param supplementaryInfo supplementaryInfo
+     * @param modificationDetails modificationDetails
+     * @param confidence confidence
+     * @param clarificationPrompt clarificationPrompt
+     * @since 0.1.7
      */
-    public Intent(IntentType intentType, Event event, String targetTaskId,
-                  String targetTaskDescription, List<String> dependTaskId,
-                  String supplementaryInfo, String modificationDetails,
-                  double confidence, String clarificationPrompt) {
+    public Intent(IntentType intentType, Event event, String targetTaskId, String targetTaskDescription,
+            List<String> dependTaskId, String supplementaryInfo, String modificationDetails, double confidence,
+            String clarificationPrompt) {
         this.intentType = intentType;
         this.event = event;
         this.targetTaskId = targetTaskId;
@@ -68,204 +84,267 @@ public class Intent {
 
     /**
      * Validate intent data.
+     * 
+     * @since 0.1.7
      */
     private void validate() {
         if (confidence < 0.0 || confidence > 1.0) {
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                    "error_msg", "Confidence must be between 0.0 and 1.0, got " + confidence);
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                    "Confidence must be between 0.0 and 1.0, got " + confidence);
         }
 
         switch (intentType) {
             case CREATE_TASK -> {
                 if (targetTaskDescription == null || targetTaskDescription.isBlank()) {
-                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                            "error_msg", "CREATE_TASK intent requires target_task_description");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                            "CREATE_TASK intent requires target_task_description");
                 }
             }
             case CONTINUE_TASK -> {
                 if (dependTaskId == null || dependTaskId.isEmpty()) {
-                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                            "error_msg", "CONTINUE_TASK intent requires depend_task_id");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                            "CONTINUE_TASK intent requires depend_task_id");
                 }
             }
             case SUPPLEMENT_TASK -> {
                 if (targetTaskId == null || targetTaskId.isBlank()) {
-                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                            "error_msg", "SUPPLEMENT_TASK intent requires target_task_id");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                            "SUPPLEMENT_TASK intent requires target_task_id");
                 }
                 if (supplementaryInfo == null || supplementaryInfo.isBlank()) {
-                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                            "error_msg", "SUPPLEMENT_TASK intent requires supplementary_info");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                            "SUPPLEMENT_TASK intent requires supplementary_info");
                 }
             }
             case MODIFY_TASK -> {
                 if (targetTaskId == null || targetTaskId.isBlank()) {
-                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                            "error_msg", "MODIFY_TASK intent requires target_task_id");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                            "MODIFY_TASK intent requires target_task_id");
                 }
                 if (modificationDetails == null || modificationDetails.isBlank()) {
-                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                            "error_msg", "MODIFY_TASK intent requires modification_details");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                            "MODIFY_TASK intent requires modification_details");
                 }
             }
             case PAUSE_TASK, RESUME_TASK, CANCEL_TASK -> {
                 if (targetTaskId == null || targetTaskId.isBlank()) {
-                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                            "error_msg", intentType.getValue() + " intent requires target_task_id");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                            intentType.getValue() + " intent requires target_task_id");
                 }
             }
             case SWITCH_TASK -> {
                 if (targetTaskDescription == null || targetTaskDescription.isBlank()) {
-                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                            "error_msg", "SWITCH_TASK intent requires target_task_description");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                            "SWITCH_TASK intent requires target_task_description");
                 }
             }
             case UNKNOWN_TASK -> {
                 if (clarificationPrompt == null || clarificationPrompt.isBlank()) {
-                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                            "error_msg", "UNKNOWN_TASK intent requires clarification_prompt");
+                    throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg",
+                            "UNKNOWN_TASK intent requires clarification_prompt");
                 }
             }
+            default -> throw new IllegalStateException("Unexpected intent type: " + intentType);
         }
     }
 
     // Getters and setters
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getIntentType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public IntentType getIntentType() {
         return intentType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setIntentType.
+     * 
+     * @param intentType intentType
+     * @since 0.1.7
      */
     public void setIntentType(IntentType intentType) {
         this.intentType = intentType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEvent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Event getEvent() {
         return event;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEvent.
+     * 
+     * @param event event
+     * @since 0.1.7
      */
     public void setEvent(Event event) {
         this.event = event;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTargetTaskId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTargetTaskId() {
         return targetTaskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTargetTaskId.
+     * 
+     * @param targetTaskId targetTaskId
+     * @since 0.1.7
      */
     public void setTargetTaskId(String targetTaskId) {
         this.targetTaskId = targetTaskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTargetTaskDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTargetTaskDescription() {
         return targetTaskDescription;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTargetTaskDescription.
+     * 
+     * @param targetTaskDescription targetTaskDescription
+     * @since 0.1.7
      */
     public void setTargetTaskDescription(String targetTaskDescription) {
         this.targetTaskDescription = targetTaskDescription;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDependTaskId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getDependTaskId() {
         return dependTaskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDependTaskId.
+     * 
+     * @param dependTaskId dependTaskId
+     * @since 0.1.7
      */
     public void setDependTaskId(List<String> dependTaskId) {
         this.dependTaskId = dependTaskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSupplementaryInfo.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSupplementaryInfo() {
         return supplementaryInfo;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSupplementaryInfo.
+     * 
+     * @param supplementaryInfo supplementaryInfo
+     * @since 0.1.7
      */
     public void setSupplementaryInfo(String supplementaryInfo) {
         this.supplementaryInfo = supplementaryInfo;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModificationDetails.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getModificationDetails() {
         return modificationDetails;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setModificationDetails.
+     * 
+     * @param modificationDetails modificationDetails
+     * @since 0.1.7
      */
     public void setModificationDetails(String modificationDetails) {
         this.modificationDetails = modificationDetails;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfidence.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getConfidence() {
         return confidence;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setConfidence.
+     * 
+     * @param confidence confidence
+     * @since 0.1.7
      */
     public void setConfidence(double confidence) {
         this.confidence = confidence;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMetadata() {
         return metadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMetadata.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata != null ? metadata : new HashMap<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getClarificationPrompt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getClarificationPrompt() {
         return clarificationPrompt;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setClarificationPrompt.
+     * 
+     * @param clarificationPrompt clarificationPrompt
+     * @since 0.1.7
      */
     public void setClarificationPrompt(String clarificationPrompt) {
         this.clarificationPrompt = clarificationPrompt;

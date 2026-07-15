@@ -11,12 +11,14 @@ import java.util.Map;
 
 /**
  * Container for a drawable graph representation used in visualization.
- *
- * <p>Holds the nodes, edges, start/end/break nodes for a graph.
- * Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_graph.DrawableGraph}.</p>
+ * <p>
+ * Holds the nodes, edges, start/end/break nodes for a graph.
+ * Mirrors Python's {@code openjiuwen.core.graph.visualization.drawable_graph.DrawableGraph}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class DrawableGraph {
-
     private final Map<String, DrawableNode> nodes;
     private final List<DrawableEdge> edges;
     private final List<DrawableNode> startNodes;
@@ -24,7 +26,9 @@ public class DrawableGraph {
     private List<DrawableNode> breakNodes;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DrawableGraph.
+     * 
+     * @since 0.1.7
      */
     public DrawableGraph() {
         this.nodes = new LinkedHashMap<>();
@@ -35,11 +39,17 @@ public class DrawableGraph {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DrawableGraph.
+     * 
+     * @param nodes nodes
+     * @param edges edges
+     * @param startNodes startNodes
+     * @param endNodes endNodes
+     * @param breakNodes breakNodes
+     * @since 0.1.7
      */
-    public DrawableGraph(Map<String, DrawableNode> nodes, List<DrawableEdge> edges,
-                         List<DrawableNode> startNodes, List<DrawableNode> endNodes,
-                         List<DrawableNode> breakNodes) {
+    public DrawableGraph(Map<String, DrawableNode> nodes, List<DrawableEdge> edges, List<DrawableNode> startNodes,
+            List<DrawableNode> endNodes, List<DrawableNode> breakNodes) {
         this.nodes = nodes;
         this.edges = edges;
         this.startNodes = startNodes;
@@ -48,42 +58,60 @@ public class DrawableGraph {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNodes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, DrawableNode> getNodes() {
         return nodes;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEdges.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<DrawableEdge> getEdges() {
         return edges;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStartNodes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<DrawableNode> getStartNodes() {
         return startNodes;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEndNodes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<DrawableNode> getEndNodes() {
         return endNodes;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getBreakNodes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<DrawableNode> getBreakNodes() {
         return breakNodes;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setBreakNodes.
+     * 
+     * @param breakNodes breakNodes
+     * @since 0.1.7
      */
     public void setBreakNodes(List<DrawableNode> breakNodes) {
         this.breakNodes = breakNodes;

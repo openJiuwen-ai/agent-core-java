@@ -11,68 +11,72 @@ import java.util.function.Supplier;
 
 /**
  * Workflow factory that creates a new workflow instance on each call (concurrency-safe).
- *
- * <p>Mirrors Python's {@code WorkflowFactory} in {@code single_agent/legacy/agent.py}.</p>
- *
- * <p>Usage:
+ * <p>
+ * Mirrors Python's {@code WorkflowFactory} in {@code single_agent/legacy/agent.py}.
+ * </p>
+ * <p>
+ * Usage:
+ * 
  * <pre>{@code
  * WorkflowFactory provider = new WorkflowFactory("my_workflow", "1.0", () -> buildWorkflow());
  * agent.addWorkflows(List.of(provider));
  * }</pre>
  * </p>
+ * 
+ * @since 0.1.7
  */
 public class WorkflowFactory implements Supplier<Workflow> {
-
     private final Supplier<Workflow> factory;
     private final WorkflowCard workflowCard;
 
     /**
      * Create a WorkflowFactory.
-     *
-     * @param workflowId          workflow ID for registration
-     * @param workflowVersion     workflow version for registration
-     * @param factory             factory function returning a new Workflow each call
-     * @param workflowName        workflow name (optional)
+     * 
+     * @param workflowId workflow ID for registration
+     * @param workflowVersion workflow version for registration
+     * @param factory factory function returning a new Workflow each call
+     * @param workflowName workflow name (optional)
      * @param workflowDescription workflow description (optional)
-     * @param inputSchema         input schema (optional)
+     * @param inputSchema input schema (optional)
+     * @since 0.1.7
      */
-    public WorkflowFactory(String workflowId, String workflowVersion,
-                           Supplier<Workflow> factory,
-                           String workflowName, String workflowDescription,
-                           Object inputSchema) {
+    public WorkflowFactory(String workflowId, String workflowVersion, Supplier<Workflow> factory, String workflowName,
+            String workflowDescription, Object inputSchema) {
         this.factory = factory;
-        this.workflowCard = WorkflowCard.builder()
-                .id(workflowId)
-                .name(workflowName != null ? workflowName : "")
-                .description(workflowDescription != null ? workflowDescription : "")
-                .version(workflowVersion)
-                .inputParams(inputSchema)
-                .build();
+        this.workflowCard = WorkflowCard.builder().id(workflowId).name(workflowName != null ? workflowName : "")
+                .description(workflowDescription != null ? workflowDescription : "").version(workflowVersion)
+                .inputParams(inputSchema).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowFactory.
+     * 
+     * @param workflowId workflowId
+     * @param workflowVersion workflowVersion
+     * @param factory factory
+     * @since 0.1.7
      */
     public WorkflowFactory(String workflowId, String workflowVersion, Supplier<Workflow> factory) {
         this(workflowId, workflowVersion, factory, "", "", null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * card.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public WorkflowCard card() {
         return workflowCard;
     }
 
     /**
-     * Return a new workflow instance on each call.
-     *
-     * @return a new Workflow instance
+     * get.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Workflow get() {
         return factory.get();
     }

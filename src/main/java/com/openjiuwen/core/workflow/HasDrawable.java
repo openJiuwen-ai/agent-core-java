@@ -8,16 +8,19 @@ import com.openjiuwen.core.graph.visualization.Drawable;
 
 /**
  * Interface for components that have an associated {@link Drawable} graph for visualization.
- *
- * <p>Used by loop components, sub-workflow components, and any component containing
- * a nested graph structure.</p>
+ * <p>
+ * Used by loop components, sub-workflow components, and any component containing
+ * a nested graph structure.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public interface HasDrawable {
-
     /**
-     * Gets the drawable visualization graph for this component.
-     *
-     * @return the drawable instance
+     * getDrawable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     Drawable getDrawable();
 }

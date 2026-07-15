@@ -15,14 +15,20 @@ import java.util.Map;
 /**
  * Declarative tool reference.
  * Mirrors Python BuiltinToolSpec.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class BuiltinToolSpec {
-
     private String type;
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> params = new LinkedHashMap<>();
 }

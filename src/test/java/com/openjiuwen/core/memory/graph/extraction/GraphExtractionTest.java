@@ -1,4 +1,7 @@
+
 package com.openjiuwen.core.memory.graph.extraction;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.memory.config.graph.AddMemStrategy;
 import com.openjiuwen.core.memory.config.graph.EpisodeType;
@@ -6,15 +9,13 @@ import com.openjiuwen.core.memory.config.graph.GraphDefaults;
 import com.openjiuwen.core.memory.config.graph.SearchConfig;
 import com.openjiuwen.core.memory.graph.extraction.prompts.TemplateManager;
 import com.openjiuwen.core.memory.graph.extraction.prompts.entity_extraction.ExtractionPromptLanguageBase;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class GraphExtractionTest {
-
     @Test
     void graphConfigDefaultsShouldMatchPythonModule() {
         AddMemStrategy strategy = GraphDefaults.DEFAULT_STRATEGY;
@@ -34,7 +35,8 @@ class GraphExtractionTest {
                 {"extracted_entities":[{"name":"Alice","entityTypeId":0}]}
                 ```
                 """;
-        Object parsed = ParseResponse.parseJson(response, MultilingualBaseModel.responseFormat(EntityExtraction.class, "en"));
+        Object parsed =
+            ParseResponse.parseJson(response, MultilingualBaseModel.responseFormat(EntityExtraction.class, "en"));
 
         assertThat(parsed).isInstanceOf(Map.class);
         assertThat(ParseResponse.ensureList(List.of("a", "b"))).hasSize(2);

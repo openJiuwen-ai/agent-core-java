@@ -9,11 +9,17 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-@Retention(RetentionPolicy.RUNTIME)
 /**
- * Auto-generated for codecheck compliance.
+ * value().
  */
+@Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
 public @interface SchemaDescription {
+    /**
+     * value.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     String value();
 }

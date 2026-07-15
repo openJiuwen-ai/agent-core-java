@@ -4,47 +4,56 @@
 
 package com.openjiuwen.agentevolving.optimizer.tool_call.utils;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * JSON parsing utilities for tool optimizer.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.format}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.format}.
+ * 
+ * @since 0.1.7
  */
 public final class FormatUtils {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    /**
+     * FormatUtils.
+     * 
+     * @since 0.1.7
+     */
     private FormatUtils() {
         // Utility class
     }
 
     /**
      * Parse JSON from LLM output string.
-     *
+     * 
      * @param output LLM output string
      * @param header Optional header to search for
      * @return Parsed JSON object
+     * @since 0.1.7
      */
     public static Object parseJson(String output, String header) {
         try {
             try {
                 String jsonStr = extractJsonCandidate(output, header);
                 return OBJECT_MAPPER.readValue(jsonStr, Object.class);
-            } catch (Exception ignored) {
+            } catch (JsonProcessingException ignored) {
                 String literal = normalizePythonLiteral(extractJsonCandidate(output, header));
                 return OBJECT_MAPPER.readValue(literal, Object.class);
             }
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("Failed to parse JSON from output.", e);
         }
     }
 
     /**
      * Parse JSON from LLM output string.
-     *
+     * 
      * @param output LLM output string
      * @return Parsed JSON object
+     * @since 0.1.7
      */
     public static Object parseJson(String output) {
         return parseJson(output, null);
@@ -52,15 +61,24 @@ public final class FormatUtils {
 
     /**
      * Format prompt for LLaMA-style models.
-     *
+     * 
      * @param systemPrompt System prompt
-     * @param userPrompt   User prompt
+     * @param userPrompt User prompt
      * @return Combined prompt string
+     * @since 0.1.7
      */
     public static String formatPromptLlama(String systemPrompt, String userPrompt) {
         return (systemPrompt != null ? systemPrompt : "") + (userPrompt != null ? userPrompt : "");
     }
 
+    /**
+     * extractJsonCandidate.
+     * 
+     * @param output output
+     * @param header header
+     * @return the result
+     * @since 0.1.7
+     */
     private static String extractJsonCandidate(String output, String header) {
         String text = output != null ? output : "";
         int jsonIdx = -1;
@@ -94,6 +112,13 @@ public final class FormatUtils {
         return text.substring(jsonIdx, jsonEndIdx + 1).trim();
     }
 
+    /**
+     * normalizePythonLiteral.
+     * 
+     * @param input input
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizePythonLiteral(String input) {
         String text = input != null ? input.trim() : "";
         StringBuilder normalized = new StringBuilder(text.length());

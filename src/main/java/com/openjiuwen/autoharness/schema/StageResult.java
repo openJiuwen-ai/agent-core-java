@@ -14,29 +14,47 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Public class StageResult used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class StageResult used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class StageResult {
     @Builder.Default
     private String status = "success";
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> artifacts = new LinkedHashMap<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> messages = new ArrayList<>();
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metrics = new LinkedHashMap<>();
     @Builder.Default
     private String error = "";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isSuccess.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isSuccess() {
         return "success".equals(status);

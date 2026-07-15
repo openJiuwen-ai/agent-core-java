@@ -18,20 +18,28 @@ import java.util.Map;
  * Agent-level interaction handler.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.interaction.interaction.AgentInteraction}.
+ * 
+ * @since 0.1.7
  */
 public class AgentInteraction extends BaseInteraction {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentInteraction.
+     * 
+     * @param session session
+     * @since 0.1.7
      */
     public AgentInteraction(BaseSession session) {
         super(session);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * waitUserInputs.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object waitUserInputs(Object value) {
         Object inputs = getNextInteractiveInput();
         if (inputs != null) {

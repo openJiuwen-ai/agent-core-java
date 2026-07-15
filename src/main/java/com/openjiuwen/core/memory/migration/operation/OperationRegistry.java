@@ -7,18 +7,27 @@ package com.openjiuwen.core.memory.migration.operation;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Registry that manages chained upgrade operations by entity_key.
  * Operations for the same entity_key must have monotonically increasing schema_versions.
+ * 
+ * @since 0.1.7
  */
 public class OperationRegistry {
-
     private Map<String, List<BaseOperation>> operations = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * register.
+     * 
+     * @param entityKey entityKey
+     * @param op op
+     * @since 0.1.7
      */
     public void register(String entityKey, BaseOperation op) {
         List<BaseOperation> ops = operations.get(entityKey);
@@ -30,16 +39,21 @@ public class OperationRegistry {
         }
         int lastVersion = ops.get(ops.size() - 1).getSchemaVersion();
         if (op.getSchemaVersion() <= lastVersion) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_REGISTER_OPERATION_VALIDATION_INVALID,
-                    "entity_key", entityKey,
-                    "schema_version", String.valueOf(op.getSchemaVersion()),
-                    "error_msg", "schema number must be greater than current maximum");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_REGISTER_OPERATION_VALIDATION_INVALID, "entity_key",
+                    entityKey, "schema_version", String.valueOf(op.getSchemaVersion()), "error_msg",
+                    "schema number must be greater than current maximum");
         }
         ops.add(op);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOperations.
+     * 
+     * @param entityKey entityKey
+     * @param fromVersion fromVersion
+     * @param toVersion toVersion
+     * @return the result
+     * @since 0.1.7
      */
     public List<BaseOperation> getOperations(String entityKey, int fromVersion, int toVersion) {
         if (fromVersion > toVersion) {
@@ -56,14 +70,22 @@ public class OperationRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOperations.
+     * 
+     * @param entityKey entityKey
+     * @return the result
+     * @since 0.1.7
      */
     public List<BaseOperation> getOperations(String entityKey) {
         return getOperations(entityKey, Integer.MIN_VALUE, Integer.MAX_VALUE);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentVersion.
+     * 
+     * @param entityKey entityKey
+     * @return the result
+     * @since 0.1.7
      */
     public int getCurrentVersion(String entityKey) {
         List<BaseOperation> ops = operations.getOrDefault(entityKey, Collections.emptyList());
@@ -71,28 +93,39 @@ public class OperationRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAllEntities.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getAllEntities() {
         return new ArrayList<>(operations.keySet());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAllOperations.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, List<BaseOperation>> getAllOperations() {
         return new LinkedHashMap<>(operations);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clear.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         operations.clear();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setOperations.
+     * 
+     * @param ops ops
+     * @since 0.1.7
      */
     public void setOperations(Map<String, List<BaseOperation>> ops) {
         this.operations = ops;

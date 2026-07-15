@@ -4,6 +4,7 @@
 
 package com.openjiuwen.agentevolving;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -15,46 +16,69 @@ import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.agentevolving.dataset.Case;
 import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.StringJoiner;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Collection of static utility methods for self-evolving operations.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.utils.TuneUtils}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.utils.TuneUtils}.
+ * 
+ * @since 0.1.7
  */
 public final class TuneUtils {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern JSON_BLOCK_PATTERN = Pattern.compile("```json(.*?)```", Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern LIST_BLOCK_PATTERN = Pattern.compile("```list(.*?)```", Pattern.DOTALL);
+
+    /**
+     * TuneUtils.
+     * 
+     * @since 0.1.7
+     */
     private TuneUtils() {
         // Utility class
     }
 
     /**
      * Validate numeric parameter is within bounds.
-     *
-     * @param param     Value to validate
+     * 
+     * @param param Value to validate
      * @param paramName Parameter name for error message
-     * @param lower     Minimum allowed value
-     * @param upper     Maximum allowed value
-     * @throws ValidationError if param is outside [lower, upper]
+     * @param lower Minimum allowed value
+     * @param upper Maximum allowed value
+     * @since 0.1.7
      */
     public static void validateDigitalParameter(double param, String paramName, double lower, double upper) {
         if (param < lower || param > upper) {
-            throw new ValidationError(
-                    StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR,
-                    Map.of("error_msg", paramName + " should be between " + lower + " and " + upper)
-            );
+            throw new ValidationError(StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR,
+                    Map.of("error_msg", paramName + " should be between " + lower + " and " + upper));
         }
     }
 
     /**
      * Extract readable input string from Case.
-     *
+     * 
      * @param caseData Case to extract input from
      * @return Formatted input string
+     * @since 0.1.7
      */
     public static String getInputStringFromCase(Case caseData) {
         return convertDictToString(caseData.getInputs());
@@ -62,27 +86,23 @@ public final class TuneUtils {
 
     /**
      * Convert BaseMessage to string for logging/comparison.
-     *
+     * 
      * @param message Message to convert
      * @return Serialized message content; tool_calls included if present
+     * @since 0.1.7
      */
     public static String getOutputStringFromMessage(BaseMessage message) {
         if (message == null) {
             return "";
         }
-        if (message instanceof AssistantMessage assistantMessage
-                && assistantMessage.getToolCalls() != null
+        if (message instanceof AssistantMessage assistantMessage && assistantMessage.getToolCalls() != null
                 && !assistantMessage.getToolCalls().isEmpty()) {
             StringBuilder sb = new StringBuilder();
             for (var toolCall : assistantMessage.getToolCalls()) {
                 try {
                     sb.append(OBJECT_MAPPER.writeValueAsString(
-                            Map.of(
-                                    "name", toolCall.getName(),
-                                    "arguments", toolCall.getArguments()
-                            )
-                    ));
-                } catch (Exception e) {
+                            Map.of("name", toolCall.getName(), "arguments", toolCall.getArguments())));
+                } catch (JsonProcessingException e) {
                     sb.append(message.getContentAsString());
                 }
             }
@@ -93,25 +113,25 @@ public final class TuneUtils {
 
     /**
      * Convert PromptTemplate to multi-line text.
-     *
+     * 
      * @param template PromptTemplate to convert
      * @return Concatenated message contents separated by newlines
+     * @since 0.1.7
      */
     public static String getContentStringFromTemplate(PromptTemplate template) {
         if (template == null) {
             return "";
         }
-        return template.toMessages().stream()
-                .map(BaseMessage::getContentAsString)
-                .reduce((left, right) -> left + "\n" + right)
-                .orElse("");
+        return template.toMessages().stream().map(BaseMessage::getContentAsString)
+                .reduce((left, right) -> left + "\n" + right).orElse("");
     }
 
     /**
      * Format Case/EvaluatedCase list as few-shot example text.
-     *
+     * 
      * @param cases List of cases to format
      * @return Formatted examples with question and expected answer
+     * @since 0.1.7
      */
     public static String convertCasesToExamples(List<?> cases) {
         if (cases == null || cases.isEmpty()) {
@@ -140,20 +160,21 @@ public final class TuneUtils {
 
     /**
      * Extract and parse JSON from ```json ... ``` block.
-     *
+     * 
      * @param jsonLikeString String containing JSON block
      * @return Parsed JSON value, or null on failure
+     * @since 0.1.7
      */
     public static Object parseJsonFromLlmResponse(String jsonLikeString) {
-        Pattern pattern = Pattern.compile("```json(.*?)```", Pattern.DOTALL);
-        return parseLlmResponseRaw(jsonLikeString, pattern);
+        return parseLlmResponseRaw(jsonLikeString, JSON_BLOCK_PATTERN);
     }
 
     /**
      * Extract and parse JSON object from ```json ... ``` block.
-     *
+     * 
      * @param jsonLikeString String containing JSON block
-     * @return Parsed JSON map, or null on failure / non-object payload
+     * @return Parsed JSON map, or empty map on failure / non-object payload
+     * @since 0.1.7
      */
     public static Map<String, Object> parseJsonObjectFromLlmResponse(String jsonLikeString) {
         Object data = parseJsonFromLlmResponse(jsonLikeString);
@@ -164,21 +185,21 @@ public final class TuneUtils {
             }
             return result;
         }
-        return null;
+        return Collections.emptyMap();
     }
 
     /**
      * Extract and parse list from ```list ... ``` block.
-     *
+     * 
      * @param listLikeString String containing list block
-     * @return Parsed list, or null on failure
+     * @return Parsed list, or empty list on failure
+     * @since 0.1.7
      */
     public static List<Object> parseListFromLlmResponse(String listLikeString) {
-        Pattern pattern = Pattern.compile("```list(.*?)```", Pattern.DOTALL);
-        Object data = parseLlmResponseRaw(listLikeString, pattern);
+        Object data = parseLlmResponseRaw(listLikeString, LIST_BLOCK_PATTERN);
         if (!(data instanceof List)) {
             Loggers.AGENT.warn("Parsed data is not a list-type");
-            return null;
+            return Collections.emptyList();
         }
         @SuppressWarnings("unchecked")
         List<Object> result = (List<Object>) data;
@@ -187,9 +208,10 @@ public final class TuneUtils {
 
     /**
      * Convert dict to single-line string.
-     *
+     * 
      * @param data Map to convert
      * @return String in format "k1:v1 | k2:v2"
+     * @since 0.1.7
      */
     public static String convertDictToString(Map<String, Object> data) {
         if (data == null || data.isEmpty()) {
@@ -202,6 +224,14 @@ public final class TuneUtils {
         return sj.toString();
     }
 
+    /**
+     * parseLlmResponseRaw.
+     * 
+     * @param string string
+     * @param pattern pattern
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object parseLlmResponseRaw(String string, Pattern pattern) {
         if (string == null || string.isEmpty()) {
             return null;
@@ -217,8 +247,9 @@ public final class TuneUtils {
         }
 
         try {
-            return OBJECT_MAPPER.readValue(matchedString, new TypeReference<Object>() {});
-        } catch (Exception e) {
+            return OBJECT_MAPPER.readValue(matchedString, new TypeReference<Object>() {
+            });
+        } catch (JsonProcessingException e) {
             Loggers.AGENT.warn("Failed to convert string to object: {}", e.getMessage());
             return null;
         }

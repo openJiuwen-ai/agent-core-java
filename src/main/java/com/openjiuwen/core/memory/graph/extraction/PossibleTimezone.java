@@ -5,13 +5,15 @@
 package com.openjiuwen.core.memory.graph.extraction;
 
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 /**
  * Public class PossibleTimezone used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 @Data
+@EqualsAndHashCode(callSuper = false)
 public class PossibleTimezone extends MultilingualBaseModel {
     @SchemaDescription("{{[tz_name]}}")
     private String name;

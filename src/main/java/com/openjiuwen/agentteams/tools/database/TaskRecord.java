@@ -12,14 +12,14 @@ import lombok.NoArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Public class TaskRecord used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class TaskRecord used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class TaskRecord {
     private String taskId;
@@ -29,6 +29,11 @@ public class TaskRecord {
     private String status;
     private String assignee;
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> dependencies = new ArrayList<>();
     private long updatedAt;
 }

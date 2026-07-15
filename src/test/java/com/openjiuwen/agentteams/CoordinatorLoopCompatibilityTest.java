@@ -1,10 +1,14 @@
+
 package com.openjiuwen.agentteams;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.agentteams.agent.CoordinatorLoop;
 import com.openjiuwen.agentteams.agent.InnerEventMessage;
 import com.openjiuwen.agentteams.agent.InnerEventType;
 import com.openjiuwen.agentteams.schema.events.EventMessage;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -14,10 +18,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class CoordinatorLoopCompatibilityTest {
-
     @Test
     void startStopShouldToggleRunningFlag() {
         CoordinatorLoop loop = new CoordinatorLoop(TeamRole.LEADER);
@@ -52,10 +53,7 @@ class CoordinatorLoopCompatibilityTest {
         });
 
         loop.start();
-        EventMessage event = EventMessage.builder()
-                .eventType("message")
-                .payload(Map.of("content", "hello"))
-                .build();
+        EventMessage event = EventMessage.builder().eventType("message").payload(Map.of("content", "hello")).build();
         loop.enqueue(event);
 
         assertThat(latch.await(1, TimeUnit.SECONDS)).isTrue();
@@ -192,10 +190,8 @@ class CoordinatorLoopCompatibilityTest {
 
     @Test
     void userInputEventHelperShouldMatchInnerEventType() {
-        InnerEventMessage event = InnerEventMessage.builder()
-                .eventType(InnerEventType.USER_INPUT)
-                .payload(Map.of("content", "hello"))
-                .build();
+        InnerEventMessage event = InnerEventMessage.builder().eventType(InnerEventType.USER_INPUT)
+                .payload(Map.of("content", "hello")).build();
 
         assertThat(CoordinatorLoop.isUserInputEvent(event)).isTrue();
         assertThat(CoordinatorLoop.isMailboxPollEvent(event)).isFalse();

@@ -11,14 +11,14 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/**
+ * Public class WorktreeConfig used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class WorktreeConfig used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class WorktreeConfig {
     @Builder.Default

@@ -6,37 +6,48 @@ package com.openjiuwen.extensions.context_evolver.schema;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.trajectory.FeedbackType}.
- * 
  * Feedback type for trajectory outcomes.
+ * 
+ * @since 0.1.7
  */
 public enum FeedbackType {
     HELPFUL("helpful"),
     HARMFUL("harmful"),
     NEUTRAL("neutral");
-    
+
     private final String value;
-    
+
     FeedbackType(String value) {
         this.value = value;
     }
-    
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String toString() {
         return value;
     }
-    
+
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static FeedbackType fromValue(String value) {
         for (FeedbackType type : values()) {

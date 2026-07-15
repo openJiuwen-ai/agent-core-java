@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent.legacy.config;
 
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,23 +18,35 @@ import java.util.Map;
 
 /**
  * Legacy LLM call configuration.
- *
- * <p>Mirrors Python's {@code LLMCallConfig} in {@code single_agent/legacy/config.py}.</p>
+ * <p>
+ * Mirrors Python's {@code LLMCallConfig} in {@code single_agent/legacy/config.py}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class LLMCallConfig {
-
     private ModelRequestConfig model;
 
     private ModelClientConfig modelClient;
 
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Map<String, String>> systemPrompt = new ArrayList<>();
 
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Map<String, String>> userPrompt = new ArrayList<>();
 
     @Builder.Default

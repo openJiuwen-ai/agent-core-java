@@ -19,14 +19,14 @@ import java.util.function.Function;
  * <p>
  * In Java, the callback is a {@code Function<Map<String, Object>, Object>} that accepts
  * a map of keyword arguments (including positional args under key "_args") and returns a result.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class CallbackInfo {
-
-    /** The callback function. Accepts keyword args map, returns result. */
     private Function<Map<String, Object>, Object> callback;
 
     /** Execution priority (higher executes first). */
@@ -45,7 +45,11 @@ public class CallbackInfo {
     @Builder.Default
     private String namespace = "default";
 
-    /** Set of tags for filtering. */
+    /**
+     * Set of tags for filtering.
+     * 
+     * @since 0.1.7
+     */
     @Builder.Default
     private Set<String> tags = new HashSet<>();
 
@@ -60,7 +64,11 @@ public class CallbackInfo {
     /** Execution timeout in seconds. */
     private Double timeout;
 
-    /** Timestamp when callback was registered (epoch seconds). */
+    /**
+     * Timestamp when callback was registered (epoch seconds).
+     * 
+     * @since 0.1.7
+     */
     @Builder.Default
     private double createdAt = System.currentTimeMillis() / 1000.0;
 
@@ -73,8 +81,9 @@ public class CallbackInfo {
 
     /**
      * Get the callback name for logging/metrics purposes.
-     *
+     * 
      * @return callback name or "unknown"
+     * @since 0.1.7
      */
     public String getCallbackDisplayName() {
         if (callbackName != null && !callbackName.isEmpty()) {

@@ -11,16 +11,24 @@ import java.util.function.Function;
  * Mutable state interface with read/write capabilities.
  * <p>
  * Mirrors Python's {@code StateLike}.
+ * 
+ * @since 0.1.7
  */
 public interface StateLike extends ReadableState, RecoverableState {
-
     /**
-     * Update state with the given data.
+     * update.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     void update(Map<String, Object> data);
 
     /**
      * Get value via transformer function.
+     * 
+     * @param transformer transformer
+     * @return the result
+     * @since 0.1.7
      */
     Object getByTransformer(Function<Object, Object> transformer);
 }

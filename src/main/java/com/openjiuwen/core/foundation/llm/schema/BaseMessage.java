@@ -5,7 +5,6 @@
 package com.openjiuwen.core.foundation.llm.schema;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -19,10 +18,11 @@ import java.util.Objects;
  * <p>
  * Mirrors Python's {@code BaseMessage} model. Content can be a simple string
  * or a list of content parts (for multimodal messages).
+ * 
+ * @since 0.1.7
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class BaseMessage implements Serializable {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -44,13 +44,21 @@ public class BaseMessage implements Serializable {
     private Map<String, Object> metadata;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseMessage.
+     * 
+     * @since 0.1.7
      */
     public BaseMessage() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseMessage.
+     * 
+     * @param role role
+     * @param content content
+     * @param name name
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public BaseMessage(String role, Object content, String name, Map<String, Object> metadata) {
         this.role = role;
@@ -63,6 +71,10 @@ public class BaseMessage implements Serializable {
 
     /**
      * Create a message with role and string content.
+     * 
+     * @param role role
+     * @param content content
+     * @since 0.1.7
      */
     public BaseMessage(String role, String content) {
         this(role, content, null, null);
@@ -70,62 +82,91 @@ public class BaseMessage implements Serializable {
 
     /**
      * Create a message with role, arbitrary content, and sender name.
+     * 
+     * @param role role
+     * @param content content
+     * @param name name
+     * @since 0.1.7
      */
     public BaseMessage(String role, Object content, String name) {
         this(role, content, name, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRole.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getRole() {
         return role;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setRole.
+     * 
+     * @param role role
+     * @since 0.1.7
      */
     public void setRole(String role) {
         this.role = role;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getContent() {
         return content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setContent.
+     * 
+     * @param content content
+     * @since 0.1.7
      */
     public void setContent(Object content) {
         this.content = content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setName.
+     * 
+     * @param name name
+     * @since 0.1.7
      */
     public void setName(String name) {
         this.name = name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMetadata() {
         return metadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMetadata.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata;
@@ -133,6 +174,9 @@ public class BaseMessage implements Serializable {
 
     /**
      * Get content as string. Returns empty string if content is not a string.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getContentAsString() {
         if (content instanceof String s) {
@@ -142,26 +186,27 @@ public class BaseMessage implements Serializable {
     }
 
     /**
-     * Get content as list (for multimodal messages).
+     * getContentAsList.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Object> getContentAsList() {
         if (content instanceof List<?> list) {
             return (List<Object>) list;
         }
-        return null;
+        return java.util.Collections.emptyList();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * equals.
+     * 
+     * @param other other
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean equals(Object other) {
         if (this == other) {
             return true;
@@ -169,53 +214,71 @@ public class BaseMessage implements Serializable {
         if (!(other instanceof BaseMessage message)) {
             return false;
         }
-        return Objects.equals(getRole(), message.getRole())
-                && Objects.equals(content, message.content)
-                && Objects.equals(name, message.name)
-                && Objects.equals(metadata, message.metadata);
+        return Objects.equals(getRole(), message.getRole()) && Objects.equals(content, message.content)
+                && Objects.equals(name, message.name) && Objects.equals(metadata, message.metadata);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hashCode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int hashCode() {
         return Objects.hash(getRole(), content, name, metadata);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder {
         /**
-         * Auto-generated for codecheck compliance.
+         * role.
+         * 
+         * @since 0.1.7
          */
         protected String role;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * content.
+         * 
+         * @since 0.1.7
          */
         protected Object content;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @since 0.1.7
          */
         protected String name;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * metadata.
+         * 
+         * @since 0.1.7
          */
         protected Map<String, Object> metadata = new LinkedHashMap<>();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * role.
+         * 
+         * @param role role
+         * @return the result
+         * @since 0.1.7
          */
         public Builder role(String role) {
             this.role = role;
@@ -223,7 +286,11 @@ public class BaseMessage implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * content.
+         * 
+         * @param content content
+         * @return the result
+         * @since 0.1.7
          */
         public Builder content(Object content) {
             this.content = content;
@@ -231,7 +298,11 @@ public class BaseMessage implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
          */
         public Builder name(String name) {
             this.name = name;
@@ -239,7 +310,11 @@ public class BaseMessage implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * metadata.
+         * 
+         * @param metadata metadata
+         * @return the result
+         * @since 0.1.7
          */
         public Builder metadata(Map<String, Object> metadata) {
             this.metadata = metadata;
@@ -247,7 +322,10 @@ public class BaseMessage implements Serializable {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public BaseMessage build() {
             BaseMessage message = new BaseMessage();

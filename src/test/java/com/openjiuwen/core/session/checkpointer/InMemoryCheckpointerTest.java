@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.checkpointer;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.graph.store.GraphStoreState;
@@ -14,13 +17,12 @@ import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.InMemoryState;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.core.session.state.WorkflowStateCollection;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for {@link InMemoryCheckpointer}.
@@ -28,7 +30,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Ported from Python workflow/agent storage and integration checkpointer tests.
  */
 class InMemoryCheckpointerTest {
-
     @Test
     @DisplayName("preAgentExecute restores saved state and queues interactive input")
     void testPreAgentExecuteRestoresStateAndQueuesInteractiveInput() {
@@ -82,9 +83,7 @@ class InMemoryCheckpointerTest {
         checkpointer.preWorkflowExecute(session, null);
         session.state().updateGlobal(Map.of("persisted", "value"));
         ((WorkflowCommitState) session.state()).commit();
-        checkpointer.graphStore().save(
-                "session-1",
-                "workflow-1",
+        checkpointer.graphStore().save("session-1", "workflow-1",
                 GraphStoreState.create("workflow-1", 1, Map.of("k", "v"), List.of(), Map.of(), Map.of()));
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
@@ -113,9 +112,7 @@ class InMemoryCheckpointerTest {
         assertThrows(RuntimeException.class,
                 () -> checkpointer.postWorkflowExecute(session, null, new IllegalStateException("boom")));
 
-        checkpointer.graphStore().save(
-                "session-1",
-                "workflow-1",
+        checkpointer.graphStore().save("session-1", "workflow-1",
                 GraphStoreState.create("workflow-1", 1, Map.of(), List.of(), Map.of(), Map.of()));
 
         checkpointer.release("session-1");

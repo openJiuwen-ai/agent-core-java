@@ -11,16 +11,15 @@ package com.openjiuwen.spi.store;
  * <p>
  * In the Python version this returns an SQLAlchemy AsyncEngine. In Java,
  * the concrete implementation should provide a JDBC DataSource or similar.
- *
- * @param <E> the engine/datasource type (e.g., {@code javax.sql.DataSource})
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseDbStore<E> {
-
     /**
-     * Return the database engine or data source, allowing callers to perform
-     * database operations.
-     *
-     * @return the engine instance
+     * getEngine.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public abstract E getEngine();
 }

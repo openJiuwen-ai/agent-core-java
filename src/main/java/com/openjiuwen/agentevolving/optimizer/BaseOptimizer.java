@@ -11,49 +11,75 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * Common skeleton for dimension-specific optimizers.
- *
- * <p>bind(): Filters optimizable Operators, returns count (0 triggers soft-exit).
+ * <p>
+ * bind(): Filters optimizable Operators, returns count (0 triggers soft-exit).
  * add_trajectory / get_trajectories: Caches Trajectory for backward.
  * step(): Returns Updates, applied by Trainer.apply_updates.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.base.BaseOptimizer}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.base.BaseOptimizer}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseOptimizer {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * domain.
+     * 
+     * @since 0.1.7
      */
     protected String domain = "";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * operators.
+     * 
+     * @since 0.1.7
      */
     protected Map<String, Object> operators = new HashMap<>();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * parameters.
+     * 
+     * @since 0.1.7
      */
     protected Map<String, TextualParameter> parameters = new HashMap<>();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * targets.
+     * 
+     * @since 0.1.7
      */
     protected List<String> targets = new ArrayList<>();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * trajectories.
+     * 
+     * @since 0.1.7
      */
     protected List<Trajectory> trajectories = new ArrayList<>();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * badCases.
+     * 
+     * @since 0.1.7
      */
     protected List<EvaluatedCase> badCases = new ArrayList<>();
 
     /**
      * Whether this optimizer needs framework to execute forward on train_cases.
-     *
+     * 
      * @return True (default): optimizer uses trajectories/evaluated_cases from forward.
+     * @since 0.1.7
      */
     public boolean requiresForwardData() {
         return true;
@@ -61,8 +87,9 @@ public abstract class BaseOptimizer {
 
     /**
      * Subclass can override to provide default target list for this dimension.
-     *
+     * 
      * @return Default targets list
+     * @since 0.1.7
      */
     public List<String> defaultTargets() {
         return Collections.emptyList();
@@ -70,10 +97,11 @@ public abstract class BaseOptimizer {
 
     /**
      * Filter Operators that expose any of the targets.
-     *
+     * 
      * @param operators Operators map
-     * @param targets   Target list
+     * @param targets Target list
      * @return Filtered operators
+     * @since 0.1.7
      */
     public static Map<String, Object> filterOperators(Map<String, Object> operators, List<String> targets) {
         Map<String, Object> result = new HashMap<>();
@@ -97,7 +125,7 @@ public abstract class BaseOptimizer {
                 } else {
                     Loggers.AGENT.warn("[optimizer] operator {} has no tunables in targets={}", opId, targets);
                 }
-            } catch (Exception e) {
+            } catch (ReflectiveOperationException e) {
                 Loggers.AGENT.warn("[optimizer] operator {} does not support getTunables", opId);
             }
         }
@@ -106,11 +134,12 @@ public abstract class BaseOptimizer {
 
     /**
      * Filter and bind optimizable Operators.
-     *
+     * 
      * @param operators Operators map
-     * @param targets   Target list
-     * @param config    Configuration map
+     * @param targets Target list
+     * @param config Configuration map
      * @return Count of bound operators (0 triggers soft-exit)
+     * @since 0.1.7
      */
     public int bind(Map<String, Object> operators, List<String> targets, Map<String, Object> config) {
         if (operators == null) {
@@ -133,8 +162,9 @@ public abstract class BaseOptimizer {
 
     /**
      * Cache Trajectory for backward phase query.
-     *
+     * 
      * @param trajectory Trajectory to add
+     * @since 0.1.7
      */
     public void addTrajectory(Trajectory trajectory) {
         trajectories.add(trajectory);
@@ -142,8 +172,9 @@ public abstract class BaseOptimizer {
 
     /**
      * Returns currently cached trajectory list.
-     *
+     * 
      * @return List of trajectories
+     * @since 0.1.7
      */
     public List<Trajectory> getTrajectories() {
         return new ArrayList<>(trajectories);
@@ -151,6 +182,8 @@ public abstract class BaseOptimizer {
 
     /**
      * Clear trajectory cache after update.
+     * 
+     * @since 0.1.7
      */
     public void clearTrajectories() {
         trajectories.clear();
@@ -158,8 +191,9 @@ public abstract class BaseOptimizer {
 
     /**
      * Execute backward pass.
-     *
+     * 
      * @param evaluatedCases Evaluated cases
+     * @since 0.1.7
      */
     public void backward(List<EvaluatedCase> evaluatedCases) {
         validateParameters();
@@ -167,20 +201,16 @@ public abstract class BaseOptimizer {
         try {
             doBackward(evaluatedCases != null ? evaluatedCases : Collections.emptyList());
         } catch (Exception e) {
-            throw ErrorHelper.buildError(
-                    StatusCode.TOOLCHAIN_OPTIMIZER_BACKWARD_EXECUTION_ERROR,
-                    e.getMessage(),
-                    null,
-                    e,
-                    Map.of("error_msg", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
-            );
+            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_OPTIMIZER_BACKWARD_EXECUTION_ERROR, e.getMessage(), null,
+                    e, Map.of("error_msg", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
         }
     }
 
     /**
      * Execute step and return Updates.
-     *
+     * 
      * @return Updates to apply
+     * @since 0.1.7
      */
     public Updates step() {
         validateParameters();
@@ -190,34 +220,32 @@ public abstract class BaseOptimizer {
             return updates != null ? updates : new Updates();
         } catch (Exception e) {
             clearTrajectories();
-            throw ErrorHelper.buildError(
-                    StatusCode.TOOLCHAIN_OPTIMIZER_UPDATE_EXECUTION_ERROR,
-                    e.getMessage(),
-                    null,
-                    e,
-                    Map.of("error_msg", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName())
-            );
+            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_OPTIMIZER_UPDATE_EXECUTION_ERROR, e.getMessage(), null, e,
+                    Map.of("error_msg", e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName()));
         }
     }
 
     /**
      * Subclass implements: generates Updates based on gradients written during backward.
-     *
+     * 
      * @return Updates
+     * @since 0.1.7
      */
     protected abstract Updates doStep();
 
     /**
      * Subclass implements: backward pass logic.
-     *
+     * 
      * @param evaluatedCases Evaluated cases
+     * @since 0.1.7
      */
     protected abstract void doBackward(List<EvaluatedCase> evaluatedCases);
 
     /**
      * Get parameters map.
-     *
+     * 
      * @return Copy of parameters
+     * @since 0.1.7
      */
     public Map<String, TextualParameter> parameters() {
         return new HashMap<>(parameters);
@@ -225,34 +253,34 @@ public abstract class BaseOptimizer {
 
     /**
      * Get cases with score == 0.
-     *
+     * 
      * @param evaluatedCases All evaluated cases
      * @return Filtered list of bad cases
+     * @since 0.1.7
      */
     protected List<EvaluatedCase> getBadCases(List<EvaluatedCase> evaluatedCases) {
         badCases = (evaluatedCases != null ? evaluatedCases : Collections.<EvaluatedCase>emptyList()).stream()
-                .filter(c -> c.getScore() == 0.0)
-                .collect(Collectors.toList());
+                .filter(c -> c.getScore() == 0.0).collect(Collectors.toList());
         return badCases;
     }
 
     /**
      * Validate parameters are not empty.
+     * 
+     * @since 0.1.7
      */
     protected void validateParameters() {
         if (parameters.isEmpty()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR,
-                    "error_msg",
-                    "cannot optimize empty parameters"
-            );
+            throw ErrorHelper.buildError(StatusCode.TOOLCHAIN_AGENT_PARAM_ERROR, "error_msg",
+                    "cannot optimize empty parameters");
         }
     }
 
     /**
      * Get domain name.
-     *
+     * 
      * @return Domain string
+     * @since 0.1.7
      */
     public String getDomain() {
         return domain;
@@ -260,8 +288,9 @@ public abstract class BaseOptimizer {
 
     /**
      * Get operators map.
-     *
+     * 
      * @return Operators map
+     * @since 0.1.7
      */
     public Map<String, Object> getOperators() {
         return operators;
@@ -269,17 +298,23 @@ public abstract class BaseOptimizer {
 
     /**
      * Get bad cases.
-     *
+     * 
      * @return Bad cases list
+     * @since 0.1.7
      */
     public List<EvaluatedCase> getBadCases() {
         return badCases;
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * extractTunableNames.
+     * 
+     * @param operator operator
+     * @return the result
+     * @throws ReflectiveOperationException ReflectiveOperationException
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     protected static Set<String> extractTunableNames(Object operator) throws ReflectiveOperationException {
         if (operator == null) {
             return Collections.emptySet();

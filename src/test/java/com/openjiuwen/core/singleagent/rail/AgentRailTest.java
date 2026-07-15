@@ -1,7 +1,11 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent.rail;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.foundation.tool.ToolCard;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -9,15 +13,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Unit tests for {@link AgentRail}.
  */
 class AgentRailTest {
-
     // ============ Test Rail Subclasses ============
-
     static class AllHooksRail extends AgentRail {
         final List<String> events = new ArrayList<>();
 
@@ -64,10 +64,12 @@ class AgentRailTest {
 
     static class PartialHooksRail extends AgentRail {
         @Override
-        public void beforeInvoke(AgentCallbackContext ctx) {}
+        public void beforeInvoke(AgentCallbackContext ctx) {
+        }
 
         @Override
-        public void afterModelCall(AgentCallbackContext ctx) {}
+        public void afterModelCall(AgentCallbackContext ctx) {
+        }
     }
 
     static class EmptyRail extends AgentRail {
@@ -80,7 +82,8 @@ class AgentRailTest {
         }
 
         @Override
-        public void beforeInvoke(AgentCallbackContext ctx) {}
+        public void beforeInvoke(AgentCallbackContext ctx) {
+        }
     }
 
     private static class PrivateHookRail extends AgentRail {

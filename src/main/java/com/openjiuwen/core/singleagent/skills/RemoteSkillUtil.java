@@ -24,11 +24,13 @@ import java.util.Map;
 
 /**
  * Utility class for registering remote skills from GitHub.
- *
- * <p>Downloads skill directories from GitHub and writes them into a local skills directory.</p>
+ * <p>
+ * Downloads skill directories from GitHub and writes them into a local skills directory.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class RemoteSkillUtil {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final String GITHUB_API = "https://api.github.com";
     private static final String SKILL_FILE_NAME = "SKILL.md";
@@ -36,21 +38,30 @@ public class RemoteSkillUtil {
     private String sysOperationId;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RemoteSkillUtil.
+     * 
+     * @param sysOperationId sysOperationId
+     * @since 0.1.7
      */
     public RemoteSkillUtil(String sysOperationId) {
         this.sysOperationId = sysOperationId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSysOperationId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSysOperationId() {
         return sysOperationId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSysOperationId.
+     * 
+     * @param sysOperationId sysOperationId
+     * @since 0.1.7
      */
     public void setSysOperationId(String sysOperationId) {
         this.sysOperationId = sysOperationId;
@@ -58,16 +69,17 @@ public class RemoteSkillUtil {
 
     /**
      * Download a file from GitHub.
-     *
-     * @param tree     the GitHub tree reference
+     * 
+     * @param tree the GitHub tree reference
      * @param filePath file path within the repository
-     * @param token    GitHub API token (optional)
+     * @param token GitHub API token (optional)
      * @return file contents as byte array
+     * @since 0.1.7
      */
     public static byte[] downloadFileFromGitHub(GitHubTree tree, String filePath, String token) {
         String query = buildQuery(Map.of("ref", tree.getTreeRef()));
-        String url = GITHUB_API + "/repos/" + tree.getRepoOwner() + "/" + tree.getRepoName()
-                + "/contents/" + filePath + query;
+        String url =
+            GITHUB_API + "/repos/" + tree.getRepoOwner() + "/" + tree.getRepoName() + "/contents/" + filePath + query;
 
         try {
             HttpURLConnection conn = (HttpURLConnection) URI.create(url).toURL().openConnection();
@@ -92,11 +104,12 @@ public class RemoteSkillUtil {
 
     /**
      * Upload skills from GitHub to local storage.
-     *
-     * @param tree      the GitHub tree
+     * 
+     * @param tree the GitHub tree
      * @param skillsDir local directory for skills
-     * @param token     GitHub API token (optional)
+     * @param token GitHub API token (optional)
      * @return list of skill directory paths
+     * @since 0.1.7
      */
     public List<String> uploadSkillFromGitHub(GitHubTree tree, String skillsDir, String token) {
         Loggers.AGENT.info("Uploading skills from GitHub: " + tree.getRepoOwner() + "/" + tree.getRepoName());
@@ -117,17 +130,17 @@ public class RemoteSkillUtil {
             }
         }
 
-        Loggers.AGENT.info("Remote skill upload completed for " + tree.getRepoOwner()
-                + "/" + tree.getRepoName());
+        Loggers.AGENT.info("Remote skill upload completed for " + tree.getRepoOwner() + "/" + tree.getRepoName());
         return searchResult.skillPaths();
     }
 
     /**
      * Search a GitHub tree for skill directories containing SKILL.md files.
-     *
-     * @param tree  the GitHub tree reference
+     * 
+     * @param tree the GitHub tree reference
      * @param token GitHub API token (optional)
      * @return search result containing skill files and skill paths
+     * @since 0.1.7
      */
     public SearchResult searchGitHubForSkills(GitHubTree tree, String token) {
         List<GitHubBlob> files = listGitHubFiles(tree, token);
@@ -173,24 +186,31 @@ public class RemoteSkillUtil {
 
     /**
      * List all files in a GitHub tree.
-     *
-     * @param tree  the GitHub tree reference
+     * 
+     * @param tree the GitHub tree reference
      * @param token GitHub API token (optional)
      * @return list of file blobs
+     * @since 0.1.7
      */
     public List<GitHubBlob> listGitHubFiles(GitHubTree tree, String token) {
         String normalizedDirectory = normalizeDirectory(tree.getDirectory());
         return recursivelyListGitHubFiles(tree, Path.of(""), normalizedDirectory, token);
     }
 
-    private List<GitHubBlob> recursivelyListGitHubFiles(
-            GitHubTree tree,
-            Path currentDirectory,
-            String remainingDirectory,
-            String token
-    ) {
-        String treeUrl = GITHUB_API + "/repos/" + tree.getRepoOwner() + "/" + tree.getRepoName()
-                + "/git/trees/" + tree.getTreeRef();
+    /**
+     * recursivelyListGitHubFiles.
+     * 
+     * @param tree tree
+     * @param currentDirectory currentDirectory
+     * @param remainingDirectory remainingDirectory
+     * @param token token
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<GitHubBlob> recursivelyListGitHubFiles(GitHubTree tree, Path currentDirectory,
+            String remainingDirectory, String token) {
+        String treeUrl =
+            GITHUB_API + "/repos/" + tree.getRepoOwner() + "/" + tree.getRepoName() + "/git/trees/" + tree.getTreeRef();
 
         Map<String, String> params = remainingDirectory.isEmpty() ? Map.of("recursive", "1") : Map.of();
         JsonNode data = readGitHubJson(treeUrl, token, params);
@@ -213,9 +233,8 @@ public class RemoteSkillUtil {
 
         Path remainingPath = Path.of(remainingDirectory);
         String nextDirectory = remainingPath.getName(0).toString();
-        String nextRemainder = remainingPath.getNameCount() > 1
-                ? remainingPath.subpath(1, remainingPath.getNameCount()).toString()
-                : "";
+        String nextRemainder =
+            remainingPath.getNameCount() > 1 ? remainingPath.subpath(1, remainingPath.getNameCount()).toString() : "";
 
         for (JsonNode item : data.path("tree")) {
             if (!"tree".equals(item.path("type").asText())) {
@@ -234,6 +253,15 @@ public class RemoteSkillUtil {
         throw new GitHubError("Directory " + nextDirectory + " not found in " + currentDirectory);
     }
 
+    /**
+     * readGitHubJson.
+     * 
+     * @param url url
+     * @param token token
+     * @param params params
+     * @return the result
+     * @since 0.1.7
+     */
     private static JsonNode readGitHubJson(String url, String token, Map<String, String> params) {
         String fullUrl = url + buildQuery(params);
         try {
@@ -261,6 +289,13 @@ public class RemoteSkillUtil {
         }
     }
 
+    /**
+     * buildQuery.
+     * 
+     * @param params params
+     * @return the result
+     * @since 0.1.7
+     */
     private static String buildQuery(Map<String, String> params) {
         if (params == null || params.isEmpty()) {
             return "";
@@ -280,6 +315,13 @@ public class RemoteSkillUtil {
         return query.toString();
     }
 
+    /**
+     * normalizeDirectory.
+     * 
+     * @param directory directory
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizeDirectory(String directory) {
         if (directory == null || directory.isBlank()) {
             return "";
@@ -296,18 +338,24 @@ public class RemoteSkillUtil {
 
     /**
      * Represents a file blob from GitHub.
+     * 
+     * @since 0.1.7
      */
     public record GitHubBlob(String path) {
     }
 
     /**
      * Represents a skill file with its path and relative path.
+     * 
+     * @since 0.1.7
      */
     public record SkillFile(String path, String relativePath) {
     }
 
     /**
      * Result of searching for skills in a GitHub tree.
+     * 
+     * @since 0.1.7
      */
     public record SearchResult(List<SkillFile> files, List<String> skillPaths) {
     }

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.agentteams.agent;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.openjiuwen.agentteams.TeamPaths;
 import com.openjiuwen.agentteams.messager.Messager;
 import com.openjiuwen.agentteams.messager.MessagerFactory;
@@ -41,13 +42,15 @@ import java.util.Set;
 
 /**
  * Handles agent configuration, setup, and initialization for TeamAgent.
- *
- * <p>Mirrors Python AgentConfigurator: single entry point for configuring
+ * <p>
+ * Mirrors Python AgentConfigurator: single entry point for configuring
  * and initializing a TeamAgent's infrastructure and DeepAgent instance.
- * Two-phase setup: setupInfra (infrastructure) and setupAgent (agent).</p>
+ * Two-phase setup: setupInfra (infrastructure) and setupAgent (agent).
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class AgentConfigurator {
-
     private final AgentCard card;
 
     private TeamAgentSpec spec;
@@ -65,7 +68,10 @@ public class AgentConfigurator {
     private FirstIterationGate firstIterGate;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentConfigurator.
+     * 
+     * @param card card
+     * @since 0.1.7
      */
     public AgentConfigurator(AgentCard card) {
         this.card = card;
@@ -74,58 +80,142 @@ public class AgentConfigurator {
 
     // ---- Properties ----
 
+    /**
+     * getSpec.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public TeamAgentSpec getSpec() {
         return spec;
     }
 
+    /**
+     * getCtx.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public TeamRuntimeContext getCtx() {
         return ctx;
     }
 
+    /**
+     * getRole.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public TeamRole getRole() {
         return ctx != null ? ctx.getRole() : TeamRole.LEADER;
     }
 
+    /**
+     * getMemberName.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getMemberName() {
         return ctx != null ? ctx.getMemberName() : null;
     }
 
+    /**
+     * getModelAllocator.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public ModelAllocator getModelAllocator() {
         return modelAllocator;
     }
 
+    /**
+     * setModelAllocator.
+     * 
+     * @param modelAllocator modelAllocator
+     * @since 0.1.7
+     */
     public void setModelAllocator(ModelAllocator modelAllocator) {
         this.modelAllocator = modelAllocator;
     }
 
+    /**
+     * getLeaderAllocation.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Allocation getLeaderAllocation() {
         return leaderAllocation;
     }
 
+    /**
+     * getTeamBackend.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public TeamBackend getTeamBackend() {
         return teamBackend;
     }
 
+    /**
+     * getDeepAgent.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public DeepAgent getDeepAgent() {
         return deepAgent;
     }
 
+    /**
+     * getMemoryManager.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public TeamMemoryManager getMemoryManager() {
         return memoryManager;
     }
 
+    /**
+     * getFirstIterGate.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public FirstIterationGate getFirstIterGate() {
         return firstIterGate;
     }
 
+    /**
+     * getMessager.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public Messager getMessager() {
         return messager;
     }
 
+    /**
+     * getWorkspaceManager.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public TeamWorkspaceManager getWorkspaceManager() {
         return workspaceManager;
     }
 
+    /**
+     * getWorktreeManager.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public WorktreeManager getWorktreeManager() {
         return worktreeManager;
     }
@@ -133,7 +223,12 @@ public class AgentConfigurator {
     // ---- Main entry point ----
 
     /**
-     * Auto-generated for codecheck compliance.
+     * configure.
+     * 
+     * @param spec spec
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     public DeepAgent configure(TeamAgentSpec spec, TeamRuntimeContext ctx) {
         setupInfra(spec, ctx);
@@ -143,7 +238,11 @@ public class AgentConfigurator {
     // ---- Phase 1: Infrastructure ----
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setupInfra.
+     * 
+     * @param spec spec
+     * @param ctx ctx
+     * @since 0.1.7
      */
     public void setupInfra(TeamAgentSpec spec, TeamRuntimeContext ctx) {
         this.spec = spec;
@@ -159,13 +258,18 @@ public class AgentConfigurator {
         this.toolCards = registerTeamTools(spec, ctx);
     }
 
+    /**
+     * buildMessagerFromSpec.
+     * 
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private Messager buildMessagerFromSpec(TeamAgentSpec spec) {
         try {
-            MessagerTransportConfig config = MessagerTransportConfig.builder()
-                    .teamName(spec.getName())
-                    .nodeId(resolveLeaderMemberName())
-                    .backend(spec.getTransport() != null ? spec.getTransport() : "inprocess")
-                    .build();
+            MessagerTransportConfig config =
+                MessagerTransportConfig.builder().teamName(spec.getName()).nodeId(resolveLeaderMemberName())
+                        .backend(spec.getTransport() != null ? spec.getTransport() : "inprocess").build();
             return MessagerFactory.createMessager(config);
         } catch (Exception e) {
             Loggers.AGENT.debug("Failed to create messager: {}", e.getMessage());
@@ -174,10 +278,14 @@ public class AgentConfigurator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createWorkspaceManager.
+     * 
+     * @param wsConfig wsConfig
+     * @param teamName teamName
+     * @return the result
+     * @since 0.1.7
      */
-    public static TeamWorkspaceManager createWorkspaceManager(
-            TeamWorkspaceConfig wsConfig, String teamName) {
+    public static TeamWorkspaceManager createWorkspaceManager(TeamWorkspaceConfig wsConfig, String teamName) {
         String wsPath = wsConfig.getRootPath() != null && !wsConfig.getRootPath().isBlank()
                 ? wsConfig.getRootPath()
                 : TeamPaths.teamHome(teamName).resolve("team-workspace").toString();
@@ -191,7 +299,10 @@ public class AgentConfigurator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createWorktreeManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public WorktreeManager createWorktreeManager() {
         return new WorktreeManager(null);
@@ -200,7 +311,12 @@ public class AgentConfigurator {
     // ---- Phase 2: Agent setup (delegated to TeamAgent) ----
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setupAgent.
+     * 
+     * @param spec spec
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     public DeepAgent setupAgent(TeamAgentSpec spec, TeamRuntimeContext ctx) {
         return this.deepAgent;
@@ -208,30 +324,30 @@ public class AgentConfigurator {
 
     // ---- Tool registration ----
 
+    /**
+     * registerTeamTools.
+     * 
+     * @param spec spec
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
+     */
     private List<ToolCard> registerTeamTools(TeamAgentSpec spec, TeamRuntimeContext ctx) {
         String teamName = ctx.getTeamId() != null ? ctx.getTeamId() : "default";
-        String currentMemberName = ctx.getMemberName() != null
-                ? ctx.getMemberName() : resolveLeaderMemberName();
+        String currentMemberName = ctx.getMemberName() != null ? ctx.getMemberName() : resolveLeaderMemberName();
 
         boolean isLeader = ctx.getRole() == TeamRole.LEADER;
 
         this.teamBackend = new TeamBackend(teamName, currentMemberName, isLeader, messager);
         this.teamBackend.syncMembers(spec.getMembers());
 
-        String roleValue = ctx.getRole() != null
-                ? ctx.getRole().name().toLowerCase(Locale.ROOT) : "leader";
-        String teammateMode = spec.getTeammateMode() != null
-                ? spec.getTeammateMode() : "build_mode";
-        String teamMode = spec.getTeamMode() != null && !spec.getTeamMode().isBlank()
-                ? spec.getTeamMode() : "default";
-        Set<String> excludeTools = "predefined".equals(teamMode)
-                ? Set.of("spawn_member") : Set.of();
+        String roleValue = ctx.getRole() != null ? ctx.getRole().name().toLowerCase(Locale.ROOT) : "leader";
+        String teammateMode = spec.getTeammateMode() != null ? spec.getTeammateMode() : "build_mode";
+        String teamMode = spec.getTeamMode() != null && !spec.getTeamMode().isBlank() ? spec.getTeamMode() : "default";
+        Set<String> excludeTools = "predefined".equals(teamMode) ? Set.of("spawn_member") : Set.of();
 
-        List<Tool> tools = TeamTools.createTeamTools(
-                roleValue, teamBackend, teammateMode, excludeTools,
-                null, null,
-                modelName -> modelAllocator != null ? modelAllocator.allocate(modelName) : null
-        );
+        List<Tool> tools = TeamTools.createTeamTools(roleValue, teamBackend, teammateMode, excludeTools, null, null,
+                modelName -> modelAllocator != null ? modelAllocator.allocate(modelName) : null);
         qualifyTeamToolIds(tools, teamName, currentMemberName);
 
         try {
@@ -254,20 +370,26 @@ public class AgentConfigurator {
     // ---- Model pool ----
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateModelPool.
+     * 
+     * @param newPool newPool
+     * @since 0.1.7
      */
     public void updateModelPool(List<ModelPoolEntry> newPool) {
         if (ctx == null) {
             return;
         }
-        List<ModelPoolEntry> merged = ModelPoolEntries.inheritPoolIds(
-                spec.getModelPool(), new ArrayList<>(newPool));
+        List<ModelPoolEntry> merged = ModelPoolEntries.inheritPoolIds(spec.getModelPool(), new ArrayList<>(newPool));
         spec.setModelPool(merged);
         this.modelAllocator = ModelAllocators.buildModelAllocator(spec);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * attachModelAllocator.
+     * 
+     * @param allocator allocator
+     * @param leaderAllocation leaderAllocation
+     * @since 0.1.7
      */
     public void attachModelAllocator(ModelAllocator allocator, Allocation leaderAllocation) {
         this.modelAllocator = allocator;
@@ -275,7 +397,10 @@ public class AgentConfigurator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * restoreAllocatorState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
     public void restoreAllocatorState(Map<String, Object> state) {
         if (modelAllocator != null && state != null) {
@@ -286,7 +411,12 @@ public class AgentConfigurator {
     // ---- Spawn helpers ----
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildSpawnPayload.
+     * 
+     * @param ctx ctx
+     * @param initialMessage initialMessage
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> buildSpawnPayload(TeamRuntimeContext ctx, String initialMessage) {
         Map<String, Object> coordination = new LinkedHashMap<>();
@@ -295,49 +425,58 @@ public class AgentConfigurator {
         coordination.put("leader_member_name", resolveLeaderMemberName());
         coordination.put("member_name", ctx.getMemberName());
         coordination.put("role", payloadRole(ctx.getRole()));
-        coordination.put("persona", ctx.getMetadata() != null
-                ? ctx.getMetadata().get("persona") : null);
+        coordination.put("persona", ctx.getMetadata() != null ? ctx.getMetadata().get("persona") : null);
         coordination.put("transport", null);
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("coordination", coordination);
-        payload.put("query", initialMessage != null && !initialMessage.isBlank()
-                ? initialMessage
-                : "Join the team and wait for your first assignment.");
+        payload.put("query",
+                initialMessage != null && !initialMessage.isBlank()
+                        ? initialMessage
+                        : "Join the team and wait for your first assignment.");
         return payload;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildMemberContext.
+     * 
+     * @param memberSpec memberSpec
+     * @return the result
+     * @since 0.1.7
      */
     public TeamRuntimeContext buildMemberContext(TeamMemberSpec memberSpec) {
-        return TeamRuntimeContext.builder()
-                .teamId(ctx.getTeamId())
-                .sessionId(ctx.getSessionId())
+        return TeamRuntimeContext.builder().teamId(ctx.getTeamId()).sessionId(ctx.getSessionId())
                 .memberName(memberSpec.getName())
                 .role(memberSpec.getRole() == TeamRole.LEADER ? TeamRole.LEADER : TeamRole.MEMBER)
-                .metadata(new LinkedHashMap<>())
-                .build();
+                .metadata(new LinkedHashMap<>()).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildSpawnConfig.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     public SpawnAgentConfig buildSpawnConfig(TeamRuntimeContext ctx) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("spec", serializeSpec(spec));
         payload.put("context", serializeContext(ctx));
-        return SpawnAgentConfig.builder()
-                .agentKind(SpawnAgentKind.TEAM_AGENT)
+        return SpawnAgentConfig.builder().agentKind(SpawnAgentKind.TEAM_AGENT)
                 .runnerConfig(com.openjiuwen.core.runner.RunnerConfig.getRunnerConfig())
-                .loggingConfig(Map.of("member_name", ctx.getMemberName()))
-                .sessionId(null)
-                .payload(payload)
-                .build();
+                .loggingConfig(Map.of("member_name", ctx.getMemberName())).sessionId(null).payload(payload).build();
     }
 
     // ---- Private helpers ----
 
+    /**
+     * qualifyTeamToolIds.
+     * 
+     * @param tools tools
+     * @param teamName teamName
+     * @param memberName memberName
+     * @since 0.1.7
+     */
     private void qualifyTeamToolIds(List<Tool> tools, String teamName, String memberName) {
         String teamKey = teamName != null ? teamName : "default";
         String memberKey = memberName != null && !memberName.isBlank() ? memberName : "unknown";
@@ -353,16 +492,27 @@ public class AgentConfigurator {
         }
     }
 
+    /**
+     * resolveLeaderMemberName.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveLeaderMemberName() {
-        return spec.getMembers().stream()
-                .filter(m -> m.getRole() == TeamRole.LEADER)
-                .map(TeamMemberSpec::getName)
+        return spec.getMembers().stream().filter(m -> m.getRole() == TeamRole.LEADER).map(TeamMemberSpec::getName)
                 .findFirst()
                 .orElseGet(() -> spec.getMembers().isEmpty()
                         ? (ctx != null ? ctx.getTeamId() : "leader")
                         : spec.getMembers().get(0).getName());
     }
 
+    /**
+     * payloadRole.
+     * 
+     * @param role role
+     * @return the result
+     * @since 0.1.7
+     */
     private static String payloadRole(TeamRole role) {
         if (role == TeamRole.LEADER) {
             return "leader";
@@ -377,27 +527,47 @@ public class AgentConfigurator {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * serializeSpec.
+     * 
+     * @param spec spec
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> serializeSpec(TeamAgentSpec spec) {
         try {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             String json = mapper.writeValueAsString(spec);
             return mapper.readValue(json, Map.class);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             return new LinkedHashMap<>();
         }
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * serializeContext.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> serializeContext(TeamRuntimeContext ctx) {
         try {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             String json = mapper.writeValueAsString(ctx);
             return mapper.readValue(json, Map.class);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             return new LinkedHashMap<>();
         }
     }
 
+    /**
+     * nullValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static <T> T nullValue() {
         return null;
     }

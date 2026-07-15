@@ -8,18 +8,24 @@ package com.openjiuwen.core.session.interaction;
  * Exception thrown when an agent execution is interrupted for user interaction.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.interaction.base.AgentInterrupt}.
+ * 
+ * @since 0.1.7
  */
 public class AgentInterrupt extends RuntimeException {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentInterrupt.
+     * 
+     * @since 0.1.7
      */
     public AgentInterrupt() {
         super();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentInterrupt.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     public AgentInterrupt(String message) {
         super(message);

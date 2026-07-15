@@ -4,9 +4,13 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.retrieval.common.Document;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -16,9 +20,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class HTMLFileParserTest {
     @TempDir
@@ -57,8 +58,7 @@ class HTMLFileParserTest {
     @Test
     void findMainContentShouldTrySelectorsInOrderThenFallback() {
         String html = minimalHtml(
-                "<article>" + longText(50) + "</article>"
-                        + "<div class=\"content\"><p>" + longText(120) + "</p></div>",
+                "<article>" + longText(50) + "</article>" + "<div class=\"content\"><p>" + longText(120) + "</p></div>",
                 "", "DocTitle");
 
         String node = HTMLFileParser.findMainContent(html);
@@ -69,13 +69,12 @@ class HTMLFileParserTest {
 
     @Test
     void parseHtmlShouldRaiseWhenNoMainContentOrTextTooShort() {
-        assertThatThrownBy(() -> HTMLFileParser.parseHtml("", "", "empty.html"))
-                .isInstanceOf(BaseError.class)
-                .satisfies(error -> assertThat(((BaseError) error).getStatus()).isEqualTo(StatusCode.RETRIEVAL_INDEXING_FETCH_ERROR));
+        assertThatThrownBy(() -> HTMLFileParser.parseHtml("", "", "empty.html")).isInstanceOf(BaseError.class)
+                .satisfies(error -> assertThat(((BaseError) error).getStatus())
+                        .isEqualTo(StatusCode.RETRIEVAL_INDEXING_FETCH_ERROR));
 
         String html = minimalHtml("<article><p>short</p></article>", "", "DocTitle");
-        assertThatThrownBy(() -> HTMLFileParser.parseHtml(html, "", "short.html"))
-                .isInstanceOf(BaseError.class)
+        assertThatThrownBy(() -> HTMLFileParser.parseHtml(html, "", "short.html")).isInstanceOf(BaseError.class)
                 .hasMessageContaining("too short or empty");
     }
 
@@ -98,11 +97,12 @@ class HTMLFileParserTest {
         Files.writeString(empty, "", StandardCharsets.UTF_8);
 
         assertThatThrownBy(() -> new HTMLFileParser().parse(empty.toString(), "", null, Map.of()))
-                .isInstanceOf(BaseError.class)
-                .satisfies(error -> assertThat(((BaseError) error).getStatus()).isEqualTo(StatusCode.RETRIEVAL_INDEXING_FETCH_ERROR));
-        assertThatThrownBy(() -> new HTMLFileParser().parse(tempDir.resolve("missing.html").toString(), "", null, Map.of()))
-                .isInstanceOf(BaseError.class)
-                .satisfies(error -> assertThat(((BaseError) error).getStatus()).isEqualTo(StatusCode.RETRIEVAL_INDEXING_FETCH_ERROR));
+                .isInstanceOf(BaseError.class).satisfies(error -> assertThat(((BaseError) error).getStatus())
+                        .isEqualTo(StatusCode.RETRIEVAL_INDEXING_FETCH_ERROR));
+        assertThatThrownBy(
+                () -> new HTMLFileParser().parse(tempDir.resolve("missing.html").toString(), "", null, Map.of()))
+                .isInstanceOf(BaseError.class).satisfies(error -> assertThat(((BaseError) error).getStatus())
+                        .isEqualTo(StatusCode.RETRIEVAL_INDEXING_FETCH_ERROR));
     }
 
     @Test
@@ -122,11 +122,8 @@ class HTMLFileParserTest {
     }
 
     private static String minimalHtml(String inner, String headExtra, String title) {
-        return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>"
-                + headExtra
-                + "<title>" + title + "</title></head><body>"
-                + inner
-                + "</body></html>";
+        return "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>" + headExtra + "<title>" + title
+                + "</title></head><body>" + inner + "</body></html>";
     }
 
     private static String longText(int minChars) {

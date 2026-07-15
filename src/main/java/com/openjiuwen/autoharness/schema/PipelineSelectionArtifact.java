@@ -12,14 +12,14 @@ import lombok.NoArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Public class PipelineSelectionArtifact used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class PipelineSelectionArtifact used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class PipelineSelectionArtifact {
     @Builder.Default
@@ -27,12 +27,22 @@ public class PipelineSelectionArtifact {
     @Builder.Default
     private String reason = "";
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> alternatives = new ArrayList<>();
     @Builder.Default
     private double confidence = 0.0;
     @Builder.Default
     private String riskLevel = "";
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> requiredInputs = new ArrayList<>();
     @Builder.Default
     private String fallbackPipeline = "";

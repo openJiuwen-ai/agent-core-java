@@ -10,9 +10,10 @@ import java.util.Map;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.trajectory.types.Trajectory.
+ * 
+ * @since 0.1.7
  */
 public class Trajectory {
-
     private String caseId;
     private String executionId;
     private String traceId;
@@ -21,33 +22,53 @@ public class Trajectory {
     private String source = "offline";
     private String sessionId;
     private Map<String, Integer> cost;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> meta = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Trajectory.
+     * 
+     * @since 0.1.7
      */
     public Trajectory() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Trajectory.
+     * 
+     * @param caseId caseId
+     * @param executionId executionId
+     * @param traceId traceId
+     * @param steps steps
+     * @param edges edges
+     * @since 0.1.7
      */
-    public Trajectory(String caseId, String executionId, String traceId, List<TrajectoryStep> steps, List<int[]> edges) {
+    public Trajectory(String caseId, String executionId, String traceId, List<TrajectoryStep> steps,
+            List<int[]> edges) {
         this(caseId, executionId, traceId, steps, edges, "offline", null, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Trajectory.
+     * 
+     * @param caseId caseId
+     * @param executionId executionId
+     * @param traceId traceId
+     * @param steps steps
+     * @param edges edges
+     * @param source source
+     * @param sessionId sessionId
+     * @param cost cost
+     * @param meta meta
+     * @since 0.1.7
      */
-    public Trajectory(String caseId,
-                      String executionId,
-                      String traceId,
-                      List<TrajectoryStep> steps,
-                      List<int[]> edges,
-                      String source,
-                      String sessionId,
-                      Map<String, Integer> cost,
-                      Map<String, Object> meta) {
+    public Trajectory(String caseId, String executionId, String traceId, List<TrajectoryStep> steps, List<int[]> edges,
+            String source, String sessionId, Map<String, Integer> cost, Map<String, Object> meta) {
         this.caseId = caseId;
         this.executionId = executionId;
         this.traceId = traceId;
@@ -60,140 +81,199 @@ public class Trajectory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCaseId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCaseId() {
         return caseId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCaseId.
+     * 
+     * @param caseId caseId
+     * @since 0.1.7
      */
     public void setCaseId(String caseId) {
         this.caseId = caseId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExecutionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getExecutionId() {
         return executionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setExecutionId.
+     * 
+     * @param executionId executionId
+     * @since 0.1.7
      */
     public void setExecutionId(String executionId) {
         this.executionId = executionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTraceId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTraceId() {
         return traceId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTraceId.
+     * 
+     * @param traceId traceId
+     * @since 0.1.7
      */
     public void setTraceId(String traceId) {
         this.traceId = traceId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSteps.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<TrajectoryStep> getSteps() {
         return steps;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSteps.
+     * 
+     * @param steps steps
+     * @since 0.1.7
      */
     public void setSteps(List<TrajectoryStep> steps) {
         this.steps = steps;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEdges.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<int[]> getEdges() {
         return edges;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEdges.
+     * 
+     * @param edges edges
+     * @since 0.1.7
      */
     public void setEdges(List<int[]> edges) {
         this.edges = edges;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSource.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSource() {
         return source;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSource.
+     * 
+     * @param source source
+     * @since 0.1.7
      */
     public void setSource(String source) {
         this.source = source != null ? source : "offline";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSessionId() {
         return sessionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSessionId.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCost.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Integer> getCost() {
         return cost;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCost.
+     * 
+     * @param cost cost
+     * @since 0.1.7
      */
     public void setCost(Map<String, Integer> cost) {
         this.cost = cost != null ? new LinkedHashMap<>(cost) : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMeta.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMeta() {
         return meta;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMeta.
+     * 
+     * @param meta meta
+     * @since 0.1.7
      */
     public void setMeta(Map<String, Object> meta) {
         this.meta = meta != null ? new LinkedHashMap<>(meta) : new LinkedHashMap<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static final class Builder {
         private String caseId;
@@ -206,11 +286,20 @@ public class Trajectory {
         private Map<String, Integer> cost;
         private Map<String, Object> meta;
 
+        /**
+         * Builder.
+         * 
+         * @since 0.1.7
+         */
         private Builder() {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * caseId.
+         * 
+         * @param caseId caseId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder caseId(String caseId) {
             this.caseId = caseId;
@@ -218,7 +307,11 @@ public class Trajectory {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * executionId.
+         * 
+         * @param executionId executionId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder executionId(String executionId) {
             this.executionId = executionId;
@@ -226,7 +319,11 @@ public class Trajectory {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * traceId.
+         * 
+         * @param traceId traceId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder traceId(String traceId) {
             this.traceId = traceId;
@@ -234,7 +331,11 @@ public class Trajectory {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * steps.
+         * 
+         * @param steps steps
+         * @return the result
+         * @since 0.1.7
          */
         public Builder steps(List<TrajectoryStep> steps) {
             this.steps = steps;
@@ -242,7 +343,11 @@ public class Trajectory {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * edges.
+         * 
+         * @param edges edges
+         * @return the result
+         * @since 0.1.7
          */
         public Builder edges(List<int[]> edges) {
             this.edges = edges;
@@ -250,7 +355,11 @@ public class Trajectory {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * source.
+         * 
+         * @param source source
+         * @return the result
+         * @since 0.1.7
          */
         public Builder source(String source) {
             this.source = source;
@@ -258,7 +367,11 @@ public class Trajectory {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * sessionId.
+         * 
+         * @param sessionId sessionId
+         * @return the result
+         * @since 0.1.7
          */
         public Builder sessionId(String sessionId) {
             this.sessionId = sessionId;
@@ -266,7 +379,11 @@ public class Trajectory {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * cost.
+         * 
+         * @param cost cost
+         * @return the result
+         * @since 0.1.7
          */
         public Builder cost(Map<String, Integer> cost) {
             this.cost = cost;
@@ -274,7 +391,11 @@ public class Trajectory {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * meta.
+         * 
+         * @param meta meta
+         * @return the result
+         * @since 0.1.7
          */
         public Builder meta(Map<String, Object> meta) {
             this.meta = meta;
@@ -282,7 +403,10 @@ public class Trajectory {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public Trajectory build() {
             return new Trajectory(caseId, executionId, traceId, steps, edges, source, sessionId, cost, meta);

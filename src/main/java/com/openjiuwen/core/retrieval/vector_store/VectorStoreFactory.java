@@ -5,34 +5,50 @@
 package com.openjiuwen.core.retrieval.vector_store;
 
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.retrieval.common.RetrievalValidation;
-import com.openjiuwen.core.retrieval.common.StoreType;
-import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
+import com.openjiuwen.core.retrieval.common.RetrievalValidation;
+import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
+
 import io.milvus.v2.client.MilvusClientV2;
 
-import javax.sql.DataSource;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import javax.sql.DataSource;
+
 /**
  * Factory for creating vector stores from configuration.
+ * 
+ * @since 0.1.7
  */
 public final class VectorStoreFactory {
-
+    /**
+     * VectorStoreFactory.
+     * 
+     * @since 0.1.7
+     */
     private VectorStoreFactory() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createVectorStore.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public static VectorStore createVectorStore(VectorStoreConfig config) {
         return createVectorStore(config, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createVectorStore.
+     * 
+     * @param config config
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public static VectorStore createVectorStore(VectorStoreConfig config, Map<String, Object> options) {
         if (config == null) {
@@ -48,26 +64,41 @@ public final class VectorStoreFactory {
         };
     }
 
-    private static VectorStore createMilvusStore(VectorStoreConfig config,
-                                                 String indexType,
-                                                 Map<String, Object> options) {
+    /**
+     * createMilvusStore.
+     * 
+     * @param config config
+     * @param indexType indexType
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    private static VectorStore createMilvusStore(VectorStoreConfig config, String indexType,
+            Map<String, Object> options) {
         Object providedClient = firstOption(options, List.of("milvus_client", "milvusClient", "client"));
         if (providedClient instanceof MilvusClientV2 client) {
             return new MilvusVectorStore(client, config, indexType);
         }
         String uri = stringOption(options, List.of("milvus_uri", "milvusUri", "uri"));
         if (uri == null || uri.isBlank()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
                     "milvus_uri or milvusClient is required for MilvusVectorStore");
         }
         String token = stringOption(options, List.of("milvus_token", "milvusToken", "token"));
         return new MilvusVectorStore(config, uri, token, indexType);
     }
 
-    private static VectorStore createPgVectorStore(VectorStoreConfig config,
-                                                   String indexType,
-                                                   Map<String, Object> options) {
+    /**
+     * createPgVectorStore.
+     * 
+     * @param config config
+     * @param indexType indexType
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    private static VectorStore createPgVectorStore(VectorStoreConfig config, String indexType,
+            Map<String, Object> options) {
         Object providedDataSource = firstOption(options, List.of("dataSource", "data_source"));
         if (providedDataSource instanceof DataSource dataSource) {
             return new PGVectorStore(config, dataSource, indexType, options);
@@ -75,8 +106,7 @@ public final class VectorStoreFactory {
 
         String jdbcUrl = stringOption(options, List.of("jdbcUrl", "jdbc_url", "pgUri", "pg_uri", "url"));
         if (jdbcUrl == null || jdbcUrl.isBlank()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
                     "jdbcUrl or dataSource is required for PGVectorStore");
         }
         String username = stringOption(options, List.of("username", "user"));
@@ -84,6 +114,14 @@ public final class VectorStoreFactory {
         return new PGVectorStore(config, jdbcUrl, username, password, indexType, options);
     }
 
+    /**
+     * firstOption.
+     * 
+     * @param options options
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object firstOption(Map<String, Object> options, List<String> keys) {
         if (options == null) {
             return null;
@@ -96,11 +134,26 @@ public final class VectorStoreFactory {
         return null;
     }
 
+    /**
+     * stringOption.
+     * 
+     * @param options options
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringOption(Map<String, Object> options, List<String> keys) {
         Object value = firstOption(options, keys);
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * resolveRetrievalIndexType.
+     * 
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     private static String resolveRetrievalIndexType(Map<String, Object> options) {
         String requested = stringOption(options, List.of("indexType", "index_type"));
         if (requested == null || requested.isBlank()) {

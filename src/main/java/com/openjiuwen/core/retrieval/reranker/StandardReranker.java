@@ -22,45 +22,102 @@ import java.util.Map;
 
 /**
  * Remote reranker implementation aligned with Python's StandardReranker behavior.
+ * 
+ * @since 0.1.7
  */
 public class StandardReranker implements Reranker {
-
+    /**
+     * ENDPOINT.
+     * 
+     * @since 0.1.7
+     */
     protected static final String ENDPOINT = "/rerank";
-    protected static final String QUERY_TEMPLATE = "<Instruct>: %s\n<Query>: %s\n";
-    protected static final String DEFAULT_INSTRUCT =
-            "Given a search query, retrieve relevant candidates that answer the query.";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * QUERY_TEMPLATE.
+     * 
+     * @since 0.1.7
+     */
+    protected static final String QUERY_TEMPLATE = "<Instruct>: %s\n<Query>: %s\n";
+
+    /**
+     * DEFAULT_INSTRUCT.
+     * 
+     * @since 0.1.7
+     */
+    protected static final String DEFAULT_INSTRUCT =
+        "Given a search query, retrieve relevant candidates that answer the query.";
+
+    /**
+     * config.
+     * 
+     * @since 0.1.7
      */
     protected final RerankerConfig config;
-    protected final String modelName;
-    protected final String apiKey;
-    protected final String apiUrl;
-    protected final int maxRetries;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * modelName.
+     * 
+     * @since 0.1.7
+     */
+    protected final String modelName;
+
+    /**
+     * apiKey.
+     * 
+     * @since 0.1.7
+     */
+    protected final String apiKey;
+
+    /**
+     * apiUrl.
+     * 
+     * @since 0.1.7
+     */
+    protected final String apiUrl;
+
+    /**
+     * maxRetries.
+     * 
+     * @since 0.1.7
+     */
+    protected final int maxRetries;
+
+    /**
+     * headers.
+     * 
+     * @since 0.1.7
      */
     protected final Map<String, String> headers;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * httpClient.
+     * 
+     * @since 0.1.7
      */
     protected final HttpClient httpClient;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * StandardReranker.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public StandardReranker(RerankerConfig config) {
         this(config, 3, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * StandardReranker.
+     * 
+     * @param config config
+     * @param maxRetries maxRetries
+     * @param extraHeaders extraHeaders
+     * @param httpClient httpClient
+     * @since 0.1.7
      */
-    public StandardReranker(RerankerConfig config,
-                            int maxRetries,
-                            Map<String, String> extraHeaders,
-                            HttpClient httpClient) {
+    public StandardReranker(RerankerConfig config, int maxRetries, Map<String, String> extraHeaders,
+            HttpClient httpClient) {
         if (config == null) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RERANKER_INPUT_INVALID, "RerankerConfig is required");
         }
@@ -80,22 +137,32 @@ public class StandardReranker implements Reranker {
         this.httpClient = httpClient == null ? HttpClient.newHttpClient() : httpClient;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * rerankScores.
+     * 
+     * @param query query
+     * @param documents documents
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Double> rerankScores(String query, List<?> documents) {
         return rerankScores(query, documents, Boolean.TRUE, Map.of());
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * rerankScores.
+     * 
+     * @param query query
+     * @param documents documents
+     * @param instruct instruct
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Double> rerankScores(String query,
-                                            List<?> documents,
-                                            Object instruct,
-                                            Map<String, Object> options) {
+    @Override
+    public Map<String, Double> rerankScores(String query, List<?> documents, Object instruct,
+            Map<String, Object> options) {
         CandidateBatch batch = prepareCandidates(documents);
         List<Double> orderedScores = rerankOrderedScores(query, batch.texts(), instruct, options);
         Map<String, Double> result = new LinkedHashMap<>();
@@ -105,15 +172,22 @@ public class StandardReranker implements Reranker {
         return result;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * rerank.
+     * 
+     * @param query query
+     * @param candidates candidates
+     * @param topK topK
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<RetrievalResult> rerank(String query, List<RetrievalResult> candidates, int topK) {
         if (candidates == null || candidates.isEmpty()) {
             return List.of();
         }
-        List<Double> scores = rerankOrderedScores(query, candidates.stream().map(RetrievalResult::getText).toList(), Boolean.TRUE, Map.of());
+        List<Double> scores = rerankOrderedScores(query, candidates.stream().map(RetrievalResult::getText).toList(),
+                Boolean.TRUE, Map.of());
         List<RetrievalResult> reranked = new ArrayList<>(candidates);
         for (int i = 0; i < reranked.size(); i++) {
             reranked.get(i).setScore(scores.get(i));
@@ -123,31 +197,36 @@ public class StandardReranker implements Reranker {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * rerankOrderedScores.
+     * 
+     * @param query query
+     * @param documents documents
+     * @param instruct instruct
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    protected List<Double> rerankOrderedScores(String query,
-                                               List<String> documents,
-                                               Object instruct,
-                                               Map<String, Object> options) {
-        JsonNode response = ApiRequestUtils.postJsonWithRetry(
-                httpClient,
-                apiUrl + endpoint(),
-                buildRequestPayload(query, documents, instruct, options),
-                headers,
-                Duration.ofMillis(Math.round(config.getTimeout() * 1000)),
-                maxRetries,
-                StatusCode.RETRIEVAL_RERANKER_REQUEST_CALL_FAILED,
-                "Reranker");
+    protected List<Double> rerankOrderedScores(String query, List<String> documents, Object instruct,
+            Map<String, Object> options) {
+        JsonNode response = ApiRequestUtils.postJsonWithRetry(httpClient, apiUrl + endpoint(),
+                buildRequestPayload(query, documents, instruct, options), headers,
+                Duration.ofMillis(Math.round(config.getTimeout() * 1000)), maxRetries,
+                StatusCode.RETRIEVAL_RERANKER_REQUEST_CALL_FAILED, "Reranker");
         return parseOrderedScores(response, documents.size());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildRequestPayload.
+     * 
+     * @param query query
+     * @param documents documents
+     * @param instruct instruct
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    protected Map<String, Object> buildRequestPayload(String query,
-                                                      List<String> documents,
-                                                      Object instruct,
-                                                      Map<String, Object> options) {
+    protected Map<String, Object> buildRequestPayload(String query, List<String> documents, Object instruct,
+            Map<String, Object> options) {
         String finalQuery = buildQuery(query, instruct);
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", modelName);
@@ -163,31 +242,42 @@ public class StandardReranker implements Reranker {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * endpoint.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected String endpoint() {
         return ENDPOINT;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected String getModelName() {
         return modelName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseOrderedScores.
+     * 
+     * @param response response
+     * @param documentCount documentCount
+     * @return the result
+     * @since 0.1.7
      */
     protected List<Double> parseOrderedScores(JsonNode response, int documentCount) {
         List<Double> scores = new ArrayList<>();
         for (int i = 0; i < documentCount; i++) {
             scores.add(0.0);
         }
-        JsonNode results = response.path("output").isObject() ? response.path("output").path("results") : response.path("results");
+        JsonNode results =
+            response.path("output").isObject() ? response.path("output").path("results") : response.path("results");
         if (!results.isArray()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RERANKER_REQUEST_CALL_FAILED,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RERANKER_REQUEST_CALL_FAILED,
                     "Reranker response missing results field");
         }
         for (JsonNode result : results) {
@@ -200,7 +290,12 @@ public class StandardReranker implements Reranker {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildQuery.
+     * 
+     * @param query query
+     * @param instruct instruct
+     * @return the result
+     * @since 0.1.7
      */
     protected static String buildQuery(String query, Object instruct) {
         if (Boolean.TRUE.equals(instruct)) {
@@ -213,12 +308,15 @@ public class StandardReranker implements Reranker {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * prepareCandidates.
+     * 
+     * @param documents documents
+     * @return the result
+     * @since 0.1.7
      */
     protected static CandidateBatch prepareCandidates(List<?> documents) {
         if (documents == null || documents.isEmpty()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RERANKER_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RERANKER_INPUT_INVALID,
                     "input to reranker must be a non-empty list");
         }
         List<String> ids = new ArrayList<>();
@@ -234,8 +332,7 @@ public class StandardReranker implements Reranker {
                 ids.add(candidateId(result));
                 texts.add(result.getText());
             } else {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_RERANKER_INPUT_INVALID,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RERANKER_INPUT_INVALID,
                         "input to reranker must be either list[str | Document | RetrievalResult]");
             }
         }
@@ -243,7 +340,11 @@ public class StandardReranker implements Reranker {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * candidateId.
+     * 
+     * @param result result
+     * @return the result
+     * @since 0.1.7
      */
     protected static String candidateId(RetrievalResult result) {
         if (result.getChunkId() != null && !result.getChunkId().isBlank()) {
@@ -256,7 +357,12 @@ public class StandardReranker implements Reranker {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * normalizeBaseUrl.
+     * 
+     * @param baseUrl baseUrl
+     * @param endpoint endpoint
+     * @return the result
+     * @since 0.1.7
      */
     protected static String normalizeBaseUrl(String baseUrl, String endpoint) {
         String normalized = baseUrl == null ? "" : baseUrl.replaceAll("/+$", "");
@@ -266,6 +372,11 @@ public class StandardReranker implements Reranker {
         return normalized;
     }
 
+    /**
+     * CandidateBatch.
+     * 
+     * @since 0.1.7
+     */
     protected record CandidateBatch(List<String> ids, List<String> texts) {
     }
 }

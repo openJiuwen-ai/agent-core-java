@@ -12,8 +12,8 @@ import java.util.Map;
  * Input model for the Memory Retrieval component.
  * <p>
  * Mirrors Python's {@code MemoryRetrievalInput}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 @Data
 public class MemoryRetrievalInput {
@@ -22,9 +22,10 @@ public class MemoryRetrievalInput {
 
     /**
      * Convert from a map representation to MemoryRetrievalInput.
-     *
+     * 
      * @param inputs the input map
      * @return the MemoryRetrievalInput instance
+     * @since 0.1.7
      */
     public static MemoryRetrievalInput fromMap(Map<String, Object> inputs) {
         MemoryRetrievalInput input = new MemoryRetrievalInput();

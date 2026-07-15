@@ -11,33 +11,41 @@ import java.util.Map;
 
 /**
  * Convenience facade for creating workflow sessions from the workflow package.
- *
- * <p>Mirrors Python's top-level export of {@code Session} and {@code create_workflow_session}
- * from {@code openjiuwen.core.workflow}.</p>
+ * <p>
+ * Mirrors Python's top-level export of {@code Session} and {@code create_workflow_session}
+ * from {@code openjiuwen.core.workflow}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public final class WorkflowSessions {
-
+    /**
+     * WorkflowSessions.
+     * 
+     * @since 0.1.7
+     */
     private WorkflowSessions() {
     }
 
     /**
      * Create a new workflow session.
-     *
-     * @param parent    optional parent session
+     * 
+     * @param parent optional parent session
      * @param sessionId optional session ID (auto-generated if null)
-     * @param envs      optional environment variables
+     * @param envs optional environment variables
      * @return a new WorkflowSessionApi instance
+     * @since 0.1.7
      */
-    public static WorkflowSessionApi createWorkflowSession(BaseSession parent,
-                                                            String sessionId,
-                                                            Map<String, Object> envs) {
+    public static WorkflowSessionApi createWorkflowSession(BaseSession parent, String sessionId,
+            Map<String, Object> envs) {
         return WorkflowSessionApi.create(parent, sessionId, envs);
     }
 
     /**
      * Create a new workflow session with defaults.
-     *
+     * 
      * @return a new WorkflowSessionApi instance
+     * @since 0.1.7
      */
     public static WorkflowSessionApi createWorkflowSession() {
         return WorkflowSessionApi.create(null, null, null);
@@ -45,9 +53,10 @@ public final class WorkflowSessions {
 
     /**
      * Create a new workflow session with a specific session ID.
-     *
+     * 
      * @param sessionId the session ID
      * @return a new WorkflowSessionApi instance
+     * @since 0.1.7
      */
     public static WorkflowSessionApi createWorkflowSession(String sessionId) {
         return WorkflowSessionApi.create(null, sessionId, null);
@@ -55,9 +64,10 @@ public final class WorkflowSessions {
 
     /**
      * Create a new workflow session with a parent session.
-     *
+     * 
      * @param parent the parent session
      * @return a new WorkflowSessionApi instance
+     * @since 0.1.7
      */
     public static WorkflowSessionApi createWorkflowSession(BaseSession parent) {
         return WorkflowSessionApi.create(parent, null, null);

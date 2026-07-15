@@ -10,21 +10,28 @@ package com.openjiuwen.core.controller.schema;
  * Generated when task execution fails, containing error information.
  * <p>
  * Mirrors Python's {@code TaskFailedEvent}.
+ * 
+ * @since 0.1.7
  */
 public class TaskFailedEvent extends Event {
-
     private String errorMessage;
     private Task task;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskFailedEvent.
+     * 
+     * @since 0.1.7
      */
     public TaskFailedEvent() {
         super(EventType.TASK_FAILED);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskFailedEvent.
+     * 
+     * @param errorMessage errorMessage
+     * @param task task
+     * @since 0.1.7
      */
     public TaskFailedEvent(String errorMessage, Task task) {
         super(EventType.TASK_FAILED);
@@ -33,28 +40,40 @@ public class TaskFailedEvent extends Event {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getErrorMessage.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getErrorMessage() {
         return errorMessage;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setErrorMessage.
+     * 
+     * @param errorMessage errorMessage
+     * @since 0.1.7
      */
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTask.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Task getTask() {
         return task;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTask.
+     * 
+     * @param task task
+     * @since 0.1.7
      */
     public void setTask(Task task) {
         this.task = task;

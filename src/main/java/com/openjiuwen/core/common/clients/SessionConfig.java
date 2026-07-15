@@ -10,6 +10,8 @@ import java.util.TreeMap;
 
 /**
  * HTTP session configuration.
+ * 
+ * @since 0.1.7
  */
 public class SessionConfig {
     private final ConnectorPoolConfig connectorPoolConfig;
@@ -24,25 +26,32 @@ public class SessionConfig {
     private final Map<String, Object> extendArgs;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SessionConfig.
+     * 
+     * @since 0.1.7
      */
     public SessionConfig() {
         this(new ConnectorPoolConfig(), Map.of(), null, null, null, Map.of(), null, false, true, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SessionConfig.
+     * 
+     * @param connectorPoolConfig connectorPoolConfig
+     * @param headers headers
+     * @param proxy proxy
+     * @param timeout timeout
+     * @param connectTimeout connectTimeout
+     * @param timeoutArgs timeoutArgs
+     * @param auth auth
+     * @param isRaiseForStatusEnabled isRaiseForStatusEnabled
+     * @param isTrustEnvEnabled isTrustEnvEnabled
+     * @param extendArgs extendArgs
+     * @since 0.1.7
      */
-    public SessionConfig(ConnectorPoolConfig connectorPoolConfig,
-                         Map<String, String> headers,
-                         String proxy,
-                         Double timeout,
-                         Double connectTimeout,
-                         Map<String, Object> timeoutArgs,
-                         Object auth,
-                         boolean isRaiseForStatusEnabled,
-                         boolean isTrustEnvEnabled,
-                         Map<String, Object> extendArgs) {
+    public SessionConfig(ConnectorPoolConfig connectorPoolConfig, Map<String, String> headers, String proxy,
+            Double timeout, Double connectTimeout, Map<String, Object> timeoutArgs, Object auth,
+            boolean isRaiseForStatusEnabled, boolean isTrustEnvEnabled, Map<String, Object> extendArgs) {
         this.connectorPoolConfig = connectorPoolConfig != null ? connectorPoolConfig : new ConnectorPoolConfig();
         this.headers = headers != null ? new LinkedHashMap<>(headers) : new LinkedHashMap<>();
         this.proxy = proxy;
@@ -56,77 +65,110 @@ public class SessionConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConnectorPoolConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ConnectorPoolConfig getConnectorPoolConfig() {
         return connectorPoolConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getHeaders.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, String> getHeaders() {
         return new LinkedHashMap<>(headers);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getProxy.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getProxy() {
         return proxy;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTimeout.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Double getTimeout() {
         return timeout;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConnectTimeout.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Double getConnectTimeout() {
         return connectTimeout;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTimeoutArgs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getTimeoutArgs() {
         return new LinkedHashMap<>(timeoutArgs);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAuth.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getAuth() {
         return auth;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isRaiseForStatus.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isRaiseForStatus() {
         return isRaiseForStatusEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isTrustEnv.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isTrustEnv() {
         return isTrustEnvEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtendArgs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getExtendArgs() {
         return new LinkedHashMap<>(extendArgs);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateKey.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String generateKey() {
         Map<String, Object> normalized = new TreeMap<>();
@@ -144,27 +186,34 @@ public class SessionConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * from.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static SessionConfig from(Object value) {
         if (value instanceof SessionConfig config) {
             return config;
         }
         Map<String, Object> map = ClientConfigSupport.asObjectMap(value);
-        return new SessionConfig(
-                resolveConnectorPoolConfig(map.get("connector_pool_config")),
-                ClientConfigSupport.asStringMap(map.get("headers")),
-                ClientConfigSupport.asString(map.get("proxy")),
+        return new SessionConfig(resolveConnectorPoolConfig(map.get("connector_pool_config")),
+                ClientConfigSupport.asStringMap(map.get("headers")), ClientConfigSupport.asString(map.get("proxy")),
                 ClientConfigSupport.asNullableDouble(map.get("timeout")),
                 ClientConfigSupport.asNullableDouble(map.get("connect_timeout")),
-                ClientConfigSupport.asObjectMap(map.get("timeout_args")),
-                map.get("auth"),
+                ClientConfigSupport.asObjectMap(map.get("timeout_args")), map.get("auth"),
                 ClientConfigSupport.asBoolean(map.get("raise_for_status"), false),
                 ClientConfigSupport.asBoolean(map.get("trust_env"), true),
-                ClientConfigSupport.asObjectMap(map.get("extend_args"))
-        );
+                ClientConfigSupport.asObjectMap(map.get("extend_args")));
     }
 
+    /**
+     * resolveConnectorPoolConfig.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static ConnectorPoolConfig resolveConnectorPoolConfig(Object value) {
         if (value instanceof HttpXConnectorPoolConfig httpx) {
             return httpx;
@@ -173,8 +222,8 @@ public class SessionConfig {
             return config;
         }
         Map<String, Object> map = ClientConfigSupport.asObjectMap(value);
-        if (map.containsKey("proxy") || map.containsKey("max_keepalive_connections")
-                || map.containsKey("local_address") || map.containsKey("need_async")) {
+        if (map.containsKey("proxy") || map.containsKey("max_keepalive_connections") || map.containsKey("local_address")
+                || map.containsKey("need_async")) {
             return HttpXConnectorPoolConfig.from(map);
         }
         return ConnectorPoolConfig.from(map);

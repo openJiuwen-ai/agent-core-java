@@ -19,9 +19,10 @@ import java.util.Map;
  * Node session representing a workflow node's scoped session.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.internal.workflow.NodeSession}.
+ * 
+ * @since 0.1.7
  */
 public class NodeSession extends BaseSession {
-
     private final String nodeId;
     private final String nodeType;
     private final String executableId;
@@ -34,7 +35,13 @@ public class NodeSession extends BaseSession {
     private final boolean skipTrace;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * NodeSession.
+     * 
+     * @param session session
+     * @param nodeId nodeId
+     * @param nodeType nodeType
+     * @param skipTrace skipTrace
+     * @since 0.1.7
      */
     public NodeSession(BaseSession session, String nodeId, String nodeType, boolean skipTrace) {
         this.nodeId = nodeId;
@@ -50,8 +57,8 @@ public class NodeSession extends BaseSession {
 
         // Create node-scoped state from parent
         if (session.state() instanceof com.openjiuwen.core.session.state.WorkflowStateCollection) {
-            this.stateField = ((com.openjiuwen.core.session.state.WorkflowStateCollection) session.state())
-                    .createNodeState(eId, pId);
+            this.stateField =
+                ((com.openjiuwen.core.session.state.WorkflowStateCollection) session.state()).createNodeState(eId, pId);
         } else {
             this.stateField = session.state();
         }
@@ -72,127 +79,181 @@ public class NodeSession extends BaseSession {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * NodeSession.
+     * 
+     * @param session session
+     * @param nodeId nodeId
+     * @param nodeType nodeType
+     * @since 0.1.7
      */
     public NodeSession(BaseSession session, String nodeId, String nodeType) {
         this(session, nodeId, nodeType, false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * NodeSession.
+     * 
+     * @param session session
+     * @param nodeId nodeId
+     * @since 0.1.7
      */
     public NodeSession(BaseSession session, String nodeId) {
         this(session, nodeId, null, false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * nodeId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String nodeId() {
         return nodeId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * nodeType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String nodeType() {
         return nodeType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * executableId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String executableId() {
         return executableId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parentId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String parentId() {
         return parentId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * workflowId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String workflowId() {
         return workflowId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * mainWorkflowId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String mainWorkflowId() {
         return mainWorkflowId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * workflowNestingDepth.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int workflowNestingDepth() {
         return workflowNestingDepth;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public BaseSession parent() {
         return parentSession;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Config config() {
         return parentSession.config();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * state.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public State state() {
         return stateField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * tracer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object tracer() {
         return parentSession.tracer();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * streamWriterManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public StreamWriterManager streamWriterManager() {
         return parentSession.streamWriterManager();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * callbackManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public CallbackManager callbackManager() {
         return parentSession.callbackManager();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * sessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String sessionId() {
         return parentSession.sessionId();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * checkpointer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object checkpointer() {
         return parentSession.checkpointer();
     }
@@ -200,6 +261,9 @@ public class NodeSession extends BaseSession {
     /**
      * Whether this node session should skip trace operations.
      * Mirrors Python's {@code NodeSession.skip_trace()}.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean skipTrace() {
         return skipTrace;
@@ -208,20 +272,21 @@ public class NodeSession extends BaseSession {
     /**
      * Get the actor manager from the parent session.
      * Mirrors Python's {@code NodeSession.actor_manager()}.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object actorManager() {
         return parentSession.actorManager();
     }
 
     /**
-     * Get node-specific config from workflow config.
-     * Mirrors Python: workflow_config.spec.comp_configs.get(self._node_id)
-     * Uses Map-based traversal since WorkflowConfig is not yet typed in Java.
+     * nodeConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object nodeConfig() {
         Object workflowConfig = config().getWorkflowConfig(workflowId);
         if (workflowConfig instanceof WorkflowConfig typedConfig) {
@@ -248,6 +313,13 @@ public class NodeSession extends BaseSession {
 
     // ---- Static Helpers ----
 
+    /**
+     * createParentId.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static String createParentId(BaseSession session) {
         if (session instanceof NodeSession) {
             return ((NodeSession) session).executableId();
@@ -255,6 +327,14 @@ public class NodeSession extends BaseSession {
         return "";
     }
 
+    /**
+     * createExecutableId.
+     * 
+     * @param nodeId nodeId
+     * @param parentId parentId
+     * @return the result
+     * @since 0.1.7
+     */
     private static String createExecutableId(String nodeId, String parentId) {
         if (parentId != null && !parentId.isEmpty()) {
             return parentId + "." + nodeId;

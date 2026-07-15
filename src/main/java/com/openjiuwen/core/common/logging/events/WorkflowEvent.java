@@ -10,7 +10,11 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Workflow related event. */
+/**
+ * Workflow related event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -30,17 +34,22 @@ public class WorkflowEvent extends BaseLogEvent {
     private Double executionTimeMs;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowEvent.
+     * 
+     * @since 0.1.7
      */
     public WorkflowEvent() {
         super();
         setModuleType(ModuleType.WORKFLOW);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "workflow_id", workflowId);
         putIfNotNull(map, "workflow_name", workflowName);

@@ -27,17 +27,37 @@ import java.util.stream.Collectors;
  * Tag-based resource organization and filtering manager.
  * <p>
  * Mirrors Python's {@code TagMgr} in {@code resources_manager/tag_manager.py}.
+ * 
+ * @since 0.1.7
  */
 public class TagMgr {
-
     private static final Logger logger = LoggerFactory.getLogger(TagMgr.class);
 
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Set<String>> resourceTags = new HashMap<>();
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Set<String>> tagToResource = new HashMap<>();
+
+    /**
+     * ReentrantLock.
+     * 
+     * @since 0.1.7
+     */
     private final ReentrantLock lock = new ReentrantLock();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TagMgr.
+     * 
+     * @since 0.1.7
      */
     public TagMgr() {
         tagToResource.put(Tag.GLOBAL, new HashSet<>());
@@ -45,6 +65,8 @@ public class TagMgr {
 
     /**
      * Clear all tag and resource mappings, restoring the initial state.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         lock.lock();
@@ -58,7 +80,11 @@ public class TagMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasTag.
+     * 
+     * @param tag tag
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasTag(String tag) {
         lock.lock();
@@ -70,14 +96,15 @@ public class TagMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listTags.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> listTags() {
         lock.lock();
         try {
-            return tagToResource.entrySet().stream()
-                    .filter(e -> !e.getValue().isEmpty())
-                    .map(Map.Entry::getKey)
+            return tagToResource.entrySet().stream().filter(e -> !e.getValue().isEmpty()).map(Map.Entry::getKey)
                     .collect(Collectors.toList());
         } finally {
             lock.unlock();
@@ -85,7 +112,11 @@ public class TagMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasResource.
+     * 
+     * @param resourceId resourceId
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasResource(String resourceId) {
         lock.lock();
@@ -97,7 +128,12 @@ public class TagMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasResourceTag.
+     * 
+     * @param resourceId resourceId
+     * @param tag tag
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasResourceTag(String resourceId, String tag) {
         lock.lock();
@@ -110,7 +146,11 @@ public class TagMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getResourcesTags.
+     * 
+     * @param resourceId resourceId
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getResourcesTags(String resourceId) {
         lock.lock();
@@ -123,7 +163,12 @@ public class TagMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * tagResource.
+     * 
+     * @param resourceId resourceId
+     * @param tags tags
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> tagResource(String resourceId, Object tags) {
         List<String> tagsToAdd = normalizeTags(tags);
@@ -143,7 +188,11 @@ public class TagMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeResource.
+     * 
+     * @param resourceId resourceId
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> removeResource(String resourceId) {
         lock.lock();
@@ -158,16 +207,21 @@ public class TagMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeResourceTags.
+     * 
+     * @param resourceId resourceId
+     * @param tags tags
+     * @param skipIfNotExists skipIfNotExists
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> removeResourceTags(String resourceId, Object tags, boolean skipIfNotExists) {
         List<String> tagsToRemove = normalizeTags(tags);
         lock.lock();
         try {
             if (!resourceTags.containsKey(resourceId)) {
-                throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REMOVE_RESOURCE_TAG_ERROR,
-                        "resource_id", resourceId, "tags", String.valueOf(tags),
-                        "reason", "Resource does not exist");
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REMOVE_RESOURCE_TAG_ERROR, "resource_id",
+                        resourceId, "tags", String.valueOf(tags), "reason", "Resource does not exist");
             }
             return doRemoveResourceTags(resourceId, tagsToRemove);
         } finally {
@@ -176,16 +230,21 @@ public class TagMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateResourceTags.
+     * 
+     * @param resourceId resourceId
+     * @param tags tags
+     * @param strategy strategy
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> updateResourceTags(String resourceId, Object tags, TagUpdateStrategy strategy) {
         List<String> newTags = normalizeTags(tags);
         lock.lock();
         try {
             if (!resourceTags.containsKey(resourceId)) {
-                throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REPLACE_RESOURCE_TAG_ERROR,
-                        "resource_id", resourceId, "tags", String.valueOf(tags),
-                        "reason", "Resource does not exist");
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REPLACE_RESOURCE_TAG_ERROR, "resource_id",
+                        resourceId, "tags", String.valueOf(tags), "reason", "Resource does not exist");
             }
 
             if (newTags.contains(Tag.GLOBAL)) {
@@ -198,9 +257,8 @@ public class TagMgr {
             } else if (strategy == TagUpdateStrategy.MERGE) {
                 return addResourceTags(resourceId, newTags);
             } else {
-                throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REPLACE_RESOURCE_TAG_ERROR,
-                        "resource_id", resourceId, "tags", String.valueOf(tags),
-                        "reason", "Unsupported strategy: " + strategy);
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REPLACE_RESOURCE_TAG_ERROR, "resource_id",
+                        resourceId, "tags", String.valueOf(tags), "reason", "Unsupported strategy: " + strategy);
             }
         } finally {
             lock.unlock();
@@ -208,7 +266,12 @@ public class TagMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeTag.
+     * 
+     * @param tag tag
+     * @param skipIfNotExists skipIfNotExists
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> removeTag(String tag, boolean skipIfNotExists) {
         lock.lock();
@@ -217,8 +280,8 @@ public class TagMgr {
                 if (skipIfNotExists) {
                     return Collections.emptyList();
                 }
-                throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REMOVE_TAG_ERROR,
-                        "tag", tag, "reason", "Tag does not exist");
+                throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_REMOVE_TAG_ERROR, "tag", tag, "reason",
+                        "Tag does not exist");
             }
             return doRemoveTag(tag);
         } finally {
@@ -227,7 +290,11 @@ public class TagMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTagResources.
+     * 
+     * @param tag tag
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getTagResources(String tag) {
         lock.lock();
@@ -240,7 +307,13 @@ public class TagMgr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * findResourcesByTags.
+     * 
+     * @param tags tags
+     * @param strategy strategy
+     * @param skipIfNotExists skipIfNotExists
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> findResourcesByTags(Object tags, TagMatchStrategy strategy, boolean skipIfNotExists) {
         List<String> tagsToSearch = normalizeTags(tags);
@@ -252,9 +325,9 @@ public class TagMgr {
                     Set<String> resources = tagToResource.get(tag);
                     if (resources == null || resources.isEmpty()) {
                         if (!isBuiltinTag(tag) && !skipIfNotExists) {
-                            throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_FIND_RESOURCE_ERROR,
-                                    "tag", String.valueOf(tags), "strategy", strategy.getValue(),
-                                    "reason", "Tag '" + tag + "' does not exist");
+                            throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_FIND_RESOURCE_ERROR, "tag",
+                                    String.valueOf(tags), "strategy", strategy.getValue(), "reason",
+                                    "Tag '" + tag + "' does not exist");
                         }
                     } else {
                         found.addAll(resources);
@@ -268,9 +341,9 @@ public class TagMgr {
                     Set<String> resources = tagToResource.get(tag);
                     if (resources == null || resources.isEmpty()) {
                         if (!isBuiltinTag(tag) && !skipIfNotExists) {
-                            throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_FIND_RESOURCE_ERROR,
-                                    "tag", String.valueOf(tags), "strategy", strategy.getValue(),
-                                    "reason", "Tag '" + tag + "' does not exist");
+                            throw ErrorHelper.buildError(StatusCode.RESOURCE_TAG_FIND_RESOURCE_ERROR, "tag",
+                                    String.valueOf(tags), "strategy", strategy.getValue(), "reason",
+                                    "Tag '" + tag + "' does not exist");
                         }
                         return Collections.emptyList();
                     }
@@ -289,6 +362,12 @@ public class TagMgr {
 
     // ========== Internal Methods ==========
 
+    /**
+     * setGlobalResource.
+     * 
+     * @param resourceId resourceId
+     * @since 0.1.7
+     */
     private void setGlobalResource(String resourceId) {
         Set<String> oldTags = resourceTags.get(resourceId);
         if (oldTags != null) {
@@ -305,6 +384,14 @@ public class TagMgr {
         tagToResource.computeIfAbsent(Tag.GLOBAL, k -> new HashSet<>()).add(resourceId);
     }
 
+    /**
+     * addResourceTags.
+     * 
+     * @param resourceId resourceId
+     * @param tagsToAdd tagsToAdd
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> addResourceTags(String resourceId, List<String> tagsToAdd) {
         Set<String> currentTags = resourceTags.get(resourceId);
         // Remove GLOBAL if adding specific tags
@@ -322,6 +409,14 @@ public class TagMgr {
         return new ArrayList<>(currentTags);
     }
 
+    /**
+     * replaceResourceTags.
+     * 
+     * @param resourceId resourceId
+     * @param newTags newTags
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> replaceResourceTags(String resourceId, List<String> newTags) {
         Set<String> oldTags = resourceTags.get(resourceId);
         if (oldTags != null) {
@@ -340,6 +435,13 @@ public class TagMgr {
         return new ArrayList<>(newTagSet);
     }
 
+    /**
+     * doRemoveResource.
+     * 
+     * @param resourceId resourceId
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> doRemoveResource(String resourceId) {
         Set<String> tags = resourceTags.remove(resourceId);
         List<String> removedTags = new ArrayList<>();
@@ -355,6 +457,14 @@ public class TagMgr {
         return removedTags;
     }
 
+    /**
+     * doRemoveResourceTags.
+     * 
+     * @param resourceId resourceId
+     * @param tagsToRemove tagsToRemove
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> doRemoveResourceTags(String resourceId, List<String> tagsToRemove) {
         Set<String> currentTags = resourceTags.get(resourceId);
         for (String tag : tagsToRemove) {
@@ -367,6 +477,13 @@ public class TagMgr {
         return new ArrayList<>(currentTags);
     }
 
+    /**
+     * doRemoveTag.
+     * 
+     * @param tag tag
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> doRemoveTag(String tag) {
         Set<String> affectedResources = tagToResource.remove(tag);
         List<String> affected = new ArrayList<>();
@@ -382,9 +499,15 @@ public class TagMgr {
         return affected;
     }
 
+    /**
+     * isBuiltinTag.
+     * 
+     * @param tag tag
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isBuiltinTag(String tag) {
-        return Tag.GLOBAL.equals(tag) || Tag.ALL.equals(tag)
-                || Tag.ACTIVE.equals(tag) || Tag.INACTIVE.equals(tag);
+        return Tag.GLOBAL.equals(tag) || Tag.ALL.equals(tag) || Tag.ACTIVE.equals(tag) || Tag.INACTIVE.equals(tag);
     }
 
     @SuppressWarnings("unchecked")
@@ -403,33 +526,30 @@ public class TagMgr {
 
     /**
      * Display current tag manager state.
-     *
+     * 
      * @param enableLog if true, logs the state via logger
      * @return formatted string describing current tag-resource mappings
+     * @since 0.1.7
      */
     public String display(boolean enableLog) {
         lock.lock();
         try {
             StringBuilder sb = new StringBuilder();
             sb.append("\nTag -> Resource IDs:\n");
-            tagToResource.entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .forEach(entry -> {
-                        if (!entry.getValue().isEmpty()) {
-                            sb.append("  tag['").append(entry.getKey()).append("']: [");
-                            sb.append(entry.getValue().stream().sorted().collect(Collectors.joining(", ")));
-                            sb.append("]\n");
-                        }
-                    });
+            tagToResource.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+                if (!entry.getValue().isEmpty()) {
+                    sb.append("  tag['").append(entry.getKey()).append("']: [");
+                    sb.append(entry.getValue().stream().sorted().collect(Collectors.joining(", ")));
+                    sb.append("]\n");
+                }
+            });
 
             sb.append("\nResource -> Tags:\n");
-            resourceTags.entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .forEach(entry -> {
-                        sb.append("  resource['").append(entry.getKey()).append("']: [");
-                        sb.append(entry.getValue().stream().sorted().collect(Collectors.joining(", ")));
-                        sb.append("]\n");
-                    });
+            resourceTags.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+                sb.append("  resource['").append(entry.getKey()).append("']: [");
+                sb.append(entry.getValue().stream().sorted().collect(Collectors.joining(", ")));
+                sb.append("]\n");
+            });
 
             sb.append("\nStatistics:\n");
             sb.append("  Total tags: ").append(tagToResource.size()).append('\n');
@@ -449,6 +569,9 @@ public class TagMgr {
 
     /**
      * Display with logging enabled by default.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String display() {
         return display(true);

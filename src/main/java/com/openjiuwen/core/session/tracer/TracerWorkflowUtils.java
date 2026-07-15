@@ -18,12 +18,25 @@ import java.util.Map;
  * Utility class for workflow tracing operations.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.tracer.workflow_tracer.TracerWorkflowUtils}.
+ * 
+ * @since 0.1.7
  */
 public final class TracerWorkflowUtils {
-
+    /**
+     * TracerWorkflowUtils.
+     * 
+     * @since 0.1.7
+     */
     private TracerWorkflowUtils() {
     }
 
+    /**
+     * getWorkflowMetadata.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> getWorkflowMetadata(BaseSession session) {
         String workflowId = "";
         if (session instanceof WorkflowSession) {
@@ -48,6 +61,13 @@ public final class TracerWorkflowUtils {
         return metadata;
     }
 
+    /**
+     * getComponentMetadata.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> getComponentMetadata(BaseSession session) {
         Map<String, Object> metadata = new HashMap<>();
 
@@ -62,8 +82,8 @@ public final class TracerWorkflowUtils {
             Object loopId = session.state().getGlobal(SessionConstants.LOOP_ID);
             if (loopId != null) {
                 String loopIdStr = loopId.toString();
-                Object index = session.state().getGlobal(
-                        loopIdStr + SessionUtils.NESTED_PATH_SPLIT + SessionConstants.INDEX);
+                Object index =
+                    session.state().getGlobal(loopIdStr + SessionUtils.NESTED_PATH_SPLIT + SessionConstants.INDEX);
                 metadata.put("loop_node_id", loopIdStr);
                 metadata.put("loop_index", index);
             }
@@ -72,11 +92,25 @@ public final class TracerWorkflowUtils {
         return metadata;
     }
 
+    /**
+     * getTracer.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static Tracer getTracer(BaseSession session) {
         Object tracer = session.tracer();
         return tracer instanceof Tracer ? (Tracer) tracer : null;
     }
 
+    /**
+     * getExecutableId.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static String getExecutableId(BaseSession session) {
         if (session instanceof NodeSession) {
             return ((NodeSession) session).executableId();
@@ -84,6 +118,13 @@ public final class TracerWorkflowUtils {
         return session.sessionId();
     }
 
+    /**
+     * getParentId.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static String getParentId(BaseSession session) {
         if (session instanceof NodeSession) {
             return ((NodeSession) session).parentId();
@@ -93,6 +134,10 @@ public final class TracerWorkflowUtils {
 
     /**
      * Trace workflow start event.
+     * 
+     * @param session session
+     * @param inputs inputs
+     * @since 0.1.7
      */
     public static void traceWorkflowStart(BaseSession session, Object inputs) {
         Tracer tracer = getTracer(session);
@@ -114,6 +159,10 @@ public final class TracerWorkflowUtils {
 
     /**
      * Trace component begin event.
+     * 
+     * @param session session
+     * @param sourceIds sourceIds
+     * @since 0.1.7
      */
     public static void traceComponentBegin(BaseSession session, java.util.List<String> sourceIds) {
         Tracer tracer = getTracer(session);
@@ -130,6 +179,11 @@ public final class TracerWorkflowUtils {
 
     /**
      * Trace component inputs.
+     * 
+     * @param session session
+     * @param inputs inputs
+     * @param send send
+     * @since 0.1.7
      */
     public static void traceComponentInputs(BaseSession session, Map<String, Object> inputs, boolean send) {
         Tracer tracer = getTracer(session);
@@ -147,6 +201,11 @@ public final class TracerWorkflowUtils {
 
     /**
      * Trace component stream input.
+     * 
+     * @param session session
+     * @param chunk chunk
+     * @param send send
+     * @since 0.1.7
      */
     public static void traceComponentStreamInput(BaseSession session, Object chunk, boolean send) {
         Tracer tracer = getTracer(session);
@@ -163,6 +222,10 @@ public final class TracerWorkflowUtils {
 
     /**
      * Trace component outputs.
+     * 
+     * @param session session
+     * @param outputs outputs
+     * @since 0.1.7
      */
     public static void traceComponentOutputs(BaseSession session, Object outputs) {
         Tracer tracer = getTracer(session);
@@ -178,6 +241,10 @@ public final class TracerWorkflowUtils {
 
     /**
      * Trace component stream output.
+     * 
+     * @param session session
+     * @param chunk chunk
+     * @since 0.1.7
      */
     public static void traceComponentStreamOutput(BaseSession session, Object chunk) {
         Tracer tracer = getTracer(session);
@@ -193,6 +260,10 @@ public final class TracerWorkflowUtils {
 
     /**
      * Trace workflow done event.
+     * 
+     * @param session session
+     * @param outputs outputs
+     * @since 0.1.7
      */
     public static void traceWorkflowDone(BaseSession session, Object outputs) {
         Tracer tracer = getTracer(session);
@@ -213,6 +284,9 @@ public final class TracerWorkflowUtils {
 
     /**
      * Trace component done event.
+     * 
+     * @param session session
+     * @since 0.1.7
      */
     public static void traceComponentDone(BaseSession session) {
         Tracer tracer = getTracer(session);
@@ -235,6 +309,10 @@ public final class TracerWorkflowUtils {
 
     /**
      * General trace data.
+     * 
+     * @param session session
+     * @param data data
+     * @since 0.1.7
      */
     public static void trace(BaseSession session, Map<String, Object> data) {
         Tracer tracer = getTracer(session);
@@ -250,6 +328,10 @@ public final class TracerWorkflowUtils {
 
     /**
      * Trace an error.
+     * 
+     * @param session session
+     * @param error error
+     * @since 0.1.7
      */
     public static void traceError(BaseSession session, Exception error) {
         Tracer tracer = getTracer(session);
@@ -268,9 +350,13 @@ public final class TracerWorkflowUtils {
 
     /**
      * Trace component interactive inputs.
+     * 
+     * @param session session
+     * @param inputs inputs
+     * @param send send
+     * @since 0.1.7
      */
-    public static void traceComponentInteractiveInputs(BaseSession session, Object inputs,
-                                                        boolean send) {
+    public static void traceComponentInteractiveInputs(BaseSession session, Object inputs, boolean send) {
         Tracer tracer = getTracer(session);
         if (tracer == null) {
             return;
@@ -286,6 +372,9 @@ public final class TracerWorkflowUtils {
 
     /**
      * Register a dedicated workflow span manager for nested workflow tracing.
+     * 
+     * @param session session
+     * @since 0.1.7
      */
     public static void registerWorkflowSpanManager(BaseSession session) {
         Tracer tracer = getTracer(session);

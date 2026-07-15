@@ -6,6 +6,7 @@ package com.openjiuwen.core.memory.process.extract;
 
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -16,6 +17,8 @@ import java.util.Map;
 
 /**
  * Parameters for memory extraction.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -26,6 +29,7 @@ public class ExtractMemoryParams {
     private String scopeId;
     private List<BaseMessage> messages;
     private List<BaseMessage> historyMessages;
+
     /**
      * Tuple: (modelName, modelClient)
      */

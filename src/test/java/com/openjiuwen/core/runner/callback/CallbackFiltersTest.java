@@ -1,12 +1,13 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.runner.callback;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for callback framework filters.
@@ -14,13 +15,8 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @DisplayName("Callback Filters Tests")
 class CallbackFiltersTest {
-
     private CallbackInfo dummyCallback() {
-        return CallbackInfo.builder()
-                .callback(kwargs -> null)
-                .priority(0)
-                .callbackName("dummy")
-                .build();
+        return CallbackInfo.builder().callback(kwargs -> null).priority(0).callbackName("dummy").build();
     }
 
     // ========== EventFilter ==========
@@ -294,8 +290,8 @@ class CallbackFiltersTest {
     @Test
     @DisplayName("ConditionalFilter condition met continues")
     void testConditionalFilterConditionMetContinues() {
-        ConditionalFilter filter = new ConditionalFilter(
-                (event, callback, args, kwargs) -> kwargs.containsKey("required_key"));
+        ConditionalFilter filter =
+            new ConditionalFilter((event, callback, args, kwargs) -> kwargs.containsKey("required_key"));
         CallbackInfo cb = dummyCallback();
         FilterResult result = filter.filter("test", cb, new Object[0], Map.of("required_key", "value"));
         assertEquals(FilterAction.CONTINUE, result.getAction());
@@ -304,8 +300,8 @@ class CallbackFiltersTest {
     @Test
     @DisplayName("ConditionalFilter condition not met skips")
     void testConditionalFilterConditionNotMetSkips() {
-        ConditionalFilter filter = new ConditionalFilter(
-                (event, callback, args, kwargs) -> kwargs.containsKey("required_key"));
+        ConditionalFilter filter =
+            new ConditionalFilter((event, callback, args, kwargs) -> kwargs.containsKey("required_key"));
         CallbackInfo cb = dummyCallback();
         FilterResult result = filter.filter("test", cb, new Object[0], Map.of());
         assertEquals(FilterAction.SKIP, result.getAction());

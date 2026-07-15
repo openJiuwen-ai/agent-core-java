@@ -7,31 +7,39 @@ package com.openjiuwen.core.memory.migration.operation;
 import lombok.Data;
 
 /**
- * Base class for all migration operations.
+ * BaseOperation.
+ * 
+ * @since 0.1.7
  */
 @Data
-/**
- * Auto-generated for codecheck compliance.
- */
 public abstract class BaseOperation {
     private final OperationMetadata metadata;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseOperation.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
      */
     protected BaseOperation(OperationMetadata metadata) {
         this.metadata = metadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSchemaVersion.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getSchemaVersion() {
         return metadata.getSchemaVersion();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDescription() {
         String desc = metadata.getDescription();

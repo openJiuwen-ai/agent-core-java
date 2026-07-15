@@ -1,12 +1,12 @@
-package com.openjiuwen.core.memory.common;
 
-import org.junit.jupiter.api.Test;
+package com.openjiuwen.core.memory.common;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-class MemoryCryptoTest {
+import org.junit.jupiter.api.Test;
 
+class MemoryCryptoTest {
     @Test
     void encryptThenDecryptRoundTrip() {
         byte[] key = "1234567890abcdef1234567890123456".getBytes();

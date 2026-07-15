@@ -11,73 +11,108 @@ import java.util.Map;
 
 /**
  * Public class BaseExecutionContext used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class BaseExecutionContext {
     /**
-     * Auto-generated for codecheck compliance.
+     * orchestrator.
+     * 
+     * @since 0.1.7
      */
     protected final AutoHarnessOrchestrator orchestrator;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseExecutionContext.
+     * 
+     * @param orchestrator orchestrator
+     * @since 0.1.7
      */
     public BaseExecutionContext(AutoHarnessOrchestrator orchestrator) {
         this.orchestrator = orchestrator;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * taskId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String taskId() {
         return "";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOrchestrator.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AutoHarnessOrchestrator getOrchestrator() {
         return orchestrator;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getArtifact.
+     * 
+     * @param name name
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
      */
     public Object getArtifact(String name, Object defaultValue) {
         return orchestrator.getArtifacts().get(name, taskId(), defaultValue);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getArtifact.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
      */
     public Object getArtifact(String name) {
         return getArtifact(name, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * requireArtifact.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
      */
     public Object requireArtifact(String name) {
         return orchestrator.getArtifacts().require(name, taskId());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * putArtifact.
+     * 
+     * @param name name
+     * @param value value
+     * @since 0.1.7
      */
     public void putArtifact(String name, Object value) {
         orchestrator.getArtifacts().put(name, value, taskId());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * putArtifacts.
+     * 
+     * @param artifacts artifacts
+     * @since 0.1.7
      */
     public void putArtifacts(Map<String, Object> artifacts) {
         orchestrator.getArtifacts().putMany(artifacts, taskId());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * message.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     public static OutputSchema message(String text) {
         return new OutputSchema("message", 0, Map.of("content", text));

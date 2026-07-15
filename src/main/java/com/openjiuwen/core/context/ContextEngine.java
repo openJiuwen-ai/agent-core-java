@@ -44,72 +44,85 @@ import java.util.function.Function;
  * <p>
  * ContextEngine acts as the central entry-point for:
  * <ol>
- *   <li>Registering and configuring message processors.</li>
- *   <li>Creating isolated {@link ModelContext} instances tied to a session.</li>
- *   <li>Applying processor chains to enforce window limits, compression, etc.</li>
+ * <li>Registering and configuring message processors.</li>
+ * <li>Creating isolated {@link ModelContext} instances tied to a session.</li>
+ * <li>Applying processor chains to enforce window limits, compression, etc.</li>
  * </ol>
  * <p>
  * Mirrors Python's {@code ContextEngine} from {@code context_engine/context_engine.py}.
+ * 
+ * @since 0.1.7
  */
 public class ContextEngine {
-
-    /**
-     * Global registry mapping processor type names to their factory functions.
-     * Each factory takes a config object and returns a ContextProcessor instance.
-     */
-    private static final Map<String, Function<Object, ContextProcessor>> PROCESSOR_FACTORY_MAP =
-            new LinkedHashMap<>();
+    private static final Map<String, Function<Object, ContextProcessor>> PROCESSOR_FACTORY_MAP = new LinkedHashMap<>();
 
     /**
      * Global registry mapping processor type names to their class.
+     * 
+     * @since 0.1.7
      */
-    private static final Map<String, Class<? extends ContextProcessor>> PROCESSOR_CLASS_MAP =
-            new LinkedHashMap<>();
+    private static final Map<String, Class<? extends ContextProcessor>> PROCESSOR_CLASS_MAP = new LinkedHashMap<>();
 
     /*
      * Auto-register all built-in processors so they can be isResolved by type name at runtime.
      * Mirrors Python's @ContextEngine.register_processor() decorator applied to each processor class.
      */
     static {
-        registerProcessor("CurrentRoundCompressor", CurrentRoundCompressor.class,
-                cfg -> new CurrentRoundCompressor((CurrentRoundCompressorConfig) cfg));
+        registerProcessor("CurrentRoundCompressor", CurrentRoundCompressor.class, cfg -> new CurrentRoundCompressor(
+                (cfg instanceof CurrentRoundCompressorConfig __cast73 ? __cast73 : null)));
         registerProcessor("DialogueCompressor", DialogueCompressor.class,
-                cfg -> new DialogueCompressor((DialogueCompressorConfig) cfg));
-        registerProcessor("RoundLevelCompressor", RoundLevelCompressor.class,
-                cfg -> new RoundLevelCompressor((RoundLevelCompressorConfig) cfg));
-        registerProcessor("MicroCompactProcessor", MicroCompactProcessor.class,
-                cfg -> new MicroCompactProcessor((MicroCompactProcessorConfig) cfg));
-        registerProcessor("FullCompactProcessor", FullCompactProcessor.class,
-                cfg -> new FullCompactProcessor((FullCompactProcessorConfig) cfg));
+                cfg -> new DialogueCompressor((cfg instanceof DialogueCompressorConfig __cast75 ? __cast75 : null)));
+        registerProcessor("RoundLevelCompressor", RoundLevelCompressor.class, cfg -> new RoundLevelCompressor(
+                (cfg instanceof RoundLevelCompressorConfig __cast77 ? __cast77 : null)));
+        registerProcessor("MicroCompactProcessor", MicroCompactProcessor.class, cfg -> new MicroCompactProcessor(
+                (cfg instanceof MicroCompactProcessorConfig __cast79 ? __cast79 : null)));
+        registerProcessor("FullCompactProcessor", FullCompactProcessor.class, cfg -> new FullCompactProcessor(
+                (cfg instanceof FullCompactProcessorConfig __cast81 ? __cast81 : null)));
         registerProcessor("MessageOffloader", MessageOffloader.class,
-                cfg -> new MessageOffloader((MessageOffloaderConfig) cfg));
-        registerProcessor("MessageSummaryOffloader", MessageSummaryOffloader.class,
-                cfg -> new MessageSummaryOffloader((MessageSummaryOffloaderConfig) cfg));
+                cfg -> new MessageOffloader((cfg instanceof MessageOffloaderConfig __cast83 ? __cast83 : null)));
+        registerProcessor("MessageSummaryOffloader", MessageSummaryOffloader.class, cfg -> new MessageSummaryOffloader(
+                (cfg instanceof MessageSummaryOffloaderConfig __cast85 ? __cast85 : null)));
         registerProcessor("ToolResultBudgetProcessor", ToolResultBudgetProcessor.class,
                 cfg -> new ToolResultBudgetProcessor((ToolResultBudgetProcessorConfig) cfg));
     }
 
     private final ContextEngineConfig config;
+
+    /**
+     * HashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, ModelContext> contextPool = new HashMap<>();
     private final Object workspace;
     private final SysOperation sysOperation;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ContextEngine.
+     * 
+     * @since 0.1.7
      */
     public ContextEngine() {
         this(null, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ContextEngine.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public ContextEngine(ContextEngineConfig config) {
         this(config, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ContextEngine.
+     * 
+     * @param config config
+     * @param workspace workspace
+     * @param sysOperation sysOperation
+     * @since 0.1.7
      */
     public ContextEngine(ContextEngineConfig config, Object workspace, SysOperation sysOperation) {
         this.config = config != null ? config : ContextEngineConfig.builder().build();
@@ -118,27 +131,21 @@ public class ContextEngine {
         this.sysOperation = sysOperation;
     }
 
-    // ==================================================================
     // Context lifecycle
-    // ==================================================================
 
     /**
      * Create or retrieve a ModelContext for the given session and context ID.
-     *
-     * @param contextId       unique identifier for this context within the session
-     * @param session         session object; if null, a default session ID is used
-     * @param processors      list of (processorType, configObject) tuples
+     * 
+     * @param contextId unique identifier for this context within the session
+     * @param session session object; if null, a default session ID is used
+     * @param processors list of (processorType, configObject) tuples
      * @param historyMessages initial message list
-     * @param tokenCounter    token counting strategy
+     * @param tokenCounter token counting strategy
      * @return the created or cached ModelContext
+     * @since 0.1.7
      */
-    public ModelContext createContext(
-            String contextId,
-            Session session,
-            List<ProcessorSpec> processors,
-            List<BaseMessage> historyMessages,
-            TokenCounter tokenCounter) {
-
+    public ModelContext createContext(String contextId, Session session, List<ProcessorSpec> processors,
+            List<BaseMessage> historyMessages, TokenCounter tokenCounter) {
         TokenCounter effectiveTokenCounter = tokenCounter != null ? tokenCounter : new SimpleTokenCounter();
         contextId = processContextId(contextId);
         String sessionId = session != null ? session.getSessionId() : "default_session_id";
@@ -157,16 +164,9 @@ public class ContextEngine {
             }
         }
 
-        SessionModelContext context = new SessionModelContext(
-                contextId,
-                sessionId,
-                config,
-                historyMessages != null ? historyMessages : new ArrayList<>(),
-                processorInstances,
-                effectiveTokenCounter,
-                session,
-                workspace,
-                sysOperation);
+        SessionModelContext context = new SessionModelContext(contextId, sessionId, config,
+                historyMessages != null ? historyMessages : new ArrayList<>(), processorInstances,
+                effectiveTokenCounter, session, workspace, sysOperation);
 
         loadStateFromSession(context, session, historyMessages);
         contextPool.put(fullContextId, context);
@@ -175,6 +175,11 @@ public class ContextEngine {
 
     /**
      * Create context with defaults.
+     * 
+     * @param contextId contextId
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public ModelContext createContext(String contextId, Session session) {
         return createContext(contextId, session, null, null, null);
@@ -183,6 +188,11 @@ public class ContextEngine {
     /**
      * Compatibility helper for translated tests that create a context without
      * explicitly passing processors, history, or token counter.
+     * 
+     * @param contextId contextId
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public ModelContext createContextSimple(String contextId, Session session) {
         return createContext(contextId, session);
@@ -191,16 +201,24 @@ public class ContextEngine {
     /**
      * Compatibility helper for translated tests that create a context with
      * initial history messages only.
+     * 
+     * @param contextId contextId
+     * @param session session
+     * @param historyMessages historyMessages
+     * @return the result
+     * @since 0.1.7
      */
-    public ModelContext createContextWithHistory(
-            String contextId,
-            Session session,
-            List<BaseMessage> historyMessages) {
+    public ModelContext createContextWithHistory(String contextId, Session session, List<BaseMessage> historyMessages) {
         return createContext(contextId, session, null, historyMessages, null);
     }
 
     /**
      * Retrieve an existing ModelContext from the pool.
+     * 
+     * @param contextId contextId
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public ModelContext getContext(String contextId, String sessionId) {
         contextId = processContextId(contextId);
@@ -210,6 +228,10 @@ public class ContextEngine {
 
     /**
      * Retrieve a context from the default session scope.
+     * 
+     * @param contextId contextId
+     * @return the result
+     * @since 0.1.7
      */
     public ModelContext getContext(String contextId) {
         return getContext(contextId, "default_session_id");
@@ -217,9 +239,10 @@ public class ContextEngine {
 
     /**
      * Remove contexts from the internal pool.
-     *
+     * 
      * @param contextId if null and sessionId is provided, removes all contexts for that session
      * @param sessionId if null, removes all contexts
+     * @since 0.1.7
      */
     public void clearContext(String contextId, String sessionId) {
         if (sessionId == null) {
@@ -236,8 +259,7 @@ public class ContextEngine {
             }
 
             if (toDelete.isEmpty()) {
-                Loggers.CONTEXT_ENGINE.warning(
-                        "Delete context failed, session does not exist: " + sessionId);
+                Loggers.CONTEXT_ENGINE.warning("Delete context failed, session does not exist: " + sessionId);
                 return;
             }
 
@@ -250,8 +272,7 @@ public class ContextEngine {
         contextId = processContextId(contextId);
         String fullContextId = sessionId + "_" + contextId;
         if (!contextPool.containsKey(fullContextId)) {
-            Loggers.CONTEXT_ENGINE.warning(
-                    "Delete context failed, context does not exist: " + fullContextId);
+            Loggers.CONTEXT_ENGINE.warning("Delete context failed, context does not exist: " + fullContextId);
             return;
         }
         contextPool.remove(fullContextId);
@@ -259,6 +280,8 @@ public class ContextEngine {
 
     /**
      * Clear all contexts across all sessions.
+     * 
+     * @since 0.1.7
      */
     public void clearContext() {
         clearContext(null, null);
@@ -266,6 +289,9 @@ public class ContextEngine {
 
     /**
      * Clear all contexts associated with a given session.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public void clearContextBySession(String sessionId) {
         clearContext(null, sessionId);
@@ -273,9 +299,10 @@ public class ContextEngine {
 
     /**
      * Batch-persist multiple contexts and their runtime states.
-     *
-     * @param session    the session to save to
+     * 
+     * @param session the session to save to
      * @param contextIds list of target context identifiers; if null, saves all for the session
+     * @since 0.1.7
      */
     public void saveContexts(Session session, List<String> contextIds) {
         if (session == null) {
@@ -308,20 +335,17 @@ public class ContextEngine {
         saveStateToSession(session, states);
     }
 
-    // ==================================================================
     // Processor registration (static)
-    // ==================================================================
 
     /**
      * Register a processor class so the engine can instantiate it at runtime.
-     *
+     * 
      * @param processorType the type name (typically the simple class name)
      * @param processorClass the processor class
      * @param factory a function that takes a config object and creates the processor
+     * @since 0.1.7
      */
-    public static void registerProcessor(
-            String processorType,
-            Class<? extends ContextProcessor> processorClass,
+    public static void registerProcessor(String processorType, Class<? extends ContextProcessor> processorClass,
             Function<Object, ContextProcessor> factory) {
         PROCESSOR_CLASS_MAP.put(processorType, processorClass);
         PROCESSOR_FACTORY_MAP.put(processorType, factory);
@@ -329,34 +353,46 @@ public class ContextEngine {
 
     /**
      * Register a processor class with a constructor-based factory.
+     * 
+     * @param processorType processorType
+     * @param processorClass processorClass
+     * @since 0.1.7
      */
-    public static void registerProcessor(
-            String processorType,
-            Class<? extends ContextProcessor> processorClass) {
+    public static void registerProcessor(String processorType, Class<? extends ContextProcessor> processorClass) {
         PROCESSOR_CLASS_MAP.put(processorType, processorClass);
     }
 
     /**
      * Get a registered processor class by type name.
+     * 
+     * @param processorType processorType
+     * @return the result
+     * @since 0.1.7
      */
     public static Class<? extends ContextProcessor> getProcessorClass(String processorType) {
         return PROCESSOR_CLASS_MAP.get(processorType);
     }
 
-    // ==================================================================
     // Processor spec record
-    // ==================================================================
 
     /**
      * Specifies a processor type and its associated configuration.
+     * 
+     * @since 0.1.7
      */
     public record ProcessorSpec(String processorType, Object config) {
     }
 
-    // ==================================================================
     // Private helpers
-    // ==================================================================
 
+    /**
+     * createProcessor.
+     * 
+     * @param processorType processorType
+     * @param processorConfig processorConfig
+     * @return the result
+     * @since 0.1.7
+     */
     private ContextProcessor createProcessor(String processorType, Object processorConfig) {
         // Try factory first
         Function<Object, ContextProcessor> factory = PROCESSOR_FACTORY_MAP.get(processorType);
@@ -364,33 +400,37 @@ public class ContextEngine {
             try {
                 return factory.apply(processorConfig);
             } catch (Exception e) {
-                throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR,
-                        "error_msg", "init processor type '" + processorType + "' failed: " + e.getMessage());
+                throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR, "error_msg",
+                        "init processor type '" + processorType + "' failed: " + e.getMessage());
             }
         }
 
         // Try class-based instantiation
         Class<? extends ContextProcessor> processorClass = PROCESSOR_CLASS_MAP.get(processorType);
         if (processorClass == null) {
-            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR,
-                    "error_msg", "cannot find processor type '" + processorType + "'");
+            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR, "error_msg",
+                    "cannot find processor type '" + processorType + "'");
         }
 
         try {
             var constructor = processorClass.getConstructor(processorConfig.getClass());
             return constructor.newInstance(processorConfig);
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR,
-                    "error_msg", "init processor type '" + processorType + "' failed: " + e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR, "error_msg",
+                    "init processor type '" + processorType + "' failed: " + e.getMessage());
         }
     }
 
     @SuppressWarnings("unchecked")
-    private static void loadStateFromSession(
-            ModelContext context,
-            Session session,
-            List<BaseMessage> historyMessages) {
-
+    /**
+     * loadStateFromSession.
+     * 
+     * @param context context
+     * @param session session
+     * @param historyMessages historyMessages
+     * @since 0.1.7
+     */
+    private static void loadStateFromSession(ModelContext context, Session session, List<BaseMessage> historyMessages) {
         if (session == null) {
             return;
         }
@@ -417,11 +457,8 @@ public class ContextEngine {
             Object rawContextState = states.get(contextId);
             Map<String, Object> ctxState = rawContextState instanceof Map<?, ?> rawCtxMap
                     ? new HashMap<>(rawCtxMap.entrySet().stream()
-                    .collect(java.util.stream.Collectors.toMap(
-                            entry -> String.valueOf(entry.getKey()),
-                            Map.Entry::getValue,
-                            (left, right) -> right,
-                            HashMap::new)))
+                            .collect(java.util.stream.Collectors.toMap(entry -> String.valueOf(entry.getKey()),
+                                    Map.Entry::getValue, (left, right) -> right, HashMap::new)))
                     : new HashMap<>();
             ctxState.put("messages", historyMessages);
             states.put(contextId, ctxState);
@@ -430,6 +467,13 @@ public class ContextEngine {
         stateful.loadState(states);
     }
 
+    /**
+     * saveStateToSession.
+     * 
+     * @param session session
+     * @param states states
+     * @since 0.1.7
+     */
     private static void saveStateToSession(Session session, Map<String, Object> states) {
         if (session == null) {
             return;
@@ -437,6 +481,13 @@ public class ContextEngine {
         session.updateState(Map.of("context", states));
     }
 
+    /**
+     * processContextId.
+     * 
+     * @param contextId contextId
+     * @return the result
+     * @since 0.1.7
+     */
     private static String processContextId(String contextId) {
         if (contextId == null) {
             return "default_context_id";

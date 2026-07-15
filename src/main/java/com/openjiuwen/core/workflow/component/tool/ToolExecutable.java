@@ -23,37 +23,51 @@ import java.util.Map;
  * in a standard {@link ToolComponentOutput} envelope.
  * <p>
  * Mirrors Python's {@code ToolExecutable}.
+ * 
+ * @since 0.1.7
  */
 public class ToolExecutable extends ComponentExecutable {
-
     private static final int DEFAULT_EXCEPTION_ERROR_CODE = -1;
 
     private final ToolComponentConfig config;
     private Tool tool;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ToolExecutable.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public ToolExecutable(ToolComponentConfig config) {
         this.config = config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTool.
+     * 
+     * @param tool tool
+     * @return the result
+     * @since 0.1.7
      */
     public ToolExecutable setTool(Tool tool) {
         this.tool = tool;
         return this;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         if (tool == null) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR,
-                    "error_msg", "tool is not initialized");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_TOOL_EXECUTION_ERROR, "error_msg",
+                    "tool is not initialized");
         }
         Map<String, Object> toolInputs = validateInputs(inputs);
 
@@ -63,24 +77,25 @@ public class ToolExecutable extends ComponentExecutable {
             response = postProcessToolResult(rawResponse);
         } catch (Exception e) {
             if (e instanceof BaseError be) {
-                response = Map.of(
-                        ToolComponentOutput.ERR_MESSAGE, be.getMessage(),
-                        ToolComponentOutput.ERR_CODE, be.getCode()
-                );
+                response = Map.of(ToolComponentOutput.ERR_MESSAGE, be.getMessage(), ToolComponentOutput.ERR_CODE,
+                        be.getCode());
             } else {
-                response = Map.of(
-                        ToolComponentOutput.ERR_MESSAGE, "tool execution error: "
-                                + (e.getMessage() != null ? e.getMessage() : "unknown exception"),
-                        ToolComponentOutput.ERR_CODE, StatusCode.TOOL_EXECUTION_ERROR.getCode()
-                );
+                response = Map.of(ToolComponentOutput.ERR_MESSAGE,
+                        "tool execution error: " + (e.getMessage() != null ? e.getMessage() : "unknown exception"),
+                        ToolComponentOutput.ERR_CODE, StatusCode.TOOL_EXECUTION_ERROR.getCode());
             }
         }
         return ToolComponentOutput.fromMap(response).toMap();
     }
 
-    // ==================== Internal ====================
-
     @SuppressWarnings("unchecked")
+    /**
+     * validateInputs.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> validateInputs(Object inputs) {
         if (inputs instanceof Map) {
             return new LinkedHashMap<>((Map<String, Object>) inputs);
@@ -89,6 +104,13 @@ public class ToolExecutable extends ComponentExecutable {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * postProcessToolResult.
+     * 
+     * @param toolResult toolResult
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> postProcessToolResult(Object toolResult) {
         Map<String, Object> result = new LinkedHashMap<>();
 
@@ -102,7 +124,8 @@ public class ToolExecutable extends ComponentExecutable {
                 code = DEFAULT_EXCEPTION_ERROR_CODE;
             }
             result.put(ToolComponentOutput.ERR_CODE,
-                    (200 <= code && code < 300) ? StatusCode.SUCCESS.getCode()
+                    (200 <= code && code < 300)
+                            ? StatusCode.SUCCESS.getCode()
                             : StatusCode.TOOL_EXECUTION_ERROR.getCode());
             result.put(ToolComponentOutput.ERR_MESSAGE, trMap.getOrDefault("message", ""));
         } else {
@@ -112,7 +135,8 @@ public class ToolExecutable extends ComponentExecutable {
                     result.put(ToolComponentOutput.RESTFUL_DATA, trMap.get("data") != null ? trMap.get("data") : "");
                     result.put(ToolComponentOutput.ERR_CODE,
                             trMap.get("code") != null ? trMap.get("code") : StatusCode.TOOL_EXECUTION_ERROR.getCode());
-                    result.put(ToolComponentOutput.ERR_MESSAGE, trMap.get("message") != null ? trMap.get("message") : "");
+                    result.put(ToolComponentOutput.ERR_MESSAGE,
+                            trMap.get("message") != null ? trMap.get("message") : "");
                     return result;
                 }
             }

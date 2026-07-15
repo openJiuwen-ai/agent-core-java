@@ -10,7 +10,11 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Session management related event. */
+/**
+ * Session management related event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -23,17 +27,22 @@ public class SessionEvent extends BaseLogEvent {
     private Integer messageCount;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SessionEvent.
+     * 
+     * @since 0.1.7
      */
     public SessionEvent() {
         super();
         setModuleType(ModuleType.SESSION);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "session_type", sessionType);
         putIfNotNull(map, "user_id", userId);

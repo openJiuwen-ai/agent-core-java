@@ -15,24 +15,31 @@ import java.util.Map;
  * Utility class for merging streaming message chunks and parser content.
  * <p>
  * Mirrors Python's merge helper functions in {@code message_chunk.py}.
+ * 
+ * @since 0.1.7
  */
 public final class MergeUtils {
-
+    /**
+     * MergeUtils.
+     * 
+     * @since 0.1.7
+     */
     private MergeUtils() {
         // Utility class
     }
 
     /**
      * Interface for objects that support merging (Java equivalent of Python's {@code __add__}).
-     *
-     * @param <T> the concrete type
+     * 
+     * @since 0.1.7
      */
     public interface Mergeable<T> {
         /**
-         * Merges this object with another of the same type.
-         *
-         * @param other the other object to merge with
-         * @return the merged result
+         * mergeWith.
+         * 
+         * @param other other
+         * @return the result
+         * @since 0.1.7
          */
         T mergeWith(T other);
     }
@@ -42,24 +49,30 @@ public final class MergeUtils {
      * <p>
      * Merge strategy:
      * <ul>
-     *   <li>If right is null, return left</li>
-     *   <li>If left is null, return right</li>
-     *   <li>If both are strings, concatenate</li>
-     *   <li>If both are lists, concatenate</li>
-     *   <li>If both are maps, recursively merge</li>
-     *   <li>If both implement {@link Mergeable} and are the same type, delegate to {@code mergeWith}</li>
-     *   <li>If both are same-type POJOs, merge field-by-field via {@link #mergeObjects}</li>
-     *   <li>Otherwise, return right (keep latest)</li>
+     * <li>If right is null, return left</li>
+     * <li>If left is null, return right</li>
+     * <li>If both are strings, concatenate</li>
+     * <li>If both are lists, concatenate</li>
+     * <li>If both are maps, recursively merge</li>
+     * <li>If both implement {@link Mergeable} and are the same type, delegate to {@code mergeWith}</li>
+     * <li>If both are same-type POJOs, merge field-by-field via {@link #mergeObjects}</li>
+     * <li>Otherwise, return right (keep latest)</li>
      * </ul>
      *
-     * @param left  the left content to merge
+     * @param left the left content to merge
      * @param right the right content to merge
      * @return the merged content
      */
-    @SuppressWarnings("unchecked")
+
     /**
-     * Auto-generated for codecheck compliance.
+     * mergeParserContent.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public static Object mergeParserContent(Object left, Object right) {
         if (right == null) {
             return left;
@@ -91,8 +104,7 @@ public final class MergeUtils {
         }
 
         // Same-type POJO field-level merge (Java equivalent of merge_pydantic_models)
-        if (left.getClass() == right.getClass()
-                && !isPrimitiveOrWrapper(left.getClass())) {
+        if (left.getClass() == right.getClass() && !isPrimitiveOrWrapper(left.getClass())) {
             Object merged = mergeObjects(left, right);
             if (merged != null) {
                 return merged;
@@ -109,14 +121,20 @@ public final class MergeUtils {
      * For the same key: strings are concatenated, lists are concatenated,
      * maps are recursively merged, otherwise the right value wins.
      *
-     * @param left  the left map to merge
+     * @param left the left map to merge
      * @param right the right map to merge
      * @return the merged map
      */
-    @SuppressWarnings("unchecked")
+
     /**
-     * Auto-generated for codecheck compliance.
+     * mergeMaps.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public static Map<String, Object> mergeMaps(Map<String, Object> left, Map<String, Object> right) {
         var result = new LinkedHashMap<>(left);
         for (var entry : right.entrySet()) {
@@ -151,15 +169,21 @@ public final class MergeUtils {
      * properties, and for each field applies {@link #mergeParserContent} to recursively
      * merge strings, lists, maps, and nested objects.
      *
-     * @param left  the base object
+     * @param left the base object
      * @param right the object whose non-null fields override/merge into left
-     * @param <T>   the object type
+     * @param <T> the object type
      * @return new merged instance, or {@code null} if merge is not possible
      */
-    @SuppressWarnings("unchecked")
+
     /**
-     * Auto-generated for codecheck compliance.
+     * mergeObjects.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public static <T> T mergeObjects(T left, T right) {
         if (left == null) {
             return right;
@@ -174,8 +198,7 @@ public final class MergeUtils {
         try {
             Class<?> clazz = left.getClass();
             T result = (T) clazz.getDeclaredConstructor().newInstance();
-            PropertyDescriptor[] descriptors = Introspector.getBeanInfo(clazz, Object.class)
-                    .getPropertyDescriptors();
+            PropertyDescriptor[] descriptors = Introspector.getBeanInfo(clazz, Object.class).getPropertyDescriptors();
 
             for (PropertyDescriptor pd : descriptors) {
                 Method getter = pd.getReadMethod();
@@ -190,25 +213,22 @@ public final class MergeUtils {
                 setter.invoke(result, mergedValue);
             }
             return result;
-        } catch (ReflectiveOperationException | IllegalArgumentException e) {
-            // If reflective merge fails, fall back to returning right
-            return right;
         } catch (Exception e) {
+            // If reflective merge fails, fall back to returning right
             return right;
         }
     }
 
+    /**
+     * isPrimitiveOrWrapper.
+     * 
+     * @param clazz clazz
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isPrimitiveOrWrapper(Class<?> clazz) {
-        return clazz.isPrimitive()
-                || clazz == Boolean.class
-                || clazz == Byte.class
-                || clazz == Character.class
-                || clazz == Short.class
-                || clazz == Integer.class
-                || clazz == Long.class
-                || clazz == Float.class
-                || clazz == Double.class
-                || clazz == String.class
-                || Number.class.isAssignableFrom(clazz);
+        return clazz.isPrimitive() || clazz == Boolean.class || clazz == Byte.class || clazz == Character.class
+                || clazz == Short.class || clazz == Integer.class || clazz == Long.class || clazz == Float.class
+                || clazz == Double.class || clazz == String.class || Number.class.isAssignableFrom(clazz);
     }
 }

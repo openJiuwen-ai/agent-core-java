@@ -17,9 +17,10 @@ import java.util.List;
  * is interrupted, making the API cleaner and more maintainable.
  * <p>
  * Mirrors Python's {@code TaskInterruptionState} dataclass.
+ * 
+ * @since 0.1.7
  */
 public class TaskInterruptionState {
-
     private final Task task;
     private final AgentSessionApi session;
     private final AssistantMessage aiMessage;
@@ -28,10 +29,16 @@ public class TaskInterruptionState {
     private Integer currentIteration;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskInterruptionState.
+     * 
+     * @param task task
+     * @param session session
+     * @param aiMessage aiMessage
+     * @param remainingTasks remainingTasks
+     * @since 0.1.7
      */
     public TaskInterruptionState(Task task, AgentSessionApi session, AssistantMessage aiMessage,
-                                 List<Task> remainingTasks) {
+            List<Task> remainingTasks) {
         this.task = task;
         this.session = session;
         this.aiMessage = aiMessage;
@@ -39,11 +46,18 @@ public class TaskInterruptionState {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskInterruptionState.
+     * 
+     * @param task task
+     * @param session session
+     * @param aiMessage aiMessage
+     * @param remainingTasks remainingTasks
+     * @param interactionData interactionData
+     * @param currentIteration currentIteration
+     * @since 0.1.7
      */
     public TaskInterruptionState(Task task, AgentSessionApi session, AssistantMessage aiMessage,
-                                 List<Task> remainingTasks, List<Object> interactionData,
-                                 Integer currentIteration) {
+            List<Task> remainingTasks, List<Object> interactionData, Integer currentIteration) {
         this.task = task;
         this.session = session;
         this.aiMessage = aiMessage;
@@ -53,56 +67,80 @@ public class TaskInterruptionState {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTask.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Task getTask() {
         return task;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSession.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AgentSessionApi getSession() {
         return session;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAiMessage.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AssistantMessage getAiMessage() {
         return aiMessage;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRemainingTasks.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Task> getRemainingTasks() {
         return remainingTasks;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInteractionData.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> getInteractionData() {
         return interactionData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInteractionData.
+     * 
+     * @param interactionData interactionData
+     * @since 0.1.7
      */
     public void setInteractionData(List<Object> interactionData) {
         this.interactionData = interactionData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentIteration.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getCurrentIteration() {
         return currentIteration;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCurrentIteration.
+     * 
+     * @param currentIteration currentIteration
+     * @since 0.1.7
      */
     public void setCurrentIteration(Integer currentIteration) {
         this.currentIteration = currentIteration;

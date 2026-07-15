@@ -14,13 +14,22 @@ import java.util.Map;
  * Contains the output type, data, and metadata information.
  * <p>
  * Mirrors Python's {@code ControllerOutputPayload(BaseModel)}.
+ * 
+ * @since 0.1.7
  */
 public class ControllerOutputPayload {
-
-    /** Processing type constant */
+    /**
+     * TASK_PROCESSING.
+     * 
+     * @since 0.1.7
+     */
     public static final String TASK_PROCESSING = "processing";
 
-    /** All tasks processed type constant */
+    /**
+     * ALL_TASKS_PROCESSED.
+     * 
+     * @since 0.1.7
+     */
     public static final String ALL_TASKS_PROCESSED = "all_tasks_processed";
 
     private String type;
@@ -28,14 +37,20 @@ public class ControllerOutputPayload {
     private Map<String, Object> metadata;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ControllerOutputPayload.
+     * 
+     * @since 0.1.7
      */
     public ControllerOutputPayload() {
         this.data = new ArrayList<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ControllerOutputPayload.
+     * 
+     * @param type type
+     * @param data data
+     * @since 0.1.7
      */
     public ControllerOutputPayload(String type, List<DataFrame> data) {
         this.type = type;
@@ -43,7 +58,12 @@ public class ControllerOutputPayload {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ControllerOutputPayload.
+     * 
+     * @param type type
+     * @param data data
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public ControllerOutputPayload(String type, List<DataFrame> data, Map<String, Object> metadata) {
         this.type = type;
@@ -53,48 +73,70 @@ public class ControllerOutputPayload {
 
     /**
      * Create payload from EventType.
+     * 
+     * @param eventType eventType
+     * @param data data
+     * @since 0.1.7
      */
     public ControllerOutputPayload(EventType eventType, List<DataFrame> data) {
         this(eventType.getValue(), data);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getType() {
         return type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setType.
+     * 
+     * @param type type
+     * @since 0.1.7
      */
     public void setType(String type) {
         this.type = type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getData.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<DataFrame> getData() {
         return data;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setData.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     public void setData(List<DataFrame> data) {
         this.data = data != null ? data : new ArrayList<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMetadata() {
         return metadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMetadata.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata;
@@ -102,14 +144,12 @@ public class ControllerOutputPayload {
 
     /**
      * Create a payload indicating all tasks have been processed.
-     *
+     * 
      * @param message descriptive message
      * @return the payload
+     * @since 0.1.7
      */
     public static ControllerOutputPayload allTasksProcessed(String message) {
-        return new ControllerOutputPayload(
-                ALL_TASKS_PROCESSED,
-                List.of(new DataFrame.TextDataFrame(message))
-        );
+        return new ControllerOutputPayload(ALL_TASKS_PROCESSED, List.of(new DataFrame.TextDataFrame(message)));
     }
 }

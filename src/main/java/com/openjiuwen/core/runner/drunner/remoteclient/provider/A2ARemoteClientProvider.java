@@ -14,16 +14,17 @@ import com.openjiuwen.extensions.a2a.A2ARemoteClient;
  * <p>
  * Creates remote clients that communicate with other agents using the
  * A2A JSON-RPC protocol, enabling cross-framework agent interoperability.
- *
- * @since 0.1.12
+ * 
  * @see RemoteClientProvider
  * @see com.openjiuwen.extensions.a2a.A2ARemoteClient
+ * @since 0.1.7
  */
 public final class A2ARemoteClientProvider implements RemoteClientProvider {
     /**
-     * Returns the A2A protocol type name.
-     *
-     * @return the type name "A2A"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -32,9 +33,10 @@ public final class A2ARemoteClientProvider implements RemoteClientProvider {
 
     /**
      * Creates a remote client using A2A protocol.
-     *
+     * 
      * @param config the remote client configuration
      * @return a new A2ARemoteClient instance
+     * @since 0.1.7
      */
     @Override
     public RemoteClient create(RemoteClientConfig config) {

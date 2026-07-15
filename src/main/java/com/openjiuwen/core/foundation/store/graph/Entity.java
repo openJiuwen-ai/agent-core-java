@@ -11,97 +11,141 @@ import java.util.Map;
 
 /**
  * Node / Entity representing entity nodes in graph.
+ * 
+ * @since 0.1.7
  */
 public class Entity extends NamedGraphObject {
     private List<Float> nameEmbedding;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Object> relations = new ArrayList<>();
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> episodes = new ArrayList<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> attributes = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Entity.
+     * 
+     * @since 0.1.7
      */
     public Entity() {
         setObjType("Entity");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNameEmbedding.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> getNameEmbedding() {
         return nameEmbedding;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setNameEmbedding.
+     * 
+     * @param nameEmbedding nameEmbedding
+     * @since 0.1.7
      */
     public void setNameEmbedding(List<Float> nameEmbedding) {
         this.nameEmbedding = nameEmbedding;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRelations.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> getRelations() {
         return relations;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setRelations.
+     * 
+     * @param relations relations
+     * @since 0.1.7
      */
     public void setRelations(List<Object> relations) {
         this.relations = relations;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEpisodes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getEpisodes() {
         return episodes;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEpisodes.
+     * 
+     * @param episodes episodes
+     * @since 0.1.7
      */
     public void setEpisodes(List<String> episodes) {
         this.episodes = episodes;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAttributes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getAttributes() {
         return attributes;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setAttributes.
+     * 
+     * @param attributes attributes
+     * @since 0.1.7
      */
     public void setAttributes(Map<String, Object> attributes) {
         this.attributes = attributes;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fetchEmbedTask.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<GraphUtils.EmbedTask> fetchEmbedTask() {
-        return List.of(
-                new GraphUtils.EmbedTask(this, "contentEmbedding", getContent()),
-                new GraphUtils.EmbedTask(this, "nameEmbedding", getName())
-        );
+        return List.of(new GraphUtils.EmbedTask(this, "contentEmbedding", getContent()),
+                new GraphUtils.EmbedTask(this, "nameEmbedding", getName()));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> toMap() {
         Map<String, Object> result = super.toMap();
         List<String> relationIds = new ArrayList<>();

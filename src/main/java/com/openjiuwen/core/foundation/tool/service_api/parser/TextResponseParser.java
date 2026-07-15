@@ -12,26 +12,24 @@ import java.util.Set;
  * Text response parser.
  * <p>
  * Mirrors Python's {@code TextResponseParser}.
+ * 
+ * @since 0.1.7
  */
 public class TextResponseParser extends BaseResponseParser {
+    private static final Set<String> TEXT_CONTENT_TYPES =
+        Set.of("text/plain", "text/html", "text/xml", "text/css", "text/javascript", "text/csv", "application/xml",
+                "application/xhtml+xml", "application/javascript", "application/x-www-form-urlencoded");
 
-    private static final Set<String> TEXT_CONTENT_TYPES = Set.of(
-            "text/plain",
-            "text/html",
-            "text/xml",
-            "text/css",
-            "text/javascript",
-            "text/csv",
-            "application/xml",
-            "application/xhtml+xml",
-            "application/javascript",
-            "application/x-www-form-urlencoded"
-    );
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * canParse.
+     * 
+     * @param contentType contentType
+     * @param statusCode statusCode
+     * @param headers headers
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean canParse(String contentType, int statusCode, Map<String, String> headers) {
         if (contentType == null) {
             contentType = "";
@@ -52,10 +50,15 @@ public class TextResponseParser extends BaseResponseParser {
         return false;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parse.
+     * 
+     * @param responseData responseData
+     * @param contentType contentType
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object parse(byte[] responseData, String contentType) {
         if (responseData == null || responseData.length == 0) {
             return "";

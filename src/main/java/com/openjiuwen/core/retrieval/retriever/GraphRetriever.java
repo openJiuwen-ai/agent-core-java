@@ -21,9 +21,10 @@ import java.util.Set;
 
 /**
  * Graph-aware retriever that expands retrieved chunks through linked triples.
+ * 
+ * @since 0.1.7
  */
 public class GraphRetriever extends AbstractRetriever {
-
     private final Retriever chunkRetriever;
     private final Retriever tripleRetriever;
     private final VectorStore vectorStore;
@@ -33,31 +34,43 @@ public class GraphRetriever extends AbstractRetriever {
     private String indexType;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GraphRetriever.
+     * 
+     * @param chunkRetriever chunkRetriever
+     * @param tripleRetriever tripleRetriever
+     * @since 0.1.7
      */
     public GraphRetriever(Retriever chunkRetriever, Retriever tripleRetriever) {
         this(chunkRetriever, tripleRetriever, null, null, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GraphRetriever.
+     * 
+     * @param vectorStore vectorStore
+     * @param embedModel embedModel
+     * @param chunkCollection chunkCollection
+     * @param tripleCollection tripleCollection
+     * @since 0.1.7
      */
-    public GraphRetriever(VectorStore vectorStore,
-                          Embedding embedModel,
-                          String chunkCollection,
-                          String tripleCollection) {
+    public GraphRetriever(VectorStore vectorStore, Embedding embedModel, String chunkCollection,
+            String tripleCollection) {
         this(null, null, vectorStore, embedModel, chunkCollection, tripleCollection);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GraphRetriever.
+     * 
+     * @param chunkRetriever chunkRetriever
+     * @param tripleRetriever tripleRetriever
+     * @param vectorStore vectorStore
+     * @param embedModel embedModel
+     * @param chunkCollection chunkCollection
+     * @param tripleCollection tripleCollection
+     * @since 0.1.7
      */
-    public GraphRetriever(Retriever chunkRetriever,
-                          Retriever tripleRetriever,
-                          VectorStore vectorStore,
-                          Embedding embedModel,
-                          String chunkCollection,
-                          String tripleCollection) {
+    public GraphRetriever(Retriever chunkRetriever, Retriever tripleRetriever, VectorStore vectorStore,
+            Embedding embedModel, String chunkCollection, String tripleCollection) {
         this.chunkRetriever = chunkRetriever;
         this.tripleRetriever = tripleRetriever;
         this.vectorStore = vectorStore;
@@ -68,84 +81,98 @@ public class GraphRetriever extends AbstractRetriever {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setIndexType.
+     * 
+     * @param indexType indexType
+     * @since 0.1.7
      */
     public void setIndexType(String indexType) {
         this.indexType = indexType;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getIndexType() {
         return indexType == null ? "hybrid" : indexType;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * supportsMode.
+     * 
+     * @param mode mode
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean supportsMode(String mode) {
         return allowedModes().contains(mode);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRetrieverForMode.
+     * 
+     * @param mode mode
+     * @param isChunk isChunk
+     * @return the result
+     * @since 0.1.7
      */
     public Retriever getRetrieverForMode(String mode, boolean isChunk) {
         ensureModeAllowed(mode);
         Retriever fixed = isChunk ? chunkRetriever : tripleRetriever;
         if (fixed != null) {
             if (!fixed.supportsMode(mode)) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_RETRIEVER_CAPABILITY_NOT_SUPPORT,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_CAPABILITY_NOT_SUPPORT,
                         "Provided retriever does not support mode=" + mode);
             }
             return fixed;
         }
         if (vectorStore == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_VECTOR_STORE_NOT_FOUND,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_VECTOR_STORE_NOT_FOUND,
                     "vector_store is required for dynamic retriever creation");
         }
         String collection = isChunk ? chunkCollection : tripleCollection;
         if (collection == null || collection.isBlank()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_COLLECTION_NOT_FOUND,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_COLLECTION_NOT_FOUND,
                     (isChunk ? "chunk" : "triple") + "_collection is required for dynamic retriever creation");
         }
         VectorStore scoped = vectorStore.withCollection(collection);
         return switch (mode) {
             case "vector" -> {
                 if (embedModel == null) {
-                    throw RetrievalExceptions.error(
-                            StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
+                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
                             "embed_model is required for vector mode");
                 }
                 yield new VectorRetriever(scoped, embedModel);
             }
             case "sparse" -> new SparseRetriever(scoped);
             case "hybrid" -> new HybridRetriever(scoped, embedModel);
-            default -> throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,
+            default -> throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,
                     "Unsupported mode: " + mode);
         };
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieve.
+     * 
+     * @param query query
+     * @param topK topK
+     * @param scoreThreshold scoreThreshold
+     * @param mode mode
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public List<RetrievalResult> retrieve(String query,
-                                          int topK,
-                                          Double scoreThreshold,
-                                          String mode,
-                                          Map<String, Object> options) {
+    @Override
+    public List<RetrievalResult> retrieve(String query, int topK, Double scoreThreshold, String mode,
+            Map<String, Object> options) {
         ensureModeAllowed(mode);
         if (scoreThreshold != null && !"vector".equals(mode)) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_SCORE_THRESHOLD_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_SCORE_THRESHOLD_INVALID,
                     "score_threshold is only supported when mode='vector'");
         }
         Retriever chunkModeRetriever = getRetrieverForMode(mode, true);
@@ -155,32 +182,37 @@ public class GraphRetriever extends AbstractRetriever {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * graphExpansion.
+     * 
+     * @param query query
+     * @param chunks chunks
+     * @param triples triples
+     * @param topK topK
+     * @param mode mode
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public List<RetrievalResult> graphExpansion(String query,
-                                                List<RetrievalResult> chunks,
-                                                List<RetrievalResult> triples,
-                                                Integer topK,
-                                                String mode,
-                                                Map<String, Object> options) {
+    public List<RetrievalResult> graphExpansion(String query, List<RetrievalResult> chunks,
+            List<RetrievalResult> triples, Integer topK, String mode, Map<String, Object> options) {
         ensureModeAllowed(mode);
         if (chunks == null || chunks.isEmpty()) {
             if ("sparse".equals(mode)) {
-                return getRetrieverForMode("sparse", true).retrieve(query, topK == null ? 5 : topK, null, "sparse", Map.of());
+                return getRetrieverForMode("sparse", true).retrieve(query, topK == null ? 5 : topK, null, "sparse",
+                        Map.of());
             }
             return List.of();
         }
-        List<RetrievalResult> effectiveTriples = triples == null || triples.isEmpty()
-                ? fetchTriples(chunks, mode)
-                : triples;
+        List<RetrievalResult> effectiveTriples =
+            triples == null || triples.isEmpty() ? fetchTriples(chunks, mode) : triples;
         if (effectiveTriples.isEmpty()) {
             return trim(chunks, topK);
         }
         int graphHops = options != null && options.get("graph_hops") instanceof Number n ? n.intValue() : 2;
         List<TripleBeam> beams;
         try {
-            beams = new TripleBeamSearch(getRetrieverForMode(mode, false), 10, 100, graphHops)
-                    .beamSearch(query, effectiveTriples);
+            beams = new TripleBeamSearch(getRetrieverForMode(mode, false), 10, 100, graphHops).beamSearch(query,
+                    effectiveTriples);
         } catch (Exception e) {
             return trim(chunks, topK);
         }
@@ -200,21 +232,30 @@ public class GraphRetriever extends AbstractRetriever {
             }
         }
         List<RetrievalResult> newChunks = fetchChunks(expandedTriples, mode);
-        List<RetrievalResult> fused = newChunks.isEmpty()
-                ? chunks
-                : FusionUtils.rrfFusionRetrieval(List.of(newChunks, chunks), 60);
+        List<RetrievalResult> fused =
+            newChunks.isEmpty() ? chunks : FusionUtils.rrfFusionRetrieval(List.of(newChunks, chunks), 60);
         return trim(fused, topK);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void close() {
         closeQuietly(chunkRetriever);
         closeQuietly(tripleRetriever);
     }
 
+    /**
+     * fetchTriples.
+     * 
+     * @param chunks chunks
+     * @param mode mode
+     * @return the result
+     * @since 0.1.7
+     */
     private List<RetrievalResult> fetchTriples(List<RetrievalResult> chunks, String mode) {
         Retriever retriever = getRetrieverForMode(mode, false);
         if (!(retriever instanceof AbstractStoreBackedRetriever storeBacked)) {
@@ -235,15 +276,20 @@ public class GraphRetriever extends AbstractRetriever {
         }
         List<SearchResult> raw = storeBacked.getVectorStore().queryByFilters(Map.of("chunk_id", chunkIds), 200);
         return raw.stream()
-                .map(result -> new RetrievalResult(
-                        result.getText(),
-                        result.getScore(),
-                        result.getMetadata(),
+                .map(result -> new RetrievalResult(result.getText(), result.getScore(), result.getMetadata(),
                         VectorRetriever.stringValue(result.getMetadata().get("doc_id")),
                         VectorRetriever.stringValue(result.getMetadata().get("chunk_id"))))
                 .toList();
     }
 
+    /**
+     * fetchChunks.
+     * 
+     * @param triples triples
+     * @param mode mode
+     * @return the result
+     * @since 0.1.7
+     */
     private List<RetrievalResult> fetchChunks(List<RetrievalResult> triples, String mode) {
         Retriever retriever = getRetrieverForMode(mode, true);
         if (!(retriever instanceof AbstractStoreBackedRetriever storeBacked)) {
@@ -264,15 +310,18 @@ public class GraphRetriever extends AbstractRetriever {
         }
         List<SearchResult> raw = storeBacked.getVectorStore().queryByFilters(Map.of("chunk_id", chunkIds), 200);
         return raw.stream()
-                .map(result -> new RetrievalResult(
-                        result.getText(),
-                        result.getScore(),
-                        result.getMetadata(),
+                .map(result -> new RetrievalResult(result.getText(), result.getScore(), result.getMetadata(),
                         VectorRetriever.stringValue(result.getMetadata().get("doc_id")),
                         VectorRetriever.stringValue(result.getMetadata().get("chunk_id"))))
                 .toList();
     }
 
+    /**
+     * allowedModes.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> allowedModes() {
         return switch (getIndexType()) {
             case "vector" -> List.of("vector");
@@ -281,17 +330,30 @@ public class GraphRetriever extends AbstractRetriever {
         };
     }
 
+    /**
+     * ensureModeAllowed.
+     * 
+     * @param mode mode
+     * @since 0.1.7
+     */
     private void ensureModeAllowed(String mode) {
         if (indexType == null) {
             return;
         }
         if (!allowedModes().contains(mode)) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_MODE_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_MODE_INVALID,
                     "mode=" + mode + " is incompatible with index_type=" + indexType);
         }
     }
 
+    /**
+     * trim.
+     * 
+     * @param results results
+     * @param topK topK
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<RetrievalResult> trim(List<RetrievalResult> results, Integer topK) {
         if (topK == null || results.size() <= topK) {
             return results;
@@ -299,6 +361,12 @@ public class GraphRetriever extends AbstractRetriever {
         return new ArrayList<>(results.subList(0, topK));
     }
 
+    /**
+     * closeQuietly.
+     * 
+     * @param closeable closeable
+     * @since 0.1.7
+     */
     private static void closeQuietly(AutoCloseable closeable) {
         if (closeable == null) {
             return;
@@ -306,6 +374,8 @@ public class GraphRetriever extends AbstractRetriever {
         try {
             closeable.close();
         } catch (Exception ignored) {
+
+            // Ignore.
         }
     }
 }

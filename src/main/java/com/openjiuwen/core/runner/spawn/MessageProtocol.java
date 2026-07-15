@@ -11,16 +11,28 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 
 /**
- * Auto-generated for codecheck compliance.
+ * MessageProtocol.
+ * 
+ * @since 0.1.7
  */
 public final class MessageProtocol {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    /**
+     * MessageProtocol.
+     * 
+     * @since 0.1.7
+     */
     private MessageProtocol() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * serializeMessageToStream.
+     * 
+     * @param message message
+     * @param writer writer
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public static void serializeMessageToStream(Message message, BufferedWriter writer) throws IOException {
         writer.write(OBJECT_MAPPER.writeValueAsString(message));
@@ -29,7 +41,12 @@ public final class MessageProtocol {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deserializeMessageFromStream.
+     * 
+     * @param reader reader
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public static Message deserializeMessageFromStream(BufferedReader reader) throws IOException {
         String line;

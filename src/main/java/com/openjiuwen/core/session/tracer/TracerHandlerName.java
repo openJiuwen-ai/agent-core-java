@@ -8,6 +8,8 @@ package com.openjiuwen.core.session.tracer;
  * Handler name enum for tracer callbacks.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.tracer.handler.TracerHandlerName}.
+ * 
+ * @since 0.1.7
  */
 public enum TracerHandlerName {
     TRACE_AGENT("tracer_agent"),
@@ -20,7 +22,10 @@ public enum TracerHandlerName {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

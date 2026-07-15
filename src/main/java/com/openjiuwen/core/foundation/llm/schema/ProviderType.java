@@ -8,6 +8,8 @@ package com.openjiuwen.core.foundation.llm.schema;
  * Model client provider type enumeration.
  * <p>
  * Mirrors Python's {@code ProviderType} enum.
+ * 
+ * @since 0.1.7
  */
 public enum ProviderType {
     OpenAI("OpenAI"),
@@ -22,7 +24,10 @@ public enum ProviderType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
@@ -30,10 +35,10 @@ public enum ProviderType {
 
     /**
      * Look up a provider type by its string value.
-     *
+     * 
      * @param value provider name string
      * @return the matching {@code ProviderType}
-     * @throws IllegalArgumentException if no match is found
+     * @since 0.1.7
      */
     public static ProviderType fromValue(String value) {
         for (ProviderType t : values()) {

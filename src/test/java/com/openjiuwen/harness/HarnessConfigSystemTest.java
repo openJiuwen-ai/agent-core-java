@@ -1,7 +1,11 @@
+
 package com.openjiuwen.harness;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.harness.harness_config.HarnessConfigBuilder;
 import com.openjiuwen.harness.harness_config.HarnessConfigLoader;
+
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -10,11 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 @Tag("system-test")
 class HarnessConfigSystemTest {
-
     @TempDir
     Path tempDir;
 

@@ -15,51 +15,66 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * Unlike other managers, SysOperationMgr stores instances directly.
  * Mirrors Python's {@code SysOperationMgr} in {@code resources_manager/sys_operation_manager.py}.
+ * 
+ * @since 0.1.7
  */
 public class SysOperationMgr {
-
     private final ConcurrentHashMap<String, SysOperation> sysOperations = new ConcurrentHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addSysOperation.
+     * 
+     * @param sysOperationId sysOperationId
+     * @param sysOperationInstance sysOperationInstance
+     * @since 0.1.7
      */
     public void addSysOperation(String sysOperationId, SysOperation sysOperationInstance) {
         if (sysOperationId == null) {
-            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR,
-                    "process", "add", "error_msg", "sys_operation_id can not be none");
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR, "process", "add", "error_msg",
+                    "sys_operation_id can not be none");
         }
         if (sysOperations.containsKey(sysOperationId)) {
-            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR,
-                    "process", "add", "error_msg", "already exists sys_operation_card " + sysOperationId);
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR, "process", "add", "error_msg",
+                    "already exists sys_operation_card " + sysOperationId);
         }
         sysOperations.put(sysOperationId, sysOperationInstance);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeSysOperation.
+     * 
+     * @param sysOperationId sysOperationId
+     * @return the result
+     * @since 0.1.7
      */
     public SysOperation removeSysOperation(String sysOperationId) {
         if (sysOperationId == null) {
-            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR,
-                    "process", "remove", "error_msg", "sys_operation_id can not be none");
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR, "process", "remove",
+                    "error_msg", "sys_operation_id can not be none");
         }
         return sysOperations.remove(sysOperationId);
     }
 
     /**
      * Clear all registered system operations.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         sysOperations.clear();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSysOperation.
+     * 
+     * @param sysOperationId sysOperationId
+     * @return the result
+     * @since 0.1.7
      */
     public SysOperation getSysOperation(String sysOperationId) {
         if (sysOperationId == null) {
-            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR,
-                    "process", "get", "error_msg", "sys_operation_id can not be none");
+            throw ErrorHelper.buildError(StatusCode.SYS_OPERATION_MANAGER_PROCESS_ERROR, "process", "get", "error_msg",
+                    "sys_operation_id can not be none");
         }
         return sysOperations.get(sysOperationId);
     }

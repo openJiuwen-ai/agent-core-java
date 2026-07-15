@@ -4,19 +4,6 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox;
 
-import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
-import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
-import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
-import java.lang.reflect.Field;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -27,8 +14,21 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class JiuwenBoxProviderMixinTest {
+import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
+import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.lang.reflect.Field;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+class JiuwenBoxProviderMixinTest {
     private JiuwenBoxClient mockClient;
     private SandboxEndpoint endpoint;
     private SandboxGatewayConfig config;

@@ -12,9 +12,10 @@ import java.util.List;
  * Represents a pending (failed or interrupted) node in the graph execution.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.store.base.PendingNode}.
+ * 
+ * @since 0.1.7
  */
 public class PendingNode implements Serializable {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -23,14 +24,23 @@ public class PendingNode implements Serializable {
     private final List<Exception> exceptions;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PendingNode.
+     * 
+     * @param nodeName nodeName
+     * @param status status
+     * @since 0.1.7
      */
     public PendingNode(String nodeName, String status) {
         this(nodeName, status, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PendingNode.
+     * 
+     * @param nodeName nodeName
+     * @param status status
+     * @param exceptions exceptions
+     * @since 0.1.7
      */
     public PendingNode(String nodeName, String status, List<Exception> exceptions) {
         this.nodeName = nodeName;
@@ -39,21 +49,30 @@ public class PendingNode implements Serializable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNodeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getNodeName() {
         return nodeName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStatus.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getStatus() {
         return status;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExceptions.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Exception> getExceptions() {
         return exceptions;

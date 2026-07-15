@@ -5,53 +5,57 @@
 package com.openjiuwen.agentteams.spawn;
 
 import com.openjiuwen.core.runner.spawn.SpawnedProcessHandle;
+
 import lombok.RequiredArgsConstructor;
 
 /**
  * Public class ProcessSpawnHandle used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 @RequiredArgsConstructor
 public class ProcessSpawnHandle implements SpawnHandle {
     private final SpawnedProcessHandle delegate;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * delegate.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public SpawnedProcessHandle delegate() {
         return delegate;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAlive.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean isAlive() {
         return delegate.isAlive();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isHealthy.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean isHealthy() {
         return delegate.isHealthy();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * startHealthCheck.
+     * 
+     * @param intervalMillis intervalMillis
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void startHealthCheck(Long intervalMillis) {
         if (intervalMillis == null) {
             delegate.startHealthCheck();
@@ -61,67 +65,66 @@ public class ProcessSpawnHandle implements SpawnHandle {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stopHealthCheck.
+     * 
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void stopHealthCheck() {
         delegate.stopHealthCheck();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shutdown.
+     * 
+     * @param timeoutMillis timeoutMillis
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean shutdown(Long timeoutMillis) {
         return delegate.shutdown(timeoutMillis != null ? timeoutMillis / 1_000.0 : null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * forceKill.
+     * 
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void forceKill() {
         delegate.forceKill();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * waitForCompletion.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int waitForCompletion() {
         return delegate.waitForCompletion();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setOnUnhealthy.
+     * 
+     * @param onUnhealthy onUnhealthy
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void setOnUnhealthy(Runnable onUnhealthy) {
         delegate.setOnUnhealthy(onUnhealthy);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isHealthCheckRunning.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean isHealthCheckRunning() {
         return delegate.isHealthCheckRunning();
     }

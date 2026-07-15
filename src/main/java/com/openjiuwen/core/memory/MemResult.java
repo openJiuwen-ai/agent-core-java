@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Memory search result with relevance score.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

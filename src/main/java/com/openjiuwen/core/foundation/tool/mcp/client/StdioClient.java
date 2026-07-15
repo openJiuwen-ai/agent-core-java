@@ -5,6 +5,7 @@
 package com.openjiuwen.core.foundation.tool.mcp.client;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
@@ -29,14 +30,26 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Stdio transport MCP client using newline-delimited JSON-RPC (NDJSON),
  * compatible with the MCP Python SDK's stdio transport protocol.
- *
- * @since 2026-07-28
+ * 
+ * @since 0.1.7
  */
 public class StdioClient implements McpClient {
     private static final LoggerProtocol LOG = Loggers.MCP;
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final McpServerConfig config;
+
+    /**
+     * AtomicLong.
+     * 
+     * @since 0.1.7
+     */
     private final AtomicLong requestCounter = new AtomicLong();
 
     private Process process;
@@ -46,17 +59,24 @@ public class StdioClient implements McpClient {
 
     /**
      * 构造函数.
-     *
+     * 
      * @param config MCP服务器配置
+     * @since 0.1.7
      */
     public StdioClient(McpServerConfig config) {
         this.config = config;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * connect.
+     * 
+     * @param retryTimes retryTimes
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public boolean connect(int retryTimes, float timeout) throws Exception {
         String command = config.getParams().containsKey("command")
                 ? String.valueOf(config.getParams().get("command"))
@@ -88,27 +108,28 @@ public class StdioClient implements McpClient {
         startStderrDrainer();
         long deadlineMs = computeDeadlineMs(timeout);
         try {
-            request("initialize", Map.of(
-                    "protocolVersion", "2024-11-05",
-                    "clientInfo", Map.of("name", "agent-core-java", "version", "0.1.7"),
-                    "capabilities", Map.of()
-            ), deadlineMs);
+            request("initialize",
+                    Map.of("protocolVersion", "2024-11-05", "clientInfo",
+                            Map.of("name", "agent-core-java", "version", "0.1.7"), "capabilities", Map.of()),
+                    deadlineMs);
             // Send initialized notification only after successful initialize (per MCP spec 2024-11-05)
-            writeLine(MAPPER.writeValueAsBytes(Map.of(
-                    "jsonrpc", "2.0",
-                    "method", "notifications/initialized",
-                    "params", Map.of()
-            )));
-        } catch (Exception e) {
+            writeLine(MAPPER.writeValueAsBytes(
+                    Map.of("jsonrpc", "2.0", "method", "notifications/initialized", "params", Map.of())));
+        } catch (JsonProcessingException e) {
             LOG.warn("MCP STDIO initialize request failed: {}", e.getMessage());
         }
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * disconnect.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public boolean disconnect(float timeout) throws Exception {
         stopStderrDrainer();
         if (stdin != null) {
@@ -124,10 +145,15 @@ public class StdioClient implements McpClient {
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * listTools.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public List<Object> listTools(float timeout) throws Exception {
         long deadlineMs = computeDeadlineMs(timeout);
         Map<String, Object> result = request("tools/list", Map.of(), deadlineMs);
@@ -138,23 +164,25 @@ public class StdioClient implements McpClient {
                 if (raw instanceof Map<?, ?> map) {
                     Object name = map.get("name");
                     Object description = map.get("description");
-                    tools.add(McpToolCard.builder()
-                            .name(name != null ? String.valueOf(name) : "")
+                    tools.add(McpToolCard.builder().name(name != null ? String.valueOf(name) : "")
                             .description(description != null ? String.valueOf(description) : "")
-                            .serverName(config.getServerName())
-                            .serverId(config.getServerId())
-                            .inputParams(castMap(map.get("inputSchema")))
-                            .build());
+                            .serverName(config.getServerName()).serverId(config.getServerId())
+                            .inputParams(castMap(map.get("inputSchema"))).build());
                 }
             }
         }
         return tools;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * listResources.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public List<Object> listResources(float timeout) throws Exception {
         long deadlineMs = computeDeadlineMs(timeout);
         Map<String, Object> result = request("resources/list", Map.of(), deadlineMs);
@@ -166,10 +194,16 @@ public class StdioClient implements McpClient {
         return resources;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * readResource.
+     * 
+     * @param uri uri
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public List<Object> readResource(String uri, float timeout) throws Exception {
         long deadlineMs = computeDeadlineMs(timeout);
         Map<String, Object> result = request("resources/read", Map.of("uri", uri), deadlineMs);
@@ -181,14 +215,21 @@ public class StdioClient implements McpClient {
         return contents;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * callTool.
+     * 
+     * @param toolName toolName
+     * @param arguments arguments
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public Object callTool(String toolName, Map<String, Object> arguments, float timeout) throws Exception {
         long deadlineMs = computeDeadlineMs(timeout);
         Map<String, Object> result = request("tools/call",
-        Map.of("name", toolName, "arguments", arguments == null ? Map.of() : arguments), deadlineMs);
+                Map.of("name", toolName, "arguments", arguments == null ? Map.of() : arguments), deadlineMs);
         Object content = result.get("content");
         if (content instanceof List<?> list && !list.isEmpty()) {
             List<String> textParts = new ArrayList<>();
@@ -210,10 +251,16 @@ public class StdioClient implements McpClient {
         return result;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolInfo.
+     * 
+     * @param toolName toolName
+     * @param timeout timeout
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
+    @Override
     public Optional<Object> getToolInfo(String toolName, float timeout) throws Exception {
         for (Object tool : listTools(timeout)) {
             if (tool instanceof McpToolCard card && toolName.equals(card.getName())) {
@@ -223,16 +270,29 @@ public class StdioClient implements McpClient {
         return Optional.empty();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getServerPath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getServerPath() {
         return config.getServerPath();
     }
 
+    /**
+     * request.
+     * 
+     * @param method method
+     * @param params params
+     * @param deadlineMs deadlineMs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private synchronized Map<String, Object> request(String method, Map<String, Object> params, long deadlineMs)
-    throws Exception {
+            throws Exception {
         long requestId = requestCounter.incrementAndGet();
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("jsonrpc", "2.0");
@@ -264,9 +324,10 @@ public class StdioClient implements McpClient {
 
     /**
      * Write a JSON line (NDJSON: json + '\n').
-     *
+     * 
      * @param jsonBytes jsonBytes
      * @throws Exception 写入异常
+     * @since 0.1.7
      */
     private void writeLine(byte[] jsonBytes) throws Exception {
         stdin.write(jsonBytes);
@@ -274,6 +335,14 @@ public class StdioClient implements McpClient {
         stdin.flush();
     }
 
+    /**
+     * readLine.
+     * 
+     * @param deadlineMs deadlineMs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private Map<String, Object> readLine(long deadlineMs) throws Exception {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         while (true) {
@@ -298,17 +367,31 @@ public class StdioClient implements McpClient {
         });
     }
 
+    /**
+     * computeDeadlineMs.
+     * 
+     * @param timeout timeout
+     * @return the result
+     * @since 0.1.7
+     */
     private static long computeDeadlineMs(float timeout) {
         if (Float.compare(timeout, McpServerConfig.NO_TIMEOUT) == 0) {
             // NO_TIMEOUT sentinel: 0 means no deadline enforcement
             return 0L;
         }
         return Float.compare(timeout, 0) > 0
-                ? System.currentTimeMillis() + BigDecimal.valueOf(timeout).multiply(BigDecimal.valueOf(1000L))
-                .longValue()
+                ? System.currentTimeMillis()
+                        + BigDecimal.valueOf(timeout).multiply(BigDecimal.valueOf(1000L)).longValue()
                 : System.currentTimeMillis() + 30_000L;
     }
 
+    /**
+     * checkDeadline.
+     * 
+     * @param deadlineMs deadlineMs
+     * @throws SocketTimeoutException SocketTimeoutException
+     * @since 0.1.7
+     */
     private void checkDeadline(long deadlineMs) throws SocketTimeoutException {
         // deadlineMs == 0 means NO_TIMEOUT, skip deadline check entirely
         if (deadlineMs != 0L && System.currentTimeMillis() > deadlineMs) {
@@ -316,12 +399,23 @@ public class StdioClient implements McpClient {
         }
     }
 
+    /**
+     * checkProcessAlive.
+     * 
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private void checkProcessAlive() throws IOException {
         if (process != null && !process.isAlive()) {
             throw new IOException("MCP STDIO subprocess terminated unexpectedly");
         }
     }
 
+    /**
+     * startStderrDrainer.
+     * 
+     * @since 0.1.7
+     */
     private void startStderrDrainer() {
         this.stderrDrainer = new Thread(() -> {
             try {
@@ -334,13 +428,18 @@ public class StdioClient implements McpClient {
             }
         }, "mcp-stdio-stderr-drain-" + config.getServerId());
         this.stderrDrainer.setUncaughtExceptionHandler((t, e) -> {
-            LOG.warn("MCP STDIO stderr drainer thread {} encountered uncaught exception: {}",
-            t.getName(), e.getMessage());
+            LOG.warn("MCP STDIO stderr drainer thread {} encountered uncaught exception: {}", t.getName(),
+                    e.getMessage());
         });
         this.stderrDrainer.setDaemon(true);
         this.stderrDrainer.start();
     }
 
+    /**
+     * stopStderrDrainer.
+     * 
+     * @since 0.1.7
+     */
     private void stopStderrDrainer() {
         if (stderrDrainer != null) {
             stderrDrainer.interrupt();
@@ -354,6 +453,13 @@ public class StdioClient implements McpClient {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * castMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> castMap(Object value) {
         if (!(value instanceof Map<?, ?> map)) {
             return Map.of();

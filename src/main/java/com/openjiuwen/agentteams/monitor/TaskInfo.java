@@ -9,15 +9,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Task status projection for team monitor output.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-/**
- * Task status projection for team monitor output.
- *
- * @since 1.0
- */
 public class TaskInfo {
     private String taskId;
     private String teamId;

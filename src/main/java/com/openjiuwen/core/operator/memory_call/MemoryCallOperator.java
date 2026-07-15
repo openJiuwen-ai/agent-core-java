@@ -15,9 +15,10 @@ import java.util.Map;
 
 /**
  * Memory invocation operator with enabled and retry tunables.
+ * 
+ * @since 0.1.7
  */
 public class MemoryCallOperator extends Operator {
-
     private final MemoryOperation memory;
     private final String memoryCallId;
     private final MemoryInvoker memoryInvoker;
@@ -25,7 +26,12 @@ public class MemoryCallOperator extends Operator {
     private int maxRetries;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MemoryCallOperator.
+     * 
+     * @param memory memory
+     * @param memoryCallId memoryCallId
+     * @param memoryInvoker memoryInvoker
+     * @since 0.1.7
      */
     public MemoryCallOperator(MemoryOperation memory, String memoryCallId, MemoryInvoker memoryInvoker) {
         this.memory = memory;
@@ -34,51 +40,68 @@ public class MemoryCallOperator extends Operator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MemoryCallOperator.
+     * 
+     * @param memory memory
+     * @since 0.1.7
      */
     public MemoryCallOperator(MemoryOperation memory) {
         this(memory, "memory_call", null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MemoryCallOperator.
+     * 
+     * @param memoryInvoker memoryInvoker
+     * @since 0.1.7
      */
     public MemoryCallOperator(MemoryInvoker memoryInvoker) {
         this(null, "memory_call", memoryInvoker);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MemoryCallOperator.
+     * 
+     * @since 0.1.7
      */
     public MemoryCallOperator() {
         this(null, "memory_call", null);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getOperatorId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getOperatorId() {
         return memoryCallId;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getTunables.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, TunableSpec> getTunables() {
         Map<String, TunableSpec> tunables = new LinkedHashMap<>();
-        tunables.put("enabled", new TunableSpec(
-                "enabled", "discrete", "enabled", Map.of("type", "bool")));
-        tunables.put("max_retries", new TunableSpec(
-                "max_retries", "discrete", "max_retries", Map.of("type", "int", "min", 0, "max", 5)));
+        tunables.put("enabled", new TunableSpec("enabled", "discrete", "enabled", Map.of("type", "bool")));
+        tunables.put("max_retries",
+                new TunableSpec("max_retries", "discrete", "max_retries", Map.of("type", "int", "min", 0, "max", 5)));
         return tunables;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * setParameter.
+     * 
+     * @param target target
+     * @param value value
+     * @since 0.1.7
      */
+    @Override
     public void setParameter(String target, Object value) {
         if ("enabled".equals(target)) {
             enabled = value instanceof Boolean b ? b : Boolean.parseBoolean(String.valueOf(value));
@@ -88,10 +111,13 @@ public class MemoryCallOperator extends Operator {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> getState() {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("enabled", enabled);
@@ -99,10 +125,13 @@ public class MemoryCallOperator extends Operator {
         return state;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * loadState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
+    @Override
     public void loadState(Map<String, Object> state) {
         if (state == null) {
             return;
@@ -115,13 +144,18 @@ public class MemoryCallOperator extends Operator {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public Object invoke(Map<String, Object> inputs,
-                         Session session,
-                         Map<String, Object> kwargs) throws Exception {
+    @Override
+    public Object invoke(Map<String, Object> inputs, Session session, Map<String, Object> kwargs) throws Exception {
         if (!enabled) {
             throw new IllegalStateException("MemoryCallOperator disabled: " + memoryCallId);
         }
@@ -151,13 +185,19 @@ public class MemoryCallOperator extends Operator {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public OperatorStream<Object> stream(Map<String, Object> inputs,
-                                         Session session,
-                                         Map<String, Object> kwargs) throws Exception {
+    @Override
+    public OperatorStream<Object> stream(Map<String, Object> inputs, Session session, Map<String, Object> kwargs)
+            throws Exception {
         if (memory == null) {
             throw new UnsupportedOperationException("memory stream not implemented");
         }
@@ -171,9 +211,15 @@ public class MemoryCallOperator extends Operator {
         }
     }
 
+    /**
+     * clampRetries.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static int clampRetries(Object value) {
         int retries = Integer.parseInt(String.valueOf(value));
         return Math.max(0, Math.min(5, retries));
     }
-
 }

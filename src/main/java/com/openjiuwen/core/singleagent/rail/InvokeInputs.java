@@ -13,9 +13,12 @@ import java.util.Map;
 
 /**
  * Data for BEFORE/AFTER_INVOKE events.
- *
- * <p>Before: query + conversationId filled.
- * After: result also filled.</p>
+ * <p>
+ * Before: query + conversationId filled.
+ * After: result also filled.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

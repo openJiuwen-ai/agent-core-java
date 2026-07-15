@@ -15,14 +15,24 @@ import java.util.Optional;
 
 /**
  * Reflection-based extractor that turns Java method signatures into JSON Schema.
+ * 
+ * @since 0.1.7
  */
 public final class CallableSchemaExtractor {
-
+    /**
+     * CallableSchemaExtractor.
+     * 
+     * @since 0.1.7
+     */
     private CallableSchemaExtractor() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateSchema.
+     * 
+     * @param method method
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> generateSchema(Method method) {
         Map<String, Object> schema = new LinkedHashMap<>();
@@ -49,7 +59,11 @@ public final class CallableSchemaExtractor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extractFunctionDescription.
+     * 
+     * @param method method
+     * @return the result
+     * @since 0.1.7
      */
     public static String extractFunctionDescription(Method method) {
         return humanizeName(method.getName());

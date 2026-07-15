@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent.skills;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,38 +20,62 @@ import java.util.Set;
 
 /**
  * Manages skill registration and retrieval.
- *
- * <p>Maintains a registry of skills and provides methods to register,
+ * <p>
+ * Maintains a registry of skills and provides methods to register,
  * unregister, and query skills. Skills are loaded from YAML files containing
- * metadata such as name and description.</p>
- *
- * <p>Supports incremental refresh: only loads new or mtime-changed skills,
- * removes stale skills, and maintains directory traversal order.</p>
+ * metadata such as name and description.
+ * </p>
+ * <p>
+ * Supports incremental refresh: only loads new or mtime-changed skills,
+ * removes stale skills, and maintains directory traversal order.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class SkillManager {
-
     private final Map<String, Skill> registry = new LinkedHashMap<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Long> updateAtCache = new LinkedHashMap<>();
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<String> skillOrder = new ArrayList<>();
     private String sysOperationId;
     private String description = "";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SkillManager.
+     * 
+     * @param sysOperationId sysOperationId
+     * @since 0.1.7
      */
     public SkillManager(String sysOperationId) {
         this.sysOperationId = sysOperationId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSysOperationId.
+     * 
+     * @param sysOperationId sysOperationId
+     * @since 0.1.7
      */
     public void setSysOperationId(String sysOperationId) {
         this.sysOperationId = sysOperationId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSysOperationId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSysOperationId() {
         return sysOperationId;
@@ -58,10 +83,11 @@ public class SkillManager {
 
     /**
      * Register skill(s) from path.
-     *
+     * 
      * @param skillPath path to the skill directory or file
      * @param sessionId session ID for file operations
      * @param overwrite whether to overwrite existing skills
+     * @since 0.1.7
      */
     public void register(String skillPath, String sessionId, boolean overwrite) {
         if (skillPath == null || skillPath.isEmpty()) {
@@ -76,7 +102,10 @@ public class SkillManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * register.
+     * 
+     * @param skillPath skillPath
+     * @since 0.1.7
      */
     public void register(String skillPath) {
         register(skillPath, null, false);
@@ -84,10 +113,11 @@ public class SkillManager {
 
     /**
      * Register skill from a {@link Path} (mirrors Python's Path type).
-     *
+     * 
      * @param skillPath path to the skill directory or file
      * @param sessionId session ID for file operations
      * @param overwrite whether to overwrite existing skills
+     * @since 0.1.7
      */
     public void register(Path skillPath, String sessionId, boolean overwrite) {
         if (skillPath == null) {
@@ -98,6 +128,9 @@ public class SkillManager {
 
     /**
      * Register skill from a {@link Path} with defaults.
+     * 
+     * @param skillPath skillPath
+     * @since 0.1.7
      */
     public void register(Path skillPath) {
         register(skillPath, null, false);
@@ -105,10 +138,11 @@ public class SkillManager {
 
     /**
      * Register skills from a list of paths.
-     *
+     * 
      * @param skillPaths list of paths to skill directories or files
-     * @param sessionId  session ID for file operations
-     * @param overwrite  whether to overwrite existing skills
+     * @param sessionId session ID for file operations
+     * @param overwrite whether to overwrite existing skills
+     * @since 0.1.7
      */
     public void register(List<String> skillPaths, String sessionId, boolean overwrite) {
         if (skillPaths == null || skillPaths.isEmpty()) {
@@ -121,10 +155,11 @@ public class SkillManager {
 
     /**
      * Register skills from a list of {@link Path} objects.
-     *
+     * 
      * @param skillPaths list of Path objects pointing to skill directories or files
-     * @param sessionId  session ID for file operations
-     * @param overwrite  whether to overwrite existing skills
+     * @param sessionId session ID for file operations
+     * @param overwrite whether to overwrite existing skills
+     * @since 0.1.7
      */
     public void registerPaths(List<Path> skillPaths, String sessionId, boolean overwrite) {
         if (skillPaths == null || skillPaths.isEmpty()) {
@@ -137,6 +172,9 @@ public class SkillManager {
 
     /**
      * Register skills from a list of {@link Path} objects with defaults.
+     * 
+     * @param skillPaths skillPaths
+     * @since 0.1.7
      */
     public void registerPaths(List<Path> skillPaths) {
         registerPaths(skillPaths, null, false);
@@ -144,11 +182,13 @@ public class SkillManager {
 
     /**
      * Incrementally refresh skills from given root directories.
-     *
-     * <p>Only loads new or mtime-changed skills, removes stale skills
-     * (directories that no longer exist), and maintains traversal order.</p>
-     *
+     * <p>
+     * Only loads new or mtime-changed skills, removes stale skills
+     * (directories that no longer exist), and maintains traversal order.
+     * </p>
+     * 
      * @param roots list of skill root directories to scan
+     * @since 0.1.7
      */
     public void refreshIncrementally(List<Path> roots) {
         long startTime = System.currentTimeMillis();
@@ -177,8 +217,8 @@ public class SkillManager {
 
                 long maxSkillFileSize = 10 * 1024 * 1024; // 10MB
                 if (skillMd.length() > maxSkillFileSize) {
-                    Loggers.AGENT.warning("SKILL.md file size exceeds 10MB, skipping: " + key
-                            + " (size: " + skillMd.length() + " bytes)");
+                    Loggers.AGENT.warning("SKILL.md file size exceeds 10MB, skipping: " + key + " (size: "
+                            + skillMd.length() + " bytes)");
                     continue;
                 }
                 long mtime = skillMd.lastModified();
@@ -197,6 +237,14 @@ public class SkillManager {
         Loggers.AGENT.debug("refreshIncrementally completed in {} ms, skills count: {}", elapsed, registry.size());
     }
 
+    /**
+     * getCachedMtime.
+     * 
+     * @param skillMd skillMd
+     * @param key key
+     * @param mtime mtime
+     * @since 0.1.7
+     */
     private void getCachedMtime(File skillMd, String key, long mtime) {
         Long cachedMtime = updateAtCache.get(key);
         if (cachedMtime == null || cachedMtime != mtime) {
@@ -209,6 +257,12 @@ public class SkillManager {
         }
     }
 
+    /**
+     * getStaleKeys.
+     * 
+     * @param discoveredKeys discoveredKeys
+     * @since 0.1.7
+     */
     private void getStaleKeys(Set<String> discoveredKeys) {
         Set<String> staleKeys = new LinkedHashSet<>(updateAtCache.keySet());
         staleKeys.removeAll(discoveredKeys);
@@ -223,6 +277,9 @@ public class SkillManager {
 
     /**
      * Get all registered skills in directory traversal order, deduplicated by name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Skill> getAllInOrder() {
         List<Skill> result = new ArrayList<>();
@@ -245,12 +302,14 @@ public class SkillManager {
 
     /**
      * Build a snapshot signature of all visible skill directories and their SKILL.md mtimes.
-     *
-     * <p>Used for fast comparison to detect whether skills have changed
-     * without actually reloading them.</p>
-     *
+     * <p>
+     * Used for fast comparison to detect whether skills have changed
+     * without actually reloading them.
+     * </p>
+     * 
      * @param roots list of skill root directories to scan
      * @return list of (directory-path, mtime) entries
+     * @since 0.1.7
      */
     public List<Map.Entry<String, Long>> buildSnapshotSignature(List<Path> roots) {
         List<Map.Entry<String, Long>> entries = new ArrayList<>();
@@ -280,6 +339,8 @@ public class SkillManager {
 
     /**
      * Clear all registered skills, mtime cache, and traversal order.
+     * 
+     * @since 0.1.7
      */
     public void clearAll() {
         registry.clear();
@@ -289,16 +350,23 @@ public class SkillManager {
 
     /**
      * Find a registered skill by its directory path.
+     *
+     * @param directoryPath directoryPath
+     * @return Skill
      */
     Skill findSkillByDirectory(String directoryPath) {
         return registry.values().stream()
-                .filter(s -> s.getDirectory() != null && s.getDirectory().equals(directoryPath))
-                .findFirst()
+                .filter(s -> s.getDirectory() != null && s.getDirectory().equals(directoryPath)).findFirst()
                 .orElse(null);
     }
 
     /**
      * Register skill directory by scanning for Skill.md files.
+     * 
+     * @param root root
+     * @param sessionId sessionId
+     * @param overwrite overwrite
+     * @since 0.1.7
      */
     private void registerRoot(Path root, String sessionId, boolean overwrite) {
         if (root.toFile().isDirectory()) {
@@ -358,17 +426,18 @@ public class SkillManager {
 
     /**
      * Create a Skill object from a Skill.md file path.
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
      */
     private Skill createSkillFromPath(Path path) {
         try {
             String descriptionText = loadDescription(path);
             if (descriptionText != null) {
                 Path skillDir = path.getParent();
-                return Skill.builder()
-                        .name(skillDir.getFileName().toString())
-                        .description(descriptionText)
-                        .directory(skillDir.toString())
-                        .build();
+                return Skill.builder().name(skillDir.getFileName().toString()).description(descriptionText)
+                        .directory(skillDir.toString()).build();
             }
         } catch (Exception e) {
             Loggers.AGENT.warning("Failed to create skill from path: " + path + " - " + e.getMessage());
@@ -378,11 +447,16 @@ public class SkillManager {
 
     /**
      * Load description from YAML front matter in Skill.md file.
-     *
-     * <p>Supports inline scalar ({@code description: foo}), quoted inline scalar
+     * <p>
+     * Supports inline scalar ({@code description: foo}), quoted inline scalar
      * ({@code description: "foo"}), and block scalars
      * ({@code description: |}, {@code description: |-}, {@code description: >},
-     * {@code description: >-}).</p>
+     * {@code description: >-}).
+     * </p>
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
      */
     private String loadDescription(Path path) {
         try {
@@ -415,7 +489,7 @@ public class SkillManager {
                 }
                 return unquoteInline(value);
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             // File might not exist or not be readable
         }
         return null;
@@ -423,11 +497,12 @@ public class SkillManager {
 
     /**
      * Parse a YAML block scalar ({@code |}, {@code |-}, {@code >}, {@code >-}).
-     *
+     * 
      * @param indicator the block scalar indicator token at the description line
-     * @param lines     all lines of the YAML front matter block
-     * @param startIdx  index of the first line after the description line
+     * @param lines all lines of the YAML front matter block
+     * @param startIdx index of the first line after the description line
      * @return the assembled block scalar content
+     * @since 0.1.7
      */
     private String parseBlockScalar(String indicator, String[] lines, int startIdx) {
         boolean fold = indicator.startsWith(">");
@@ -478,6 +553,11 @@ public class SkillManager {
     /**
      * Fold lines for the {@code >} indicator: blank lines become a single
      * newline, consecutive non-blank lines join with a space.
+     * 
+     * @param blockLines blockLines
+     * @param keepTrailingNewlines keepTrailingNewlines
+     * @return the result
+     * @since 0.1.7
      */
     private String foldBlock(List<String> blockLines, boolean keepTrailingNewlines) {
         StringBuilder out = new StringBuilder();
@@ -507,6 +587,11 @@ public class SkillManager {
      * Join continuation lines for the rare case where {@code description:}
      * is followed by indented content on subsequent lines without a block
      * indicator.
+     * 
+     * @param lines lines
+     * @param startIdx startIdx
+     * @return the result
+     * @since 0.1.7
      */
     private String joinContinuation(String[] lines, int startIdx) {
         StringBuilder out = new StringBuilder();
@@ -527,6 +612,13 @@ public class SkillManager {
         return out.length() == 0 ? null : out.toString();
     }
 
+    /**
+     * leadingSpaces.
+     * 
+     * @param line line
+     * @return the result
+     * @since 0.1.7
+     */
     private static int leadingSpaces(String line) {
         int n = 0;
         while (n < line.length() && line.charAt(n) == ' ') {
@@ -537,6 +629,10 @@ public class SkillManager {
 
     /**
      * Strip surrounding quotes from an inline scalar value.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     private static String unquoteInline(String value) {
         if (value.length() >= 2) {
@@ -551,6 +647,9 @@ public class SkillManager {
 
     /**
      * Unregister a skill by name.
+     * 
+     * @param name name
+     * @since 0.1.7
      */
     public void unregister(String name) {
         registry.remove(name);
@@ -558,6 +657,10 @@ public class SkillManager {
 
     /**
      * Get skill by name.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
      */
     public Skill get(String name) {
         return registry.get(name);
@@ -565,6 +668,9 @@ public class SkillManager {
 
     /**
      * Get all registered skills.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Skill> getAll() {
         return new ArrayList<>(registry.values());
@@ -572,6 +678,9 @@ public class SkillManager {
 
     /**
      * Get all registered skill names.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getNames() {
         return new ArrayList<>(registry.keySet());
@@ -579,6 +688,10 @@ public class SkillManager {
 
     /**
      * Check if a skill is registered.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
      */
     public boolean has(String name) {
         return registry.containsKey(name);
@@ -586,6 +699,8 @@ public class SkillManager {
 
     /**
      * Clear all registered skills.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         registry.clear();
@@ -593,20 +708,29 @@ public class SkillManager {
 
     /**
      * Get the number of registered skills.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int count() {
         return registry.size();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDescription() {
         return description;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDescription.
+     * 
+     * @param description description
+     * @since 0.1.7
      */
     public void setDescription(String description) {
         this.description = description;

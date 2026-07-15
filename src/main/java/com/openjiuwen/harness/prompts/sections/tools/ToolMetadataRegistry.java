@@ -11,14 +11,14 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Registry for harness built-in tool metadata providers.
- *
- * <p>Aligned with Python openjiuwen's harness.prompts.sections.tools package API.
- *
+ * <p>
+ * Aligned with Python openjiuwen's harness.prompts.sections.tools package API.
+ * 
  * @since 0.1.7
  */
 public final class ToolMetadataRegistry {
     private static final Map<String, ToolMetadataProvider> REGISTRY =
-            new ConcurrentHashMap<String, ToolMetadataProvider>();
+        new ConcurrentHashMap<String, ToolMetadataProvider>();
 
     static {
         registerToolProvider(new AskUserMetadataProvider());
@@ -69,13 +69,19 @@ public final class ToolMetadataRegistry {
         registerToolProvider(new TodoGetMetadataProvider());
     }
 
+    /**
+     * ToolMetadataRegistry.
+     * 
+     * @since 0.1.7
+     */
     private ToolMetadataRegistry() {
     }
 
     /**
      * Register a provider in the harness metadata registry.
-     *
+     * 
      * @param provider metadata provider to register
+     * @since 0.1.7
      */
     public static void registerToolProvider(ToolMetadataProvider provider) {
         if (provider == null) {
@@ -87,10 +93,11 @@ public final class ToolMetadataRegistry {
 
     /**
      * Look up a localized tool description.
-     *
+     * 
      * @param name tool name
      * @param language target language code
      * @return localized description
+     * @since 0.1.7
      */
     public static String getToolDescription(String name, String language) {
         return provider(name).getDescription(language);
@@ -98,10 +105,11 @@ public final class ToolMetadataRegistry {
 
     /**
      * Look up a localized tool input schema.
-     *
+     * 
      * @param name tool name
      * @param language target language code
      * @return JSON-schema-like input definition
+     * @since 0.1.7
      */
     public static Map<String, Object> getToolInputParams(String name, String language) {
         return provider(name).getInputParams(language);
@@ -109,21 +117,25 @@ public final class ToolMetadataRegistry {
 
     /**
      * Build a tool card from registered metadata.
-     *
+     * 
      * @param name tool name
      * @param toolId concrete tool id
      * @param language target language code
      * @return isResolved tool card
+     * @since 0.1.7
      */
     public static ToolCard buildToolCard(String name, String toolId, String language) {
-        return ToolCard.builder()
-                .id(toolId)
-                .name(name)
-                .description(getToolDescription(name, language))
-                .inputParams(getToolInputParams(name, language))
-                .build();
+        return ToolCard.builder().id(toolId).name(name).description(getToolDescription(name, language))
+                .inputParams(getToolInputParams(name, language)).build();
     }
 
+    /**
+     * provider.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
+     */
     private static ToolMetadataProvider provider(String name) {
         ToolMetadataProvider provider = REGISTRY.get(name);
         if (provider == null) {

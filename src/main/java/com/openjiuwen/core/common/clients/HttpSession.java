@@ -6,13 +6,19 @@ package com.openjiuwen.core.common.clients;
 
 /**
  * Shared HTTP session wrapper.
+ * 
+ * @since 0.1.7
  */
 public class HttpSession extends RefCountedResource {
     private final java.net.http.HttpClient session;
     private final SessionConfig config;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HttpSession.
+     * 
+     * @param session session
+     * @param config config
+     * @since 0.1.7
      */
     public HttpSession(java.net.http.HttpClient session, SessionConfig config) {
         this.session = session;
@@ -20,14 +26,20 @@ public class HttpSession extends RefCountedResource {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public SessionConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * session.
+     *
+     * @return HttpClient
+     * @since 0.1.7
      */
     public java.net.http.HttpClient session() {
         if (isClosed()) {
@@ -37,12 +49,11 @@ public class HttpSession extends RefCountedResource {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * doClose.
+     * 
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected void doClose() {
         // JDK HttpClient does not expose an explicit close hook.
     }

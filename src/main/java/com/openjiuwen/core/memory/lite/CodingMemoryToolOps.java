@@ -11,24 +11,37 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-
 import java.util.List;
 import java.util.Map;
 
 /**
  * Coding memory tool implementations.
+ * 
+ * @since 0.1.7
  */
 public final class CodingMemoryToolOps {
     /**
-     * Auto-generated for codecheck compliance.
+     * MAX_INDEX_LINES.
+     * 
+     * @since 0.1.7
      */
     public static final int MAX_INDEX_LINES = 200;
 
+    /**
+     * CodingMemoryToolOps.
+     * 
+     * @since 0.1.7
+     */
     private CodingMemoryToolOps() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validateCodingMemoryPath.
+     * 
+     * @param path path
+     * @param workspace workspace
+     * @return the result
+     * @since 0.1.7
      */
     public static Map.Entry<Boolean, String> validateCodingMemoryPath(String path, Workspace workspace) {
         if (workspace == null) {
@@ -48,18 +61,20 @@ public final class CodingMemoryToolOps {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * upsertCodingMemoryIndex.
+     * 
+     * @param memoryDir memoryDir
+     * @param filename filename
+     * @param frontmatter frontmatter
+     * @throws IOException IOException
+     * @since 0.1.7
      */
-    public static void upsertCodingMemoryIndex(
-            String memoryDir,
-            String filename,
-            Map<String, String> frontmatter
-    ) throws IOException {
+    public static void upsertCodingMemoryIndex(String memoryDir, String filename, Map<String, String> frontmatter)
+            throws IOException {
         Path indexPath = Path.of(memoryDir).resolve("MEMORY.md");
         String newEntry = "- [" + frontmatter.get("name") + "](" + filename + ") — " + frontmatter.get("description");
-        List<String> lines = Files.exists(indexPath)
-                ? Files.readAllLines(indexPath, StandardCharsets.UTF_8)
-                : new ArrayList<>();
+        List<String> lines =
+            Files.exists(indexPath) ? Files.readAllLines(indexPath, StandardCharsets.UTF_8) : new ArrayList<>();
         boolean isEntryFound = false;
         for (int i = 0; i < lines.size(); i++) {
             if (lines.get(i).contains("](" + filename + ")")) {
@@ -72,15 +87,18 @@ public final class CodingMemoryToolOps {
             lines.add(0, newEntry);
         }
         Files.createDirectories(indexPath.getParent());
-        Files.writeString(indexPath,
-                String.join("\n", lines.subList(0, Math.min(lines.size(), MAX_INDEX_LINES))),
-                StandardCharsets.UTF_8,
-                java.nio.file.StandardOpenOption.CREATE,
+        Files.writeString(indexPath, String.join("\n", lines.subList(0, Math.min(lines.size(), MAX_INDEX_LINES))),
+                StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE,
                 java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeFromCodingMemoryIndex.
+     * 
+     * @param memoryDir memoryDir
+     * @param filename filename
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public static void removeFromCodingMemoryIndex(String memoryDir, String filename) throws IOException {
         Path indexPath = Path.of(memoryDir).resolve("MEMORY.md");
@@ -90,53 +108,51 @@ public final class CodingMemoryToolOps {
         List<String> lines = Files.readAllLines(indexPath, StandardCharsets.UTF_8);
         lines.removeIf(line -> line.contains("](" + filename + ")"));
         Files.writeString(indexPath, String.join("\n", lines), StandardCharsets.UTF_8,
-                java.nio.file.StandardOpenOption.CREATE,
-                java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * codingMemoryReadWithContext.
+     * 
+     * @param ctx ctx
+     * @param path path
+     * @param offset offset
+     * @param limit limit
+     * @return the result
+     * @since 0.1.7
      */
-    public static Map<String, Object> codingMemoryReadWithContext(
-            CodingMemoryToolContext ctx,
-            String path,
-            Integer offset,
-            Integer limit
-    ) {
+    public static Map<String, Object> codingMemoryReadWithContext(CodingMemoryToolContext ctx, String path,
+            Integer offset, Integer limit) {
         Map.Entry<Boolean, String> valid = validateCodingMemoryPath(path, ctx != null ? ctx.getWorkspace() : null);
         if (!valid.getKey()) {
             return Map.of("success", false, "path", path, "content", "", "error", valid.getValue());
         }
         try {
             Path isResolved = Path.of(valid.getValue());
-            List<String> lines = Files.exists(isResolved)
-                    ? Files.readAllLines(isResolved, StandardCharsets.UTF_8)
-                    : List.of();
+            List<String> lines =
+                Files.exists(isResolved) ? Files.readAllLines(isResolved, StandardCharsets.UTF_8) : List.of();
             int total = lines.size();
             int start = offset == null ? 0 : Math.max(0, offset - 1);
             int end = limit == null ? total : Math.min(total, start + limit);
-            return Map.of(
-                    "success", true,
-                    "path", isResolved.toString(),
-                    "content", String.join("\n", lines.subList(start, end)),
-                    "totalLines", total,
-                    "start_line", start + 1,
-                    "end_line", end,
-                    "truncated", limit != null && end < total
-            );
+            return Map.of("success", true, "path", isResolved.toString(), "content",
+                    String.join("\n", lines.subList(start, end)), "totalLines", total, "start_line", start + 1,
+                    "end_line", end, "truncated", limit != null && end < total);
         } catch (IOException e) {
             return Map.of("success", false, "path", path, "content", "", "error", e.getMessage());
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * codingMemoryWriteWithContext.
+     * 
+     * @param ctx ctx
+     * @param path path
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
-    public static Map<String, Object> codingMemoryWriteWithContext(
-            CodingMemoryToolContext ctx,
-            String path,
-            String content
-    ) {
+    public static Map<String, Object> codingMemoryWriteWithContext(CodingMemoryToolContext ctx, String path,
+            String content) {
         Map.Entry<Boolean, String> valid = validateCodingMemoryPath(path, ctx != null ? ctx.getWorkspace() : null);
         if (!valid.getKey()) {
             return Map.of("success", false, "path", path, "error", valid.getValue());
@@ -153,35 +169,31 @@ public final class CodingMemoryToolOps {
             Path isResolved = Path.of(valid.getValue());
             Files.createDirectories(isResolved.getParent());
             boolean isExisted = Files.exists(isResolved) && Files.size(isResolved) > 0;
-            Files.writeString(isResolved, content, StandardCharsets.UTF_8,
-                    java.nio.file.StandardOpenOption.CREATE,
+            Files.writeString(isResolved, content, StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE,
                     java.nio.file.StandardOpenOption.APPEND);
             upsertCodingMemoryIndex(ctx.getCodingMemoryDir(), isResolved.getFileName().toString(), frontmatter);
             if (ctx.ensureManager() && ctx.getManager() != null) {
                 ctx.getManager().sync("coding_memory_write");
             }
-            return Map.of(
-                    "success", true,
-                    "path", isResolved.toString(),
-                    "fullPath", isResolved.toString(),
-                    "appended", true,
-                    "fileExisted", isExisted,
-                    "type", frontmatter.get("type")
-            );
+            return Map.of("success", true, "path", isResolved.toString(), "fullPath", isResolved.toString(), "appended",
+                    true, "fileExisted", isExisted, "type", frontmatter.get("type"));
         } catch (IOException e) {
             return Map.of("success", false, "path", path, "error", e.getMessage());
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * codingMemoryEditWithContext.
+     * 
+     * @param ctx ctx
+     * @param path path
+     * @param oldText oldText
+     * @param newText newText
+     * @return the result
+     * @since 0.1.7
      */
-    public static Map<String, Object> codingMemoryEditWithContext(
-            CodingMemoryToolContext ctx,
-            String path,
-            String oldText,
-            String newText
-    ) {
+    public static Map<String, Object> codingMemoryEditWithContext(CodingMemoryToolContext ctx, String path,
+            String oldText, String newText) {
         if (oldText == null || oldText.isEmpty()) {
             return Map.of("success", false, "error", "old_text cannot be empty");
         }
@@ -197,13 +209,11 @@ public final class CodingMemoryToolOps {
                 return Map.of("success", false, "error", "old_text not found in file");
             }
             if (occurrences > 1) {
-                return Map.of(
-                        "success", false,
-                        "error", "old_text appears " + occurrences + " times, please be more specific");
+                return Map.of("success", false, "error",
+                        "old_text appears " + occurrences + " times, please be more specific");
             }
             String newContent = content.replace(oldText, newText);
-            Files.writeString(isResolved, newContent, StandardCharsets.UTF_8,
-                    java.nio.file.StandardOpenOption.CREATE,
+            Files.writeString(isResolved, newContent, StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE,
                     java.nio.file.StandardOpenOption.TRUNCATE_EXISTING);
             Map<String, String> frontmatter = FrontmatterUtils.parseFrontmatter(newContent);
             if (frontmatter != null && FrontmatterUtils.validateFrontmatter(frontmatter).getKey()) {

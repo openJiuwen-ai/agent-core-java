@@ -11,19 +11,20 @@ import lombok.NoArgsConstructor;
 
 /**
  * Data structure for chunked file read.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ReadFileChunkData {
-
-    /** File path of the read file. */
     private String path;
 
     /**
      * Current chunk content.
-     * <p>When mode is "text", this is a {@code String}.
+     * <p>
+     * When mode is "text", this is a {@code String}.
      * When mode is "bytes", this is a {@code byte[]} (raw binary content).
      * Mirrors Python's {@code Union[str, bytes]}.
      */
@@ -34,6 +35,9 @@ public class ReadFileChunkData {
 
     /**
      * Get chunk content as String (for text mode).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getChunkContentAsString() {
         if (chunkContent instanceof String s) {
@@ -44,6 +48,9 @@ public class ReadFileChunkData {
 
     /**
      * Get chunk content as byte[] (for bytes mode).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public byte[] getChunkContentAsBytes() {
         if (chunkContent instanceof byte[] b) {
@@ -52,7 +59,7 @@ public class ReadFileChunkData {
         if (chunkContent instanceof String s) {
             return s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         }
-        return null;
+        return new byte[0];
     }
 
     /** Size of each chunk (in bytes). */

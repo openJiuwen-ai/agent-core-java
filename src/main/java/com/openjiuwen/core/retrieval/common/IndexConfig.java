@@ -6,27 +6,37 @@ package com.openjiuwen.core.retrieval.common;
 
 /**
  * Index configuration.
+ * 
+ * @since 0.1.7
  */
 public class IndexConfig {
-
     private String indexName;
     private String indexType = "hybrid";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * IndexConfig.
+     * 
+     * @since 0.1.7
      */
     public IndexConfig() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * IndexConfig.
+     * 
+     * @param indexName indexName
+     * @since 0.1.7
      */
     public IndexConfig(String indexName) {
         this(indexName, "hybrid");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * IndexConfig.
+     * 
+     * @param indexName indexName
+     * @param indexType indexType
+     * @since 0.1.7
      */
     public IndexConfig(String indexName, String indexType) {
         this.indexName = indexName;
@@ -35,7 +45,9 @@ public class IndexConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validate.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         RetrievalValidation.requireNonBlank(indexName, "IndexConfig.indexName");
@@ -43,14 +55,20 @@ public class IndexConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getIndexName() {
         return indexName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setIndexName.
+     * 
+     * @param indexName indexName
+     * @since 0.1.7
      */
     public void setIndexName(String indexName) {
         this.indexName = indexName;
@@ -58,14 +76,20 @@ public class IndexConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getIndexType() {
         return indexType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setIndexType.
+     * 
+     * @param indexType indexType
+     * @since 0.1.7
      */
     public void setIndexType(String indexType) {
         this.indexType = indexType;
