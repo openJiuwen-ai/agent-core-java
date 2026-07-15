@@ -362,7 +362,7 @@ public class OpenAIModelClient extends BaseModelClient {
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
                 .finishReason(toolCalls.isEmpty() ? "stop" : "tool_calls")
-                .reasoningContent(asString(message.get("reasoning_content")))
+                .reasoningContent(reasoningContentFrom(message))
                 .parserContent(parserContent)
                 .promptTokenIds(integerList(response.get("prompt_token_ids")))
                 .completionTokenIds(integerList(choice.get("token_ids")))
@@ -403,7 +403,7 @@ public class OpenAIModelClient extends BaseModelClient {
 
         return AssistantMessageChunk.builder()
                 .content(pythonTruthy(delta.get("content")) ? delta.get("content") : "")
-                .reasoningContent(asString(delta.get("reasoning_content")))
+                .reasoningContent(reasoningContentFrom(delta))
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
                 .finishReason(pythonTruthy(choice.get("finish_reason"))
@@ -1398,6 +1398,11 @@ public class OpenAIModelClient extends BaseModelClient {
 
     private static String asString(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private static String reasoningContentFrom(Map<String, Object> message) {
+        Object reasoningContent = firstNonNull(message.get("reasoning_content"), message.get("reasoning"));
+        return asString(reasoningContent);
     }
 
     private static int intValue(Object value) {
