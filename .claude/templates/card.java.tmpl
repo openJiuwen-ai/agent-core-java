@@ -1,0 +1,91 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+package com.openjiuwen.core.singleagent.schema;
+
+// =================================================================
+// TEMPLATE NOTES:
+//   1. Replace {{CardName}} with your Card class name.
+//   2. Replace field names (inputParams, outputParams) with actual metadata fields.
+//   3. Adjust the toolInfo() return type and ToolInfo.builder() call to match your needs.
+// =================================================================
+
+import com.openjiuwen.core.common.schema.BaseCard;
+import com.openjiuwen.core.foundation.tool.ToolInfo;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
+
+/**
+ * Description of what this Card represents.
+ *
+ * <p>Used by [subsystem] to [purpose].
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@EqualsAndHashCode(callSuper = true)
+public class {{CardName}} extends BaseCard {
+
+    /** Example field — replace with actual metadata fields. */
+    private Object inputParams;
+    private Object outputParams;
+
+    @Override
+    public Object toolInfo() {
+        return ToolInfo.builder()
+                .name(getName())
+                .description(getDescription())
+                .parameters(getInputParamsAsMap())
+                .build();
+    }
+
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static class Builder extends BaseCard.Builder {
+        private Object inputParams;
+        private Object outputParams;
+
+        @Override
+        public Builder id(String id) {
+            super.id(id);
+            return this;
+        }
+
+        @Override
+        public Builder name(String name) {
+            super.name(name);
+            return this;
+        }
+
+        @Override
+        public Builder description(String description) {
+            super.description(description);
+            return this;
+        }
+
+        public Builder inputParams(Object inputParams) {
+            this.inputParams = inputParams;
+            return this;
+        }
+
+        public Builder outputParams(Object outputParams) {
+            this.outputParams = outputParams;
+            return this;
+        }
+
+        @Override
+        public {{CardName}} build() {
+            {{CardName}} card = new {{CardName}}();
+            card.setId(id);
+            card.setName(name);
+            card.setDescription(description);
+            card.setInputParams(inputParams);
+            card.setOutputParams(outputParams);
+            return card;
+        }
+    }
+}
