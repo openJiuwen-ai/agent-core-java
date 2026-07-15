@@ -13,6 +13,16 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
+import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelCallFailureStage;
+import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelClientInternalException;
+import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelHttpFailureInfo;
+import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelHttpStatusException;
+import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelResponseParseException;
+import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelResponseParseFailureInfo;
+import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelStreamException;
+import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelStreamFailureInfo;
+import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelTransportException;
+import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelTransportFailureInfo;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -65,11 +75,39 @@ class OpenAIModelClientTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
-    void formalHeadersKeepInvokeErrorBodyOutOfExceptionCausesParamsAndLogs() throws Exception {
-        String authorization = "Formal authorization secret";
+    void invokeHttpStatusFailureIsTypedAndIncludesSanitizedBody() throws Exception {
+        String errorBody = "{\"error\":{\"message\":\"safe failure\",\"api_key\":\"sk-body-secret\"}}";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(418, errorBody))) {
+            Throwable error = catchThrowable(() -> client(server.baseUrl(), 0, Map.of())
+                    .invoke("hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+
+            ModelHttpStatusException typed = requireModelHttpStatus(error);
+            ModelHttpFailureInfo info = typed.getFailureInfo();
+            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
+            assertThat(typed.getStage()).isEqualTo(ModelCallFailureStage.HTTP_STATUS);
+            assertThat(info.stage()).isEqualTo(ModelCallFailureStage.HTTP_STATUS);
+            assertThat(info.modelProvider()).isEqualTo(ProviderType.OPEN_AI.getValue());
+            assertThat(info.apiBase()).isEqualTo(server.baseUrl());
+            assertThat(info.streaming()).isFalse();
+            assertThat(info.statusCode()).isEqualTo(418);
+            assertThat(info.responseBody()).contains("safe failure", "[REDACTED]").doesNotContain("sk-body-secret");
+            assertThat(info.responseBodyTruncated()).isFalse();
+            assertThat(typed.getMessage()).contains("HTTP 418", "safe failure").doesNotContain("sk-body-secret");
+            assertThat(typed.getCause()).isNull();
+            assertThat(String.valueOf(typed.getParams()))
+                    .contains("HTTP 418", "safe failure", "response_body")
+                    .doesNotContain("sk-body-secret");
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
+    @Test
+    void formalHeadersKeepInvokeSanitizedErrorBodyWithoutHeaderLeaks() throws Exception {
+        String authorization = "Bearer formal-authorization-secret";
         String headerValue = "formal-header-secret";
-        String errorBody = "{\"error\":\"Authorization=" + authorization
-                + ", X-Formal=" + headerValue + "\"}";
+        String errorBody = "{\"error\":{\"message\":\"safe formal failure\","
+                + "\"authorization\":\"" + authorization + "\","
+                + "\"detail\":\"X-Formal=" + headerValue + "\"}}";
         try (MockOpenAiServer server = new MockOpenAiServer(response(401, errorBody));
              LlmLogCapture logs = new LlmLogCapture()) {
             ModelInvokeOptions options = ModelInvokeOptions.builder()
@@ -88,7 +126,16 @@ class OpenAIModelClientTest {
                     .toCompletableFuture()
                     .join());
 
-            assertThat(error).isNotNull();
+            ModelHttpStatusException typed = requireModelHttpStatus(error);
+            ModelHttpFailureInfo info = typed.getFailureInfo();
+            assertThat(info.statusCode()).isEqualTo(401);
+            assertThat(info.streaming()).isFalse();
+            assertThat(info.responseBody()).contains("safe formal failure", "[REDACTED]");
+            assertThat(typed.getMessage()).contains("HTTP 401", "safe formal failure");
+            assertThat(String.valueOf(typed.getParams()))
+                    .contains("safe formal failure")
+                    .doesNotContain("request_level_headers")
+                    .doesNotContain(authorization, headerValue);
             assertThrowableDoesNotContain(error, authorization, "X-Formal", headerValue);
             assertThat(logs.records.toString()).doesNotContain(authorization, "X-Formal", headerValue);
             assertThat(server.requests).hasSize(1);
@@ -96,23 +143,175 @@ class OpenAIModelClientTest {
     }
 
     @Test
-    void formalHeadersKeepStreamErrorBodyOutOfExceptionCausesParamsAndLogs() throws Exception {
-        String authorization = "Formal stream authorization secret";
+    void formalHeadersKeepStreamSanitizedErrorBodyWithoutHeaderLeaks() throws Exception {
+        String authorization = "Bearer formal-stream-authorization-secret";
         String headerValue = "formal-stream-header-secret";
-        String errorBody = "{\"error\":\"Authorization=" + authorization
-                + ", X-Formal=" + headerValue + "\"}";
+        String errorBody = "{\"error\":{\"message\":\"safe formal stream failure\","
+                + "\"authorization\":\"" + authorization + "\","
+                + "\"detail\":\"X-Formal=" + headerValue + "\"}}";
         try (MockOpenAiServer server = new MockOpenAiServer(response(403, errorBody));
              LlmLogCapture logs = new LlmLogCapture()) {
-            ModelInvokeOptions options = ModelInvokeOptions.builder()
-                    .requestHeaders(Map.of("Authorization", authorization, "X-Formal", headerValue))
-                    .build();
+            Map<String, String> requestHeaders = Map.of("Authorization", authorization, "X-Formal", headerValue);
 
             Throwable error = catchThrowable(() -> client(server.baseUrl())
-                    .stream(List.of(new UserMessage("hello")), options));
+                    .stream("hello", null, null, null, null, null, null, null, null,
+                            requestHeadersKwargs(requestHeaders)));
 
-            assertThat(error).isNotNull();
+            ModelHttpStatusException typed = requireModelHttpStatus(error);
+            ModelHttpFailureInfo info = typed.getFailureInfo();
+            assertThat(info.statusCode()).isEqualTo(403);
+            assertThat(info.streaming()).isTrue();
+            assertThat(info.responseBody()).contains("safe formal stream failure", "[REDACTED]");
+            assertThat(typed.getMessage()).contains("HTTP 403", "safe formal stream failure");
+            assertThat(String.valueOf(typed.getParams()))
+                    .contains("safe formal stream failure")
+                    .doesNotContain("request_level_headers")
+                    .doesNotContain(authorization, headerValue);
             assertThrowableDoesNotContain(error, authorization, "X-Formal", headerValue);
             assertThat(logs.records.toString()).doesNotContain(authorization, "X-Formal", headerValue);
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
+    @Test
+    void streamFacadePropagatesTypedHttpStatusException() throws Exception {
+        try (MockOpenAiServer server = new MockOpenAiServer(
+                response(429, "{\"error\":{\"message\":\"facade stream failure\"}}"))) {
+            OpenAIModelClient client = client(server.baseUrl(), 0, Map.of());
+
+            Throwable error = catchThrowable(() -> client.stream(
+                    List.of(new UserMessage("hello")),
+                    ModelInvokeOptions.builder().build()));
+
+            assertThat(error).isInstanceOf(ModelHttpStatusException.class);
+            assertThat(((ModelHttpStatusException) error).getFailureInfo().statusCode()).isEqualTo(429);
+        }
+    }
+
+    @Test
+    void modelFacadeInvokePropagatesTypedHttpStatusException() throws Exception {
+        try (MockOpenAiServer server = new MockOpenAiServer(
+                response(429, "{\"error\":{\"message\":\"facade invoke failure\"}}"))) {
+            Model model = new Model(
+                    ModelClientConfig.builder()
+                            .clientProvider(ProviderType.OPEN_ROUTER)
+                            .apiKey("sk-static")
+                            .apiBase(server.baseUrl())
+                            .verifySsl(false)
+                            .build(),
+                    ModelRequestConfig.builder().modelName("gpt-test").build());
+
+            Throwable error = catchThrowable(() -> model.invoke(
+                    List.of(new UserMessage("hello")),
+                    ModelInvokeOptions.builder().build()).toCompletableFuture().join());
+
+            assertThat(error).isInstanceOf(ModelHttpStatusException.class);
+            assertThat(((ModelHttpStatusException) error).getFailureInfo().statusCode()).isEqualTo(429);
+        }
+    }
+
+    @Test
+    void streamInitialHttpStatusFailureIsTyped() throws Exception {
+        String errorBody = "{\"error\":{\"message\":\"safe stream failure\",\"api_key\":\"sk-stream-secret\"}}";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(429, errorBody))) {
+            Throwable error = catchThrowable(() -> client(server.baseUrl(), 0, Map.of())
+                    .stream("hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+
+            ModelHttpStatusException typed = requireModelHttpStatus(error);
+            ModelHttpFailureInfo info = typed.getFailureInfo();
+            assertThat(typed.getStatus()).isEqualTo(StatusCode.MODEL_CALL_FAILED);
+            assertThat(typed.getStage()).isEqualTo(ModelCallFailureStage.HTTP_STATUS);
+            assertThat(info.statusCode()).isEqualTo(429);
+            assertThat(info.streaming()).isTrue();
+            assertThat(info.responseBody()).contains("safe stream failure", "[REDACTED]")
+                    .doesNotContain("sk-stream-secret");
+            assertThat(info.responseBodyTruncated()).isFalse();
+            assertThat(typed.getCause()).isNull();
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
+    @Test
+    void invokeResponseJsonParseFailureIsTypedAndIncludesSanitizedBody() throws Exception {
+        String body = "{\"error\":\"bad json\",\"api_key\":\"sk-parse-secret\"";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(200, body))) {
+            Throwable error = catchThrowable(() -> client(server.baseUrl(), 0, Map.of())
+                    .invoke("hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+
+            ModelResponseParseException typed = requireModelResponseParse(error);
+            ModelResponseParseFailureInfo info = typed.getFailureInfo();
+            assertThat(typed.getStage()).isEqualTo(ModelCallFailureStage.RESPONSE_PARSE);
+            assertThat(info.streaming()).isFalse();
+            assertThat(info.responseBody()).contains("[REDACTED]").doesNotContain("sk-parse-secret");
+            assertThat(info.exceptionClass()).contains("Json");
+            assertThat(info.safeExceptionMessage()).doesNotContain("sk-parse-secret");
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
+    @Test
+    void invokeResponseStructureParseFailureIsTypedAndSanitized() throws Exception {
+        String body = "{\"api_key\":\"sk-structure-secret\",\"object\":\"unexpected\"}";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(200, body))) {
+            Throwable error = catchThrowable(() -> client(server.baseUrl(), 0, Map.of())
+                    .invoke("hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+
+            ModelResponseParseException typed = requireModelResponseParse(error);
+            ModelResponseParseFailureInfo info = typed.getFailureInfo();
+            assertThat(info.phase()).isEqualTo("parse_response");
+            assertThat(info.responseBody()).contains("[REDACTED]", "unexpected")
+                    .doesNotContain("sk-structure-secret");
+            assertThat(info.safeExceptionMessage()).doesNotContain("sk-structure-secret");
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
+    @Test
+    void invokeTransportFailureIsTyped() throws Exception {
+        OpenAIModelClient client = client("http://127.0.0.1:1", 0, Map.of());
+
+        Throwable error = catchThrowable(() -> client.invoke(
+                "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+
+        ModelTransportException typed = requireModelTransport(error);
+        ModelTransportFailureInfo info = typed.getFailureInfo();
+        assertThat(typed.getStage()).isEqualTo(ModelCallFailureStage.TRANSPORT);
+        assertThat(info.streaming()).isFalse();
+        assertThat(info.phase()).isEqualTo("send_request");
+        assertThat(info.exceptionClass()).contains("Exception");
+    }
+
+    @Test
+    void failureInfoRedactsSensitiveApiBase() throws Exception {
+        String apiBaseSecret = "api-base-secret";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(200, "{\"choices\":[]}"))) {
+            String apiBaseWithSecretQuery = server.baseUrl() + "/" + apiBaseSecret + "?api_key=" + apiBaseSecret;
+
+            Throwable error = catchThrowable(() -> client(apiBaseWithSecretQuery, 0, Map.of())
+                    .invoke("hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+
+            ModelHttpStatusException typed = requireModelHttpStatus(error);
+            assertThat(typed.getFailureInfo().apiBase()).doesNotContain(apiBaseSecret);
+            assertThat(String.valueOf(typed.getParams())).doesNotContain(apiBaseSecret);
+        }
+    }
+
+    @Test
+    void streamChunkParseFailureIsTyped() throws Exception {
+        String streamBody = "data: {\"choices\":[\n\n";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(200, streamBody, "text/event-stream"))) {
+            Iterator<AssistantMessageChunk> iterator = client(server.baseUrl(), 0, Map.of())
+                    .stream("hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>());
+
+            Throwable error = catchThrowable(() -> iteratorToList(iterator));
+
+            ModelStreamException typed = requireModelStream(error);
+            ModelStreamFailureInfo info = typed.getFailureInfo();
+            assertThat(typed.getStage()).isEqualTo(ModelCallFailureStage.STREAM);
+            assertThat(info.streaming()).isTrue();
+            assertThat(info.phase()).isEqualTo("read_chunk");
+            assertThat(info.event()).doesNotContain("sk-");
+            assertThat(info.exceptionClass()).contains("Json");
             assertThat(server.requests).hasSize(1);
         }
     }
@@ -313,6 +512,27 @@ class OpenAIModelClientTest {
                     .hasMessageContaining("Invalid request header name")
                     .hasMessageNotContaining("X:Private")
                     .hasMessageNotContaining("private-value");
+            assertThat(server.requests).isEmpty();
+        }
+    }
+
+    @Test
+    void typedStreamRejectsInvalidFormalHeaderAsTypedClientInternalFailure() throws Exception {
+        String sse = "data: [DONE]\n\n";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(200, sse, "text/event-stream"))) {
+            ModelInvokeOptions options = ModelInvokeOptions.builder()
+                    .requestHeaders(Map.of("X:Private", "private-value"))
+                    .build();
+
+            Throwable error = catchThrowable(() -> client(server.baseUrl())
+                    .stream(List.of(new UserMessage("hello")), options));
+
+            assertThat(error).isInstanceOf(ModelClientInternalException.class);
+            ModelClientInternalException typed = (ModelClientInternalException) error;
+            assertThat(typed.getStage()).isEqualTo(ModelCallFailureStage.CLIENT_INTERNAL);
+            assertThat(typed.getFailureInfo().phase()).isEqualTo("prepare_request");
+            assertThat(typed.getFailureInfo().safeMessage()).contains("Invalid request header name");
+            assertThat(String.valueOf(typed.getParams())).doesNotContain("X:Private", "private-value");
             assertThat(server.requests).isEmpty();
         }
     }
@@ -757,6 +977,21 @@ class OpenAIModelClientTest {
             assertThat(fallback.requests).hasSize(2);
             assertThat(header(fallback.requests.get(0).headers, "X-Stainless-Retry-Count")).isEqualTo("0");
             assertThat(header(fallback.requests.get(1).headers, "X-Stainless-Retry-Count")).isEqualTo("1");
+        }
+    }
+
+    @Test
+    void localFixtureFallbackDoesNotReplayNonFixtureLoopbackPorts() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "unused")))));
+        try (MockOpenAiServer primary = new MockOpenAiServer(response(500, "{\"error\":\"primary\"}"));
+             MockOpenAiServer fallback = new MockOpenAiServer(8090, response(200, success))) {
+            Throwable error = catchThrowable(() -> client(primary.baseUrl(), 0, Map.of()).invoke(
+                    "hello", null, null, null, null, null, null, null, null, new LinkedHashMap<>()));
+
+            ModelHttpStatusException typed = requireModelHttpStatus(error);
+            assertThat(typed.getFailureInfo().statusCode()).isEqualTo(500);
+            assertThat(primary.requests).hasSize(1);
+            assertThat(fallback.requests).isEmpty();
         }
     }
 
@@ -1227,6 +1462,56 @@ class OpenAIModelClientTest {
             }
         }
         return null;
+    }
+
+    private static Map<String, Object> requestHeadersKwargs(Map<String, String> requestHeaders) {
+        Map<String, Object> kwargs = new LinkedHashMap<>();
+        kwargs.put("__openjiuwen_request_headers", requestHeaders);
+        return kwargs;
+    }
+
+    private static ModelHttpStatusException requireModelHttpStatus(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof ModelHttpStatusException typed) {
+                return typed;
+            }
+            current = current.getCause();
+        }
+        throw new AssertionError("Expected ModelHttpStatusException in throwable chain, got " + error, error);
+    }
+
+    private static ModelResponseParseException requireModelResponseParse(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof ModelResponseParseException typed) {
+                return typed;
+            }
+            current = current.getCause();
+        }
+        throw new AssertionError("Expected ModelResponseParseException in throwable chain, got " + error, error);
+    }
+
+    private static ModelTransportException requireModelTransport(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof ModelTransportException typed) {
+                return typed;
+            }
+            current = current.getCause();
+        }
+        throw new AssertionError("Expected ModelTransportException in throwable chain, got " + error, error);
+    }
+
+    private static ModelStreamException requireModelStream(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof ModelStreamException typed) {
+                return typed;
+            }
+            current = current.getCause();
+        }
+        throw new AssertionError("Expected ModelStreamException in throwable chain, got " + error, error);
     }
 
     private static void assertThrowableDoesNotContain(Throwable error, String... sensitiveValues) {

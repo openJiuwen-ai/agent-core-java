@@ -11,6 +11,7 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UserConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
+import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelClientException;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -404,6 +405,8 @@ public abstract class BaseModelClient implements Model.ModelClient {
                     resolvedOptions.getTimeout(),
                     invocationExtraFields(resolvedOptions)
             ));
+        } catch (ModelClientException exception) {
+            throw exception;
         } catch (Exception exception) {
             return CompletableFuture.failedFuture(exception);
         }
@@ -436,6 +439,8 @@ public abstract class BaseModelClient implements Model.ModelClient {
                     resolvedOptions.getTimeout(),
                     invocationExtraFields(resolvedOptions)
             );
+        } catch (ModelClientException exception) {
+            throw exception;
         } catch (Exception exception) {
             throw new IllegalStateException(exception);
         }
