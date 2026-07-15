@@ -111,7 +111,7 @@ public final class EditScope {
      * @since 0.1.7
      */
     private static String expandUser(String raw) {
-        if (raw.equals("~")) {
+        if ("~".equals(raw)) {
             return System.getProperty("user.home", raw);
         }
         if (raw.startsWith("~/") || raw.startsWith("~\\")) {
