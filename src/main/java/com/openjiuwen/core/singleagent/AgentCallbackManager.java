@@ -9,6 +9,7 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.Map;
 import java.util.IdentityHashMap;
@@ -251,6 +252,15 @@ public class AgentCallbackManager {
                 runnerCallbackFramework().getClass()
                         .getMethod("trigger", String.class, Object[].class, Map.class)
                         .invoke(runnerCallbackFramework(), event, new Object[] {context}, kwargs);
+            } catch (InvocationTargetException exception) {
+                Throwable cause = exception.getCause();
+                if (cause instanceof RuntimeException runtimeException) {
+                    throw runtimeException;
+                }
+                if (cause instanceof Error error) {
+                    throw error;
+                }
+                throw new IllegalStateException("Agent callback execution failed", cause);
             } catch (ReflectiveOperationException | RuntimeException ignored) {
                 // Missing framework means there are no callbacks to trigger.
             }

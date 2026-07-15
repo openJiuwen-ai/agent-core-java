@@ -11,11 +11,16 @@ import com.openjiuwen.core.context_engine.ModelContext;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+import com.openjiuwen.core.runner.callback.AbortError;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.AgentRail;
+import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
+import com.openjiuwen.core.singleagent.rail.ModelRequestHeadersRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import org.junit.jupiter.api.Test;
 
@@ -26,11 +31,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -164,6 +177,7 @@ class ReActAgentTest {
         assertFalse(agent.isKvReleaseWarningLogged());
         assertFalse(context.lastKwargs().containsKey("model"));
         assertTrue(client.lastOptions().getExtraFields().isEmpty());
+        assertTrue(client.lastOptions().getRequestHeaders().isEmpty());
     }
 
     @Test
@@ -178,7 +192,292 @@ class ReActAgentTest {
         assertSame(model, context.lastKwargs().get("model"));
         assertEquals("sess-1", client.lastOptions().getExtraFields().get("session_id"));
         assertEquals(Boolean.TRUE, client.lastOptions().getExtraFields().get("enable_cache_sharing"));
+        assertTrue(client.lastOptions().getRequestHeaders().isEmpty());
         assertFalse(agent.isKvReleaseWarningLogged());
+    }
+
+    @Test
+    void invokeForwardsRequestHeadersAndCopiesProviderMap() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredAgent("headers-invoke-agent", new Model(client));
+        Map<String, String> providedHeaders = new LinkedHashMap<>();
+        providedHeaders.put("Authorization", "Bearer invoke-token");
+        ModelRequestHeadersRail rail = new ModelRequestHeadersRail(context ->
+                CompletableFuture.completedFuture(providedHeaders));
+        agent.registerRail(rail).toCompletableFuture().join();
+
+        try {
+            callModelForKvTest(agent, new RecordingModelContext("headers-invoke"),
+                    new MemorySession("headers-invoke"));
+            providedHeaders.put("Authorization", "Bearer changed-token");
+
+            assertEquals("Bearer invoke-token",
+                    client.lastOptions().getRequestHeaders().get("Authorization"));
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void modelCallConsumesHeadersAndDoesNotExposeThemOutsideInvokeOptions() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredAgent("headers-consume-agent", new Model(client));
+        AtomicReference<Map<String, String>> headersAfterCall = new AtomicReference<>();
+        AtomicReference<Map<String, Object>> extraAfterCall = new AtomicReference<>();
+        AtomicReference<Object> responseAfterCall = new AtomicReference<>();
+        ModelRequestHeadersRail headersRail = new ModelRequestHeadersRail(context ->
+                CompletableFuture.completedFuture(Map.of("Authorization", "Bearer consume-secret")));
+        AgentRail observerRail = new AgentRail() {
+            @Override
+            public CompletionStage<Void> afterModelCall(AgentCallbackContext context) {
+                ModelCallInputs inputs = (ModelCallInputs) context.getInputs();
+                headersAfterCall.set(inputs.getRequestHeaders());
+                extraAfterCall.set(new LinkedHashMap<>(context.getExtra()));
+                responseAfterCall.set(inputs.getResponse());
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+        agent.registerRail(headersRail).toCompletableFuture().join();
+        agent.registerRail(observerRail).toCompletableFuture().join();
+
+        try {
+            callModelForKvTest(agent, new RecordingModelContext("headers-consume"),
+                    new MemorySession("headers-consume"));
+
+            assertTrue(headersAfterCall.get().isEmpty());
+            assertFalse(extraAfterCall.get().toString().contains("consume-secret"));
+            assertInstanceOf(AssistantMessage.class, responseAfterCall.get());
+            assertFalse(client.lastOptions().getExtraFields().toString().contains("consume-secret"));
+        } finally {
+            agent.unregisterRail(observerRail).toCompletableFuture().join();
+            agent.unregisterRail(headersRail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void streamForwardsRequestHeadersThroughActualStreamingPath() {
+        StreamingRecordingModelClient client = new StreamingRecordingModelClient();
+        ReActAgent agent = configuredAgent("headers-stream-agent", new Model(client));
+        ModelRequestHeadersRail rail = new ModelRequestHeadersRail(context ->
+                CompletableFuture.completedFuture(Map.of("Authorization", "Bearer stream-token")));
+        agent.registerRail(rail).toCompletableFuture().join();
+        AgentCallbackContext context = modelCallContext(agent, "headers-stream");
+        context.getExtra().put("_streaming", true);
+
+        try {
+            agent.callModel(context, context.getContext(), null);
+
+            assertEquals("Bearer stream-token",
+                    client.streamOptions().getRequestHeaders().get("Authorization"));
+            assertEquals(0, client.invokeCount());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void retryObtainsFreshRequestHeadersForEachAttempt() {
+        RetryingRecordingModelClient client = new RetryingRecordingModelClient();
+        ReActAgent agent = configuredAgent("headers-retry-agent", new Model(client));
+        AtomicInteger providerCalls = new AtomicInteger();
+        AtomicBoolean retryRequested = new AtomicBoolean();
+        ModelRequestHeadersRail headersRail = new ModelRequestHeadersRail(context -> {
+            int call = providerCalls.incrementAndGet();
+            return CompletableFuture.completedFuture(Map.of("Authorization", "Bearer retry-" + call));
+        });
+        AgentRail retryRail = new AgentRail() {
+            @Override
+            public CompletionStage<Void> onModelException(AgentCallbackContext context) {
+                if (retryRequested.compareAndSet(false, true)) {
+                    context.requestRetry(0);
+                }
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+        agent.registerRail(headersRail).toCompletableFuture().join();
+        agent.registerRail(retryRail).toCompletableFuture().join();
+
+        try {
+            callModelForKvTest(agent, new RecordingModelContext("headers-retry"),
+                    new MemorySession("headers-retry"));
+
+            assertEquals(2, providerCalls.get());
+            assertEquals(List.of("Bearer retry-1", "Bearer retry-2"), client.authorizationValues());
+        } finally {
+            agent.unregisterRail(retryRail).toCompletableFuture().join();
+            agent.unregisterRail(headersRail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void retryAfterPreparationFailureConsumesOldHeadersBeforeCallbacks() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredAgent("headers-preparation-retry-agent", new Model(client));
+        AtomicInteger providerCalls = new AtomicInteger();
+        AtomicBoolean retryRequested = new AtomicBoolean();
+        AtomicReference<Map<String, String>> firstAttemptHeadersOnException = new AtomicReference<>();
+        AtomicReference<Map<String, String>> firstAttemptHeadersAfterCall = new AtomicReference<>();
+        ModelRequestHeadersRail headersRail = new ModelRequestHeadersRail(context -> {
+            int call = providerCalls.incrementAndGet();
+            Map<String, String> headers = call == 1
+                    ? Map.of("X-First-Attempt", "first-attempt-only")
+                    : Map.of("Authorization", "Bearer preparation-2");
+            return CompletableFuture.completedFuture(headers);
+        });
+        AgentRail retryObserverRail = new AgentRail() {
+            @Override
+            public CompletionStage<Void> onModelException(AgentCallbackContext context) {
+                firstAttemptHeadersOnException.set(((ModelCallInputs) context.getInputs()).getRequestHeaders());
+                if (retryRequested.compareAndSet(false, true)) {
+                    context.requestRetry(0);
+                }
+                return CompletableFuture.completedFuture(null);
+            }
+
+            @Override
+            public CompletionStage<Void> afterModelCall(AgentCallbackContext context) {
+                if (context.getRetryAttempt() == 0) {
+                    firstAttemptHeadersAfterCall.set(((ModelCallInputs) context.getInputs()).getRequestHeaders());
+                }
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+        agent.registerRail(headersRail).toCompletableFuture().join();
+        agent.registerRail(retryObserverRail).toCompletableFuture().join();
+
+        try {
+            RecordingModelContext context = new FailingOnceRecordingModelContext("headers-preparation-retry");
+            callModelForKvTest(agent, context, new MemorySession("headers-preparation-retry"));
+
+            assertTrue(firstAttemptHeadersOnException.get().isEmpty());
+            assertTrue(firstAttemptHeadersAfterCall.get().isEmpty());
+            assertEquals(2, providerCalls.get());
+            assertEquals(Map.of("Authorization", "Bearer preparation-2"),
+                    client.lastOptions().getRequestHeaders());
+        } finally {
+            agent.unregisterRail(retryObserverRail).toCompletableFuture().join();
+            agent.unregisterRail(headersRail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void beforeModelAbortClearsHeadersBeforeExceptionAfterAndRetry() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredAgent("headers-before-abort-agent", new Model(client));
+        AtomicInteger providerCalls = new AtomicInteger();
+        AtomicBoolean abortFirstAttempt = new AtomicBoolean(true);
+        AtomicBoolean retryRequested = new AtomicBoolean();
+        List<Map<String, String>> exceptionHeaders = new ArrayList<>();
+        List<Map<String, String>> afterHeaders = new ArrayList<>();
+        ModelRequestHeadersRail headersRail = new ModelRequestHeadersRail(context -> {
+            int call = providerCalls.incrementAndGet();
+            Map<String, String> headers = call == 1
+                    ? Map.of("Authorization", "Bearer first", "X-Stale", "stale")
+                    : Map.of("Authorization", "Bearer second", "X-Fresh", "fresh");
+            return CompletableFuture.completedFuture(headers);
+        });
+        headersRail.setPriority(100);
+        AgentRail abortRail = new AgentRail() {
+            @Override
+            public CompletionStage<Void> beforeModelCall(AgentCallbackContext context) {
+                if (abortFirstAttempt.compareAndSet(true, false)) {
+                    throw new AbortError("abort first model attempt");
+                }
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+        abortRail.setPriority(50);
+        AgentRail retryObserverRail = new AgentRail() {
+            @Override
+            public CompletionStage<Void> onModelException(AgentCallbackContext context) {
+                exceptionHeaders.add(((ModelCallInputs) context.getInputs()).getRequestHeaders());
+                if (retryRequested.compareAndSet(false, true)) {
+                    context.requestRetry(0);
+                }
+                return CompletableFuture.completedFuture(null);
+            }
+
+            @Override
+            public CompletionStage<Void> afterModelCall(AgentCallbackContext context) {
+                afterHeaders.add(((ModelCallInputs) context.getInputs()).getRequestHeaders());
+                return CompletableFuture.completedFuture(null);
+            }
+        };
+        retryObserverRail.setPriority(10);
+        agent.registerRail(headersRail).toCompletableFuture().join();
+        agent.registerRail(abortRail).toCompletableFuture().join();
+        agent.registerRail(retryObserverRail).toCompletableFuture().join();
+
+        try {
+            callModelForKvTest(agent, new RecordingModelContext("headers-before-abort"),
+                    new MemorySession("headers-before-abort"));
+
+            assertEquals(2, providerCalls.get());
+            assertEquals(1, client.invokeCount());
+            assertEquals(Map.of("Authorization", "Bearer second", "X-Fresh", "fresh"),
+                    client.lastOptions().getRequestHeaders());
+            assertFalse(client.lastOptions().getRequestHeaders().containsKey("X-Stale"));
+            assertEquals(List.of(Map.of()), exceptionHeaders);
+            assertEquals(List.of(Map.of(), Map.of()), afterHeaders);
+        } finally {
+            agent.unregisterRail(retryObserverRail).toCompletableFuture().join();
+            agent.unregisterRail(abortRail).toCompletableFuture().join();
+            agent.unregisterRail(headersRail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    void typePollutedProviderMapAbortsThroughActualCallbackChainBeforeModelInvocation() {
+        RecordingModelClient client = new RecordingModelClient(false);
+        ReActAgent agent = configuredAgent("headers-type-pollution-agent", new Model(client));
+        CompletionStage<Map<String, String>> pollutedHeaders = (CompletionStage) CompletableFuture.completedFuture(
+                Map.of(7, "must-not-reach-model"));
+        ModelRequestHeadersRail rail = new ModelRequestHeadersRail(context -> pollutedHeaders);
+        agent.registerRail(rail).toCompletableFuture().join();
+
+        try {
+            AbortError error = assertThrows(AbortError.class, () ->
+                    callModelForKvTest(agent, new RecordingModelContext("headers-type-pollution"),
+                            new MemorySession("headers-type-pollution")));
+
+            assertTrue(error.getReason().toLowerCase().contains("headers"));
+            assertFalse(error.getReason().contains("must-not-reach-model"));
+            assertNull(error.getCause());
+            assertEquals(0, client.invokeCount());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void concurrentModelCallsKeepRequestHeadersIsolated() {
+        ConcurrentRecordingModelClient client = new ConcurrentRecordingModelClient();
+        Model sharedModel = new Model(client);
+        ReActAgent agent = configuredAgent("headers-concurrent-agent", sharedModel);
+        CyclicBarrier preparationBarrier = new CyclicBarrier(2);
+        ModelRequestHeadersRail rail = sessionHeaderRail();
+        agent.registerRail(rail).toCompletableFuture().join();
+
+        try {
+            CompletableFuture<Void> firstCall = CompletableFuture.runAsync(() ->
+                    callModelForKvTest(agent,
+                            new BarrierRecordingModelContext("request-1", preparationBarrier),
+                            new MemorySession("request-1")));
+            CompletableFuture<Void> secondCall = CompletableFuture.runAsync(() ->
+                    callModelForKvTest(agent,
+                            new BarrierRecordingModelContext("request-2", preparationBarrier),
+                            new MemorySession("request-2")));
+            CompletableFuture.allOf(firstCall, secondCall).join();
+
+            assertEquals(2, client.invokeCount());
+            assertEquals(Map.of(
+                    "request-1", "Bearer token-1",
+                    "request-2", "Bearer token-2"
+            ), client.authorizationByRequest());
+        } finally {
+            agent.unregisterRail(rail).toCompletableFuture().join();
+        }
     }
 
     private static ReActAgent agentWithFakeModel(AssistantMessage response) {
@@ -194,6 +493,34 @@ class ReActAgentTest {
             }
         }));
         return agent;
+    }
+
+    private static ReActAgent configuredAgent(String agentId, Model model) {
+        ReActAgent agent = new ReActAgent(new AgentCard(agentId, "test", "desc"));
+        ReActAgentConfig config = new ReActAgentConfig();
+        config.setPromptTemplate(List.of(Map.of("role", "system", "content", "System")));
+        agent.configure(config);
+        agent.setLlm(model);
+        return agent;
+    }
+
+    private static AgentCallbackContext modelCallContext(ReActAgent agent, String sessionId) {
+        AgentCallbackContext context = new AgentCallbackContext(agent);
+        context.setSession(new MemorySession(sessionId));
+        context.setContext(new RecordingModelContext(sessionId));
+        return context;
+    }
+
+    private static ModelRequestHeadersRail sessionHeaderRail() {
+        return new ModelRequestHeadersRail(context -> {
+            String sessionId = context.getSession().getSessionId();
+            String token = switch (sessionId) {
+                case "request-1" -> "Bearer token-1";
+                case "request-2" -> "Bearer token-2";
+                default -> throw new IllegalArgumentException("Unexpected session: " + sessionId);
+            };
+            return CompletableFuture.completedFuture(Map.of("Authorization", token));
+        });
     }
 
     private static Map<String, Object> toolResult(String sourcePath, String dataUrl) {
@@ -283,7 +610,78 @@ class ReActAgentTest {
         }
     }
 
-    private static final class RecordingModelContext implements ModelContext {
+    private static final class StreamingRecordingModelClient implements Model.ModelClient {
+        private int invokeCount;
+        private ModelInvokeOptions streamOptions;
+
+        @Override
+        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+            invokeCount++;
+            return CompletableFuture.failedFuture(new AssertionError("Streaming path must not invoke the model"));
+        }
+
+        @Override
+        public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
+            streamOptions = options;
+            return List.of(AssistantMessageChunk.builder().content("streamed").build()).iterator();
+        }
+
+        private int invokeCount() {
+            return invokeCount;
+        }
+
+        private ModelInvokeOptions streamOptions() {
+            return streamOptions;
+        }
+    }
+
+    private static final class RetryingRecordingModelClient implements Model.ModelClient {
+        private final List<ModelInvokeOptions> options = new ArrayList<>();
+
+        @Override
+        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+            this.options.add(options);
+            if (this.options.size() == 1) {
+                return CompletableFuture.failedFuture(new IllegalStateException("first attempt failed"));
+            }
+            return CompletableFuture.completedFuture(new AssistantMessage("retried"));
+        }
+
+        private List<String> authorizationValues() {
+            return options.stream()
+                    .map(option -> option.getRequestHeaders().get("Authorization"))
+                    .toList();
+        }
+
+    }
+
+    private static final class ConcurrentRecordingModelClient implements Model.ModelClient {
+        private final Map<String, String> authorizationByRequest = new ConcurrentHashMap<>();
+        private final AtomicInteger invokeCount = new AtomicInteger();
+
+        @Override
+        public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
+            String requestId = messages.stream()
+                    .map(BaseMessage::getContent)
+                    .map(String::valueOf)
+                    .filter(content -> content.startsWith("request-"))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException("Request id message is missing"));
+            authorizationByRequest.put(requestId, options.getRequestHeaders().get("Authorization"));
+            invokeCount.incrementAndGet();
+            return CompletableFuture.completedFuture(new AssistantMessage("ok"));
+        }
+
+        private Map<String, String> authorizationByRequest() {
+            return Map.copyOf(authorizationByRequest);
+        }
+
+        private int invokeCount() {
+            return invokeCount.get();
+        }
+    }
+
+    private static class RecordingModelContext implements ModelContext {
         private final String sessionId;
         private List<BaseMessage> messages = new ArrayList<>();
         private Map<String, Object> lastKwargs = new LinkedHashMap<>();
@@ -373,6 +771,52 @@ class ReActAgentTest {
         @Override
         public ToolPort reloaderTool() {
             return () -> "reload_original_context_messages";
+        }
+    }
+
+    private static final class FailingOnceRecordingModelContext extends RecordingModelContext {
+        private final AtomicBoolean firstCall = new AtomicBoolean(true);
+
+        private FailingOnceRecordingModelContext(String sessionId) {
+            super(sessionId);
+        }
+
+        @Override
+        public CompletionStage<ContextWindow> getContextWindow(List<BaseMessage> systemMessages, List<ToolInfo> tools,
+                                                               Integer windowSize, Integer dialogueRound,
+                                                               Map<String, Object> kwargs) {
+            if (firstCall.compareAndSet(true, false)) {
+                return CompletableFuture.failedFuture(new IllegalStateException("context preparation failed"));
+            }
+            return super.getContextWindow(systemMessages, tools, windowSize, dialogueRound, kwargs);
+        }
+    }
+
+    private static final class BarrierRecordingModelContext extends RecordingModelContext {
+        private final String requestId;
+        private final CyclicBarrier barrier;
+
+        private BarrierRecordingModelContext(String requestId, CyclicBarrier barrier) {
+            super(requestId);
+            this.requestId = requestId;
+            this.barrier = barrier;
+        }
+
+        @Override
+        public CompletionStage<ContextWindow> getContextWindow(List<BaseMessage> systemMessages, List<ToolInfo> tools,
+                                                               Integer windowSize, Integer dialogueRound,
+                                                               Map<String, Object> kwargs) {
+            try {
+                barrier.await(10, TimeUnit.SECONDS);
+            } catch (Exception exception) {
+                throw new IllegalStateException("Concurrent preparation barrier failed", exception);
+            }
+            return CompletableFuture.completedFuture(new ContextWindow(
+                    systemMessages,
+                    List.of(new UserMessage(requestId)),
+                    tools == null ? List.of() : tools,
+                    new ContextStats()
+            ));
         }
     }
 

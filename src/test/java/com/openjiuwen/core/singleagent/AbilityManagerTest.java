@@ -5,6 +5,7 @@
 package com.openjiuwen.core.singleagent;
 
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.logging.LogLevels;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Handler;
+import java.util.logging.Level;
 import java.util.logging.LogRecord;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -244,6 +246,8 @@ class AbilityManagerTest {
         Tool tool = resultTool("sum", expected, invocations);
         ToolCall call = ToolCall.builder().id("call-sum").name("sum").arguments("{}").build();
         RecordingHandler handler = new RecordingHandler();
+        int originalLevel = originalToolLogLevel();
+        Loggers.TOOL.setLevel(LogLevels.DEBUG);
         Loggers.TOOL.addHandler(handler);
         try {
             List<AbilityManager.ExecutionResult> results = new AbilityManager().executeResolvedTool(tool, call);
@@ -251,9 +255,13 @@ class AbilityManagerTest {
             assertEquals(1, invocations.get());
             assertSame(expected, results.get(0).result());
             assertEquals("30.0", results.get(0).toolMessage().getContent());
-            assertEquals(List.of("Tool result: 30.0"), handler.messages);
+            assertEquals(List.of("event=react_tool_result tool_name=sum status=success result_type=Double"),
+                    handler.messages);
+            assertEquals(Level.FINE, handler.records.get(0).getLevel());
+            assertFalse(handler.messages.get(0).contains("30.0"));
         } finally {
             Loggers.TOOL.removeHandler(handler);
+            Loggers.TOOL.setLevel(originalLevel);
         }
     }
 
@@ -271,6 +279,8 @@ class AbilityManagerTest {
         Tool tool = resultTool("weather", envelope, invocations);
         ToolCall call = ToolCall.builder().id("call-weather").name("weather").arguments("{}").build();
         RecordingHandler handler = new RecordingHandler();
+        int originalLevel = originalToolLogLevel();
+        Loggers.TOOL.setLevel(LogLevels.DEBUG);
         Loggers.TOOL.addHandler(handler);
         try {
             List<AbilityManager.ExecutionResult> results = new AbilityManager().executeResolvedTool(tool, call);
@@ -279,10 +289,129 @@ class AbilityManagerTest {
             assertSame(envelope, results.get(0).result());
             String content = AbilityManager.buildToolMessageContent(envelope);
             assertEquals(content, results.get(0).toolMessage().getContent());
-            assertEquals(List.of("Tool result: " + content), handler.messages);
+            assertEquals(List.of("event=react_tool_result tool_name=weather status=success result_type=LinkedHashMap"),
+                    handler.messages);
+            assertEquals(Level.FINE, handler.records.get(0).getLevel());
+            assertFalse(handler.messages.get(0).contains(content));
+            assertFalse(handler.messages.get(0).contains("temperature"));
         } finally {
             Loggers.TOOL.removeHandler(handler);
+            Loggers.TOOL.setLevel(originalLevel);
         }
+    }
+
+    @Test
+    void executeResolvedToolOmitsResultTypeWhenResultIsNull() {
+        AtomicInteger invocations = new AtomicInteger();
+        Tool tool = resultTool("nullable", null, invocations);
+        ToolCall call = ToolCall.builder().id("call-nullable").name("nullable").arguments("{}").build();
+        RecordingHandler handler = new RecordingHandler();
+        int originalLevel = originalToolLogLevel();
+        Loggers.TOOL.setLevel(LogLevels.DEBUG);
+        Loggers.TOOL.addHandler(handler);
+        try {
+            List<AbilityManager.ExecutionResult> results = new AbilityManager().executeResolvedTool(tool, call);
+
+            assertEquals(1, invocations.get());
+            assertEquals(1, results.size());
+            assertEquals(List.of("event=react_tool_result tool_name=nullable status=success"), handler.messages);
+            assertFalse(handler.messages.get(0).contains("result_type=null"));
+        } finally {
+            Loggers.TOOL.removeHandler(handler);
+            Loggers.TOOL.setLevel(originalLevel);
+        }
+    }
+
+    private static int originalToolLogLevel() {
+        Integer effectiveLevel = readEffectiveLogLevel(Loggers.TOOL);
+        if (effectiveLevel != null) {
+            return effectiveLevel;
+        }
+        return LogLevels.normalizeLogLevel(Loggers.TOOL.getConfig().get("level"), LogLevels.INFO);
+    }
+
+    private static Integer readEffectiveLogLevel(Object logger) {
+        Object current = logger;
+        java.util.Set<Object> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        for (int depth = 0; current != null && seen.add(current) && depth < 8; depth++) {
+            Integer level = readThresholdLevel(current);
+            if (level != null) {
+                return level;
+            }
+            Object next = unwrapLoggerDelegate(current);
+            if (next == current) {
+                return null;
+            }
+            current = next;
+        }
+        return null;
+    }
+
+    private static Integer readThresholdLevel(Object logger) {
+        try {
+            java.lang.reflect.Field field = findField(logger.getClass(), "thresholdLevel");
+            field.setAccessible(true);
+            Object value = field.get(logger);
+            return value instanceof Number number ? number.intValue() : null;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static Object unwrapLoggerDelegate(Object logger) {
+        Object methodDelegate = invokeDelegateGetter(logger);
+        if (methodDelegate != null) {
+            return methodDelegate;
+        }
+        try {
+            java.lang.reflect.Field field = findField(logger.getClass(), "delegate");
+            field.setAccessible(true);
+            Object value = field.get(logger);
+            return value == null ? logger : value;
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return logger;
+        }
+    }
+
+    private static Object invokeDelegateGetter(Object logger) {
+        try {
+            java.lang.reflect.Method method = logger.getClass().getDeclaredMethod("getDelegate");
+            method.setAccessible(true);
+            return method.invoke(logger);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static java.lang.reflect.Field findField(Class<?> type, String name) throws NoSuchFieldException {
+        Class<?> current = type;
+        while (current != null) {
+            try {
+                return current.getDeclaredField(name);
+            } catch (NoSuchFieldException exception) {
+                current = current.getSuperclass();
+            }
+        }
+        throw new NoSuchFieldException(name);
+    }
+
+    @Test
+    void originalToolLogLevelReadsCurrentEffectiveLevel() {
+        int originalLevel = originalToolLogLevel();
+        try {
+            Loggers.TOOL.setLevel(LogLevels.CRITICAL);
+            assertEquals(LogLevels.CRITICAL, originalToolLogLevel());
+
+            Loggers.TOOL.setLevel(LogLevels.NOTSET);
+            assertEquals(LogLevels.NOTSET, originalToolLogLevel());
+        } finally {
+            Loggers.TOOL.setLevel(originalLevel);
+        }
+    }
+
+    @Test
+    void readEffectiveLogLevelUnwrapsInheritedDelegateField() {
+        assertEquals(LogLevels.NOTSET, readEffectiveLogLevel(new ChildLoggerWrapper(new ThresholdLogger())));
     }
 
     @Test
@@ -370,11 +499,33 @@ class AbilityManagerTest {
         }
     }
 
+    private static class ParentLoggerWrapper {
+        @SuppressWarnings("unused")
+        private final Object delegate;
+
+        private ParentLoggerWrapper(Object delegate) {
+            this.delegate = delegate;
+        }
+    }
+
+    private static final class ChildLoggerWrapper extends ParentLoggerWrapper {
+        private ChildLoggerWrapper(Object delegate) {
+            super(delegate);
+        }
+    }
+
+    private static final class ThresholdLogger {
+        @SuppressWarnings("unused")
+        private final int thresholdLevel = LogLevels.NOTSET;
+    }
+
     private static final class RecordingHandler extends Handler {
         private final List<String> messages = new java.util.ArrayList<>();
+        private final List<LogRecord> records = new java.util.ArrayList<>();
 
         @Override
         public void publish(LogRecord record) {
+            records.add(record);
             messages.add(record.getMessage());
         }
 

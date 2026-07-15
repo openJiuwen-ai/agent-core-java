@@ -8,6 +8,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.logging.LogManager;
+import com.openjiuwen.core.common.logging.LoggerProtocol;
+import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryEvent;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
@@ -22,6 +25,9 @@ import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -40,9 +46,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -55,6 +63,389 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OpenAIModelClientTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    @Test
+    void formalHeadersKeepInvokeErrorBodyOutOfExceptionCausesParamsAndLogs() throws Exception {
+        String authorization = "Formal authorization secret";
+        String headerValue = "formal-header-secret";
+        String errorBody = "{\"error\":\"Authorization=" + authorization
+                + ", X-Formal=" + headerValue + "\"}";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(401, errorBody));
+             LlmLogCapture logs = new LlmLogCapture()) {
+            ModelInvokeOptions options = ModelInvokeOptions.builder()
+                    .requestHeaders(Map.of("Authorization", authorization, "X-Formal", headerValue))
+                    .build();
+            Model model = new Model(
+                    ModelClientConfig.builder()
+                            .clientProvider(ProviderType.OPEN_ROUTER)
+                            .apiKey("sk-static")
+                            .apiBase(server.baseUrl())
+                            .verifySsl(false)
+                            .build(),
+                    ModelRequestConfig.builder().modelName("gpt-test").build());
+
+            Throwable error = catchThrowable(() -> model.invoke(List.of(new UserMessage("hello")), options)
+                    .toCompletableFuture()
+                    .join());
+
+            assertThat(error).isNotNull();
+            assertThrowableDoesNotContain(error, authorization, "X-Formal", headerValue);
+            assertThat(logs.records.toString()).doesNotContain(authorization, "X-Formal", headerValue);
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
+    @Test
+    void formalHeadersKeepStreamErrorBodyOutOfExceptionCausesParamsAndLogs() throws Exception {
+        String authorization = "Formal stream authorization secret";
+        String headerValue = "formal-stream-header-secret";
+        String errorBody = "{\"error\":\"Authorization=" + authorization
+                + ", X-Formal=" + headerValue + "\"}";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(403, errorBody));
+             LlmLogCapture logs = new LlmLogCapture()) {
+            ModelInvokeOptions options = ModelInvokeOptions.builder()
+                    .requestHeaders(Map.of("Authorization", authorization, "X-Formal", headerValue))
+                    .build();
+
+            Throwable error = catchThrowable(() -> client(server.baseUrl())
+                    .stream(List.of(new UserMessage("hello")), options));
+
+            assertThat(error).isNotNull();
+            assertThrowableDoesNotContain(error, authorization, "X-Formal", headerValue);
+            assertThat(logs.records.toString()).doesNotContain(authorization, "X-Formal", headerValue);
+            assertThat(server.requests).hasSize(1);
+        }
+    }
+
+    @Test
+    void modelFacadeInvokeUsesFormalHeadersAcrossRetriesWithoutTransportLeaks() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "ok")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(
+                response(500, "{\"error\":\"retry\"}"), response(200, success))) {
+            RecordingTracer tracer = new RecordingTracer();
+            Map<String, Object> legacyHeaders = new LinkedHashMap<>();
+            legacyHeaders.put("Authorization", "Legacy token");
+            legacyHeaders.put("X-Request-ID", "legacy-request");
+            legacyHeaders.put("X-Legacy", "legacy-only");
+            Map<String, Object> extraFields = new LinkedHashMap<>();
+            extraFields.put("custom_headers", legacyHeaders);
+            extraFields.put("tracer_record_data", tracer);
+            ModelInvokeOptions options = ModelInvokeOptions.builder()
+                    .requestHeaders(Map.of(
+                            "authorization", "Formal token",
+                            "x-request-id", "formal-request",
+                            "X-Formal", "formal-only"))
+                    .extraFields(extraFields)
+                    .build();
+            Model model = new Model(
+                    ModelClientConfig.builder()
+                            .clientProvider(ProviderType.OPEN_ROUTER)
+                            .apiKey("sk-static")
+                            .apiBase(server.baseUrl())
+                            .verifySsl(false)
+                            .maxRetries(1)
+                            .customHeaders(Map.of("X-Config", "config-only"))
+                            .build(),
+                    ModelRequestConfig.builder().modelName("gpt-test").build());
+
+            AssistantMessage message = model.invoke(List.of(new UserMessage("hello")), options)
+                    .toCompletableFuture()
+                    .get(5, TimeUnit.SECONDS);
+
+            assertThat(message.getContent()).isEqualTo("ok");
+            assertThat(server.requests).hasSize(2).allSatisfy(request -> {
+                assertThat(header(request.headers, "Authorization")).isEqualTo("Formal token");
+                assertThat(header(request.headers, "X-Request-ID")).isEqualTo("formal-request");
+                assertThat(header(request.headers, "X-Formal")).isEqualTo("formal-only");
+                assertThat(header(request.headers, "X-Legacy")).isEqualTo("legacy-only");
+                assertThat(header(request.headers, "X-Config")).isEqualTo("config-only");
+                assertThat(request.body).doesNotContainKeys(
+                        "requestHeaders", "request_headers", "custom_headers", "customHeaders",
+                        "__openjiuwen_request_headers", "extra_headers");
+            });
+            String traced = OBJECT_MAPPER.writeValueAsString(tracer.records);
+            assertThat(traced)
+                    .doesNotContain("Formal token", "formal-request", "formal-only")
+                    .doesNotContain("requestHeaders", "request_headers", "custom_headers", "customHeaders",
+                            "__openjiuwen_request_headers");
+        }
+    }
+
+    @Test
+    void typedStreamUsesFormalHeadersAndFormalAuthorizationOverridesLegacyCaseInsensitively() throws Exception {
+        String sse = "data: " + json(Map.of("choices", List.of(Map.of(
+                "delta", Map.of("content", "ok"), "finish_reason", "stop")))) + "\n\ndata: [DONE]\n\n";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(200, sse, "text/event-stream"))) {
+            Map<String, Object> extraFields = new LinkedHashMap<>();
+            extraFields.put("customHeaders", Map.of(
+                    "AUTHORIZATION", "Legacy token",
+                    "x-stream-id", "legacy-stream"));
+            ModelInvokeOptions options = ModelInvokeOptions.builder()
+                    .requestHeaders(Map.of(
+                            "Authorization", "Formal stream token",
+                            "X-Stream-ID", "formal-stream"))
+                    .extraFields(extraFields)
+                    .build();
+
+            List<AssistantMessageChunk> chunks = iteratorToList(
+                    client(server.baseUrl()).stream(List.of(new UserMessage("hello")), options));
+
+            assertThat(chunks).singleElement().extracting(AssistantMessageChunk::getContent).isEqualTo("ok");
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Formal stream token");
+            assertThat(header(server.lastHeaders, "X-Stream-ID")).isEqualTo("formal-stream");
+            assertThat(server.lastBody).doesNotContainKeys(
+                    "requestHeaders", "request_headers", "custom_headers", "customHeaders",
+                    "__openjiuwen_request_headers", "extra_headers");
+        }
+    }
+
+    @Test
+    void typedInvokePopsBothLegacyAliasesAndUsesLastFormalAuthorizationValue() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "ok")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(success)) {
+            Map<String, Object> extraFields = new LinkedHashMap<>();
+            extraFields.put("custom_headers", Map.of("X-Alias", "snake"));
+            extraFields.put("customHeaders", Map.of("x-alias", "camel", "X-Camel", "camel-only"));
+            Map<String, String> requestHeaders = new LinkedHashMap<>();
+            requestHeaders.put("Authorization", "Formal old token");
+            requestHeaders.put("authorization", "Formal final token");
+            requestHeaders.put("X-Alias", "formal");
+            ModelInvokeOptions options = ModelInvokeOptions.builder()
+                    .requestHeaders(requestHeaders)
+                    .extraFields(extraFields)
+                    .build();
+
+            AssistantMessage message = client(server.baseUrl())
+                    .invoke(List.of(new UserMessage("hello")), options)
+                    .toCompletableFuture()
+                    .get(5, TimeUnit.SECONDS);
+
+            assertThat(message.getContent()).isEqualTo("ok");
+            assertThat(header(server.lastHeaders, "Authorization")).isEqualTo("Formal final token");
+            assertThat(header(server.lastHeaders, "X-Alias")).isEqualTo("formal");
+            assertThat(header(server.lastHeaders, "X-Camel")).isEqualTo("camel-only");
+            assertThat(server.lastBody).doesNotContainKeys("custom_headers", "customHeaders");
+        }
+    }
+
+    @Test
+    void typedInvokeRejectsBlankFormalAuthorizationWithoutFallingBackToStaticKey() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "unused")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(success)) {
+            ModelInvokeOptions options = ModelInvokeOptions.builder()
+                    .requestHeaders(Map.of("Authorization", "   "))
+                    .build();
+
+            assertThatThrownBy(() -> client(server.baseUrl())
+                    .invoke(List.of(new UserMessage("hello")), options)
+                    .toCompletableFuture()
+                    .join())
+                    .hasMessageContaining("Invalid Authorization header value");
+            assertThat(server.requests).isEmpty();
+        }
+    }
+
+    @Test
+    void typedInvokeRejectsNullFormalAuthorizationWithoutFallingBackToStaticKey() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "unused")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(success)) {
+            Map<String, String> requestHeaders = new LinkedHashMap<>();
+            requestHeaders.put("Authorization", null);
+            ModelInvokeOptions options = ModelInvokeOptions.builder().requestHeaders(requestHeaders).build();
+
+            assertThatThrownBy(() -> client(server.baseUrl())
+                    .invoke(List.of(new UserMessage("hello")), options)
+                    .toCompletableFuture()
+                    .join())
+                    .hasMessageContaining("Invalid Authorization header value");
+            assertThat(server.requests).isEmpty();
+        }
+    }
+
+    @Test
+    void typedInvokeRejectsControlCharactersWithoutExposingHeaderValue() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "unused")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(success)) {
+            ModelInvokeOptions options = ModelInvokeOptions.builder()
+                    .requestHeaders(Map.of("Authorization", "Secret-token\r\nInjected: value"))
+                    .build();
+
+            assertThatThrownBy(() -> client(server.baseUrl())
+                    .invoke(List.of(new UserMessage("hello")), options)
+                    .toCompletableFuture()
+                    .join())
+                    .hasMessageContaining("Invalid Authorization header value")
+                    .hasMessageNotContaining("Secret-token")
+                    .hasMessageNotContaining("Injected");
+            assertThat(server.requests).isEmpty();
+        }
+    }
+
+    @Test
+    void typedInvokeRejectsInvalidFormalHeaderNameWithoutExposingHeaderData() throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "unused")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(success)) {
+            ModelInvokeOptions options = ModelInvokeOptions.builder()
+                    .requestHeaders(Map.of("X Private", "private-value"))
+                    .build();
+
+            assertThatThrownBy(() -> client(server.baseUrl())
+                    .invoke(List.of(new UserMessage("hello")), options)
+                    .toCompletableFuture()
+                    .join())
+                    .hasMessageContaining("Invalid request header name")
+                    .hasMessageNotContaining("X Private")
+                    .hasMessageNotContaining("private-value");
+            assertThat(server.requests).isEmpty();
+        }
+    }
+
+    @Test
+    void typedStreamRejectsInvalidFormalHeaderNameWithoutExposingHeaderData() throws Exception {
+        String sse = "data: [DONE]\n\n";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(200, sse, "text/event-stream"))) {
+            ModelInvokeOptions options = ModelInvokeOptions.builder()
+                    .requestHeaders(Map.of("X:Private", "private-value"))
+                    .build();
+
+            assertThatThrownBy(() -> client(server.baseUrl())
+                    .stream(List.of(new UserMessage("hello")), options))
+                    .hasMessageContaining("Invalid request header name")
+                    .hasMessageNotContaining("X:Private")
+                    .hasMessageNotContaining("private-value");
+            assertThat(server.requests).isEmpty();
+        }
+    }
+
+    @ParameterizedTest(name = "formal header name boundary invoke [{index}]")
+    @MethodSource("invalidFormalHeaderNames")
+    void modelFacadeInvokeRejectsInvalidFormalHeaderNameBoundaryWithoutExposingData(String headerName)
+            throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "unused")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(success)) {
+            Map<String, String> requestHeaders = new LinkedHashMap<>();
+            requestHeaders.put(headerName, "private-value");
+            ModelInvokeOptions options = ModelInvokeOptions.builder().requestHeaders(requestHeaders).build();
+            Model model = new Model(
+                    ModelClientConfig.builder()
+                            .clientProvider(ProviderType.OPEN_ROUTER)
+                            .apiKey("sk-static")
+                            .apiBase(server.baseUrl())
+                            .verifySsl(false)
+                            .build(),
+                    ModelRequestConfig.builder().modelName("gpt-test").build());
+
+            assertThatThrownBy(() -> model.invoke(List.of(new UserMessage("hello")), options)
+                    .toCompletableFuture()
+                    .join())
+                    .hasMessageContaining("Invalid request header name")
+                    .hasMessageNotContaining("X-Private")
+                    .hasMessageNotContaining("private-value");
+            assertThat(server.requests).isEmpty();
+        }
+    }
+
+    @ParameterizedTest(name = "formal header name boundary stream [{index}]")
+    @MethodSource("invalidFormalHeaderNames")
+    void typedStreamRejectsInvalidFormalHeaderNameBoundaryWithoutExposingData(String headerName)
+            throws Exception {
+        String sse = "data: [DONE]\n\n";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(200, sse, "text/event-stream"))) {
+            Map<String, String> requestHeaders = new LinkedHashMap<>();
+            requestHeaders.put(headerName, "private-value");
+            ModelInvokeOptions options = ModelInvokeOptions.builder().requestHeaders(requestHeaders).build();
+
+            assertThatThrownBy(() -> client(server.baseUrl())
+                    .stream(List.of(new UserMessage("hello")), options))
+                    .hasMessageContaining("Invalid request header name")
+                    .hasMessageNotContaining("X-Private")
+                    .hasMessageNotContaining("private-value");
+            assertThat(server.requests).isEmpty();
+        }
+    }
+
+    private static Stream<String> invalidFormalHeaderNames() {
+        return Stream.of(null, "", "   ", " X-Private", "X-Private ");
+    }
+
+    @ParameterizedTest(name = "formal header value invoke [{index}] {0}")
+    @MethodSource("invalidFormalHeaderEntries")
+    void modelFacadeInvokeRejectsInvalidFormalHeaderEntryBeforeTransport(
+            String headerName,
+            String headerValue,
+            String expectedMessage) throws Exception {
+        String success = json(Map.of("choices", List.of(Map.of("message", Map.of("content", "unused")))));
+        try (MockOpenAiServer server = new MockOpenAiServer(success)) {
+            Map<String, String> requestHeaders = new LinkedHashMap<>();
+            requestHeaders.put(headerName, headerValue);
+            ModelInvokeOptions options = ModelInvokeOptions.builder().requestHeaders(requestHeaders).build();
+            Model model = new Model(
+                    ModelClientConfig.builder()
+                            .clientProvider(ProviderType.OPEN_ROUTER)
+                            .apiKey("sk-static")
+                            .apiBase(server.baseUrl())
+                            .verifySsl(false)
+                            .build(),
+                    ModelRequestConfig.builder().modelName("gpt-test").build());
+
+            Throwable error = catchThrowable(() -> model.invoke(List.of(new UserMessage("hello")), options)
+                    .toCompletableFuture()
+                    .join());
+
+            assertThat(error).hasMessageContaining(expectedMessage);
+            if (headerValue != null && !headerValue.isBlank()) {
+                assertThrowableDoesNotContain(error, headerValue);
+            }
+            if ("Invalid request header name".equals(expectedMessage)) {
+                assertThrowableDoesNotContain(error, headerName);
+            }
+            assertThat(server.requests).isEmpty();
+        }
+    }
+
+    @ParameterizedTest(name = "formal header value stream [{index}] {0}")
+    @MethodSource("invalidFormalHeaderEntries")
+    void typedStreamRejectsInvalidFormalHeaderEntryBeforeTransport(
+            String headerName,
+            String headerValue,
+            String expectedMessage) throws Exception {
+        String sse = "data: [DONE]\n\n";
+        try (MockOpenAiServer server = new MockOpenAiServer(response(200, sse, "text/event-stream"))) {
+            Map<String, String> requestHeaders = new LinkedHashMap<>();
+            requestHeaders.put(headerName, headerValue);
+            ModelInvokeOptions options = ModelInvokeOptions.builder().requestHeaders(requestHeaders).build();
+
+            Throwable error = catchThrowable(() -> client(server.baseUrl())
+                    .stream(List.of(new UserMessage("hello")), options));
+
+            assertThat(error).hasMessageContaining(expectedMessage);
+            if (headerValue != null && !headerValue.isBlank()) {
+                assertThrowableDoesNotContain(error, headerValue);
+            }
+            if ("Invalid request header name".equals(expectedMessage)) {
+                assertThrowableDoesNotContain(error, headerName);
+            }
+            assertThat(server.requests).isEmpty();
+        }
+    }
+
+    private static Stream<Arguments> invalidFormalHeaderEntries() {
+        return Stream.of(
+                Arguments.of("Authorization", "秘密-token", "Invalid Authorization header value"),
+                Arguments.of("Authorization", "\u0100-token", "Invalid Authorization header value"),
+                Arguments.of("Authorization", "secret\r\nInjected: value", "Invalid Authorization header value"),
+                Arguments.of("X-Unicode", "秘密-value", "Invalid request header value"),
+                Arguments.of("X-Unicode", "\u0100-value", "Invalid request header value"),
+                Arguments.of("X-Control", "secret\r\nInjected: value", "Invalid request header value"),
+                Arguments.of("Host", "private-value", "Invalid request header name"),
+                Arguments.of("content-length", "private-value", "Invalid request header name"),
+                Arguments.of("TRANSFER-ENCODING", "private-value", "Invalid request header name"),
+                Arguments.of("Connection", "private-value", "Invalid request header name"),
+                Arguments.of("Expect", "private-value", "Invalid request header name"),
+                Arguments.of("uPgRaDe", "private-value", "Invalid request header name"),
+                Arguments.of("X-Null", null, "Invalid request header value"),
+                Arguments.of("X-Blank", "   ", "Invalid request header value"));
+    }
 
     @Test
     void buildRequestParamsDropsTopPOnlyForOpenAiApiBase() {
@@ -193,6 +584,35 @@ class OpenAIModelClientTest {
             assertThat(server.requests).hasSize(2);
             assertThat(header(server.requests.get(0).headers, "X-Stainless-Retry-Count")).isEqualTo("0");
             assertThat(header(server.requests.get(1).headers, "X-Stainless-Retry-Count")).isEqualTo("1");
+        }
+    }
+
+    @Test
+    void typedStreamReusesIdenticalFormalHeadersAcrossRateLimitRetry() throws Exception {
+        String sse = "data: " + json(Map.of("choices", List.of(Map.of(
+                "delta", Map.of("content", "ok"), "finish_reason", "stop")))) + "\n\ndata: [DONE]\n\n";
+        try (MockOpenAiServer server = new MockOpenAiServer(
+                response(429, "{\"error\":\"retry\"}"),
+                response(200, sse, "text/event-stream"))) {
+            ModelInvokeOptions options = ModelInvokeOptions.builder()
+                    .requestHeaders(Map.of(
+                            "Authorization", "Formal retry token",
+                            "X-Formal", "formal-retry-value"))
+                    .build();
+
+            List<AssistantMessageChunk> chunks = iteratorToList(
+                    client(server.baseUrl(), 1, Map.of())
+                            .stream(List.of(new UserMessage("hello")), options));
+
+            assertThat(chunks).singleElement().extracting(AssistantMessageChunk::getContent).isEqualTo("ok");
+            assertThat(server.requests).hasSize(2).allSatisfy(request -> {
+                assertThat(header(request.headers, "Authorization")).isEqualTo("Formal retry token");
+                assertThat(header(request.headers, "X-Formal")).isEqualTo("formal-retry-value");
+            });
+            assertThat(header(server.requests.get(0).headers, "Authorization"))
+                    .isEqualTo(header(server.requests.get(1).headers, "Authorization"));
+            assertThat(header(server.requests.get(0).headers, "X-Formal"))
+                    .isEqualTo(header(server.requests.get(1).headers, "X-Formal"));
         }
     }
 
@@ -774,6 +1194,17 @@ class OpenAIModelClientTest {
         return null;
     }
 
+    private static void assertThrowableDoesNotContain(Throwable error, String... sensitiveValues) {
+        Throwable current = error;
+        while (current != null) {
+            assertThat(current.getMessage()).doesNotContain(sensitiveValues);
+            if (current instanceof BaseError baseError) {
+                assertThat(String.valueOf(baseError.getParams())).doesNotContain(sensitiveValues);
+            }
+            current = current.getCause();
+        }
+    }
+
     private static PlannedResponse response(int status, String body) {
         return response(status, body, "application/json");
     }
@@ -864,6 +1295,73 @@ class OpenAIModelClientTest {
         @Override
         public void close() {
             server.stop(0);
+        }
+    }
+
+    private static final class LlmLogCapture implements LoggerProtocol, AutoCloseable {
+        private final List<String> records = new ArrayList<>();
+
+        private LlmLogCapture() {
+            LogManager.reset();
+            LogManager.registerLogger("llm", this);
+        }
+
+        @Override
+        public void debug(String msg, Object... args) {
+            record(msg, args);
+        }
+
+        @Override
+        public void info(String msg, Object... args) {
+            record(msg, args);
+        }
+
+        @Override
+        public void warning(String msg, Object... args) {
+            record(msg, args);
+        }
+
+        @Override
+        public void error(String msg, Object... args) {
+            record(msg, args);
+        }
+
+        @Override
+        public void critical(String msg, Object... args) {
+            record(msg, args);
+        }
+
+        @Override
+        public void exception(String msg, Throwable throwable, Object... args) {
+            record(msg, args);
+            records.add(String.valueOf(throwable));
+        }
+
+        @Override
+        public void log(int level, String msg, Object... args) {
+            record(msg, args);
+        }
+
+        @Override
+        public void setLevel(int level) {
+        }
+
+        @Override
+        public Map<String, Object> getConfig() {
+            return Map.of();
+        }
+
+        @Override
+        public void reconfigure(Map<String, Object> config) {
+        }
+
+        @Override
+        public void close() {
+            LogManager.reset();
+        }
+
+        private void record(String message, Object... arguments) {
+            records.add(message + " " + java.util.Arrays.deepToString(arguments));
         }
     }
 

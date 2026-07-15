@@ -24,7 +24,9 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Mirrors Python's {@code ToolMgr} in
@@ -38,7 +40,7 @@ public class ToolManager {
     private final Map<String, List<String>> mcpServerNameToIds = new LinkedHashMap<>();
     private final Map<String, McpServerResource> mcpServerResources = new LinkedHashMap<>();
     private final Map<String, SysOpToolResource> sysOpResources = new LinkedHashMap<>();
-    private final Map<String, Object> mcpServerLocks = new LinkedHashMap<>();
+    private final Map<String, ReentrantLock> mcpServerLocks = new ConcurrentHashMap<>();
     private final McpClientFactory mcpClientFactory;
 
     public ToolManager() {
@@ -49,10 +51,8 @@ public class ToolManager {
         this.mcpClientFactory = mcpClientFactory;
     }
 
-    private Object mcpServerLock(String serverId) {
-        synchronized (mcpServerLocks) {
-            return mcpServerLocks.computeIfAbsent(serverId, ignored -> new Object());
-        }
+    private ReentrantLock mcpServerLock(String serverId) {
+        return mcpServerLocks.computeIfAbsent(serverId, ignored -> new ReentrantLock());
     }
 
     public void addTool(String toolId, Tool tool) {
@@ -118,8 +118,9 @@ public class ToolManager {
     }
 
     public CompletionStage<List<McpToolCard>> addToolServer(McpServerConfig serverConfig, Double expiryTime) {
-        Object lock = mcpServerLock(serverConfig.getServerId());
-        synchronized (lock) {
+        ReentrantLock lock = mcpServerLock(serverConfig.getServerId());
+        lock.lock();
+        try {
             McpServerResource existing = mcpServerResources.get(serverConfig.getServerId());
             if (existing != null) {
                 List<McpToolCard> cards = new ArrayList<>();
@@ -158,6 +159,8 @@ public class ToolManager {
                 params.put("reason", error.getMessage());
                 throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_ADD_ERROR, null, null, error, params);
             }
+        } finally {
+            lock.unlock();
         }
     }
 

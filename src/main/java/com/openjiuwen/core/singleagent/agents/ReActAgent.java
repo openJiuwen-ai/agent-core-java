@@ -21,6 +21,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
+import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.AgentSession;
 import com.openjiuwen.core.session.AgentSessionApi;
@@ -49,6 +50,7 @@ import com.openjiuwen.core.singleagent.external.ExternalToolCallRequest;
 import com.openjiuwen.core.singleagent.external.ExternalToolPendingState;
 import com.openjiuwen.core.singleagent.external.ExternalToolResult;
 import com.openjiuwen.core.singleagent.skills.SkillUtil;
+import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.workflow.WorkflowExecutionState;
 import com.openjiuwen.core.workflow.WorkflowOutput;
 
@@ -263,8 +265,9 @@ public class ReActAgent extends BaseAgent {
     }
 
     public Object doRailedModelCall(AgentCallbackContext ctx) {
-        Model model = getLlm();
         ModelCallInputs modelInputs = (ModelCallInputs) ctx.getInputs();
+        Map<String, String> requestHeaders = modelInputs.consumeRequestHeaders();
+        Model model = getLlm();
         List<ToolInfo> tools = toolInfoList(modelInputs.getTools());
         boolean enableKvRelease = config.getContextEngineConfig().isEnableKvCacheRelease();
         boolean supportsKvRelease = model.supportsKvCacheRelease();
@@ -309,6 +312,7 @@ public class ReActAgent extends BaseAgent {
         ModelInvokeOptions.ModelInvokeOptionsBuilder optionsBuilder = ModelInvokeOptions.builder()
                 .model(config.getModelName())
                 .tools(tools)
+                .requestHeaders(requestHeaders)
                 .extraFields(extraFields);
         if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming")) && ctx.getSession() != null) {
             AgentSessionApi session = ctx.getSession();
@@ -320,9 +324,20 @@ public class ReActAgent extends BaseAgent {
         }
         ModelInvokeOptions options = optionsBuilder.build();
 
-        if (!Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
-            AssistantMessage aiMessage = model.invoke(messages, options).toCompletableFuture().join();
+        boolean streaming = Boolean.TRUE.equals(ctx.getExtra().get("_streaming"));
+        if (!streaming) {
+            logModelCallStarted(ctx, messages, tools, false);
+            long modelStartNanos = System.nanoTime();
+            AssistantMessage aiMessage;
+            try {
+                aiMessage = model.invoke(messages, options).toCompletableFuture().join();
+            } catch (RuntimeException exception) {
+                logModelCallCompleted(ctx, false, modelStartNanos, null, exception);
+                throw exception;
+            }
             modelInputs.setResponse(aiMessage);
+            logModelResponse(ctx, aiMessage);
+            logModelCallCompleted(ctx, false, modelStartNanos, aiMessage, null);
             return aiMessage;
         }
         return streamModelResponse(ctx, model, messages, options, modelInputs);
@@ -374,16 +389,31 @@ public class ReActAgent extends BaseAgent {
         listEffectiveToolInfo(session);
         List<AbilityManager.ExecutionResult> results = new ArrayList<>();
         for (ToolCall toolCall : toolCalls) {
+            long toolStartNanos = System.nanoTime();
+            logToolCallStarted(ctx, toolCall);
             Optional<Tool> skillTool = findActiveSkillTool(toolCall.getName(), session);
-            List<AbilityManager.ExecutionResult> executionResults = skillTool
-                    .map(tool -> getAbilityManager().executeResolvedTool(tool, toolCall))
-                    .orElseGet(() -> getAbilityManager().execute(toolCall));
+            Object ability = getAbilityManager().get(toolCall.getName()).orElse(null);
+            boolean toolRuntimeMissing = ability instanceof ToolCard toolCard
+                    && Runner.resourceMgr().getTool(toolCard.getId()) == null;
+            boolean notFound = skillTool.isEmpty()
+                    && (ability == null || toolRuntimeMissing)
+                    && !getAbilityManager().isExternalTool(toolCall.getName());
+            List<AbilityManager.ExecutionResult> executionResults;
+            try {
+                executionResults = skillTool
+                        .map(tool -> getAbilityManager().executeResolvedTool(tool, toolCall))
+                        .orElseGet(() -> getAbilityManager().execute(toolCall));
+            } catch (RuntimeException exception) {
+                logToolCallCompleted(ctx, toolCall, "exception", toolStartNanos);
+                throw exception;
+            }
             for (AbilityManager.ExecutionResult result : executionResults) {
                 results.add(result);
                 if (result.toolMessage() != null) {
                     context.addMessages(result.toolMessage()).toCompletableFuture().join();
                 }
             }
+            logToolCallCompleted(ctx, toolCall, classifyToolOutcome(executionResults, notFound), toolStartNanos);
         }
         return results;
     }
@@ -1158,31 +1188,35 @@ public class ReActAgent extends BaseAgent {
 
     public Object innerInvoke(AgentSessionApi session, Object inputs, Object query, boolean needCleanup,
                               String conversationId, Map<String, Object> kwargs) {
-        InvokeInputs invokeInputs = new InvokeInputs();
-        invokeInputs.setQuery(query);
-        invokeInputs.setConversationId(conversationId);
-
-        AgentCallbackContext ctx = new AgentCallbackContext(this);
-        ctx.setInputs(invokeInputs);
-        ctx.setSession(session);
-        boolean streaming = Boolean.TRUE.equals(kwargs.get("_streaming"));
-        ctx.getExtra().put("_streaming", streaming);
-        if (streaming) {
-            ctx.getExtra().put(STREAM_INDEX_REF_KEY, new int[] {0});
-        }
-        if (inputs instanceof Map<?, ?> map) {
-            putExtra(ctx, "user_id", map.get("user_id"));
-            putExtra(ctx, "run_kind", map.get("run_kind"));
-            putExtra(ctx, "run_context", map.get("run_context"));
-            Object steeringQueue = map.get("_steering_queue");
-            if (steeringQueue instanceof Queue<?> queue) {
-                @SuppressWarnings("unchecked")
-                Queue<String> typedQueue = (Queue<String>) queue;
-                ctx.bindSteeringQueue(typedQueue);
-            }
-        }
-
+        boolean iterationFailureLogged = false;
+        boolean streaming = false;
+        boolean initializationComplete = false;
+        AgentCallbackContext ctx = null;
         try {
+            InvokeInputs invokeInputs = new InvokeInputs();
+            invokeInputs.setQuery(query);
+            invokeInputs.setConversationId(conversationId);
+
+            ctx = new AgentCallbackContext(this);
+            ctx.setInputs(invokeInputs);
+            ctx.setSession(session);
+            streaming = Boolean.TRUE.equals(kwargs.get("_streaming"));
+            ctx.getExtra().put("_streaming", streaming);
+            if (streaming) {
+                ctx.getExtra().put(STREAM_INDEX_REF_KEY, new int[] {0});
+            }
+            if (inputs instanceof Map<?, ?> map) {
+                putExtra(ctx, "user_id", map.get("user_id"));
+                putExtra(ctx, "run_kind", map.get("run_kind"));
+                putExtra(ctx, "run_context", map.get("run_context"));
+                Object steeringQueue = map.get("_steering_queue");
+                if (steeringQueue instanceof Queue<?> queue) {
+                    @SuppressWarnings("unchecked")
+                    Queue<String> typedQueue = (Queue<String>) queue;
+                    ctx.bindSteeringQueue(typedQueue);
+                }
+            }
+            initializationComplete = true;
             getAgentCallbackManager().execute(AgentCallbackEvent.BEFORE_INVOKE, ctx).toCompletableFuture().join();
             Object userInput = invokeInputs.getQuery();
             ExternalToolPendingState externalPending = loadExternalToolPendingState(session);
@@ -1254,70 +1288,93 @@ public class ReActAgent extends BaseAgent {
 
             if (invokeInputs.getResult() == null) {
                 for (int iteration = startIteration; iteration < config.getMaxIterations(); iteration++) {
-                    List<String> steering = ctx.drainSteering();
-                    if (!steering.isEmpty()) {
-                        context.addMessages(new UserMessage("[STEERING] " + String.join("\n", steering)))
-                                .toCompletableFuture()
-                                .join();
-                    }
-                    List<ToolInfo> tools = listEffectiveToolInfo(session);
-                    Object modelResult = callModel(ctx, context, tools);
-                    ForceFinishRequest finish = ctx.consumeForceFinish();
-                    if (finish != null) {
-                        contextEngine.saveContexts(session);
-                        invokeInputs.setResult(finish.getResult());
-                        break;
-                    }
-                    if (!(modelResult instanceof AssistantMessage aiMessage)) {
-                        invokeInputs.setResult(modelResult instanceof Map<?, ?> map ? stringObjectMap(map) : Map.of());
-                        break;
-                    }
-                    List<ToolCall> toolCalls = aiMessage.getToolCalls();
-                    ensureToolCallIds(toolCalls);
-                    context.addMessages(copyAssistantMessage(aiMessage)).toCompletableFuture().join();
-                    if (toolCalls == null || toolCalls.isEmpty()) {
-                        if (ctx.hasPendingSteering()) {
-                            continue;
+                    int iterationNumber = iteration + 1;
+                    Loggers.AGENT.info("ReAct iteration {}/{} started",
+                            iterationNumber, config.getMaxIterations());
+                    try {
+                        List<String> steering = ctx.drainSteering();
+                        if (!steering.isEmpty()) {
+                            context.addMessages(new UserMessage("[STEERING] " + String.join("\n", steering)))
+                                    .toCompletableFuture()
+                                    .join();
                         }
-                        contextEngine.saveContexts(session);
-                        invokeInputs.setResult(new LinkedHashMap<>(Map.of(
-                                "output", Objects.toString(aiMessage.getContent(), ""),
-                                "result_type", "answer"
-                        )));
-                        break;
-                    }
-                    writeToolCallOutputs(ctx, session, toolCalls);
-                    if (hasExternalToolCall(toolCalls)) {
-                        ExternalToolPendingState pendingState = new ExternalToolPendingState(
-                                copyAssistantMessage(aiMessage),
+                        List<ToolInfo> tools = listEffectiveToolInfo(session);
+                        Object modelResult = callModel(ctx, context, tools);
+                        ForceFinishRequest finish = ctx.consumeForceFinish();
+                        if (finish != null) {
+                            contextEngine.saveContexts(session);
+                            invokeInputs.setResult(finish.getResult());
+                            break;
+                        }
+                        if (!(modelResult instanceof AssistantMessage aiMessage)) {
+                            invokeInputs.setResult(
+                                    modelResult instanceof Map<?, ?> map ? stringObjectMap(map) : Map.of());
+                            break;
+                        }
+                        List<ToolCall> toolCalls = aiMessage.getToolCalls();
+                        ensureToolCallIds(toolCalls);
+                        context.addMessages(copyAssistantMessage(aiMessage)).toCompletableFuture().join();
+                        if (toolCalls == null || toolCalls.isEmpty()) {
+                            if (ctx.hasPendingSteering()) {
+                                continue;
+                            }
+                            contextEngine.saveContexts(session);
+                            invokeInputs.setResult(new LinkedHashMap<>(Map.of(
+                                    "output", Objects.toString(aiMessage.getContent(), ""),
+                                    "result_type", "answer"
+                            )));
+                            break;
+                        }
+                        writeToolCallOutputs(ctx, session, toolCalls);
+                        if (hasExternalToolCall(toolCalls)) {
+                            logExternalToolPending(ctx, toolCalls, iteration);
+                            ExternalToolPendingState pendingState = new ExternalToolPendingState(
+                                    copyAssistantMessage(aiMessage),
+                                    iteration,
+                                    Objects.toString(ctx.getExtra().get("_original_query"), ""),
+                                    toolCalls,
+                                    externalToolCallRequests(toolCalls)
+                            );
+                            saveExternalToolPendingState(pendingState, session);
+                            contextEngine.saveContexts(session);
+                            writeExternalToolPendingOutput(ctx, session, pendingState);
+                            invokeInputs.setResult(buildExternalToolPendingResult(pendingState));
+                            break;
+                        }
+                        List<AbilityManager.ExecutionResult> results = executeToolCall(
+                                ctx, toolCalls, session, context);
+                        activateSkillsLoadedByToolCalls(toolCalls, results, session);
+                        if (completeToolExecutionTurn(
+                                ctx,
+                                context,
+                                session,
+                                invokeInputs,
+                                toolCalls,
+                                results,
+                                aiMessage,
                                 iteration,
                                 Objects.toString(ctx.getExtra().get("_original_query"), ""),
-                                toolCalls,
-                                externalToolCallRequests(toolCalls)
+                                ToolExecutionTurnOrigin.NORMAL_TOOL_LOOP)) {
+                            break;
+                        }
+                    } catch (RuntimeException exception) {
+                        iterationFailureLogged = true;
+                        Loggers.AGENT.exception(
+                                "ReAct iteration %d/%d failed"
+                                        .formatted(iterationNumber, config.getMaxIterations()),
+                                exception
                         );
-                        saveExternalToolPendingState(pendingState, session);
-                        contextEngine.saveContexts(session);
-                        writeExternalToolPendingOutput(ctx, session, pendingState);
-                        invokeInputs.setResult(buildExternalToolPendingResult(pendingState));
-                        break;
-                    }
-                    List<AbilityManager.ExecutionResult> results = executeToolCall(ctx, toolCalls, session, context);
-                    activateSkillsLoadedByToolCalls(toolCalls, results, session);
-                    if (completeToolExecutionTurn(
-                            ctx,
-                            context,
-                            session,
-                            invokeInputs,
-                            toolCalls,
-                            results,
-                            aiMessage,
-                            iteration,
-                            Objects.toString(ctx.getExtra().get("_original_query"), ""),
-                            ToolExecutionTurnOrigin.NORMAL_TOOL_LOOP)) {
-                        break;
+                        throw exception;
+                    } finally {
+                        Loggers.AGENT.info("ReAct iteration {}/{} ended",
+                                iterationNumber, config.getMaxIterations());
                     }
                 }
                 if (invokeInputs.getResult() == null) {
+                    Loggers.AGENT.error(
+                            "ReActAgent reached max iterations without completion: {}",
+                            config.getMaxIterations()
+                    );
                     contextEngine.saveContexts(session);
                     invokeInputs.setResult(new LinkedHashMap<>(Map.of(
                             "output", "Max iterations reached without completion",
@@ -1338,17 +1395,33 @@ public class ReActAgent extends BaseAgent {
             }
             return result;
         } catch (RuntimeException exception) {
-            if (Boolean.TRUE.equals(ctx.getExtra().get("_streaming"))) {
-                Map<String, Object> errorResult = buildErrorResult(exception);
-                writeInvokeResultToStreamInternal(errorResult, session, streamIndexRef(ctx));
-                return errorResult;
+            if (!iterationFailureLogged) {
+                Loggers.AGENT.exception("ReActAgent invoke failed", exception);
+            }
+            if (initializationComplete && streaming) {
+                try {
+                    Map<String, Object> errorResult = buildErrorResult(exception);
+                    writeInvokeResultToStreamInternal(errorResult, session, streamIndexRef(ctx));
+                    return errorResult;
+                } catch (RuntimeException streamingErrorHandlingFailure) {
+                    Loggers.AGENT.exception(
+                            "ReActAgent streaming error handling failed",
+                            streamingErrorHandlingFailure
+                    );
+                    throw streamingErrorHandlingFailure;
+                }
             }
             throw exception;
         } finally {
-            if (needCleanup) {
-                contextEngine.saveContexts(session);
-                if (session instanceof AgentSessionLifecycle lifecycle) {
-                    closeStreamAndCommit(lifecycle);
+            if (needCleanup && initializationComplete) {
+                try {
+                    contextEngine.saveContexts(session);
+                    if (session instanceof AgentSessionLifecycle lifecycle) {
+                        closeStreamAndCommit(lifecycle);
+                    }
+                } catch (RuntimeException exception) {
+                    Loggers.AGENT.exception("ReActAgent cleanup failed", exception);
+                    throw exception;
                 }
             }
         }
@@ -1555,8 +1628,9 @@ public class ReActAgent extends BaseAgent {
         AgentSessionLifecycle finalLifecycleSession = lifecycleSession;
         boolean finalNeedCleanup = needCleanup;
         if (finalLifecycleSession != null) {
+            String streamThreadName = resolveStreamWorkerThreadName(inputs);
             Thread streamThread = VirtualThreadSupport.startThread(
-                    "react-agent-stream-" + getCard().getId(),
+                    streamThreadName,
                     () -> runStreamingInvoke(inputs, finalSession, finalLifecycleSession, finalNeedCleanup));
             return finalSession.streamIterator();
         }
@@ -1698,13 +1772,15 @@ public class ReActAgent extends BaseAgent {
 
     private AssistantMessage streamModelResponse(AgentCallbackContext ctx, Model model, List<BaseMessage> messages,
                                                  ModelInvokeOptions options, ModelCallInputs modelInputs) {
-        Iterator<AssistantMessageChunk> iterator = model.stream(messages, options);
-        AssistantMessageChunk accumulatedChunk = null;
+        logModelCallStarted(ctx, messages, options == null ? List.of() : options.getTools(), true);
         long callStartTime = System.nanoTime();
+        Iterator<AssistantMessageChunk> iterator = null;
+        AssistantMessageChunk accumulatedChunk = null;
         Long firstTokenTime = null;
         Long lastTokenTime = null;
         int chunkCount = 0;
         try {
+            iterator = model.stream(messages, options);
             while (iterator.hasNext()) {
                 AssistantMessageChunk chunk = iterator.next();
                 accumulatedChunk = accumulatedChunk == null ? chunk : (AssistantMessageChunk) accumulatedChunk.merge(chunk);
@@ -1723,6 +1799,9 @@ public class ReActAgent extends BaseAgent {
                             new LinkedHashMap<>(Map.of("content", chunk.getContent(), "result_type", "answer"))));
                 }
             }
+        } catch (RuntimeException exception) {
+            logModelCallCompleted(ctx, true, callStartTime, null, exception);
+            throw exception;
         } finally {
             closeIterator(iterator);
         }
@@ -1741,6 +1820,8 @@ public class ReActAgent extends BaseAgent {
                     .build();
         }
         modelInputs.setResponse(aiMessage);
+        logModelResponse(ctx, aiMessage);
+        logModelCallCompleted(ctx, true, callStartTime, aiMessage, null);
         if (ctx.getSession() != null && aiMessage.getUsageMetadata() != null) {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("usage_metadata", aiMessage.getUsageMetadata().modelDump());
@@ -1762,8 +1843,193 @@ public class ReActAgent extends BaseAgent {
                 .map(ToolInfo::getName)
                 .anyMatch("read_file"::equals);
         if (!hasReadFile) {
-            // Python logs a warning. The Java port keeps the same non-failing behavior.
+            Loggers.AGENT.warning("event=react_skill_read_tool_missing agent_id={} required_tool=read_file "
+                    + "available_tool_count={}", safeLogValue(getCard().getId()), getAbilityManager().listToolInfo().size());
         }
+    }
+
+    private void logModelCallStarted(AgentCallbackContext ctx, List<?> messages, List<?> tools, boolean streaming) {
+        StringBuilder builder = eventFields("react_model_call_started", ctx);
+        appendField(builder, "model_name", config.getModelName());
+        appendField(builder, "streaming", streaming);
+        appendField(builder, "message_count", messages == null ? 0 : messages.size());
+        appendField(builder, "tool_count", tools == null ? 0 : tools.size());
+        Loggers.LLM.info(builder.toString());
+    }
+
+    private void logModelResponse(AgentCallbackContext ctx, AssistantMessage aiMessage) {
+        StringBuilder builder = eventFields("react_model_response", ctx);
+        appendField(builder, "content_length", textLength(aiMessage == null ? null : aiMessage.getContent()));
+        appendField(builder, "reasoning_length", textLength(aiMessage == null ? null : aiMessage.getReasoningContent()));
+        List<ToolCall> toolCalls = aiMessage == null ? null : aiMessage.getToolCalls();
+        appendField(builder, "tool_call_count", toolCalls == null ? 0 : toolCalls.size());
+        appendField(builder, "usage_present", aiMessage != null && aiMessage.getUsageMetadata() != null);
+        if (aiMessage != null) {
+            appendField(builder, "finish_reason", aiMessage.getFinishReason());
+        }
+        Loggers.LLM.info(builder.toString());
+    }
+
+    private void logModelCallCompleted(AgentCallbackContext ctx, boolean streaming, long startNanos,
+                                       AssistantMessage aiMessage, RuntimeException exception) {
+        StringBuilder builder = eventFields("react_model_call_completed", ctx);
+        appendField(builder, "streaming", streaming);
+        appendField(builder, "status", exception == null ? "success" : "exception");
+        appendField(builder, "model_duration_ms", roundMillis(System.nanoTime() - startNanos));
+        if (exception != null) {
+            appendField(builder, "exception_type", exception.getClass().getSimpleName());
+        }
+        if (aiMessage != null && aiMessage.getUsageMetadata() != null) {
+            appendField(builder, "prompt_tokens", aiMessage.getUsageMetadata().getInputTokens());
+            appendField(builder, "completion_tokens", aiMessage.getUsageMetadata().getOutputTokens());
+            appendField(builder, "total_tokens", aiMessage.getUsageMetadata().getTotalTokens());
+        }
+        Loggers.LLM.info(builder.toString());
+    }
+
+    private void logToolCallStarted(AgentCallbackContext ctx, ToolCall toolCall) {
+        StringBuilder builder = eventFields("react_tool_call_started", ctx);
+        appendField(builder, "tool_call_id", toolCall == null ? null : toolCall.getId());
+        appendField(builder, "tool_name", toolCall == null ? null : toolCall.getName());
+        Loggers.TOOL.info(builder.toString());
+    }
+
+    private void logToolCallCompleted(AgentCallbackContext ctx, ToolCall toolCall, String outcome, long startNanos) {
+        StringBuilder builder = eventFields("react_tool_call_completed", ctx);
+        appendField(builder, "tool_call_id", toolCall == null ? null : toolCall.getId());
+        appendField(builder, "tool_name", toolCall == null ? null : toolCall.getName());
+        appendField(builder, "outcome", outcome);
+        appendField(builder, "duration_ms", roundMillis(System.nanoTime() - startNanos));
+        Loggers.TOOL.info(builder.toString());
+    }
+
+    private String classifyToolOutcome(List<AbilityManager.ExecutionResult> results, boolean notFound) {
+        if (notFound) {
+            return "not_found";
+        }
+        if (results == null || results.isEmpty()) {
+            return null;
+        }
+        for (AbilityManager.ExecutionResult result : results) {
+            if (isPendingInterruptResult(result)) {
+                return "interrupted";
+            }
+            if (isToolExecutionExceptionResult(result)) {
+                return "exception";
+            }
+            if (isInvalidArgumentsResult(result)) {
+                return "invalid_arguments";
+            }
+            if (isBusinessErrorResult(result)) {
+                return "business_error";
+            }
+        }
+        return results.stream().anyMatch(result -> result != null && result.result() != null) ? "success" : null;
+    }
+
+    private void logExternalToolPending(AgentCallbackContext ctx, List<ToolCall> toolCalls, int iteration) {
+        List<ToolCall> externalCalls = toolCalls == null ? List.of() : toolCalls.stream()
+                .filter(toolCall -> toolCall != null && getAbilityManager().isExternalTool(toolCall.getName()))
+                .toList();
+        if (externalCalls.isEmpty()) {
+            return;
+        }
+        StringBuilder builder = eventFields("react_external_tool_pending", ctx);
+        appendField(builder, "iteration", iteration + 1);
+        appendField(builder, "tool_call_count", externalCalls.size());
+        appendField(builder, "tool_names", externalCalls.stream().map(ToolCall::getName).toList());
+        Loggers.AGENT.info(builder.toString());
+        for (ToolCall toolCall : externalCalls) {
+            long startNanos = System.nanoTime();
+            logToolCallStarted(ctx, toolCall);
+            logToolCallCompleted(ctx, toolCall, "external_pending", startNanos);
+        }
+    }
+
+    private static boolean isToolExecutionExceptionResult(AbilityManager.ExecutionResult result) {
+        if (result == null || result.result() != null || result.toolMessage() == null) {
+            return false;
+        }
+        Object content = result.toolMessage().getContent();
+        return content instanceof String text && text.startsWith("Ability execution error:");
+    }
+
+    private static boolean isInvalidArgumentsResult(AbilityManager.ExecutionResult result) {
+        if (result == null || result.result() != null || result.toolMessage() == null) {
+            return false;
+        }
+        Object content = result.toolMessage().getContent();
+        return content instanceof String text && text.startsWith("Invalid tool arguments JSON:");
+    }
+
+    private static boolean isBusinessErrorResult(AbilityManager.ExecutionResult result) {
+        if (result == null || result.result() == null) {
+            return false;
+        }
+        Object value = result.result();
+        Object success = readAttribute(value, "success");
+        Object error = readAttribute(value, "error");
+        return Boolean.FALSE.equals(success) || (error != null && !String.valueOf(error).isBlank());
+    }
+
+    private String resolveStreamWorkerThreadName(Object inputs) {
+        String fallback = "react-agent-stream-" + getCard().getId();
+        if (!(inputs instanceof Map<?, ?> map)) {
+            return fallback;
+        }
+        Object configuredName = map.get("work_thread_name");
+        if (!(configuredName instanceof String text)) {
+            return fallback;
+        }
+        String normalized = normalizeThreadName(text);
+        return normalized.isBlank() ? fallback : normalized;
+    }
+
+    private static String normalizeThreadName(String text) {
+        String trimmed = text == null ? "" : text.trim();
+        StringBuilder builder = new StringBuilder(trimmed.length());
+        for (int index = 0; index < trimmed.length(); index++) {
+            char ch = trimmed.charAt(index);
+            builder.append(Character.isISOControl(ch) || Character.isWhitespace(ch) ? '_' : ch);
+        }
+        return builder.toString();
+    }
+
+    private StringBuilder eventFields(String event, AgentCallbackContext ctx) {
+        StringBuilder builder = new StringBuilder("event=").append(event);
+        appendField(builder, "agent_id", getCard().getId());
+        if (ctx != null && ctx.getSession() != null) {
+            appendField(builder, "session_id", ctx.getSession().getSessionId());
+        }
+        return builder;
+    }
+
+    private static void appendField(StringBuilder builder, String name, Object value) {
+        if (value == null) {
+            return;
+        }
+        String text = safeLogValue(value);
+        if (text.isBlank()) {
+            return;
+        }
+        builder.append(' ').append(name).append('=').append(text);
+    }
+
+    private static String safeLogValue(Object value) {
+        if (value == null) {
+            return "";
+        }
+        String text = String.valueOf(value).trim();
+        StringBuilder builder = new StringBuilder(text.length());
+        for (int index = 0; index < text.length(); index++) {
+            char ch = text.charAt(index);
+            builder.append(Character.isISOControl(ch) || Character.isWhitespace(ch) ? '_' : ch);
+        }
+        return builder.toString();
+    }
+
+    private static int textLength(Object value) {
+        return value == null ? 0 : String.valueOf(value).length();
     }
 
     private static void closeStreamAndCommit(AgentSessionLifecycle session) {

@@ -15,7 +15,6 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -119,7 +118,7 @@ public abstract class BaseAgent {
             if (toolName == null || existingToolNames.add(toolName)) {
                 tools.add(tool);
             }
-            registerGlobalTool(tool);
+            registerTool(tool, agentId());
         }
     }
 
@@ -139,7 +138,7 @@ public abstract class BaseAgent {
                 appendObjectToList(agentConfig, "workflows", "getWorkflows", workflowCard);
             }
             workflows.add(workflow);
-            registerGlobalWorkflow(scopedResourceCard(workflowCard), providerFor(workflow), agentTag());
+            registerWorkflow(scopedResourceCard(workflowCard), providerFor(workflow), agentId());
         }
     }
 
@@ -487,17 +486,17 @@ public abstract class BaseAgent {
         return keys;
     }
 
-    private static void registerGlobalTool(Object tool) {
+    private static void registerTool(Object tool, String tag) {
         try {
             Object resourceManager = Class.forName("com.openjiuwen.core.runner.Runner")
                     .getMethod("getResourceMgr")
                     .invoke(null);
-            invokeCompatible(resourceManager, "addTool", tool);
+            invokeCompatible(resourceManager, "addTool", tool, tag);
         } catch (ReflectiveOperationException | LinkageError ignored) {
         }
     }
 
-    private static void registerGlobalWorkflow(WorkflowCard card, Supplier<?> provider, Collection<String> tag) {
+    private static void registerWorkflow(WorkflowCard card, Supplier<?> provider, String tag) {
         if (card == null || provider == null) {
             return;
         }
@@ -523,9 +522,8 @@ public abstract class BaseAgent {
         );
     }
 
-    private Collection<String> agentTag() {
-        String agentId = readString(agentConfig, "id", "getId");
-        return agentId == null || agentId.isBlank() ? null : List.of(agentId);
+    private String agentId() {
+        return readString(agentConfig, "id", "getId");
     }
 
     private static CompletionStage<Void> invokeRunnerRelease(String sessionId) {

@@ -711,42 +711,12 @@ public class Model implements KVCacheManager.ReleaseCapableModel {
 
         @Override
         public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
-            try {
-                return CompletableFuture.completedFuture(delegate.invoke(
-                        messages,
-                        options.getTools(),
-                        options.getTemperature(),
-                        options.getTopP(),
-                        options.getModel(),
-                        options.getMaxTokens(),
-                        options.getStop(),
-                        options.getOutputParser(),
-                        options.getTimeout(),
-                        options.getExtraFields()
-                ));
-            } catch (Exception exception) {
-                return CompletableFuture.failedFuture(exception);
-            }
+            return delegate.invoke(messages, options);
         }
 
         @Override
         public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
-            try {
-                return delegate.stream(
-                        messages,
-                        options.getTools(),
-                        options.getTemperature(),
-                        options.getTopP(),
-                        options.getModel(),
-                        options.getMaxTokens(),
-                        options.getStop(),
-                        options.getOutputParser(),
-                        options.getTimeout(),
-                        options.getExtraFields()
-                );
-            } catch (Exception exception) {
-                throw new IllegalStateException(exception);
-            }
+            return delegate.stream(messages, options);
         }
 
         @Override

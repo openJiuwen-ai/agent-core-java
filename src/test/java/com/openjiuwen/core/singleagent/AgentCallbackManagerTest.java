@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent;
 
+import com.openjiuwen.core.runner.callback.AbortError;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -19,8 +20,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -122,6 +125,62 @@ class AgentCallbackManagerTest {
         manager.execute(AgentCallbackEvent.BEFORE_INVOKE, new AgentCallbackContext()).toCompletableFuture().join();
 
         assertEquals(List.of("rail-before"), calls);
+    }
+
+    @Test
+    void executePropagatesAbortErrorFromRunnerCallbackFramework() {
+        AgentCallbackManager manager = new AgentCallbackManager("agent-abort");
+        AbortError expected = new AbortError("model request headers unavailable");
+        try {
+            manager.registerCallback(AgentCallbackEvent.BEFORE_MODEL_CALL, context -> {
+                throw expected;
+            }, 100).toCompletableFuture().join();
+
+            AbortError error = assertThrows(AbortError.class,
+                    () -> manager.execute(AgentCallbackEvent.BEFORE_MODEL_CALL, new AgentCallbackContext())
+                            .toCompletableFuture().join());
+
+            assertSame(expected, error);
+            assertEquals("model request headers unavailable", error.getReason());
+        } finally {
+            manager.clear(AgentCallbackEvent.BEFORE_MODEL_CALL).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void executePropagatesErrorFromRunnerCallbackFramework() {
+        AgentCallbackManager manager = new AgentCallbackManager("agent-error");
+        AssertionError expected = new AssertionError("fatal callback failure");
+        try {
+            manager.registerCallback(AgentCallbackEvent.BEFORE_MODEL_CALL, context -> {
+                throw expected;
+            }, 100).toCompletableFuture().join();
+
+            AssertionError error = assertThrows(AssertionError.class,
+                    () -> manager.execute(AgentCallbackEvent.BEFORE_MODEL_CALL, new AgentCallbackContext())
+                            .toCompletableFuture().join());
+
+            assertSame(expected, error);
+        } finally {
+            manager.clear(AgentCallbackEvent.BEFORE_MODEL_CALL).toCompletableFuture().join();
+        }
+    }
+
+    @Test
+    void executeDoesNotPropagateOrdinaryCallbackException() {
+        AgentCallbackManager manager = new AgentCallbackManager("agent-ordinary-error");
+        try {
+            manager.registerCallback(AgentCallbackEvent.BEFORE_MODEL_CALL, context -> {
+                throw new IllegalStateException("ordinary callback failure");
+            }, 100).toCompletableFuture().join();
+
+            assertDoesNotThrow(() -> manager.execute(
+                    AgentCallbackEvent.BEFORE_MODEL_CALL,
+                    new AgentCallbackContext()
+            ).toCompletableFuture().join());
+        } finally {
+            manager.clear(AgentCallbackEvent.BEFORE_MODEL_CALL).toCompletableFuture().join();
+        }
     }
 
     private static final class InMemoryCallbackFramework implements AgentCallbackManager.CallbackFramework {

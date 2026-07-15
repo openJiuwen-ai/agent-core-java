@@ -242,6 +242,7 @@ public class HTTPRequestExecutable extends ComponentExecutable {
         try {
             Duration requestTimeout = resolveRequestTimeout();
             HttpClient client = HttpClient.newBuilder()
+                    .version(HttpClient.Version.HTTP_1_1)
                     .connectTimeout(requestTimeout)
                     .followRedirects(advancedOptions().isFollowRedirect()
                             ? HttpClient.Redirect.NORMAL

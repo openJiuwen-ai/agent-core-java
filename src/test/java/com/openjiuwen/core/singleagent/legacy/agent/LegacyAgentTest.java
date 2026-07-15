@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.singleagent.legacy.agent;
 
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.workflow.Workflow;
 import org.junit.jupiter.api.Test;
@@ -18,6 +20,7 @@ import java.util.concurrent.CompletionStage;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -81,6 +84,20 @@ class LegacyAgentTest {
 
         assertEquals(List.of(keep), agent.getWorkflows());
         assertEquals(List.of(keep.card()), config.workflows);
+    }
+
+    @Test
+    void addWorkflowsRejectsEmptyAgentIdLikePythonResourceManager() {
+        FakeConfig config = new FakeConfig();
+        config.id = "";
+        TestBaseAgent agent = new TestBaseAgent(config);
+        WorkflowFactory workflow = new WorkflowFactory("empty-tag-workflow", "1", Workflow::new);
+
+        BaseError error = assertThrows(BaseError.class, () -> agent.addWorkflows(List.of(workflow)));
+
+        assertEquals(StatusCode.RESOURCE_TAG_VALUE_INVALID.getCode(), error.getCode());
+        assertTrue(error.getMessage().contains("tag is invalid, tag="));
+        assertTrue(error.getMessage().contains("is None or empty value"));
     }
 
     @Test

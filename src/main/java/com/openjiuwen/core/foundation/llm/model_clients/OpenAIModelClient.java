@@ -68,6 +68,7 @@ public class OpenAIModelClient extends BaseModelClient {
     private static final String CONTENT_TYPE = "application/json";
     private static final String RETRY_COUNT_HEADER = "X-Stainless-Retry-Count";
     private static final String RETRY_LISTENER_KWARG = "__openjiuwen_retry_listener";
+    private static final String REQUEST_HEADERS_KWARG = "__openjiuwen_request_headers";
 
     private final HttpClient httpClient;
     private final OpenAIRetryingHttpClient retryingHttpClient;
@@ -112,7 +113,15 @@ public class OpenAIModelClient extends BaseModelClient {
 
     @Override
     protected Map<String, Object> invocationExtraFields(ModelInvokeOptions options) {
-        Map<String, Object> fields = super.invocationExtraFields(options);
+        Map<String, Object> extraFields = options.getExtraFields();
+        Map<String, Object> fields = extraFields == null
+                ? new LinkedHashMap<>()
+                : new LinkedHashMap<>(extraFields);
+        fields.remove(REQUEST_HEADERS_KWARG);
+        Map<String, String> requestHeaders = options.getRequestHeaders();
+        if (!requestHeaders.isEmpty()) {
+            fields.put(REQUEST_HEADERS_KWARG, new LinkedHashMap<>(requestHeaders));
+        }
         if (options.getRetryListener() != null) {
             fields.put(RETRY_LISTENER_KWARG, options.getRetryListener());
         }
@@ -201,31 +210,35 @@ public class OpenAIModelClient extends BaseModelClient {
                                    Float timeout,
                                    Map<String, Object> kwargs) throws Exception {
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
+        Map<String, ?> formalRequestHeaders = popFormalRequestHeaders(effectiveKwargs);
+        Map<String, ?> legacyRequestHeaders = popRequestCustomHeaders(effectiveKwargs);
         ModelRetryListener retryListener = popRetryListener(effectiveKwargs);
         Object tracerRecordData = popTracerRecordData(effectiveKwargs);
-        Map<String, ?> requestCustomHeaders = popRequestCustomHeaders(effectiveKwargs);
-        Map<String, Object> params = buildPreparedParams(
-                messages,
-                tools,
-                temperature,
-                topP,
-                model,
-                maxTokens,
-                stop,
-                false,
-                effectiveKwargs
-        );
-        String authorization = extractAuthorizationOverride(requestCustomHeaders);
-        applyExtraHeadersParam(params, requestCustomHeaders);
-        recordTracerData(tracerRecordData, "llm_params", params);
 
         try {
+            TransportHeaders transportHeaders = resolveTransportHeaders(
+                    legacyRequestHeaders, formalRequestHeaders);
+            Map<String, Object> params = buildPreparedParams(
+                    messages,
+                    tools,
+                    temperature,
+                    topP,
+                    model,
+                    maxTokens,
+                    stop,
+                    false,
+                    effectiveKwargs
+            );
+            applyExtraHeadersParam(params, legacyRequestHeaders);
+            recordTracerData(tracerRecordData, "llm_params", params);
             Loggers.LLM.info("Before create openai client, model client config params ready. {}",
                     Map.of(
                             "timeout", timeout != null ? timeout : modelClientConfig.getTimeout(),
                             "max_retries", modelClientConfig.getMaxRetries()
                     ));
-            Map<String, Object> responseData = postJson(params, timeout, authorization, retryListener);
+            Map<String, Object> responseData = postJson(
+                    params, timeout, transportHeaders.authorization(), transportHeaders.headers(),
+                    transportHeaders.omitErrorResponseBody(), retryListener);
             Loggers.LLM.info("OpenAI API response received. {}", Map.of("response", responseData));
             AssistantMessage assistantMessage = parseResponse(responseData, outputParser);
             recordTracerData(tracerRecordData, "llm_response", assistantMessage);
@@ -254,27 +267,30 @@ public class OpenAIModelClient extends BaseModelClient {
                                                   Float timeout,
                                                   Map<String, Object> kwargs) throws Exception {
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
+        Map<String, ?> formalRequestHeaders = popFormalRequestHeaders(effectiveKwargs);
+        Map<String, ?> legacyRequestHeaders = popRequestCustomHeaders(effectiveKwargs);
         ModelRetryListener retryListener = popRetryListener(effectiveKwargs);
         Object tracerRecordData = popTracerRecordData(effectiveKwargs);
-        Map<String, ?> requestCustomHeaders = popRequestCustomHeaders(effectiveKwargs);
-        Map<String, Object> params = buildPreparedParams(
-                messages,
-                tools,
-                temperature,
-                topP,
-                model,
-                maxTokens,
-                stop,
-                true,
-                effectiveKwargs
-        );
-        String authorization = extractAuthorizationOverride(requestCustomHeaders);
-        applyExtraHeadersParam(params, requestCustomHeaders);
-        recordTracerData(tracerRecordData, "llm_params", params);
 
         try {
+            TransportHeaders transportHeaders = resolveTransportHeaders(
+                    legacyRequestHeaders, formalRequestHeaders);
+            Map<String, Object> params = buildPreparedParams(
+                    messages,
+                    tools,
+                    temperature,
+                    topP,
+                    model,
+                    maxTokens,
+                    stop,
+                    true,
+                    effectiveKwargs
+            );
+            applyExtraHeadersParam(params, legacyRequestHeaders);
+            recordTracerData(tracerRecordData, "llm_params", params);
             return tracingIterator(
-                    streamChunks(params, outputParser, timeout, authorization, retryListener),
+                    streamChunks(params, outputParser, timeout, transportHeaders.authorization(),
+                            transportHeaders.headers(), transportHeaders.omitErrorResponseBody(), retryListener),
                     tracerRecordData
             );
         } catch (Exception exception) {
@@ -403,11 +419,14 @@ public class OpenAIModelClient extends BaseModelClient {
             Map<String, Object> params,
             Float timeout,
             String authorization,
+            Map<String, String> requestHeaders,
+            boolean omitErrorResponseBody,
             ModelRetryListener retryListener) throws Exception {
-        PreparedRequest preparedRequest = prepareRequest(params, timeout, authorization);
+        PreparedRequest preparedRequest = prepareRequest(
+                params, timeout, authorization, requestHeaders, omitErrorResponseBody);
         HttpResponse<String> response = retryingHttpClient.send(retryCount ->
                 sendStringAttempt(preparedRequest, retryCount), retryListener);
-        ensureSuccess(response.statusCode(), response.body());
+        ensureSuccess(response.statusCode(), response.body(), preparedRequest.omitErrorResponseBody());
         return parseJsonObject(response.body());
     }
 
@@ -416,13 +435,16 @@ public class OpenAIModelClient extends BaseModelClient {
             BaseOutputParser outputParser,
             Float timeout,
             String authorization,
+            Map<String, String> requestHeaders,
+            boolean omitErrorResponseBody,
             ModelRetryListener retryListener) throws Exception {
-        PreparedRequest preparedRequest = prepareRequest(params, timeout, authorization);
+        PreparedRequest preparedRequest = prepareRequest(
+                params, timeout, authorization, requestHeaders, omitErrorResponseBody);
         HttpResponse<InputStream> response = retryingHttpClient.send(retryCount ->
                 sendStreamAttempt(preparedRequest, retryCount), retryListener);
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             String body = readBody(response.body());
-            ensureSuccess(response.statusCode(), body);
+            ensureSuccess(response.statusCode(), body, preparedRequest.omitErrorResponseBody());
         }
         return new SseChunkIterator(response.body(), outputParser);
     }
@@ -518,7 +540,9 @@ public class OpenAIModelClient extends BaseModelClient {
     private PreparedRequest prepareRequest(
             Map<String, Object> params,
             Float timeout,
-            String authorization) throws JsonProcessingException {
+            String authorization,
+            Map<String, String> requestHeaders,
+            boolean omitErrorResponseBody) throws JsonProcessingException {
         String bodyJson = OBJECT_MAPPER.writeValueAsString(requestBodyParams(params));
         String effectiveAuthorization = authorization != null
                 ? authorization
@@ -528,7 +552,8 @@ public class OpenAIModelClient extends BaseModelClient {
                 bodyJson,
                 timeoutDuration(timeout),
                 effectiveAuthorization,
-                extractExtraHeaders(params.get("extra_headers")));
+                new LinkedHashMap<>(requestHeaders),
+                omitErrorResponseBody);
     }
 
     private HttpRequest buildRequest(
@@ -559,7 +584,8 @@ public class OpenAIModelClient extends BaseModelClient {
             String bodyJson,
             Duration timeout,
             String authorization,
-            Map<String, String> extraHeaders) {
+            Map<String, String> extraHeaders,
+            boolean omitErrorResponseBody) {
     }
 
     private String localFixtureFallbackApiBase(IOException exception) {
@@ -631,33 +657,165 @@ public class OpenAIModelClient extends BaseModelClient {
         }
     }
 
-    private static String extractAuthorizationOverride(Map<String, ?> requestCustomHeaders) {
-        if (requestCustomHeaders == null || requestCustomHeaders.isEmpty()) {
-            return null;
+    private TransportHeaders resolveTransportHeaders(
+            Map<String, ?> legacyRequestHeaders,
+            Map<String, ?> formalRequestHeaders) {
+        validateHeaderEntries(legacyRequestHeaders, false);
+        validateHeaderEntries(formalRequestHeaders, true);
+
+        HeaderValue formalAuthorization = findHeaderValue(formalRequestHeaders, "Authorization");
+        HeaderValue legacyAuthorization = findHeaderValue(legacyRequestHeaders, "Authorization");
+        String authorization = null;
+        if (formalAuthorization.present()) {
+            authorization = formalAuthorization.value() == null
+                    ? null
+                    : String.valueOf(formalAuthorization.value());
+            validateFormalAuthorization(authorization);
+        } else if (legacyAuthorization.present() && legacyAuthorization.value() != null) {
+            String candidate = String.valueOf(legacyAuthorization.value());
+            if (!candidate.trim().isEmpty()) {
+                validateAuthorizationHeader(candidate);
+                authorization = candidate;
+            }
         }
-        for (Map.Entry<String, ?> entry : requestCustomHeaders.entrySet()) {
+
+        Map<String, String> mergedHeaders = buildRequestHeaders(baseHeaders, legacyRequestHeaders);
+        mergedHeaders = buildRequestHeaders(mergedHeaders, formalRequestHeaders);
+        boolean omitErrorResponseBody = formalRequestHeaders != null && !formalRequestHeaders.isEmpty();
+        return new TransportHeaders(
+                authorization, new LinkedHashMap<>(mergedHeaders), omitErrorResponseBody);
+    }
+
+    private static void validateFormalAuthorization(String authorization) {
+        if (authorization == null
+                || authorization.trim().isEmpty()
+                || containsInvalidFormalHeaderCharacter(authorization)) {
+            throw new IllegalArgumentException("Invalid Authorization header value");
+        }
+    }
+
+    private static HeaderValue findHeaderValue(Map<String, ?> headers, String name) {
+        HeaderValue result = new HeaderValue(false, null);
+        if (headers != null) {
+            for (Map.Entry<String, ?> entry : headers.entrySet()) {
+                String key = entry.getKey();
+                if (key != null && name.equalsIgnoreCase(key.trim())) {
+                    result = new HeaderValue(true, entry.getValue());
+                }
+            }
+        }
+        return result;
+    }
+
+    private static void validateHeaderEntries(Map<String, ?> headers, boolean strictName) {
+        if (headers == null) {
+            return;
+        }
+        for (Map.Entry<String, ?> entry : headers.entrySet()) {
             String key = entry.getKey();
-            if (key == null || !"Authorization".equalsIgnoreCase(key.trim()) || entry.getValue() == null) {
+            String normalizedKey = key == null ? "" : key.trim();
+            boolean invalidStrictName = strictName
+                    && (key == null || key.isEmpty() || !key.equals(normalizedKey));
+            if (invalidStrictName || (!normalizedKey.isEmpty() && !isValidHeaderName(normalizedKey))) {
+                throw new IllegalArgumentException("Invalid request header name");
+            }
+            if (strictName && isForbiddenFormalHeader(normalizedKey)) {
+                throw new IllegalArgumentException("Invalid request header name");
+            }
+            if ("Authorization".equalsIgnoreCase(normalizedKey)) {
                 continue;
             }
-            String authorization = String.valueOf(entry.getValue());
-            if (!authorization.trim().isEmpty()) {
-                return authorization;
+            Object value = entry.getValue();
+            if (strictName) {
+                validateFormalHeaderValue(value);
+            } else if (value != null && containsControlCharacter(String.valueOf(value))) {
+                throw new IllegalArgumentException("Invalid request header value");
             }
+        }
+    }
+
+    private static boolean isForbiddenFormalHeader(String name) {
+        return "Host".equalsIgnoreCase(name)
+                || "Content-Length".equalsIgnoreCase(name)
+                || "Transfer-Encoding".equalsIgnoreCase(name)
+                || "Connection".equalsIgnoreCase(name)
+                || "Expect".equalsIgnoreCase(name)
+                || "Upgrade".equalsIgnoreCase(name);
+    }
+
+    private static void validateFormalHeaderValue(Object value) {
+        if (value == null) {
+            throw new IllegalArgumentException("Invalid request header value");
+        }
+        String normalizedValue = String.valueOf(value);
+        if (normalizedValue.trim().isEmpty() || containsInvalidFormalHeaderCharacter(normalizedValue)) {
+            throw new IllegalArgumentException("Invalid request header value");
+        }
+    }
+
+    private static boolean isValidHeaderName(String name) {
+        for (int i = 0; i < name.length(); i++) {
+            char current = name.charAt(i);
+            if (!(current >= 'a' && current <= 'z')
+                    && !(current >= 'A' && current <= 'Z')
+                    && !(current >= '0' && current <= '9')
+                    && "!#$%&'*+-.^_`|~".indexOf(current) < 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean containsControlCharacter(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char current = value.charAt(i);
+            if (current < ' ' || current == 127) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean containsInvalidFormalHeaderCharacter(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char current = value.charAt(i);
+            if (current < ' ' || current == 127 || current > 255) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private record HeaderValue(boolean present, Object value) {
+    }
+
+    private record TransportHeaders(
+            String authorization,
+            Map<String, String> headers,
+            boolean omitErrorResponseBody) {
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, ?> popFormalRequestHeaders(Map<String, Object> kwargs) {
+        Object requestHeaders = kwargs.remove(REQUEST_HEADERS_KWARG);
+        if (requestHeaders instanceof Map<?, ?> map) {
+            return new LinkedHashMap<>((Map<String, ?>) map);
         }
         return null;
     }
 
     @SuppressWarnings("unchecked")
     private Map<String, ?> popRequestCustomHeaders(Map<String, Object> kwargs) {
-        Object requestHeaders = kwargs.remove("custom_headers");
-        if (requestHeaders == null) {
-            requestHeaders = kwargs.remove("customHeaders");
+        Object snakeCaseHeaders = kwargs.remove("custom_headers");
+        Object camelCaseHeaders = kwargs.remove("customHeaders");
+        Map<String, Object> requestHeaders = new LinkedHashMap<>();
+        if (snakeCaseHeaders instanceof Map<?, ?> map) {
+            requestHeaders.putAll((Map<String, ?>) map);
         }
-        if (requestHeaders instanceof Map<?, ?> map) {
-            return (Map<String, ?>) map;
+        if (camelCaseHeaders instanceof Map<?, ?> map) {
+            requestHeaders.putAll((Map<String, ?>) map);
         }
-        return null;
+        return requestHeaders.isEmpty() ? null : requestHeaders;
     }
 
     private Object popTracerRecordData(Map<String, Object> kwargs) {
@@ -1101,9 +1259,15 @@ public class OpenAIModelClient extends BaseModelClient {
         });
     }
 
-    private static void ensureSuccess(int statusCode, String body) throws IOException {
+    private static void ensureSuccess(
+            int statusCode,
+            String body,
+            boolean omitErrorResponseBody) throws IOException {
         if (statusCode >= 200 && statusCode < 300) {
             return;
+        }
+        if (omitErrorResponseBody) {
+            throw new IOException("HTTP " + statusCode);
         }
         throw new IOException("HTTP " + statusCode + ": " + (body == null ? "" : body));
     }
