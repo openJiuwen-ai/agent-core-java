@@ -12,24 +12,37 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Mirrors Python's {@code openjiuwen.dev_tools.prompt_builder.base.BasePromptBuilder}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BasePromptBuilder {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * model.
+     * 
+     * @since 0.1.7
      */
     protected final Model model;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * modelConfig.
+     * 
+     * @since 0.1.7
      */
     protected final ModelRequestConfig modelConfig;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * modelClientConfig.
+     * 
+     * @since 0.1.7
      */
     protected final ModelClientConfig modelClientConfig;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BasePromptBuilder.
+     * 
+     * @param modelConfig modelConfig
+     * @param modelClientConfig modelClientConfig
+     * @since 0.1.7
      */
     public BasePromptBuilder(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         this.modelConfig = modelConfig;
@@ -38,12 +51,22 @@ public abstract class BasePromptBuilder {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * build.
+     * 
+     * @param prompt prompt
+     * @param args args
+     * @return the result
+     * @since 0.1.7
      */
     public abstract CompletableFuture<String> build(Object prompt, Object... args);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * streamBuild.
+     * 
+     * @param prompt prompt
+     * @param args args
+     * @return the result
+     * @since 0.1.7
      */
     public abstract CompletableFuture<String> streamBuild(Object prompt, Object... args);
 }

@@ -4,30 +4,39 @@
 
 package com.openjiuwen.core.common.utils;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Utility functions for nested Map (dictionary) manipulation.
  * <p>
  * Supports creating nested maps from dotted paths, flattening, extracting
  * leaf nodes, and rebuilding from path-value pairs.
+ * 
+ * @since 0.1.7
  */
 public final class DictUtils {
-
+    /**
+     * DictUtils.
+     * 
+     * @since 0.1.7
+     */
     private DictUtils() {
     }
-
-    // ==================== Create ====================
 
     /**
      * Create a nested Map from a dotted path string.
      * <p>
      * Example: {@code createNestedMap("a.b.c", 1)} → {@code {a={b={c=1}}}}
-     *
-     * @param path      dotted path, e.g. "a.b.c"
-     * @param value     leaf value
+     * 
+     * @param path dotted path, e.g. "a.b.c"
+     * @param value leaf value
      * @param separator path separator (default ".")
      * @return nested Map, or the value itself if path is null/empty
+     * @since 0.1.7
      */
     public static Object createNestedMap(String path, Object value, String separator) {
         if (path == null || path.isEmpty()) {
@@ -48,20 +57,26 @@ public final class DictUtils {
         return result;
     }
 
-    /** Overload with default "." separator. */
+    /**
+     * Overload with default "." separator.
+     * 
+     * @param path path
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     public static Object createNestedMap(String path, Object value) {
         return createNestedMap(path, value, ".");
     }
 
-    // ==================== Flatten ====================
-
     /**
-     * Flatten a nested map into a single-level map with dotted-path keys.
+     * flattenMap.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static Map<String, Object> flattenMap(Map<String, Object> data) {
         List<Map.Entry<List<String>, Object>> leaves = extractLeafNodes(data, null);
         Map<String, Object> result = new LinkedHashMap<>();
@@ -74,16 +89,14 @@ public final class DictUtils {
     // ==================== Extract leaf nodes ====================
 
     /**
-     * Extract all leaf nodes from a nested dict/list structure.
-     *
-     * @param data        nested data
-     * @param currentPath internal traversal path (pass null initially)
-     * @return list of (path, value) entries
+     * extractLeafNodes.
+     * 
+     * @param data data
+     * @param currentPath currentPath
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static List<Map.Entry<List<String>, Object>> extractLeafNodes(Object data, List<String> currentPath) {
         if (data == null) {
             return Collections.emptyList();
@@ -116,6 +129,10 @@ public final class DictUtils {
     /**
      * Format a path list into a dotted string.
      * List indices (e.g. "[0]") are appended directly; dict keys are separated by ".".
+     * 
+     * @param path path
+     * @return the result
+     * @since 0.1.7
      */
     public static String formatPath(List<String> path) {
         StringBuilder sb = new StringBuilder();
@@ -129,17 +146,15 @@ public final class DictUtils {
         return sb.toString();
     }
 
-    // ==================== Rebuild ====================
-
     /**
-     * Rebuild a nested Map from (path, value) pairs (dict-keys only, no list indices).
+     * rebuildMapFromPaths.
+     * 
+     * @param pathValuePairs pathValuePairs
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public static Map<String, Object> rebuildMapFromPaths(
-            Iterable<Map.Entry<List<String>, Object>> pathValuePairs) {
+    public static Map<String, Object> rebuildMapFromPaths(Iterable<Map.Entry<List<String>, Object>> pathValuePairs) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<List<String>, Object> entry : pathValuePairs) {
             List<String> path = entry.getKey();
@@ -161,15 +176,14 @@ public final class DictUtils {
     }
 
     /**
-     * Rebuild a nested structure (Maps/Lists) from path-value pairs.
-     * Supports list-index path elements formatted as "[index]".
+     * rebuildDict.
+     * 
+     * @param pathValuePairs pathValuePairs
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public static Map<String, Object> rebuildDict(
-            Iterable<Map.Entry<List<String>, Object>> pathValuePairs) {
+    public static Map<String, Object> rebuildDict(Iterable<Map.Entry<List<String>, Object>> pathValuePairs) {
         Map<String, Object> result = new LinkedHashMap<>();
 
         for (Map.Entry<List<String>, Object> entry : pathValuePairs) {
@@ -213,10 +227,24 @@ public final class DictUtils {
         return result;
     }
 
+    /**
+     * isListIndex.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isListIndex(String key) {
         return key != null && key.startsWith("[") && key.endsWith("]");
     }
 
+    /**
+     * parseIndex.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     private static int parseIndex(String key) {
         return Integer.parseInt(key.substring(1, key.length() - 1));
     }

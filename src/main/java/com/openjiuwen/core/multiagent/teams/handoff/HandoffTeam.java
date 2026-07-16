@@ -17,7 +17,6 @@ import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
 import java.util.ArrayList;
-
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -26,42 +25,53 @@ import java.util.Set;
 
 /**
  * Public class HandoffTeam used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class HandoffTeam extends BaseTeam {
     /**
-     * Auto-generated for codecheck compliance.
+     * HandoffTeam.
+     * 
+     * @param card card
+     * @param config config
+     * @since 0.1.7
      */
     public HandoffTeam(TeamCard card, HandoffTeamConfig config) {
         super(card, config != null ? config : new HandoffTeamConfig());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HandoffTeam.
+     * 
+     * @param card card
+     * @since 0.1.7
      */
     public HandoffTeam(TeamCard card) {
         this(card, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param message message
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object invoke(Object message, AgentGroupSessionApi session) {
         return runChain(message, session, null).finalResult();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param message message
+     * @param session session
+     * @return Iterator<Object>
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public java.util.Iterator<Object> stream(Object message, AgentGroupSessionApi session) {
         List<Object> chunks = new ArrayList<>();
         runChain(message, session, chunks::add);
@@ -75,34 +85,33 @@ public class HandoffTeam extends BaseTeam {
      * Run the handoff chain, optionally emitting each hop's output as an
      * {@link OutputSchema} chunk (enriched with {@code source_team_id}) to
      * {@code chunkSink}.
-     *
-     * <p>Mirrors Python's {@code ContainerAgent._invoke_target_with_stream}:
+     * <p>
+     * Mirrors Python's {@code ContainerAgent._invoke_target_with_stream}:
      * every agent's output (triage's transfer message, the target agent's
      * final answer) is emitted via {@code team_session.write_stream} so
      * streaming callers see each routed hop. When {@code chunkSink} is null
      * (the {@link #invoke} path), no chunks are emitted and only the final
-     * result is returned.</p>
-     *
-     * @param message    user input.
-     * @param session    team session (may be null).
-     * @param chunkSink  receives each hop's {@link OutputSchema} chunk; null to
-     *                   suppress streaming emission.
+     * result is returned.
+     * </p>
+     * 
+     * @param message user input.
+     * @param session team session (may be null).
+     * @param chunkSink receives each hop's {@link OutputSchema} chunk; null to
      * @return the terminal chain result carrying the final answer (and its
+     *         suppress streaming emission.
      *         streaming chunk form when emitting).
+     * @since 0.1.7
      */
     private ChainResult runChain(Object message, AgentGroupSessionApi session,
-                                 java.util.function.Consumer<Object> chunkSink) {
+            java.util.function.Consumer<Object> chunkSink) {
         HandoffTeamConfig config = getTeamConfig() instanceof HandoffTeamConfig handoffConfig
                 ? handoffConfig
                 : HandoffTeamConfig.class.cast(getTeamConfig());
         String startAgentId = resolveStartAgentId(config);
         injectHandoffTools(config);
-        HandoffOrchestrator orchestrator = HandoffOrchestrator.restoreFromSession(
-                session != null ? session : new AgentGroupSessionApi(),
-                startAgentId,
-                listAgents(),
-                config.getHandoff()
-        );
+        HandoffOrchestrator orchestrator =
+            HandoffOrchestrator.restoreFromSession(session != null ? session : new AgentGroupSessionApi(), startAgentId,
+                    listAgents(), config.getHandoff());
         Object currentInput = message;
         List<Map<String, Object>> history = new ArrayList<>();
         String teamId = getTeamCard() != null ? getTeamCard().getId() : null;
@@ -112,17 +121,13 @@ public class HandoffTeam extends BaseTeam {
             // prior agent (e.g. triage's transfer_to_xxx tool message) does not
             // leak into the next agent's handoff-signal scan. Mirrors Python's
             // ContainerAgent creating a separate agent_session per hop.
-            AgentGroupSessionApi hopSession = new AgentGroupSessionApi(
-                    session != null ? session.getSessionId() : null);
+            AgentGroupSessionApi hopSession = new AgentGroupSessionApi(session != null ? session.getSessionId() : null);
             if (teamId != null) {
                 hopSession.setTeamId(teamId);
             }
             Object result = send(currentInput, orchestrator.getCurrentAgentId(), getTeamCard().getId(),
                     hopSession.getSessionId(), hopSession);
-            history.add(Map.of(
-                    "agent", orchestrator.getCurrentAgentId(),
-                    "output", result
-            ));
+            history.add(Map.of("agent", orchestrator.getCurrentAgentId(), "output", result));
             if (session != null) {
                 session.updateState(Map.of(HandoffOrchestrator.HANDOFF_HISTORY_KEY, history));
             }
@@ -136,10 +141,8 @@ public class HandoffTeam extends BaseTeam {
             }
             boolean isAllowed = orchestrator.requestHandoff(signal.target());
             if (!isAllowed) {
-                throw ErrorHelper.buildError(
-                        StatusCode.AGENT_GROUP_EXECUTION_ERROR,
-                        "error_msg", "Handoff to '" + signal.target() + "' is not allowed"
-                );
+                throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_EXECUTION_ERROR, "error_msg",
+                        "Handoff to '" + signal.target() + "' is not allowed");
             }
             if (session != null) {
                 orchestrator.saveToSession(session);
@@ -152,6 +155,11 @@ public class HandoffTeam extends BaseTeam {
      * Convert a hop result into an {@link OutputSchema} chunk enriched with
      * {@code source_team_id}, mirroring Python's
      * {@code AgentGroupSessionApi.enrichWithTeamMetadata}.
+     * 
+     * @param result result
+     * @param teamId teamId
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
     private static OutputSchema toChunk(Object result, String teamId) {
@@ -178,6 +186,12 @@ public class HandoffTeam extends BaseTeam {
     private static final class ChainResult {
         private final Object finalResult;
 
+        /**
+         * ChainResult.
+         * 
+         * @param finalResult finalResult
+         * @since 0.1.7
+         */
         private ChainResult(Object finalResult) {
             this.finalResult = finalResult;
         }
@@ -187,6 +201,13 @@ public class HandoffTeam extends BaseTeam {
         }
     }
 
+    /**
+     * resolveStartAgentId.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveStartAgentId(HandoffTeamConfig config) {
         AgentCard start = config.getHandoff() != null ? config.getHandoff().getStartAgent() : null;
         if (start != null && start.getId() != null && !start.getId().isBlank()) {
@@ -194,10 +215,8 @@ public class HandoffTeam extends BaseTeam {
         }
         List<String> agents = listAgents();
         if (agents.isEmpty()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_GROUP_EXECUTION_ERROR,
-                    "error_msg", "No agents registered in handoff team"
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_EXECUTION_ERROR, "error_msg",
+                    "No agents registered in handoff team");
         }
         return agents.get(0);
     }
@@ -205,15 +224,20 @@ public class HandoffTeam extends BaseTeam {
     /**
      * Inject {@code transfer_to_{target}} tools into each registered agent's
      * {@code AbilityManager} based on the configured handoff routes.
-     *
-     * <p>Mirrors Python's {@code ContainerAgent._inject_tools_once}: for each
+     * <p>
+     * Mirrors Python's {@code ContainerAgent._inject_tools_once}: for each
      * agent in the team, a {@link HandoffTool} is created for every allowed
      * handoff target, added to the agent's ability manager, and registered
      * with {@code Runner.resourceMgr()} under the agent's ID tag so the LLM's
-     * {@code transfer_to_xxx} tool calls resolve correctly.</p>
-     *
-     * <p>Idempotent: agents that have already been processed are skipped via a
-     * transient tag on the agent's {@code AbilityManager}.</p>
+     * {@code transfer_to_xxx} tool calls resolve correctly.
+     * </p>
+     * <p>
+     * Idempotent: agents that have already been processed are skipped via a
+     * transient tag on the agent's {@code AbilityManager}.
+     * </p>
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
     private void injectHandoffTools(HandoffTeamConfig config) {
@@ -222,24 +246,21 @@ public class HandoffTeam extends BaseTeam {
         if (agentIds.isEmpty()) {
             return;
         }
-        Map<String, Set<String>> routeGraph = HandoffOrchestrator.buildRouteGraph(
-                agentIds,
-                handoff != null ? handoff.getRoutes() : null);
+        Map<String, Set<String>> routeGraph =
+            HandoffOrchestrator.buildRouteGraph(agentIds, handoff != null ? handoff.getRoutes() : null);
         for (String agentId : agentIds) {
             BaseAgent agent;
             try {
                 agent = getRuntime().getAgentInstance(agentId);
             } catch (RuntimeException ex) {
-                Loggers.MULTI_AGENT.warning(
-                        "[HandoffTeam:" + getTeamCard().getId()
-                                + "] skip tool injection for '" + agentId + "': " + ex.getMessage());
+                Loggers.MULTI_AGENT.warning("[HandoffTeam:" + getTeamCard().getId() + "] skip tool injection for '"
+                        + agentId + "': " + ex.getMessage());
                 continue;
             }
             if (agent == null) {
                 continue;
             }
-            Set<String> allowedTargets = new LinkedHashSet<>(
-                    routeGraph.getOrDefault(agentId, new LinkedHashSet<>()));
+            Set<String> allowedTargets = new LinkedHashSet<>(routeGraph.getOrDefault(agentId, new LinkedHashSet<>()));
             if (allowedTargets.isEmpty()) {
                 continue;
             }
@@ -252,14 +273,12 @@ public class HandoffTeam extends BaseTeam {
                 String targetDescription = targetCard != null ? targetCard.getDescription() : "";
                 HandoffTool tool = new HandoffTool(targetId, targetDescription);
                 agent.getAbilityManager().add(tool.getCard());
-                Object existing = Runner.resourceMgr().getTool(tool.getCard().getId(), agentId,
-                        TagMatchStrategy.ALL);
+                Object existing = Runner.resourceMgr().getTool(tool.getCard().getId(), agentId, TagMatchStrategy.ALL);
                 if (existing == null) {
                     Runner.resourceMgr().addTool(tool, agentId);
                 }
                 Loggers.MULTI_AGENT.info(
-                        "[HandoffTeam:" + getTeamCard().getId() + "] injected '" + toolName
-                                + "' -> '" + agentId + "'");
+                        "[HandoffTeam:" + getTeamCard().getId() + "] injected '" + toolName + "' -> '" + agentId + "'");
             }
         }
     }

@@ -1,4 +1,11 @@
+
 package com.openjiuwen.core.application;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.application.llm.LlmAgent;
@@ -24,6 +31,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -35,37 +43,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class ApplicationTranslationRegressionTest {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-    private static final DateTimeFormatter TIMESTAMP_FORMATTER =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter TIMESTAMP_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Test
     void workflowHandlerUsesStructuredQueryAndKeepsNamedArguments() throws Exception {
-        WorkflowSchema workflow = WorkflowSchema.builder()
-                .id("weather_flow")
-                .name("WeatherFlow")
-                .version("1.0")
-                .inputParams(Map.of(
-                        "type", "object",
-                        "properties", Map.of("query", Map.of("type", "string"))
-                ))
-                .build();
-        WorkflowAgentConfig config = WorkflowAgentConfig.builder()
-                .id("workflow-agent")
-                .workflows(List.of(workflow))
-                .build();
-        WorkflowEventHandler handler = new WorkflowEventHandler(
-                config,
-                new ContextEngine(ContextEngineConfig.builder().build())
-        );
+        WorkflowSchema workflow = WorkflowSchema.builder().id("weather_flow").name("WeatherFlow").version("1.0")
+                .inputParams(Map.of("type", "object", "properties", Map.of("query", Map.of("type", "string")))).build();
+        WorkflowAgentConfig config =
+            WorkflowAgentConfig.builder().id("workflow-agent").workflows(List.of(workflow)).build();
+        WorkflowEventHandler handler =
+            new WorkflowEventHandler(config, new ContextEngine(ContextEngineConfig.builder().build()));
         InputEvent event = InputEvent.fromUserInput(Map.of("query", "weather in Shanghai"));
         AgentSessionApi session = new AgentSessionApi("conversation-1");
 
@@ -74,12 +63,8 @@ class ApplicationTranslationRegressionTest {
         getDisplayContent.setAccessible(true);
         assertEquals("weather in Shanghai", getDisplayContent.invoke(handler, event));
 
-        Method createNewTask = WorkflowEventHandler.class.getDeclaredMethod(
-                "createNewTask",
-                com.openjiuwen.core.controller.schema.Event.class,
-                WorkflowSchema.class,
-                AgentSessionApi.class
-        );
+        Method createNewTask = WorkflowEventHandler.class.getDeclaredMethod("createNewTask",
+                com.openjiuwen.core.controller.schema.Event.class, WorkflowSchema.class, AgentSessionApi.class);
         createNewTask.setAccessible(true);
 
         Task task = (Task) createNewTask.invoke(handler, event, workflow, session);
@@ -97,16 +82,11 @@ class ApplicationTranslationRegressionTest {
         InputEvent event = InputEvent.fromUserInput(Map.of("query", interactiveInput));
 
         WorkflowEventHandler workflowHandler = new WorkflowEventHandler(
-                WorkflowAgentConfig.builder()
-                        .id("workflow-agent")
-                        .workflows(List.of(WorkflowSchema.builder().id("wf").name("Workflow").build()))
-                        .build(),
-                new ContextEngine(ContextEngineConfig.builder().build())
-        );
-        LlmEventHandler llmHandler = new LlmEventHandler(
-                LlmAgentConfig.builder().id("llm-agent").build(),
-                new ContextEngine(ContextEngineConfig.builder().build())
-        );
+                WorkflowAgentConfig.builder().id("workflow-agent")
+                        .workflows(List.of(WorkflowSchema.builder().id("wf").name("Workflow").build())).build(),
+                new ContextEngine(ContextEngineConfig.builder().build()));
+        LlmEventHandler llmHandler = new LlmEventHandler(LlmAgentConfig.builder().id("llm-agent").build(),
+                new ContextEngine(ContextEngineConfig.builder().build()));
 
         Method workflowExtract = WorkflowEventHandler.class.getDeclaredMethod("extractInteractiveInput",
                 com.openjiuwen.core.controller.schema.Event.class);
@@ -121,37 +101,21 @@ class ApplicationTranslationRegressionTest {
 
     @Test
     void llmHandlerParsesToolArgumentsIntoTaskMetadata() throws Exception {
-        WorkflowSchema workflow = WorkflowSchema.builder()
-                .id("weather_flow")
-                .name("WeatherFlow")
-                .version("1.0")
-                .build();
-        LlmAgentConfig config = LlmAgentConfig.builder()
-                .id("llm-agent")
-                .workflows(List.of(workflow))
-                .build();
-        LlmEventHandler handler = new LlmEventHandler(
-                config,
-                new ContextEngine(ContextEngineConfig.builder().build())
-        );
-        AssistantMessage assistantMessage = AssistantMessage.builder()
-                .content("")
-                .toolCalls(List.of(ToolCall.builder()
-                        .id("call-1")
-                        .name("WeatherFlow")
-                        .arguments("{\"city\":\"Shanghai\"}")
-                        .build()))
+        WorkflowSchema workflow =
+            WorkflowSchema.builder().id("weather_flow").name("WeatherFlow").version("1.0").build();
+        LlmAgentConfig config = LlmAgentConfig.builder().id("llm-agent").workflows(List.of(workflow)).build();
+        LlmEventHandler handler = new LlmEventHandler(config, new ContextEngine(ContextEngineConfig.builder().build()));
+        AssistantMessage assistantMessage = AssistantMessage.builder().content("").toolCalls(List
+                .of(ToolCall.builder().id("call-1").name("WeatherFlow").arguments("{\"city\":\"Shanghai\"}").build()))
                 .build();
 
-        Method parseLlmOutputToTasks = LlmEventHandler.class.getDeclaredMethod(
-                "parseLlmOutputToTasks",
-                AssistantMessage.class,
-                AgentSessionApi.class
-        );
+        Method parseLlmOutputToTasks = LlmEventHandler.class.getDeclaredMethod("parseLlmOutputToTasks",
+                AssistantMessage.class, AgentSessionApi.class);
         parseLlmOutputToTasks.setAccessible(true);
 
         @SuppressWarnings("unchecked")
-        List<Task> tasks = (List<Task>) parseLlmOutputToTasks.invoke(handler, assistantMessage, new AgentSessionApi("s"));
+        List<Task> tasks =
+            (List<Task>) parseLlmOutputToTasks.invoke(handler, assistantMessage, new AgentSessionApi("s"));
         Object arguments = tasks.get(0).getMetadata().get("arguments");
 
         assertInstanceOf(Map.class, arguments);
@@ -160,16 +124,9 @@ class ApplicationTranslationRegressionTest {
 
     @Test
     void schemaCompatibilitySupportsPythonStyleFieldsAndAliases() {
-        LlmAgentConfig llmConfig = OBJECT_MAPPER.convertValue(Map.of(
-                "id", "llm-agent",
-                "controller_type", "react",
-                "prompt_template_name", "react_system_prompt",
-                "memory_scope_id", "memory-scope",
-                "constrain", Map.of(
-                        "reserved_max_chat_rounds", 12,
-                        "max_iteration", 7
-                )
-        ), LlmAgentConfig.class);
+        LlmAgentConfig llmConfig = OBJECT_MAPPER.convertValue(Map.of("id", "llm-agent", "controller_type", "react",
+                "prompt_template_name", "react_system_prompt", "memory_scope_id", "memory-scope", "constrain",
+                Map.of("reserved_max_chat_rounds", 12, "max_iteration", 7)), LlmAgentConfig.class);
 
         assertEquals(ControllerType.REACT_CONTROLLER, llmConfig.getControllerType());
         assertEquals("react_system_prompt", llmConfig.getPromptTemplateName());
@@ -178,11 +135,8 @@ class ApplicationTranslationRegressionTest {
         assertEquals(7, llmConfig.getConstrain().getMaxIteration());
         assertEquals(12, llmConfig.getContextWindowLimit());
 
-        WorkflowSchema workflowSchema = OBJECT_MAPPER.convertValue(Map.of(
-                "id", "weather_flow",
-                "name", "WeatherFlow",
-                "inputs", Map.of("query", Map.of("type", "string"))
-        ), WorkflowSchema.class);
+        WorkflowSchema workflowSchema = OBJECT_MAPPER.convertValue(Map.of("id", "weather_flow", "name", "WeatherFlow",
+                "inputs", Map.of("query", Map.of("type", "string"))), WorkflowSchema.class);
         assertEquals("string", ((Map<?, ?>) workflowSchema.getInputs().get("query")).get("type"));
 
         String workflowJson;
@@ -194,31 +148,16 @@ class ApplicationTranslationRegressionTest {
         assertTrue(workflowJson.contains("\"inputs\""));
         assertFalse(workflowJson.contains("inputParams"));
 
-        PluginSchema pluginSchema = OBJECT_MAPPER.convertValue(Map.of(
-                "id", "weather-tool",
-                "version", "1.0",
-                "plugin_id", "weather.tool",
-                "inputs", Map.of("city", Map.of("type", "string"))
-        ), PluginSchema.class);
+        PluginSchema pluginSchema = OBJECT_MAPPER.convertValue(Map.of("id", "weather-tool", "version", "1.0",
+                "plugin_id", "weather.tool", "inputs", Map.of("city", Map.of("type", "string"))), PluginSchema.class);
         assertEquals("weather.tool", pluginSchema.getPluginId());
         assertTrue(pluginSchema.getInputs().containsKey("city"));
 
-        WorkflowAgentConfig workflowConfig = OBJECT_MAPPER.convertValue(Map.of(
-                "id", "workflow-agent",
-                "controller_type", "workflow",
-                "start_workflow", Map.of("id", "start"),
-                "end_workflow", Map.of("id", "end"),
-                "global_variables", List.of(Map.of("name", "language")),
-                "global_params", Map.of("lang", "zh"),
-                "constrain", Map.of(
-                        "reserved_max_chat_rounds", 6,
-                        "max_iteration", 2
-                ),
-                "default_response", Map.of(
-                        "type", "text",
-                        "text", "fallback"
-                )
-        ), WorkflowAgentConfig.class);
+        WorkflowAgentConfig workflowConfig = OBJECT_MAPPER.convertValue(Map.of("id", "workflow-agent",
+                "controller_type", "workflow", "start_workflow", Map.of("id", "start"), "end_workflow",
+                Map.of("id", "end"), "global_variables", List.of(Map.of("name", "language")), "global_params",
+                Map.of("lang", "zh"), "constrain", Map.of("reserved_max_chat_rounds", 6, "max_iteration", 2),
+                "default_response", Map.of("type", "text", "text", "fallback")), WorkflowAgentConfig.class);
 
         assertEquals(ControllerType.WORKFLOW_CONTROLLER, workflowConfig.getControllerType());
         assertEquals("start", workflowConfig.getStartWorkflow().getId());
@@ -229,26 +168,16 @@ class ApplicationTranslationRegressionTest {
         assertEquals("text", workflowConfig.getDefaultResponse().getType());
         assertEquals("fallback", workflowConfig.getDefaultResponse().getText());
 
-        ReActAgentConfig aliasConfig = ReActAgentConfig.builder()
-                .id("alias-agent")
-                .constrain(ConstrainConfig.builder().reservedMaxChatRounds(9).build())
-                .build();
+        ReActAgentConfig aliasConfig = ReActAgentConfig.builder().id("alias-agent")
+                .constrain(ConstrainConfig.builder().reservedMaxChatRounds(9).build()).build();
         assertEquals(ControllerType.REACT_CONTROLLER, aliasConfig.getControllerType());
         assertEquals(9, aliasConfig.getContextWindowLimit());
     }
 
     @Test
     void llmCompatibilityFacadeExposesLegacyHelpers() {
-        LlmAgentConfig config = LlmAgent.createLlmAgentConfig(
-                "llm-agent",
-                "1.0",
-                "legacy helper",
-                List.of(),
-                List.of(),
-                null,
-                List.of(Map.of("role", "system", "content", "initial prompt")),
-                List.of("weather_tool")
-        );
+        LlmAgentConfig config = LlmAgent.createLlmAgentConfig("llm-agent", "1.0", "legacy helper", List.of(), List.of(),
+                null, List.of(Map.of("role", "system", "content", "initial prompt")), List.of("weather_tool"));
 
         assertEquals("llm-agent", config.getId());
         assertEquals(List.of("weather_tool"), config.getTools());
@@ -262,37 +191,27 @@ class ApplicationTranslationRegressionTest {
         assertEquals("updated prompt", config.getPromptTemplate().get(0).get("content"));
 
         String utcTimestamp = "2026-03-16 00:00:00";
-        String expected = LocalDateTime.parse(utcTimestamp, TIMESTAMP_FORMATTER)
-                .atOffset(ZoneOffset.UTC)
-                .atZoneSameInstant(ZoneId.systemDefault())
-                .format(TIMESTAMP_FORMATTER);
+        String expected = LocalDateTime.parse(utcTimestamp, TIMESTAMP_FORMATTER).atOffset(ZoneOffset.UTC)
+                .atZoneSameInstant(ZoneId.systemDefault()).format(TIMESTAMP_FORMATTER);
         assertEquals(expected, LlmController.convertTimestamp(utcTimestamp));
         assertEquals("invalid", LlmController.convertTimestamp("invalid"));
     }
 
     @Test
     void workflowControllerSupportsSetupAndIntentDetection() {
-        WorkflowSchema workflow = WorkflowSchema.builder()
-                .id("weather_flow")
-                .name("WeatherFlow")
-                .version("1.0")
-                .inputParams(new LinkedHashMap<>(Map.of(
-                        "type", "object",
-                        "properties", Map.of("query", Map.of("type", "string"))
-                )))
+        WorkflowSchema workflow = WorkflowSchema.builder().id("weather_flow").name("WeatherFlow").version("1.0")
+                .inputParams(new LinkedHashMap<>(
+                        Map.of("type", "object", "properties", Map.of("query", Map.of("type", "string")))))
                 .build();
-        WorkflowAgentConfig config = WorkflowAgentConfig.builder()
-                .id("workflow-agent")
-                .workflows(List.of(workflow))
-                .build();
+        WorkflowAgentConfig config =
+            WorkflowAgentConfig.builder().id("workflow-agent").workflows(List.of(workflow)).build();
         WorkflowAgent agent = new WorkflowAgent(config);
         WorkflowController controller = new WorkflowController();
         controller.setupFromAgent(agent);
 
-        WorkflowIntent intent = controller.intentDetection(
-                controller.createMessage(Map.of("query", "weather in Shanghai")),
-                new AgentSessionApi("conversation-compat")
-        );
+        WorkflowIntent intent =
+            controller.intentDetection(controller.createMessage(Map.of("query", "weather in Shanghai")),
+                    new AgentSessionApi("conversation-compat"));
 
         assertEquals(config, controller.getAgentConfig());
         assertEquals(WorkflowIntent.Type.EXEC_NEW_TASK, intent.intentType());

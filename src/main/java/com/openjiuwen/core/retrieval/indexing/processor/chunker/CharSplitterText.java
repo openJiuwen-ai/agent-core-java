@@ -15,9 +15,10 @@ import java.util.UUID;
 /**
  * Simple text splitter based on character length, no dependency on tokenizer.
  * Corresponds to Python {@code text_splitter.py::CharSplitter}.
+ * 
+ * @since 0.1.7
  */
 public class CharSplitterText extends TextSplitter {
-
     private static final int DEFAULT_CHUNK_SIZE = 200;
     private static final int DEFAULT_CHUNK_OVERLAP = 40;
 
@@ -25,14 +26,20 @@ public class CharSplitterText extends TextSplitter {
     private final int chunkOverlap;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CharSplitterText.
+     * 
+     * @since 0.1.7
      */
     public CharSplitterText() {
         this(DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CharSplitterText.
+     * 
+     * @param chunkSize chunkSize
+     * @param chunkOverlap chunkOverlap
+     * @since 0.1.7
      */
     public CharSplitterText(Integer chunkSize, Integer chunkOverlap) {
         int size = chunkSize != null ? chunkSize : DEFAULT_CHUNK_SIZE;
@@ -42,10 +49,14 @@ public class CharSplitterText extends TextSplitter {
         this.chunkOverlap = overlap;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * split.
+     * 
+     * @param doc doc
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<TextChunk> split(Document doc) {
         String text = doc.getText() != null ? doc.getText() : "";
         String docId = doc.getId();
@@ -56,12 +67,7 @@ public class CharSplitterText extends TextSplitter {
         int start = 0;
         while (start < text.length()) {
             int end = Math.min(text.length(), start + chunkSize);
-            result.add(new TextChunk(
-                    UUID.randomUUID().toString(),
-                    text.substring(start, end),
-                    docId,
-                    meta,
-                    null));
+            result.add(new TextChunk(UUID.randomUUID().toString(), text.substring(start, end), docId, meta, null));
             start += step;
         }
         return result;

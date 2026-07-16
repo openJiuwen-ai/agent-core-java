@@ -8,39 +8,52 @@ import com.openjiuwen.core.runner.mq.QueueMessage;
 
 /**
  * Base distributed-runner queue message.
- *
- * <p>Overrides payload access so the in-memory MQ handler receives the whole message object,
+ * <p>
+ * Overrides payload access so the in-memory MQ handler receives the whole message object,
  * while the actual business payload is stored in {@link #body}.
+ * 
+ * @since 0.1.7
  */
 public abstract class DmqMessage extends QueueMessage {
-
     private Object body;
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getPayload.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object getPayload() {
         return this;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * setPayload.
+     * 
+     * @param payload payload
+     * @since 0.1.7
      */
+    @Override
     public void setPayload(Object payload) {
         this.body = payload;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getBody.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getBody() {
         return body;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setBody.
+     * 
+     * @param body body
+     * @since 0.1.7
      */
     public void setBody(Object body) {
         this.body = body;

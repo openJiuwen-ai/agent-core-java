@@ -1,9 +1,13 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.graph.stream_actor;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.openjiuwen.core.workflow.component.ComponentAbility;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -14,13 +18,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for {@link StreamProcessor}.
  */
 class StreamProcessorTest {
-
     @Test
     @DisplayName("generator routes stream chunks to schema iterators and ends cleanly")
     void testGeneratorRoutesChunks() throws Exception {
@@ -28,22 +29,19 @@ class StreamProcessorTest {
         List<Object> callbacks = new CopyOnWriteArrayList<>();
 
         Map<String, Object> generated = processor.generator(
-                Map.of(
-                        "value", "${producer.value}",
-                        "nested", Map.of("other", "${producer.other}"),
-                        "static", 1),
+                Map.of("value", "${producer.value}", "nested", Map.of("other", "${producer.other}"), "static", 1),
                 callbacks::add);
 
         @SuppressWarnings("unchecked")
         Iterator<Object> valueIterator = (Iterator<Object>) generated.get("value");
         @SuppressWarnings("unchecked")
-        Iterator<Object> otherIterator = (Iterator<Object>) ((Map<String, Object>) generated.get("nested")).get("other");
+        Iterator<Object> otherIterator =
+            (Iterator<Object>) ((Map<String, Object>) generated.get("nested")).get("other");
 
         CompletableFuture<Void> runner = CompletableFuture.runAsync(() -> processor.run(ComponentAbility.STREAM));
 
-        processor.receive(new StreamPayload(
-                Map.of("producer", Map.of("value", "alpha", "other", 2)),
-                ComponentAbility.STREAM));
+        processor.receive(
+                new StreamPayload(Map.of("producer", Map.of("value", "alpha", "other", 2)), ComponentAbility.STREAM));
 
         assertTrue(valueIterator.hasNext());
         assertEquals("alpha", valueIterator.next());

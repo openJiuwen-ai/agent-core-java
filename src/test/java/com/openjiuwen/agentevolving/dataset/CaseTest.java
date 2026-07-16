@@ -1,14 +1,15 @@
+
 package com.openjiuwen.agentevolving.dataset;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.openjiuwen.core.common.exception.ValidationError;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 class CaseTest {
-
     @Test
     void caseSupportsMinimalCreationAndGeneratedCaseId() {
         Case caseData = new Case(Map.of("query", "test"), Map.of("answer", "expected"));
@@ -35,11 +36,7 @@ class CaseTest {
     @Test
     void evaluatedCaseClampsScoreAndDelegatesProperties() {
         Case caseData = new Case(Map.of("query", "test"), Map.of("answer", "expected"), "case_1");
-        EvaluatedCase evaluated = EvaluatedCase.builder()
-                .caseData(caseData)
-                .score(1.5)
-                .reason("good")
-                .build();
+        EvaluatedCase evaluated = EvaluatedCase.builder().caseData(caseData).score(1.5).reason("good").build();
 
         assertEquals(1.0, evaluated.getScore());
         assertEquals(Map.of("query", "test"), evaluated.getInputs());

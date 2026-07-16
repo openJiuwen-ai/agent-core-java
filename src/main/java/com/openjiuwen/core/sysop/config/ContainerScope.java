@@ -6,6 +6,8 @@ package com.openjiuwen.core.sysop.config;
 
 /**
  * Sandbox container creation granularity.
+ * 
+ * @since 0.1.7
  */
 public enum ContainerScope {
     SYSTEM,

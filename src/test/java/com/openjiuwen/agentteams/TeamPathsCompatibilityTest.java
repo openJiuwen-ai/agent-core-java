@@ -1,4 +1,7 @@
+
 package com.openjiuwen.agentteams;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -6,10 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class TeamPathsCompatibilityTest {
-
     @AfterEach
     void resetHome() {
         TeamPaths.resetOpenjiuwenHome();
@@ -47,8 +47,8 @@ class TeamPathsCompatibilityTest {
     void shouldReturnTeamMemoryDir() {
         Path dir = TeamPaths.teamMemoryDir("test_team");
         assertThat(dir).isNotNull();
-        assertThat(dir.endsWith(Paths.get(
-                ".openjiuwen", ".agent_teams", "test_team", "team-workspace", "team-memory"))).isTrue();
+        assertThat(dir.endsWith(Paths.get(".openjiuwen", ".agent_teams", "test_team", "team-workspace", "team-memory")))
+                .isTrue();
     }
 
     @Test

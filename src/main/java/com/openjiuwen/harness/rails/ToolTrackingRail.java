@@ -5,6 +5,7 @@
 package com.openjiuwen.harness.rails;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
@@ -16,28 +17,30 @@ import java.util.Map;
 
 /**
  * Emit tool call/result chunks for CLI rendering.
+ * 
+ * @since 0.1.7
  */
 public class ToolTrackingRail extends AgentRail {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPriority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int getPriority() {
         return 5;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * beforeToolCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void beforeToolCall(AgentCallbackContext ctx) {
         if (ctx == null || ctx.getSession() == null || !(ctx.getInputs() instanceof ToolCallInputs inputs)) {
             return;
@@ -49,12 +52,12 @@ public class ToolTrackingRail extends AgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterToolCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void afterToolCall(AgentCallbackContext ctx) {
         if (ctx == null || ctx.getSession() == null || !(ctx.getInputs() instanceof ToolCallInputs inputs)) {
             return;
@@ -67,7 +70,12 @@ public class ToolTrackingRail extends AgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildToolResultPayload.
+     * 
+     * @param toolName toolName
+     * @param toolResult toolResult
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> buildToolResultPayload(String toolName, Object toolResult) {
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -97,17 +105,32 @@ public class ToolTrackingRail extends AgentRail {
         return payload;
     }
 
+    /**
+     * normalizeArgs.
+     * 
+     * @param toolArgs toolArgs
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object normalizeArgs(Object toolArgs) {
         if (toolArgs instanceof String text) {
             try {
-                return MAPPER.readValue(text, new TypeReference<Map<String, Object>>() {});
-            } catch (Exception ignored) {
+                return MAPPER.readValue(text, new TypeReference<Map<String, Object>>() {
+                });
+            } catch (JsonProcessingException ignored) {
                 return text;
             }
         }
         return toolArgs;
     }
 
+    /**
+     * extractData.
+     * 
+     * @param toolResult toolResult
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object extractData(Object toolResult) {
         try {
             return toolResult.getClass().getMethod("getData").invoke(toolResult);

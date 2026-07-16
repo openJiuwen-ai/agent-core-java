@@ -37,14 +37,24 @@ import java.util.UUID;
  * <p>
  * Mirrors Python's {@code MessageOffloader} from
  * {@code processor/offloader/message_offloader.py}.
+ * 
+ * @since 0.1.7
  */
 public class MessageOffloader extends ContextProcessor {
-
     private static final String OMIT_STRING = "...";
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MessageOffloader.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public MessageOffloader(MessageOffloaderConfig config) {
         super(config);
@@ -52,12 +62,14 @@ public class MessageOffloader extends ContextProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * triggerAddMessages.
+     * 
+     * @param context context
+     * @param messagesToAdd messagesToAdd
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean triggerAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
         MessageOffloaderConfig config = getConfig();
         List<BaseMessage> allMessages = new ArrayList<>(context.getMessages());
@@ -74,8 +86,8 @@ public class MessageOffloader extends ContextProcessor {
             if (!hasOffloadCandidate(allMessages, context)) {
                 return false;
             }
-            Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context messages num "
-                    + messageSize + " exceeds threshold of " + config.getMessagesThreshold());
+            Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context messages num " + messageSize
+                    + " exceeds threshold of " + config.getMessagesThreshold());
             return true;
         }
 
@@ -91,20 +103,22 @@ public class MessageOffloader extends ContextProcessor {
             if (!hasOffloadCandidate(allMessages, context)) {
                 return false;
             }
-            Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context tokens "
-                    + tokens + " exceeds threshold of " + config.getTokensThreshold());
+            Loggers.CONTEXT_ENGINE.info("[" + processorType() + " triggered] context tokens " + tokens
+                    + " exceeds threshold of " + config.getTokensThreshold());
             return true;
         }
         return false;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * onAddMessages.
+     * 
+     * @param context context
+     * @param messagesToAdd messagesToAdd
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public ProcessResult onAddMessages(ModelContext context, List<BaseMessage> messagesToAdd) {
         List<BaseMessage> contextMessages = new ArrayList<>(context.getMessages());
         contextMessages.addAll(messagesToAdd);
@@ -114,31 +128,31 @@ public class MessageOffloader extends ContextProcessor {
         List<BaseMessage> processedMessages = result.messages;
 
         List<BaseMessage> newContextMessages = new ArrayList<>(processedMessages.subList(0, contextSize));
-        List<BaseMessage> newMessagesToAdd = new ArrayList<>(
-                processedMessages.subList(contextSize, processedMessages.size()));
+        List<BaseMessage> newMessagesToAdd =
+            new ArrayList<>(processedMessages.subList(contextSize, processedMessages.size()));
 
         context.setMessages(newContextMessages);
         return ProcessResult.ofMessages(result.event, newMessagesToAdd);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void loadState(Map<String, Object> state) {
         // stateless
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * saveState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> saveState() {
         return new HashMap<>();
     }
@@ -147,6 +161,11 @@ public class MessageOffloader extends ContextProcessor {
 
     /**
      * Offload a single message. Can be overridden by subclasses (e.g., MessageSummaryOffloader).
+     * 
+     * @param message message
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     protected BaseMessage offloadMessage(BaseMessage message, ModelContext context) {
         MessageOffloaderConfig config = getConfig();
@@ -154,21 +173,17 @@ public class MessageOffloader extends ContextProcessor {
         String trimmedContent = content.substring(0, Math.min(content.length(), config.getTrimSize())) + OMIT_STRING;
         OffloadTarget offloadTarget = newOffloadTarget(context);
         Map<String, Object> extraFields = extractExtraFields(message);
-        return offloadMessages(
-                message.getRole(),
-                trimmedContent,
-                List.of(message),
-                context,
-                offloadTarget.handle(),
-                offloadTarget.path() != null ? "filesystem" : "in_memory",
-                offloadTarget.path(),
-                extraFields
-        );
+        return offloadMessages(message.getRole(), trimmedContent, List.of(message), context, offloadTarget.handle(),
+                offloadTarget.path() != null ? "filesystem" : "in_memory", offloadTarget.path(), extraFields);
     }
 
     /**
      * Extract extra fields from a message for preservation during offload.
      * Mirrors Python's {@code message.model_dump()} with role/content removed.
+     * 
+     * @param message message
+     * @return the result
+     * @since 0.1.7
      */
     protected static Map<String, Object> extractExtraFields(BaseMessage message) {
         Map<String, Object> extraFields = new HashMap<>();
@@ -199,33 +214,54 @@ public class MessageOffloader extends ContextProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validateConfig.
+     * 
+     * @since 0.1.7
      */
     protected void validateConfig() {
         MessageOffloaderConfig config = getConfig();
         config.validate();
         if (config.getTrimSize() >= config.getLargeMessageThreshold()) {
-            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR,
-                    "error_msg", "trim_size " + config.getTrimSize()
-                            + " cannot larger than large_message_threshold " + config.getLargeMessageThreshold());
+            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR, "error_msg",
+                    "trim_size " + config.getTrimSize() + " cannot larger than large_message_threshold "
+                            + config.getLargeMessageThreshold());
         }
-        if (config.getMessagesToKeep() != null
-                && config.getMessagesThreshold() != null
+        if (config.getMessagesToKeep() != null && config.getMessagesThreshold() != null
                 && config.getMessagesToKeep() >= config.getMessagesThreshold()) {
-            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR,
-                    "error_msg", "messages_to_keep " + config.getMessagesToKeep()
-                            + " cannot larger than messages_threshold " + config.getMessagesThreshold());
+            throw ErrorHelper.buildError(StatusCode.CONTEXT_EXECUTION_ERROR, "error_msg",
+                    "messages_to_keep " + config.getMessagesToKeep() + " cannot larger than messages_threshold "
+                            + config.getMessagesThreshold());
         }
     }
 
     // ==================== Private Helpers ====================
 
+    /**
+     * OffloadResult.
+     * 
+     * @param event event
+     * @param messages messages
+     * @since 0.1.7
+     */
     private record OffloadResult(ContextEvent event, List<BaseMessage> messages) {
     }
 
+    /**
+     * OffloadTarget.
+     * 
+     * @since 0.1.7
+     */
     protected record OffloadTarget(String handle, String path) {
     }
 
+    /**
+     * offloadLargeMessages.
+     * 
+     * @param messages messages
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     private OffloadResult offloadLargeMessages(List<BaseMessage> messages, ModelContext context) {
         List<BaseMessage> processedMessages = new ArrayList<>(messages);
         int offloadRange = getOffloadRange(messages);
@@ -240,8 +276,7 @@ public class MessageOffloader extends ContextProcessor {
 
             BaseMessage offloadMsg = offloadMessage(msg, context);
             if (offloadMsg != null) {
-                processedMessages = ContextUtils.replaceMessages(
-                        processedMessages, List.of(offloadMsg), idx, idx);
+                processedMessages = ContextUtils.replaceMessages(processedMessages, List.of(offloadMsg), idx, idx);
                 event.getMessagesToModify().add(idx);
             }
         }
@@ -250,7 +285,11 @@ public class MessageOffloader extends ContextProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOffloadRange.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
      */
     protected int getOffloadRange(List<BaseMessage> messages) {
         MessageOffloaderConfig config = getConfig();
@@ -258,14 +297,18 @@ public class MessageOffloader extends ContextProcessor {
         if (config.isKeepLastRound()) {
             lastAiMsgIndex = ContextUtils.findLastAiMessageWithoutToolCall(messages).orElse(null);
         }
-        int keepIndex = config.getMessagesToKeep() == null
-                ? messages.size()
-                : messages.size() - config.getMessagesToKeep();
+        int keepIndex =
+            config.getMessagesToKeep() == null ? messages.size() : messages.size() - config.getMessagesToKeep();
         return lastAiMsgIndex == null ? keepIndex : Math.min(lastAiMsgIndex, keepIndex);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasOffloadCandidate.
+     * 
+     * @param messages messages
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     protected boolean hasOffloadCandidate(List<BaseMessage> messages, ModelContext context) {
         int offloadRange = getOffloadRange(messages);
@@ -278,11 +321,15 @@ public class MessageOffloader extends ContextProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shouldOffloadMessage.
+     * 
+     * @param message message
+     * @param contextMessages contextMessages
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
-    protected boolean shouldOffloadMessage(
-            BaseMessage message,
-            List<BaseMessage> contextMessages,
+    protected boolean shouldOffloadMessage(BaseMessage message, List<BaseMessage> contextMessages,
             ModelContext context) {
         MessageOffloaderConfig config = getConfig();
         if (!config.getOffloadMessageType().contains(message.getRole())) {
@@ -299,7 +346,12 @@ public class MessageOffloader extends ContextProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isProtectedToolMessage.
+     * 
+     * @param message message
+     * @param contextMessages contextMessages
+     * @return the result
+     * @since 0.1.7
      */
     protected boolean isProtectedToolMessage(BaseMessage message, List<BaseMessage> contextMessages) {
         if (!(message instanceof ToolMessage)) {
@@ -337,7 +389,11 @@ public class MessageOffloader extends ContextProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * newOffloadTarget.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     protected OffloadTarget newOffloadTarget(ModelContext context) {
         String offloadHandle = UUID.randomUUID().toString().replace("-", "");
@@ -346,27 +402,38 @@ public class MessageOffloader extends ContextProcessor {
             return new OffloadTarget(offloadHandle, null);
         }
         String fileName = processorType() + "_" + offloadHandle + ".json";
-        String offloadPath = java.nio.file.Path.of(
-                workspaceDir,
-                "context",
-                context.sessionId() + "_context",
-                "offload",
-                fileName
-        ).toString();
+        String offloadPath = java.nio.file.Path
+                .of(workspaceDir, "context", context.sessionId() + "_context", "offload", fileName).toString();
         return new OffloadTarget(offloadHandle, offloadPath);
     }
 
+    /**
+     * extractToolArgs.
+     * 
+     * @param toolCall toolCall
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> extractToolArgs(ToolCall toolCall) {
         if (toolCall == null || toolCall.getArguments() == null || toolCall.getArguments().isBlank()) {
             return Collections.emptyMap();
         }
         try {
-            return MAPPER.readValue(toolCall.getArguments(), new TypeReference<>() {});
+            return MAPPER.readValue(toolCall.getArguments(), new TypeReference<>() {
+            });
         } catch (JsonProcessingException ignored) {
             return Collections.emptyMap();
         }
     }
 
+    /**
+     * matchPattern.
+     * 
+     * @param args args
+     * @param pattern pattern
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean matchPattern(Map<String, Object> args, String pattern) {
         if (args == null || args.isEmpty() || pattern == null || pattern.isBlank()) {
             return false;
@@ -379,10 +446,17 @@ public class MessageOffloader extends ContextProcessor {
         return false;
     }
 
+    /**
+     * globMatches.
+     * 
+     * @param value value
+     * @param pattern pattern
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean globMatches(String value, String pattern) {
         try {
-            return FileSystems.getDefault().getPathMatcher("glob:" + pattern)
-                    .matches(java.nio.file.Path.of(value));
+            return FileSystems.getDefault().getPathMatcher("glob:" + pattern).matches(java.nio.file.Path.of(value));
         } catch (InvalidPathException ignored) {
             return false;
         }

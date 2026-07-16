@@ -24,10 +24,11 @@ import java.util.Set;
  * Supports both String and {@code List<BaseMessage>} content.
  * <p>
  * Mirrors Python's {@code PromptAssembler}.
+ * 
+ * @since 0.1.7
  */
 public class PromptAssembler {
-
-    private Object templateContent;  // String or List<BaseMessage>
+    private Object templateContent; // String or List<BaseMessage>
     private final String placeholderPrefix;
     private final String placeholderSuffix;
     private final List<Variable> templateFormatters;
@@ -35,35 +36,39 @@ public class PromptAssembler {
 
     /**
      * Construct a PromptAssembler.
-     *
+     * 
      * @param promptTemplateContent the template content (String or List of BaseMessage)
-     * @param placeholderPrefix     prefix delimiter for placeholders
-     * @param placeholderSuffix     suffix delimiter for placeholders
-     * @param initialVariables      optional pre-configured variables
+     * @param placeholderPrefix prefix delimiter for placeholders
+     * @param placeholderSuffix suffix delimiter for placeholders
+     * @param initialVariables optional pre-configured variables
+     * @since 0.1.7
      */
-    public PromptAssembler(Object promptTemplateContent,
-                           String placeholderPrefix,
-                           String placeholderSuffix,
-                           Map<String, Variable> initialVariables) {
+    public PromptAssembler(Object promptTemplateContent, String placeholderPrefix, String placeholderSuffix,
+            Map<String, Variable> initialVariables) {
         this.templateContent = promptTemplateContent;
         this.placeholderPrefix = placeholderPrefix;
         this.placeholderSuffix = placeholderSuffix;
         this.templateFormatters = buildFormatterList();
-        this.variables = buildVariablesWithVerify(
-                initialVariables != null ? initialVariables : Map.of());
+        this.variables = buildVariablesWithVerify(initialVariables != null ? initialVariables : Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PromptAssembler.
+     * 
+     * @param promptTemplateContent promptTemplateContent
+     * @param placeholderPrefix placeholderPrefix
+     * @param placeholderSuffix placeholderSuffix
+     * @since 0.1.7
      */
-    public PromptAssembler(Object promptTemplateContent,
-                           String placeholderPrefix,
-                           String placeholderSuffix) {
+    public PromptAssembler(Object promptTemplateContent, String placeholderPrefix, String placeholderSuffix) {
         this(promptTemplateContent, placeholderPrefix, placeholderSuffix, null);
     }
 
     /**
      * Get all input keys needed for the template.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getInputKeys() {
         Set<String> keys = new LinkedHashSet<>();
@@ -74,15 +79,13 @@ public class PromptAssembler {
     }
 
     /**
-     * Assemble the prompt by substituting placeholders with the given keyword arguments.
-     *
-     * @param kwargs key-value pairs for substitution
-     * @return assembled content (String or List of BaseMessage)
+     * promptAssemble.
+     * 
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object promptAssemble(Map<String, Object> kwargs) {
         List<String> inputKeys = getInputKeys();
         Map<String, Object> filtered = new LinkedHashMap<>();
@@ -104,9 +107,13 @@ public class PromptAssembler {
         return doFormat();
     }
 
-    // ==================== Internal ====================
-
     @SuppressWarnings("unchecked")
+    /**
+     * buildFormatterList.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Variable> buildFormatterList() {
         List<Variable> list = new ArrayList<>();
         if (templateContent instanceof String text) {
@@ -129,6 +136,13 @@ public class PromptAssembler {
         return list;
     }
 
+    /**
+     * buildVariablesWithVerify.
+     * 
+     * @param inputVariables inputVariables
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Variable> buildVariablesWithVerify(Map<String, Variable> inputVariables) {
         // Collect all input keys from formatters
         Set<String> allKeys = new LinkedHashSet<>();
@@ -143,12 +157,12 @@ public class PromptAssembler {
         // Verify provided variables
         for (var entry : inputVariables.entrySet()) {
             if (!allKeys.contains(entry.getKey())) {
-                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
-                        "error_msg", "variable " + entry.getKey() + " is not defined in the promptTemplate");
+                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED, "error_msg",
+                        "variable " + entry.getKey() + " is not defined in the promptTemplate");
             }
             if (!(entry.getValue() instanceof Variable)) {
-                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED,
-                        "error_msg", "variable " + entry.getKey() + " must be instantiated as a Variable object");
+                throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED, "error_msg",
+                        "variable " + entry.getKey() + " must be instantiated as a Variable object");
             }
         }
 
@@ -158,26 +172,32 @@ public class PromptAssembler {
                 result.get(placeholder).setName(placeholder);
             } else {
                 String placeholderStr = placeholderPrefix + placeholder + placeholderSuffix;
-                result.put(placeholder, new TextableVariable(
-                        placeholderStr, placeholder, placeholderPrefix, placeholderSuffix));
+                result.put(placeholder,
+                        new TextableVariable(placeholderStr, placeholder, placeholderPrefix, placeholderSuffix));
             }
         }
         return result;
     }
 
+    /**
+     * doUpdate.
+     * 
+     * @param kwargs kwargs
+     * @since 0.1.7
+     */
     private void doUpdate(Map<String, Object> kwargs) {
         List<String> inputKeys = getInputKeys();
         Set<String> missing = new LinkedHashSet<>(inputKeys);
         missing.removeAll(kwargs.keySet());
         if (!missing.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_TEMPLATE_PARAM_ERROR,
-                    "error_msg", "missing keys for updating the prompt assembler: " + missing);
+            throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_TEMPLATE_PARAM_ERROR, "error_msg",
+                    "missing keys for updating the prompt assembler: " + missing);
         }
         Set<String> unexpected = new LinkedHashSet<>(kwargs.keySet());
         unexpected.removeAll(new LinkedHashSet<>(inputKeys));
         if (!unexpected.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_TEMPLATE_PARAM_ERROR,
-                    "error_msg", "unexpected keys for updating the prompt assembler: " + unexpected);
+            throw ErrorHelper.buildError(StatusCode.PROMPT_ASSEMBLER_TEMPLATE_PARAM_ERROR, "error_msg",
+                    "unexpected keys for updating the prompt assembler: " + unexpected);
         }
         for (Variable variable : variables.values()) {
             Map<String, Object> inputKwargs = new LinkedHashMap<>();
@@ -191,6 +211,12 @@ public class PromptAssembler {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * doFormat.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Object doFormat() {
         Map<String, Object> formatKwargs = new LinkedHashMap<>();
         for (Variable v : variables.values()) {
@@ -208,6 +234,8 @@ public class PromptAssembler {
                 break;
             } else if (templateContent instanceof List<?> messages) {
                 ((BaseMessage) messages.get(idx)).setContent(formattedPrompt);
+            } else {
+                // no-op
             }
         }
         return templateContent;

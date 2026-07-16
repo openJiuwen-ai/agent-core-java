@@ -13,14 +13,14 @@ import lombok.NoArgsConstructor;
  * Structured return model for one-time subprocess execution via {@code invoke()} method.
  * <p>
  * Mirrors Python's {@code InvokeData} in {@code local/utils.py}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class InvokeData {
-
-    /** Complete standard output string captured from the subprocess execution. */
     private String stdout;
 
     /** Complete standard error string captured from the subprocess execution. */

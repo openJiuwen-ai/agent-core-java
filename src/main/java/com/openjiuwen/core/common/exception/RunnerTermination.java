@@ -6,16 +6,21 @@ package com.openjiuwen.core.common.exception;
 
 import java.util.Map;
 
-/** Runner termination — carries a reason string. */
+/**
+ * Runner termination — carries a reason string.
+ * 
+ * @since 0.1.7
+ */
 public class RunnerTermination extends Termination {
     private final String reason;
 
     /**
      * Creates a RunnerTermination with reason, status, and parameters.
-     *
+     * 
      * @param reason the termination reason
      * @param status the status code
      * @param params template parameters for message rendering
+     * @since 0.1.7
      */
     public RunnerTermination(String reason, StatusCode status, Map<String, Object> params) {
         super(status, params);
@@ -24,9 +29,10 @@ public class RunnerTermination extends Termination {
 
     /**
      * Creates a RunnerTermination with reason and status.
-     *
+     * 
      * @param reason the termination reason
      * @param status the status code
+     * @since 0.1.7
      */
     public RunnerTermination(String reason, StatusCode status) {
         super(status);
@@ -35,8 +41,9 @@ public class RunnerTermination extends Termination {
 
     /**
      * Gets the termination reason.
-     *
+     * 
      * @return the reason string
+     * @since 0.1.7
      */
     public String getReason() {
         return reason;

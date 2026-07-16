@@ -6,8 +6,8 @@ package com.openjiuwen.harness.task_loop;
 
 /**
  * Public class CompletionPromiseEvaluator used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class CompletionPromiseEvaluator implements StopConditionEvaluator {
     private final String promise;
@@ -17,21 +17,30 @@ public class CompletionPromiseEvaluator implements StopConditionEvaluator {
     private String matchedText = "";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CompletionPromiseEvaluator.
+     * 
+     * @since 0.1.7
      */
     public CompletionPromiseEvaluator() {
         this("", 1);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CompletionPromiseEvaluator.
+     * 
+     * @param promise promise
+     * @since 0.1.7
      */
     public CompletionPromiseEvaluator(String promise) {
         this(promise, 1);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CompletionPromiseEvaluator.
+     * 
+     * @param promise promise
+     * @param requiredConfirmations requiredConfirmations
+     * @since 0.1.7
      */
     public CompletionPromiseEvaluator(String promise, int requiredConfirmations) {
         this.promise = promise == null ? "" : promise;
@@ -39,36 +48,42 @@ public class CompletionPromiseEvaluator implements StopConditionEvaluator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String name() {
         return "CompletionPromise";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shouldStop.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean shouldStop(StopEvaluationContext context) {
         return isCompleted;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * markCompleted.
+     * 
+     * @since 0.1.7
      */
     public void markCompleted() {
         notifyFulfilled(promise);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * notifyFulfilled.
+     * 
+     * @param matchedText matchedText
+     * @since 0.1.7
      */
     public void notifyFulfilled(String matchedText) {
         this.confirmationCount += 1;
@@ -77,7 +92,9 @@ public class CompletionPromiseEvaluator implements StopConditionEvaluator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * notifyAbsent.
+     * 
+     * @since 0.1.7
      */
     public void notifyAbsent() {
         this.confirmationCount = 0;
@@ -86,30 +103,25 @@ public class CompletionPromiseEvaluator implements StopConditionEvaluator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public java.util.Map<String, Object> getState() {
-        return java.util.Map.of(
-                "completed", isCompleted,
-                "isCompleted", isCompleted,
-                "fulfilled", isCompleted,
-                "matched_text", matchedText,
-                "required_confirmations", requiredConfirmations,
-                "confirmation_count", confirmationCount
-        );
+        return java.util.Map.of("completed", isCompleted, "isCompleted", isCompleted, "fulfilled", isCompleted,
+                "matched_text", matchedText, "required_confirmations", requiredConfirmations, "confirmation_count",
+                confirmationCount);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * loadState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void loadState(java.util.Map<String, Object> state) {
         if (state != null && state.get("isCompleted") instanceof Boolean isValue) {
             this.isCompleted = isValue;
@@ -130,12 +142,11 @@ public class CompletionPromiseEvaluator implements StopConditionEvaluator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * reset.
+     * 
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void reset() {
         this.isCompleted = false;
         this.confirmationCount = 0;
@@ -143,14 +154,20 @@ public class CompletionPromiseEvaluator implements StopConditionEvaluator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfirmationCount.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getConfirmationCount() {
         return confirmationCount;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMatchedText.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getMatchedText() {
         return matchedText;

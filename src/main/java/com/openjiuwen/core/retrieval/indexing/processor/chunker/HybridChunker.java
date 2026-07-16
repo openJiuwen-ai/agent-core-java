@@ -13,14 +13,18 @@ import java.util.function.Predicate;
 
 /**
  * Chunker that skips splitting for specific document types.
+ * 
+ * @since 0.1.7
  */
 public class HybridChunker extends Chunker {
-
     private final Chunker innerChunker;
     private final Predicate<Document> noSplitWhen;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HybridChunker.
+     * 
+     * @param innerChunker innerChunker
+     * @since 0.1.7
      */
     public HybridChunker(Chunker innerChunker) {
         this(innerChunker, doc -> {
@@ -30,7 +34,11 @@ public class HybridChunker extends Chunker {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HybridChunker.
+     * 
+     * @param innerChunker innerChunker
+     * @param noSplitWhen noSplitWhen
+     * @since 0.1.7
      */
     public HybridChunker(Chunker innerChunker, Predicate<Document> noSplitWhen) {
         super(innerChunker.chunkSize, innerChunker.chunkOverlap);
@@ -38,18 +46,26 @@ public class HybridChunker extends Chunker {
         this.noSplitWhen = noSplitWhen;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * chunkText.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<String> chunkText(String text) {
         return innerChunker.chunkText(text);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * chunkDocuments.
+     * 
+     * @param documents documents
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<TextChunk> chunkDocuments(List<Document> documents) {
         List<TextChunk> result = new ArrayList<>();
         if (documents == null) {

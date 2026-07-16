@@ -4,6 +4,11 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.context.processor.ContextProcessor;
@@ -12,18 +17,19 @@ import com.openjiuwen.core.context.token.TokenCounter;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.AudioGenerationResponse;
+import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ImageGenerationResponse;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -31,13 +37,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class CurrentRoundCompressorTest {
-
     private static final String TEST_PROVIDER = "CurrentRoundCompressorTestProvider";
 
     @BeforeAll
@@ -57,16 +57,10 @@ class CurrentRoundCompressorTest {
 
     @Test
     void triggerUsesTokenThresholdAndMessagesToKeepGuard() {
-        CurrentRoundCompressor compressor = new CurrentRoundCompressor(configBuilder()
-                .tokensThreshold(10)
-                .messagesToKeep(3)
-                .build());
-        ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext(
-                "test",
-                null,
-                null,
-                List.of(new UserMessage("u1"), new AssistantMessage("a1")),
-                tokenCounter(100));
+        CurrentRoundCompressor compressor =
+            new CurrentRoundCompressor(configBuilder().tokensThreshold(10).messagesToKeep(3).build());
+        ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext("test", null,
+                null, List.of(new UserMessage("u1"), new AssistantMessage("a1")), tokenCounter(100));
 
         assertFalse(compressor.triggerAddMessages(context, List.of()));
         assertTrue(compressor.triggerAddMessages(context, List.of(new AssistantMessage("a2"))));
@@ -74,13 +68,8 @@ class CurrentRoundCompressorTest {
 
     @Test
     void getCompressIdxReturnsLatestEligibleUserBeforeKeptTail() {
-        CurrentRoundCompressor compressor = new CurrentRoundCompressor(configBuilder()
-                .messagesToKeep(1)
-                .build());
-        List<BaseMessage> messages = List.of(
-                new UserMessage("u1"),
-                new AssistantMessage("a1"),
-                new UserMessage("u2"),
+        CurrentRoundCompressor compressor = new CurrentRoundCompressor(configBuilder().messagesToKeep(1).build());
+        List<BaseMessage> messages = List.of(new UserMessage("u1"), new AssistantMessage("a1"), new UserMessage("u2"),
                 new AssistantMessage("a2"));
 
         assertEquals(2, compressor.getCompressIdx(messages));
@@ -89,26 +78,16 @@ class CurrentRoundCompressorTest {
 
     @Test
     void onAddMessagesReplacesSelectedCompletedRoundWithMemoryBlock() {
-        CurrentRoundCompressor compressor = new CurrentRoundCompressor(configBuilder()
-                .tokensThreshold(1)
-                .messagesToKeep(1)
-                .minSelectedTokensForCompression(1)
-                .build());
-        ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext(
-                "test",
-                null,
-                null,
-                List.of(
-                        new UserMessage("question"),
-                        new AssistantMessage("safe-prefix-1"),
-                        new AssistantMessage("safe-prefix-2"),
-                        AssistantMessage.builder()
-                                .content("")
-                                .toolCalls(List.of(toolCall("tc-1", "tool_a")))
-                                .build(),
-                        new ToolMessage("tool result", "tc-1"),
-                        new AssistantMessage("final answer")),
-                compressionBenefitTokenCounter());
+        CurrentRoundCompressor compressor = new CurrentRoundCompressor(
+                configBuilder().tokensThreshold(1).messagesToKeep(1).minSelectedTokensForCompression(1).build());
+        ModelContext context =
+            new ContextEngine(ContextEngineConfig.builder().build()).createContext("test", null, null,
+                    List.of(new UserMessage("question"), new AssistantMessage("safe-prefix-1"),
+                            new AssistantMessage("safe-prefix-2"),
+                            AssistantMessage.builder().content("").toolCalls(List.of(toolCall("tc-1", "tool_a")))
+                                    .build(),
+                            new ToolMessage("tool result", "tc-1"), new AssistantMessage("final answer")),
+                    compressionBenefitTokenCounter());
 
         ContextProcessor.ProcessResult result = compressor.onAddMessages(context, List.of());
 
@@ -121,32 +100,21 @@ class CurrentRoundCompressorTest {
 
     @Test
     void compressSkipsWhenSelectedSpanBelowMinimumTokens() {
-        CurrentRoundCompressor compressor = new CurrentRoundCompressor(configBuilder()
-                .minSelectedTokensForCompression(200)
-                .build());
-        ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext(
-                "test",
-                null,
-                null,
-                List.of(),
-                tokenCounter(1));
+        CurrentRoundCompressor compressor =
+            new CurrentRoundCompressor(configBuilder().minSelectedTokensForCompression(200).build());
+        ModelContext context = new ContextEngine(ContextEngineConfig.builder().build()).createContext("test", null,
+                null, List.of(), tokenCounter(1));
 
-        BaseMessage compressed = compressor.compress(
-                List.of(new AssistantMessage("small")),
-                context,
-                List.of(new UserMessage("u"), new AssistantMessage("small")),
-                1,
-                0);
+        BaseMessage compressed = compressor.compress(List.of(new AssistantMessage("small")), context,
+                List.of(new UserMessage("u"), new AssistantMessage("small")), 1, 0);
 
         assertEquals(null, compressed);
     }
 
     @Test
     void iterSummaryMergeRangesReturnsContiguousSummaryBlocks() {
-        List<BaseMessage> messages = List.of(
-                new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\na"),
-                new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\nb"),
-                new AssistantMessage("break"),
+        List<BaseMessage> messages = List.of(new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\na"),
+                new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\nb"), new AssistantMessage("break"),
                 new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\nc"),
                 new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\nd"),
                 new UserMessage(CurrentRoundCompressor.SUMMARY_MARKER + "\ne"));
@@ -188,12 +156,8 @@ class CurrentRoundCompressorTest {
     private static CurrentRoundCompressorConfig.CurrentRoundCompressorConfigBuilder configBuilder() {
         return CurrentRoundCompressorConfig.builder()
                 .model(ModelRequestConfig.builder().modelName("test-model").build())
-                .modelClient(ModelClientConfig.builder()
-                        .clientProvider(TEST_PROVIDER)
-                        .apiKey("test-key")
-                        .apiBase("http://test.local")
-                        .verifySsl(false)
-                        .build());
+                .modelClient(ModelClientConfig.builder().clientProvider(TEST_PROVIDER).apiKey("test-key")
+                        .apiBase("http://test.local").verifySsl(false).build());
     }
 
     private static TokenCounter tokenCounter(int returnValue) {
@@ -226,7 +190,7 @@ class CurrentRoundCompressorTest {
             public int countMessages(List<BaseMessage> messages, String model) {
                 if (messages.size() == 1 && messages.get(0) instanceof UserMessage
                         && (messages.get(0).getContentAsString().startsWith("role:")
-                        || messages.get(0).getContentAsString().equals("compressed summary"))) {
+                                || messages.get(0).getContentAsString().equals("compressed summary"))) {
                     return 1;
                 }
                 return 100;
@@ -245,68 +209,36 @@ class CurrentRoundCompressorTest {
         }
 
         @Override
-        public AssistantMessage invoke(Object messages,
-                                       Object tools,
-                                       Float temperature,
-                                       Float topP,
-                                       String model,
-                                       Integer maxTokens,
-                                       String stop,
-                                       BaseOutputParser outputParser,
-                                       Float timeout,
-                                       Map<String, Object> kwargs) {
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+                Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             return new AssistantMessage("compressed summary");
         }
 
         @Override
-        public Iterator<AssistantMessageChunk> stream(Object messages,
-                                                      Object tools,
-                                                      Float temperature,
-                                                      Float topP,
-                                                      String model,
-                                                      Integer maxTokens,
-                                                      String stop,
-                                                      BaseOutputParser outputParser,
-                                                      Float timeout,
-                                                      Map<String, Object> kwargs) {
+        public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+                String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             return List.<AssistantMessageChunk>of().iterator();
         }
 
         @Override
-        public ImageGenerationResponse generateImage(List<UserMessage> messages,
-                                                     String model,
-                                                     String size,
-                                                     String negativePrompt,
-                                                     int n,
-                                                     boolean promptExtend,
-                                                     boolean watermark,
-                                                     int seed,
-                                                     Map<String, Object> kwargs) {
+        public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                Map<String, Object> kwargs) {
             throw new UnsupportedOperationException("not used");
         }
 
         @Override
-        public AudioGenerationResponse generateSpeech(List<UserMessage> messages,
-                                                      String model,
-                                                      String voice,
-                                                      String languageType,
-                                                      Map<String, Object> kwargs) {
+        public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+                String languageType, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException("not used");
         }
 
         @Override
-        public VideoGenerationResponse generateVideo(List<UserMessage> messages,
-                                                     String imgUrl,
-                                                     String audioUrl,
-                                                     String model,
-                                                     String size,
-                                                     String resolution,
-                                                     int duration,
-                                                     boolean promptExtend,
-                                                     boolean watermark,
-                                                     String negativePrompt,
-                                                     Integer seed,
-                                                     Map<String, Object> kwargs) {
+        public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException("not used");
         }
     }

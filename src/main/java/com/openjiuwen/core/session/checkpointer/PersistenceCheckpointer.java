@@ -15,7 +15,6 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.NodeSession;
-import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.CommitStateLike;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 import com.openjiuwen.spi.store.BaseKVStore;
@@ -32,16 +31,20 @@ import java.util.Optional;
  * <p>
  * This checkpointer delegates to {@link PersistenceAgentStorage}, {@link PersistenceWorkflowStorage},
  * and {@link PersistenceGraphStore} for saving/recovering agent, workflow, and graph state respectively.
+ * 
+ * @since 0.1.7
  */
 public class PersistenceCheckpointer extends Checkpointer {
-
     private final BaseKVStore kvStore;
     private final PersistenceAgentStorage agentStorage;
     private final PersistenceWorkflowStorage workflowStorage;
     private final PersistenceGraphStore graphStoreField;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PersistenceCheckpointer.
+     * 
+     * @param kvStore kvStore
+     * @since 0.1.7
      */
     public PersistenceCheckpointer(BaseKVStore kvStore) {
         this.kvStore = kvStore;
@@ -50,10 +53,14 @@ public class PersistenceCheckpointer extends Checkpointer {
         this.graphStoreField = new PersistenceGraphStore(kvStore);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * preAgentExecute.
+     * 
+     * @param session session
+     * @param inputs inputs
+     * @since 0.1.7
      */
+    @Override
     public void preAgentExecute(BaseSession session, Object inputs) {
         String sessionId = session.sessionId();
         Loggers.SESSION.info("Agent checkpoint restore initiated, sessionId={}", sessionId);
@@ -64,36 +71,46 @@ public class PersistenceCheckpointer extends Checkpointer {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * interruptAgentExecute.
+     * 
+     * @param session session
+     * @since 0.1.7
      */
+    @Override
     public void interruptAgentExecute(BaseSession session) {
         String sessionId = session.sessionId();
         Loggers.SESSION.info("Agent checkpoint save on interrupt, sessionId={}", sessionId);
         agentStorage.save(session);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * postAgentExecute.
+     * 
+     * @param session session
+     * @since 0.1.7
      */
+    @Override
     public void postAgentExecute(BaseSession session) {
         String sessionId = session.sessionId();
         Loggers.SESSION.info("Agent checkpoint save on completion, sessionId={}", sessionId);
         agentStorage.save(session);
     }
 
+    /**
+     * preWorkflowExecute.
+     * 
+     * @param session session
+     * @param inputs inputs
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void preWorkflowExecute(BaseSession session, InteractiveInput inputs) {
         String workflowId = getWorkflowId(session);
         String sessionId = session.sessionId();
-        Loggers.SESSION.info("Workflow checkpoint restore initiated, sessionId={}, workflowId={}",
-                sessionId, workflowId);
+        Loggers.SESSION.info("Workflow checkpoint restore initiated, sessionId={}, workflowId={}", sessionId,
+                workflowId);
 
         if (inputs != null) {
             workflowStorage.recover(session, inputs);
@@ -105,31 +122,35 @@ public class PersistenceCheckpointer extends Checkpointer {
                     ? session.config().getEnv(SessionConstants.FORCE_DEL_WORKFLOW_STATE_KEY, false)
                     : false;
             if (Boolean.TRUE.equals(forceDelete)) {
-                Loggers.SESSION.info("Force clearing workflow checkpoints, sessionId={}, workflowId={}",
-                        sessionId, workflowId);
+                Loggers.SESSION.info("Force clearing workflow checkpoints, sessionId={}, workflowId={}", sessionId,
+                        workflowId);
                 graphStoreField.delete(sessionId, workflowId);
                 workflowStorage.clear(workflowId, sessionId);
             } else {
-                throw ErrorHelper.buildError(StatusCode.CHECKPOINTER_PRE_WORKFLOW_EXECUTION_ERROR,
-                        "session_id", sessionId,
-                        "workflow", workflowId,
-                        "reason", "workflow state exists but non-interactive input and cleanup is disabled");
+                throw ErrorHelper.buildError(StatusCode.CHECKPOINTER_PRE_WORKFLOW_EXECUTION_ERROR, "session_id",
+                        sessionId, "workflow", workflowId, "reason",
+                        "workflow state exists but non-interactive input and cleanup is disabled");
             }
         }
     }
 
+    /**
+     * postWorkflowExecute.
+     * 
+     * @param session session
+     * @param result result
+     * @param exception exception
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void postWorkflowExecute(BaseSession session, Object result, Exception exception) {
         String workflowId = getWorkflowId(session);
         String sessionId = session.sessionId();
 
         if (exception != null) {
-            Loggers.SESSION.info("Workflow checkpoint save on exception, sessionId={}, workflowId={}",
-                    sessionId, workflowId);
+            Loggers.SESSION.info("Workflow checkpoint save on exception, sessionId={}, workflowId={}", sessionId,
+                    workflowId);
             workflowStorage.save(session);
             if (exception instanceof RuntimeException runtimeException) {
                 throw runtimeException;
@@ -138,23 +159,27 @@ public class PersistenceCheckpointer extends Checkpointer {
         }
 
         if (result instanceof Map<?, ?> resultMap && resultMap.containsKey(PregelConstants.TASK_STATUS_INTERRUPT)) {
-            Loggers.SESSION.info("Workflow checkpoint save on interrupt, sessionId={}, workflowId={}",
-                    sessionId, workflowId);
+            Loggers.SESSION.info("Workflow checkpoint save on interrupt, sessionId={}, workflowId={}", sessionId,
+                    workflowId);
             workflowStorage.save(session);
             return;
         }
 
         // Normal completion — clear checkpoints
-        Loggers.SESSION.info("Workflow checkpoint cleared on completion, sessionId={}, workflowId={}",
-                sessionId, workflowId);
+        Loggers.SESSION.info("Workflow checkpoint cleared on completion, sessionId={}, workflowId={}", sessionId,
+                workflowId);
         graphStoreField.delete(sessionId, workflowId);
         workflowStorage.clear(workflowId, sessionId);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * sessionExists.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean sessionExists(String sessionId) {
         if (kvStore == null) {
             return false;
@@ -164,10 +189,13 @@ public class PersistenceCheckpointer extends Checkpointer {
         return keys != null && !keys.isEmpty();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * release.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
+    @Override
     public void release(String sessionId) {
         if (kvStore == null) {
             Loggers.SESSION.warning("Cannot release resources: KV store is null, sessionId={}", sessionId);
@@ -181,9 +209,10 @@ public class PersistenceCheckpointer extends Checkpointer {
 
     /**
      * Release resources for a specific agent under a session.
-     *
+     * 
      * @param sessionId the session ID
-     * @param agentId   the agent ID
+     * @param agentId the agent ID
+     * @since 0.1.7
      */
     public void release(String sessionId, String agentId) {
         if (kvStore == null) {
@@ -197,10 +226,13 @@ public class PersistenceCheckpointer extends Checkpointer {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * graphStore.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Store graphStore() {
         return graphStoreField;
     }
@@ -219,19 +251,21 @@ public class PersistenceCheckpointer extends Checkpointer {
             this.kvStore = kvStore;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * save.
+         * 
+         * @param session session
+         * @since 0.1.7
          */
+        @Override
         public void save(BaseSession session) {
             Map<String, Object> state = session.state().getState();
             String sessionId = session.sessionId();
             String agentId = getAgentId(session);
 
-            String dumpTypeKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
+            String dumpTypeKey =
+                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
+            String blobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
 
             KVStorePipeline pipeline = kvStore.pipeline();
             pipeline.set(dumpTypeKey, "java_serialized");
@@ -241,19 +275,22 @@ public class PersistenceCheckpointer extends Checkpointer {
             Loggers.SESSION.debug("Agent state saved, sessionId={}, agentId={}", sessionId, agentId);
         }
 
+        /**
+         * recover.
+         * 
+         * @param session session
+         * @param inputs inputs
+         * @since 0.1.7
+         */
         @Override
         @SuppressWarnings("unchecked")
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public void recover(BaseSession session, InteractiveInput inputs) {
             String sessionId = session.sessionId();
             String agentId = getAgentId(session);
 
-            String dumpTypeKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
+            String dumpTypeKey =
+                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
+            String blobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
 
             KVStorePipeline pipeline = kvStore.pipeline();
             pipeline.get(dumpTypeKey);
@@ -272,44 +309,59 @@ public class PersistenceCheckpointer extends Checkpointer {
             }
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * clear.
+         * 
+         * @param id id
+         * @since 0.1.7
          */
+        @Override
         public void clear(String id) {
             // id is agentId here — needs sessionId too; use clear(agentId, sessionId)
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * clear.
+         * 
+         * @param agentId agentId
+         * @param sessionId sessionId
+         * @since 0.1.7
          */
         public void clear(String agentId, String sessionId) {
-            String dumpTypeKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
+            String dumpTypeKey =
+                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
+            String blobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
             kvStore.delete(dumpTypeKey);
             kvStore.delete(blobKey);
-            Loggers.SESSION.debug("Agent checkpoint cleared, sessionId={}, agentId={}",
-                    sessionId, agentId);
+            Loggers.SESSION.debug("Agent checkpoint cleared, sessionId={}, agentId={}", sessionId, agentId);
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * isExists.
+         * 
+         * @param session session
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public boolean isExists(BaseSession session) {
             String sessionId = session.sessionId();
             String agentId = getAgentId(session);
 
-            String dumpTypeKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
+            String dumpTypeKey =
+                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
+            String blobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
 
             return kvStore.isExists(dumpTypeKey) && kvStore.isExists(blobKey);
         }
 
+        /**
+         * getAgentId.
+         * 
+         * @param session session
+         * @return the result
+         * @since 0.1.7
+         */
         private static String getAgentId(BaseSession session) {
             try {
                 return (String) session.getClass().getMethod("agentId").invoke(session);
@@ -335,10 +387,13 @@ public class PersistenceCheckpointer extends Checkpointer {
             this.kvStore = kvStore;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * save.
+         * 
+         * @param session session
+         * @since 0.1.7
          */
+        @Override
         public void save(BaseSession session) {
             Map<String, Object> state = session.state().getState();
             String workflowId = getWorkflowId(session);
@@ -347,10 +402,9 @@ public class PersistenceCheckpointer extends Checkpointer {
             KVStorePipeline pipeline = kvStore.pipeline();
 
             // Save main state
-            String dumpTypeKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
+            String dumpTypeKey =
+                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
+            String blobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
             pipeline.set(dumpTypeKey, "java_serialized");
             pipeline.set(blobKey, state);
 
@@ -358,10 +412,10 @@ public class PersistenceCheckpointer extends Checkpointer {
             if (session.state() instanceof CommitStateLike commitState) {
                 Map<String, Object> updates = commitState.getUpdates();
                 if (updates != null) {
-                    String updatesDumpTypeKey = buildKeyWithNamespace(
-                            sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
-                    String updatesBlobKey = buildKeyWithNamespace(
-                            sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
+                    String updatesDumpTypeKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId,
+                            UPDATE_BLOBS_DUMP_TYPE);
+                    String updatesBlobKey =
+                        buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
                     pipeline.set(updatesDumpTypeKey, "java_serialized");
                     pipeline.set(updatesBlobKey, updates);
                 }
@@ -371,24 +425,27 @@ public class PersistenceCheckpointer extends Checkpointer {
             Loggers.SESSION.debug("Workflow state saved, sessionId={}, workflowId={}", sessionId, workflowId);
         }
 
+        /**
+         * recover.
+         * 
+         * @param session session
+         * @param inputs inputs
+         * @since 0.1.7
+         */
         @Override
         @SuppressWarnings("unchecked")
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public void recover(BaseSession session, InteractiveInput inputs) {
             String workflowId = getWorkflowId(session);
             String sessionId = session.sessionId();
 
             KVStorePipeline pipeline = kvStore.pipeline();
-            String stateDumpTypeKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
-            String stateBlobKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
-            String updatesDumpTypeKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
-            String updatesBlobKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
+            String stateDumpTypeKey =
+                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
+            String stateBlobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
+            String updatesDumpTypeKey =
+                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
+            String updatesBlobKey =
+                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
 
             pipeline.get(stateDumpTypeKey);
             pipeline.get(stateBlobKey);
@@ -397,8 +454,7 @@ public class PersistenceCheckpointer extends Checkpointer {
             List<Object> results = pipeline.execute();
 
             if (results == null || results.size() != KEY_NUMS) {
-                Loggers.SESSION.warning(
-                        "Unexpected key count during workflow recovery, sessionId={}, workflowId={}",
+                Loggers.SESSION.warning("Unexpected key count during workflow recovery, sessionId={}, workflowId={}",
                         sessionId, workflowId);
                 return;
             }
@@ -421,54 +477,66 @@ public class PersistenceCheckpointer extends Checkpointer {
             }
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * clear.
+         * 
+         * @param id id
+         * @since 0.1.7
          */
+        @Override
         public void clear(String id) {
             // id is workflowId here — needs sessionId too
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * clear.
+         * 
+         * @param workflowId workflowId
+         * @param sessionId sessionId
+         * @since 0.1.7
          */
         public void clear(String workflowId, String sessionId) {
-            String stateDumpTypeKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
-            String stateBlobKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
-            String updatesDumpTypeKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
-            String updatesBlobKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
+            String stateDumpTypeKey =
+                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
+            String stateBlobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
+            String updatesDumpTypeKey =
+                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
+            String updatesBlobKey =
+                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
 
             kvStore.delete(stateDumpTypeKey);
             kvStore.delete(stateBlobKey);
             kvStore.delete(updatesDumpTypeKey);
             kvStore.delete(updatesBlobKey);
 
-            Loggers.SESSION.debug("Workflow checkpoint cleared, sessionId={}, workflowId={}",
-                    sessionId, workflowId);
+            Loggers.SESSION.debug("Workflow checkpoint cleared, sessionId={}, workflowId={}", sessionId, workflowId);
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * isExists.
+         * 
+         * @param session session
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public boolean isExists(BaseSession session) {
             String workflowId = getWorkflowId(session);
             String sessionId = session.sessionId();
 
-            String stateDumpTypeKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
-            String stateBlobKey = buildKeyWithNamespace(
-                    sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
+            String stateDumpTypeKey =
+                buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
+            String stateBlobKey = buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
 
             return kvStore.isExists(stateDumpTypeKey) && kvStore.isExists(stateBlobKey);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * isExists.
+         * 
+         * @param workflowId workflowId
+         * @return the result
+         * @since 0.1.7
          */
         public boolean isExists(String workflowId) {
             // Without session context, can't fully determine — check by prefix pattern
@@ -476,11 +544,17 @@ public class PersistenceCheckpointer extends Checkpointer {
         }
 
         @SuppressWarnings("unchecked")
+        /**
+         * processInteractiveInputs.
+         * 
+         * @param session session
+         * @param inputs inputs
+         * @since 0.1.7
+         */
         private void processInteractiveInputs(BaseSession session, InteractiveInput inputs) {
             if (inputs.getRawInputs() != null) {
                 if (session.state() instanceof WorkflowCommitState wcs) {
-                    wcs.updateAndCommitWorkflowState(
-                            Map.of(Constant.INTERACTIVE_INPUT, inputs.getRawInputs()));
+                    wcs.updateAndCommitWorkflowState(Map.of(Constant.INTERACTIVE_INPUT, inputs.getRawInputs()));
                 }
                 return;
             }
@@ -522,10 +596,15 @@ public class PersistenceCheckpointer extends Checkpointer {
             this.kvStore = kvStore;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * get.
+         * 
+         * @param sessionId sessionId
+         * @param ns ns
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public Optional<GraphStoreState> get(String sessionId, String ns) {
             String keyType = buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
             String keyValue = buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
@@ -551,10 +630,15 @@ public class PersistenceCheckpointer extends Checkpointer {
             return Optional.empty();
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * save.
+         * 
+         * @param sessionId sessionId
+         * @param ns ns
+         * @param state state
+         * @since 0.1.7
          */
+        @Override
         public void save(String sessionId, String ns, GraphStoreState state) {
             String keyType = buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
             String keyValue = buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
@@ -567,10 +651,14 @@ public class PersistenceCheckpointer extends Checkpointer {
             Loggers.SESSION.debug("Graph state saved, sessionId={}, ns={}", sessionId, ns);
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * delete.
+         * 
+         * @param sessionId sessionId
+         * @param ns ns
+         * @since 0.1.7
          */
+        @Override
         public void delete(String sessionId, String ns) {
             if (ns == null || ns.isEmpty()) {
                 String prefix = buildKey(sessionId, WORKFLOW_NAMESPACE_GRAPH);

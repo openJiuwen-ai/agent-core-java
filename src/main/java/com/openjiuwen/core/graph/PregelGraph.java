@@ -8,10 +8,8 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.graph.pregel.Pregel;
 import com.openjiuwen.core.graph.pregel.PregelBuilder;
-import com.openjiuwen.core.graph.pregel.PregelConfig;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.pregel.PregelLoop;
 import com.openjiuwen.core.graph.store.GraphStore;
@@ -21,7 +19,6 @@ import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -35,39 +32,74 @@ import java.util.function.Function;
  * PregelGraph is the main graph builder for constructing a Pregel-based workflow graph.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.graph.PregelGraph}.
+ * 
+ * @since 0.1.7
  */
 public class PregelGraph extends Graph {
-
     private static final LoggerProtocol logger = Loggers.GRAPH;
 
     private Pregel pregel;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<Object[]> edges = new ArrayList<>(); // Each: Object[]{source, target}
+
+    /**
+     * HashSet<>.
+     * 
+     * @since 0.1.7
+     */
     private final Set<String> waits = new HashSet<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Vertex> nodes = new LinkedHashMap<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Map<String, Branch>> branches = new LinkedHashMap<>();
     private Checkpointer checkpointer;
     private BaseSession session;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * PregelGraph.
+     * 
+     * @since 0.1.7
      */
     public PregelGraph() {
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * startNode.
+     * 
+     * @param nodeId nodeId
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Graph startNode(String nodeId) {
         validateNodeId(nodeId);
         addEdge(List.of(PregelConstants.START), nodeId);
         return this;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * endNode.
+     * 
+     * @param nodeId nodeId
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Graph endNode(String nodeId) {
         validateNodeId(nodeId);
         Vertex vertex = nodes.get(nodeId);
@@ -78,19 +110,25 @@ public class PregelGraph extends Graph {
         return this;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addNode.
+     * 
+     * @param nodeId nodeId
+     * @param node node
+     * @param waitForAll waitForAll
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Graph addNode(String nodeId, Executable<?, ?> node, boolean waitForAll) {
         validateNodeId(nodeId);
         if (node == null) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_NODE_INVALID,
-                    "node_id", nodeId, "reason", "node is None");
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_NODE_INVALID, "node_id", nodeId, "reason",
+                    "node is None");
         }
         if (nodes.containsKey(nodeId)) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_NODE_ID_INVALID,
-                    "node_id", nodeId, "reason", "already exist, can not add again");
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_NODE_ID_INVALID, "node_id", nodeId, "reason",
+                    "already exist, can not add again");
         }
         Vertex vertexNode = new Vertex(nodeId, node);
         nodes.put(nodeId, vertexNode);
@@ -100,10 +138,13 @@ public class PregelGraph extends Graph {
         return this;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getNodes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Executable<?, ?>> getNodes() {
         Map<String, Executable<?, ?>> result = new LinkedHashMap<>();
         for (Map.Entry<String, Vertex> entry : nodes.entrySet()) {
@@ -114,72 +155,94 @@ public class PregelGraph extends Graph {
 
     /**
      * Get the internal vertex wrapper for a node.
+     * 
+     * @param nodeId nodeId
+     * @return the result
+     * @since 0.1.7
      */
     public Vertex getVertex(String nodeId) {
         return nodes.get(nodeId);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addEdge.
+     * 
+     * @param sourceNodeId sourceNodeId
+     * @param targetNodeId targetNodeId
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Graph addEdge(Object sourceNodeId, String targetNodeId) {
         if (sourceNodeId == null || (sourceNodeId instanceof String && ((String) sourceNodeId).isEmpty())) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_EDGE_INVALID,
-                    "source_id", String.valueOf(sourceNodeId), "target_node_id", targetNodeId,
-                    "reason", "source_node_id is None or empty");
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_EDGE_INVALID, "source_id",
+                    String.valueOf(sourceNodeId), "target_node_id", targetNodeId, "reason",
+                    "source_node_id is None or empty");
         }
         if (sourceNodeId instanceof List) {
             for (Object item : (List<?>) sourceNodeId) {
                 if (item == null || (item instanceof String && ((String) item).isEmpty())) {
-                    throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_EDGE_INVALID,
-                            "source_id", String.valueOf(sourceNodeId), "target_node_id", targetNodeId,
-                            "reason", "source_node_id list has None or empty");
+                    throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_EDGE_INVALID, "source_id",
+                            String.valueOf(sourceNodeId), "target_node_id", targetNodeId, "reason",
+                            "source_node_id list has None or empty");
                 }
             }
         }
         if (targetNodeId == null || targetNodeId.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_EDGE_INVALID,
-                    "source_id", String.valueOf(sourceNodeId), "target_node_id", targetNodeId,
-                    "reason", "target_node_id is None or empty");
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_EDGE_INVALID, "source_id",
+                    String.valueOf(sourceNodeId), "target_node_id", targetNodeId, "reason",
+                    "target_node_id is None or empty");
         }
         edges.add(new Object[]{sourceNodeId, targetNodeId});
         return this;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addConditionalEdges.
+     * 
+     * @param sourceNodeId sourceNodeId
+     * @param router router
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Graph addConditionalEdges(String sourceNodeId, Object router) {
         if (sourceNodeId == null || sourceNodeId.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_CONDITION_EDGE_INVALID,
-                    "source_id", sourceNodeId, "reason", "source_node_id is None or empty");
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_CONDITION_EDGE_INVALID, "source_id", sourceNodeId,
+                    "reason", "source_node_id is None or empty");
         }
         if (router == null) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_CONDITION_EDGE_INVALID,
-                    "source_id", sourceNodeId, "reason", "router is None");
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_CONDITION_EDGE_INVALID, "source_id", sourceNodeId,
+                    "reason", "router is None");
         }
         String name = getCallableName(router);
-        branches.computeIfAbsent(sourceNodeId, k -> new LinkedHashMap<>())
-                .put(name, new Branch(router));
+        branches.computeIfAbsent(sourceNodeId, k -> new LinkedHashMap<>()).put(name, new Branch(router));
         return this;
     }
 
+    /**
+     * compile.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public ExecutableGraph<?, ?> compile(BaseSession session) {
         return compile(session, null);
     }
 
+    /**
+     * compile.
+     * 
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public ExecutableGraph<?, ?> compile(BaseSession session, Map<String, Object> kwargs) {
         // Initialize all vertices
         for (Map.Entry<String, Vertex> entry : nodes.entrySet()) {
@@ -216,6 +279,11 @@ public class PregelGraph extends Graph {
 
     /**
      * Build the Pregel engine from the graph definition.
+     * 
+     * @param graphStore graphStore
+     * @param stepCallback stepCallback
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
     private Pregel doCompile(Store graphStore, Consumer<PregelLoop> stepCallback) {
@@ -289,6 +357,8 @@ public class PregelGraph extends Graph {
 
     /**
      * Reset all vertices for reuse.
+     * 
+     * @since 0.1.7
      */
     public void reset() {
         for (Vertex node : nodes.values()) {
@@ -298,13 +368,26 @@ public class PregelGraph extends Graph {
 
     // ---- Helpers ----
 
+    /**
+     * validateNodeId.
+     * 
+     * @param nodeId nodeId
+     * @since 0.1.7
+     */
     private void validateNodeId(String nodeId) {
         if (nodeId == null || nodeId.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_NODE_ID_INVALID,
-                    "node_id", nodeId, "reason", "is None or empty");
+            throw ErrorHelper.buildError(StatusCode.PREGEL_GRAPH_NODE_ID_INVALID, "node_id", nodeId, "reason",
+                    "is None or empty");
         }
     }
 
+    /**
+     * getCallableName.
+     * 
+     * @param func func
+     * @return the result
+     * @since 0.1.7
+     */
     private static String getCallableName(Object func) {
         if (func instanceof Function) {
             return func.getClass().getSimpleName();
@@ -314,21 +397,29 @@ public class PregelGraph extends Graph {
 
     /**
      * A conditional branch definition.
+     * 
+     * @since 0.1.7
      */
     public static class Branch {
         private final Object condition;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * Branch.
+         * 
+         * @param condition condition
+         * @since 0.1.7
          */
         public Branch(Object condition) {
             this.condition = condition;
         }
 
-        @SuppressWarnings("unchecked")
         /**
-         * Auto-generated for codecheck compliance.
+         * getCondition.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @SuppressWarnings("unchecked")
         public Function<Object, Object> getCondition() {
             if (condition instanceof Function) {
                 return (Function<Object, Object>) condition;

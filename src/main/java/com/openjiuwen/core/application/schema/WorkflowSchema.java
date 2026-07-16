@@ -20,13 +20,14 @@ import java.util.Map;
  * Schema describing a workflow reference in agent configuration.
  * <p>
  * Mirrors Python's {@code WorkflowSchema} used in application agent configs.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class WorkflowSchema {
-
     @Builder.Default
     private String id = "";
 
@@ -42,20 +43,31 @@ public class WorkflowSchema {
     @Builder.Default
     @JsonProperty("inputs")
     @JsonAlias("inputParams")
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> inputParams = new LinkedHashMap<>();
 
-    @JsonIgnore
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @JsonIgnore
     public Map<String, Object> getInputs() {
         return inputParams;
     }
 
-    @JsonIgnore
     /**
-     * Auto-generated for codecheck compliance.
+     * setInputs.
+     * 
+     * @param inputs inputs
+     * @since 0.1.7
      */
+    @JsonIgnore
     public void setInputs(Map<String, Object> inputs) {
         this.inputParams = inputs;
     }

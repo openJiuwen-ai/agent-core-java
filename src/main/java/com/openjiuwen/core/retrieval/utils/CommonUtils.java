@@ -12,14 +12,25 @@ import java.util.function.Function;
 
 /**
  * Common retrieval utilities.
+ * 
+ * @since 0.1.7
  */
 public final class CommonUtils {
-
+    /**
+     * CommonUtils.
+     * 
+     * @since 0.1.7
+     */
     private CommonUtils() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deduplicate.
+     * 
+     * @param data data
+     * @param keyFn keyFn
+     * @return the result
+     * @since 0.1.7
      */
     public static <T, K> List<T> deduplicate(Iterable<T> data, Function<T, K> keyFn) {
         Set<K> seen = new HashSet<>();

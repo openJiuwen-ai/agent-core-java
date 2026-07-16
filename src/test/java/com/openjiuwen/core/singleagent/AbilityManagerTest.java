@@ -1,23 +1,23 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.workflow.WorkflowCard;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Unit tests for {@link AbilityManager}.
  */
 class AbilityManagerTest {
-
     private AbilityManager manager;
 
     @BeforeEach
@@ -29,11 +29,8 @@ class AbilityManagerTest {
 
     @Test
     void testAddAndGetToolCard() {
-        ToolCard tc = ToolCard.builder()
-                .name("add")
-                .description("addition tool")
-                .inputParams(Map.of("type", "object"))
-                .build();
+        ToolCard tc =
+            ToolCard.builder().name("add").description("addition tool").inputParams(Map.of("type", "object")).build();
 
         manager.add(tc);
 
@@ -44,10 +41,7 @@ class AbilityManagerTest {
 
     @Test
     void testAddAndGetAgentCard() {
-        AgentCard ac = AgentCard.builder()
-                .name("sub-agent")
-                .description("a sub agent")
-                .build();
+        AgentCard ac = AgentCard.builder().name("sub-agent").description("a sub agent").build();
 
         manager.add(ac);
 
@@ -122,11 +116,8 @@ class AbilityManagerTest {
 
     @Test
     void testListToolInfo() {
-        ToolCard tc = ToolCard.builder()
-                .name("calc")
-                .description("calculator")
-                .inputParams(Map.of("type", "object", "properties", Map.of()))
-                .build();
+        ToolCard tc = ToolCard.builder().name("calc").description("calculator")
+                .inputParams(Map.of("type", "object", "properties", Map.of())).build();
 
         manager.add(tc);
 
@@ -138,10 +129,7 @@ class AbilityManagerTest {
 
     @Test
     void testListToolInfoAgent() {
-        AgentCard ac = AgentCard.builder()
-                .name("agent1")
-                .description("test agent")
-                .build();
+        AgentCard ac = AgentCard.builder().name("agent1").description("test agent").build();
 
         manager.add(ac);
 

@@ -4,9 +4,7 @@
 
 package com.openjiuwen.core.session.tracer;
 
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.session.callback.BaseHandler;
-import com.openjiuwen.core.session.callback.TriggerEvent;
 import com.openjiuwen.core.session.stream.StreamWriter;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
 import com.openjiuwen.core.session.stream.TraceSchema;
@@ -20,22 +18,33 @@ import java.util.Map;
  * Base trace handler providing common span updates and stream writing.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.tracer.handler.TraceBaseHandler}.
+ * 
+ * @since 0.1.7
  */
 public abstract class TraceBaseHandler extends BaseHandler {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * streamWriter.
+     * 
+     * @since 0.1.7
      */
     protected final StreamWriter<TraceSchema> streamWriter;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * spanManager.
+     * 
+     * @since 0.1.7
      */
     protected final SpanManager spanManager;
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * TraceBaseHandler.
+     * 
+     * @param owner owner
+     * @param streamWriterManager streamWriterManager
+     * @param spanManager spanManager
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     protected TraceBaseHandler(Object owner, StreamWriterManager streamWriterManager, SpanManager spanManager) {
         super(owner);
         this.streamWriter = streamWriterManager != null ? streamWriterManager.getTraceWriter() : null;
@@ -44,6 +53,10 @@ public abstract class TraceBaseHandler extends BaseHandler {
 
     /**
      * Format span data for stream emission.
+     * 
+     * @param span span
+     * @return the result
+     * @since 0.1.7
      */
     protected Map<String, Object> formatData(Span span) {
         Map<String, Object> data = new HashMap<>();
@@ -54,6 +67,9 @@ public abstract class TraceBaseHandler extends BaseHandler {
 
     /**
      * Emit span data to the trace stream writer.
+     * 
+     * @param span span
+     * @since 0.1.7
      */
     protected void emitStreamWriter(Span span) {
         if (streamWriter == null) {
@@ -64,6 +80,9 @@ public abstract class TraceBaseHandler extends BaseHandler {
 
     /**
      * Send span data to stream.
+     * 
+     * @param span span
+     * @since 0.1.7
      */
     protected void sendData(Span span) {
         emitStreamWriter(span != null ? span.snapshot() : null);
@@ -71,6 +90,11 @@ public abstract class TraceBaseHandler extends BaseHandler {
 
     /**
      * Calculate elapsed time string.
+     * 
+     * @param startTime startTime
+     * @param endTime endTime
+     * @return the result
+     * @since 0.1.7
      */
     protected String getElapsedTime(LocalDateTime startTime, LocalDateTime endTime) {
         if (startTime == null || endTime == null) {
@@ -86,6 +110,10 @@ public abstract class TraceBaseHandler extends BaseHandler {
 
     /**
      * Determine node status from span state.
+     * 
+     * @param span span
+     * @return the result
+     * @since 0.1.7
      */
     protected String getNodeStatus(Span span) {
         if (span.getError() != null) {

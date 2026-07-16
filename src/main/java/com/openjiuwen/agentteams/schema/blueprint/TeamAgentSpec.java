@@ -9,6 +9,7 @@ import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.core.memory.team.TeamMemoryConfig;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,22 +20,32 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * Public class TeamAgentSpec used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class TeamAgentSpec used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class TeamAgentSpec {
     private String name;
     @Builder.Default
     private String description = "";
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<TeamMemberSpec> members = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<ModelPoolEntry> modelPool = new ArrayList<>();
     @Builder.Default
     private String modelPoolStrategy = "round_robin";
@@ -62,11 +73,17 @@ public class TeamAgentSpec {
     private TeamMemoryConfig memory;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamAgentSpecBuilder.
+     * 
+     * @since 0.1.7
      */
     public static class TeamAgentSpecBuilder {
         /**
-         * Auto-generated for codecheck compliance.
+         * humanAgentEnabled.
+         * 
+         * @param value value
+         * @return the result
+         * @since 0.1.7
          */
         public TeamAgentSpecBuilder humanAgentEnabled(boolean value) {
             return this.isHumanAgentEnabled(value);
@@ -74,7 +91,10 @@ public class TeamAgentSpec {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * build.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TeamAgentSpec build() {
         this.members = new ArrayList<>(members);
@@ -87,7 +107,9 @@ public class TeamAgentSpec {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * defaultTransportForSpawnMode.
+     * 
+     * @since 0.1.7
      */
     public void defaultTransportForSpawnMode() {
         if (transport == null && "inprocess".equals(spawnMode)) {
@@ -96,7 +118,9 @@ public class TeamAgentSpec {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validate.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         Set<String> seen = new LinkedHashSet<>();
@@ -116,8 +140,7 @@ public class TeamAgentSpec {
             }
             if (TeamConstants.RESERVED_MEMBER_NAMES.contains(member.getName())) {
                 if (member.getRole() == TeamRole.HUMAN_AGENT
-                        && TeamConstants.HUMAN_AGENT_MEMBER_NAME.equals(member.getName())
-                        && isHumanAgentEnabled) {
+                        && TeamConstants.HUMAN_AGENT_MEMBER_NAME.equals(member.getName()) && isHumanAgentEnabled) {
                     continue;
                 }
                 throw new IllegalArgumentException("Reserved team member name is not allowed: " + member.getName());
@@ -129,32 +152,31 @@ public class TeamAgentSpec {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validateHittConsistency.
+     * 
+     * @since 0.1.7
      */
     public void validateHittConsistency() {
         if (enableHitt) {
             return;
         }
-        boolean hasHumanAgent = members.stream()
-                .anyMatch(member -> member.getRole() == TeamRole.HUMAN_AGENT);
+        boolean hasHumanAgent = members.stream().anyMatch(member -> member.getRole() == TeamRole.HUMAN_AGENT);
         if (hasHumanAgent) {
-            throw new IllegalArgumentException(
-                    "predefined_members contains HUMAN_AGENT role(s) but enableHitt=false; "
+            throw new IllegalArgumentException("predefined_members contains HUMAN_AGENT role(s) but enableHitt=false; "
                     + "set enableHitt=true or remove the human member(s)");
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ensureLeader.
+     * 
+     * @since 0.1.7
      */
     public void ensureLeader() {
         boolean hasLeader = members.stream().anyMatch(member -> member.getRole() == TeamRole.LEADER);
         if (!hasLeader) {
-            members.add(0, TeamMemberSpec.builder()
-                    .name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
-                    .role(TeamRole.LEADER)
-                    .description("Default team isLeader")
-                    .build());
+            members.add(0, TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER)
+                    .description("Default team isLeader").build());
         }
     }
 }

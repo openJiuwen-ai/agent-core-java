@@ -5,11 +5,14 @@
 package com.openjiuwen.agentevolving.agent_rl.config.offlineconfig;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.offlineconfig.AgentRuntimeConfig.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -23,15 +26,32 @@ public class AgentRuntimeConfig {
     private double frequencyPenalty = 0.0;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSystem_prompt.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public Object getSystem_prompt() { return getSystemPrompt(); }
+    public Object getSystem_prompt() {
+        return getSystemPrompt();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getTop_p.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public double getTop_p() { return getTopP(); }
+    public double getTop_p() {
+        return getTopP();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getMax_new_tokens.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public int getMax_new_tokens() { return getMaxNewTokens(); }
+    public int getMax_new_tokens() {
+        return getMaxNewTokens();
+    }
 }

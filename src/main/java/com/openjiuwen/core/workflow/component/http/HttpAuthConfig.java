@@ -12,8 +12,8 @@ import lombok.NoArgsConstructor;
  * HTTP authentication configuration.
  * <p>
  * Mirrors Python's {@code HttpAuthConfig}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor

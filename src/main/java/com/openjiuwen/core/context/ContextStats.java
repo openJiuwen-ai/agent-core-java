@@ -13,13 +13,14 @@ import lombok.NoArgsConstructor;
  * Token-usage snapshot for any context container ({@link ModelContext} or {@link ContextWindow}).
  * <p>
  * Mirrors Python's {@code ContextStats} from {@code context_engine/base.py}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ContextStats {
-
     @Builder.Default
     private int totalMessages = 0;
 

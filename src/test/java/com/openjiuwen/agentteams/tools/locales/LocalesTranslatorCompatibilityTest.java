@@ -1,11 +1,11 @@
-package com.openjiuwen.agentteams.tools.locales;
 
-import org.junit.jupiter.api.Test;
+package com.openjiuwen.agentteams.tools.locales;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class LocalesTranslatorCompatibilityTest {
+import org.junit.jupiter.api.Test;
 
+class LocalesTranslatorCompatibilityTest {
     @Test
     void shouldCreateChineseTranslator() {
         LocalesTranslator t = LocalesTranslator.makeTranslator("cn");

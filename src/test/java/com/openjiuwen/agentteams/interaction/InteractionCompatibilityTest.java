@@ -1,4 +1,8 @@
+
 package com.openjiuwen.agentteams.interaction;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.agentteams.TeamConstants;
 import com.openjiuwen.agentteams.messager.Messager;
@@ -7,16 +11,13 @@ import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.agentteams.tools.TeamMessage;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class InteractionCompatibilityTest {
-
     @Test
     void routerShouldParseMentionAndReservedNamesLikePython() {
         assertThat(Router.parseMention("@dev-1 please start task 123"))
@@ -42,26 +43,20 @@ class InteractionCompatibilityTest {
 
         assertThat(directId).isNotBlank();
         assertThat(broadcastId).isNotBlank();
-        assertThat(backend.getMessageManager().getMessages("alice", false))
-                .singleElement()
-                .extracting(TeamMessage::getFromMemberName)
-                .isEqualTo(TeamConstants.USER_PSEUDO_MEMBER_NAME);
-        assertThat(backend.getMessageManager().getBroadcastMessages(false))
-                .anySatisfy(message -> assertThat(message.getFromMemberName())
-                        .isEqualTo(TeamConstants.USER_PSEUDO_MEMBER_NAME));
+        assertThat(backend.getMessageManager().getMessages("alice", false)).singleElement()
+                .extracting(TeamMessage::getFromMemberName).isEqualTo(TeamConstants.USER_PSEUDO_MEMBER_NAME);
+        assertThat(backend.getMessageManager().getBroadcastMessages(false)).anySatisfy(
+                message -> assertThat(message.getFromMemberName()).isEqualTo(TeamConstants.USER_PSEUDO_MEMBER_NAME));
     }
 
     @Test
     void humanAgentInboxShouldRespectEnabledStateAndSenderSelection() {
         TeamBackend noHitt = backend("no-hitt", false, List.of());
         HumanAgentInbox disabledInbox = new HumanAgentInbox(noHitt, noHitt.getMessageManager());
-        assertThatThrownBy(() -> disabledInbox.send("hi", null, null))
-                .isInstanceOf(HumanAgentNotEnabledError.class);
+        assertThatThrownBy(() -> disabledInbox.send("hi", null, null)).isInstanceOf(HumanAgentNotEnabledError.class);
 
-        TeamBackend backend = backend("multi-hitt", true, List.of(
-                humanMember("human_designer", "Visual designer"),
-                humanMember("human_pm", "Product manager")
-        ));
+        TeamBackend backend = backend("multi-hitt", true,
+                List.of(humanMember("human_designer", "Visual designer"), humanMember("human_pm", "Product manager")));
         HumanAgentInbox inbox = new HumanAgentInbox(backend, backend.getMessageManager());
 
         assertThatThrownBy(() -> inbox.send("spoofing", "team_leader", "ghost"))
@@ -75,17 +70,14 @@ class InteractionCompatibilityTest {
 
     @Test
     void humanAgentInboxShouldDefaultToReservedHumanAgentWhenPresent() {
-        TeamBackend backend = backend("default-human", true, List.of(
-                humanMember(TeamConstants.HUMAN_AGENT_MEMBER_NAME, "Human"),
-                humanMember("human_pm", "PM")
-        ));
+        TeamBackend backend = backend("default-human", true,
+                List.of(humanMember(TeamConstants.HUMAN_AGENT_MEMBER_NAME, "Human"), humanMember("human_pm", "PM")));
         HumanAgentInbox inbox = new HumanAgentInbox(backend, backend.getMessageManager());
 
         String msgId = inbox.send("on it", "team_leader", null).join();
         assertThat(msgId).isNotBlank();
-        assertThat(backend.getMessageManager().getMessages("team_leader", false))
-                .anySatisfy(message -> assertThat(message.getFromMemberName())
-                        .isEqualTo(TeamConstants.HUMAN_AGENT_MEMBER_NAME));
+        assertThat(backend.getMessageManager().getMessages("team_leader", false)).anySatisfy(
+                message -> assertThat(message.getFromMemberName()).isEqualTo(TeamConstants.HUMAN_AGENT_MEMBER_NAME));
     }
 
     @Test
@@ -98,12 +90,8 @@ class InteractionCompatibilityTest {
     }
 
     private static TeamBackend backend(String teamName, boolean hitt, List<TeamMemberSpec> members) {
-        TeamBackend backend = new TeamBackend(
-                teamName,
-                TeamConstants.DEFAULT_LEADER_MEMBER_NAME,
-                true,
-                new NoopMessager()
-        );
+        TeamBackend backend =
+            new TeamBackend(teamName, TeamConstants.DEFAULT_LEADER_MEMBER_NAME, true, new NoopMessager());
         List<TeamMemberSpec> allMembers = new java.util.ArrayList<>(members);
         if (hitt) {
             allMembers.add(0, humanMember(TeamConstants.HUMAN_AGENT_MEMBER_NAME, "Human"));
@@ -113,11 +101,7 @@ class InteractionCompatibilityTest {
     }
 
     private static TeamMemberSpec humanMember(String name, String description) {
-        return TeamMemberSpec.builder()
-                .name(name)
-                .role(TeamRole.HUMAN_AGENT)
-                .description(description)
-                .build();
+        return TeamMemberSpec.builder().name(name).role(TeamRole.HUMAN_AGENT).description(description).build();
     }
 
     private static final class NoopMessager implements Messager {
@@ -137,7 +121,8 @@ class InteractionCompatibilityTest {
         }
 
         @Override
-        public java.util.concurrent.CompletableFuture<Void> subscribe(String topicId, com.openjiuwen.agentteams.messager.MessagerHandler handler) {
+        public java.util.concurrent.CompletableFuture<Void> subscribe(String topicId,
+                com.openjiuwen.agentteams.messager.MessagerHandler handler) {
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
 
@@ -152,7 +137,8 @@ class InteractionCompatibilityTest {
         }
 
         @Override
-        public java.util.concurrent.CompletableFuture<Void> registerDirectMessageHandler(com.openjiuwen.agentteams.messager.MessagerHandler handler) {
+        public java.util.concurrent.CompletableFuture<Void> registerDirectMessageHandler(
+                com.openjiuwen.agentteams.messager.MessagerHandler handler) {
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         }
 

@@ -9,7 +9,12 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 
 import java.math.BigDecimal;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -17,30 +22,44 @@ import java.util.function.Consumer;
  * Manages stream writers for different stream modes.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.stream.manager.StreamWriterManager}.
+ * 
+ * @since 0.1.7
  */
 public class StreamWriterManager {
-
     private static final long DEFAULT_FRAME_TIMEOUT = -1;
 
     private final StreamEmitter streamEmitter;
     private final List<StreamMode> defaultModes;
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<StreamMode, StreamWriter<?>> writers = new ConcurrentHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * StreamWriterManager.
+     * 
+     * @param streamEmitter streamEmitter
+     * @param modes modes
+     * @since 0.1.7
      */
     public StreamWriterManager(StreamEmitter streamEmitter, List<StreamMode> modes) {
         if (streamEmitter == null) {
             throw new IllegalArgumentException("streamEmitter is null");
         }
         this.streamEmitter = streamEmitter;
-        this.defaultModes = modes != null ? modes
-                : Arrays.asList(StreamMode.OUTPUT, StreamMode.TRACE, StreamMode.CUSTOM);
+        this.defaultModes =
+            modes != null ? modes : Arrays.asList(StreamMode.OUTPUT, StreamMode.TRACE, StreamMode.CUSTOM);
         addDefaultWriters();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * StreamWriterManager.
+     * 
+     * @param streamEmitter streamEmitter
+     * @since 0.1.7
      */
     public StreamWriterManager(StreamEmitter streamEmitter) {
         this(streamEmitter, null);
@@ -48,20 +67,32 @@ public class StreamWriterManager {
 
     /**
      * Factory method.
+     * 
+     * @param streamEmitter streamEmitter
+     * @param modes modes
+     * @return the result
+     * @since 0.1.7
      */
     public static StreamWriterManager createManager(StreamEmitter streamEmitter, List<StreamMode> modes) {
         return new StreamWriterManager(streamEmitter, modes);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createManager.
+     * 
+     * @param streamEmitter streamEmitter
+     * @return the result
+     * @since 0.1.7
      */
     public static StreamWriterManager createManager(StreamEmitter streamEmitter) {
         return new StreamWriterManager(streamEmitter);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStreamEmitter.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public StreamEmitter getStreamEmitter() {
         return streamEmitter;
@@ -70,31 +101,29 @@ public class StreamWriterManager {
     /**
      * Iterate over stream output synchronously, invoking the consumer for each item.
      * Blocks until END_FRAME is encountered.
-     *
+     * 
      * @param firstFrameTimeoutMs timeout for the first frame in ms, -1 for no timeout
-     * @param timeoutMs           timeout for subsequent frames in ms, -1 for no timeout
-     * @param needClose           whether to close the queue when done
-     * @param consumer            callback for each stream item
+     * @param timeoutMs timeout for subsequent frames in ms, -1 for no timeout
+     * @param needClose whether to close the queue when done
+     * @param consumer callback for each stream item
+     * @since 0.1.7
      */
-    public void streamOutput(long firstFrameTimeoutMs, long timeoutMs, boolean needClose,
-                             Consumer<Object> consumer) {
+    public void streamOutput(long firstFrameTimeoutMs, long timeoutMs, boolean needClose, Consumer<Object> consumer) {
         boolean isFirstFrame = true;
         while (true) {
             Object data;
             if (isFirstFrame) {
                 data = streamEmitter.getStreamQueue().receive(firstFrameTimeoutMs);
                 if (data == null) {
-                    throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT,
-                            "timeout", formatTimeoutSeconds(firstFrameTimeoutMs),
-                            "reason", "");
+                    throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT, "timeout",
+                            formatTimeoutSeconds(firstFrameTimeoutMs), "reason", "");
                 }
                 isFirstFrame = false;
             } else {
                 data = streamEmitter.getStreamQueue().receive(timeoutMs);
                 if (data == null) {
-                    throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT,
-                            "timeout", formatTimeoutSeconds(timeoutMs),
-                            "reason", "");
+                    throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT, "timeout",
+                            formatTimeoutSeconds(timeoutMs), "reason", "");
                 }
             }
 
@@ -112,6 +141,9 @@ public class StreamWriterManager {
 
     /**
      * Stream output with default timeouts.
+     * 
+     * @param consumer consumer
+     * @since 0.1.7
      */
     public void streamOutput(Consumer<Object> consumer) {
         streamOutput(DEFAULT_FRAME_TIMEOUT, DEFAULT_FRAME_TIMEOUT, true, consumer);
@@ -119,6 +151,9 @@ public class StreamWriterManager {
 
     /**
      * Expose stream output as a blocking iterator.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Iterator<Object> streamIterator() {
         return streamIterator(DEFAULT_FRAME_TIMEOUT, DEFAULT_FRAME_TIMEOUT, true);
@@ -126,17 +161,19 @@ public class StreamWriterManager {
 
     /**
      * Expose stream output as a blocking iterator with configurable timeouts.
+     * 
+     * @param firstFrameTimeoutMs firstFrameTimeoutMs
+     * @param timeoutMs timeoutMs
+     * @param needClose needClose
+     * @return the result
+     * @since 0.1.7
      */
     public Iterator<Object> streamIterator(long firstFrameTimeoutMs, long timeoutMs, boolean needClose) {
         return new Iterator<>() {
             private boolean firstFrame = true;
             private boolean done = false;
             private Object nextItem;
-
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public boolean hasNext() {
                 if (done) {
                     return false;
@@ -159,9 +196,6 @@ public class StreamWriterManager {
             }
 
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Object next() {
                 if (!hasNext()) {
                     throw new NoSuchElementException();
@@ -177,21 +211,20 @@ public class StreamWriterManager {
                     return data;
                 }
                 if (firstFrame) {
-                    throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT,
-                            "timeout", formatTimeoutSeconds(timeoutMs),
-                            "reason", "");
+                    throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_FIRST_CHUNK_INTERVAL_TIMEOUT, "timeout",
+                            formatTimeoutSeconds(timeoutMs), "reason", "");
                 }
-                throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT,
-                        "timeout", formatTimeoutSeconds(timeoutMs),
-                        "reason", "");
+                throw ErrorHelper.buildError(StatusCode.STREAM_OUTPUT_CHUNK_INTERVAL_TIMEOUT, "timeout",
+                        formatTimeoutSeconds(timeoutMs), "reason", "");
             }
         };
     }
 
     /**
      * Collect all stream items into a list (blocking).
-     *
+     * 
      * @return list of stream items
+     * @since 0.1.7
      */
     public List<Object> collectStreamOutput() {
         List<Object> items = new ArrayList<>();
@@ -201,6 +234,10 @@ public class StreamWriterManager {
 
     /**
      * Add a writer for a stream mode.
+     * 
+     * @param key key
+     * @param writer writer
+     * @since 0.1.7
      */
     public void addWriter(StreamMode key, StreamWriter<?> writer) {
         writers.put(key, writer);
@@ -208,6 +245,10 @@ public class StreamWriterManager {
 
     /**
      * Get writer by mode.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public StreamWriter<?> getWriter(StreamMode key) {
         return writers.get(key);
@@ -215,6 +256,9 @@ public class StreamWriterManager {
 
     /**
      * Get the output writer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public StreamWriter<OutputSchema> getOutputWriter() {
         return castWriter(getWriter(StreamMode.OUTPUT));
@@ -222,6 +266,9 @@ public class StreamWriterManager {
 
     /**
      * Get the trace writer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public StreamWriter<TraceSchema> getTraceWriter() {
         return castWriter(getWriter(StreamMode.TRACE));
@@ -229,6 +276,9 @@ public class StreamWriterManager {
 
     /**
      * Get the custom writer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public StreamWriter<CustomSchema> getCustomWriter() {
         return castWriter(getWriter(StreamMode.CUSTOM));
@@ -236,6 +286,9 @@ public class StreamWriterManager {
 
     /**
      * Get enabled stream modes in enum declaration order.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<StreamMode> getEnabledModes() {
         List<StreamMode> enabled = new ArrayList<>();
@@ -249,15 +302,24 @@ public class StreamWriterManager {
 
     /**
      * Remove a writer by mode. Cannot remove default writers.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public StreamWriter<?> removeWriter(StreamMode key) {
         if (defaultModes.contains(key)) {
-            throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_MANAGER_REMOVE_WRITER_ERROR,
-                    "reason", "Cannot remove default writer for mode " + key);
+            throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_MANAGER_REMOVE_WRITER_ERROR, "reason",
+                    "Cannot remove default writer for mode " + key);
         }
         return writers.remove(key);
     }
 
+    /**
+     * addDefaultWriters.
+     * 
+     * @since 0.1.7
+     */
     private void addDefaultWriters() {
         for (StreamMode mode : defaultModes) {
             switch (mode) {
@@ -271,25 +333,35 @@ public class StreamWriterManager {
                     addWriter(mode, new StreamWriter<>(streamEmitter, CustomSchema.class, CustomSchema::fromMap));
                     break;
                 default:
-                    throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_MANAGER_ADD_WRITER_ERROR,
-                            "mode", mode.toString(),
-                            "reason", "default modes must be OUTPUT, TRACE, CUSTOM");
+                    throw ErrorHelper.buildError(StatusCode.STREAM_WRITER_MANAGER_ADD_WRITER_ERROR, "mode",
+                            mode.toString(), "reason", "default modes must be OUTPUT, TRACE, CUSTOM");
             }
         }
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * castWriter.
+     * 
+     * @param writer writer
+     * @return the result
+     * @since 0.1.7
+     */
     private <T extends StreamSchema> StreamWriter<T> castWriter(StreamWriter<?> writer) {
         return (StreamWriter<T>) writer;
     }
 
+    /**
+     * formatTimeoutSeconds.
+     * 
+     * @param timeoutMs timeoutMs
+     * @return the result
+     * @since 0.1.7
+     */
     private String formatTimeoutSeconds(long timeoutMs) {
         if (timeoutMs < 0) {
             return String.valueOf(timeoutMs);
         }
-        return BigDecimal.valueOf(timeoutMs)
-                .movePointLeft(3)
-                .stripTrailingZeros()
-                .toPlainString();
+        return BigDecimal.valueOf(timeoutMs).movePointLeft(3).stripTrailingZeros().toPlainString();
     }
 }

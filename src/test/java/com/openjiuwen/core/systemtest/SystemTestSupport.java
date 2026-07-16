@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.openjiuwen.core.application.llm.LlmAgent;
 import com.openjiuwen.core.application.schema.LlmAgentConfig;
@@ -42,10 +45,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
-
 abstract class SystemTestSupport {
-
     private final Set<String> sessionIds = new LinkedHashSet<>();
     private final Set<String> workflowIds = new LinkedHashSet<>();
     private final Set<String> agentIds = new LinkedHashSet<>();
@@ -85,70 +85,40 @@ abstract class SystemTestSupport {
     }
 
     protected ModelClientConfig remoteClientConfig(double timeoutSeconds) {
-        return ModelClientConfig.builder()
-                .clientProvider(ApiConfigLoader.getModelProvider())
-                .apiKey(ApiConfigLoader.getApiKey())
-                .apiBase(ApiConfigLoader.getApiBase())
-                .timeout(timeoutSeconds)
-                .maxRetries(2)
-                .verifySsl(ApiConfigLoader.getSslVerify())
-                .sslCert(ApiConfigLoader.getSslCert())
-                .build();
+        return ModelClientConfig.builder().clientProvider(ApiConfigLoader.getModelProvider())
+                .apiKey(ApiConfigLoader.getApiKey()).apiBase(ApiConfigLoader.getApiBase()).timeout(timeoutSeconds)
+                .maxRetries(2).verifySsl(ApiConfigLoader.getSslVerify()).sslCert(ApiConfigLoader.getSslCert()).build();
     }
 
     protected ModelRequestConfig remoteRequestConfig(double temperature, int maxTokens) {
-        return ModelRequestConfig.builder()
-                .modelName(ApiConfigLoader.getModelName())
-                .temperature(temperature)
-                .topP(0.9)
-                .maxTokens(maxTokens)
-                .build();
+        return ModelRequestConfig.builder().modelName(ApiConfigLoader.getModelName()).temperature(temperature).topP(0.9)
+                .maxTokens(maxTokens).build();
     }
 
     protected ModelConfig remoteApplicationModelConfig(double temperature) {
-        BaseModelInfo modelInfo = BaseModelInfo.builder()
-                .apiKey(ApiConfigLoader.getApiKey())
-                .apiBase(ApiConfigLoader.getApiBase())
-                .modelName(ApiConfigLoader.getModelName())
-                .temperature(temperature)
-                .topP(0.9)
-                .timeout(60)
-                .verifySsl(ApiConfigLoader.getSslVerify())
-                .sslCert(ApiConfigLoader.getSslCert())
-                .build();
+        BaseModelInfo modelInfo =
+            BaseModelInfo.builder().apiKey(ApiConfigLoader.getApiKey()).apiBase(ApiConfigLoader.getApiBase())
+                    .modelName(ApiConfigLoader.getModelName()).temperature(temperature).topP(0.9).timeout(60)
+                    .verifySsl(ApiConfigLoader.getSslVerify()).sslCert(ApiConfigLoader.getSslCert()).build();
         return new ModelConfig(ApiConfigLoader.getModelProvider(), modelInfo);
     }
 
     protected LlmAgent newRemoteLlmAgent(String agentId, String systemPrompt) {
-        LlmAgentConfig config = LlmAgentConfig.builder()
-                .id(agentId)
-                .description("system test llm agent")
+        LlmAgentConfig config = LlmAgentConfig.builder().id(agentId).description("system test llm agent")
                 .model(remoteApplicationModelConfig(0.1))
-                .promptTemplate(systemPrompt == null ? List.of() : systemPrompt(systemPrompt))
-                .build();
+                .promptTemplate(systemPrompt == null ? List.of() : systemPrompt(systemPrompt)).build();
         return new LlmAgent(config);
     }
 
     protected ReActAgent newRemoteReActAgent(String agentId, String systemPrompt) {
-        ReActAgent agent = new ReActAgent(AgentCard.builder()
-                .id(agentId)
-                .name(agentId)
-                .description("system test react agent")
-                .build());
+        ReActAgent agent = new ReActAgent(
+                AgentCard.builder().id(agentId).name(agentId).description("system test react agent").build());
 
-        ReActAgentConfig config = ReActAgentConfig.builder()
-                .promptTemplate(systemPrompt == null ? List.of() : systemPrompt(systemPrompt))
-                .maxIterations(3)
-                .build()
-                .configureModelClient(
-                        ApiConfigLoader.getModelProvider(),
-                        ApiConfigLoader.getApiKey(),
-                        ApiConfigLoader.getApiBase(),
-                        ApiConfigLoader.getModelName(),
-                        ApiConfigLoader.getSslVerify(),
-                        ApiConfigLoader.getSslCert(),
-                        null
-                );
+        ReActAgentConfig config =
+            ReActAgentConfig.builder().promptTemplate(systemPrompt == null ? List.of() : systemPrompt(systemPrompt))
+                    .maxIterations(3).build().configureModelClient(ApiConfigLoader.getModelProvider(),
+                            ApiConfigLoader.getApiKey(), ApiConfigLoader.getApiBase(), ApiConfigLoader.getModelName(),
+                            ApiConfigLoader.getSslVerify(), ApiConfigLoader.getSslCert(), null);
 
         config.getModelConfigObj().setTemperature(0.1);
         config.getModelConfigObj().setTopP(0.9);
@@ -195,8 +165,7 @@ abstract class SystemTestSupport {
     }
 
     protected boolean containsIgnoreCase(String text, String token) {
-        return text != null && token != null
-                && text.toUpperCase(Locale.ROOT).contains(token.toUpperCase(Locale.ROOT));
+        return text != null && token != null && text.toUpperCase(Locale.ROOT).contains(token.toUpperCase(Locale.ROOT));
     }
 
     protected List<Map<String, String>> systemPrompt(String content) {
@@ -207,9 +176,7 @@ abstract class SystemTestSupport {
         if (value == null) {
             return;
         }
-        if (value instanceof String
-                || value instanceof Number
-                || value instanceof Boolean
+        if (value instanceof String || value instanceof Number || value instanceof Boolean
                 || value instanceof Enum<?>) {
             builder.append(value).append(' ');
             return;

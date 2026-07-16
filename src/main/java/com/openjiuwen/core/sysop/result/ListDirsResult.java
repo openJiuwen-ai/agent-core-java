@@ -7,12 +7,23 @@ package com.openjiuwen.core.sysop.result;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-/** Result type for list directories operation. */
+/**
+ * Result type for list directories operation.
+ * 
+ * @since 0.1.7
+ */
 @SuperBuilder
 @NoArgsConstructor
 public class ListDirsResult extends BaseResult<FileSystemData> {
     /**
-     * Auto-generated for codecheck compliance.
+     * ListDirsResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
      */
-    public ListDirsResult(int code, String message, FileSystemData data) { super(code, message, data); }
+    public ListDirsResult(int code, String message, FileSystemData data) {
+        super(code, message, data);
+    }
 }

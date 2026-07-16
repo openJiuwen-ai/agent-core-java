@@ -10,14 +10,15 @@ import java.util.UUID;
 
 /**
  * Default checkpoint manager implementation.
- *
- * <p>Save timing: improved or every N epoch.
+ * <p>
+ * Save timing: improved or every N epoch.
  * Restore content: operators_state + progress best/epoch.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.checkpointing.manager.DefaultCheckpointManager}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.checkpointing.manager.DefaultCheckpointManager}.
+ * 
+ * @since 0.1.7
  */
 public class DefaultCheckpointManager implements CheckpointManager {
-
     private final String runId;
     private final String checkpointVersion;
     private final int saveEveryNEpochs;
@@ -25,6 +26,8 @@ public class DefaultCheckpointManager implements CheckpointManager {
 
     /**
      * Create with default settings.
+     * 
+     * @since 0.1.7
      */
     public DefaultCheckpointManager() {
         this(null, "v1", 1, true);
@@ -32,18 +35,15 @@ public class DefaultCheckpointManager implements CheckpointManager {
 
     /**
      * Create with custom settings.
-     *
-     * @param runId                Unique run identifier (auto-generated if null)
-     * @param checkpointVersion    Checkpoint version string
-     * @param saveEveryNEpochs     Save checkpoint every N epochs
-     * @param saveOnImprove        Save when validation score improves
+     * 
+     * @param runId Unique run identifier (auto-generated if null)
+     * @param checkpointVersion Checkpoint version string
+     * @param saveEveryNEpochs Save checkpoint every N epochs
+     * @param saveOnImprove Save when validation score improves
+     * @since 0.1.7
      */
-    public DefaultCheckpointManager(
-            String runId,
-            String checkpointVersion,
-            int saveEveryNEpochs,
-            boolean saveOnImprove
-    ) {
+    public DefaultCheckpointManager(String runId, String checkpointVersion, int saveEveryNEpochs,
+            boolean saveOnImprove) {
         this.runId = runId != null && !runId.isEmpty() ? runId : UUID.randomUUID().toString();
         this.checkpointVersion = checkpointVersion != null ? checkpointVersion : "v1";
         this.saveEveryNEpochs = Math.max(saveEveryNEpochs, 1);
@@ -52,17 +52,23 @@ public class DefaultCheckpointManager implements CheckpointManager {
 
     /**
      * Get the run ID.
-     *
+     * 
      * @return Run identifier
+     * @since 0.1.7
      */
     public String getRunId() {
         return runId;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * shouldSave.
+     * 
+     * @param epoch epoch
+     * @param improved improved
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean shouldSave(int epoch, boolean improved) {
         if (saveOnImprove && improved) {
             return true;
@@ -70,10 +76,16 @@ public class DefaultCheckpointManager implements CheckpointManager {
         return epoch % saveEveryNEpochs == 0;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * buildCheckpoint.
+     * 
+     * @param agent agent
+     * @param progress progress
+     * @param updaterState updaterState
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public EvolveCheckpoint buildCheckpoint(Object agent, Object progress, Map<String, Object> updaterState) {
         Map<String, Map<String, Object>> operatorsState = snapshotOperatorsState(agent);
 
@@ -89,23 +101,20 @@ public class DefaultCheckpointManager implements CheckpointManager {
         Map<String, Object> lastMetrics = new HashMap<>();
         lastMetrics.put("current_epoch_score", getDoubleProperty(progress, "currentEpochScore", 0.0));
 
-        return EvolveCheckpoint.builder()
-                .version(checkpointVersion)
-                .runId(runId)
-                .step(step)
-                .best(best)
-                .seed(seed)
-                .operatorsState(operatorsState)
-                .updaterState(updaterState != null ? updaterState : new HashMap<>())
-                .searcherState(new HashMap<>())
-                .lastMetrics(lastMetrics)
-                .build();
+        return EvolveCheckpoint.builder().version(checkpointVersion).runId(runId).step(step).best(best).seed(seed)
+                .operatorsState(operatorsState).updaterState(updaterState != null ? updaterState : new HashMap<>())
+                .searcherState(new HashMap<>()).lastMetrics(lastMetrics).build();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * restore.
+     * 
+     * @param agent agent
+     * @param checkpoint checkpoint
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> restore(Object agent, EvolveCheckpoint checkpoint) {
         restoreOperatorsState(agent, checkpoint.getOperatorsState());
 
@@ -124,6 +133,13 @@ public class DefaultCheckpointManager implements CheckpointManager {
         return result;
     }
 
+    /**
+     * getBestScore.
+     * 
+     * @param best best
+     * @return the result
+     * @since 0.1.7
+     */
     private double getBestScore(Map<String, Object> best) {
         if (best == null || best.isEmpty()) {
             return 0.0;
@@ -134,81 +150,91 @@ public class DefaultCheckpointManager implements CheckpointManager {
 
     /**
      * Snapshot state of all evolvable operators.
-     *
+     * 
      * @param agent Agent instance
      * @return Map of operator_id -> state
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
     private Map<String, Map<String, Object>> snapshotOperatorsState(Object agent) {
         Map<String, Map<String, Object>> result = new HashMap<>();
-        try {
-            Map<String, Object> operators = invokeMethod(agent, "getOperators", Map.class, new Object[]{});
-            if (operators == null || operators.isEmpty()) {
-                return result;
+        Map<String, Object> operators = invokeMethod(agent, "getOperators", Map.class, new Object[]{});
+        if (operators == null || operators.isEmpty()) {
+            return result;
+        }
+        for (Map.Entry<String, Object> entry : operators.entrySet()) {
+            Object op = entry.getValue();
+            String opId = invokeMethod(op, "getOperatorId", String.class, new Object[]{});
+            Map<String, Object> state = invokeMethod(op, "getState", Map.class, new Object[]{});
+            if (opId != null && state != null) {
+                result.put(opId, state);
             }
-            for (Map.Entry<String, Object> entry : operators.entrySet()) {
-                Object op = entry.getValue();
-                String opId = invokeMethod(op, "getOperatorId", String.class, new Object[]{});
-                Map<String, Object> state = invokeMethod(op, "getState", Map.class, new Object[]{});
-                if (opId != null && state != null) {
-                    result.put(opId, state);
-                }
-            }
-        } catch (Exception e) {
-            // Ignore if method not available
         }
         return result;
     }
 
     /**
      * Restore state of all evolving operators.
-     *
-     * @param agent           Agent instance
-     * @param operatorsState  Operators state map
+     * 
+     * @param agent Agent instance
+     * @param operatorsState Operators state map
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
     private void restoreOperatorsState(Object agent, Map<String, Map<String, Object>> operatorsState) {
         if (operatorsState == null || operatorsState.isEmpty()) {
             return;
         }
-        try {
-            Map<String, Object> operators = invokeMethod(agent, "getOperators", Map.class, new Object[]{});
-            if (operators == null) {
-                return;
+        Map<String, Object> operators = invokeMethod(agent, "getOperators", Map.class, new Object[]{});
+        if (operators == null) {
+            return;
+        }
+        for (Map.Entry<String, Map<String, Object>> entry : operatorsState.entrySet()) {
+            String operatorId = entry.getKey();
+            Map<String, Object> state = entry.getValue();
+            Object op = operators.get(operatorId);
+            if (op != null && state != null) {
+                invokeMethod(op, "loadState", void.class, new Object[]{Map.class, state});
             }
-            for (Map.Entry<String, Map<String, Object>> entry : operatorsState.entrySet()) {
-                String operatorId = entry.getKey();
-                Map<String, Object> state = entry.getValue();
-                Object op = operators.get(operatorId);
-                if (op != null && state != null) {
-                    invokeMethod(op, "loadState", void.class, new Object[]{Map.class, state});
-                }
-            }
-        } catch (Exception e) {
-            // Ignore if method not available
         }
     }
 
+    /**
+     * getIntProperty.
+     * 
+     * @param obj obj
+     * @param property property
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private int getIntProperty(Object obj, String property, int defaultValue) {
-        try {
-            Object value = invokeMethod(obj, "get" + capitalize(property), Object.class, new Object[]{});
-            return coerceToInt(value, defaultValue);
-        } catch (Exception e) {
-            // Ignore
-        }
-        return defaultValue;
+        Object value = invokeMethod(obj, "get" + capitalize(property), Object.class, new Object[]{});
+        return coerceToInt(value, defaultValue);
     }
 
+    /**
+     * getDoubleProperty.
+     * 
+     * @param obj obj
+     * @param property property
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private double getDoubleProperty(Object obj, String property, double defaultValue) {
-        try {
-            Object value = invokeMethod(obj, "get" + capitalize(property), Object.class, new Object[]{});
-            return coerceToDouble(value, defaultValue);
-        } catch (Exception e) {
-            // Ignore
-        }
-        return defaultValue;
+        Object value = invokeMethod(obj, "get" + capitalize(property), Object.class, new Object[]{});
+        return coerceToDouble(value, defaultValue);
     }
 
+    /**
+     * coerceToInt.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private int coerceToInt(Object value, int defaultValue) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -223,6 +249,14 @@ public class DefaultCheckpointManager implements CheckpointManager {
         return defaultValue;
     }
 
+    /**
+     * coerceToDouble.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private double coerceToDouble(Object value, double defaultValue) {
         if (value instanceof Number number) {
             return number.doubleValue();
@@ -237,15 +271,30 @@ public class DefaultCheckpointManager implements CheckpointManager {
         return defaultValue;
     }
 
+    /**
+     * getProperty.
+     * 
+     * @param obj obj
+     * @param property property
+     * @param type type
+     * @return the result
+     * @since 0.1.7
+     */
     private <T> T getProperty(Object obj, String property, Class<T> type) {
-        try {
-            return invokeMethod(obj, "get" + capitalize(property), type, new Object[]{});
-        } catch (Exception e) {
-            return null;
-        }
+        return invokeMethod(obj, "get" + capitalize(property), type, new Object[]{});
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * invokeMethod.
+     * 
+     * @param obj obj
+     * @param methodName methodName
+     * @param returnType returnType
+     * @param args args
+     * @return the result
+     * @since 0.1.7
+     */
     private <T> T invokeMethod(Object obj, String methodName, Class<T> returnType, Object[] args) {
         try {
             Class<?>[] paramTypes = new Class<?>[args.length / 2];
@@ -259,11 +308,21 @@ public class DefaultCheckpointManager implements CheckpointManager {
                 method.setAccessible(true);
             }
             return (T) method.invoke(obj, params);
-        } catch (Exception e) {
+        } catch (ReflectiveOperationException e) {
             return null;
         }
     }
 
+    /**
+     * findMethod.
+     * 
+     * @param type type
+     * @param methodName methodName
+     * @param parameterTypes parameterTypes
+     * @return Method
+     * @throws NoSuchMethodException NoSuchMethodException
+     * @since 0.1.7
+     */
     private java.lang.reflect.Method findMethod(Class<?> type, String methodName, Class<?>[] parameterTypes)
             throws NoSuchMethodException {
         Class<?> current = type;
@@ -277,6 +336,13 @@ public class DefaultCheckpointManager implements CheckpointManager {
         throw new NoSuchMethodException(methodName);
     }
 
+    /**
+     * capitalize.
+     * 
+     * @param str str
+     * @return the result
+     * @since 0.1.7
+     */
     private String capitalize(String str) {
         if (str == null || str.isEmpty()) {
             return str;

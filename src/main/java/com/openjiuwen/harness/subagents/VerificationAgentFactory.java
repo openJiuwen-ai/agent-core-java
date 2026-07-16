@@ -14,11 +14,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Auto-generated for codecheck compliance.
+ * VerificationAgentFactory.
+ * 
+ * @since 0.1.7
  */
 public final class VerificationAgentFactory {
     /**
-     * Auto-generated for codecheck compliance.
+     * VERIFICATION_AGENT_SYSTEM_PROMPT_EN.
+     * 
+     * @since 0.1.7
      */
     public static final String VERIFICATION_AGENT_SYSTEM_PROMPT_EN = """
             You are an adversarial verification specialist. Your job is NOT to confirm that implementation work looks
@@ -78,7 +82,9 @@ public final class VerificationAgentFactory {
             """;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * VERIFICATION_AGENT_SYSTEM_PROMPT_CN.
+     * 
+     * @since 0.1.7
      */
     public static final String VERIFICATION_AGENT_SYSTEM_PROMPT_CN = """
             你是一位对抗性验证专家。你的职责不是确认实现看起来正确，而是尝试将其破坏。你是在结果上报用户之前的最后一道防线。
@@ -134,67 +140,77 @@ public final class VerificationAgentFactory {
             """;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * VERIFICATION_AGENT_DESCRIPTION_EN.
+     * 
+     * @since 0.1.7
      */
     public static final String VERIFICATION_AGENT_DESCRIPTION_EN = "Adversarial verification specialist. "
             + "Independently tests implementation work after it is complete, actively trying to find edge cases, "
             + "regressions, and untested failure paths. Ends with VERDICT: PASS, VERDICT: FAIL, or VERDICT: PARTIAL.";
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public static final String VERIFICATION_AGENT_DESCRIPTION_CN = "对抗性验证专家。在实现工作完成后对其进行独立测试，"
-            + "尝试发现边界情况、回归问题和未经测试的失败路径。以 VERDICT: PASS、VERDICT: FAIL 或 VERDICT: PARTIAL 结尾。";
 
+    /**
+     * VERIFICATION_AGENT_DESCRIPTION_CN.
+     * 
+     * @since 0.1.7
+     */
+    public static final String VERIFICATION_AGENT_DESCRIPTION_CN =
+        "对抗性验证专家。在实现工作完成后对其进行独立测试，" + "尝试发现边界情况、回归问题和未经测试的失败路径。以 VERDICT: PASS、VERDICT: FAIL 或 VERDICT: PARTIAL 结尾。";
+
+    /**
+     * VerificationAgentFactory.
+     * 
+     * @since 0.1.7
+     */
     private VerificationAgentFactory() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildVerificationAgentConfig.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
      */
     public static SubAgentConfig buildVerificationAgentConfig(String language) {
         return buildVerificationAgentConfig(language, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildVerificationAgentConfig.
+     * 
+     * @param language language
+     * @param factoryKwargs factoryKwargs
+     * @return the result
+     * @since 0.1.7
      */
     public static SubAgentConfig buildVerificationAgentConfig(String language, Map<String, Object> factoryKwargs) {
         String isResolved = language != null ? language : "cn";
         Map<String, Object> kwargs = SubAgentFactoryKwargsSupport.copy(factoryKwargs);
-        SubAgentConfig config = SubAgentConfig.builder()
-                .agentCard(SubAgentFactoryKwargsSupport.resolveAgentCard(
-                        kwargs,
-                        "verification_agent",
-                        "en".equals(isResolved) ? VERIFICATION_AGENT_DESCRIPTION_EN : VERIFICATION_AGENT_DESCRIPTION_CN
-                ))
-                .systemPrompt(SubAgentFactoryKwargsSupport.systemPrompt(
-                        kwargs,
+        SubAgentConfig config = SubAgentConfig.builder().agentCard(SubAgentFactoryKwargsSupport.resolveAgentCard(kwargs,
+                "verification_agent",
+                "en".equals(isResolved) ? VERIFICATION_AGENT_DESCRIPTION_EN : VERIFICATION_AGENT_DESCRIPTION_CN))
+                .systemPrompt(SubAgentFactoryKwargsSupport.systemPrompt(kwargs,
                         "en".equals(isResolved)
                                 ? VERIFICATION_AGENT_SYSTEM_PROMPT_EN
-                                : VERIFICATION_AGENT_SYSTEM_PROMPT_CN
-                ))
-                .language(isResolved)
-                .maxIterations(SubAgentFactoryKwargsSupport.maxIterations(kwargs, 40))
-                .factoryName("verification_agent")
-                .executionMode("ephemeral")
-                .role("verification")
-                .metadata(Map.of(
-                        "readonly", true,
-                        "requires_verdict", true,
-                        "verdicts", List.of("PASS", "FAIL", "PARTIAL")
-                ))
-                .rails(SubAgentRailMergeSupport.mergeRails(
-                        List.of(new SysOperationRail(), new VerificationRail()),
+                                : VERIFICATION_AGENT_SYSTEM_PROMPT_CN))
+                .language(isResolved).maxIterations(SubAgentFactoryKwargsSupport.maxIterations(kwargs, 40))
+                .factoryName("verification_agent").executionMode("ephemeral").role("verification")
+                .metadata(Map.of("readonly", true, "requires_verdict", true, "verdicts",
+                        List.of("PASS", "FAIL", "PARTIAL")))
+                .rails(SubAgentRailMergeSupport.mergeRails(List.of(new SysOperationRail(), new VerificationRail()),
                         kwargs))
-                .restrictToWorkDir(false)
-                .factoryKwargs(kwargs)
-                .build();
+                .restrictToWorkDir(false).factoryKwargs(kwargs).build();
         SubAgentFactoryKwargsSupport.applyCommonOverrides(config, kwargs);
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createVerificationAgent.
+     * 
+     * @param language language
+     * @param workspace workspace
+     * @return the result
+     * @since 0.1.7
      */
     public static DeepAgent createVerificationAgent(String language, Workspace workspace) {
         SubAgentConfig spec = buildVerificationAgentConfig(language);

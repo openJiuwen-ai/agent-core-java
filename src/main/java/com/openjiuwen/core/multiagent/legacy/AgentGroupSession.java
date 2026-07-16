@@ -14,35 +14,49 @@ import java.util.Map;
  * Mirrors Python's {@code openjiuwen.core.multi_agent.legacy.AgentGroupSession}
  * export while keeping the shared Java implementation in
  * {@link AgentGroupSessionApi}.
- *
+ * 
  * @deprecated Use {@link com.openjiuwen.core.multiagent.Session}.
+ * @since 0.1.7
  */
 @Deprecated
 public class AgentGroupSession extends AgentGroupSessionApi {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentGroupSession.
+     * 
+     * @param sessionId sessionId
+     * @param envs envs
+     * @since 0.1.7
      */
     public AgentGroupSession(String sessionId, Map<String, Object> envs) {
         super(sessionId, envs);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentGroupSession.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public AgentGroupSession(String sessionId) {
         super(sessionId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentGroupSession.
+     * 
+     * @since 0.1.7
      */
     public AgentGroupSession() {
         super();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * create.
+     * 
+     * @param sessionId sessionId
+     * @param envs envs
+     * @return the result
+     * @since 0.1.7
      */
     public static AgentGroupSession create(String sessionId, Map<String, Object> envs) {
         return new AgentGroupSession(sessionId, envs);

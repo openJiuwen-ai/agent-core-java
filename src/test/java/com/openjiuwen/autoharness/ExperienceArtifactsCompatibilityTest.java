@@ -1,23 +1,24 @@
+
 package com.openjiuwen.autoharness;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.autoharness.artifacts.ArtifactStore;
 import com.openjiuwen.autoharness.experience.ActiveContextSynthesizer;
 import com.openjiuwen.autoharness.experience.ExperienceStore;
 import com.openjiuwen.autoharness.schema.Experience;
 import com.openjiuwen.autoharness.schema.ExperienceType;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
 import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import java.util.Map;
 
 class ExperienceArtifactsCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
@@ -29,11 +30,9 @@ class ExperienceArtifactsCompatibilityTest {
 
         assertThat(store.has("pipeline", "")).isTrue();
         assertThat(store.require("report", "task-1")).isEqualTo("ok");
-        assertThatThrownBy(() -> store.require("missing", ""))
-                .isInstanceOf(IllegalArgumentException.class)
+        assertThatThrownBy(() -> store.require("missing", "")).isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Missing artifact 'missing' in session");
-        assertThatThrownBy(() -> store.require("missing", "task-1"))
-                .isInstanceOf(IllegalArgumentException.class)
+        assertThatThrownBy(() -> store.require("missing", "task-1")).isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Missing artifact 'missing' in task=task-1");
         store.resetTask("task-1");
         assertThat(store.has("report", "task-1")).isFalse();
@@ -71,13 +70,9 @@ class ExperienceArtifactsCompatibilityTest {
     @Test
     void experienceStoreShouldPreserveSchemaDefaultsAndFieldsWhenRecording() throws Exception {
         ExperienceStore store = new ExperienceStore(tempDir.toString());
-        Experience generated = Experience.builder()
-                .type(ExperienceType.OPTIMIZATION)
-                .topic("release-note")
-                .summary("published pr")
-                .prUrl("https://gitcode.com/openJiuwen/agent-core/pulls/1")
-                .filesChanged(List.of("openjiuwen/auto_harness/schema.py"))
-                .build();
+        Experience generated = Experience.builder().type(ExperienceType.OPTIMIZATION).topic("release-note")
+                .summary("published pr").prUrl("https://gitcode.com/openJiuwen/agent-core/pulls/1")
+                .filesChanged(List.of("openjiuwen/auto_harness/schema.py")).build();
 
         String generatedId = store.record(generated);
         Experience recordedGenerated = store.get(generatedId);
@@ -89,14 +84,9 @@ class ExperienceArtifactsCompatibilityTest {
         assertThat(recordedGenerated.getPrUrl()).isEqualTo("https://gitcode.com/openJiuwen/agent-core/pulls/1");
         assertThat(recordedGenerated.getFilesChanged()).containsExactly("openjiuwen/auto_harness/schema.py");
 
-        Experience blankId = Experience.builder()
-                .id("")
-                .type(ExperienceType.FAILURE)
-                .topic("verify-failure")
-                .summary("gate failed")
-                .prUrl("https://gitcode.com/openJiuwen/agent-core/pulls/2")
-                .filesChanged(List.of("openjiuwen/auto_harness/stages/verify.py"))
-                .build();
+        Experience blankId = Experience.builder().id("").type(ExperienceType.FAILURE).topic("verify-failure")
+                .summary("gate failed").prUrl("https://gitcode.com/openJiuwen/agent-core/pulls/2")
+                .filesChanged(List.of("openjiuwen/auto_harness/stages/verify.py")).build();
 
         String repairedId = store.record(blankId);
         Experience recordedBlank = store.get(repairedId);
@@ -109,8 +99,10 @@ class ExperienceArtifactsCompatibilityTest {
     @Test
     void experienceStoreAndSynthesizerShouldPersistAndSummarize() throws Exception {
         ExperienceStore store = new ExperienceStore(tempDir.toString());
-        store.record(Experience.builder().type(ExperienceType.OPTIMIZATION).topic("topic-a").summary("improved plan").build());
-        store.record(Experience.builder().type(ExperienceType.FAILURE).topic("topic-b").summary("failed verify").outcome("needs fix").build());
+        store.record(Experience.builder().type(ExperienceType.OPTIMIZATION).topic("topic-a").summary("improved plan")
+                .build());
+        store.record(Experience.builder().type(ExperienceType.FAILURE).topic("topic-b").summary("failed verify")
+                .outcome("needs fix").build());
 
         List<Experience> recent = store.listRecent(10);
         assertThat(recent).hasSize(2);
@@ -130,7 +122,8 @@ class ExperienceArtifactsCompatibilityTest {
 
         String first = store.record(Experience.builder().type(ExperienceType.FAILURE).topic("same topic").build());
         String duplicate = store.record(Experience.builder().type(ExperienceType.FAILURE).topic("same topic").build());
-        String differentType = store.record(Experience.builder().type(ExperienceType.OPTIMIZATION).topic("same topic").build());
+        String differentType =
+            store.record(Experience.builder().type(ExperienceType.OPTIMIZATION).topic("same topic").build());
 
         assertThat(first).isNotBlank();
         assertThat(duplicate).isEmpty();
@@ -141,27 +134,12 @@ class ExperienceArtifactsCompatibilityTest {
     void experienceStoreShouldSearchByTokenizedHitsAndRecency() throws Exception {
         ExperienceStore store = new ExperienceStore(tempDir.toString());
         long now = System.currentTimeMillis() / 1000;
-        store.record(Experience.builder()
-                .type(ExperienceType.OPTIMIZATION)
-                .id("old")
-                .topic("fix timeout")
-                .summary("increased limit")
-                .timestamp(now - 31L * 86_400L)
-                .build());
-        store.record(Experience.builder()
-                .type(ExperienceType.INSIGHT)
-                .id("new")
-                .topic("fix timeout")
-                .summary("newer signal")
-                .timestamp(now)
-                .build());
-        store.record(Experience.builder()
-                .type(ExperienceType.INSIGHT)
-                .id("other")
-                .topic("refactor logging")
-                .summary("structured logger")
-                .timestamp(now)
-                .build());
+        store.record(Experience.builder().type(ExperienceType.OPTIMIZATION).id("old").topic("fix timeout")
+                .summary("increased limit").timestamp(now - 31L * 86_400L).build());
+        store.record(Experience.builder().type(ExperienceType.INSIGHT).id("new").topic("fix timeout")
+                .summary("newer signal").timestamp(now).build());
+        store.record(Experience.builder().type(ExperienceType.INSIGHT).id("other").topic("refactor logging")
+                .summary("structured logger").timestamp(now).build());
 
         assertThat(store.search("", 5)).isEmpty();
         assertThat(store.search("fix", 1)).extracting(Experience::getId).containsExactly("new");
@@ -180,19 +158,15 @@ class ExperienceArtifactsCompatibilityTest {
         ExperienceStore store = new ExperienceStore(tempDir.toString());
 
         assertThat(store.get("valid-1")).isNotNull();
-        assertThat(store.listRecent(10)).extracting(Experience::getId)
-                .containsExactly("valid-2", "valid-1");
-        assertThat(store.search("kept", 10)).extracting(Experience::getId)
-                .containsExactlyInAnyOrder("valid-1", "valid-2");
+        assertThat(store.listRecent(10)).extracting(Experience::getId).containsExactly("valid-2", "valid-1");
+        assertThat(store.search("kept", 10)).extracting(Experience::getId).containsExactlyInAnyOrder("valid-1",
+                "valid-2");
     }
 
     @Test
     void experienceStoreHelpersShouldMirrorPythonScoringFunctions() {
-        Experience exp = Experience.builder()
-                .topic("fix timeout")
-                .summary("increased limit")
-                .details("was 60s")
-                .build();
+        Experience exp =
+            Experience.builder().topic("fix timeout").summary("increased limit").details("was 60s").build();
         long now = System.currentTimeMillis() / 1000;
 
         assertThat(ExperienceStore.tokenize("Fix the BUG now")).contains("fix", "the", "bug");
@@ -209,35 +183,17 @@ class ExperienceArtifactsCompatibilityTest {
         long now = System.currentTimeMillis() / 1000;
 
         String summary = synthesizer.synthesize(List.of(
-                Experience.builder()
-                        .type(ExperienceType.OPTIMIZATION)
-                        .topic("old")
-                        .summary("old summary")
-                        .timestamp(now - 8L * 86_400L)
-                        .build(),
-                Experience.builder()
-                        .type(ExperienceType.OPTIMIZATION)
-                        .topic("new")
-                        .summary("new summary")
-                        .timestamp(now - 60)
-                        .build(),
-                Experience.builder()
-                        .type(ExperienceType.OPTIMIZATION)
-                        .topic("medium")
-                        .summary("medium summary")
-                        .timestamp(now - 2L * 86_400L)
-                        .build()
-        ), 2000);
+                Experience.builder().type(ExperienceType.OPTIMIZATION).topic("old").summary("old summary")
+                        .timestamp(now - 8L * 86_400L).build(),
+                Experience.builder().type(ExperienceType.OPTIMIZATION).topic("new").summary("new summary")
+                        .timestamp(now - 60).build(),
+                Experience.builder().type(ExperienceType.OPTIMIZATION).topic("medium").summary("medium summary")
+                        .timestamp(now - 2L * 86_400L).build()),
+                2000);
 
         assertThat(summary.indexOf("new: new summary")).isLessThan(summary.indexOf("medium: medium summary"));
         assertThat(summary.indexOf("medium: medium summary")).isLessThan(summary.indexOf("old: old summary"));
-        assertThat(synthesizer.synthesize(List.of(
-                Experience.builder()
-                        .type(ExperienceType.INSIGHT)
-                        .topic("long")
-                        .summary("abcdefghijklmnopqrstuvwxyz")
-                        .timestamp(now)
-                        .build()
-        ), 5).length()).isLessThanOrEqualTo(16);
+        assertThat(synthesizer.synthesize(List.of(Experience.builder().type(ExperienceType.INSIGHT).topic("long")
+                .summary("abcdefghijklmnopqrstuvwxyz").timestamp(now).build()), 5).length()).isLessThanOrEqualTo(16);
     }
 }

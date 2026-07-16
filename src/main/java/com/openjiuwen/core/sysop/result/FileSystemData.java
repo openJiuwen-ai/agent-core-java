@@ -13,14 +13,14 @@ import java.util.List;
 
 /**
  * Data structure for list files and list directories.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class FileSystemData {
-
-    /** Total number of items. */
     private int totalCount;
 
     /** List of file/directory details. */

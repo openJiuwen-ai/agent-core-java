@@ -1,4 +1,7 @@
+
 package com.openjiuwen.core.application;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.application.llm.LlmAgent;
 import com.openjiuwen.core.application.schema.ConstrainConfig;
@@ -33,8 +36,6 @@ import org.junit.jupiter.api.Test;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Regression tests for application-layer ConstrainConfig.reservedMaxChatRounds
  * wiring into ContextEngine, validated through a Questioner multi-turn workflow.
@@ -42,7 +43,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * Mirrors Python system tests test_llm_agent_093 and test_llm_agent_095.
  */
 public class QuestionerContextRegressionTest {
-
     private static final String AGENT_PROVIDER = "CtxAgentMirror";
     private static final String QUESTIONER_PROVIDER = "CtxQuestionMirror";
     private static final AtomicBoolean FACTORY_REGISTERED = new AtomicBoolean(false);
@@ -80,17 +80,13 @@ public class QuestionerContextRegressionTest {
         String sessionId = "agent_095";
         sessionIds.add(sessionId);
 
-        Workflow flow = buildQuestionerWorkflow(
-                "questioner095_workflow", "workflow_1.0", "my_questioner095",
-                List.of(
-                        field("location", "地点"),
-                        field("date", "时间")));
+        Workflow flow = buildQuestionerWorkflow("questioner095_workflow", "workflow_1.0", "my_questioner095",
+                List.of(field("location", "地点"), field("date", "时间")));
 
         LlmAgent agent = LlmAgent.createLlmAgent(
                 agentConfig("ctx-agent-095", 3,
                         List.of(workflowSchema("questioner095_workflow", "my_questioner095", "workflow_1.0"))),
-                List.of(flow),
-                List.of());
+                List.of(flow), List.of());
 
         // Round 1: initial query starts the workflow and reaches an interrupt.
         List<OutputSchema> firstRound = collectChunks(runStreaming(agent, "test_llm_agent_095", sessionId));
@@ -105,7 +101,8 @@ public class QuestionerContextRegressionTest {
         if (agentContext != null) {
             List<?> agentMessages = agentContext.getMessages(null, false);
             assertTrue(agentMessages.size() <= 6,
-                    "Agent context messages should be capped at reservedMaxChatRounds*2=6, got " + agentMessages.size());
+                    "Agent context messages should be capped at reservedMaxChatRounds*2=6, got "
+                            + agentMessages.size());
         }
     }
 
@@ -115,15 +112,13 @@ public class QuestionerContextRegressionTest {
         String sessionId = "agent_093";
         sessionIds.add(sessionId);
 
-        Workflow flow = buildQuestionerWorkflow(
-                "questioner093_workflow", "1.0", "my_questioner093",
+        Workflow flow = buildQuestionerWorkflow("questioner093_workflow", "1.0", "my_questioner093",
                 List.of(field("location", "地点")));
 
         LlmAgent agent = LlmAgent.createLlmAgent(
                 agentConfig("ctx-agent-093", 10,
                         List.of(workflowSchema("questioner093_workflow", "my_questioner093", "1.0"))),
-                List.of(flow),
-                List.of());
+                List.of(flow), List.of());
 
         collectChunks(runStreaming(agent, "test_llm_agent_093", sessionId));
         collectChunks(runStreamingResume(agent, "interactive", "确认", sessionId));
@@ -132,8 +127,7 @@ public class QuestionerContextRegressionTest {
         var agentContext = agent.getContextEngine().getContext(null, sessionId);
         if (agentContext != null) {
             List<?> agentMessages = agentContext.getMessages(null, false);
-            assertTrue(agentMessages.size() >= 2,
-                    "Agent context should have messages, got " + agentMessages.size());
+            assertTrue(agentMessages.size() >= 2, "Agent context should have messages, got " + agentMessages.size());
             assertTrue(agentMessages.size() <= 20,
                     "With default max_rounds=10, buffer cap=20, got " + agentMessages.size());
         }
@@ -142,11 +136,8 @@ public class QuestionerContextRegressionTest {
     @Test
     public void contextEngineConfigDerivedFromConstrainConfig() {
         // Direct wiring verification: reservedMaxChatRounds = 3 → buffer caps at 6
-        LlmAgentConfig config = LlmAgentConfig.builder()
-                .id("wiring-test")
-                .model(agentModelConfig())
-                .constrain(ConstrainConfig.builder().reservedMaxChatRounds(3).build())
-                .build();
+        LlmAgentConfig config = LlmAgentConfig.builder().id("wiring-test").model(agentModelConfig())
+                .constrain(ConstrainConfig.builder().reservedMaxChatRounds(3).build()).build();
         LlmAgent agent = new LlmAgent(config);
 
         // Create a context and add more than 6 messages
@@ -158,39 +149,24 @@ public class QuestionerContextRegressionTest {
         }
 
         List<? extends BaseMessage> messages = context.getMessages(null, false);
-        assertEquals(6, messages.size(),
-                "Buffer should cap at reservedMaxChatRounds*2=6");
+        assertEquals(6, messages.size(), "Buffer should cap at reservedMaxChatRounds*2=6");
     }
 
     @Test
     public void questionerModelFactoryCanInstantiateDirectly() throws Exception {
         Model model = new Model(questionerClientConfig(), questionerRequestConfig());
-        AssistantMessage message = model.invoke(
-                List.of(new UserMessage("杭州")),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null);
+        AssistantMessage message =
+            model.invoke(List.of(new UserMessage("杭州")), null, null, null, null, null, null, null, null, null);
         assertNotNull(message);
     }
 
     // ==================== Workflow Builder ====================
 
     private Workflow buildQuestionerWorkflow(String id, String version, String name, List<FieldInfo> fields) {
-        WorkflowCard card = WorkflowCard.builder()
-                .id(id)
-                .version(version)
-                .name(name)
+        WorkflowCard card = WorkflowCard.builder().id(id).version(version).name(name)
                 .description("questioner test workflow")
-                .inputParams(Map.of(
-                        "type", "object",
-                        "properties", Map.of("query", Map.of("type", "string", "description", "用户输入")),
-                        "required", List.of("query")))
+                .inputParams(Map.of("type", "object", "properties",
+                        Map.of("query", Map.of("type", "string", "description", "用户输入")), "required", List.of("query")))
                 .build();
         String workflowKey = id + "_" + version;
         workflowIds.add(workflowKey);
@@ -205,10 +181,9 @@ public class QuestionerContextRegressionTest {
 
         Workflow flow = new Workflow(card);
         flow.setStartComp("s", new Start(), Map.of("query", "${query}", "cmd", "${cmd}"), null);
-        flow.addWorkflowComp("questioner", new QuestionerComponent(questionerConfig),
-                Map.of("query", "${s.query}"), null);
-        flow.addWorkflowComp("interactive", new InteractiveComponent(),
-                Map.of("cmd", "${questioner}"), null);
+        flow.addWorkflowComp("questioner", new QuestionerComponent(questionerConfig), Map.of("query", "${s.query}"),
+                null);
+        flow.addWorkflowComp("interactive", new InteractiveComponent(), Map.of("cmd", "${questioner}"), null);
         flow.setEndComp("e", new End(), Map.of("data", "${interactive}"), null);
         flow.addConnection("s", "questioner");
         flow.addConnection("questioner", "interactive");
@@ -217,87 +192,49 @@ public class QuestionerContextRegressionTest {
     }
 
     private static FieldInfo field(String name, String description) {
-        return FieldInfo.builder()
-                .fieldName(name)
-                .description(description)
-                .required(true)
-                .build();
+        return FieldInfo.builder().fieldName(name).description(description).required(true).build();
     }
 
     private static WorkflowSchema workflowSchema(String id, String name, String version) {
-        return WorkflowSchema.builder()
-                .id(id)
-                .name(name)
-                .version(version)
-                .build();
+        return WorkflowSchema.builder().id(id).name(name).version(version).build();
     }
 
     // ==================== Agent Config ====================
 
     private LlmAgentConfig agentConfig(String agentId, int maxChatRounds, List<WorkflowSchema> workflows) {
-        return LlmAgentConfig.builder()
-                .id(agentId)
-                .version("0.0.1")
-                .description("context regression agent")
-                .model(agentModelConfig())
-                .promptTemplate(List.of(Map.of("role", "system", "content", "你是一个AI助手")))
-                .constrain(ConstrainConfig.builder()
-                        .reservedMaxChatRounds(maxChatRounds)
-                        .maxIteration(10)
-                        .build())
-                .workflows(workflows)
-                .build();
+        return LlmAgentConfig.builder().id(agentId).version("0.0.1").description("context regression agent")
+                .model(agentModelConfig()).promptTemplate(List.of(Map.of("role", "system", "content", "你是一个AI助手")))
+                .constrain(ConstrainConfig.builder().reservedMaxChatRounds(maxChatRounds).maxIteration(10).build())
+                .workflows(workflows).build();
     }
 
     private static ModelConfig agentModelConfig() {
-        return new ModelConfig(
-                AGENT_PROVIDER,
-                BaseModelInfo.builder()
-                        .apiKey("fake-agent-key")
-                        .apiBase("mirror://ctx-agent")
-                        .modelName("ctx-agent-model")
-                        .temperature(0.1)
-                        .topP(0.9)
-                        .timeout(30)
-                        .build());
+        return new ModelConfig(AGENT_PROVIDER,
+                BaseModelInfo.builder().apiKey("fake-agent-key").apiBase("mirror://ctx-agent")
+                        .modelName("ctx-agent-model").temperature(0.1).topP(0.9).timeout(30).build());
     }
 
     private static ModelClientConfig questionerClientConfig() {
-        return ModelClientConfig.builder()
-                .clientId("ctx-questioner-client")
-                .clientProvider(QUESTIONER_PROVIDER)
-                .apiKey("fake-questioner-key")
-                .apiBase("mirror://ctx-questioner")
-                .verifySsl(false)
-                .build();
+        return ModelClientConfig.builder().clientId("ctx-questioner-client").clientProvider(QUESTIONER_PROVIDER)
+                .apiKey("fake-questioner-key").apiBase("mirror://ctx-questioner").verifySsl(false).build();
     }
 
     private static ModelRequestConfig questionerRequestConfig() {
-        return ModelRequestConfig.builder()
-                .modelName("ctx-questioner-model")
-                .temperature(0.1)
-                .topP(0.9)
-                .build();
+        return ModelRequestConfig.builder().modelName("ctx-questioner-model").temperature(0.1).topP(0.9).build();
     }
 
     // ==================== Runner Helpers ====================
 
     private static Iterator<Object> runStreaming(LlmAgent agent, String query, String conversationId) {
-        return Runner.runAgentStreaming(
-                agent,
-                Map.of("query", query, "conversation_id", conversationId),
-                null, null,
+        return Runner.runAgentStreaming(agent, Map.of("query", query, "conversation_id", conversationId), null, null,
                 List.of(StreamMode.OUTPUT));
     }
 
     private static Iterator<Object> runStreamingResume(LlmAgent agent, String nodeId, String value,
-                                                       String conversationId) {
+            String conversationId) {
         InteractiveInput input = new InteractiveInput();
         input.update(nodeId, value);
-        return Runner.runAgentStreaming(
-                agent,
-                Map.of("query", input, "conversation_id", conversationId),
-                null, null,
+        return Runner.runAgentStreaming(agent, Map.of("query", input, "conversation_id", conversationId), null, null,
                 List.of(StreamMode.OUTPUT));
     }
 
@@ -374,35 +311,25 @@ public class QuestionerContextRegressionTest {
      * - Otherwise → return default answer
      */
     private static final class AgentModelClient extends BaseModelClient {
-
         AgentModelClient(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
             super(modelConfig, clientConfig);
         }
 
         @Override
-        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP,
-                                       String model, Integer maxTokens, String stop,
-                                       BaseOutputParser outputParser, Float timeout,
-                                       Map<String, Object> kwargs) {
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+                Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             List<MsgView> views = toViews(messages);
             boolean hasToolMessage = views.stream().anyMatch(v -> "tool".equals(v.role));
-            String latestUserContent = views.stream()
-                .filter(v -> "user".equals(v.role))
-                .reduce((left, right) -> right)
-                .map(MsgView::content)
-                .orElse("");
+            String latestUserContent = views.stream().filter(v -> "user".equals(v.role)).reduce((left, right) -> right)
+                    .map(MsgView::content).orElse("");
 
             if (tools instanceof List<?> toolList && !toolList.isEmpty() && !hasToolMessage) {
-            String workflowName = resolveWorkflowName(latestUserContent);
-                return AssistantMessage.builder()
-                        .content("")
-                        .toolCalls(List.of(ToolCall.builder()
-                                .id("call_" + UUID.randomUUID())
-                                .name(workflowName)
-                                .arguments("{\"query\":\"用户查询\"}")
-                                .build()))
-                        .finishReason("tool_calls")
-                        .build();
+                String workflowName = resolveWorkflowName(latestUserContent);
+                return AssistantMessage
+                        .builder().content("").toolCalls(List.of(ToolCall.builder().id("call_" + UUID.randomUUID())
+                                .name(workflowName).arguments("{\"query\":\"用户查询\"}").build()))
+                        .finishReason("tool_calls").build();
             }
 
             if (hasToolMessage) {
@@ -414,30 +341,28 @@ public class QuestionerContextRegressionTest {
 
         @Override
         public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
-                                                      String model, Integer maxTokens, String stop,
-                                                      BaseOutputParser outputParser, Float timeout,
-                                                      Map<String, Object> kwargs) {
+                String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             return List.<AssistantMessageChunk>of().iterator();
         }
 
         @Override
         public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-                                                     String negativePrompt, int n, boolean promptExtend,
-                                                     boolean watermark, int seed, Map<String, Object> kwargs) {
+                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
         @Override
         public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
-                                                      String languageType, Map<String, Object> kwargs) {
+                String languageType, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
         @Override
         public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-                                                     String model, String size, String resolution, int duration,
-                                                     boolean promptExtend, boolean watermark, String negativePrompt,
-                                                     Integer seed, Map<String, Object> kwargs) {
+                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
@@ -459,16 +384,14 @@ public class QuestionerContextRegressionTest {
      * Returns JSON with extracted fields based on keywords in dialogue history.
      */
     private static final class QuestionerModelClient extends BaseModelClient {
-
         QuestionerModelClient(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
             super(modelConfig, clientConfig);
         }
 
         @Override
-        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP,
-                                       String model, Integer maxTokens, String stop,
-                                       BaseOutputParser outputParser, Float timeout,
-                                       Map<String, Object> kwargs) {
+        public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+                Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             String dialogue = extractDialogue(messages);
             Map<String, String> fields = new LinkedHashMap<>();
 
@@ -506,30 +429,28 @@ public class QuestionerContextRegressionTest {
 
         @Override
         public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
-                                                      String model, Integer maxTokens, String stop,
-                                                      BaseOutputParser outputParser, Float timeout,
-                                                      Map<String, Object> kwargs) {
+                String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             return List.<AssistantMessageChunk>of().iterator();
         }
 
         @Override
         public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-                                                     String negativePrompt, int n, boolean promptExtend,
-                                                     boolean watermark, int seed, Map<String, Object> kwargs) {
+                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
         @Override
         public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
-                                                      String languageType, Map<String, Object> kwargs) {
+                String languageType, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
         @Override
         public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-                                                     String model, String size, String resolution, int duration,
-                                                     boolean promptExtend, boolean watermark, String negativePrompt,
-                                                     Integer seed, Map<String, Object> kwargs) {
+                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 

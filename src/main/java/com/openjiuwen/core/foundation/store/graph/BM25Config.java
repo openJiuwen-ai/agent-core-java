@@ -8,14 +8,19 @@ package com.openjiuwen.core.foundation.store.graph;
  * Graph Database BM25 Options.
  * <p>
  * Mirrors Python's {@code BM25Config}.
+ * 
+ * @since 0.1.7
  */
 public class BM25Config {
-
     private final double bm25B;
     private final double bm25K1;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BM25Config.
+     * 
+     * @param bm25B bm25B
+     * @param bm25K1 bm25K1
+     * @since 0.1.7
      */
     public BM25Config(double bm25B, double bm25K1) {
         if (bm25B < 0 || bm25B > 1) {
@@ -29,21 +34,29 @@ public class BM25Config {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BM25Config.
+     * 
+     * @since 0.1.7
      */
     public BM25Config() {
         this(0.75, 1.2);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getBm25B.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getBm25B() {
         return bm25B;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getBm25K1.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getBm25K1() {
         return bm25K1;

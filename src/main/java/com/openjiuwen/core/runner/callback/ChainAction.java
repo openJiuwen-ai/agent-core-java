@@ -6,9 +6,10 @@ package com.openjiuwen.core.runner.callback;
 
 /**
  * Actions that callbacks can return to control chain execution.
+ * 
+ * @since 0.1.7
  */
 public enum ChainAction {
-    /** Continue to next callback in chain. */
     CONTINUE("continue"),
     /** Break the chain and return current result. */
     BREAK("break"),
@@ -24,7 +25,10 @@ public enum ChainAction {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

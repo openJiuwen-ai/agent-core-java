@@ -5,11 +5,14 @@
 package com.openjiuwen.agentevolving.agent_rl.config.onlineconfig;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.onlineconfig.TrainingConfig.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -22,7 +25,9 @@ public class TrainingConfig {
     private String loraRepo;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validate.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         VLLMServiceConfig.validateAtLeast(threshold, 1, "training.threshold");
@@ -30,35 +35,82 @@ public class TrainingConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getGpu_ids.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getGpu_ids() { return getGpuIds(); }
+    public String getGpu_ids() {
+        return getGpuIds();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setGpu_ids.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setGpu_ids(String value) { setGpuIds(value); }
+    public void setGpu_ids(String value) {
+        setGpuIds(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getScan_interval.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public int getScan_interval() { return getScanInterval(); }
+    public int getScan_interval() {
+        return getScanInterval();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setScan_interval.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setScan_interval(int value) { setScanInterval(value); }
+    public void setScan_interval(int value) {
+        setScanInterval(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getPpo_config.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getPpo_config() { return getPpoConfig(); }
+    public String getPpo_config() {
+        return getPpoConfig();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setPpo_config.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setPpo_config(String value) { setPpoConfig(value); }
+    public void setPpo_config(String value) {
+        setPpoConfig(value);
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getLora_repo.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getLora_repo() { return getLoraRepo(); }
+    public String getLora_repo() {
+        return getLoraRepo();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * setLora_repo.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
-    public void setLora_repo(String value) { setLoraRepo(value); }
+    public void setLora_repo(String value) {
+        setLoraRepo(value);
+    }
 }

@@ -11,6 +11,8 @@ import java.util.Map;
 
 /**
  * Base entity type.
+ * 
+ * @since 0.1.7
  */
 @Data
 public class EntityDef {
@@ -18,17 +20,30 @@ public class EntityDef {
 
     private String name = "Entity";
     private Map<String, String> description = ENTITY_DEFINITION_DESCRIPTION;
+
+    /**
+     * EntityDefAttr.
+     * 
+     * @since 0.1.7
+     */
     private EntityDefAttr attributes = new EntityDefAttr();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerDescription.
+     * 
+     * @param language language
+     * @param description description
+     * @since 0.1.7
      */
     public static void registerDescription(String language, String description) {
         ENTITY_DEFINITION_DESCRIPTION.put(language, description);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * entityDefinitionDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected static Map<String, String> entityDefinitionDescription() {
         return ENTITY_DEFINITION_DESCRIPTION;

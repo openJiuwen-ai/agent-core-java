@@ -21,17 +21,28 @@ import java.util.concurrent.CompletionException;
 
 /**
  * Validation and processing of graph entities, episodes, and relations.
+ * 
+ * @since 0.1.7
  */
 public final class PostprocessGraphObjects {
+    /**
+     * PostprocessGraphObjects.
+     * 
+     * @since 0.1.7
+     */
     private PostprocessGraphObjects() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validateEntitiesEpisodes.
+     * 
+     * @param entities entities
+     * @param currentEpisode currentEpisode
+     * @param state state
+     * @since 0.1.7
      */
-    public static void validateEntitiesEpisodes(List<Entity> entities,
-                                                Episode currentEpisode,
-                                                States.GraphMemState state) {
+    public static void validateEntitiesEpisodes(List<Entity> entities, Episode currentEpisode,
+            States.GraphMemState state) {
         List<String> merged = new ArrayList<>();
         for (Object entity : currentEpisode.getEntities()) {
             merged.add(entityUuid(entity));
@@ -85,6 +96,8 @@ public final class PostprocessGraphObjects {
                     episode.getEntities().remove(entity.getUuid());
                 } else if (isEntityToEpisode && !isEpisodeToEntity) {
                     episode.getEntities().add(entity.getUuid());
+                } else {
+                    // no-op
                 }
             }
             episode.setEntities(new ArrayList<>(episode.getEntities().stream().distinct().toList()));
@@ -92,12 +105,18 @@ public final class PostprocessGraphObjects {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createEpisode.
+     * 
+     * @param database database
+     * @param userId userId
+     * @param content content
+     * @param state state
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public static Episode createEpisode(GraphStore database,
-                                        String userId,
-                                        String content,
-                                        States.GraphMemState state) throws Exception {
+    public static Episode createEpisode(GraphStore database, String userId, String content, States.GraphMemState state)
+            throws Exception {
         Episode currentEpisode = new Episode();
         currentEpisode.setCreatedAt(state.getCurrentTimestamp());
         currentEpisode.setValidSince(state.getReferenceTimestamp());
@@ -112,12 +131,17 @@ public final class PostprocessGraphObjects {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * processRelations.
+     * 
+     * @param database database
+     * @param entities entities
+     * @param relations relations
+     * @param state state
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public static void processRelations(GraphStore database,
-                                        List<Entity> entities,
-                                        List<Relation> relations,
-                                        States.GraphMemState state) throws Exception {
+    public static void processRelations(GraphStore database, List<Entity> entities, List<Relation> relations,
+            States.GraphMemState state) throws Exception {
         List<Object> toResolve = state.getTmpBuffer();
         toResolve.clear();
         for (String relationUuid : state.getMemUpdate().getRemovedRelation()) {
@@ -142,20 +166,24 @@ public final class PostprocessGraphObjects {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * processEntities.
+     * 
+     * @param database database
+     * @param entities entities
+     * @param currentEpisode currentEpisode
+     * @param state state
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public static void processEntities(GraphStore database,
-                                       List<Entity> entities,
-                                       Episode currentEpisode,
-                                       States.GraphMemState state) throws Exception {
+    public static void processEntities(GraphStore database, List<Entity> entities, Episode currentEpisode,
+            States.GraphMemState state) throws Exception {
         List<Object> toResolve = state.getTmpBuffer();
         toResolve.clear();
         for (CompletableFuture<?> future : state.getMergingTasks()) {
             Object response = future.join();
             Entity entity = state.getMergingTasksEntities().get(future);
-            String content = response instanceof Map<?, ?> map
-                    ? String.valueOf(map.get("content"))
-                    : String.valueOf(response);
+            String content =
+                response instanceof Map<?, ?> map ? String.valueOf(map.get("content")) : String.valueOf(response);
             GraphMemoryUtils.updateEntity(entity, content, state.getPrompting().getSchemaEntityExtraction());
             if (!entities.contains(entity)) {
                 entities.add(entity);
@@ -189,10 +217,13 @@ public final class PostprocessGraphObjects {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseRelationUuidsToRemove.
+     * 
+     * @param dedupeRelationTasks dedupeRelationTasks
+     * @param state state
+     * @since 0.1.7
      */
-    public static void parseRelationUuidsToRemove(List<RelationTask> dedupeRelationTasks,
-                                                  States.GraphMemState state) {
+    public static void parseRelationUuidsToRemove(List<RelationTask> dedupeRelationTasks, States.GraphMemState state) {
         for (RelationTask relationTask : dedupeRelationTasks) {
             try {
                 Object result = relationTask.future().join();
@@ -208,12 +239,9 @@ public final class PostprocessGraphObjects {
                 if (!(dedupeRelation instanceof Map<?, ?>)) {
                     dedupeRelation = ParseResponse.rawDecodeJson(content, null);
                 }
-                Map<String, Object> typed = dedupeRelation instanceof Map<?, ?> map
-                        ? (Map<String, Object>) map
-                        : Map.of();
-                if (!typed.containsKey("need_merging")
-                        && !typed.containsKey("needMerging")
-                        && content != null
+                Map<String, Object> typed =
+                    dedupeRelation instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+                if (!typed.containsKey("need_merging") && !typed.containsKey("needMerging") && content != null
                         && !content.isBlank()) {
                     int jsonStart = Math.max(content.indexOf('{'), content.indexOf('['));
                     if (jsonStart >= 0) {
@@ -224,11 +252,8 @@ public final class PostprocessGraphObjects {
                         }
                     }
                 }
-                java.util.Set<String> relationsToRemove = ParseLlmResponse.parseRelationMerging(
-                        typed,
-                        relationTask.relation(),
-                        relationTask.currentRelations()
-                );
+                java.util.Set<String> relationsToRemove = ParseLlmResponse.parseRelationMerging(typed,
+                        relationTask.relation(), relationTask.currentRelations());
                 state.getToRemove().addAll(relationsToRemove);
                 state.getMemUpdate().getRemovedRelation().addAll(relationsToRemove);
             } catch (CompletionException | IllegalArgumentException ignored) {
@@ -237,6 +262,13 @@ public final class PostprocessGraphObjects {
         }
     }
 
+    /**
+     * entityUuid.
+     * 
+     * @param entity entity
+     * @return the result
+     * @since 0.1.7
+     */
     private static String entityUuid(Object entity) {
         if (entity instanceof String uuid) {
             return uuid;
@@ -247,6 +279,13 @@ public final class PostprocessGraphObjects {
         return String.valueOf(entity);
     }
 
+    /**
+     * relationUuid.
+     * 
+     * @param relation relation
+     * @return the result
+     * @since 0.1.7
+     */
     private static String relationUuid(Object relation) {
         if (relation instanceof String uuid) {
             return uuid;
@@ -257,6 +296,14 @@ public final class PostprocessGraphObjects {
         return String.valueOf(relation);
     }
 
+    /**
+     * resolveEntityUuid.
+     * 
+     * @param database database
+     * @param state state
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private static void resolveEntityUuid(GraphStore database, States.GraphMemState state) throws Exception {
         List<Object> toResolve = state.getTmpBuffer();
         if (!toResolve.isEmpty()) {
@@ -268,6 +315,14 @@ public final class PostprocessGraphObjects {
         }
     }
 
+    /**
+     * concatEntities.
+     * 
+     * @param first first
+     * @param second second
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Entity> concatEntities(List<Entity> first, List<Entity> second) {
         List<Entity> result = new ArrayList<>(first);
         result.addAll(second);
@@ -275,13 +330,11 @@ public final class PostprocessGraphObjects {
     }
 
     /**
- * Public record RelationTask used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record RelationTask(
-            Relation relation,
-            List<Map<String, Object>> currentRelations,
+     * Public record RelationTask used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record RelationTask(Relation relation, List<Map<String, Object>> currentRelations,
             CompletableFuture<?> future) {
     }
 }

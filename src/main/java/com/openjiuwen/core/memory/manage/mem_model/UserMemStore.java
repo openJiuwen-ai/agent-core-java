@@ -15,71 +15,110 @@ import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.memory.common.KvPrefixRegistry;
 import com.openjiuwen.spi.store.BaseKVStore;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 /**
  * KV-based memory data storage with ID index management.
+ * 
+ * @since 0.1.7
  */
 public class UserMemStore {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BYTE_NUM_PER_ID.
+     * 
+     * @since 0.1.7
      */
     public static final int BYTE_NUM_PER_ID = 24;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * IDS_STR.
+     * 
+     * @since 0.1.7
      */
     public static final String IDS_STR = "ids";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * USER_PROFILE_TOPIC_STR.
+     * 
+     * @since 0.1.7
      */
     public static final String USER_PROFILE_TOPIC_STR = "UPT";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * KEY_PREFIX_STR.
+     * 
+     * @since 0.1.7
      */
     public static final String KEY_PREFIX_STR = "UMD";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * MEM_TYPE_FIELD_KEY.
+     * 
+     * @since 0.1.7
      */
     public static final String MEM_TYPE_FIELD_KEY = "mem_type";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * TOPIC_FIELD_KEY.
+     * 
+     * @since 0.1.7
      */
     public static final String TOPIC_FIELD_KEY = "profile_type";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * SEPARATOR.
+     * 
+     * @since 0.1.7
      */
     public static final String SEPARATOR = "/";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * FRAGMENT_MEMORY_TYPES.
+     * 
+     * @since 0.1.7
      */
-    public static final List<String> FRAGMENT_MEMORY_TYPES = List.of(
-            MemoryType.USER_PROFILE.getValue(),
-            MemoryType.SEMANTIC_MEMORY.getValue(),
-            MemoryType.EPISODIC_MEMORY.getValue());
+    public static final List<String> FRAGMENT_MEMORY_TYPES = List.of(MemoryType.USER_PROFILE.getValue(),
+            MemoryType.SEMANTIC_MEMORY.getValue(), MemoryType.EPISODIC_MEMORY.getValue());
 
     private final BaseKVStore kvStore;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * UserMemStore.
+     * 
+     * @param kvStore kvStore
+     * @since 0.1.7
      */
     public UserMemStore(BaseKVStore kvStore) {
         if (kvStore == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.MEMORY_STORE_INIT_FAILED,
-                    "store_type", "user mem store",
-                    "error_msg", "kv store instance is None in UserMemStore"
-            );
+            throw ErrorHelper.buildError(StatusCode.MEMORY_STORE_INIT_FAILED, "store_type", "user mem store",
+                    "error_msg", "kv store instance is None in UserMemStore");
         }
         this.kvStore = kvStore;
         KvPrefixRegistry.getInstance().registerCurrent(KEY_PREFIX_STR);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * write.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public boolean write(String userId, String scopeId, String memId, Map<String, Object> data) {
         if (data == null || data.isEmpty()) {
@@ -88,7 +127,8 @@ public class UserMemStore {
         }
         String userMemKey = getUserMemKey(userId, scopeId, memId);
         if (kvStore.isExists(userMemKey)) {
-            MEMORY_LOGGER.error("[{}] Write failed, user memory already exists. memId={}", LogEventType.MEMORY_STORE, memId);
+            MEMORY_LOGGER.error("[{}] Write failed, user memory already exists. memId={}", LogEventType.MEMORY_STORE,
+                    memId);
             return false;
         }
 
@@ -117,12 +157,20 @@ public class UserMemStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * update.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public boolean update(String userId, String scopeId, String memId, Map<String, Object> data) {
         String userMemKey = getUserMemKey(userId, scopeId, memId);
         if (!kvStore.isExists(userMemKey)) {
-            MEMORY_LOGGER.error("[{}] Update failed, user memory does not exist. memId={}", LogEventType.MEMORY_UPDATE, memId);
+            MEMORY_LOGGER.error("[{}] Update failed, user memory does not exist. memId={}", LogEventType.MEMORY_UPDATE,
+                    memId);
             return false;
         }
         String oldData = getStringOrDefault(userMemKey, "");
@@ -137,14 +185,24 @@ public class UserMemStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * delete.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @since 0.1.7
      */
     public void delete(String userId, String scopeId, String memId) {
         innerDelete(userId, scopeId, memId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * batchDelete.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memIds memIds
+     * @since 0.1.7
      */
     public void batchDelete(String userId, String scopeId, List<String> memIds) {
         for (String memId : memIds) {
@@ -153,7 +211,13 @@ public class UserMemStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> get(String userId, String scopeId, String memId) {
         String userMemKey = getUserMemKey(userId, scopeId, memId);
@@ -161,7 +225,13 @@ public class UserMemStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * batchGet.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memIds memIds
+     * @return the result
+     * @since 0.1.7
      */
     public List<Map<String, Object>> batchGet(String userId, String scopeId, List<String> memIds) {
         List<String> keys = new ArrayList<>();
@@ -182,7 +252,13 @@ public class UserMemStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAll.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memType memType
+     * @return the result
+     * @since 0.1.7
      */
     public List<Map<String, Object>> getAll(String userId, String scopeId, String memType) {
         String userIdsKey = getUserIdsKey(userId, scopeId, memType);
@@ -198,7 +274,13 @@ public class UserMemStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getByTopic.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param topic topic
+     * @return the result
+     * @since 0.1.7
      */
     public List<Map<String, Object>> getByTopic(String userId, String scopeId, String topic) {
         String topicKey = getConcatenationKey(Arrays.asList(userId, scopeId, USER_PROFILE_TOPIC_STR, topic, IDS_STR));
@@ -214,10 +296,18 @@ public class UserMemStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInRange.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param startIdx startIdx
+     * @param endIdx endIdx
+     * @param memType memType
+     * @return the result
+     * @since 0.1.7
      */
-    public List<Map<String, Object>> getInRange(String userId, String scopeId,
-                                                  int startIdx, int endIdx, String memType) {
+    public List<Map<String, Object>> getInRange(String userId, String scopeId, int startIdx, int endIdx,
+            String memType) {
         String userIdsKey = getUserIdsKey(userId, scopeId, memType);
         if (!kvStore.isExists(userIdsKey)) {
             return null;
@@ -232,6 +322,15 @@ public class UserMemStore {
 
     // ---- Private Helpers ----
 
+    /**
+     * getUserIdsKey.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memType memType
+     * @return the result
+     * @since 0.1.7
+     */
     private String getUserIdsKey(String userId, String scopeId, String memType) {
         if (memType == null) {
             return getConcatenationKey(Arrays.asList(userId, scopeId, IDS_STR));
@@ -240,14 +339,38 @@ public class UserMemStore {
         }
     }
 
+    /**
+     * getUserMemKey.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @return the result
+     * @since 0.1.7
+     */
     private String getUserMemKey(String userId, String scopeId, String memId) {
         return getConcatenationKey(Arrays.asList(userId, scopeId, memId));
     }
 
+    /**
+     * getUserProfileTopicIdsKey.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
+     */
     private String getUserProfileTopicIdsKey(String userId, String scopeId) {
         return getConcatenationKey(Arrays.asList(userId, scopeId, USER_PROFILE_TOPIC_STR, IDS_STR));
     }
 
+    /**
+     * getConcatenationKey.
+     * 
+     * @param fields fields
+     * @return the result
+     * @since 0.1.7
+     */
     private String getConcatenationKey(List<String> fields) {
         StringBuilder keyStr = new StringBuilder(KEY_PREFIX_STR);
         for (String field : fields) {
@@ -256,10 +379,19 @@ public class UserMemStore {
         return keyStr.toString();
     }
 
+    /**
+     * innerDelete.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @since 0.1.7
+     */
     private void innerDelete(String userId, String scopeId, String memId) {
         String userMemKey = getUserMemKey(userId, scopeId, memId);
         if (!kvStore.isExists(userMemKey)) {
-            MEMORY_LOGGER.warn("[{}] Delete failed, user memory does not exist. memId={}", LogEventType.MEMORY_STORE, memId);
+            MEMORY_LOGGER.warn("[{}] Delete failed, user memory does not exist. memId={}", LogEventType.MEMORY_STORE,
+                    memId);
             return;
         }
         String dataStr = getStringOrDefault(userMemKey, "");
@@ -285,6 +417,13 @@ public class UserMemStore {
         kvStore.delete(userMemKey);
     }
 
+    /**
+     * deleteMemId.
+     * 
+     * @param idsKey idsKey
+     * @param memId memId
+     * @since 0.1.7
+     */
     private void deleteMemId(String idsKey, String memId) {
         String idsValue = getStringOrDefault(idsKey, "");
         if (idsValue.isEmpty()) {
@@ -306,10 +445,25 @@ public class UserMemStore {
         kvStore.set(idsKey, newIds.toString());
     }
 
+    /**
+     * writeId.
+     * 
+     * @param existingIds existingIds
+     * @param newId newId
+     * @return the result
+     * @since 0.1.7
+     */
     private String writeId(String existingIds, String newId) {
         return existingIds + newId;
     }
 
+    /**
+     * getAllIds.
+     * 
+     * @param idsValue idsValue
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> getAllIds(String idsValue) {
         List<String> ids = new ArrayList<>();
         int idLen = BYTE_NUM_PER_ID;
@@ -319,6 +473,15 @@ public class UserMemStore {
         return ids;
     }
 
+    /**
+     * getIdsInRange.
+     * 
+     * @param idsValue idsValue
+     * @param startIdx startIdx
+     * @param endIdx endIdx
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> getIdsInRange(String idsValue, int startIdx, int endIdx) {
         List<String> allIds = getAllIds(idsValue);
         int start = Math.max(0, startIdx);
@@ -329,11 +492,26 @@ public class UserMemStore {
         return allIds.subList(start, end);
     }
 
+    /**
+     * getStringOrDefault.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private String getStringOrDefault(String key, String defaultValue) {
         Object val = kvStore.get(key);
         return val != null ? String.valueOf(val) : defaultValue;
     }
 
+    /**
+     * getMap.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> getMap(String key) {
         Object val = kvStore.get(key);
         if (val == null) {
@@ -342,6 +520,13 @@ public class UserMemStore {
         return fromJson(String.valueOf(val));
     }
 
+    /**
+     * toJson.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
+     */
     private String toJson(Map<String, Object> data) {
         try {
             return MAPPER.writeValueAsString(data);
@@ -350,9 +535,17 @@ public class UserMemStore {
         }
     }
 
+    /**
+     * fromJson.
+     * 
+     * @param json json
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> fromJson(String json) {
         try {
-            return MAPPER.readValue(json, new TypeReference<Map<String, Object>>() {});
+            return MAPPER.readValue(json, new TypeReference<Map<String, Object>>() {
+            });
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to deserialize from JSON", e);
         }

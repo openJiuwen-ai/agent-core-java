@@ -13,6 +13,8 @@ import lombok.EqualsAndHashCode;
  * Configuration for the Tool workflow component.
  * <p>
  * Mirrors Python's {@code ToolComponentConfig}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @EqualsAndHashCode(callSuper = true)

@@ -1,7 +1,12 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.context.ModelContext;
 import com.openjiuwen.core.graph.visualization.DrawableEdge;
@@ -26,11 +31,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Advanced Workflow system tests covering gaps identified in CHECK doc:
  * LoopComponent, SubWorkflowComponent, MermaidDiagram visualization.
@@ -38,7 +38,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Tag("system-test")
 class WorkflowAdvancedSystemTest {
-
     static class CounterComponent extends WorkflowComponent {
         @Override
         @SuppressWarnings("unchecked")
@@ -79,18 +78,16 @@ class WorkflowAdvancedSystemTest {
     @Nested
     @DisplayName("SubWorkflowComponent Tests")
     class SubWorkflowTests {
-
         @Test
         @DisplayName("SubWorkflow executes inner workflow")
         void testSubWorkflowExecution() {
             // Create inner (sub) workflow
             Workflow innerFlow = new Workflow();
-            innerFlow.setStartComp("inner_start", new Start(),
-                    Map.of("value", "${value}"), null);
-            innerFlow.addWorkflowComp("inner_process", new DoubleComponent(),
-                    Map.of("value", "${inner_start.value}"), null);
-            innerFlow.setEndComp("inner_end", new PassthroughComponent(),
-                    Map.of("value", "${inner_process.value}"), null);
+            innerFlow.setStartComp("inner_start", new Start(), Map.of("value", "${value}"), null);
+            innerFlow.addWorkflowComp("inner_process", new DoubleComponent(), Map.of("value", "${inner_start.value}"),
+                    null);
+            innerFlow.setEndComp("inner_end", new PassthroughComponent(), Map.of("value", "${inner_process.value}"),
+                    null);
             innerFlow.addConnection("inner_start", "inner_process");
             innerFlow.addConnection("inner_process", "inner_end");
 
@@ -101,17 +98,13 @@ class WorkflowAdvancedSystemTest {
             assertTrue(subComp.graphInvoker());
 
             Workflow outerFlow = new Workflow();
-            outerFlow.setStartComp("start", new Start(),
-                    Map.of("value", "${value}"), null);
-            outerFlow.addWorkflowComp("sub", subComp,
-                    Map.of("value", "${start.value}"), null);
-            outerFlow.setEndComp("end", new PassthroughComponent(),
-                    Map.of("result", "${sub.value}"), null);
+            outerFlow.setStartComp("start", new Start(), Map.of("value", "${value}"), null);
+            outerFlow.addWorkflowComp("sub", subComp, Map.of("value", "${start.value}"), null);
+            outerFlow.setEndComp("end", new PassthroughComponent(), Map.of("result", "${sub.value}"), null);
             outerFlow.addConnection("start", "sub");
             outerFlow.addConnection("sub", "end");
 
-            WorkflowOutput output = outerFlow.invoke(
-                    Map.of("value", 5.0), newSession(), null);
+            WorkflowOutput output = outerFlow.invoke(Map.of("value", 5.0), newSession(), null);
 
             assertEquals(WorkflowExecutionState.COMPLETED, output.getState());
             assertNotNull(output.getResult());
@@ -134,7 +127,6 @@ class WorkflowAdvancedSystemTest {
     @Nested
     @DisplayName("LoopSetVariableComponent Tests")
     class LoopSetVariableTests {
-
         @Test
         @DisplayName("LoopSetVariableComponent construction with variable mapping")
         void testLoopSetVariableConstruction() {
@@ -148,7 +140,6 @@ class WorkflowAdvancedSystemTest {
     @Nested
     @DisplayName("DrawableGraph & Visualization Tests")
     class VisualizationTests {
-
         @Test
         @DisplayName("DrawableGraph construction with nodes and edges")
         void testDrawableGraphConstruction() {
@@ -156,12 +147,8 @@ class WorkflowAdvancedSystemTest {
             DrawableNode nodeB = new DrawableNode("b", "Node B", null);
             DrawableEdge edge = new DrawableEdge("a", "b");
 
-            DrawableGraph graph = new DrawableGraph(
-                    Map.of("a", nodeA, "b", nodeB),
-                    List.of(edge),
-                    List.of(nodeA),
-                    List.of(nodeB),
-                    List.of());
+            DrawableGraph graph = new DrawableGraph(Map.of("a", nodeA, "b", nodeB), List.of(edge), List.of(nodeA),
+                    List.of(nodeB), List.of());
 
             assertNotNull(graph.getNodes());
             assertEquals(2, graph.getNodes().size());
@@ -182,8 +169,7 @@ class WorkflowAdvancedSystemTest {
         @Test
         @DisplayName("DrawableNode with metadata")
         void testDrawableNodeMetadata() {
-            DrawableNode node = new DrawableNode("n1", "My Node",
-                    Map.of("type", "processor", "version", "1.0"));
+            DrawableNode node = new DrawableNode("n1", "My Node", Map.of("type", "processor", "version", "1.0"));
             assertEquals("n1", node.getId());
             assertEquals("My Node", node.getName());
             assertNotNull(node.getMetadata());

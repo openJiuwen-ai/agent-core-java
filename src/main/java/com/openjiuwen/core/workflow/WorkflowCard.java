@@ -7,6 +7,7 @@ package com.openjiuwen.core.workflow;
 import com.openjiuwen.core.common.schema.BaseCard;
 import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
+
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -19,16 +20,20 @@ import java.util.Map;
  * Contains descriptive information and input schema for a workflow.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.base.WorkflowCard}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(callSuper = true)
 public class WorkflowCard extends BaseCard {
-
     /**
-     * Convenience constructor: WorkflowCard(id, name).
-     * Used in tests and mirrors Python's WorkflowCard(id=..., name=...) pattern.
+     * WorkflowCard.
+     * 
+     * @param id id
+     * @param name name
+     * @since 0.1.7
      */
     public WorkflowCard(String id, String name) {
         super();
@@ -43,6 +48,12 @@ public class WorkflowCard extends BaseCard {
     /**
      * Compatibility constructor for translated tests that still pass
      * {@code id, name, version, description} positionally.
+     * 
+     * @param id id
+     * @param name name
+     * @param version version
+     * @param description description
+     * @since 0.1.7
      */
     public WorkflowCard(String id, String name, String version, String description) {
         super.setId(id);
@@ -52,28 +63,34 @@ public class WorkflowCard extends BaseCard {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toolInfo.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object toolInfo() {
-        return ToolInfo.builder()
-                .name(getName())
-                .description(getDescription())
-                .parameters(resolveInputParamsSchema())
+        return ToolInfo.builder().name(getName()).description(getDescription()).parameters(resolveInputParamsSchema())
                 .build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * str.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String str() {
         return toString();
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * resolveInputParamsSchema.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> resolveInputParamsSchema() {
         if (inputParams == null) {
             return Map.of();
@@ -88,85 +105,109 @@ public class WorkflowCard extends BaseCard {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getVersion.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getVersion() {
         return version;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setVersion.
+     * 
+     * @param version version
+     * @since 0.1.7
      */
     public void setVersion(String version) {
         this.version = version;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputParams.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getInputParams() {
         return inputParams;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInputParams.
+     * 
+     * @param inputParams inputParams
+     * @since 0.1.7
      */
     public void setInputParams(Object inputParams) {
         this.inputParams = inputParams;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder extends BaseCard.Builder {
         private String version = "";
         private Object inputParams;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * id.
+         * 
+         * @param id id
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder id(String id) {
             super.id(id);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder name(String name) {
             super.name(name);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * description.
+         * 
+         * @param description description
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public Builder description(String description) {
             super.description(description);
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * version.
+         * 
+         * @param version version
+         * @return the result
+         * @since 0.1.7
          */
         public Builder version(String version) {
             this.version = version;
@@ -174,7 +215,11 @@ public class WorkflowCard extends BaseCard {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * inputParams.
+         * 
+         * @param inputParams inputParams
+         * @return the result
+         * @since 0.1.7
          */
         public Builder inputParams(Object inputParams) {
             this.inputParams = inputParams;
@@ -182,12 +227,12 @@ public class WorkflowCard extends BaseCard {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public WorkflowCard build() {
             WorkflowCard card = new WorkflowCard();
             card.setId(id);

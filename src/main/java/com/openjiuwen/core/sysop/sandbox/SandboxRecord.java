@@ -14,6 +14,8 @@ import java.util.Map;
 
 /**
  * Persisted sandbox runtime record used by the gateway store.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -33,11 +35,26 @@ public class SandboxRecord {
     private String containerConfigHash;
 
     @Builder.Default
+    /**
+     * System.currentTimeMillis.
+     * 
+     * @since 0.1.7
+     */
     private double createdTs = System.currentTimeMillis() / 1000.0;
 
     @Builder.Default
+    /**
+     * System.currentTimeMillis.
+     * 
+     * @since 0.1.7
+     */
     private double lastUsedTs = System.currentTimeMillis() / 1000.0;
 
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
 }

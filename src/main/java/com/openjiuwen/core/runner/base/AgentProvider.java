@@ -9,6 +9,8 @@ import java.util.function.Supplier;
 /**
  * Provider functional interface for creating Agent instances.
  * Mirrors Python's {@code AgentProvider = Callable[..., BaseAgent]}.
+ * 
+ * @since 0.1.7
  */
 @FunctionalInterface
 public interface AgentProvider<T> extends Supplier<T> {

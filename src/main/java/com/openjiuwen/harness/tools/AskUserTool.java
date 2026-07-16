@@ -8,10 +8,16 @@ import java.util.Map;
 
 /**
  * Minimal ask_user tool payload wrapper.
+ * 
+ * @since 0.1.7
  */
 public class AskUserTool {
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param payload payload
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput invoke(Map<String, Object> payload) {
         return ToolOutput.builder().success(true).data(payload != null ? payload : Map.of()).build();

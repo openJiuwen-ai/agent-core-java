@@ -7,12 +7,23 @@ package com.openjiuwen.core.sysop.result;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-/** Result type for read file operation. */
+/**
+ * Result type for read file operation.
+ * 
+ * @since 0.1.7
+ */
 @SuperBuilder
 @NoArgsConstructor
 public class ReadFileResult extends BaseResult<ReadFileData> {
     /**
-     * Auto-generated for codecheck compliance.
+     * ReadFileResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
      */
-    public ReadFileResult(int code, String message, ReadFileData data) { super(code, message, data); }
+    public ReadFileResult(int code, String message, ReadFileData data) {
+        super(code, message, data);
+    }
 }

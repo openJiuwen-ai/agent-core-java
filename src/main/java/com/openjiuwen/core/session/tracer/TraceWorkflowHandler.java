@@ -18,31 +18,43 @@ import java.util.Map;
  * Trace handler for workflow-level tracing (component lifecycle events).
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.tracer.handler.TraceWorkflowHandler}.
+ * 
+ * @since 0.1.7
  */
 public class TraceWorkflowHandler extends TraceBaseHandler {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * TraceWorkflowHandler.
+     * 
+     * @param owner owner
+     * @param streamWriterManager streamWriterManager
+     * @param spanManager spanManager
+     * @since 0.1.7
      */
     public TraceWorkflowHandler(Object owner, StreamWriterManager streamWriterManager, SpanManager spanManager) {
         super(owner, streamWriterManager, spanManager);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * eventName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String eventName() {
         return TracerHandlerName.TRACER_WORKFLOW.getValue();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * formatData.
+     * 
+     * @param span span
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected Map<String, Object> formatData(Span span) {
-        if (span instanceof TraceWorkflowSpan
-                && !NodeStatus.INTERRUPTED.getValue().equals(span.getStatus())) {
+        if (span instanceof TraceWorkflowSpan && !NodeStatus.INTERRUPTED.getValue().equals(span.getStatus())) {
             span.setStatus(getNodeStatus(span));
         }
         Map<String, Object> data = new HashMap<>();
@@ -53,6 +65,10 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
 
     /**
      * Get or create a workflow span.
+     * 
+     * @param invokeId invokeId
+     * @return the result
+     * @since 0.1.7
      */
     public TraceWorkflowSpan getTracerWorkflowSpan(String invokeId) {
         Span existing = spanManager.getSpan(invokeId);
@@ -64,12 +80,19 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
 
     // ---- Trigger Events ----
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onCallStart.
+     * 
+     * @param invokeId invokeId
+     * @param metadata metadata
+     * @param inputs inputs
+     * @param needSend needSend
+     * @param sourceIds sourceIds
+     * @since 0.1.7
      */
-    public void onCallStart(String invokeId, Map<String, Object> metadata, Object inputs,
-                            boolean needSend, List<String> sourceIds) {
+    @TriggerEvent
+    public void onCallStart(String invokeId, Map<String, Object> metadata, Object inputs, boolean needSend,
+            List<String> sourceIds) {
         TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
         Map<String, Object> data = new HashMap<>();
         data.put("start_time", LocalDateTime.now());
@@ -87,12 +110,17 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         }
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onPreInvoke.
+     * 
+     * @param invokeId invokeId
+     * @param inputs inputs
+     * @param componentMetadata componentMetadata
+     * @param needSend needSend
+     * @since 0.1.7
      */
-    public void onPreInvoke(String invokeId, Object inputs, Map<String, Object> componentMetadata,
-                            boolean needSend) {
+    @TriggerEvent
+    public void onPreInvoke(String invokeId, Object inputs, Map<String, Object> componentMetadata, boolean needSend) {
         TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
         Map<String, Object> data = new HashMap<>();
         data.put("inputs", inputs);
@@ -105,11 +133,16 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         }
     }
 
+    /**
+     * onPreStream.
+     * 
+     * @param invokeId invokeId
+     * @param chunk chunk
+     * @param needSend needSend
+     * @since 0.1.7
+     */
     @TriggerEvent
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void onPreStream(String invokeId, Object chunk, boolean needSend) {
         TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
         if (chunk instanceof Map) {
@@ -120,10 +153,15 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         }
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onInvoke.
+     * 
+     * @param invokeId invokeId
+     * @param onInvokeData onInvokeData
+     * @param exception exception
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onInvoke(String invokeId, Map<String, Object> onInvokeData, Exception exception) {
         TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
         LocalDateTime endTime = LocalDateTime.now();
@@ -161,12 +199,17 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         sendData(span);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onInteract.
+     * 
+     * @param invokeId invokeId
+     * @param inputs inputs
+     * @param componentMetadata componentMetadata
+     * @param needSend needSend
+     * @since 0.1.7
      */
-    public void onInteract(String invokeId, Object inputs, Map<String, Object> componentMetadata,
-                           boolean needSend) {
+    @TriggerEvent
+    public void onInteract(String invokeId, Object inputs, Map<String, Object> componentMetadata, boolean needSend) {
         TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
         Map<String, Object> data = new HashMap<>();
         data.put("interactive_inputs", inputs);
@@ -179,19 +222,28 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         }
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onPostStream.
+     * 
+     * @param invokeId invokeId
+     * @param chunk chunk
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onPostStream(String invokeId, Object chunk) {
         TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
         span.appendStreamOutput(chunk);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onPostInvoke.
+     * 
+     * @param invokeId invokeId
+     * @param outputs outputs
+     * @param inputs inputs
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onPostInvoke(String invokeId, Object outputs, Object inputs) {
         TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
         Map<String, Object> data = new HashMap<>();
@@ -199,10 +251,14 @@ public class TraceWorkflowHandler extends TraceBaseHandler {
         spanManager.updateSpan(span, data);
     }
 
-    @TriggerEvent
     /**
-     * Auto-generated for codecheck compliance.
+     * onCallDone.
+     * 
+     * @param invokeId invokeId
+     * @param outputs outputs
+     * @since 0.1.7
      */
+    @TriggerEvent
     public void onCallDone(String invokeId, Object outputs) {
         TraceWorkflowSpan span = getTracerWorkflowSpan(invokeId);
         LocalDateTime endTime = LocalDateTime.now();

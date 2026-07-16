@@ -6,21 +6,23 @@ package com.openjiuwen.core.session.state;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Agent state collection managing global and agent state partitions.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.state.agent_state.StateCollection}.
+ * 
+ * @since 0.1.7
  */
 public class AgentStateCollection implements State {
-
     private final InMemoryStateLike globalState;
     private final InMemoryStateLike agentState;
     private Map<String, Object> traceState;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentStateCollection.
+     * 
+     * @since 0.1.7
      */
     public AgentStateCollection() {
         this.globalState = new InMemoryStateLike();
@@ -28,10 +30,14 @@ public class AgentStateCollection implements State {
         this.traceState = new HashMap<>();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object get(Object key) {
         if (key == null) {
             return agentState.getState();
@@ -39,34 +45,47 @@ public class AgentStateCollection implements State {
         return agentState.get(key);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * update.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @Override
     public void update(Map<String, Object> data) {
         agentState.update(data);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateTrace.
+     * 
+     * @param span span
+     * @since 0.1.7
      */
+    @Override
     public void updateTrace(Object span) {
         // Placeholder for trace updates
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateGlobal.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @Override
     public void updateGlobal(Map<String, Object> data) {
         globalState.update(data);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getGlobal.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object getGlobal(Object key) {
         if (key == null) {
             return globalState.getState();
@@ -74,10 +93,13 @@ public class AgentStateCollection implements State {
         return globalState.get(key);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> getState() {
         Map<String, Object> result = new HashMap<>();
         result.put(State.GLOBAL_STATE_KEY, globalState.getState());
@@ -85,10 +107,13 @@ public class AgentStateCollection implements State {
         return result;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * setState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
+    @Override
     public void setState(Map<String, Object> state) {
         if (state == null) {
             return;
@@ -109,15 +134,21 @@ public class AgentStateCollection implements State {
 
     /**
      * Get the internal global state object.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public InMemoryStateLike getGlobalStateLike() {
         return globalState;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * dump.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> dump() {
         Map<String, Object> result = new HashMap<>();
         result.put("global_state", globalState.getState());

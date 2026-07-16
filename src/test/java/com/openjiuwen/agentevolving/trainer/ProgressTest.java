@@ -1,4 +1,7 @@
+
 package com.openjiuwen.agentevolving.trainer;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import org.junit.jupiter.api.Test;
 
@@ -6,10 +9,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
 class ProgressTest {
-
     @Test
     void runEpochYieldsAndUpdatesCurrentEpoch() {
         Progress progress = new Progress(3);

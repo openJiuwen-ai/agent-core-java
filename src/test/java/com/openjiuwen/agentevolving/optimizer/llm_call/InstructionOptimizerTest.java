@@ -1,16 +1,5 @@
+
 package com.openjiuwen.agentevolving.optimizer.llm_call;
-
-import com.openjiuwen.agentevolving.dataset.Case;
-import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
-import com.openjiuwen.agentevolving.trajectory.Updates;
-import com.openjiuwen.core.foundation.llm.Model;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.operator.Operator;
-import com.openjiuwen.core.operator.TunableSpec;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -20,8 +9,20 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-class InstructionOptimizerTest {
+import com.openjiuwen.agentevolving.dataset.Case;
+import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.agentevolving.trajectory.Updates;
+import com.openjiuwen.core.foundation.llm.Model;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.operator.Operator;
+import com.openjiuwen.core.operator.TunableSpec;
 
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+
+class InstructionOptimizerTest {
     @Test
     void llmCallOptimizerBaseUsesLlmDomainAndPromptTargets() {
         TestLlmOptimizerBase optimizer = new TestLlmOptimizerBase();
@@ -33,13 +34,11 @@ class InstructionOptimizerTest {
     @Test
     void backwardAndStepOptimizeBothPrompts() throws Exception {
         Model model = mock(Model.class);
-        when(model.invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(message("Gradient text"))
-                .thenReturn(message("""
+        when(model.invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
+                isNull())).thenReturn(message("Gradient text")).thenReturn(message("""
                         <SYSTEM_PROMPT_OPTIMIZED>System optimized</SYSTEM_PROMPT_OPTIMIZED>
                         <USER_PROMPT_OPTIMIZED>Reply briefly.</USER_PROMPT_OPTIMIZED>
-                        """))
-                .thenReturn(message("Reply briefly to {{query}}"));
+                        """)).thenReturn(message("Reply briefly to {{query}}"));
 
         InstructionOptimizer optimizer = new InstructionOptimizer(model);
         optimizer.bind(Map.of("op1", operator("op1")), null, Map.of());
@@ -56,8 +55,8 @@ class InstructionOptimizerTest {
     @Test
     void stepAppendsStillMissingPlaceholdersAfterRestoreAttempt() throws Exception {
         Model model = mock(Model.class);
-        when(model.invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(message("Gradient text"))
+        when(model.invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
+                isNull())).thenReturn(message("Gradient text"))
                 .thenReturn(message("<PROMPT_OPTIMIZED>Answer directly.</PROMPT_OPTIMIZED>"))
                 .thenReturn(message("Answer directly."));
 
@@ -74,9 +73,8 @@ class InstructionOptimizerTest {
     @Test
     void stepReturnsNullWhenResponseHasNoOptimizedTags() throws Exception {
         Model model = mock(Model.class);
-        when(model.invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull()))
-                .thenReturn(message("Gradient text"))
-                .thenReturn(message("No optimization tags here"));
+        when(model.invoke(any(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(), isNull(),
+                isNull())).thenReturn(message("Gradient text")).thenReturn(message("No optimization tags here"));
 
         InstructionOptimizer optimizer = new InstructionOptimizer(model);
         optimizer.bind(Map.of("op1", operator("op1")), List.of("system_prompt"), Map.of());
@@ -94,28 +92,21 @@ class InstructionOptimizerTest {
     private static Operator operator(String operatorId) {
         Operator operator = mock(Operator.class);
         when(operator.getOperatorId()).thenReturn(operatorId);
-        when(operator.getTunables()).thenReturn(Map.of(
-                "system_prompt", new TunableSpec("system_prompt", "prompt", "system"),
-                "user_prompt", new TunableSpec("user_prompt", "prompt", "user")
-        ));
-        when(operator.getState()).thenReturn(Map.of(
-                "system_prompt", "You are helpful.",
-                "user_prompt", "Use {{query}}."
-        ));
+        when(operator.getTunables())
+                .thenReturn(Map.of("system_prompt", new TunableSpec("system_prompt", "prompt", "system"), "user_prompt",
+                        new TunableSpec("user_prompt", "prompt", "user")));
+        when(operator.getState())
+                .thenReturn(Map.of("system_prompt", "You are helpful.", "user_prompt", "Use {{query}}."));
         return operator;
     }
 
     private static EvaluatedCase badCase(String caseId, double score, Map<String, Object> answer) {
         return EvaluatedCase.builder()
                 .caseData(new Case(Map.of("query", "test question"), Map.of("answer", "expected answer"), caseId))
-                .answer(answer)
-                .score(score)
-                .reason("incorrect")
-                .build();
+                .answer(answer).score(score).reason("incorrect").build();
     }
 
     private static final class TestLlmOptimizerBase extends LLMCallOptimizerBase {
-
         @Override
         protected Updates doStep() {
             return new Updates();

@@ -6,6 +6,8 @@ package com.openjiuwen.core.workflow.component.llm;
 
 /**
  * Questioner state machine execution status.
+ * 
+ * @since 0.1.7
  */
 public enum ExecutionStatus {
     START("start"),
@@ -19,14 +21,21 @@ public enum ExecutionStatus {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static ExecutionStatus fromValue(String value) {
         for (ExecutionStatus s : values()) {

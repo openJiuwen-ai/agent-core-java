@@ -6,8 +6,8 @@ package com.openjiuwen.autoharness.infra;
 
 /**
  * Public class SessionBudgetController used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class SessionBudgetController {
     private final double wallClockSecs;
@@ -17,14 +17,21 @@ public class SessionBudgetController {
     private double costUsd;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SessionBudgetController.
+     * 
+     * @since 0.1.7
      */
     public SessionBudgetController() {
         this(3600.0, 10.0, 1200.0);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SessionBudgetController.
+     * 
+     * @param wallClockSecs wallClockSecs
+     * @param costLimitUsd costLimitUsd
+     * @param taskTimeoutSecs taskTimeoutSecs
+     * @since 0.1.7
      */
     public SessionBudgetController(double wallClockSecs, double costLimitUsd, double taskTimeoutSecs) {
         this.wallClockSecs = wallClockSecs;
@@ -33,21 +40,29 @@ public class SessionBudgetController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * start.
+     * 
+     * @since 0.1.7
      */
     public void start() {
         startMillis = System.currentTimeMillis();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addCost.
+     * 
+     * @param amountUsd amountUsd
+     * @since 0.1.7
      */
     public void addCost(double amountUsd) {
         costUsd += amountUsd;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * elapsedSecs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double elapsedSecs() {
         if (startMillis == 0L) {
@@ -57,28 +72,41 @@ public class SessionBudgetController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * remainingSecs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double remainingSecs() {
         return Math.max(0.0, wallClockSecs - elapsedSecs());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * remainingCostUsd.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double remainingCostUsd() {
         return Math.max(0.0, costLimitUsd - costUsd);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shouldStop.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean shouldStop() {
         return elapsedSecs() >= wallClockSecs || costUsd >= costLimitUsd;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * checkTaskBudget.
+     * 
+     * @param timeoutSecs timeoutSecs
+     * @return the result
+     * @since 0.1.7
      */
     public boolean checkTaskBudget(Double timeoutSecs) {
         double timeout = timeoutSecs != null ? timeoutSecs.doubleValue() : taskTimeoutSecs;

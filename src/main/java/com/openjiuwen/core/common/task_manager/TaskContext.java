@@ -6,31 +6,51 @@ package com.openjiuwen.core.common.task_manager;
 
 /**
  * Thread-local task-manager context.
+ * 
+ * @since 0.1.7
  */
 public final class TaskContext {
     private static final ThreadLocal<String> CURRENT_TASK_ID = new ThreadLocal<>();
+
+    /**
+     * ThreadLocal<>.
+     * 
+     * @since 0.1.7
+     */
     private static final ThreadLocal<TaskGroupScope> ROOT_TASK_GROUP = new ThreadLocal<>();
 
     /**
- * Public record Token used by the Java parity implementation.
- *
- * @since 1.0
- */
-public record Token(TaskGroupScope previousGroup) {
+     * Public record Token used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
+    public record Token(TaskGroupScope previousGroup) {
     }
 
+    /**
+     * TaskContext.
+     * 
+     * @since 0.1.7
+     */
     private TaskContext() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskGroup.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static TaskGroupScope getTaskGroup() {
         return ROOT_TASK_GROUP.get();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTaskGroup.
+     * 
+     * @param group group
+     * @return the result
+     * @since 0.1.7
      */
     public static Token setTaskGroup(TaskGroupScope group) {
         TaskGroupScope previous = ROOT_TASK_GROUP.get();
@@ -39,14 +59,20 @@ public record Token(TaskGroupScope previousGroup) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resetTaskGroup.
+     * 
+     * @param token token
+     * @since 0.1.7
      */
     public static void resetTaskGroup(Token token) {
         ROOT_TASK_GROUP.set(token != null ? token.previousGroup() : null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentTaskId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static String getCurrentTaskId() {
         return CURRENT_TASK_ID.get();

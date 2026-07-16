@@ -8,23 +8,38 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Auto-generated for codecheck compliance.
+ * ProgressRegistry.
+ * 
+ * @since 0.1.7
  */
 public final class ProgressRegistry {
     private static final Map<String, ProgressReporter> REPORTERS = new ConcurrentHashMap<>();
 
+    /**
+     * ProgressRegistry.
+     * 
+     * @since 0.1.7
+     */
     private ProgressRegistry() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * register.
+     * 
+     * @param sessionId sessionId
+     * @param reporter reporter
+     * @since 0.1.7
      */
     public static void register(String sessionId, ProgressReporter reporter) {
         REPORTERS.put(sessionId, reporter);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getProgress.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public static BuildProgress getProgress(String sessionId) {
         ProgressReporter reporter = REPORTERS.get(sessionId);
@@ -32,7 +47,10 @@ public final class ProgressRegistry {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * remove.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public static void remove(String sessionId) {
         REPORTERS.remove(sessionId);

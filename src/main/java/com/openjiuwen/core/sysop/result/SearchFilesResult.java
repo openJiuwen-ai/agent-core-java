@@ -7,12 +7,23 @@ package com.openjiuwen.core.sysop.result;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-/** Result type for search files operation. */
+/**
+ * Result type for search files operation.
+ * 
+ * @since 0.1.7
+ */
 @SuperBuilder
 @NoArgsConstructor
 public class SearchFilesResult extends BaseResult<SearchFilesData> {
     /**
-     * Auto-generated for codecheck compliance.
+     * SearchFilesResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
      */
-    public SearchFilesResult(int code, String message, SearchFilesData data) { super(code, message, data); }
+    public SearchFilesResult(int code, String message, SearchFilesData data) {
+        super(code, message, data);
+    }
 }

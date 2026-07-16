@@ -8,25 +8,34 @@ import java.util.List;
 
 /**
  * Input parameters for summarize_trajectories method.
- *
- * <p>Mirrors Python's {@code openjiuwen.extensions.context_evolver.context_evolving_react_agent.SummarizeTrajectoriesInput}.
+ * <p>
+ * Mirrors Python's
+ * {@code openjiuwen.extensions.context_evolver.context_evolving_react_agent.SummarizeTrajectoriesInput}.
+ * 
+ * @since 0.1.7
  */
 public class SummarizeTrajectoriesInput {
-
     private String query;
-    private Object trajectory;  // String or List<String>
+    private Object trajectory; // String or List<String>
     private String mattsMode;
-    private Object feedback;    // String, Boolean, or List
+    private Object feedback; // String, Boolean, or List
     private List<Integer> scores;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SummarizeTrajectoriesInput.
+     * 
+     * @since 0.1.7
      */
     public SummarizeTrajectoriesInput() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SummarizeTrajectoriesInput.
+     * 
+     * @param query query
+     * @param trajectory trajectory
+     * @param mattsMode mattsMode
+     * @since 0.1.7
      */
     public SummarizeTrajectoriesInput(String query, Object trajectory, String mattsMode) {
         this.query = query;
@@ -35,7 +44,13 @@ public class SummarizeTrajectoriesInput {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SummarizeTrajectoriesInput.
+     * 
+     * @param query query
+     * @param trajectory trajectory
+     * @param mattsMode mattsMode
+     * @param feedback feedback
+     * @since 0.1.7
      */
     public SummarizeTrajectoriesInput(String query, Object trajectory, String mattsMode, Object feedback) {
         this(query, trajectory, mattsMode);
@@ -43,13 +58,16 @@ public class SummarizeTrajectoriesInput {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SummarizeTrajectoriesInput.
+     * 
+     * @param query query
+     * @param trajectory trajectory
+     * @param mattsMode mattsMode
+     * @param feedback feedback
+     * @param scores scores
+     * @since 0.1.7
      */
-    public SummarizeTrajectoriesInput(
-            String query,
-            Object trajectory,
-            String mattsMode,
-            Object feedback,
+    public SummarizeTrajectoriesInput(String query, Object trajectory, String mattsMode, Object feedback,
             List<Integer> scores) {
         this(query, trajectory, mattsMode, feedback);
         this.scores = scores;
@@ -57,70 +75,100 @@ public class SummarizeTrajectoriesInput {
 
     // Getters and Setters
     /**
-     * Auto-generated for codecheck compliance.
+     * getQuery.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getQuery() {
         return query;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setQuery.
+     * 
+     * @param query query
+     * @since 0.1.7
      */
     public void setQuery(String query) {
         this.query = query;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTrajectory.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getTrajectory() {
         return trajectory;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTrajectory.
+     * 
+     * @param trajectory trajectory
+     * @since 0.1.7
      */
     public void setTrajectory(Object trajectory) {
         this.trajectory = trajectory;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMattsMode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getMattsMode() {
         return mattsMode;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMattsMode.
+     * 
+     * @param mattsMode mattsMode
+     * @since 0.1.7
      */
     public void setMattsMode(String mattsMode) {
         this.mattsMode = mattsMode;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFeedback.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getFeedback() {
         return feedback;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setFeedback.
+     * 
+     * @param feedback feedback
+     * @since 0.1.7
      */
     public void setFeedback(Object feedback) {
         this.feedback = feedback;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getScores.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Integer> getScores() {
         return scores;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setScores.
+     * 
+     * @param scores scores
+     * @since 0.1.7
      */
     public void setScores(List<Integer> scores) {
         this.scores = scores;

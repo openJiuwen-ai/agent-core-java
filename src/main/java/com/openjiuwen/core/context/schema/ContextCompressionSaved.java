@@ -13,6 +13,8 @@ import lombok.NoArgsConstructor;
  * Saved context size summary.
  * <p>
  * Mirrors Python's {@code ContextCompressionSaved}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

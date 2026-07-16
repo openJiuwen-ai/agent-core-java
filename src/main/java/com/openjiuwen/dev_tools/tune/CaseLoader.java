@@ -8,18 +8,24 @@ import java.util.List;
 
 /**
  * Legacy alias for {@code com.openjiuwen.dev_tools.tune.dataset.CaseLoader}.
+ * 
+ * @since 0.1.7
  */
 public class CaseLoader extends com.openjiuwen.dev_tools.tune.dataset.CaseLoader {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * CaseLoader.
+     * 
+     * @since 0.1.7
      */
     public CaseLoader() {
         super();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CaseLoader.
+     * 
+     * @param cases cases
+     * @since 0.1.7
      */
     public CaseLoader(List<Case> cases) {
         super(cases);

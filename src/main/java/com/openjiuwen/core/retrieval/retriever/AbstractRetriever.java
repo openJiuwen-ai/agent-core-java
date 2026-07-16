@@ -12,17 +12,23 @@ import java.util.Map;
 
 /**
  * Common retriever defaults.
+ * 
+ * @since 0.1.7
  */
 public abstract class AbstractRetriever implements Retriever {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * batchRetrieve.
+     * 
+     * @param queries queries
+     * @param topK topK
+     * @param mode mode
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public List<List<RetrievalResult>> batchRetrieve(List<String> queries,
-                                                     int topK,
-                                                     String mode,
-                                                     Map<String, Object> options) {
+    @Override
+    public List<List<RetrievalResult>> batchRetrieve(List<String> queries, int topK, String mode,
+            Map<String, Object> options) {
         List<List<RetrievalResult>> results = new ArrayList<>();
         if (queries == null) {
             return results;

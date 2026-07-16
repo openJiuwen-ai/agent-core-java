@@ -16,23 +16,18 @@ import java.util.List;
  * Local working configuration.
  * <p>
  * Mirrors Python's {@code LocalWorkConfig} in {@code sys_operation/config.py}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class LocalWorkConfig {
-
-    /**
-     * List of allowed command prefixes.
-     * If null, all commands are allowed (warning: insecure).
-     */
     @Builder.Default
-    private List<String> shellAllowlist = Arrays.asList(
-            "echo", "ls", "dir", "cd", "pwd", "python", "python3", "pip", "pip3",
-            "npm", "node", "git", "cat", "type", "mkdir", "md", "rm", "rd",
-            "cp", "copy", "mv", "move", "grep", "find", "curl", "wget", "ps", "df", "ping"
-    );
+    private List<String> shellAllowlist = Arrays.asList("echo", "ls", "dir", "cd", "pwd", "python", "python3", "pip",
+            "pip3", "npm", "node", "git", "cat", "type", "mkdir", "md", "rm", "rd", "cp", "copy", "mv", "move", "grep",
+            "find", "curl", "wget", "ps", "df", "ping");
 
     /**
      * Security boundary roots for file operations and shell working-directory resolution.
@@ -54,11 +49,17 @@ public class LocalWorkConfig {
     private String workDir;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LocalWorkConfigBuilder.
+     * 
+     * @since 0.1.7
      */
     public static class LocalWorkConfigBuilder {
         /**
-         * Auto-generated for codecheck compliance.
+         * restrictToSandbox.
+         * 
+         * @param value value
+         * @return the result
+         * @since 0.1.7
          */
         public LocalWorkConfigBuilder restrictToSandbox(boolean value) {
             return this.isRestrictToSandbox(value);

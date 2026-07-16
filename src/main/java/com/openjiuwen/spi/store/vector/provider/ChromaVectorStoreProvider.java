@@ -15,16 +15,17 @@ import java.util.Map;
  * <p>
  * Creates vector store instances backed by Chroma, an open-source embedding
  * database designed for building LLM applications with semantic search and retrieval.
- *
- * @since 0.1.12
+ * 
  * @see VectorStoreProvider
  * @see com.openjiuwen.core.foundation.store.vector.ChromaVectorStore
+ * @since 0.1.7
  */
 public final class ChromaVectorStoreProvider implements VectorStoreProvider {
     /**
-     * Returns the Chroma vector store type name.
-     *
-     * @return the type name "chroma"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -33,9 +34,10 @@ public final class ChromaVectorStoreProvider implements VectorStoreProvider {
 
     /**
      * Creates a new Chroma vector store instance.
-     *
+     * 
      * @param conf the configuration map for Chroma connection
      * @return a new ChromaVectorStore instance
+     * @since 0.1.7
      */
     @Override
     public BaseVectorStore create(Map<String, Object> conf) {

@@ -5,11 +5,14 @@
 package com.openjiuwen.agentevolving.agent_rl.config.offlineconfig;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.offlineconfig.VerlActorFsdpHydraOverlay.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -19,11 +22,22 @@ public class VerlActorFsdpHydraOverlay {
     private boolean isOptimizerOffload = true;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isParam_offload.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public boolean isParam_offload() { return isParamOffload(); }
+    public boolean isParam_offload() {
+        return isParamOffload();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * isOptimizer_offload.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public boolean isOptimizer_offload() { return isOptimizerOffload(); }
+    public boolean isOptimizer_offload() {
+        return isOptimizerOffload();
+    }
 }

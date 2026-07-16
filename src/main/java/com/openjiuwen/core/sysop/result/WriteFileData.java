@@ -11,14 +11,14 @@ import lombok.NoArgsConstructor;
 
 /**
  * Data structure for write file operation.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class WriteFileData {
-
-    /** File path of the write file. */
     private String path;
 
     /** File content size in bytes. */

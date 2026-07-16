@@ -10,70 +10,99 @@ import java.util.Map;
 
 /**
  * Public class HistoryManager used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class HistoryManager {
     private final HistoryCache dialogueHistory;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HistoryManager.
+     * 
+     * @since 0.1.7
      */
     public HistoryManager() {
         this.dialogueHistory = new HistoryCache();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addMessage.
+     * 
+     * @param content content
+     * @param role role
+     * @since 0.1.7
      */
     public void addMessage(String content, String role) {
         addMessage(content, role, Instant.now());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addMessage.
+     * 
+     * @param content content
+     * @param role role
+     * @param timestamp timestamp
+     * @since 0.1.7
      */
     public void addMessage(String content, String role, Instant timestamp) {
         dialogueHistory.addMessage(new DialogueMessage(content, role, timestamp));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addAssistantMessage.
+     * 
+     * @param content content
+     * @since 0.1.7
      */
     public void addAssistantMessage(String content) {
         addMessage(content, "assistant");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addUserMessage.
+     * 
+     * @param content content
+     * @since 0.1.7
      */
     public void addUserMessage(String content) {
         addMessage(content, "user");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLatestKMessages.
+     * 
+     * @param k k
+     * @return the result
+     * @since 0.1.7
      */
     public List<Map<String, String>> getLatestKMessages(int k) {
         return dialogueHistory.getMessages(k);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getHistory.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Map<String, String>> getHistory() {
         return dialogueHistory.getMessages(-1);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDialogueHistory.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public HistoryCache getDialogueHistory() {
         return dialogueHistory;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clear.
+     * 
+     * @since 0.1.7
      */
     public void clear() {
         dialogueHistory.clear();

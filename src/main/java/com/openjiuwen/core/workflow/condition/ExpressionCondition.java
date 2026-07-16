@@ -28,16 +28,28 @@ import java.util.regex.Pattern;
  * Variables are referenced via {@code ${variable_path}} syntax and isResolved from session state.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.condition.expression.ExpressionCondition}.
+ * 
+ * @since 0.1.7
  */
 public class ExpressionCondition extends Condition {
-
     private static final Pattern VAR_PATTERN = Pattern.compile("\\$\\{([^}]*)\\}");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern STRING_LITERAL_PATTERN =
+        Pattern.compile("(\"(?:[^\"\\\\]|\\\\.)*\")|('(?:[^'\\\\]|\\\\.)*')");
 
     private final String expression;
     private final List<String> matches;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ExpressionCondition.
+     * 
+     * @param expression expression
+     * @since 0.1.7
      */
     public ExpressionCondition(String expression) {
         super();
@@ -45,8 +57,8 @@ public class ExpressionCondition extends Condition {
             expression = "";
         }
         if (expression.length() > Constant.MAX_EXPRESSION_LENGTH) {
-            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                    "error_msg", "expression length exceeds maximum allowed length of " + Constant.MAX_EXPRESSION_LENGTH);
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg",
+                    "expression length exceeds maximum allowed length of " + Constant.MAX_EXPRESSION_LENGTH);
         }
         this.expression = expression;
         this.matches = new ArrayList<>();
@@ -56,10 +68,14 @@ public class ExpressionCondition extends Condition {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * traceInfo.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object traceInfo(BaseSession session) {
         Map<String, Object> info = new HashMap<>();
         info.put("bool_expression", expression);
@@ -67,6 +83,13 @@ public class ExpressionCondition extends Condition {
         return info;
     }
 
+    /**
+     * getInputs.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> getInputs(BaseSession session) {
         if (expression.isEmpty() || session == null) {
             return new HashMap<>();
@@ -83,10 +106,15 @@ public class ExpressionCondition extends Condition {
         return inputs;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * doInvoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object doInvoke(Object inputs, BaseSession session) {
         if (expression.isEmpty()) {
             return true;
@@ -94,10 +122,14 @@ public class ExpressionCondition extends Condition {
         return evaluateExpression(expression, getInputs(session));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * evaluate.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean evaluate(BaseSession session) {
         if (expression.isEmpty()) {
             return true;
@@ -113,6 +145,11 @@ public class ExpressionCondition extends Condition {
 
     /**
      * Evaluate the expression with the given variable bindings.
+     * 
+     * @param expr expr
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     private boolean evaluateExpression(String expr, Map<String, Object> inputs) {
         // Preprocess: isReplace operators
@@ -132,20 +169,24 @@ public class ExpressionCondition extends Condition {
             if (e.getMessage() != null && e.getMessage().startsWith("[")) {
                 throw e;
             }
-            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                    "error_msg", "error evaluating expression: " + e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg",
+                    "error evaluating expression: " + e.getMessage());
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * convertCondition.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
     public static String convertCondition(String expr) {
         if (expr == null || expr.isEmpty()) {
             return "";
         }
         List<String> stringLiterals = new ArrayList<>();
-        Pattern stringPattern = Pattern.compile("(\"(?:[^\"\\\\]|\\\\.)*\")|('(?:[^'\\\\]|\\\\.)*')");
+        Pattern stringPattern = STRING_LITERAL_PATTERN;
         Matcher matcher = stringPattern.matcher(expr);
         StringBuffer protectedExpr = new StringBuffer();
         while (matcher.find()) {
@@ -155,13 +196,9 @@ public class ExpressionCondition extends Condition {
         }
         matcher.appendTail(protectedExpr);
 
-        String processed = protectedExpr.toString()
-                .replace("&&", " AND ")
-                .replace("||", " OR ")
-                .replaceAll("\\btrue\\b", "TRUE_VAL")
-                .replaceAll("\\bfalse\\b", "FALSE_VAL")
-                .replaceAll("\\blength\\(", "len(")
-                .replaceAll("\\bnot_in\\b", "NOT_IN");
+        String processed = protectedExpr.toString().replace("&&", " AND ").replace("||", " OR ")
+                .replaceAll("\\btrue\\b", "TRUE_VAL").replaceAll("\\bfalse\\b", "FALSE_VAL")
+                .replaceAll("\\blength\\(", "len(").replaceAll("\\bnot_in\\b", "NOT_IN");
 
         for (int i = 0; i < stringLiterals.size(); i++) {
             processed = processed.replace("__STRING_LITERAL_" + i + "__", stringLiterals.get(i));
@@ -171,6 +208,13 @@ public class ExpressionCondition extends Condition {
 
     // ==================== Recursive Descent Parser ====================
 
+    /**
+     * parseOrExpression.
+     * 
+     * @param parser parser
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object parseOrExpression(ExpressionParser parser) {
         Object left = parseAndExpression(parser);
         while (parser.matchKeyword("OR")) {
@@ -180,6 +224,13 @@ public class ExpressionCondition extends Condition {
         return left;
     }
 
+    /**
+     * parseAndExpression.
+     * 
+     * @param parser parser
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object parseAndExpression(ExpressionParser parser) {
         Object left = parseNotExpression(parser);
         while (parser.matchKeyword("AND")) {
@@ -189,6 +240,13 @@ public class ExpressionCondition extends Condition {
         return left;
     }
 
+    /**
+     * parseNotExpression.
+     * 
+     * @param parser parser
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object parseNotExpression(ExpressionParser parser) {
         if (parser.matchKeyword("not") || parser.matchChar('!')) {
             Object operand = parseNotExpression(parser);
@@ -197,6 +255,13 @@ public class ExpressionCondition extends Condition {
         return parseComparison(parser);
     }
 
+    /**
+     * parseComparison.
+     * 
+     * @param parser parser
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object parseComparison(ExpressionParser parser) {
         Object left = parseAddSub(parser);
         while (true) {
@@ -231,6 +296,13 @@ public class ExpressionCondition extends Condition {
         return left;
     }
 
+    /**
+     * parseAddSub.
+     * 
+     * @param parser parser
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object parseAddSub(ExpressionParser parser) {
         Object left = parseMulDiv(parser);
         while (true) {
@@ -247,6 +319,13 @@ public class ExpressionCondition extends Condition {
         return left;
     }
 
+    /**
+     * parseMulDiv.
+     * 
+     * @param parser parser
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object parseMulDiv(ExpressionParser parser) {
         Object left = parseUnary(parser);
         while (true) {
@@ -266,19 +345,33 @@ public class ExpressionCondition extends Condition {
         return left;
     }
 
+    /**
+     * parseUnary.
+     * 
+     * @param parser parser
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object parseUnary(ExpressionParser parser) {
         if (parser.matchChar('-')) {
             Object operand = parsePrimary(parser);
             if (operand instanceof Number) {
                 return -((Number) operand).doubleValue();
             }
-            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                    "error_msg", "cannot negate non-numeric value");
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg",
+                    "cannot negate non-numeric value");
         }
         return parsePrimary(parser);
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * parsePrimary.
+     * 
+     * @param parser parser
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object parsePrimary(ExpressionParser parser) {
         parser.skipWhitespace();
         if (parser.isEof()) {
@@ -298,7 +391,8 @@ public class ExpressionCondition extends Condition {
         }
 
         // Number
-        if (Character.isDigit(parser.peek()) || (parser.peek() == '.' && parser.hasNext() && Character.isDigit(parser.peekNext()))) {
+        if (Character.isDigit(parser.peek())
+                || (parser.peek() == '.' && parser.hasNext() && Character.isDigit(parser.peekNext()))) {
             return parser.readNumber();
         }
 
@@ -318,8 +412,8 @@ public class ExpressionCondition extends Condition {
         // Keywords and function calls
         String ident = parser.readIdentifier();
         if (ident == null || ident.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.EXPRESSION_SYNTAX_ERROR,
-                    "error_msg", "unexpected character: " + parser.peek());
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_SYNTAX_ERROR, "error_msg",
+                    "unexpected character: " + parser.peek());
         }
 
         // Boolean literals
@@ -348,8 +442,8 @@ public class ExpressionCondition extends Condition {
                 case "_safe_is_not_empty":
                     return !safeIsEmpty(arg);
                 default:
-                    throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                            "error_msg", "unknown function: " + ident);
+                    throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg",
+                            "unknown function: " + ident);
             }
         }
 
@@ -357,18 +451,29 @@ public class ExpressionCondition extends Condition {
         try {
             return Integer.parseInt(ident);
         } catch (NumberFormatException ignored) {
+
+            // Ignore.
         }
         try {
             return Double.parseDouble(ident);
         } catch (NumberFormatException ignored) {
+
+            // Ignore.
         }
 
-        throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                "error_msg", "name '" + ident + "' is not defined");
+        throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg",
+                "name '" + ident + "' is not defined");
     }
 
     // ==================== Helper methods ====================
 
+    /**
+     * toLiteral.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String toLiteral(Object value) {
         if (value == null) {
             return "None";
@@ -406,6 +511,13 @@ public class ExpressionCondition extends Condition {
         return value.toString();
     }
 
+    /**
+     * toBoolean.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean toBoolean(Object value) {
         if (value == null) {
             return false;
@@ -425,6 +537,14 @@ public class ExpressionCondition extends Condition {
         return true;
     }
 
+    /**
+     * objectEquals.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean objectEquals(Object left, Object right) {
         if (left == null && right == null) {
             return true;
@@ -439,6 +559,14 @@ public class ExpressionCondition extends Condition {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * objectCompare.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static int objectCompare(Object left, Object right) {
         if (left instanceof Number && right instanceof Number) {
             return Double.compare(((Number) left).doubleValue(), ((Number) right).doubleValue());
@@ -446,10 +574,18 @@ public class ExpressionCondition extends Condition {
         if (left instanceof Comparable && right instanceof Comparable) {
             return ((Comparable<Object>) left).compareTo(right);
         }
-        throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                "error_msg", "cannot compare types: " + typeName(left) + " and " + typeName(right));
+        throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg",
+                "cannot compare types: " + typeName(left) + " and " + typeName(right));
     }
 
+    /**
+     * objectIn.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean objectIn(Object left, Object right) {
         if (right instanceof Collection) {
             return ((Collection<?>) right).contains(left);
@@ -460,13 +596,22 @@ public class ExpressionCondition extends Condition {
         return false;
     }
 
+    /**
+     * numericOp.
+     * 
+     * @param left left
+     * @param right right
+     * @param op op
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object numericOp(Object left, Object right, char op) {
         if (op == '+' && (left instanceof String || right instanceof String)) {
             return String.valueOf(left) + String.valueOf(right);
         }
         if (!(left instanceof Number) || !(right instanceof Number)) {
-            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                    "error_msg", "cannot perform arithmetic on non-numeric types");
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg",
+                    "cannot perform arithmetic on non-numeric types");
         }
         double l = ((Number) left).doubleValue();
         double r = ((Number) right).doubleValue();
@@ -479,18 +624,24 @@ public class ExpressionCondition extends Condition {
                 return l * r;
             case '/':
                 if (r == 0) {
-                    throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                        "error_msg", "division by zero");
+                    throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg", "division by zero");
                 }
                 return l / r;
             case '%':
                 return l % r;
             default:
-                throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                    "error_msg", "unsupported operator: " + op);
+                throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg",
+                        "unsupported operator: " + op);
         }
     }
 
+    /**
+     * safeLength.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static int safeLength(Object value) {
         if (value == null) {
             return 0;
@@ -501,25 +652,32 @@ public class ExpressionCondition extends Condition {
         if (value instanceof Collection) {
             int size = ((Collection<?>) value).size();
             if (size > Constant.MAX_COLLECTION_SIZE) {
-                throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                        "error_msg", "collection size exceeds maximum allowed size of " + Constant.MAX_COLLECTION_SIZE);
+                throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg",
+                        "collection size exceeds maximum allowed size of " + Constant.MAX_COLLECTION_SIZE);
             }
             return size;
         }
         if (value instanceof Map) {
             return ((Map<?, ?>) value).size();
         }
-        throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                "error_msg", "object of type '" + typeName(value) + "' has no len()");
+        throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg",
+                "object of type '" + typeName(value) + "' has no len()");
     }
 
+    /**
+     * safeIsEmpty.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean safeIsEmpty(Object value) {
         if (value == null) {
             return true;
         }
         if (value instanceof Number || value instanceof Boolean) {
-            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR,
-                    "error_msg", "cannot check emptiness of " + typeName(value) + " type");
+            throw ErrorHelper.buildError(StatusCode.EXPRESSION_EVAL_ERROR, "error_msg",
+                    "cannot check emptiness of " + typeName(value) + " type");
         }
         if (value instanceof String) {
             return ((String) value).isEmpty();
@@ -533,6 +691,13 @@ public class ExpressionCondition extends Condition {
         return false;
     }
 
+    /**
+     * typeName.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String typeName(Object value) {
         return value == null ? "null" : value.getClass().getSimpleName();
     }
@@ -616,8 +781,8 @@ public class ExpressionCondition extends Condition {
         void expect(char c) {
             skipWhitespace();
             if (pos >= input.length() || input.charAt(pos) != c) {
-                throw ErrorHelper.buildError(StatusCode.EXPRESSION_SYNTAX_ERROR,
-                        "error_msg", "expected '" + c + "' at position " + pos);
+                throw ErrorHelper.buildError(StatusCode.EXPRESSION_SYNTAX_ERROR, "error_msg",
+                        "expected '" + c + "' at position " + pos);
             }
             pos++;
         }
@@ -664,8 +829,7 @@ public class ExpressionCondition extends Condition {
         String readIdentifier() {
             skipWhitespace();
             int start = pos;
-            while (pos < input.length() && (Character.isLetterOrDigit(input.charAt(pos))
-                    || input.charAt(pos) == '_')) {
+            while (pos < input.length() && (Character.isLetterOrDigit(input.charAt(pos)) || input.charAt(pos) == '_')) {
                 pos++;
             }
             return input.substring(start, pos);

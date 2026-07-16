@@ -1,19 +1,20 @@
+
 package com.openjiuwen.autoharness.infra;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.autoharness.schema.Gap;
 import com.openjiuwen.autoharness.schema.OptimizationTask;
 import com.openjiuwen.autoharness.schema.PipelineSelectionArtifact;
 import com.openjiuwen.autoharness.schema.PullRequestDraft;
 import com.openjiuwen.core.session.stream.OutputSchema;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class ParsersCompatibilityTest {
-
     @Test
     void parseTasksShouldSupportJsonFenceAndNormalizePipelineAlias() {
         String raw = """
@@ -85,7 +86,8 @@ class ParsersCompatibilityTest {
     void parsePrDraftShouldReturnPythonLikeDetailedErrors() {
         assertThat(Parsers.parsePrDraftWithError("no json").error()).isEqualTo("未找到 JSON 对象");
         assertThat(Parsers.parsePrDraftWithError("{bad json}").error()).isEqualTo("JSON 解析失败");
-        assertThat(Parsers.parsePrDraftWithError("{\"title\":\"x\",\"body\":\"\"}").error()).isEqualTo("缺少 title 或 body");
+        assertThat(Parsers.parsePrDraftWithError("{\"title\":\"x\",\"body\":\"\"}").error())
+                .isEqualTo("缺少 title 或 body");
         assertThat(Parsers.parsePrDraftWithError("{\"title\":\"x\",\"body\":\"/kind unknown\"}").error())
                 .isEqualTo("kind 必须是 bug/task/feature/refactor/clean_code 之一");
     }
@@ -124,13 +126,14 @@ class ParsersCompatibilityTest {
 
     @Test
     void parseGapsShouldSkipHeaderAndSortByPriorityDescending() {
-        String raw = """
-                | competitor | feature | current_state | gap_description | impact | feasibility | suggested_approach | target_files |
-                |------------|---------|---------------|-----------------|--------|-------------|--------------------|--------------|
-                | Anthropic | parser quality | partial | missing PR parsing | 0.9 | 0.5 | port helper | src/a.py, src/b.py |
-                | OpenAI | gap ranking | partial | missing gap ranking | 0.5 | 0.5 | port table parser | src/c.py |
-                | Broken | bad row | x | y | nope | 0.2 | ignore me | src/d.py |
-                """;
+        String raw =
+            """
+                    | competitor | feature | current_state | gap_description | impact | feasibility | suggested_approach | target_files |
+                    |------------|---------|---------------|-----------------|--------|-------------|--------------------|--------------|
+                    | Anthropic | parser quality | partial | missing PR parsing | 0.9 | 0.5 | port helper | src/a.py, src/b.py |
+                    | OpenAI | gap ranking | partial | missing gap ranking | 0.5 | 0.5 | port table parser | src/c.py |
+                    | Broken | bad row | x | y | nope | 0.2 | ignore me | src/d.py |
+                    """;
 
         List<Gap> gaps = Parsers.parseGaps(raw);
 

@@ -4,7 +4,6 @@
 
 package com.openjiuwen.dev_tools.tune.optimizer;
 
-import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
@@ -20,26 +19,38 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Base optimizer for prompt tuning.
- *
- * <p>Mirrors Python's {@code BaseOptimizer} in {@code openjiuwen.dev_tools.tune.optimizer.base}.
+ * <p>
+ * Mirrors Python's {@code BaseOptimizer} in {@code openjiuwen.dev_tools.tune.optimizer.base}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseOptimizer implements AutoCloseable {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * parameters.
+     * 
+     * @since 0.1.7
      */
     protected final Map<String, TextualParameter> parameters;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * history.
+     * 
+     * @since 0.1.7
      */
     protected final OptimizeHistory history;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * badCases.
+     * 
+     * @since 0.1.7
      */
     protected List<EvaluatedCase> badCases;
 
     /**
      * Creates a BaseOptimizer with optional parameters.
+     * 
+     * @param parameters parameters
+     * @since 0.1.7
      */
     public BaseOptimizer(Map<String, LLMCall> parameters) {
         this.parameters = new HashMap<>();
@@ -50,6 +61,8 @@ public abstract class BaseOptimizer implements AutoCloseable {
 
     /**
      * Creates a BaseOptimizer without initial parameters.
+     * 
+     * @since 0.1.7
      */
     public BaseOptimizer() {
         this(null);
@@ -57,8 +70,9 @@ public abstract class BaseOptimizer implements AutoCloseable {
 
     /**
      * Binds parameters to the optimizer.
-     *
+     * 
      * @param params the LLM call parameters
+     * @since 0.1.7
      */
     public void bindParameter(Map<String, LLMCall> params) {
         if (params == null) {
@@ -78,8 +92,9 @@ public abstract class BaseOptimizer implements AutoCloseable {
 
     /**
      * Performs backward pass to analyze evaluated cases.
-     *
+     * 
      * @param evaluatedCases the evaluated cases
+     * @since 0.1.7
      */
     public void backward(List<EvaluatedCase> evaluatedCases) {
         validateParameters();
@@ -93,6 +108,8 @@ public abstract class BaseOptimizer implements AutoCloseable {
 
     /**
      * Updates the prompts based on gradients.
+     * 
+     * @since 0.1.7
      */
     public void update() {
         validateParameters();
@@ -112,20 +129,24 @@ public abstract class BaseOptimizer implements AutoCloseable {
 
     /**
      * Internal backward implementation.
-     *
+     * 
      * @param evaluatedCases the evaluated cases
+     * @since 0.1.7
      */
     protected abstract void doBackward(List<EvaluatedCase> evaluatedCases);
 
     /**
      * Internal update implementation.
+     * 
+     * @since 0.1.7
      */
     protected abstract void doUpdate();
 
     /**
      * Returns the parameters.
-     *
+     * 
      * @return the parameter map
+     * @since 0.1.7
      */
     public Map<String, TextualParameter> getParameters() {
         return parameters;
@@ -133,42 +154,43 @@ public abstract class BaseOptimizer implements AutoCloseable {
 
     /**
      * Trace callback for LLM calls.
-     *
+     * 
      * @param llmCallId the LLM call ID
      * @param nodeInput the node input
      * @param output the output message
      * @param session the session
+     * @return the result
+     * @since 0.1.7
      */
-    public CompletableFuture<Void> traceCallback(String llmCallId, 
-                                                  Map<String, Object> nodeInput,
-                                                  BaseMessage output, 
-                                                  Session session) {
+    public CompletableFuture<Void> traceCallback(String llmCallId, Map<String, Object> nodeInput, BaseMessage output,
+            Session session) {
         return CompletableFuture.runAsync(() -> {
             TraceNode traceNode = new TraceNode();
             traceNode.setCaseId(session.getSessionId());
             traceNode.setLlmCallId(llmCallId);
             traceNode.setInputs(nodeInput);
             traceNode.setOutputs(TuneUtils.getOutputStringFromMessage(output));
-            
+
             history.addHistory(session.getSessionId(), traceNode);
         });
     }
 
     /**
      * Gets bad cases from evaluated cases.
-     *
+     * 
      * @param evaluatedCases the evaluated cases
      * @return the bad cases
+     * @since 0.1.7
      */
     protected List<EvaluatedCase> getBadCases(List<EvaluatedCase> evaluatedCases) {
-        badCases = evaluatedCases.stream()
-                .filter(c -> c.getScore() == 0.0f)
-                .toList();
+        badCases = evaluatedCases.stream().filter(c -> c.getScore() == 0.0f).toList();
         return badCases;
     }
 
     /**
      * Validates that parameters are set.
+     * 
+     * @since 0.1.7
      */
     protected void validateParameters() {
         if (parameters.isEmpty()) {
@@ -176,16 +198,21 @@ public abstract class BaseOptimizer implements AutoCloseable {
         }
     }
 
+    /**
+     * batchSetOptimizerCallback.
+     * 
+     * @param callback callback
+     * @since 0.1.7
+     */
     private void batchSetOptimizerCallback(java.util.function.Function<TraceNode, CompletableFuture<Void>> callback) {
-        for (TextualParameter param : parameters.values()) {
-            // param.getLlmCall().setOptimizerCallback(callback);
-        }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void close() {
         batchSetOptimizerCallback(null);
     }

@@ -1,14 +1,14 @@
+
 package com.openjiuwen.agentteams.agent;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class FirstIterationGateCompatibilityTest {
-
     @Test
     void shouldStartNotReady() {
         FirstIterationGate gate = new FirstIterationGate();

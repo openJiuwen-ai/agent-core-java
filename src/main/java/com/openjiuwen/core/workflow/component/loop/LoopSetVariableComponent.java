@@ -21,30 +21,40 @@ import java.util.LinkedHashMap;
  * Component that sets variables in the loop's parent session scope.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.LoopSetVariableComponent}.
+ * 
+ * @since 0.1.7
  */
 public class LoopSetVariableComponent extends WorkflowComponent {
-
     private final Map<String, Object> variableMapping;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LoopSetVariableComponent.
+     * 
+     * @param variableMapping variableMapping
+     * @since 0.1.7
      */
     public LoopSetVariableComponent(Map<String, Object> variableMapping) {
         if (variableMapping == null || variableMapping.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_SET_VAR_PARAM_INVALID,
-                    "error_msg", "variable_mapping is None or empty");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_SET_VAR_PARAM_INVALID, "error_msg",
+                    "variable_mapping is None or empty");
         }
         this.variableMapping = variableMapping;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         BaseSession innerSession = extractInnerSession(session);
-        BaseSession rootSession = (innerSession instanceof NodeSession)
-                ? ((NodeSession) innerSession).parent() : innerSession;
+        BaseSession rootSession =
+            (innerSession instanceof NodeSession) ? ((NodeSession) innerSession).parent() : innerSession;
         for (Map.Entry<String, Object> entry : variableMapping.entrySet()) {
             String left = entry.getKey();
             Object right = entry.getValue();
@@ -53,9 +63,8 @@ public class LoopSetVariableComponent extends WorkflowComponent {
             String[] keys = leftRefStr.split("\\.", -1);
 
             if (keys.length == 0) {
-                throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_SET_VAR_EXECUTION_ERROR,
-                        "comp", session.getComponentId(),
-                        "reason", "key[" + left + "] not supported format");
+                throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_SET_VAR_EXECUTION_ERROR, "comp",
+                        session.getComponentId(), "reason", "key[" + left + "] not supported format");
             }
 
             String nodeId = keys[0];
@@ -73,7 +82,12 @@ public class LoopSetVariableComponent extends WorkflowComponent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateValue.
+     * 
+     * @param session session
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static Object generateValue(NodeSessionApi session, Object value) {
         if (value instanceof String && SessionUtils.isRefPath((String) value)) {
@@ -84,7 +98,12 @@ public class LoopSetVariableComponent extends WorkflowComponent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateOutput.
+     * 
+     * @param keys keys
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static Object generateOutput(String[] keys, Object value) {
         Object output = value;
@@ -96,6 +115,13 @@ public class LoopSetVariableComponent extends WorkflowComponent {
         return output;
     }
 
+    /**
+     * extractInnerSession.
+     * 
+     * @param sessionApi sessionApi
+     * @return the result
+     * @since 0.1.7
+     */
     private BaseSession extractInnerSession(NodeSessionApi sessionApi) {
         // NodeSessionApi wraps NodeSession; we need access to the inner session's parent
         try {

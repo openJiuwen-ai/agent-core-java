@@ -17,20 +17,26 @@ import java.util.List;
  * tokenisation logic.
  * <p>
  * Mirrors Python's {@code TokenCounter} ABC from {@code context_engine/token/base.py}.
+ * 
+ * @since 0.1.7
  */
 public abstract class TokenCounter {
-
     /**
-     * Count the number of tokens in a plain text string.
-     *
-     * @param text  the text to count tokens for
-     * @param model optional model name for model-specific tokenisation
-     * @return the token count
+     * count.
+     * 
+     * @param text text
+     * @param model model
+     * @return the result
+     * @since 0.1.7
      */
     public abstract int count(String text, String model);
 
     /**
      * Count tokens with default model.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     public int count(String text) {
         return count(text, "");
@@ -38,15 +44,20 @@ public abstract class TokenCounter {
 
     /**
      * Count the total tokens across a list of messages.
-     *
+     * 
      * @param messages the messages to count tokens for
-     * @param model    optional model name
+     * @param model optional model name
      * @return the total token count
+     * @since 0.1.7
      */
     public abstract int countMessages(List<BaseMessage> messages, String model);
 
     /**
      * Count messages tokens with default model.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
      */
     public int countMessages(List<BaseMessage> messages) {
         return countMessages(messages, "");
@@ -54,15 +65,20 @@ public abstract class TokenCounter {
 
     /**
      * Count the total tokens across a list of tool definitions.
-     *
+     * 
      * @param tools the tool definitions to count tokens for
      * @param model optional model name
      * @return the total token count
+     * @since 0.1.7
      */
     public abstract int countTools(List<ToolInfo> tools, String model);
 
     /**
      * Count tool tokens with default model.
+     * 
+     * @param tools tools
+     * @return the result
+     * @since 0.1.7
      */
     public int countTools(List<ToolInfo> tools) {
         return countTools(tools, "");

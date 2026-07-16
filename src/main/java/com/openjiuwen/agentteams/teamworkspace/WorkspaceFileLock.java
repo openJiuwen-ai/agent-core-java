@@ -12,14 +12,14 @@ import lombok.NoArgsConstructor;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 
+/**
+ * Public class WorkspaceFileLock used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class WorkspaceFileLock used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class WorkspaceFileLock {
     private String filePath;
@@ -30,7 +30,10 @@ public class WorkspaceFileLock {
     private int timeoutSeconds = 300;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isExpired.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isExpired() {
         OffsetDateTime acquired = OffsetDateTime.parse(acquiredAt);

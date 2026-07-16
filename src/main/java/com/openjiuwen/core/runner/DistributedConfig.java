@@ -11,13 +11,14 @@ import lombok.NoArgsConstructor;
 
 /**
  * Distributed system configuration.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class DistributedConfig {
-
     @Builder.Default
     private double requestTimeout = 30.0;
 
@@ -25,6 +26,11 @@ public class DistributedConfig {
     private int maxRequestConcurrency = 10000;
 
     @Builder.Default
+    /**
+     * MessageQueueConfig.
+     * 
+     * @since 0.1.7
+     */
     private MessageQueueConfig messageQueueConfig = new MessageQueueConfig();
 
     @Builder.Default
@@ -35,9 +41,10 @@ public class DistributedConfig {
 
     /**
      * Get agent topic template with environment prefix.
-     *
+     * 
      * @param envPrefix Optional environment prefix
      * @return Topic template with prefix
+     * @since 0.1.7
      */
     public String getAgentTopicTemplate(String envPrefix) {
         if (envPrefix != null && !envPrefix.isEmpty()) {
@@ -48,9 +55,10 @@ public class DistributedConfig {
 
     /**
      * Get reply topic template with environment prefix.
-     *
+     * 
      * @param envPrefix Optional environment prefix
      * @return Topic template with prefix
+     * @since 0.1.7
      */
     public String getReplyTopicTemplate(String envPrefix) {
         if (envPrefix != null && !envPrefix.isEmpty()) {

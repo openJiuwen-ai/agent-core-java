@@ -8,6 +8,7 @@ import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,14 +19,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
 
+/**
+ * Public class SubAgentConfig used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class SubAgentConfig used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class SubAgentConfig {
     private AgentCard agentCard;
@@ -40,26 +41,66 @@ public class SubAgentConfig {
     @Builder.Default
     private String factoryName = "";
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> factoryKwargs = new LinkedHashMap<>();
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
     @Builder.Default
     private String executionMode = "ephemeral";
     @Builder.Default
     private String role = "";
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Object> tools = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Object> rails = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<McpServerConfig> mcps = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Object> subagents = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> skillDirectories = new ArrayList<>();
     @Builder.Default
     private String skillMode = "all";
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> skills = new ArrayList<>();
     @Builder.Default
     private boolean enableSkillDiscovery = false;
@@ -73,25 +114,37 @@ public class SubAgentConfig {
     private boolean isRestrictToWorkDir = true;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEnableTaskLoop.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
     public void setEnableTaskLoop(Boolean value) {
         this.isTaskLoopEnabled = value != null && value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isEnableTaskLoop.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isEnableTaskLoop() {
         return isTaskLoopEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SubAgentConfigBuilder.
+     * 
+     * @since 0.1.7
      */
     public static class SubAgentConfigBuilder {
         /**
-         * Auto-generated for codecheck compliance.
+         * restrictToWorkDir.
+         * 
+         * @param value value
+         * @return the result
+         * @since 0.1.7
          */
         public SubAgentConfigBuilder restrictToWorkDir(boolean value) {
             return this.isRestrictToWorkDir(value);
@@ -99,34 +152,28 @@ public class SubAgentConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toDeepAgentConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public DeepAgentConfig toDeepAgentConfig() {
-        return DeepAgentConfig.builder()
-                .systemPrompt(systemPrompt)
-                .maxIterations(maxIterations)
-                .isTaskLoopEnabled(isTaskLoopEnabled)
-                .language(language)
-                .tools(new ArrayList<>(tools))
-                .rails(new ArrayList<>(rails))
-                .mcps(new ArrayList<>(mcps))
-                .subagents(new ArrayList<>(subagents))
-                .skillDirectories(new ArrayList<>(skillDirectories))
-                .skillMode(skillMode)
-                .skills(new ArrayList<>(skills))
-                .enableSkillDiscovery(enableSkillDiscovery)
-                .model(model)
-                .backend(backend)
-                .promptMode(promptMode)
-                .sysOperation(sysOperation)
-                .factoryKwargs(new LinkedHashMap<>(factoryKwargs))
-                .workspacePath(workspacePath)
-                .isRestrictToWorkDir(isRestrictToWorkDir)
-                .build();
+        return DeepAgentConfig.builder().systemPrompt(systemPrompt).maxIterations(maxIterations)
+                .isTaskLoopEnabled(isTaskLoopEnabled).language(language).tools(new ArrayList<>(tools))
+                .rails(new ArrayList<>(rails)).mcps(new ArrayList<>(mcps)).subagents(new ArrayList<>(subagents))
+                .skillDirectories(new ArrayList<>(skillDirectories)).skillMode(skillMode)
+                .skills(new ArrayList<>(skills)).enableSkillDiscovery(enableSkillDiscovery).model(model)
+                .backend(backend).promptMode(promptMode).sysOperation(sysOperation)
+                .factoryKwargs(new LinkedHashMap<>(factoryKwargs)).workspacePath(workspacePath)
+                .isRestrictToWorkDir(isRestrictToWorkDir).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasRail.
+     * 
+     * @param railClass railClass
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasRail(Class<?> railClass) {
         if (railClass == null || rails == null) {
@@ -136,7 +183,10 @@ public class SubAgentConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * railClassNames.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> railClassNames() {
         if (rails == null) {

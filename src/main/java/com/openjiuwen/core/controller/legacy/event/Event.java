@@ -5,6 +5,7 @@
 package com.openjiuwen.core.controller.legacy.event;
 
 import com.openjiuwen.core.session.interaction.InteractiveInput;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,14 +20,20 @@ import java.util.UUID;
 
 /**
  * Legacy event model for backward compatibility.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class Event {
-
     @Builder.Default
+    /**
+     * UUID.randomUUID.
+     * 
+     * @since 0.1.7
+     */
     private String eventId = UUID.randomUUID().toString();
 
     @Builder.Default
@@ -36,18 +43,43 @@ public class Event {
     private EventPriority priority = EventPriority.NORMAL;
 
     @Builder.Default
+    /**
+     * EventSource.
+     * 
+     * @since 0.1.7
+     */
     private EventSource source = new EventSource("unknown", SourceType.SYSTEM, null);
 
     @Builder.Default
+    /**
+     * EventContent.
+     * 
+     * @since 0.1.7
+     */
     private EventContent content = new EventContent();
 
     @Builder.Default
+    /**
+     * EventContext.
+     * 
+     * @since 0.1.7
+     */
     private EventContext context = new EventContext();
 
     @Builder.Default
+    /**
+     * Instant.now.
+     * 
+     * @since 0.1.7
+     */
     private Instant createdAt = Instant.now();
 
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
 
     private String receiverId;
@@ -55,10 +87,17 @@ public class Event {
     private String customEventType;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createUserEvent.
+     * 
+     * @param content content
+     * @param conversationId conversationId
+     * @param userId userId
+     * @param extensions extensions
+     * @return the result
+     * @since 0.1.7
      */
     public static Event createUserEvent(Object content, String conversationId, String userId,
-                                        Map<String, Object> extensions) {
+            Map<String, Object> extensions) {
         EventContent eventContent = new EventContent();
         if (content instanceof InteractiveInput interactiveInput) {
             eventContent.setInteractiveInput(interactiveInput);
@@ -68,73 +107,85 @@ public class Event {
         if (extensions != null) {
             eventContent.setExtensions(new LinkedHashMap<>(extensions));
         }
-        return Event.builder()
-                .eventType(EventType.USER_INPUT)
-                .source(new EventSource(conversationId, SourceType.USER, userId))
-                .content(eventContent)
-                .context(new EventContext(UUID.randomUUID().toString(), conversationId, null, null))
-                .build();
+        return Event.builder().eventType(EventType.USER_INPUT)
+                .source(new EventSource(conversationId, SourceType.USER, userId)).content(eventContent)
+                .context(new EventContext(UUID.randomUUID().toString(), conversationId, null, null)).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createTaskCompleted.
+     * 
+     * @param conversationId conversationId
+     * @param taskId taskId
+     * @param taskResult taskResult
+     * @param workflowId workflowId
+     * @param streamData streamData
+     * @return the result
+     * @since 0.1.7
      */
-    public static Event createTaskCompleted(String conversationId, String taskId, Object taskResult,
-                                            String workflowId, List<Object> streamData) {
+    public static Event createTaskCompleted(String conversationId, String taskId, Object taskResult, String workflowId,
+            List<Object> streamData) {
         EventContent eventContent = new EventContent();
         eventContent.setTaskResult(taskResult);
         eventContent.setStreamData(streamData != null ? new ArrayList<>(streamData) : new ArrayList<>());
-        return Event.builder()
-                .eventType(EventType.TASK_COMPLETED)
-                .source(new EventSource(conversationId, SourceType.TASK, null))
-                .content(eventContent)
-                .context(new EventContext(null, conversationId, taskId, workflowId))
-                .build();
+        return Event.builder().eventType(EventType.TASK_COMPLETED)
+                .source(new EventSource(conversationId, SourceType.TASK, null)).content(eventContent)
+                .context(new EventContext(null, conversationId, taskId, workflowId)).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createTaskInterrupted.
+     * 
+     * @param conversationId conversationId
+     * @param taskId taskId
+     * @param reason reason
+     * @param taskResult taskResult
+     * @param workflowId workflowId
+     * @param streamData streamData
+     * @return the result
+     * @since 0.1.7
      */
-    public static Event createTaskInterrupted(String conversationId, String taskId, String reason,
-                                              Object taskResult, String workflowId, List<Object> streamData) {
+    public static Event createTaskInterrupted(String conversationId, String taskId, String reason, Object taskResult,
+            String workflowId, List<Object> streamData) {
         EventContent eventContent = new EventContent();
         eventContent.setQuery(reason);
         eventContent.setTaskResult(taskResult);
         eventContent.setStreamData(streamData != null ? new ArrayList<>(streamData) : new ArrayList<>());
-        return Event.builder()
-                .eventType(EventType.TASK_INTERRUPTED)
-                .priority(EventPriority.HIGH)
-                .source(new EventSource(conversationId, SourceType.TASK, null))
-                .content(eventContent)
-                .context(new EventContext(null, conversationId, taskId, workflowId))
-                .build();
+        return Event.builder().eventType(EventType.TASK_INTERRUPTED).priority(EventPriority.HIGH)
+                .source(new EventSource(conversationId, SourceType.TASK, null)).content(eventContent)
+                .context(new EventContext(null, conversationId, taskId, workflowId)).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createErrorEvent.
+     * 
+     * @param conversationId conversationId
+     * @param errorInfo errorInfo
+     * @param sourceType sourceType
+     * @return the result
+     * @since 0.1.7
      */
     public static Event createErrorEvent(String conversationId, String errorInfo, SourceType sourceType) {
         EventContent eventContent = new EventContent();
         eventContent.setQuery(errorInfo);
-        return Event.builder()
-                .eventType(EventType.ERROR)
-                .priority(EventPriority.HIGH)
-                .source(new EventSource(conversationId, sourceType, null))
-                .content(eventContent)
-                .build();
+        return Event.builder().eventType(EventType.ERROR).priority(EventPriority.HIGH)
+                .source(new EventSource(conversationId, sourceType, null)).content(eventContent).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createInfoEvent.
+     * 
+     * @param conversationId conversationId
+     * @param infoText infoText
+     * @param sourceType sourceType
+     * @return the result
+     * @since 0.1.7
      */
     public static Event createInfoEvent(String conversationId, String infoText, SourceType sourceType) {
         EventContent eventContent = new EventContent();
         eventContent.setQuery(infoText);
-        return Event.builder()
-                .eventType(EventType.INFO)
-                .source(new EventSource(conversationId, sourceType, null))
-                .content(eventContent)
-                .build();
+        return Event.builder().eventType(EventType.INFO).source(new EventSource(conversationId, sourceType, null))
+                .content(eventContent).build();
     }
 
     // ========== Missing factory methods (P1) ==========
@@ -142,21 +193,30 @@ public class Event {
     /**
      * Create Agent response event.
      * Mirrors Python's {@code Event.create_agent_response()}.
+     * 
+     * @param content content
+     * @param conversationId conversationId
+     * @param replyToEventId replyToEventId
+     * @return the result
+     * @since 0.1.7
      */
     public static Event createAgentResponse(String content, String conversationId, String replyToEventId) {
         EventContent eventContent = new EventContent();
         eventContent.setQuery(content);
-        return Event.builder()
-                .eventType(EventType.AGENT_RESPONSE)
-                .source(new EventSource(conversationId, SourceType.AGENT, null))
-                .content(eventContent)
-                .context(new EventContext(replyToEventId, conversationId, null, null))
-                .build();
+        return Event.builder().eventType(EventType.AGENT_RESPONSE)
+                .source(new EventSource(conversationId, SourceType.AGENT, null)).content(eventContent)
+                .context(new EventContext(replyToEventId, conversationId, null, null)).build();
     }
 
     /**
      * Create Agent handoff event.
      * Mirrors Python's {@code Event.create_agent_handoff()}.
+     * 
+     * @param conversationId conversationId
+     * @param toAgentId toAgentId
+     * @param handoffReason handoffReason
+     * @return the result
+     * @since 0.1.7
      */
     public static Event createAgentHandoff(String conversationId, String toAgentId, String handoffReason) {
         EventContent eventContent = new EventContent();
@@ -164,12 +224,9 @@ public class Event {
         Map<String, Object> ext = new LinkedHashMap<>();
         ext.put("to_agent_id", toAgentId);
         eventContent.setExtensions(ext);
-        return Event.builder()
-                .eventType(EventType.AGENT_HANDOFF)
-                .source(new EventSource(conversationId, SourceType.AGENT, null))
-                .content(eventContent)
-                .context(new EventContext(null, conversationId, null, null))
-                .build();
+        return Event.builder().eventType(EventType.AGENT_HANDOFF)
+                .source(new EventSource(conversationId, SourceType.AGENT, null)).content(eventContent)
+                .context(new EventContext(null, conversationId, null, null)).build();
     }
 
     // ========== Missing convenience methods (P1) ==========
@@ -177,6 +234,9 @@ public class Event {
     /**
      * Set correlation ID.
      * Mirrors Python's {@code Event.set_correlation()}.
+     * 
+     * @param correlationId correlationId
+     * @since 0.1.7
      */
     public void setCorrelation(String correlationId) {
         if (this.context == null) {
@@ -188,6 +248,9 @@ public class Event {
     /**
      * Set conversation ID.
      * Mirrors Python's {@code Event.set_conversation()}.
+     * 
+     * @param conversationId conversationId
+     * @since 0.1.7
      */
     public void setConversation(String conversationId) {
         if (this.context == null) {
@@ -199,6 +262,9 @@ public class Event {
     /**
      * Check if from user.
      * Mirrors Python's {@code Event.is_from_user()}.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isFromUser() {
         return source != null && source.getSourceType() == SourceType.USER;
@@ -207,6 +273,9 @@ public class Event {
     /**
      * Check if from Agent.
      * Mirrors Python's {@code Event.is_from_agent()}.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isFromAgent() {
         return source != null && source.getSourceType() == SourceType.AGENT;
@@ -215,6 +284,9 @@ public class Event {
     /**
      * Check if task related.
      * Mirrors Python's {@code Event.is_task_related()}.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isTaskRelated() {
         return context != null && context.getTaskId() != null;
@@ -223,13 +295,19 @@ public class Event {
     /**
      * Check if workflow related.
      * Mirrors Python's {@code Event.is_workflow_related()}.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isWorkflowRelated() {
         return context != null && context.getWorkflowId() != null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDisplayContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDisplayContent() {
         return content != null ? content.getQueryText() : "";
@@ -238,6 +316,9 @@ public class Event {
     /**
      * Convert to map format.
      * Mirrors Python's {@code Event.to_dict()}.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toDict() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -272,6 +353,11 @@ public class Event {
         return result;
     }
 
+    /**
+     * EventType.
+     * 
+     * @since 0.1.7
+     */
     public enum EventType {
         USER_INPUT,
         AGENT_RESPONSE,
@@ -282,6 +368,11 @@ public class Event {
         INFO
     }
 
+    /**
+     * EventPriority.
+     * 
+     * @since 0.1.7
+     */
     public enum EventPriority {
         LOW,
         NORMAL,
@@ -289,6 +380,11 @@ public class Event {
         URGENT
     }
 
+    /**
+     * SourceType.
+     * 
+     * @since 0.1.7
+     */
     public enum SourceType {
         USER,
         AGENT,
@@ -297,33 +393,52 @@ public class Event {
         SYSTEM
     }
 
+    /**
+     * EventSource.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class EventSource {
         private String conversationId;
         private SourceType sourceType;
         private String userId;
     }
 
+    /**
+     * EventContent.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class EventContent {
         private String query;
         private InteractiveInput interactiveInput;
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private List<Object> streamData = new ArrayList<>();
         private Object taskResult;
+
+        /**
+         * LinkedHashMap<>.
+         * 
+         * @since 0.1.7
+         */
         private Map<String, Object> extensions = new LinkedHashMap<>();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * getQueryText.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String getQueryText() {
             if (query != null) {
@@ -341,12 +456,14 @@ public class Event {
         }
     }
 
+    /**
+     * EventContext.
+     * 
+     * @since 0.1.7
+     */
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class EventContext {
         private String correlationId;
         private String conversationId;

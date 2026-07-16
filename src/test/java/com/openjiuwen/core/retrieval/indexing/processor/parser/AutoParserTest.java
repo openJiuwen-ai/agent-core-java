@@ -1,9 +1,15 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.indexing.processor.parser;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.retrieval.common.Document;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -14,12 +20,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class AutoParserTest {
-
     @TempDir
     Path tempDir;
 
@@ -37,8 +38,10 @@ class AutoParserTest {
 
     @Test
     void parseDelegatesToConfiguredParser() {
-        RecordingParser linkParser = new RecordingParser(true, List.of(new Document("link-doc", "from link", Map.of())));
-        RecordingParser fileParser = new RecordingParser(false, List.of(new Document("file-doc", "from file", Map.of())));
+        RecordingParser linkParser =
+            new RecordingParser(true, List.of(new Document("link-doc", "from link", Map.of())));
+        RecordingParser fileParser =
+            new RecordingParser(false, List.of(new Document("file-doc", "from file", Map.of())));
         AutoParser parser = new AutoParser(linkParser, fileParser);
 
         List<Document> docs = parser.parse("https://example.com/page", "id-1", null, Map.of());
@@ -49,7 +52,6 @@ class AutoParserTest {
     }
 
     private static final class RecordingParser extends Parser {
-
         private final boolean supported;
         private final List<Document> result;
         private String lastDoc;
@@ -66,14 +68,18 @@ class AutoParserTest {
         }
 
         @Override
-        public List<Document> parse(String doc, String docId, com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient llmClient, Map<String, Object> options) {
+        public List<Document> parse(String doc, String docId,
+                com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient llmClient,
+                Map<String, Object> options) {
             this.lastDoc = doc;
             this.parseCount++;
             return result;
         }
 
         @Override
-        protected String parseContent(String doc, com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient llmClient, Map<String, Object> options) {
+        protected String parseContent(String doc,
+                com.openjiuwen.core.foundation.llm.model_clients.BaseModelClient llmClient,
+                Map<String, Object> options) {
             return null;
         }
     }

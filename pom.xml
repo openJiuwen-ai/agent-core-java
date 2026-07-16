@@ -7,7 +7,7 @@
 
     <groupId>com.openjiuwen</groupId>
     <artifactId>agent-core-java</artifactId>
-    <version>0.1.12</version>
+    <version>0.1.13</version>
     <packaging>jar</packaging>
 
     <name>agent-core-java</name>
@@ -32,6 +32,7 @@
         <postgresql.version>42.7.7</postgresql.version>
         <sqlite-jdbc.version>3.53.0.0</sqlite-jdbc.version>
         <dashscope.version>2.22.17</dashscope.version>
+        <okhttp3.version>4.12.0</okhttp3.version>
         <testcontainers.version>1.21.3</testcontainers.version>
 
         <!-- Test dependencies -->
@@ -54,6 +55,18 @@
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
             <version>${jackson.version}</version>
+        </dependency>
+        <!-- HTTP Client: OkHttp -->
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>${okhttp3.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>mockwebserver</artifactId>
+            <version>${okhttp3.version}</version>
+            <scope>test</scope>
         </dependency>
 
         <!-- YAML Processing: SnakeYAML -->

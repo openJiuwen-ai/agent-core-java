@@ -11,42 +11,56 @@ import javax.sql.DataSource;
 
 /**
  * Java baseline for the Python GaussDbStore extension.
- *
- * <p>The current Java version reuses JDBC/DataSource semantics and keeps the
+ * <p>
+ * The current Java version reuses JDBC/DataSource semantics and keeps the
  * explicit GaussDB entry point so callers do not need to fall back to the
- * generic DefaultDbStore type.</p>
+ * generic DefaultDbStore type.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class GaussDbStore extends BaseDbStore<DataSource> {
     private final DataSource dataSource;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GaussDbStore.
+     * 
+     * @param dataSource dataSource
+     * @since 0.1.7
      */
     public GaussDbStore(DataSource dataSource) {
         this.dataSource = dataSource;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GaussDbStore.
+     * 
+     * @param jdbcUrl jdbcUrl
+     * @since 0.1.7
      */
     public GaussDbStore(String jdbcUrl) {
         this(new DefaultDbStore(jdbcUrl).getEngine());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GaussDbStore.
+     * 
+     * @param jdbcUrl jdbcUrl
+     * @param username username
+     * @param password password
+     * @since 0.1.7
      */
     public GaussDbStore(String jdbcUrl, String username, String password) {
         this(new DefaultDbStore(jdbcUrl, username, password).getEngine());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEngine.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public DataSource getEngine() {
         return dataSource;
     }

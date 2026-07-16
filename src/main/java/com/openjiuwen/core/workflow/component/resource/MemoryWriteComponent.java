@@ -14,26 +14,41 @@ import com.openjiuwen.core.workflow.ComponentComposable;
  * Creates a {@link MemoryWriteExecutable} for graph execution.
  * <p>
  * Mirrors Python's {@code MemoryWriteComponent}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 public class MemoryWriteComponent implements ComponentComposable {
     private final MemoryWriteCompConfig config;
 
     /**
      * Create a MemoryWriteComponent with the given configuration.
-     *
+     * 
      * @param config the component configuration
+     * @since 0.1.7
      */
     public MemoryWriteComponent(MemoryWriteCompConfig config) {
         this.config = config;
     }
 
+    /**
+     * addComponent.
+     * 
+     * @param graph graph
+     * @param nodeId nodeId
+     * @param isWaitForAll isWaitForAll
+     * @since 0.1.7
+     */
     @Override
     public void addComponent(Graph graph, String nodeId, boolean isWaitForAll) {
         graph.addNode(nodeId, toExecutable(), isWaitForAll);
     }
 
+    /**
+     * toExecutable.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Executable<?, ?> toExecutable() {
         return new MemoryWriteExecutable(config);

@@ -12,6 +12,8 @@ import lombok.experimental.SuperBuilder;
 
 /**
  * Fragment memory unit.
+ * 
+ * @since 0.1.7
  */
 @Data
 @SuperBuilder

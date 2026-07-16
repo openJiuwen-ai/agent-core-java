@@ -14,14 +14,24 @@ import java.util.List;
 
 /**
  * Helpers for embedding model implementations.
+ * 
+ * @since 0.1.7
  */
 public final class EmbeddingUtils {
-
+    /**
+     * EmbeddingUtils.
+     * 
+     * @since 0.1.7
+     */
     private EmbeddingUtils() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseBase64Embedding.
+     * 
+     * @param base64Embedding base64Embedding
+     * @return the result
+     * @since 0.1.7
      */
     public static List<Float> parseBase64Embedding(String base64Embedding) {
         if (base64Embedding == null || base64Embedding.isBlank()) {

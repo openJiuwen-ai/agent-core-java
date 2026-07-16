@@ -10,19 +10,24 @@ import lombok.NoArgsConstructor;
 
 /**
  * Represents a GitHub directory tree with its metadata.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class GitHubTree {
-
     private String repoOwner;
     private String repoName;
     private String treeRef = "HEAD";
     private String directory = "";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GitHubTree.
+     * 
+     * @param repoOwner repoOwner
+     * @param repoName repoName
+     * @since 0.1.7
      */
     public GitHubTree(String repoOwner, String repoName) {
         this.repoOwner = repoOwner;
@@ -32,7 +37,10 @@ public class GitHubTree {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * copy.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public GitHubTree copy() {
         return new GitHubTree(repoOwner, repoName, treeRef, directory);

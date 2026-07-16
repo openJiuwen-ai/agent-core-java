@@ -5,11 +5,14 @@
 package com.openjiuwen.agentevolving.agent_rl.config.offlineconfig;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.offlineconfig.RolloutConfig.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -25,31 +28,72 @@ public class RolloutConfig {
     private int rolloutN = 8;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getActor_optimizer_lr.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public double getActor_optimizer_lr() { return getActorOptimizerLr(); }
+    public double getActor_optimizer_lr() {
+        return getActorOptimizerLr();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * isActor_use_kl_loss.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public boolean isActor_use_kl_loss() { return isActorUseKlLoss(); }
+    public boolean isActor_use_kl_loss() {
+        return isActorUseKlLoss();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getActor_kl_loss_coef.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public double getActor_kl_loss_coef() { return getActorKlLossCoef(); }
+    public double getActor_kl_loss_coef() {
+        return getActorKlLossCoef();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getActor_clip_ratio_low.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public double getActor_clip_ratio_low() { return getActorClipRatioLow(); }
+    public double getActor_clip_ratio_low() {
+        return getActorClipRatioLow();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getActor_clip_ratio_high.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public double getActor_clip_ratio_high() { return getActorClipRatioHigh(); }
+    public double getActor_clip_ratio_high() {
+        return getActorClipRatioHigh();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getActor_loss_agg_mode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public String getActor_loss_agg_mode() { return getActorLossAggMode(); }
+    public String getActor_loss_agg_mode() {
+        return getActorLossAggMode();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getRollout_n.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public int getRollout_n() { return getRolloutN(); }
+    public int getRollout_n() {
+        return getRolloutN();
+    }
 }

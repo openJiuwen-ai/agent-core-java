@@ -7,35 +7,46 @@ package com.openjiuwen.harness.rails;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 
 /**
- * Auto-generated for codecheck compliance.
+ * DeepAgentRail.
+ * 
+ * @since 0.1.7
  */
 public abstract class DeepAgentRail extends AgentRail {
     /**
-     * Auto-generated for codecheck compliance.
+     * priority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int priority() {
         return 50;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPriority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int getPriority() {
         return priority();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * init.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     public void init(Object agent) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * uninit.
+     * 
+     * @param agent agent
+     * @since 0.1.7
      */
     public void uninit(Object agent) {
     }

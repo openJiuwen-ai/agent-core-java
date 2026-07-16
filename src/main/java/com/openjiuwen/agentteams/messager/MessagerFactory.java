@@ -6,15 +6,24 @@ package com.openjiuwen.agentteams.messager;
 
 /**
  * Factory for creating team messager implementations by transport backend.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public final class MessagerFactory {
+    /**
+     * MessagerFactory.
+     * 
+     * @since 0.1.7
+     */
     private MessagerFactory() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createMessager.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public static Messager createMessager(MessagerTransportConfig config) {
         if (config == null || "inprocess".equals(config.getBackend())) {

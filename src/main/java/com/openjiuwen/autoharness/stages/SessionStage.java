@@ -5,16 +5,18 @@
 package com.openjiuwen.autoharness.stages;
 
 /**
- * Auto-generated for codecheck compliance.
+ * SessionStage.
+ * 
+ * @since 0.1.7
  */
 public abstract class SessionStage extends BaseStage {
     /**
-     * Auto-generated for codecheck compliance.
+     * scope.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String scope() {
         return "session";
     }

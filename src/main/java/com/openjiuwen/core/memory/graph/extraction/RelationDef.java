@@ -11,6 +11,8 @@ import java.util.Map;
 
 /**
  * Base relation type.
+ * 
+ * @since 0.1.7
  */
 @Data
 public class RelationDef {
@@ -22,7 +24,11 @@ public class RelationDef {
     private Class<? extends EntityDef> rhs = EntityDef.class;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerDescription.
+     * 
+     * @param language language
+     * @param description description
+     * @since 0.1.7
      */
     public static void registerDescription(String language, String description) {
         RELATION_DEFINITION_DESCRIPTION.put(language, description);

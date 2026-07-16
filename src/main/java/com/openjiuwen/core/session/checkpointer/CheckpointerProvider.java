@@ -16,22 +16,24 @@ import java.util.Map;
  * {@link CheckpointerFactory#register(String, CheckpointerProvider)}.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.checkpointer.checkpointer.CheckpointerProvider}.
- *
- * @since 0.1.12
+ * 
+ * @since 0.1.7
  */
 public interface CheckpointerProvider {
     /**
-     * The checkpointer type name this provider handles (e.g., "in_memory", "redis").
-     *
-     * @return the type name for registration
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     String typeName();
 
     /**
      * Create a checkpointer with the given configuration.
-     *
+     * 
      * @param conf the configuration map
      * @return a checkpointer instance
+     * @since 0.1.7
      */
     Checkpointer create(Map<String, Object> conf);
 }

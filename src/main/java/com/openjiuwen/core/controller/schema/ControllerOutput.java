@@ -18,21 +18,28 @@ import java.util.Map;
  * and special constants like {@link ControllerOutputPayload#TASK_PROCESSING}.
  * The {@code data} field can be either a list of {@link ControllerOutputChunk}
  * or a {@link Map} (matching Python's {@code List[ControllerOutputChunk] | Dict}).
+ * 
+ * @since 0.1.7
  */
 public class ControllerOutput {
-
     private String type;
-    private Object data;  // List<ControllerOutputChunk> or Map
+    private Object data; // List<ControllerOutputChunk> or Map
     private String inputEventId;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ControllerOutput.
+     * 
+     * @since 0.1.7
      */
     public ControllerOutput() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ControllerOutput.
+     * 
+     * @param type type
+     * @param data data
+     * @since 0.1.7
      */
     public ControllerOutput(EventType type, List<ControllerOutputChunk> data) {
         this.type = type.getValue();
@@ -40,7 +47,11 @@ public class ControllerOutput {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ControllerOutput.
+     * 
+     * @param type type
+     * @param data data
+     * @since 0.1.7
      */
     public ControllerOutput(String type, Object data) {
         this.type = type;
@@ -48,21 +59,30 @@ public class ControllerOutput {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getType() {
         return type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setType.
+     * 
+     * @param type type
+     * @since 0.1.7
      */
     public void setType(String type) {
         this.type = type;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setType.
+     * 
+     * @param type type
+     * @since 0.1.7
      */
     public void setType(EventType type) {
         this.type = type.getValue();
@@ -70,36 +90,35 @@ public class ControllerOutput {
 
     /**
      * Get data as raw object (can be List or Map).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getData() {
         return data;
     }
 
     /**
-     * Get data as a list of ControllerOutputChunk.
-     *
-     * @return list of chunks, or null if data is not a list
+     * getDataAsChunks.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<ControllerOutputChunk> getDataAsChunks() {
         if (data instanceof List<?>) {
             return (List<ControllerOutputChunk>) data;
         }
-        return null;
+        return java.util.Collections.emptyList();
     }
 
     /**
-     * Get data as a Map.
-     *
-     * @return map, or null if data is not a map
+     * getDataAsMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> getDataAsMap() {
         if (data instanceof Map<?, ?>) {
             return (Map<String, Object>) data;
@@ -108,21 +127,30 @@ public class ControllerOutput {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setData.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     public void setData(Object data) {
         this.data = data;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputEventId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getInputEventId() {
         return inputEventId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInputEventId.
+     * 
+     * @param inputEventId inputEventId
+     * @since 0.1.7
      */
     public void setInputEventId(String inputEventId) {
         this.inputEventId = inputEventId;

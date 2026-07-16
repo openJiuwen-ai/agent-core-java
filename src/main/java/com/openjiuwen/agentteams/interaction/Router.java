@@ -12,17 +12,26 @@ import java.util.regex.Pattern;
 
 /**
  * Parses mention-style routing directives and validates reserved team member names.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public final class Router {
     private static final Pattern MENTION_PATTERN = Pattern.compile("^@(\\S+)\\s+([\\s\\S]+)$");
 
+    /**
+     * Router.
+     * 
+     * @since 0.1.7
+     */
     private Router() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseMention.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
     public static Optional<MentionRoute> parseMention(String content) {
         if (content == null || content.isEmpty()) {
@@ -36,7 +45,11 @@ public final class Router {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isReservedName.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isReservedName(String name) {
         return TeamConstants.RESERVED_MEMBER_NAMES.contains(name);

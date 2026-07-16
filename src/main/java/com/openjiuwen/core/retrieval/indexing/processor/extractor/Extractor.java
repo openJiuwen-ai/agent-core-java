@@ -13,18 +13,29 @@ import java.util.Map;
 
 /**
  * Triple extractor abstraction.
+ * 
+ * @since 0.1.7
  */
 public abstract class Extractor implements Processor<List<TextChunk>, List<Triple>> {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * extract.
+     * 
+     * @param chunks chunks
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public abstract List<Triple> extract(List<TextChunk> chunks, Map<String, Object> options);
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * process.
+     * 
+     * @param input input
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<Triple> process(List<TextChunk> input, Map<String, Object> options) {
         return extract(input, options);
     }

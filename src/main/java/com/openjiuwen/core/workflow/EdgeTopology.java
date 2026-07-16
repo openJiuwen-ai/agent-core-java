@@ -11,23 +11,29 @@ import java.util.Set;
 
 /**
  * Edge topology snapshot used by workflow ability inference.
- *
- * <p>Mirrors Python's {@code EdgeTopology} dataclass.</p>
+ * <p>
+ * Mirrors Python's {@code EdgeTopology} dataclass.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class EdgeTopology {
-
     private final Map<String, List<String>> sourceMap;
     private final Map<String, List<String>> targetMap;
     private final Map<String, List<String>> sourceStreamMap;
     private final Map<String, List<String>> targetStreamMap;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EdgeTopology.
+     * 
+     * @param sourceMap sourceMap
+     * @param targetMap targetMap
+     * @param sourceStreamMap sourceStreamMap
+     * @param targetStreamMap targetStreamMap
+     * @since 0.1.7
      */
-    public EdgeTopology(Map<String, List<String>> sourceMap,
-                        Map<String, List<String>> targetMap,
-                        Map<String, List<String>> sourceStreamMap,
-                        Map<String, List<String>> targetStreamMap) {
+    public EdgeTopology(Map<String, List<String>> sourceMap, Map<String, List<String>> targetMap,
+            Map<String, List<String>> sourceStreamMap, Map<String, List<String>> targetStreamMap) {
         this.sourceMap = sourceMap;
         this.targetMap = targetMap;
         this.sourceStreamMap = sourceStreamMap;
@@ -35,35 +41,50 @@ public class EdgeTopology {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSourceMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, List<String>> getSourceMap() {
         return sourceMap;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTargetMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, List<String>> getTargetMap() {
         return targetMap;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSourceStreamMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, List<String>> getSourceStreamMap() {
         return sourceStreamMap;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTargetStreamMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, List<String>> getTargetStreamMap() {
         return targetStreamMap;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * allEdgeNodes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Set<String> allEdgeNodes() {
         Set<String> nodes = new LinkedHashSet<>();

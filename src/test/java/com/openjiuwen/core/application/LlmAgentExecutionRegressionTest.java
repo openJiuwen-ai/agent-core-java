@@ -1,9 +1,9 @@
+
 package com.openjiuwen.core.application;
 
-import ch.qos.logback.classic.Level;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.read.ListAppender;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.application.llm.LlmAgent;
 import com.openjiuwen.core.application.schema.LlmAgentConfig;
 import com.openjiuwen.core.foundation.llm.Model;
@@ -35,6 +35,12 @@ import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowCard;
 import com.openjiuwen.core.workflow.component.End;
 import com.openjiuwen.core.workflow.component.Start;
+
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -51,11 +57,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 public class LlmAgentExecutionRegressionTest {
-
     private static final String TEST_PROVIDER = "ApplicationRegressionMirror";
     private static final AtomicBoolean FACTORY_REGISTERED = new AtomicBoolean(false);
 
@@ -92,18 +94,13 @@ public class LlmAgentExecutionRegressionTest {
     @Test
     void llmAgentExecutesRegisteredLocalFunctionEndToEnd() {
         Tool addTool = createAddTool("tool-exec");
-        LlmAgent agent = LlmAgent.createLlmAgent(
-                baseConfig("tool-exec-agent", "你是一个计算助手"),
-                List.of(),
-                List.of(addTool));
+        LlmAgent agent =
+            LlmAgent.createLlmAgent(baseConfig("tool-exec-agent", "你是一个计算助手"), List.of(), List.of(addTool));
         sessionIds.add("tool-exec-session");
 
-        Map<String, Object> result = collectFinalPayload(Runner.runAgentStreaming(
-                agent,
-                Map.of("query", "请帮我计算 10 + 20", "conversation_id", "tool-exec-session"),
-                null,
-                null,
-            List.of(StreamMode.OUTPUT)));
+        Map<String, Object> result = collectFinalPayload(Runner.runAgentStreaming(agent,
+                Map.of("query", "请帮我计算 10 + 20", "conversation_id", "tool-exec-session"), null, null,
+                List.of(StreamMode.OUTPUT)));
 
         assertEquals("30", result.get("output"));
         assertEquals("answer", result.get("result_type"));
@@ -121,29 +118,20 @@ public class LlmAgentExecutionRegressionTest {
             Tool addTool = createAddTool("dual-agent");
             Workflow helperWorkflow = createHelperWorkflow("dual-agent");
 
-            LlmAgent firstAgent = LlmAgent.createLlmAgent(
-                    baseConfig("llm_agent_1", "你是AI助手，简单聊天"),
-                    List.of(helperWorkflow),
-                    List.of(addTool));
+            LlmAgent firstAgent = LlmAgent.createLlmAgent(baseConfig("llm_agent_1", "你是AI助手，简单聊天"),
+                    List.of(helperWorkflow), List.of(addTool));
             LlmAgent secondAgent = new LlmAgent(baseConfig("llm_agent_2", "你是AI助手，简单聊天"));
 
             sessionIds.add("agent_001_1");
             sessionIds.add("agent_001");
 
-                CompletableFuture<Map<String, Object>> first = CompletableFuture.supplyAsync(() -> collectFinalPayload(
-                    Runner.runAgentStreaming(
-                    firstAgent,
-                    Map.of("query", "请帮我做一个加法计算", "conversation_id", "agent_001_1"),
-                    null,
-                    null,
-                    List.of(StreamMode.OUTPUT))));
-                CompletableFuture<Map<String, Object>> second = CompletableFuture.supplyAsync(() -> collectFinalPayload(
-                    Runner.runAgentStreaming(
-                    secondAgent,
-                    Map.of("query", "请问世界上最高的山", "conversation_id", "agent_001"),
-                    null,
-                    null,
-                    List.of(StreamMode.OUTPUT))));
+            CompletableFuture<Map<String, Object>> first =
+                CompletableFuture.supplyAsync(() -> collectFinalPayload(Runner.runAgentStreaming(firstAgent,
+                        Map.of("query", "请帮我做一个加法计算", "conversation_id", "agent_001_1"), null, null,
+                        List.of(StreamMode.OUTPUT))));
+            CompletableFuture<Map<String, Object>> second = CompletableFuture.supplyAsync(() -> collectFinalPayload(
+                    Runner.runAgentStreaming(secondAgent, Map.of("query", "请问世界上最高的山", "conversation_id", "agent_001"),
+                            null, null, List.of(StreamMode.OUTPUT))));
 
             Map<String, Object> firstResult = first.get();
             Map<String, Object> secondResult = second.get();
@@ -151,9 +139,8 @@ public class LlmAgentExecutionRegressionTest {
             assertEquals("30", firstResult.get("output"));
             assertEquals("珠穆朗玛峰", secondResult.get("output"));
 
-            List<String> messages = appender.list.stream()
-                    .map(ILoggingEvent::getFormattedMessage)
-                    .collect(Collectors.toList());
+            List<String> messages =
+                appender.list.stream().map(ILoggingEvent::getFormattedMessage).collect(Collectors.toList());
             assertTrue(messages.stream().anyMatch(msg -> msg.contains("Loaded 2 Tool(s) for generating plans")));
             assertTrue(messages.stream().anyMatch(msg -> msg.contains("Loaded 0 Tool(s) for generating plans")));
         } finally {
@@ -163,38 +150,21 @@ public class LlmAgentExecutionRegressionTest {
     }
 
     private LlmAgentConfig baseConfig(String agentId, String prompt) {
-        return LlmAgentConfig.builder()
-                .id(agentId)
-                .version("0.0.1")
-                .description("regression-agent")
-                .model(testModelConfig())
-                .promptTemplate(List.of(Map.of("role", "system", "content", prompt)))
-                .build();
+        return LlmAgentConfig.builder().id(agentId).version("0.0.1").description("regression-agent")
+                .model(testModelConfig()).promptTemplate(List.of(Map.of("role", "system", "content", prompt))).build();
     }
 
     private ModelConfig testModelConfig() {
-        return new ModelConfig(
-                TEST_PROVIDER,
-                BaseModelInfo.builder()
-                        .apiKey("regression-key")
-                        .apiBase("mirror://application-regression")
-                        .modelName("application-regression-model")
-                        .temperature(0.1)
-                        .topP(0.9)
-                        .timeout(30)
-                        .build());
+        return new ModelConfig(TEST_PROVIDER,
+                BaseModelInfo.builder().apiKey("regression-key").apiBase("mirror://application-regression")
+                        .modelName("application-regression-model").temperature(0.1).topP(0.9).timeout(30).build());
     }
 
     private Tool createAddTool(String prefix) {
-        ToolCard card = ToolCard.builder()
-                .id(prefix + "-add-id")
-                .name("_add_2025")
-                .description("加法")
-                .inputParams(Map.of(
-                        "type", "object",
-                        "properties", Map.of(
-                                "a", Map.of("type", "number", "description", "加数"),
-                                "b", Map.of("type", "number", "description", "被加数")),
+        ToolCard card = ToolCard.builder().id(prefix + "-add-id").name("_add_2025").description("加法")
+                .inputParams(Map.of("type", "object", "properties",
+                        Map.of("a", Map.of("type", "number", "description", "加数"), "b",
+                                Map.of("type", "number", "description", "被加数")),
                         "required", List.of("a", "b")))
                 .build();
         toolIds.add(card.getId());
@@ -206,15 +176,9 @@ public class LlmAgentExecutionRegressionTest {
     }
 
     private Workflow createHelperWorkflow(String prefix) {
-        WorkflowCard card = WorkflowCard.builder()
-                .id(prefix + "-workflow-id")
-                .name("questioner_workflow")
-                .version("0.0.1")
-                .description("helper workflow")
-                .inputParams(Map.of(
-                        "type", "object",
-                        "properties", Map.of("query", Map.of("type", "string")),
-                        "required", List.of("query")))
+        WorkflowCard card = WorkflowCard.builder().id(prefix + "-workflow-id").name("questioner_workflow")
+                .version("0.0.1").description("helper workflow").inputParams(Map.of("type", "object", "properties",
+                        Map.of("query", Map.of("type", "string")), "required", List.of("query")))
                 .build();
         workflowIds.add(card.getId());
         Workflow workflow = new Workflow(card);
@@ -244,7 +208,6 @@ public class LlmAgentExecutionRegressionTest {
     }
 
     private static final class TestModelFactory implements Model.ModelClientFactory {
-
         @Override
         public String providerName() {
             return TEST_PROVIDER;
@@ -257,44 +220,32 @@ public class LlmAgentExecutionRegressionTest {
     }
 
     private static final class TestModelClient extends BaseModelClient {
-
         private TestModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
             super(modelConfig, modelClientConfig);
         }
 
         @Override
         public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
-                                       Integer maxTokens, String stop, BaseOutputParser outputParser,
-                                       Float timeout, Map<String, Object> kwargs) {
+                Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             List<MessageView> messageViews = toMessageViews(messages);
             boolean hasToolMessage = messageViews.stream().anyMatch(message -> "tool".equals(message.role));
 
             if (tools instanceof List<?> toolInfos && !toolInfos.isEmpty() && !hasToolMessage) {
-                return AssistantMessage.builder()
-                        .content("")
-                        .toolCalls(List.of(ToolCall.builder()
-                                .id("call_" + UUID.randomUUID())
-                                .name("_add_2025")
-                                .arguments("{\"a\":10,\"b\":20}")
-                                .build()))
-                        .finishReason("tool_calls")
-                        .build();
+                return AssistantMessage
+                        .builder().content("").toolCalls(List.of(ToolCall.builder().id("call_" + UUID.randomUUID())
+                                .name("_add_2025").arguments("{\"a\":10,\"b\":20}").build()))
+                        .finishReason("tool_calls").build();
             }
 
             if (hasToolMessage) {
-                String toolResult = messageViews.stream()
-                        .filter(message -> "tool".equals(message.role))
-                        .reduce((left, right) -> right)
-                        .map(message -> message.content)
-                        .orElse("30");
+                String toolResult = messageViews.stream().filter(message -> "tool".equals(message.role))
+                        .reduce((left, right) -> right).map(message -> message.content).orElse("30");
                 return new AssistantMessage(toolResult);
             }
 
-            String userContent = messageViews.stream()
-                    .filter(message -> "user".equals(message.role))
-                    .reduce((left, right) -> right)
-                    .map(message -> message.content)
-                    .orElse("");
+            String userContent = messageViews.stream().filter(message -> "user".equals(message.role))
+                    .reduce((left, right) -> right).map(message -> message.content).orElse("");
             if (userContent.contains("最高的山")) {
                 return new AssistantMessage("珠穆朗玛峰");
             }
@@ -303,30 +254,28 @@ public class LlmAgentExecutionRegressionTest {
 
         @Override
         public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
-                                                      String model, Integer maxTokens, String stop,
-                                                      BaseOutputParser outputParser, Float timeout,
-                                                      Map<String, Object> kwargs) {
+                String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+                Map<String, Object> kwargs) {
             return List.<AssistantMessageChunk>of().iterator();
         }
 
         @Override
         public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
-                                                     String negativePrompt, int n, boolean promptExtend,
-                                                     boolean watermark, int seed, Map<String, Object> kwargs) {
+                String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+                Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
         @Override
         public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
-                                                      String languageType, Map<String, Object> kwargs) {
+                String languageType, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 
         @Override
         public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
-                                                     String model, String size, String resolution, int duration,
-                                                     boolean promptExtend, boolean watermark, String negativePrompt,
-                                                     Integer seed, Map<String, Object> kwargs) {
+                String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+                String negativePrompt, Integer seed, Map<String, Object> kwargs) {
             throw new UnsupportedOperationException();
         }
 

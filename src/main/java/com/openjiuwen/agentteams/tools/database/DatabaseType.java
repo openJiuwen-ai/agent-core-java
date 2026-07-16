@@ -6,8 +6,8 @@ package com.openjiuwen.agentteams.tools.database;
 
 /**
  * Public enum DatabaseType used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum DatabaseType {
     MEMORY,

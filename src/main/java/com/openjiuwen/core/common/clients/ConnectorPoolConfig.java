@@ -6,7 +6,6 @@ package com.openjiuwen.core.common.clients;
 
 import com.openjiuwen.core.common.security.SslUtils;
 
-import javax.net.ssl.SSLContext;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -14,8 +13,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TreeMap;
 
+import javax.net.ssl.SSLContext;
+
 /**
  * Connector pool configuration.
+ * 
+ * @since 0.1.7
  */
 public class ConnectorPoolConfig {
     private final int limit;
@@ -29,24 +32,31 @@ public class ConnectorPoolConfig {
     private final Map<String, Object> extendParams;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ConnectorPoolConfig.
+     * 
+     * @since 0.1.7
      */
     public ConnectorPoolConfig() {
         this(100, 30, true, null, false, 60.0, 3600, 300, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ConnectorPoolConfig.
+     * 
+     * @param limit limit
+     * @param limitPerHost limitPerHost
+     * @param isSslVerifyEnabled isSslVerifyEnabled
+     * @param sslCert sslCert
+     * @param isForceCloseEnabled isForceCloseEnabled
+     * @param keepaliveTimeout keepaliveTimeout
+     * @param ttl ttl
+     * @param maxIdleTime maxIdleTime
+     * @param extendParams extendParams
+     * @since 0.1.7
      */
-    public ConnectorPoolConfig(int limit,
-                               int limitPerHost,
-                               boolean isSslVerifyEnabled,
-                               String sslCert,
-                               boolean isForceCloseEnabled,
-                               Double keepaliveTimeout,
-                               Integer ttl,
-                               Integer maxIdleTime,
-                               Map<String, Object> extendParams) {
+    public ConnectorPoolConfig(int limit, int limitPerHost, boolean isSslVerifyEnabled, String sslCert,
+            boolean isForceCloseEnabled, Double keepaliveTimeout, Integer ttl, Integer maxIdleTime,
+            Map<String, Object> extendParams) {
         validatePositive("limit", limit);
         validatePositive("limit_per_host", limitPerHost);
         validatePositive("keepalive_timeout", keepaliveTimeout);
@@ -71,70 +81,100 @@ public class ConnectorPoolConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLimit.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getLimit() {
         return limit;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLimitPerHost.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getLimitPerHost() {
         return limitPerHost;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isSslVerify.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isSslVerify() {
         return isSslVerifyEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSslCert.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSslCert() {
         return sslCert;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isForceClose.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isForceClose() {
         return isForceCloseEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getKeepaliveTimeout.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Double getKeepaliveTimeout() {
         return keepaliveTimeout;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTtl.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getTtl() {
         return ttl;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMaxIdleTime.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getMaxIdleTime() {
         return maxIdleTime;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtendParams.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getExtendParams() {
         return new LinkedHashMap<>(extendParams);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createSslContext.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public SSLContext createSslContext() {
         if (!isSslVerifyEnabled) {
@@ -144,7 +184,10 @@ public class ConnectorPoolConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateKey.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String generateKey() {
         Map<String, Object> normalized = new TreeMap<>();
@@ -161,31 +204,40 @@ public class ConnectorPoolConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * from.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static ConnectorPoolConfig from(Object value) {
         if (value instanceof ConnectorPoolConfig config) {
             return config;
         }
         Map<String, Object> map = ClientConfigSupport.asObjectMap(value);
-        return new ConnectorPoolConfig(
-                ClientConfigSupport.asInt(map.get("limit"), 100),
+        return new ConnectorPoolConfig(ClientConfigSupport.asInt(map.get("limit"), 100),
                 ClientConfigSupport.asInt(map.get("limit_per_host"), 30),
                 ClientConfigSupport.asBoolean(map.get("ssl_verify"), true),
                 ClientConfigSupport.asString(map.get("ssl_cert")),
                 ClientConfigSupport.asBoolean(map.get("force_close"), false),
                 ClientConfigSupport.asNullableDouble(map.get("keepalive_timeout")) != null
-                        ? ClientConfigSupport.asNullableDouble(map.get("keepalive_timeout")) : 60.0,
+                        ? ClientConfigSupport.asNullableDouble(map.get("keepalive_timeout"))
+                        : 60.0,
                 ClientConfigSupport.asNullableInt(map.get("ttl")) != null
-                        ? ClientConfigSupport.asNullableInt(map.get("ttl")) : 3600,
+                        ? ClientConfigSupport.asNullableInt(map.get("ttl"))
+                        : 3600,
                 ClientConfigSupport.asNullableInt(map.get("max_idle_time")) != null
-                        ? ClientConfigSupport.asNullableInt(map.get("max_idle_time")) : 300,
-                ClientConfigSupport.asObjectMap(map.get("extend_params"))
-        );
+                        ? ClientConfigSupport.asNullableInt(map.get("max_idle_time"))
+                        : 300,
+                ClientConfigSupport.asObjectMap(map.get("extend_params")));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validatePositive.
+     * 
+     * @param name name
+     * @param value value
+     * @since 0.1.7
      */
     protected static void validatePositive(String name, Number value) {
         if (value != null && value.doubleValue() <= 0) {
@@ -194,7 +246,11 @@ public class ConnectorPoolConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * md5Hex.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     protected static String md5Hex(String value) {
         try {

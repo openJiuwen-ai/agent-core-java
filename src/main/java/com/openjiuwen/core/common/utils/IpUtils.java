@@ -10,9 +10,15 @@ import java.net.InetSocketAddress;
 
 /**
  * IP utility — discovers the local (non-loopback) IPv4 address.
+ * 
+ * @since 0.1.7
  */
 public final class IpUtils {
-
+    /**
+     * IpUtils.
+     * 
+     * @since 0.1.7
+     */
     private IpUtils() {
     }
 
@@ -21,8 +27,9 @@ public final class IpUtils {
      * <p>
      * Uses a UDP socket trick: connects a datagram socket to a public address
      * to reveal the local network interface address.
-     *
+     * 
      * @return local IP address string, or "127.0.0.1" on failure
+     * @since 0.1.7
      */
     public static String getLocalIp() {
         String defaultIp = AppconfigUtils.getDefaultIp();

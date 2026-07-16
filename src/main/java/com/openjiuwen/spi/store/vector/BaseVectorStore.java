@@ -12,109 +12,142 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code BaseVectorStore} ABC.
  * Synchronous methods (run on virtual threads in practice).
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseVectorStore {
-
     /**
-     * Create a new collection with the specified schema.
-     *
-     * @param collectionName name of the collection
-     * @param schema         collection schema (CollectionSchema or Map)
-     * @param kwargs         additional parameters
+     * createCollection.
+     * 
+     * @param collectionName collectionName
+     * @param schema schema
+     * @param kwargs kwargs
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract void createCollection(String collectionName, Object schema,
-                                          Map<String, Object> kwargs) throws Exception;
+    public abstract void createCollection(String collectionName, Object schema, Map<String, Object> kwargs)
+            throws Exception;
 
     /**
-     * Delete a collection by name.
+     * deleteCollection.
+     * 
+     * @param collectionName collectionName
+     * @param kwargs kwargs
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract void deleteCollection(String collectionName,
-                                          Map<String, Object> kwargs) throws Exception;
+    public abstract void deleteCollection(String collectionName, Map<String, Object> kwargs) throws Exception;
 
     /**
-     * Check if a collection exists.
+     * collectionExists.
+     * 
+     * @param collectionName collectionName
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract boolean collectionExists(String collectionName,
-                                             Map<String, Object> kwargs) throws Exception;
+    public abstract boolean collectionExists(String collectionName, Map<String, Object> kwargs) throws Exception;
 
     /**
-     * Get the schema of a collection.
+     * getSchema.
+     * 
+     * @param collectionName collectionName
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract CollectionSchema getSchema(String collectionName,
-                                               Map<String, Object> kwargs) throws Exception;
+    public abstract CollectionSchema getSchema(String collectionName, Map<String, Object> kwargs) throws Exception;
 
     /**
-     * Add documents to a collection.
-     *
-     * @param collectionName target collection
-     * @param docs           list of documents (maps with field values + embeddings)
-     * @param kwargs         additional parameters
+     * addDocs.
+     * 
+     * @param collectionName collectionName
+     * @param docs docs
+     * @param kwargs kwargs
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract void addDocs(String collectionName,
-                                 List<Map<String, Object>> docs,
-                                 Map<String, Object> kwargs) throws Exception;
+    public abstract void addDocs(String collectionName, List<Map<String, Object>> docs, Map<String, Object> kwargs)
+            throws Exception;
 
     /**
-     * Search for most relevant documents by vector similarity.
-     *
-     * @param collectionName collection to search
-     * @param queryVector    query vector
-     * @param vectorField    name of the vector field
-     * @param topK           number of results
-     * @param filters        optional scalar field filters
-     * @param kwargs         additional parameters
-     * @return list of search results
+     * search.
+     * 
+     * @param collectionName collectionName
+     * @param queryVector queryVector
+     * @param vectorField vectorField
+     * @param topK topK
+     * @param filters filters
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract List<VectorSearchResult> search(String collectionName,
-                                                    List<Float> queryVector,
-                                                    String vectorField,
-                                                    int topK,
-                                                    Map<String, Object> filters,
-                                                    Map<String, Object> kwargs) throws Exception;
+    public abstract List<VectorSearchResult> search(String collectionName, List<Float> queryVector, String vectorField,
+            int topK, Map<String, Object> filters, Map<String, Object> kwargs) throws Exception;
 
     /**
-     * Delete documents by their IDs.
+     * deleteDocsByIds.
+     * 
+     * @param collectionName collectionName
+     * @param ids ids
+     * @param kwargs kwargs
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract void deleteDocsByIds(String collectionName,
-                                         List<String> ids,
-                                         Map<String, Object> kwargs) throws Exception;
+    public abstract void deleteDocsByIds(String collectionName, List<String> ids, Map<String, Object> kwargs)
+            throws Exception;
 
     /**
-     * Delete documents by scalar field filters.
+     * deleteDocsByFilters.
+     * 
+     * @param collectionName collectionName
+     * @param filters filters
+     * @param kwargs kwargs
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract void deleteDocsByFilters(String collectionName,
-                                             Map<String, Object> filters,
-                                             Map<String, Object> kwargs) throws Exception;
+    public abstract void deleteDocsByFilters(String collectionName, Map<String, Object> filters,
+            Map<String, Object> kwargs) throws Exception;
 
     /**
-     * List all collection names in the vector store.
-     *
-     * @return list of collection names
+     * listCollectionNames.
+     * 
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public abstract List<String> listCollectionNames() throws Exception;
 
     /**
-     * Upgrade the schema field for vector data migration.
-     *
-     * @param collectionName name of the collection
-     * @param operations     list of migration operations
+     * updateSchema.
+     * 
+     * @param collectionName collectionName
+     * @param operations operations
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public abstract void updateSchema(String collectionName, List<?> operations) throws Exception;
 
     /**
-     * Update the metadata of a collection.
-     *
-     * @param collectionName name of the collection
-     * @param metadata       metadata key-value pairs to update
+     * updateCollectionMetadata.
+     * 
+     * @param collectionName collectionName
+     * @param metadata metadata
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public abstract void updateCollectionMetadata(String collectionName,
-                                                  Map<String, Object> metadata) throws Exception;
+    public abstract void updateCollectionMetadata(String collectionName, Map<String, Object> metadata) throws Exception;
 
     /**
-     * Get the metadata of a collection.
-     *
-     * @param collectionName name of the collection
-     * @return metadata key-value pairs
+     * getCollectionMetadata.
+     * 
+     * @param collectionName collectionName
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public abstract Map<String, Object> getCollectionMetadata(String collectionName) throws Exception;
 }

@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.interaction;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
@@ -13,23 +16,21 @@ import com.openjiuwen.core.session.state.WorkflowStateCollection;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamEmitter;
 import com.openjiuwen.core.session.stream.StreamWriterManager;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for {@link WorkflowInteraction}.
  */
 class WorkflowInteractionTest {
-
     @Test
     @DisplayName("workflow interaction consumes raw workflow input before interrupting")
     void testWaitUserInputsConsumesWorkflowInput() {
-        WorkflowCommitState state = InMemoryState.create(null, null, null,
-                Map.of(Constant.INTERACTIVE_INPUT, "resume-value"), null);
+        WorkflowCommitState state =
+            InMemoryState.create(null, null, null, Map.of(Constant.INTERACTIVE_INPUT, "resume-value"), null);
         WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", state, null);
 
         WorkflowInteraction interaction = new WorkflowInteraction(session);
@@ -41,16 +42,17 @@ class WorkflowInteractionTest {
     @Test
     @DisplayName("workflow interaction emits output and throws graph interrupt when input is absent")
     void testWaitUserInputsInterruptsAndWritesOutput() {
-        WorkflowSession workflowSession = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
+        WorkflowSession workflowSession =
+            new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
         StreamWriterManager writerManager = new StreamWriterManager(new StreamEmitter());
         workflowSession.setStreamWriterManager(writerManager);
         NodeSession nodeSession = new NodeSession(workflowSession, "ask_user");
 
         WorkflowInteraction interaction = new WorkflowInteraction(nodeSession);
 
-        WorkflowInteraction.GraphInterruptRuntimeWrapper error = assertThrows(
-                WorkflowInteraction.GraphInterruptRuntimeWrapper.class,
-                () -> interaction.waitUserInputs("Please enter a value"));
+        WorkflowInteraction.GraphInterruptRuntimeWrapper error =
+            assertThrows(WorkflowInteraction.GraphInterruptRuntimeWrapper.class,
+                    () -> interaction.waitUserInputs("Please enter a value"));
 
         Object emitted = writerManager.getStreamEmitter().getStreamQueue().receive(500);
         assertInstanceOf(OutputSchema.class, emitted);

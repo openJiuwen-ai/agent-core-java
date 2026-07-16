@@ -12,31 +12,41 @@ import java.util.Map;
  * <p>
  * IVF-based index with product quantization for compression.
  * Good balance between search speed, accuracy, and memory usage.
+ * 
+ * @since 0.1.7
  */
 public class MilvusSCANN extends MilvusVectorField {
-
     private int nlist = 128;
     private int nprobe = 8;
     private boolean withRawData = true;
     private Integer reorderK;
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getIndexType() {
         return "scann";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNlist.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getNlist() {
         return nlist;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setNlist.
+     * 
+     * @param nlist nlist
+     * @since 0.1.7
      */
     public void setNlist(int nlist) {
         if (nlist < 1 || nlist > 65536) {
@@ -46,14 +56,20 @@ public class MilvusSCANN extends MilvusVectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNprobe.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getNprobe() {
         return nprobe;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setNprobe.
+     * 
+     * @param nprobe nprobe
+     * @since 0.1.7
      */
     public void setNprobe(int nprobe) {
         if (nprobe < 1 || nprobe > 65536) {
@@ -66,28 +82,40 @@ public class MilvusSCANN extends MilvusVectorField {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isWithRawData.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isWithRawData() {
         return withRawData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWithRawData.
+     * 
+     * @param withRawData withRawData
+     * @since 0.1.7
      */
     public void setWithRawData(boolean withRawData) {
         this.withRawData = withRawData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReorderK.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getReorderK() {
         return reorderK;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setReorderK.
+     * 
+     * @param reorderK reorderK
+     * @since 0.1.7
      */
     public void setReorderK(Integer reorderK) {
         if (reorderK != null && reorderK < 1) {
@@ -96,10 +124,14 @@ public class MilvusSCANN extends MilvusVectorField {
         this.reorderK = reorderK;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toDict.
+     * 
+     * @param stage stage
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> toDict(String stage) {
         Map<String, Object> result = new HashMap<>();
         if (STAGE_CONSTRUCT.equals(stage)) {

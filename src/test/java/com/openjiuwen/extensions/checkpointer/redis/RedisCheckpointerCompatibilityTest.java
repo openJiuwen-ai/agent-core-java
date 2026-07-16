@@ -1,17 +1,18 @@
+
 package com.openjiuwen.extensions.checkpointer.redis;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.extensions.store.kv.RedisStore;
+
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class RedisCheckpointerCompatibilityTest {
-
     @Test
     void helperStyleClusterModeInsideConnectionArgsSelectsClusterClient() throws Exception {
         Map<String, Object> connectionArgs = new LinkedHashMap<>();

@@ -6,13 +6,18 @@ package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
 /**
  * Normalizes repeated whitespace.
+ * 
+ * @since 0.1.7
  */
 public class WhitespaceNormalizer implements TextPreprocessor {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * process.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String process(String text) {
         return text == null ? null : text.replaceAll("\\s+", " ").trim();
     }

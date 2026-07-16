@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent.rail;
 
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,6 +14,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Input data for BEFORE/AFTER_TOOL_CALL events.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

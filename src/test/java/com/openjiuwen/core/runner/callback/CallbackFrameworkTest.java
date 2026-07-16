@@ -1,18 +1,18 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.runner.callback;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for CallbackFramework registration, triggering, filters, hooks, metrics, and chain.
@@ -21,7 +21,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @DisplayName("CallbackFramework Tests")
 class CallbackFrameworkTest {
-
     private CallbackFramework framework;
 
     @BeforeEach
@@ -53,8 +52,8 @@ class CallbackFrameworkTest {
     @Test
     @DisplayName("Register with namespace")
     void testRegisterWithNamespace() {
-        framework.register("event", kwargs -> null, 0, false, "custom", null,
-                null, null, null, 0, 0.0, null, "callback");
+        framework.register("event", kwargs -> null, 0, false, "custom", null, null, null, null, 0, 0.0, null,
+                "callback");
         List<Map<String, Object>> callbacks = framework.listCallbacks("event");
         assertEquals("custom", callbacks.get(0).get("namespace"));
     }
@@ -62,8 +61,8 @@ class CallbackFrameworkTest {
     @Test
     @DisplayName("Register with tags")
     void testRegisterWithTags() {
-        framework.register("event", kwargs -> null, 0, false, "default",
-                Set.of("tag1", "tag2"), null, null, null, 0, 0.0, null, "callback");
+        framework.register("event", kwargs -> null, 0, false, "default", Set.of("tag1", "tag2"), null, null, null, 0,
+                0.0, null, "callback");
         List<Map<String, Object>> callbacks = framework.listCallbacks("event");
         @SuppressWarnings("unchecked")
         List<String> tags = (List<String>) callbacks.get(0).get("tags");
@@ -74,8 +73,8 @@ class CallbackFrameworkTest {
     @Test
     @DisplayName("Register with once flag")
     void testRegisterWithOnce() {
-        framework.register("event", kwargs -> null, 0, true, "default",
-                null, null, null, null, 0, 0.0, null, "callback");
+        framework.register("event", kwargs -> null, 0, true, "default", null, null, null, null, 0, 0.0, null,
+                "callback");
         List<Map<String, Object>> callbacks = framework.listCallbacks("event");
         assertTrue((Boolean) callbacks.get(0).get("once"));
     }
@@ -83,8 +82,8 @@ class CallbackFrameworkTest {
     @Test
     @DisplayName("Register with retry settings")
     void testRegisterWithRetrySettings() {
-        framework.register("event", kwargs -> null, 0, false, "default",
-                null, null, null, null, 3, 1.0, 30.0, "callback");
+        framework.register("event", kwargs -> null, 0, false, "default", null, null, null, null, 3, 1.0, 30.0,
+                "callback");
         List<Map<String, Object>> callbacks = framework.listCallbacks("event");
         assertEquals(3, callbacks.get(0).get("max_retries"));
         assertEquals(30.0, callbacks.get(0).get("timeout"));
@@ -116,12 +115,9 @@ class CallbackFrameworkTest {
     @Test
     @DisplayName("Unregister namespace")
     void testUnregisterNamespace() {
-        framework.register("event", kwargs -> null, 0, false, "ns1", null,
-                null, null, null, 0, 0.0, null, "cb1");
-        framework.register("event", kwargs -> null, 0, false, "ns1", null,
-                null, null, null, 0, 0.0, null, "cb2");
-        framework.register("event", kwargs -> null, 0, false, "ns2", null,
-                null, null, null, 0, 0.0, null, "cb3");
+        framework.register("event", kwargs -> null, 0, false, "ns1", null, null, null, null, 0, 0.0, null, "cb1");
+        framework.register("event", kwargs -> null, 0, false, "ns1", null, null, null, null, 0, 0.0, null, "cb2");
+        framework.register("event", kwargs -> null, 0, false, "ns2", null, null, null, null, 0, 0.0, null, "cb3");
         framework.unregisterNamespace("ns1");
         assertEquals(1, framework.listCallbacks("event").size());
         assertEquals("ns2", framework.listCallbacks("event").get(0).get("namespace"));
@@ -130,12 +126,12 @@ class CallbackFrameworkTest {
     @Test
     @DisplayName("Unregister by tags")
     void testUnregisterByTags() {
-        framework.register("event", kwargs -> null, 0, false, "default",
-                Set.of("debug"), null, null, null, 0, 0.0, null, "cb1");
-        framework.register("event", kwargs -> null, 0, false, "default",
-                Set.of("debug", "verbose"), null, null, null, 0, 0.0, null, "cb2");
-        framework.register("event", kwargs -> null, 0, false, "default",
-                Set.of("production"), null, null, null, 0, 0.0, null, "cb3");
+        framework.register("event", kwargs -> null, 0, false, "default", Set.of("debug"), null, null, null, 0, 0.0,
+                null, "cb1");
+        framework.register("event", kwargs -> null, 0, false, "default", Set.of("debug", "verbose"), null, null, null,
+                0, 0.0, null, "cb2");
+        framework.register("event", kwargs -> null, 0, false, "default", Set.of("production"), null, null, null, 0, 0.0,
+                null, "cb3");
         framework.unregisterByTags(Set.of("debug"));
         List<Map<String, Object>> callbacks = framework.listCallbacks("event");
         assertEquals(1, callbacks.size());
@@ -162,10 +158,8 @@ class CallbackFrameworkTest {
     @Test
     @DisplayName("Trigger basic callback")
     void testTriggerBasic() {
-        framework.register("test_event",
-                kwargs -> "received: " + kwargs.get("message"), "handler");
-        List<Object> results = framework.trigger("test_event",
-                new Object[0], Map.of("message", "hello"));
+        framework.register("test_event", kwargs -> "received: " + kwargs.get("message"), "handler");
+        List<Object> results = framework.trigger("test_event", new Object[0], Map.of("message", "hello"));
         assertEquals(1, results.size());
         assertEquals("received: hello", results.get(0));
     }
@@ -194,21 +188,18 @@ class CallbackFrameworkTest {
     @Test
     @DisplayName("Trigger with validation filter")
     void testTriggerWithValidationFilter() {
-        ValidationFilter validator = new ValidationFilter(
-                kwargs -> kwargs.get("value") instanceof Integer && (Integer) kwargs.get("value") > 0);
+        ValidationFilter validator =
+            new ValidationFilter(kwargs -> kwargs.get("value") instanceof Integer && (Integer) kwargs.get("value") > 0);
 
-        framework.register("event", kwargs -> (Integer) kwargs.get("value") * 2,
-                0, false, "default", null,
+        framework.register("event", kwargs -> (Integer) kwargs.get("value") * 2, 0, false, "default", null,
                 List.of(validator), null, null, 0, 0.0, null, "callback");
 
         // Valid call should return result
-        List<Object> results = framework.trigger("event",
-                new Object[0], Map.of("value", 10));
+        List<Object> results = framework.trigger("event", new Object[0], Map.of("value", 10));
         assertEquals(List.of(20), results);
 
         // Invalid call should be filtered out
-        List<Object> results2 = framework.trigger("event",
-                new Object[0], Map.of("value", -5));
+        List<Object> results2 = framework.trigger("event", new Object[0], Map.of("value", -5));
         assertTrue(results2.isEmpty());
     }
 
@@ -221,8 +212,7 @@ class CallbackFrameworkTest {
         framework.register("event", kwargs -> {
             callCount[0]++;
             return callCount[0];
-        }, 0, false, "default", null,
-                List.of(rateLimit), null, null, 0, 0.0, null, "callback");
+        }, 0, false, "default", null, List.of(rateLimit), null, null, 0, 0.0, null, "callback");
 
         List<Object> r1 = framework.trigger("event");
         List<Object> r2 = framework.trigger("event");
@@ -237,10 +227,10 @@ class CallbackFrameworkTest {
     @Test
     @DisplayName("Trigger namespace isolation")
     void testTriggerNamespaceIsolation() {
-        framework.register("event", kwargs -> "ns1_result", 0, false, "ns1",
-                null, null, null, null, 0, 0.0, null, "cb1");
-        framework.register("event", kwargs -> "ns2_result", 0, false, "ns2",
-                null, null, null, null, 0, 0.0, null, "cb2");
+        framework.register("event", kwargs -> "ns1_result", 0, false, "ns1", null, null, null, null, 0, 0.0, null,
+                "cb1");
+        framework.register("event", kwargs -> "ns2_result", 0, false, "ns2", null, null, null, null, 0, 0.0, null,
+                "cb2");
 
         List<Object> results = framework.trigger("event");
         assertEquals(2, results.size());
@@ -255,13 +245,10 @@ class CallbackFrameworkTest {
     void testTriggerChain() {
         boolean[] rollbackCalled = {false};
 
-        Function<Map<String, Object>, Object> callback = kwargs ->
-                ChainResult.builder().action(ChainAction.ROLLBACK)
-                        .error(new RuntimeException("fail")).build();
+        Function<Map<String, Object>, Object> callback =
+            kwargs -> ChainResult.builder().action(ChainAction.ROLLBACK).error(new RuntimeException("fail")).build();
 
-        framework.register("chain_event", callback, 0, false, "default",
-                null, null,
-                ctx -> rollbackCalled[0] = true,
+        framework.register("chain_event", callback, 0, false, "default", null, null, ctx -> rollbackCalled[0] = true,
                 null, 0, 0.0, null, "callback");
 
         ChainResult result = framework.triggerChain("chain_event", null, null);
@@ -344,8 +331,10 @@ class CallbackFrameworkTest {
     @DisplayName("Unregister event also removes hooks")
     void testUnregisterEventRemovesHooks() {
         framework.register("test_event", kwargs -> "result", "callback");
-        framework.addHook("test_event", HookType.BEFORE, hookKwargs -> {});
-        framework.addHook("test_event", HookType.AFTER, hookKwargs -> {});
+        framework.addHook("test_event", HookType.BEFORE, hookKwargs -> {
+        });
+        framework.addHook("test_event", HookType.AFTER, hookKwargs -> {
+        });
 
         framework.unregisterEvent("test_event");
 

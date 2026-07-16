@@ -11,47 +11,63 @@ import com.openjiuwen.core.runner.mq.SubscriptionBase;
 
 /**
  * In-memory fake MQ used by the distributed-runner compatibility layer.
+ * 
+ * @since 0.1.7
  */
 public class FakeMessageQueue extends MessageQueueBase {
-
     private final MessageQueueInMemory delegate = new MessageQueueInMemory();
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * start.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void start() {
         delegate.start();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * stop.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void stop() {
         delegate.stop();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * subscribe.
+     * 
+     * @param topic topic
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public SubscriptionBase subscribe(String topic) {
         return delegate.subscribe(topic);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * unsubscribe.
+     * 
+     * @param topic topic
+     * @since 0.1.7
      */
+    @Override
     public void unsubscribe(String topic) {
         delegate.unsubscribe(topic);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * produceMessage.
+     * 
+     * @param topic topic
+     * @param message message
+     * @since 0.1.7
      */
+    @Override
     public void produceMessage(String topic, QueueMessage message) {
         delegate.produceMessage(topic, message);
     }

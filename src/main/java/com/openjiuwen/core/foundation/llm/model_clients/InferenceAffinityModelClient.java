@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.foundation.llm.model_clients;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -18,6 +19,7 @@ import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,60 +41,82 @@ import java.util.NoSuchElementException;
 
 /**
  * Inference Affinity (vLLM-style) client with cache sharing and release support.
+ * 
+ * @since 0.1.7
  */
 public class InferenceAffinityModelClient extends BaseModelClient {
-
     private static final Logger LOG = LoggerFactory.getLogger(InferenceAffinityModelClient.class);
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final HttpClient httpClient;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * InferenceAffinityModelClient.
+     * 
+     * @param modelConfig modelConfig
+     * @param modelClientConfig modelClientConfig
+     * @since 0.1.7
      */
     public InferenceAffinityModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         super(modelConfig, modelClientConfig);
         this.httpClient = buildHttpClient(modelClientConfig.getTimeout());
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getClientName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected String getClientName() {
         return "InferenceAffinity client";
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * validateConfig.
+     * 
+     * @since 0.1.7
      */
+    @Override
     protected void validateConfig() {
         if (modelClientConfig.getApiBase() == null || modelClientConfig.getApiBase().isBlank()) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR,
-                    "error_msg", "model client config api_base is required for InferenceAffinity client.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_SERVICE_CONFIG_ERROR, "error_msg",
+                    "model client config api_base is required for InferenceAffinity client.");
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param messages messages
+     * @param tools tools
+     * @param temperature temperature
+     * @param topP topP
+     * @param model model
+     * @param maxTokens maxTokens
+     * @param stop stop
+     * @param outputParser outputParser
+     * @param timeout timeout
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public AssistantMessage invoke(Object messages,
-                                   Object tools,
-                                   Float temperature,
-                                   Float topP,
-                                   String model,
-                                   Integer maxTokens,
-                                   String stop,
-                                   BaseOutputParser outputParser,
-                                   Float timeout,
-                                   Map<String, Object> kwargs) throws Exception {
-        Map<String, Object> params = buildAndSanitizeParams(
-                messages, tools, temperature, topP, model, maxTokens, stop, false, kwargs);
+    @Override
+    public AssistantMessage invoke(Object messages, Object tools, Float temperature, Float topP, String model,
+            Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout, Map<String, Object> kwargs)
+            throws Exception {
+        Map<String, Object> params =
+            buildAndSanitizeParams(messages, tools, temperature, topP, model, maxTokens, stop, false, kwargs);
 
-        HttpResponse<String> response = httpClient.send(
-                buildJsonRequest("/v1/chat/completions", params, timeout),
+        HttpResponse<String> response = httpClient.send(buildJsonRequest("/v1/chat/completions", params, timeout),
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         ensureSuccess(response.statusCode(), response.body());
 
@@ -101,86 +125,115 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         return parseAssistantMessage(responseMap, resolveModelName(model, responseMap), outputParser);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param messages messages
+     * @param tools tools
+     * @param temperature temperature
+     * @param topP topP
+     * @param model model
+     * @param maxTokens maxTokens
+     * @param stop stop
+     * @param outputParser outputParser
+     * @param timeout timeout
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public Iterator<AssistantMessageChunk> stream(Object messages,
-                                                  Object tools,
-                                                  Float temperature,
-                                                  Float topP,
-                                                  String model,
-                                                  Integer maxTokens,
-                                                  String stop,
-                                                  BaseOutputParser outputParser,
-                                                  Float timeout,
-                                                  Map<String, Object> kwargs) throws Exception {
-        Map<String, Object> params = buildAndSanitizeParams(
-                messages, tools, temperature, topP, model, maxTokens, stop, true, kwargs);
+    @Override
+    public Iterator<AssistantMessageChunk> stream(Object messages, Object tools, Float temperature, Float topP,
+            String model, Integer maxTokens, String stop, BaseOutputParser outputParser, Float timeout,
+            Map<String, Object> kwargs) throws Exception {
+        Map<String, Object> params =
+            buildAndSanitizeParams(messages, tools, temperature, topP, model, maxTokens, stop, true, kwargs);
 
-        HttpResponse<InputStream> response = httpClient.send(
-                buildJsonRequest("/v1/chat/completions", params, timeout),
+        HttpResponse<InputStream> response = httpClient.send(buildJsonRequest("/v1/chat/completions", params, timeout),
                 HttpResponse.BodyHandlers.ofInputStream());
         ensureSuccess(response.statusCode(), null);
         return new StreamingChunkIterator(response.body(), resolveModelName(model, null), outputParser);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * generateImage.
+     * 
+     * @param messages messages
+     * @param model model
+     * @param size size
+     * @param negativePrompt negativePrompt
+     * @param n n
+     * @param promptExtend promptExtend
+     * @param watermark watermark
+     * @param seed seed
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
-    public ImageGenerationResponse generateImage(List<UserMessage> messages,
-                                                 String model,
-                                                 String size,
-                                                 String negativePrompt,
-                                                 int n,
-                                                 boolean promptExtend,
-                                                 boolean watermark,
-                                                 int seed,
-                                                 Map<String, Object> kwargs) {
+    @Override
+    public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+            String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed,
+            Map<String, Object> kwargs) {
         throw new UnsupportedOperationException("Image generation is not supported by InferenceAffinityModelClient");
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * generateSpeech.
+     * 
+     * @param messages messages
+     * @param model model
+     * @param voice voice
+     * @param languageType languageType
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
-    public AudioGenerationResponse generateSpeech(List<UserMessage> messages,
-                                                  String model,
-                                                  String voice,
-                                                  String languageType,
-                                                  Map<String, Object> kwargs) {
+    @Override
+    public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+            String languageType, Map<String, Object> kwargs) {
         throw new UnsupportedOperationException("Speech generation is not supported by InferenceAffinityModelClient");
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * generateVideo.
+     * 
+     * @param messages messages
+     * @param imgUrl imgUrl
+     * @param audioUrl audioUrl
+     * @param model model
+     * @param size size
+     * @param resolution resolution
+     * @param duration duration
+     * @param promptExtend promptExtend
+     * @param watermark watermark
+     * @param negativePrompt negativePrompt
+     * @param seed seed
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
-    public VideoGenerationResponse generateVideo(List<UserMessage> messages,
-                                                 String imgUrl,
-                                                 String audioUrl,
-                                                 String model,
-                                                 String size,
-                                                 String resolution,
-                                                 int duration,
-                                                 boolean promptExtend,
-                                                 boolean watermark,
-                                                 String negativePrompt,
-                                                 Integer seed,
-                                                 Map<String, Object> kwargs) {
+    @Override
+    public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+            String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+            String negativePrompt, Integer seed, Map<String, Object> kwargs) {
         throw new UnsupportedOperationException("Video generation is not supported by InferenceAffinityModelClient");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * release.
+     * 
+     * @param sessionId sessionId
+     * @param messages messages
+     * @param messagesReleasedIndex messagesReleasedIndex
+     * @param tools tools
+     * @param toolsReleasedIndex toolsReleasedIndex
+     * @param model model
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
-    public boolean release(String sessionId,
-                           Object messages,
-                           int messagesReleasedIndex,
-                           Object tools,
-                           Integer toolsReleasedIndex,
-                           String model) throws Exception {
+    public boolean release(String sessionId, Object messages, int messagesReleasedIndex, Object tools,
+            Integer toolsReleasedIndex, String model) throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", resolveModelName(model, null));
         body.put("cache_salt", sessionId);
@@ -194,35 +247,35 @@ public class InferenceAffinityModelClient extends BaseModelClient {
             body.put("tools_released_index", toolsReleasedIndex);
         }
 
-        HttpResponse<String> response = httpClient.send(
-                buildJsonRequest("/release_kv_cache", body, null),
+        HttpResponse<String> response = httpClient.send(buildJsonRequest("/release_kv_cache", body, null),
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         return response.statusCode() >= 200 && response.statusCode() < 300;
     }
 
-    private Map<String, Object> buildAndSanitizeParams(Object messages,
-                                                       Object tools,
-                                                       Float temperature,
-                                                       Float topP,
-                                                       String model,
-                                                       Integer maxTokens,
-                                                       String stop,
-                                                       boolean stream,
-                                                       Map<String, Object> kwargs) {
+    /**
+     * buildAndSanitizeParams.
+     * 
+     * @param messages messages
+     * @param tools tools
+     * @param temperature temperature
+     * @param topP topP
+     * @param model model
+     * @param maxTokens maxTokens
+     * @param stop stop
+     * @param stream stream
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, Object> buildAndSanitizeParams(Object messages, Object tools, Float temperature, Float topP,
+            String model, Integer maxTokens, String stop, boolean stream, Map<String, Object> kwargs) {
         Map<String, Object> remainingKwargs = kwargs == null ? new LinkedHashMap<>() : new LinkedHashMap<>(kwargs);
         Object sessionId = remainingKwargs.remove("session_id");
         Object enableCacheSharing = remainingKwargs.remove("enable_cache_sharing");
 
-        Map<String, Object> params = buildRequestParams(
-                messages,
-                tools,
-                temperature != null ? temperature.doubleValue() : null,
-                topP != null ? topP.doubleValue() : null,
-                model,
-                stop,
-                maxTokens,
-                stream,
-                remainingKwargs);
+        Map<String, Object> params =
+            buildRequestParams(messages, tools, temperature != null ? temperature.doubleValue() : null,
+                    topP != null ? topP.doubleValue() : null, model, stop, maxTokens, stream, remainingKwargs);
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> messageList = (List<Map<String, Object>>) params.get("messages");
@@ -235,22 +288,48 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         return params;
     }
 
-    private HttpRequest buildJsonRequest(String suffix, Map<String, Object> body, Float timeoutOverride) throws Exception {
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(normalizedApiBase() + suffix))
-                .timeout(resolveTimeout(timeoutOverride != null ? timeoutOverride : (float) modelClientConfig.getTimeout()));
+    /**
+     * buildJsonRequest.
+     * 
+     * @param suffix suffix
+     * @param body body
+     * @param timeoutOverride timeoutOverride
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    private HttpRequest buildJsonRequest(String suffix, Map<String, Object> body, Float timeoutOverride)
+            throws Exception {
+        HttpRequest.Builder builder = HttpRequest.newBuilder().uri(URI.create(normalizedApiBase() + suffix)).timeout(
+                resolveTimeout(timeoutOverride != null ? timeoutOverride : (float) modelClientConfig.getTimeout()));
         applyConfiguredHeaders(builder, true);
-        return builder.POST(HttpRequest.BodyPublishers.ofString(
-                MAPPER.writeValueAsString(body), StandardCharsets.UTF_8)).build();
+        return builder
+                .POST(HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body), StandardCharsets.UTF_8))
+                .build();
     }
 
+    /**
+     * normalizedApiBase.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String normalizedApiBase() {
         return modelClientConfig.getApiBase().replaceAll("/+$", "");
     }
 
-    private AssistantMessage parseAssistantMessage(Map<String, Object> responseMap,
-                                                   String resolvedModel,
-                                                   BaseOutputParser outputParser) throws Exception {
+    /**
+     * parseAssistantMessage.
+     * 
+     * @param responseMap responseMap
+     * @param resolvedModel resolvedModel
+     * @param outputParser outputParser
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
+    private AssistantMessage parseAssistantMessage(Map<String, Object> responseMap, String resolvedModel,
+            BaseOutputParser outputParser) throws Exception {
         List<Map<String, Object>> choices = asListOfMaps(responseMap.get("choices"));
         if (choices == null || choices.isEmpty()) {
             throw new RuntimeException("No choices in response: " + responseMap);
@@ -268,20 +347,25 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         }
         List<ToolCall> toolCalls = AssistantMessage.convertOpenAiToolCalls(asListOfMaps(message.get("tool_calls")));
 
-        return AssistantMessage.builder()
-                .content(content)
-                .toolCalls(toolCalls)
+        return AssistantMessage.builder().content(content).toolCalls(toolCalls)
                 .usageMetadata(buildUsageMetadata(responseMap.get("usage"), resolvedModel))
                 .finishReason(resolveFinishReason(choice.get("finish_reason"), toolCalls))
                 .parserContent(parseWithOutputParser(content, outputParser))
-                .reasoningContent(asString(message.get("reasoning_content")))
-                .build();
+                .reasoningContent(asString(message.get("reasoning_content"))).build();
     }
 
-    private AssistantMessageChunk parseStreamChunk(Map<String, Object> event,
-                                                   String resolvedModel,
-                                                   BaseOutputParser outputParser,
-                                                   StringBuilder parserBuffer) {
+    /**
+     * parseStreamChunk.
+     * 
+     * @param event event
+     * @param resolvedModel resolvedModel
+     * @param outputParser outputParser
+     * @param parserBuffer parserBuffer
+     * @return the result
+     * @since 0.1.7
+     */
+    private AssistantMessageChunk parseStreamChunk(Map<String, Object> event, String resolvedModel,
+            BaseOutputParser outputParser, StringBuilder parserBuffer) {
         List<Map<String, Object>> choices = asListOfMaps(event.get("choices"));
         UsageMetadata usageMetadata = buildUsageMetadata(event.get("usage"), resolvedModel);
 
@@ -289,41 +373,38 @@ public class InferenceAffinityModelClient extends BaseModelClient {
             if (usageMetadata == null) {
                 return null;
             }
-            return AssistantMessageChunk.builder()
-                    .content("")
-                    .usageMetadata(usageMetadata)
-                    .finishReason("null")
+            return AssistantMessageChunk.builder().content("").usageMetadata(usageMetadata).finishReason("null")
                     .build();
         }
 
         Map<String, Object> choice = choices.get(0);
         Map<String, Object> delta = asMap(choice.get("delta"));
         Object content = delta != null ? delta.get("content") : "";
-        List<ToolCall> toolCalls = delta == null
-                ? null
-                : AssistantMessage.convertOpenAiToolCalls(asListOfMaps(delta.get("tool_calls")));
+        List<ToolCall> toolCalls =
+            delta == null ? null : AssistantMessage.convertOpenAiToolCalls(asListOfMaps(delta.get("tool_calls")));
         String reasoningContent = delta == null ? null : asString(delta.get("reasoning_content"));
         String finishReason = asString(choice.get("finish_reason"));
         String normalizedFinishReason = finishReason == null || finishReason.isBlank() ? "null" : finishReason;
 
-        if (isEmptyContent(content)
-                && (toolCalls == null || toolCalls.isEmpty())
-                && reasoningContent == null
-                && usageMetadata == null
-                && "null".equals(normalizedFinishReason)) {
+        if (isEmptyContent(content) && (toolCalls == null || toolCalls.isEmpty()) && reasoningContent == null
+                && usageMetadata == null && "null".equals(normalizedFinishReason)) {
             return null;
         }
 
-        return AssistantMessageChunk.builder()
-                .content(content == null ? "" : content)
-                .toolCalls(toolCalls)
-                .usageMetadata(usageMetadata)
-                .finishReason(normalizedFinishReason)
+        return AssistantMessageChunk.builder().content(content == null ? "" : content).toolCalls(toolCalls)
+                .usageMetadata(usageMetadata).finishReason(normalizedFinishReason)
                 .parserContent(parseStreamingContent(content, outputParser, parserBuffer))
-                .reasoningContent(reasoningContent)
-                .build();
+                .reasoningContent(reasoningContent).build();
     }
 
+    /**
+     * parseWithOutputParser.
+     * 
+     * @param content content
+     * @param outputParser outputParser
+     * @return the result
+     * @since 0.1.7
+     */
     private Object parseWithOutputParser(Object content, BaseOutputParser outputParser) {
         if (outputParser == null || isEmptyContent(content)) {
             return null;
@@ -336,9 +417,16 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         }
     }
 
-    private Object parseStreamingContent(Object content,
-                                         BaseOutputParser outputParser,
-                                         StringBuilder parserBuffer) {
+    /**
+     * parseStreamingContent.
+     * 
+     * @param content content
+     * @param outputParser outputParser
+     * @param parserBuffer parserBuffer
+     * @return the result
+     * @since 0.1.7
+     */
+    private Object parseStreamingContent(Object content, BaseOutputParser outputParser, StringBuilder parserBuffer) {
         if (outputParser == null || isEmptyContent(content)) {
             return null;
         }
@@ -354,6 +442,13 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         }
     }
 
+    /**
+     * sanitizeToolCalls.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Map<String, Object>> sanitizeToolCalls(List<Map<String, Object>> messages) {
         if (messages == null) {
             return List.of();
@@ -381,10 +476,10 @@ public class InferenceAffinityModelClient extends BaseModelClient {
                 cleanedToolCall.put("id", toolCall.getOrDefault("id", ""));
                 cleanedToolCall.put("type", "function");
                 cleanedToolCall.put("index", toolCall.get("index"));
-                cleanedToolCall.put("function", Map.of(
-                        "name", function != null ? String.valueOf(function.getOrDefault("name", "")) : "",
-                        "arguments", function != null ? String.valueOf(function.getOrDefault("arguments", "")) : ""
-                ));
+                cleanedToolCall.put("function",
+                        Map.of("name", function != null ? String.valueOf(function.getOrDefault("name", "")) : "",
+                                "arguments",
+                                function != null ? String.valueOf(function.getOrDefault("arguments", "")) : ""));
                 cleaned.add(cleanedToolCall);
             }
             message.put("tool_calls", cleaned);
@@ -393,6 +488,14 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         return result;
     }
 
+    /**
+     * resolveModelName.
+     * 
+     * @param explicitModel explicitModel
+     * @param responseMap responseMap
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveModelName(String explicitModel, Map<String, Object> responseMap) {
         if (explicitModel != null && !explicitModel.isBlank()) {
             return explicitModel;
@@ -403,6 +506,14 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         return responseMap != null ? String.valueOf(responseMap.getOrDefault("model", "")) : "";
     }
 
+    /**
+     * buildUsageMetadata.
+     * 
+     * @param usageObject usageObject
+     * @param modelName modelName
+     * @return the result
+     * @since 0.1.7
+     */
     private UsageMetadata buildUsageMetadata(Object usageObject, String modelName) {
         Map<String, Object> usage = asMap(usageObject);
         if (usage == null && (modelName == null || modelName.isBlank())) {
@@ -413,15 +524,20 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         if (promptTokenDetails != null) {
             cacheTokens = toInt(promptTokenDetails.get("cached_tokens"));
         }
-        return UsageMetadata.builder()
-                .modelName(modelName == null ? "" : modelName)
+        return UsageMetadata.builder().modelName(modelName == null ? "" : modelName)
                 .inputTokens(usage == null ? 0 : toInt(usage.get("prompt_tokens")))
                 .outputTokens(usage == null ? 0 : toInt(usage.get("completion_tokens")))
-                .totalTokens(usage == null ? 0 : toInt(usage.get("total_tokens")))
-                .cacheTokens(cacheTokens)
-                .build();
+                .totalTokens(usage == null ? 0 : toInt(usage.get("total_tokens"))).cacheTokens(cacheTokens).build();
     }
 
+    /**
+     * resolveFinishReason.
+     * 
+     * @param finishReason finishReason
+     * @param toolCalls toolCalls
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveFinishReason(Object finishReason, List<ToolCall> toolCalls) {
         String value = asString(finishReason);
         if (value != null && !value.isBlank()) {
@@ -430,6 +546,13 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         return toolCalls != null && !toolCalls.isEmpty() ? "tool_calls" : "stop";
     }
 
+    /**
+     * stringifyContent.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringifyContent(Object content) {
         if (content == null) {
             return "";
@@ -439,11 +562,18 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         }
         try {
             return MAPPER.writeValueAsString(content);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             return String.valueOf(content);
         }
     }
 
+    /**
+     * isEmptyContent.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isEmptyContent(Object content) {
         if (content == null) {
             return true;
@@ -458,23 +588,58 @@ public class InferenceAffinityModelClient extends BaseModelClient {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * asMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> asMap(Object value) {
         return value instanceof Map<?, ?> map ? (Map<String, Object>) map : null;
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * asListOfMaps.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Map<String, Object>> asListOfMaps(Object value) {
         return value instanceof List<?> list ? (List<Map<String, Object>>) list : null;
     }
 
+    /**
+     * asString.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String asString(Object value) {
         return value instanceof String s ? s : null;
     }
 
+    /**
+     * toInt.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static int toInt(Object value) {
         return value instanceof Number number ? number.intValue() : 0;
     }
 
+    /**
+     * ensureSuccess.
+     * 
+     * @param statusCode statusCode
+     * @param body body
+     * @since 0.1.7
+     */
     private static void ensureSuccess(int statusCode, String body) {
         if (statusCode >= 200 && statusCode < 300) {
             return;
@@ -482,30 +647,54 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         throw new RuntimeException("HTTP " + statusCode + ": " + (body == null ? "" : body));
     }
 
+    /**
+     * resolveTimeout.
+     * 
+     * @param seconds seconds
+     * @return the result
+     * @since 0.1.7
+     */
     private static Duration resolveTimeout(double seconds) {
         long millis = Math.max(1_000L, Math.round(seconds * 1_000));
         return Duration.ofMillis(millis);
     }
 
     private final class StreamingChunkIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
-
         private final BufferedReader reader;
         private final String resolvedModel;
         private final BaseOutputParser outputParser;
+
+        /**
+         * StringBuilder.
+         * 
+         * @since 0.1.7
+         */
         private final StringBuilder parserBuffer = new StringBuilder();
 
         private AssistantMessageChunk nextChunk;
         private boolean finished;
         private volatile boolean isClosed;
 
-        private StreamingChunkIterator(InputStream inputStream,
-                                       String resolvedModel,
-                                       BaseOutputParser outputParser) {
+        /**
+         * StreamingChunkIterator.
+         * 
+         * @param inputStream inputStream
+         * @param resolvedModel resolvedModel
+         * @param outputParser outputParser
+         * @since 0.1.7
+         */
+        private StreamingChunkIterator(InputStream inputStream, String resolvedModel, BaseOutputParser outputParser) {
             this.reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
             this.resolvedModel = resolvedModel;
             this.outputParser = outputParser;
         }
 
+        /**
+         * hasNext.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         @Override
         public boolean hasNext() {
             if (nextChunk != null) {
@@ -523,6 +712,12 @@ public class InferenceAffinityModelClient extends BaseModelClient {
             return true;
         }
 
+        /**
+         * next.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         @Override
         public AssistantMessageChunk next() {
             if (!hasNext()) {
@@ -533,6 +728,12 @@ public class InferenceAffinityModelClient extends BaseModelClient {
             return current;
         }
 
+        /**
+         * readNextChunk.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         private AssistantMessageChunk readNextChunk() {
             try {
                 String line;
@@ -559,6 +760,11 @@ public class InferenceAffinityModelClient extends BaseModelClient {
         }
 
         // 关闭底层 reader，解除阻塞在 readLine() 的线程（readLine 不响应 interrupt）。
+        /**
+         * close.
+         * 
+         * @since 0.1.7
+         */
         @Override
         public void close() {
             if (isClosed) {
@@ -569,10 +775,17 @@ public class InferenceAffinityModelClient extends BaseModelClient {
             closeQuietly();
         }
 
+        /**
+         * closeQuietly.
+         * 
+         * @since 0.1.7
+         */
         private void closeQuietly() {
             try {
                 reader.close();
             } catch (IOException ignored) {
+
+                // Ignore.
             }
         }
     }

@@ -6,10 +6,13 @@ package com.openjiuwen.core.memory.config.graph;
 
 import com.openjiuwen.core.retrieval.common.RRFRankConfig;
 import com.openjiuwen.core.retrieval.common.WeightedRankConfig;
+
 import lombok.Data;
 
 /**
  * Strategy for adding graph memory.
+ * 
+ * @since 0.1.7
  */
 @Data
 public class AddMemStrategy {
@@ -17,8 +20,26 @@ public class AddMemStrategy {
     private boolean isChineseEntityDedupeEnabled = false;
     private boolean isChineseRelationEnabled = false;
     private boolean shouldSkipUuidDedupe = false;
+
+    /**
+     * EpisodeRetrievalStrategy.
+     * 
+     * @since 0.1.7
+     */
     private EpisodeRetrievalStrategy recallEpisode = new EpisodeRetrievalStrategy();
+
+    /**
+     * createEntityStrategy.
+     * 
+     * @since 0.1.7
+     */
     private RetrievalStrategy recallEntity = createEntityStrategy();
+
+    /**
+     * createRelationStrategy.
+     * 
+     * @since 0.1.7
+     */
     private RetrievalStrategy recallRelation = createRelationStrategy();
     private int summaryTarget = 250;
     private boolean isMergeEntitiesEnabled = true;
@@ -26,54 +47,81 @@ public class AddMemStrategy {
     private boolean isMergeFilterEnabled = true;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isChineseEntity.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isChineseEntity() {
         return isChineseEntityEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isChineseEntityDedupe.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isChineseEntityDedupe() {
         return isChineseEntityDedupeEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isChineseRelation.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isChineseRelation() {
         return isChineseRelationEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isSkipUuidDedupe.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isSkipUuidDedupe() {
         return shouldSkipUuidDedupe;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isMergeEntities.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isMergeEntities() {
         return isMergeEntitiesEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isMergeRelations.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isMergeRelations() {
         return isMergeRelationsEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isMergeFilter.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isMergeFilter() {
         return isMergeFilterEnabled;
     }
 
+    /**
+     * createEntityStrategy.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static RetrievalStrategy createEntityStrategy() {
         RetrievalStrategy strategy = new RetrievalStrategy();
         WeightedRankConfig rankConfig = new WeightedRankConfig();
@@ -85,6 +133,12 @@ public class AddMemStrategy {
         return strategy;
     }
 
+    /**
+     * createRelationStrategy.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static RetrievalStrategy createRelationStrategy() {
         RetrievalStrategy strategy = new RetrievalStrategy();
         strategy.setRankConfig(new RRFRankConfig());

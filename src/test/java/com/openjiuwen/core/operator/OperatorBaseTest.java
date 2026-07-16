@@ -1,9 +1,16 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.operator;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.session.Session;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -12,24 +19,15 @@ import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Port of Python operator base tests.
  */
 class OperatorBaseTest {
-
     @Test
     @DisplayName("TunableSpec initializes with all params")
     void testTunableSpecAllParams() {
-        TunableSpec spec = new TunableSpec(
-                "temperature",
-                "continuous",
-                "model.temperature",
-                Map.of("min", 0.0, "max", 1.0));
+        TunableSpec spec =
+            new TunableSpec("temperature", "continuous", "model.temperature", Map.of("min", 0.0, "max", 1.0));
 
         assertEquals("temperature", spec.name());
         assertEquals("continuous", spec.kind());
@@ -68,14 +66,12 @@ class OperatorBaseTest {
         assertTrue(Modifier.isAbstract(invoke.getModifiers()));
 
         ConcreteOperator operator = new ConcreteOperator();
-        UnsupportedOperationException error = assertThrows(
-                UnsupportedOperationException.class,
-                () -> operator.stream(Collections.emptyMap(), new OperatorTestSupport.TrackingSession(), Collections.emptyMap()));
+        UnsupportedOperationException error = assertThrows(UnsupportedOperationException.class, () -> operator
+                .stream(Collections.emptyMap(), new OperatorTestSupport.TrackingSession(), Collections.emptyMap()));
         assertEquals("stream not implemented", error.getMessage());
     }
 
     private static final class ConcreteOperator extends Operator {
-
         @Override
         public String getOperatorId() {
             return "test_operator";

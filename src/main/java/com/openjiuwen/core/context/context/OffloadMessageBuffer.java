@@ -30,9 +30,10 @@ import java.util.stream.Stream;
  * Supports in-memory and filesystem storage.
  * <p>
  * Mirrors Python's {@code OffloadMessageBuffer} from {@code context_engine/context/message_buffer.py}.
+ * 
+ * @since 0.1.7
  */
 public class OffloadMessageBuffer {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private Map<String, List<BaseMessage>> inMemoryOffloadMessages;
@@ -41,14 +42,19 @@ public class OffloadMessageBuffer {
     private String sessionId;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OffloadMessageBuffer.
+     * 
+     * @since 0.1.7
      */
     public OffloadMessageBuffer() {
         this.inMemoryOffloadMessages = new HashMap<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OffloadMessageBuffer.
+     * 
+     * @param initMessages initMessages
+     * @since 0.1.7
      */
     public OffloadMessageBuffer(Map<String, List<BaseMessage>> initMessages) {
         this.inMemoryOffloadMessages = initMessages != null ? new HashMap<>(initMessages) : new HashMap<>();
@@ -56,10 +62,11 @@ public class OffloadMessageBuffer {
 
     /**
      * Offload messages to the specified storage.
-     *
+     * 
      * @param offloadHandle unique identifier for the offloaded messages
-     * @param offloadType   storage type (currently only "in_memory")
-     * @param messages      the messages to offload
+     * @param offloadType storage type (currently only "in_memory")
+     * @param messages the messages to offload
+     * @since 0.1.7
      */
     public void offload(String offloadHandle, String offloadType, List<BaseMessage> messages) {
         if ("in_memory".equals(offloadType)) {
@@ -68,14 +75,21 @@ public class OffloadMessageBuffer {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSysOperation.
+     * 
+     * @param sysOperation sysOperation
+     * @since 0.1.7
      */
     public void setSysOperation(SysOperation sysOperation) {
         this.sysOperation = sysOperation;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWorkspaceInfo.
+     * 
+     * @param workspaceDir workspaceDir
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public void setWorkspaceInfo(String workspaceDir, String sessionId) {
         this.workspaceDir = workspaceDir;
@@ -84,10 +98,11 @@ public class OffloadMessageBuffer {
 
     /**
      * Reload offloaded messages from storage.
-     *
+     * 
      * @param offloadHandle the handle of the messages to reload
-     * @param offloadType   the storage type
+     * @param offloadType the storage type
      * @return the reloaded messages, or empty list if not found
+     * @since 0.1.7
      */
     public List<BaseMessage> reload(String offloadHandle, String offloadType) {
         if ("in_memory".equals(offloadType)) {
@@ -99,6 +114,13 @@ public class OffloadMessageBuffer {
         return new ArrayList<>();
     }
 
+    /**
+     * reloadFromFilesystem.
+     * 
+     * @param offloadHandle offloadHandle
+     * @return the result
+     * @since 0.1.7
+     */
     private List<BaseMessage> reloadFromFilesystem(String offloadHandle) {
         for (String offloadPath : filesystemReloadPaths(offloadHandle)) {
             try {
@@ -106,7 +128,8 @@ public class OffloadMessageBuffer {
                 if (payload == null || payload.isBlank()) {
                     continue;
                 }
-                Map<String, Object> data = MAPPER.readValue(payload, new TypeReference<>() {});
+                Map<String, Object> data = MAPPER.readValue(payload, new TypeReference<>() {
+                });
                 Object rawMessages = data.get("messages");
                 if (!(rawMessages instanceof List<?> list) || list.isEmpty()) {
                     continue;
@@ -130,6 +153,14 @@ public class OffloadMessageBuffer {
         return new ArrayList<>();
     }
 
+    /**
+     * readOffloadPayload.
+     * 
+     * @param offloadPath offloadPath
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private String readOffloadPayload(String offloadPath) throws IOException {
         if (sysOperation != null) {
             ReadFileResult result = sysOperation.fs().readFile(offloadPath, "text", null, null, null, "utf-8", 0, null);
@@ -141,6 +172,13 @@ public class OffloadMessageBuffer {
         return "";
     }
 
+    /**
+     * filesystemReloadPaths.
+     * 
+     * @param offloadHandle offloadHandle
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> filesystemReloadPaths(String offloadHandle) {
         if (workspaceDir == null || workspaceDir.isBlank() || sessionId == null || sessionId.isBlank()) {
             return List.of(offloadHandle);
@@ -151,10 +189,8 @@ public class OffloadMessageBuffer {
         if (Files.isDirectory(offloadDir)) {
             try (Stream<Path> stream = Files.list(offloadDir)) {
                 stream.filter(path -> path.getFileName().toString().endsWith("_" + offloadHandle + ".json"))
-                        .sorted(Comparator.comparing(Path::toString))
-                        .map(Path::toString)
-                        .filter(path -> !candidates.contains(path))
-                        .forEach(candidates::add);
+                        .sorted(Comparator.comparing(Path::toString)).map(Path::toString)
+                        .filter(path -> !candidates.contains(path)).forEach(candidates::add);
             } catch (IOException ignored) {
                 // Fall back to exact path only.
             }
@@ -164,6 +200,10 @@ public class OffloadMessageBuffer {
 
     /**
      * Clear a specific offloaded message set.
+     * 
+     * @param offloadHandle offloadHandle
+     * @param offloadType offloadType
+     * @since 0.1.7
      */
     public void clear(String offloadHandle, String offloadType) {
         if ("in_memory".equals(offloadType)) {
@@ -173,12 +213,22 @@ public class OffloadMessageBuffer {
 
     /**
      * Get all offloaded messages.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, List<BaseMessage>> getAll() {
         return inMemoryOffloadMessages;
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * toMessage.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
+     */
     private BaseMessage toMessage(Map<String, Object> map) {
         String role = String.valueOf(map.getOrDefault("role", "user"));
         Object content = map.get("content");
@@ -194,13 +244,11 @@ public class OffloadMessageBuffer {
                     List<ToolCall> converted = new ArrayList<>();
                     for (Object item : list) {
                         if (item instanceof Map<?, ?> tcMap) {
-                            converted.add(ToolCall.builder()
-                                    .id(stringOrNull(tcMap.get("id")))
+                            converted.add(ToolCall.builder().id(stringOrNull(tcMap.get("id")))
                                     .type(tcMap.get("type") != null ? String.valueOf(tcMap.get("type")) : "function")
                                     .name(stringOrNull(tcMap.get("name")))
                                     .arguments(stringOrNull(tcMap.get("arguments")))
-                                    .index(tcMap.get("index") instanceof Number n ? n.intValue() : null)
-                                    .build());
+                                    .index(tcMap.get("index") instanceof Number n ? n.intValue() : null).build());
                         }
                     }
                     message.setToolCalls(converted);
@@ -243,6 +291,13 @@ public class OffloadMessageBuffer {
         };
     }
 
+    /**
+     * stringOrNull.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String stringOrNull(Object value) {
         return value instanceof String text ? text : null;
     }

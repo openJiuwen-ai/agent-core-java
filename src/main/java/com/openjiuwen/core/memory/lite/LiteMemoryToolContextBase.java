@@ -12,39 +12,64 @@ import java.io.IOException;
 
 /**
  * Common workspace-scoped state for MemoryIndexManager-backed tool surfaces.
+ * 
+ * @since 0.1.7
  */
 public class LiteMemoryToolContextBase {
     /**
-     * Auto-generated for codecheck compliance.
+     * workspace.
+     * 
+     * @since 0.1.7
      */
     protected Workspace workspace;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * settings.
+     * 
+     * @since 0.1.7
      */
     protected MemorySettings settings;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * agentId.
+     * 
+     * @since 0.1.7
      */
     protected String agentId = "default";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * embeddingConfig.
+     * 
+     * @since 0.1.7
      */
     protected EmbeddingConfig embeddingConfig;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * sysOperation.
+     * 
+     * @since 0.1.7
      */
     protected SysOperation sysOperation;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * manager.
+     * 
+     * @since 0.1.7
      */
     protected MemoryIndexManager manager;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * nodeName.
+     * 
+     * @since 0.1.7
      */
     protected String nodeName = "memory";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ensureManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean ensureManager() {
         if (manager != null && !manager.isClosed()) {
@@ -55,14 +80,8 @@ public class LiteMemoryToolContextBase {
         }
         try {
             settings = settings != null ? settings : new MemorySettings();
-            manager = MemoryIndexManager.get(new MemoryManagerParams(
-                    agentId,
-                    workspace,
-                    settings,
-                    embeddingConfig,
-                    sysOperation,
-                    nodeName
-            ));
+            manager = MemoryIndexManager.get(
+                    new MemoryManagerParams(agentId, workspace, settings, embeddingConfig, sysOperation, nodeName));
             return manager != null;
         } catch (IOException ignored) {
             return false;
@@ -70,49 +89,70 @@ public class LiteMemoryToolContextBase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkspace.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Workspace getWorkspace() {
         return workspace;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSettings.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public MemorySettings getSettings() {
         return settings;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getAgentId() {
         return agentId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEmbeddingConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public EmbeddingConfig getEmbeddingConfig() {
         return embeddingConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSysOperation.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public SysOperation getSysOperation() {
         return sysOperation;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public MemoryIndexManager getManager() {
         return manager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNodeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getNodeName() {
         return nodeName;

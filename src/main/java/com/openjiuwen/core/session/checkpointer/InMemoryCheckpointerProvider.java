@@ -11,18 +11,19 @@ import java.util.Map;
  * <p>
  * Creates a shared singleton in-memory checkpointer instance. Suitable for
  * testing and single-process scenarios where persistence is not required.
- *
- * @since 0.1.12
+ * 
  * @see CheckpointerProvider
  * @see com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer
+ * @since 0.1.7
  */
 public final class InMemoryCheckpointerProvider implements CheckpointerProvider {
     private static final Checkpointer INSTANCE = new InMemoryCheckpointer();
 
     /**
      * Returns the in-memory checkpointer type name.
-     *
+     * 
      * @return the type name "in_memory"
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -31,9 +32,10 @@ public final class InMemoryCheckpointerProvider implements CheckpointerProvider 
 
     /**
      * Creates or returns the shared in-memory checkpointer instance.
-     *
+     * 
      * @param conf the configuration map (ignored for in-memory implementation)
      * @return the shared InMemoryCheckpointer instance
+     * @since 0.1.7
      */
     @Override
     public Checkpointer create(Map<String, Object> conf) {

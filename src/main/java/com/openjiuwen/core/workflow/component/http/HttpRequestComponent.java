@@ -14,20 +14,38 @@ import com.openjiuwen.core.workflow.ComponentComposable;
  * for graph execution.
  * <p>
  * Mirrors Python's {@code HTTPRequestComponent}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 public class HttpRequestComponent implements ComponentComposable {
     private final HttpComponentConfig config;
 
+    /**
+     * HttpRequestComponent.
+     * 
+     * @param config config
+     * @since 0.1.7
+     */
     public HttpRequestComponent(HttpComponentConfig config) {
         this.config = config;
     }
 
+    /**
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public HttpComponentConfig getConfig() {
         return config;
     }
 
+    /**
+     * toExecutable.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Executable<?, ?> toExecutable() {
         return new HttpRequestExecutable(config);

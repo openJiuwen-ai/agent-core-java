@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.llm;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
@@ -20,10 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-
 class OpenAiCompatibleModelClientTest {
-
     @Test
     void invokeAppliesConfiguredHeadersAndAllowsAuthorizationOverride() throws Exception {
         AtomicReference<String> authorization = new AtomicReference<>();
@@ -38,20 +38,14 @@ class OpenAiCompatibleModelClientTest {
         server.start();
 
         try {
-            ModelClientConfig clientConfig = ModelClientConfig.builder()
-                    .clientProvider("OpenAI")
-                    .apiKey("sk-test")
+            ModelClientConfig clientConfig = ModelClientConfig.builder().clientProvider("OpenAI").apiKey("sk-test")
                     .apiBase("http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
-                    .headers(Map.of("Authorization", "Basic custom", "X-Trace", "trace-123"))
-                    .build();
-            ModelRequestConfig requestConfig = ModelRequestConfig.builder()
-                    .modelName("test-model")
-                    .build();
+                    .headers(Map.of("Authorization", "Basic custom", "X-Trace", "trace-123")).build();
+            ModelRequestConfig requestConfig = ModelRequestConfig.builder().modelName("test-model").build();
 
             Model model = new Model(clientConfig, requestConfig);
-            AssistantMessage response = model.invoke(
-                    List.of(new UserMessage("hello")),
-                    null, null, null, null, null, null, null, null, null);
+            AssistantMessage response =
+                model.invoke(List.of(new UserMessage("hello")), null, null, null, null, null, null, null, null, null);
 
             assertEquals("ok", response.getContentAsString());
             assertEquals("Basic custom", authorization.get());

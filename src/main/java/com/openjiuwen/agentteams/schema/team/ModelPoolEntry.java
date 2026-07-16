@@ -6,6 +6,7 @@ package com.openjiuwen.agentteams.schema.team;
 
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,17 +16,22 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Public class ModelPoolEntry used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder(toBuilder = true)
 @NoArgsConstructor
-/**
- * Public class ModelPoolEntry used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class ModelPoolEntry {
     @Builder.Default
+    /**
+     * UUID.randomUUID.
+     * 
+     * @since 0.1.7
+     */
     private String modelId = UUID.randomUUID().toString();
     @Builder.Default
     private String provider = "";
@@ -38,12 +44,20 @@ public class ModelPoolEntry {
     @Builder.Default
     private String description = "";
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
     @Builder.Default
     private int weight = 1;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toTeamModelConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TeamModelConfig toTeamModelConfig() {
         ModelClientConfig.Builder clientBuilder = ModelClientConfig.builder();
@@ -62,6 +76,13 @@ public class ModelPoolEntry {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * nestedMap.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> nestedMap(String key) {
         if (metadata == null) {
             return Map.of();
@@ -79,6 +100,13 @@ public class ModelPoolEntry {
         return Map.of();
     }
 
+    /**
+     * applyClientMetadata.
+     * 
+     * @param builder builder
+     * @param clientMetadata clientMetadata
+     * @since 0.1.7
+     */
     private void applyClientMetadata(ModelClientConfig.Builder builder, Map<String, Object> clientMetadata) {
         for (Map.Entry<String, Object> entry : clientMetadata.entrySet()) {
             String key = entry.getKey();
@@ -123,11 +151,16 @@ public class ModelPoolEntry {
         }
     }
 
-    private void applyRequestMetadata(
-            ModelRequestConfig.ModelRequestConfigBuilder builder,
-            Map<String, Object> requestExtras,
-            Map<String, Object> requestMetadata
-    ) {
+    /**
+     * applyRequestMetadata.
+     * 
+     * @param builder builder
+     * @param requestExtras requestExtras
+     * @param requestMetadata requestMetadata
+     * @since 0.1.7
+     */
+    private void applyRequestMetadata(ModelRequestConfig.ModelRequestConfigBuilder builder,
+            Map<String, Object> requestExtras, Map<String, Object> requestMetadata) {
         for (Map.Entry<String, Object> entry : requestMetadata.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();
@@ -164,10 +197,24 @@ public class ModelPoolEntry {
         }
     }
 
+    /**
+     * asString.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String asString(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * asInteger.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Integer asInteger(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -182,6 +229,13 @@ public class ModelPoolEntry {
         return nullValue();
     }
 
+    /**
+     * asDouble.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Double asDouble(Object value) {
         if (value instanceof Number number) {
             return number.doubleValue();
@@ -196,6 +250,13 @@ public class ModelPoolEntry {
         return nullValue();
     }
 
+    /**
+     * asBoolean.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Boolean asBoolean(Object value) {
         if (value instanceof Boolean isBoolValue) {
             return isBoolValue;
@@ -210,8 +271,14 @@ public class ModelPoolEntry {
         }
         return nullValue();
     }
+
+    /**
+     * nullValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static <T> T nullValue() {
         return null;
     }
-
 }

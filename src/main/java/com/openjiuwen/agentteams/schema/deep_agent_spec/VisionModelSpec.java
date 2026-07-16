@@ -12,13 +12,14 @@ import lombok.NoArgsConstructor;
 /**
  * Serializable mirror of VisionModelConfig.
  * Mirrors Python VisionModelSpec.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class VisionModelSpec {
-
     @Builder.Default
     private String apiKey = "";
     @Builder.Default

@@ -5,13 +5,18 @@
 package com.openjiuwen.core.common.logging.events;
 
 import com.openjiuwen.core.common.schema.BaseCard;
+
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Runner event. */
+/**
+ * Runner event.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -27,16 +32,21 @@ public class RunnerEvent extends BaseLogEvent {
     private BaseCard card;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RunnerEvent.
+     * 
+     * @since 0.1.7
      */
     public RunnerEvent() {
         super();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "runner_id", runnerId);
         putIfNotNull(map, "inputs", inputs);

@@ -6,10 +6,13 @@ package com.openjiuwen.core.multiagent;
 
 /**
  * Compatibility alias for Python's {@code TeamConfig}.
- *
- * <p>The existing Java {@link GroupConfig} already matches the Python
+ * <p>
+ * The existing Java {@link GroupConfig} already matches the Python
  * multi-agent runtime knobs, so this type keeps the Python naming surface
- * without introducing a second config model.</p>
+ * without introducing a second config model.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class TeamConfig extends GroupConfig {
 }

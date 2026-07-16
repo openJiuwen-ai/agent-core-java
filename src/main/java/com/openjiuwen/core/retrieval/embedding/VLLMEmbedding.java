@@ -17,32 +17,45 @@ import java.util.Map;
 
 /**
  * vLLM-compatible multimodal embedding client.
+ * 
+ * @since 0.1.7
  */
 public class VLLMEmbedding extends OpenAIEmbedding {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * VLLMEmbedding.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public VLLMEmbedding(EmbeddingConfig config) {
         super(config);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * VLLMEmbedding.
+     * 
+     * @param config config
+     * @param timeout timeout
+     * @param maxRetries maxRetries
+     * @param extraHeaders extraHeaders
+     * @param maxBatchSize maxBatchSize
+     * @param maxConcurrent maxConcurrent
+     * @param dimension dimension
+     * @param httpClient httpClient
+     * @since 0.1.7
      */
-    public VLLMEmbedding(EmbeddingConfig config,
-                         int timeout,
-                         int maxRetries,
-                         Map<String, String> extraHeaders,
-                         int maxBatchSize,
-                         int maxConcurrent,
-                         Integer dimension,
-                         HttpClient httpClient) {
+    public VLLMEmbedding(EmbeddingConfig config, int timeout, int maxRetries, Map<String, String> extraHeaders,
+            int maxBatchSize, int maxConcurrent, Integer dimension, HttpClient httpClient) {
         super(config, timeout, maxRetries, extraHeaders, maxBatchSize, maxConcurrent, dimension, httpClient);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseMultimodalInput.
+     * 
+     * @param document document
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> parseMultimodalInput(MultimodalDocument document, Map<String, Object> options) {
         boolean hasInstruction = options != null && options.containsKey("instruction");
@@ -61,19 +74,27 @@ public class VLLMEmbedding extends OpenAIEmbedding {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedMultimodal.
+     * 
+     * @param document document
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedMultimodal(MultimodalDocument document) {
         return embedMultimodal(document, new LinkedHashMap<>());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedMultimodal.
+     * 
+     * @param input input
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedMultimodal(Object input, Map<String, Object> options) {
         if (!(input instanceof MultimodalDocument document)) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
                     "input provided for multimodal embedding is not a MultimodalDocument");
         }
         Map<String, Object> kwargs = parseMultimodalInput(document, options);
@@ -82,26 +103,39 @@ public class VLLMEmbedding extends OpenAIEmbedding {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedMultimodal.
+     * 
+     * @param document document
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedMultimodal(MultimodalDocument document, Map<String, Object> options) {
         return embedMultimodal((Object) document, options);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedMultimodalSync.
+     * 
+     * @param document document
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedMultimodalSync(MultimodalDocument document) {
         return embedMultimodalSync(document, new LinkedHashMap<>());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedMultimodalSync.
+     * 
+     * @param input input
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedMultimodalSync(Object input, Map<String, Object> options) {
         if (!(input instanceof MultimodalDocument document)) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
                     "input provided for multimodal embedding is not a MultimodalDocument");
         }
         Map<String, Object> kwargs = parseMultimodalInput(document, options == null ? new LinkedHashMap<>() : options);
@@ -110,7 +144,12 @@ public class VLLMEmbedding extends OpenAIEmbedding {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedMultimodalSync.
+     * 
+     * @param document document
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedMultimodalSync(MultimodalDocument document, Map<String, Object> options) {
         return embedMultimodalSync((Object) document, options);

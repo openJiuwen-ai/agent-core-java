@@ -17,24 +17,37 @@ import java.util.Map;
 
 /**
  * Chunker abstraction for documents.
+ * 
+ * @since 0.1.7
  */
 public abstract class Chunker implements Processor<List<Document>, List<TextChunk>> {
-
+    /**
+     * chunkSize.
+     * 
+     * @since 0.1.7
+     */
     protected final int chunkSize;
+
+    /**
+     * chunkOverlap.
+     * 
+     * @since 0.1.7
+     */
     protected final int chunkOverlap;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Chunker.
+     * 
+     * @param chunkSize chunkSize
+     * @param chunkOverlap chunkOverlap
+     * @since 0.1.7
      */
     protected Chunker(int chunkSize, int chunkOverlap) {
         RetrievalValidation.requirePositive(chunkSize, "chunk_size", StatusCode.RETRIEVAL_INDEXING_CHUNK_SIZE_INVALID);
-        RetrievalValidation.requireNonNegative(
-                chunkOverlap,
-                "chunk_overlap",
+        RetrievalValidation.requireNonNegative(chunkOverlap, "chunk_overlap",
                 StatusCode.RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID);
         if (chunkOverlap >= chunkSize) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_INDEXING_CHUNK_OVERLAP_INVALID,
                     "chunk_overlap must be smaller than chunk_size");
         }
         this.chunkSize = chunkSize;
@@ -42,12 +55,20 @@ public abstract class Chunker implements Processor<List<Document>, List<TextChun
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * chunkText.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     public abstract List<String> chunkText(String text);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * chunkDocuments.
+     * 
+     * @param documents documents
+     * @return the result
+     * @since 0.1.7
      */
     public List<TextChunk> chunkDocuments(List<Document> documents) {
         List<TextChunk> chunks = new ArrayList<>();
@@ -67,10 +88,15 @@ public abstract class Chunker implements Processor<List<Document>, List<TextChun
         return chunks;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * process.
+     * 
+     * @param input input
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<TextChunk> process(List<Document> input, Map<String, Object> options) {
         return chunkDocuments(input);
     }

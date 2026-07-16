@@ -16,36 +16,48 @@ import java.util.stream.Collectors;
 
 /**
  * Public class WebFetchWebpageTool used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class WebFetchWebpageTool {
     private final WebHttpFetcher fetcher;
     private final String language;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WebFetchWebpageTool.
+     * 
+     * @since 0.1.7
      */
     public WebFetchWebpageTool() {
         this("cn");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WebFetchWebpageTool.
+     * 
+     * @param language language
+     * @since 0.1.7
      */
     public WebFetchWebpageTool(String language) {
         this(WebFetchWebpageTool::defaultFetch, language);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WebFetchWebpageTool.
+     * 
+     * @param fetcher fetcher
+     * @since 0.1.7
      */
     public WebFetchWebpageTool(WebHttpFetcher fetcher) {
         this(fetcher, "cn");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WebFetchWebpageTool.
+     * 
+     * @param fetcher fetcher
+     * @param language language
+     * @since 0.1.7
      */
     public WebFetchWebpageTool(WebHttpFetcher fetcher, String language) {
         this.fetcher = fetcher;
@@ -53,14 +65,21 @@ public class WebFetchWebpageTool {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLanguage.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getLanguage() {
         return language;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param url url
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput invoke(String url) {
         if (url == null || url.isBlank()) {
@@ -69,11 +88,8 @@ public class WebFetchWebpageTool {
         try {
             WebHttpResponse response = fetcher.fetch("GET", url);
             boolean isRequestSuccessful = response.statusCode() >= 200 && response.statusCode() < 300;
-            return ToolOutput.builder()
-                    .success(isRequestSuccessful)
-                    .data(response.text())
-                    .error(isRequestSuccessful ? null : "http status " + response.statusCode())
-                    .build();
+            return ToolOutput.builder().success(isRequestSuccessful).data(response.text())
+                    .error(isRequestSuccessful ? null : "http status " + response.statusCode()).build();
         } catch (Exception ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();
         }
@@ -89,8 +105,7 @@ public class WebFetchWebpageTool {
         connection.setReadTimeout(5000);
         int status = connection.getResponseCode();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                status >= 400 ? connection.getErrorStream() : connection.getInputStream(),
-                StandardCharsets.UTF_8))) {
+                status >= 400 ? connection.getErrorStream() : connection.getInputStream(), StandardCharsets.UTF_8))) {
             String text = reader.lines().collect(Collectors.joining("\n"));
             return new WebHttpResponse(status, text);
         }

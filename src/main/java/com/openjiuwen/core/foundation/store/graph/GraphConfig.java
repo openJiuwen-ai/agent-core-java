@@ -7,8 +7,6 @@ package com.openjiuwen.core.foundation.store.graph;
 import com.openjiuwen.core.foundation.store.base_embedding.Embedding;
 import com.openjiuwen.core.foundation.store.base_embedding.EmbeddingConfig;
 
-import javax.net.ssl.SSLSocket;
-import javax.net.ssl.SSLSocketFactory;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.file.Files;
@@ -17,13 +15,17 @@ import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
+
 /**
  * Configuration of Graph Store.
  * <p>
  * Mirrors Python's {@code GraphConfig} Pydantic model.
+ * 
+ * @since 0.1.7
  */
 public class GraphConfig {
-
     private static final Logger LOGGER = Logger.getLogger(GraphConfig.class.getName());
 
     private final String uri;
@@ -46,6 +48,12 @@ public class GraphConfig {
     private final double requestRetryWait;
 
     @SuppressWarnings("checkstyle:ParameterNumber")
+    /**
+     * GraphConfig.
+     * 
+     * @param builder builder
+     * @since 0.1.7
+     */
     private GraphConfig(Builder builder) {
         if (builder.uri == null || builder.uri.isBlank()) {
             throw new IllegalArgumentException("uri must not be null or blank");
@@ -80,7 +88,8 @@ public class GraphConfig {
         this.embedBatchSize = builder.embedBatchSize;
         this.embeddingCls = builder.embeddingCls;
         this.embeddingConfig = builder.embeddingConfig;
-        this.dbStorageConfig = builder.dbStorageConfig != null ? builder.dbStorageConfig : new GraphStoreStorageConfig();
+        this.dbStorageConfig =
+            builder.dbStorageConfig != null ? builder.dbStorageConfig : new GraphStoreStorageConfig();
         this.dbEmbedConfig = builder.dbEmbedConfig != null ? builder.dbEmbedConfig : new GraphStoreIndexConfig();
         this.wipeAtStartup = builder.wipeAtStartup;
         this.requestMaxRetries = builder.requestMaxRetries;
@@ -89,6 +98,11 @@ public class GraphConfig {
         checkValidity();
     }
 
+    /**
+     * checkValidity.
+     * 
+     * @since 0.1.7
+     */
     private void checkValidity() {
         boolean uriIsFilePath = !this.uri.contains("://");
         if (uriIsFilePath) {
@@ -98,8 +112,7 @@ public class GraphConfig {
                 try {
                     Files.createDirectories(parentDir);
                 } catch (IOException e) {
-                    LOGGER.log(Level.WARNING,
-                            "Failed to create parent directory for graph db uri: " + parentDir, e);
+                    LOGGER.log(Level.WARNING, "Failed to create parent directory for graph db uri: " + parentDir, e);
                 }
             }
         } else {
@@ -113,147 +126,205 @@ public class GraphConfig {
                     sslSocket.connect(new InetSocketAddress(host, port), (int) (this.timeout * 1000));
                 }
             } catch (IOException | NumberFormatException | ClassCastException e) {
-                LOGGER.log(Level.SEVERE,
-                        "Graph DB config uri did not respond within " + this.timeout + " seconds", e);
+                LOGGER.log(Level.SEVERE, "Graph DB config uri did not respond within " + this.timeout + " seconds", e);
             }
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUri.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getUri() {
         return uri;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getName() {
         return name;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUser.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getUser() {
         return user;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPassword.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getPassword() {
         return password;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getToken.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getToken() {
         return token;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getBackend.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getBackend() {
         return backend;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTimeout.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getTimeout() {
         return timeout;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtras.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getExtras() {
         return extras;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkerThreads.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getWorkerThreads() {
         return workerThreads;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEmbedDim.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getEmbedDim() {
         return embedDim;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEmbedBatchSize.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getEmbedBatchSize() {
         return embedBatchSize;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEmbeddingCls.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Class<? extends Embedding> getEmbeddingCls() {
         return embeddingCls;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEmbeddingConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public EmbeddingConfig getEmbeddingConfig() {
         return embeddingConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDbStorageConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public GraphStoreStorageConfig getDbStorageConfig() {
         return dbStorageConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDbEmbedConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public GraphStoreIndexConfig getDbEmbedConfig() {
         return dbEmbedConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isWipeAtStartup.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isWipeAtStartup() {
         return wipeAtStartup;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRequestMaxRetries.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getRequestMaxRetries() {
         return requestMaxRetries;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRequestRetryWait.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getRequestRetryWait() {
         return requestRetryWait;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder {
         private String uri;
@@ -276,7 +347,11 @@ public class GraphConfig {
         private double requestRetryWait = 0.1;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * uri.
+         * 
+         * @param uri uri
+         * @return the result
+         * @since 0.1.7
          */
         public Builder uri(String uri) {
             this.uri = uri;
@@ -284,7 +359,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * name.
+         * 
+         * @param name name
+         * @return the result
+         * @since 0.1.7
          */
         public Builder name(String name) {
             this.name = name;
@@ -292,7 +371,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * user.
+         * 
+         * @param user user
+         * @return the result
+         * @since 0.1.7
          */
         public Builder user(String user) {
             this.user = user;
@@ -300,7 +383,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * password.
+         * 
+         * @param password password
+         * @return the result
+         * @since 0.1.7
          */
         public Builder password(String password) {
             this.password = password;
@@ -308,7 +395,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * token.
+         * 
+         * @param token token
+         * @return the result
+         * @since 0.1.7
          */
         public Builder token(String token) {
             this.token = token;
@@ -316,7 +407,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * backend.
+         * 
+         * @param backend backend
+         * @return the result
+         * @since 0.1.7
          */
         public Builder backend(String backend) {
             this.backend = backend;
@@ -324,7 +419,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * timeout.
+         * 
+         * @param timeout timeout
+         * @return the result
+         * @since 0.1.7
          */
         public Builder timeout(double timeout) {
             this.timeout = timeout;
@@ -332,7 +431,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * extras.
+         * 
+         * @param extras extras
+         * @return the result
+         * @since 0.1.7
          */
         public Builder extras(Map<String, Object> extras) {
             this.extras = extras;
@@ -340,7 +443,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * workerThreads.
+         * 
+         * @param workerThreads workerThreads
+         * @return the result
+         * @since 0.1.7
          */
         public Builder workerThreads(int workerThreads) {
             this.workerThreads = workerThreads;
@@ -348,7 +455,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * embedDim.
+         * 
+         * @param embedDim embedDim
+         * @return the result
+         * @since 0.1.7
          */
         public Builder embedDim(int embedDim) {
             this.embedDim = embedDim;
@@ -356,7 +467,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * embedBatchSize.
+         * 
+         * @param embedBatchSize embedBatchSize
+         * @return the result
+         * @since 0.1.7
          */
         public Builder embedBatchSize(int embedBatchSize) {
             this.embedBatchSize = embedBatchSize;
@@ -364,7 +479,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * embeddingCls.
+         * 
+         * @param embeddingCls embeddingCls
+         * @return the result
+         * @since 0.1.7
          */
         public Builder embeddingCls(Class<? extends Embedding> embeddingCls) {
             this.embeddingCls = embeddingCls;
@@ -372,7 +491,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * embeddingConfig.
+         * 
+         * @param embeddingConfig embeddingConfig
+         * @return the result
+         * @since 0.1.7
          */
         public Builder embeddingConfig(EmbeddingConfig embeddingConfig) {
             this.embeddingConfig = embeddingConfig;
@@ -380,7 +503,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * dbStorageConfig.
+         * 
+         * @param dbStorageConfig dbStorageConfig
+         * @return the result
+         * @since 0.1.7
          */
         public Builder dbStorageConfig(GraphStoreStorageConfig dbStorageConfig) {
             this.dbStorageConfig = dbStorageConfig;
@@ -388,7 +515,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * dbEmbedConfig.
+         * 
+         * @param dbEmbedConfig dbEmbedConfig
+         * @return the result
+         * @since 0.1.7
          */
         public Builder dbEmbedConfig(GraphStoreIndexConfig dbEmbedConfig) {
             this.dbEmbedConfig = dbEmbedConfig;
@@ -396,7 +527,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * wipeAtStartup.
+         * 
+         * @param wipeAtStartup wipeAtStartup
+         * @return the result
+         * @since 0.1.7
          */
         public Builder wipeAtStartup(boolean wipeAtStartup) {
             this.wipeAtStartup = wipeAtStartup;
@@ -404,7 +539,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * requestMaxRetries.
+         * 
+         * @param requestMaxRetries requestMaxRetries
+         * @return the result
+         * @since 0.1.7
          */
         public Builder requestMaxRetries(int requestMaxRetries) {
             this.requestMaxRetries = requestMaxRetries;
@@ -412,7 +551,11 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * requestRetryWait.
+         * 
+         * @param requestRetryWait requestRetryWait
+         * @return the result
+         * @since 0.1.7
          */
         public Builder requestRetryWait(double requestRetryWait) {
             this.requestRetryWait = requestRetryWait;
@@ -420,7 +563,10 @@ public class GraphConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public GraphConfig build() {
             return new GraphConfig(this);

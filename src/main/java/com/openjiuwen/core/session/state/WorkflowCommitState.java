@@ -11,22 +11,26 @@ import java.util.Map;
  * Workflow commit state with full commit/rollback and node state creation.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.state.workflow_state.CommitState}.
+ * 
+ * @since 0.1.7
  */
 public class WorkflowCommitState extends WorkflowStateCollection {
-
     private Map<String, Object> snapshot;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WorkflowCommitState.
+     * 
+     * @param ioState ioState
+     * @param globalState globalState
+     * @param compState compState
+     * @param workflowState workflowState
+     * @param traceState traceState
+     * @param parentId parentId
+     * @param nodeId nodeId
+     * @since 0.1.7
      */
-    public WorkflowCommitState(
-            CommitStateLike ioState,
-            CommitStateLike globalState,
-            CommitStateLike compState,
-            CommitStateLike workflowState,
-            Map<String, Object> traceState,
-            String parentId,
-            String nodeId) {
+    public WorkflowCommitState(CommitStateLike ioState, CommitStateLike globalState, CommitStateLike compState,
+            CommitStateLike workflowState, Map<String, Object> traceState, String parentId, String nodeId) {
         super(ioState, globalState, compState, workflowState, traceState, parentId, nodeId);
         this.snapshot = new LinkedHashMap<>();
     }
@@ -35,6 +39,8 @@ public class WorkflowCommitState extends WorkflowStateCollection {
      * Commit all state partitions.
      * Passes null to commit ALL pending updates from all node IDs,
      * matching the Python behavior where commit() defaults to node_id=None.
+     * 
+     * @since 0.1.7
      */
     public void commit() {
         ioState.commit(null);
@@ -46,6 +52,8 @@ public class WorkflowCommitState extends WorkflowStateCollection {
     /**
      * Commit component and IO state for the current node.
      * Mirrors Python's {@code commit_cmp()}.
+     * 
+     * @since 0.1.7
      */
     public void commitCmp() {
         compState.commit(nodeId);
@@ -54,6 +62,8 @@ public class WorkflowCommitState extends WorkflowStateCollection {
 
     /**
      * Commit workflow-scoped state for the current node.
+     * 
+     * @since 0.1.7
      */
     public void commitWorkflow() {
         workflowState.commit(nodeId);
@@ -61,6 +71,9 @@ public class WorkflowCommitState extends WorkflowStateCollection {
 
     /**
      * Update and immediately commit workflow-scoped state.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     public void updateAndCommitWorkflowState(Map<String, Object> data) {
         if (data == null) {
@@ -72,6 +85,8 @@ public class WorkflowCommitState extends WorkflowStateCollection {
 
     /**
      * Rollback all state partitions.
+     * 
+     * @since 0.1.7
      */
     public void rollback() {
         ioState.rollback(nodeId);
@@ -81,12 +96,12 @@ public class WorkflowCommitState extends WorkflowStateCollection {
     }
 
     /**
-     * Save snapshot of current state.
+     * getState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> getState() {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put(IO_STATE_KEY, ioState.getState());
@@ -98,12 +113,12 @@ public class WorkflowCommitState extends WorkflowStateCollection {
     }
 
     /**
-     * Restore state from snapshot.
+     * setState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void setState(Map<String, Object> state) {
         if (state == null) {
             return;
@@ -132,24 +147,23 @@ public class WorkflowCommitState extends WorkflowStateCollection {
 
     /**
      * Create a node state for the given node ID.
-     *
+     * 
      * @param newNodeId the node identifier
+     * @param newParentId newParentId
      * @return a new WorkflowStateCollection for the node
+     * @since 0.1.7
      */
     public WorkflowCommitState createNodeState(String newNodeId, String newParentId) {
-        return new WorkflowCommitState(
-                ioState,
-                globalState,
-                compState,
-                workflowState,
-                traceState,
-                newParentId,
-                newNodeId
-        );
+        return new WorkflowCommitState(ioState, globalState, compState, workflowState, traceState, newParentId,
+                newNodeId);
     }
 
     /**
      * Backward-compatible overload for tests and callers that only provide node id.
+     * 
+     * @param newNodeId newNodeId
+     * @return the result
+     * @since 0.1.7
      */
     public WorkflowCommitState createNodeState(String newNodeId) {
         return createNodeState(newNodeId, parentId);
@@ -157,8 +171,9 @@ public class WorkflowCommitState extends WorkflowStateCollection {
 
     /**
      * Get IO state.
-     *
+     * 
      * @return the io state
+     * @since 0.1.7
      */
     public CommitStateLike getIoState() {
         return ioState;
@@ -166,8 +181,9 @@ public class WorkflowCommitState extends WorkflowStateCollection {
 
     /**
      * Get global state.
-     *
+     * 
      * @return the global state
+     * @since 0.1.7
      */
     public CommitStateLike getGlobalState() {
         return globalState;
@@ -175,8 +191,9 @@ public class WorkflowCommitState extends WorkflowStateCollection {
 
     /**
      * Get component state.
-     *
+     * 
      * @return the component state
+     * @since 0.1.7
      */
     public CommitStateLike getCompState() {
         return compState;
@@ -184,8 +201,9 @@ public class WorkflowCommitState extends WorkflowStateCollection {
 
     /**
      * Get workflow state.
-     *
+     * 
      * @return the workflow state
+     * @since 0.1.7
      */
     public CommitStateLike getWorkflowState() {
         return workflowState;
@@ -193,8 +211,9 @@ public class WorkflowCommitState extends WorkflowStateCollection {
 
     /**
      * Get trace state.
-     *
+     * 
      * @return the trace state
+     * @since 0.1.7
      */
     public Map<String, Object> getTraceState() {
         return traceState;
@@ -202,6 +221,9 @@ public class WorkflowCommitState extends WorkflowStateCollection {
 
     /**
      * Get pending updates for all partitions.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getUpdates() {
         Map<String, Object> updates = new LinkedHashMap<>();
@@ -214,6 +236,9 @@ public class WorkflowCommitState extends WorkflowStateCollection {
 
     /**
      * Restore pending updates for all partitions.
+     * 
+     * @param updates updates
+     * @since 0.1.7
      */
     public void setUpdates(Map<String, Object> updates) {
         if (updates == null) {
@@ -242,6 +267,13 @@ public class WorkflowCommitState extends WorkflowStateCollection {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * castMap.
+     * 
+     * @param obj obj
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> castMap(Object obj) {
         return (Map<String, Object>) obj;
     }

@@ -9,32 +9,46 @@ import java.util.function.Predicate;
 
 /**
  * Filter for validating callback arguments.
+ * 
+ * @since 0.1.7
  */
 public class ValidationFilter extends EventFilter {
-
     private final Predicate<Map<String, Object>> validator;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ValidationFilter.
+     * 
+     * @param validator validator
+     * @since 0.1.7
      */
     public ValidationFilter(Predicate<Map<String, Object>> validator) {
         this(validator, "Validation");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ValidationFilter.
+     * 
+     * @param validator validator
+     * @param name name
+     * @since 0.1.7
      */
     public ValidationFilter(Predicate<Map<String, Object>> validator, String name) {
         super(name);
         this.validator = validator;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * filter.
+     * 
+     * @param event event
+     * @param callback callback
+     * @param args args
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
-    public FilterResult filter(String event, CallbackInfo callback,
-                                Object[] args, Map<String, Object> kwargs) {
+    @Override
+    public FilterResult filter(String event, CallbackInfo callback, Object[] args, Map<String, Object> kwargs) {
         try {
             if (!validator.test(kwargs)) {
                 return FilterResult.skipResult("Argument validation failed");

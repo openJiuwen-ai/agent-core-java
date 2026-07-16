@@ -1,4 +1,17 @@
+
 package com.openjiuwen.core.memory;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -6,34 +19,34 @@ import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.memory.common.KvPrefixRegistry;
 import com.openjiuwen.core.memory.config.AgentMemoryConfig;
 import com.openjiuwen.core.memory.config.MemoryEngineConfig;
 import com.openjiuwen.core.memory.config.MemoryScopeConfig;
 import com.openjiuwen.core.memory.manage.index.WriteManager;
-import com.openjiuwen.core.memory.manage.mem_model.MessageManager;
 import com.openjiuwen.core.memory.manage.mem_model.MemoryType;
+import com.openjiuwen.core.memory.manage.mem_model.MessageManager;
 import com.openjiuwen.core.memory.manage.mem_model.ScopeUserMappingManager;
 import com.openjiuwen.core.memory.manage.search.SearchManager;
-import com.openjiuwen.core.memory.common.KvPrefixRegistry;
 import com.openjiuwen.core.memory.migration.MigrationPlan;
+import com.openjiuwen.core.memory.migration.migrator.KvMigrator;
 import com.openjiuwen.core.memory.migration.operation.AddColumnOperation;
 import com.openjiuwen.core.memory.migration.operation.AddScalarFieldOperation;
 import com.openjiuwen.core.memory.migration.operation.BaseOperation;
 import com.openjiuwen.core.memory.migration.operation.OperationMetadata;
 import com.openjiuwen.core.memory.migration.operation.UpdateKVOperation;
-import com.openjiuwen.core.memory.migration.migrator.KvMigrator;
 import com.openjiuwen.core.memory.process.extract.Generator;
 import com.openjiuwen.core.memory.support.TestDbStore;
 import com.openjiuwen.core.memory.support.TestInMemoryKVStore;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 import com.openjiuwen.core.retrieval.embedding.HashEmbedding;
 import com.openjiuwen.core.retrieval.vector_store.InMemoryVectorStore;
+
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
-import javax.sql.DataSource;
 import java.lang.reflect.Field;
 import java.sql.Connection;
 import java.sql.ResultSet;
@@ -50,20 +63,9 @@ import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
+import javax.sql.DataSource;
 
 class LongTermMemoryTest {
-
     private static final byte[] TEST_KEY = "1234567890abcdef1234567890123456".getBytes();
     private Map<String, List<BaseOperation>> sqlBackup;
     private Map<String, List<BaseOperation>> vectorBackup;
@@ -95,19 +97,13 @@ class LongTermMemoryTest {
         LongTermMemory memory = registeredMemory();
         memory.setConfig(MemoryEngineConfig.builder().cryptoKey(TEST_KEY).build());
 
-        MemoryScopeConfig scopeConfig = MemoryScopeConfig.builder()
-                .modelCfg(ModelRequestConfig.builder().modelName("test_model").build())
-                .modelClientCfg(ModelClientConfig.builder()
-                        .clientProvider("DashScope")
-                        .apiKey("test_api_key")
-                        .apiBase("https://dashscope.aliyuncs.com/api/v1")
-                        .build())
-                .embeddingCfg(new EmbeddingConfig(
-                        "test_embedding_model",
-                        "https://dashscope.aliyuncs.com/api/v1",
-                        "embedding_key"
-                ))
-                .build();
+        MemoryScopeConfig scopeConfig =
+            MemoryScopeConfig.builder().modelCfg(ModelRequestConfig.builder().modelName("test_model").build())
+                    .modelClientCfg(ModelClientConfig.builder().clientProvider("DashScope").apiKey("test_api_key")
+                            .apiBase("https://dashscope.aliyuncs.com/api/v1").build())
+                    .embeddingCfg(new EmbeddingConfig("test_embedding_model", "https://dashscope.aliyuncs.com/api/v1",
+                            "embedding_key"))
+                    .build();
 
         assertTrue(memory.setScopeConfig("test_scope_123", scopeConfig));
 
@@ -159,10 +155,7 @@ class LongTermMemoryTest {
     @Test
     void addMessagesPassesForbiddenVariablesToGenerator() throws Exception {
         LongTermMemory memory = registeredMemory();
-        memory.setConfig(MemoryEngineConfig.builder()
-                .cryptoKey(TEST_KEY)
-                .forbiddenVariables("手机号,证件号")
-                .build());
+        memory.setConfig(MemoryEngineConfig.builder().cryptoKey(TEST_KEY).forbiddenVariables("手机号,证件号").build());
 
         Model model = mock(Model.class);
         setField(memory, "baseLlm", Map.entry("test_model", model));
@@ -184,16 +177,8 @@ class LongTermMemoryTest {
         doReturn(Collections.emptyMap()).when(generator).genAllMemory(any());
         setField(memory, "generator", generator);
 
-        memory.addMessages(
-                java.util.List.of(new BaseMessage("user", "hello")),
-                AgentMemoryConfig.builder().enableLongTermMem(true).build(),
-                "user",
-                "scope",
-                "session",
-                null,
-                true,
-                2
-        );
+        memory.addMessages(java.util.List.of(new BaseMessage("user", "hello")),
+                AgentMemoryConfig.builder().enableLongTermMem(true).build(), "user", "scope", "session", null, true, 2);
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> paramsCaptor = ArgumentCaptor.forClass(Map.class);
@@ -235,22 +220,16 @@ class LongTermMemoryTest {
         TimeZone original = TimeZone.getDefault();
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Shanghai"));
         try {
-            memory.addMessages(
-                    java.util.List.of(new BaseMessage("user", "hello")),
-                    AgentMemoryConfig.builder().enableLongTermMem(true).build(),
-                    "user",
-                    "scope",
-                    "session",
-                    null,
-                    true,
-                    2
-            );
+            memory.addMessages(java.util.List.of(new BaseMessage("user", "hello")),
+                    AgentMemoryConfig.builder().enableLongTermMem(true).build(), "user", "scope", "session", null, true,
+                    2);
         } finally {
             TimeZone.setDefault(original);
         }
 
         assertNotNull(capturedTimestamp.get());
-        LocalDateTime parsed = LocalDateTime.parse(capturedTimestamp.get(), DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        LocalDateTime parsed =
+            LocalDateTime.parse(capturedTimestamp.get(), DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Shanghai"));
         long seconds = Math.abs(java.time.Duration.between(parsed, now).getSeconds());
         assertTrue(seconds < 60, "timestamp should follow system default timezone");
@@ -262,40 +241,26 @@ class LongTermMemoryTest {
         memory.setConfig(MemoryEngineConfig.builder().cryptoKey(TEST_KEY).build());
 
         SearchManager searchManager = mock(SearchManager.class);
-        doReturn(List.of(Map.of(
-                "id", "profile-id",
-                "mem", "profile",
-                "mem_type", MemoryType.USER_PROFILE.getValue(),
-                "score", 0.3d
-        ))).when(searchManager).search(
-                org.mockito.ArgumentMatchers.argThat(params -> MemoryType.USER_PROFILE.getValue().equals(params.getSearchType())),
-                any());
-        doReturn(List.of(Map.of(
-                "id", "semantic-id",
-                "mem", "semantic",
-                "mem_type", MemoryType.SEMANTIC_MEMORY.getValue(),
-                "score", 0.9d
-        ))).when(searchManager).search(
-                org.mockito.ArgumentMatchers.argThat(params -> MemoryType.SEMANTIC_MEMORY.getValue().equals(params.getSearchType())),
-                any());
-        doReturn(List.of(Map.of(
-                "id", "episodic-id",
-                "mem", "episodic",
-                "mem_type", MemoryType.EPISODIC_MEMORY.getValue(),
-                "score", 0.6d
-        ))).when(searchManager).search(
-                org.mockito.ArgumentMatchers.argThat(params -> MemoryType.EPISODIC_MEMORY.getValue().equals(params.getSearchType())),
-                any());
+        doReturn(List.of(Map.of("id", "profile-id", "mem", "profile", "mem_type", MemoryType.USER_PROFILE.getValue(),
+                "score", 0.3d))).when(searchManager)
+                .search(org.mockito.ArgumentMatchers
+                        .argThat(params -> MemoryType.USER_PROFILE.getValue().equals(params.getSearchType())), any());
+        doReturn(List.of(Map.of("id", "semantic-id", "mem", "semantic", "mem_type",
+                MemoryType.SEMANTIC_MEMORY.getValue(), "score", 0.9d))).when(searchManager)
+                .search(org.mockito.ArgumentMatchers.argThat(
+                        params -> MemoryType.SEMANTIC_MEMORY.getValue().equals(params.getSearchType())), any());
+        doReturn(List.of(Map.of("id", "episodic-id", "mem", "episodic", "mem_type",
+                MemoryType.EPISODIC_MEMORY.getValue(), "score", 0.6d))).when(searchManager)
+                .search(org.mockito.ArgumentMatchers.argThat(
+                        params -> MemoryType.EPISODIC_MEMORY.getValue().equals(params.getSearchType())), any());
         setField(memory, "searchManager", searchManager);
 
         List<MemResult> results = memory.searchUserMem("query", 2, "user", "scope", 0.0d);
 
-        assertEquals(List.of("semantic-id", "episodic-id"), results.stream()
-                .map(result -> result.getMemInfo().getMemId())
-                .toList());
-        assertEquals(List.of(MemoryType.SEMANTIC_MEMORY, MemoryType.EPISODIC_MEMORY), results.stream()
-                .map(result -> result.getMemInfo().getType())
-                .toList());
+        assertEquals(List.of("semantic-id", "episodic-id"),
+                results.stream().map(result -> result.getMemInfo().getMemId()).toList());
+        assertEquals(List.of(MemoryType.SEMANTIC_MEMORY, MemoryType.EPISODIC_MEMORY),
+                results.stream().map(result -> result.getMemInfo().getType()).toList());
         org.mockito.Mockito.verify(searchManager, org.mockito.Mockito.times(3)).search(any(), any());
     }
 
@@ -303,22 +268,13 @@ class LongTermMemoryTest {
     void registerStoreRunsSqlMigrations() throws Exception {
         TestInMemoryKVStore kvStore = new TestInMemoryKVStore();
         TestDbStore dbStore = new TestDbStore(createDataSource());
-        MigrationPlan.getSqlRegistry().register("user_message", new AddColumnOperation(
-                new OperationMetadata(2, "register store sql migration"),
-                "user_message",
-                "register_source",
-                "STRING",
-                true,
-                null));
+        MigrationPlan.getSqlRegistry().register("user_message",
+                new AddColumnOperation(new OperationMetadata(2, "register store sql migration"), "user_message",
+                        "register_source", "STRING", true, null));
 
         LongTermMemory.resetInstance();
         LongTermMemory memory = LongTermMemory.getInstance();
-        memory.registerStore(
-                kvStore,
-                new InMemoryVectorStore("memory_test_collection"),
-                dbStore,
-                new HashEmbedding()
-        );
+        memory.registerStore(kvStore, new InMemoryVectorStore("memory_test_collection"), dbStore, new HashEmbedding());
 
         assertTrue(columnExists(dbStore.getEngine(), "user_message", "register_source"));
         assertEquals("2", readSchemaVersion(dbStore.getEngine(), "user_message"));
@@ -333,47 +289,32 @@ class LongTermMemoryTest {
 
             InMemoryVectorStore vectorStore = new InMemoryVectorStore("vector_user_profile");
             String collectionName = "register_scope_user_profile";
-            vectorStore.withCollection(collectionName).add(List.of(Map.of(
-                    "id", "vec-1",
-                    "text", "hello",
-                    "vector", List.of(1.0f, 2.0f, 3.0f)
-            )), null, Map.of());
+            vectorStore.withCollection(collectionName).add(
+                    List.of(Map.of("id", "vec-1", "text", "hello", "vector", List.of(1.0f, 2.0f, 3.0f))), null,
+                    Map.of());
 
             TestDbStore dbStore = new TestDbStore(createDataSource());
 
-            MigrationPlan.getKvRegistry().register(KvMigrator.KV_ENTITY_KEY, new UpdateKVOperation(
-                    new OperationMetadata(2, "register store kv migration"),
-                    store -> store.set("user_message:1", "new")));
-            MigrationPlan.getVectorRegistry().register("vector_user_profile", new AddScalarFieldOperation(
-                    new OperationMetadata(2, "register store vector migration"),
-                    "user_profile",
-                    "register_field",
-                    "string",
-                    "vector_value"));
-            MigrationPlan.getSqlRegistry().register("user_message", new AddColumnOperation(
-                    new OperationMetadata(2, "register store sql migration"),
-                    "user_message",
-                    "register_source",
-                    "STRING",
-                    true,
-                    null));
+            MigrationPlan.getKvRegistry().register(KvMigrator.KV_ENTITY_KEY,
+                    new UpdateKVOperation(new OperationMetadata(2, "register store kv migration"),
+                            store -> store.set("user_message:1", "new")));
+            MigrationPlan.getVectorRegistry().register("vector_user_profile",
+                    new AddScalarFieldOperation(new OperationMetadata(2, "register store vector migration"),
+                            "user_profile", "register_field", "string", "vector_value"));
+            MigrationPlan.getSqlRegistry().register("user_message",
+                    new AddColumnOperation(new OperationMetadata(2, "register store sql migration"), "user_message",
+                            "register_source", "STRING", true, null));
 
             LongTermMemory.resetInstance();
             LongTermMemory memory = LongTermMemory.getInstance();
-            memory.registerStore(
-                    kvStore,
-                    vectorStore,
-                    dbStore,
-                    new HashEmbedding()
-            );
+            memory.registerStore(kvStore, vectorStore, dbStore, new HashEmbedding());
 
             assertEquals("new", kvStore.get("user_message:1"));
             assertEquals("2", kvStore.get(KvMigrator.KV_SCHEMA_VERSION));
-            assertEquals("vector_value", vectorStore.withCollection(collectionName)
-                    .queryByFilters(Map.of("register_field", "vector_value"), 10)
-                    .get(0)
-                    .getMetadata()
-                    .get("register_field"));
+            assertEquals("vector_value",
+                    vectorStore.withCollection(collectionName)
+                            .queryByFilters(Map.of("register_field", "vector_value"), 10).get(0).getMetadata()
+                            .get("register_field"));
             assertTrue(columnExists(dbStore.getEngine(), "user_message", "register_source"));
             assertEquals("2", readSchemaVersion(dbStore.getEngine(), "user_message"));
         } finally {
@@ -384,12 +325,8 @@ class LongTermMemoryTest {
     private static LongTermMemory registeredMemory() {
         LongTermMemory.resetInstance();
         LongTermMemory memory = LongTermMemory.getInstance();
-        memory.registerStore(
-                new TestInMemoryKVStore(),
-                new InMemoryVectorStore("memory_test_collection"),
-                new TestDbStore(createDataSource()),
-                new HashEmbedding()
-        );
+        memory.registerStore(new TestInMemoryKVStore(), new InMemoryVectorStore("memory_test_collection"),
+                new TestDbStore(createDataSource()), new HashEmbedding());
         return memory;
     }
 
@@ -403,20 +340,17 @@ class LongTermMemoryTest {
 
     private static String readSchemaVersion(DataSource dataSource, String tableName) throws Exception {
         try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery(
-                     "SELECT schema_version FROM memory_meta WHERE table_name = '" + tableName + "'")) {
+                Statement statement = connection.createStatement();
+                ResultSet resultSet = statement.executeQuery(
+                        "SELECT schema_version FROM memory_meta WHERE table_name = '" + tableName + "'")) {
             return resultSet.next() ? resultSet.getString(1) : null;
         }
     }
 
     private static boolean columnExists(DataSource dataSource, String tableName, String columnName) throws Exception {
         try (Connection connection = dataSource.getConnection();
-             ResultSet resultSet = connection.getMetaData().getColumns(
-                     null,
-                     null,
-                     tableName.toUpperCase(),
-                     columnName.toUpperCase())) {
+                ResultSet resultSet = connection.getMetaData().getColumns(null, null, tableName.toUpperCase(),
+                        columnName.toUpperCase())) {
             return resultSet.next();
         }
     }

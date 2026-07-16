@@ -11,25 +11,38 @@ import java.util.function.Supplier;
 /**
  * Manager for Model resource providers.
  * Mirrors Python's {@code ModelMgr} in {@code resources_manager/model_manager.py}.
+ * 
+ * @since 0.1.7
  */
 public class ModelMgr extends AbstractManager<Model> {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * addModel.
+     * 
+     * @param modelId modelId
+     * @param model model
+     * @since 0.1.7
      */
     public void addModel(String modelId, Supplier<Model> model) {
         registerResourceProvider(modelId, model);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeModel.
+     * 
+     * @param modelId modelId
+     * @return the result
+     * @since 0.1.7
      */
     public Supplier<? extends Model> removeModel(String modelId) {
         return unregisterResourceProvider(modelId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModel.
+     * 
+     * @param modelId modelId
+     * @return the result
+     * @since 0.1.7
      */
     public Model getModel(String modelId) {
         return getResource(modelId);

@@ -6,17 +6,10 @@ package com.openjiuwen.core.operator;
 
 /**
  * Describes a single tunable parameter of an operator.
- *
- * @param name parameter name
- * @param kind tunable kind, for example prompt or discrete
- * @param path path of the parameter inside the operator
- * @param constraint optional constraint metadata
+ * 
+ * @since 0.1.7
  */
 public record TunableSpec(String name, String kind, String path, Object constraint) {
-
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public TunableSpec(String name, String kind, String path) {
         this(name, kind, path, null);
     }

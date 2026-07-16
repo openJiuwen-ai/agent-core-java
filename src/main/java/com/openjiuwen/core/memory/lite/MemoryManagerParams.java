@@ -10,13 +10,9 @@ import com.openjiuwen.harness.workspace.Workspace;
 
 /**
  * Parameters for creating or retrieving a MemoryIndexManager instance.
+ * 
+ * @since 0.1.7
  */
-public record MemoryManagerParams(
-        String agentId,
-        Workspace workspace,
-        MemorySettings settings,
-        EmbeddingConfig embeddingConfig,
-        SysOperation sysOperation,
-        String nodeName
-) {
+public record MemoryManagerParams(String agentId, Workspace workspace, MemorySettings settings,
+        EmbeddingConfig embeddingConfig, SysOperation sysOperation, String nodeName) {
 }

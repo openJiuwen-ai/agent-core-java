@@ -4,7 +4,6 @@
 
 package com.openjiuwen.core.foundation.tool.utils;
 
-import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -24,19 +23,37 @@ import java.util.UUID;
 
 /**
  * Reflection-based schema extraction for Java types.
+ * 
+ * @since 0.1.7
  */
 public final class TypeSchemaExtractor {
-
+    /**
+     * TypeSchemaExtractor.
+     * 
+     * @since 0.1.7
+     */
     private TypeSchemaExtractor() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extract.
+     * 
+     * @param type type
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> extract(Type type) {
         return extract(type, new LinkedHashSet<>());
     }
 
+    /**
+     * extract.
+     * 
+     * @param type type
+     * @param visited visited
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> extract(Type type, Set<Type> visited) {
         if (type == null) {
             return Map.of();
@@ -49,15 +66,12 @@ public final class TypeSchemaExtractor {
             if (clazz == String.class || clazz == Character.class || clazz == char.class || clazz == UUID.class) {
                 return new LinkedHashMap<>(Map.of("type", "string"));
             }
-            if (clazz == Integer.class || clazz == int.class
-                    || clazz == Long.class || clazz == long.class
-                    || clazz == Short.class || clazz == short.class
-                    || clazz == Byte.class || clazz == byte.class
+            if (clazz == Integer.class || clazz == int.class || clazz == Long.class || clazz == long.class
+                    || clazz == Short.class || clazz == short.class || clazz == Byte.class || clazz == byte.class
                     || clazz == BigInteger.class) {
                 return new LinkedHashMap<>(Map.of("type", "integer"));
             }
-            if (clazz == Float.class || clazz == float.class
-                    || clazz == Double.class || clazz == double.class
+            if (clazz == Float.class || clazz == float.class || clazz == Double.class || clazz == double.class
                     || clazz == BigDecimal.class) {
                 return new LinkedHashMap<>(Map.of("type", "number"));
             }
@@ -137,6 +151,14 @@ public final class TypeSchemaExtractor {
         return new LinkedHashMap<>(Map.of("type", "object"));
     }
 
+    /**
+     * extractPojoSchema.
+     * 
+     * @param clazz clazz
+     * @param visited visited
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> extractPojoSchema(Class<?> clazz, Set<Type> visited) {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");

@@ -8,6 +8,7 @@ import com.openjiuwen.core.graph.store.Serializer;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.extensions.store.kv.RedisStore;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,26 +21,44 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.checkpointer.redis.storage.BaseRedisStorage}.
- *
- * <p>Base class for Redis-based storage implementations with common functionality.
+ * <p>
+ * Base class for Redis-based storage implementations with common functionality.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseRedisStorage {
-
-    protected final Logger log = LoggerFactory.getLogger(getClass());
     /**
-     * Auto-generated for codecheck compliance.
+     * log.
+     * 
+     * @since 0.1.7
+     */
+    protected final Logger log = LoggerFactory.getLogger(getClass());
+
+    /**
+     * redisStore.
+     * 
+     * @since 0.1.7
      */
     protected final RedisStore redisStore;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * serializer.
+     * 
+     * @since 0.1.7
      */
     protected final Serializer serializer;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * ttlSeconds.
+     * 
+     * @since 0.1.7
      */
     protected Integer ttlSeconds;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * refreshOnRead.
+     * 
+     * @since 0.1.7
      */
     protected boolean refreshOnRead;
 
@@ -48,7 +67,11 @@ public abstract class BaseRedisStorage {
     private static final String REFRESH_ON_READ = "refresh_on_read";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseRedisStorage.
+     * 
+     * @param redisStore redisStore
+     * @param ttl ttl
+     * @since 0.1.7
      */
     protected BaseRedisStorage(RedisStore redisStore, Map<String, Object> ttl) {
         this.redisStore = redisStore;
@@ -65,7 +88,11 @@ public abstract class BaseRedisStorage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * serializeState.
+     * 
+     * @param state state
+     * @return the result
+     * @since 0.1.7
      */
     protected Serializer.TypedBytes serializeState(Object state) {
         if (state == null) {
@@ -81,7 +108,12 @@ public abstract class BaseRedisStorage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deserializeState.
+     * 
+     * @param dumpType dumpType
+     * @param blob blob
+     * @return the result
+     * @since 0.1.7
      */
     protected Object deserializeState(Object dumpType, Object blob) {
         if (dumpType == null || blob == null) {
@@ -103,7 +135,11 @@ public abstract class BaseRedisStorage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * decodeDumpType.
+     * 
+     * @param dumpType dumpType
+     * @return the result
+     * @since 0.1.7
      */
     protected String decodeDumpType(Object dumpType) {
         if (dumpType == null) {
@@ -116,7 +152,13 @@ public abstract class BaseRedisStorage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * refreshTtl.
+     * 
+     * @param keys keys
+     * @param entityName entityName
+     * @param entityId entityId
+     * @return the result
+     * @since 0.1.7
      */
     protected CompletableFuture<Void> refreshTtl(List<String> keys, String entityName, String entityId) {
         if (!(refreshOnRead && ttlSeconds != null) || keys == null || keys.isEmpty()) {
@@ -133,7 +175,11 @@ public abstract class BaseRedisStorage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * requireSession.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     protected BaseSession requireSession(Object session) {
         if (session instanceof BaseSession baseSession) {
@@ -143,7 +189,11 @@ public abstract class BaseRedisStorage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * asInteractiveInput.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     protected InteractiveInput asInteractiveInput(Object inputs) {
         if (inputs instanceof InteractiveInput interactiveInput) {
@@ -153,7 +203,11 @@ public abstract class BaseRedisStorage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * keyExists.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     protected boolean keyExists(Object value) {
         if (value instanceof Boolean bool) {
@@ -166,7 +220,11 @@ public abstract class BaseRedisStorage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * wrapFailure.
+     * 
+     * @param throwable throwable
+     * @return the result
+     * @since 0.1.7
      */
     protected RuntimeException wrapFailure(Throwable throwable) {
         if (throwable instanceof RuntimeException runtimeException) {
@@ -175,6 +233,13 @@ public abstract class BaseRedisStorage {
         return new RuntimeException(throwable);
     }
 
+    /**
+     * rootCauseMessage.
+     * 
+     * @param throwable throwable
+     * @return the result
+     * @since 0.1.7
+     */
     private String rootCauseMessage(Throwable throwable) {
         Throwable rootCause = throwable;
         while (rootCause.getCause() != null && rootCause.getCause() != rootCause) {
@@ -184,14 +249,22 @@ public abstract class BaseRedisStorage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * makeRedisKey.
+     * 
+     * @param args args
+     * @return the result
+     * @since 0.1.7
      */
     protected static String makeRedisKey(String... args) {
         return String.join(":", args);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * describeState.
+     * 
+     * @param state state
+     * @return the result
+     * @since 0.1.7
      */
     protected String describeState(Object state) {
         List<String> lines = new ArrayList<String>();
@@ -200,6 +273,15 @@ public abstract class BaseRedisStorage {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * appendStateDescription.
+     * 
+     * @param lines lines
+     * @param path path
+     * @param value value
+     * @param depth depth
+     * @since 0.1.7
+     */
     private void appendStateDescription(List<String> lines, String path, Object value, int depth) {
         if (depth > 3) {
             lines.add(path + "=<max-depth>");

@@ -12,20 +12,26 @@ import java.util.HexFormat;
 
 /**
  * 哈希工具类 - 用于从API凭证生成确定性的SHA-256密钥。
- *
- * @since 2026-01-01
  * Hash utility — generates deterministic SHA-256 keys from API credentials.
+ * 
+ * @since 0.1.7
  */
 public final class HashUtil {
+    /**
+     * HashUtil.
+     * 
+     * @since 0.1.7
+     */
     private HashUtil() {
     }
 
     /**
      * Generate a deterministic SHA-256 hex key from arbitrary input strings.
      * Inputs are sorted before hashing to ensure order-independent results.
-     *
+     * 
      * @param parts the input strings to hash
      * @return hex-encoded SHA-256 hash
+     * @since 0.1.7
      */
     public static String generateKey(String... parts) {
         Arrays.sort(parts);

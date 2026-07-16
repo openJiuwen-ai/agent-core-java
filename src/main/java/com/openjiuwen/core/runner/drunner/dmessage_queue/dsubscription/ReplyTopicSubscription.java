@@ -19,20 +19,31 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Listens on a reply topic and dispatches responses to collectors.
+ * 
+ * @since 0.1.7
  */
 public class ReplyTopicSubscription {
-
     private static final Logger logger = LoggerFactory.getLogger(ReplyTopicSubscription.class);
 
     private final MessageQueueBase mq;
     private final String topic;
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<CollectorKey, ResponseCollector> collectors = new ConcurrentHashMap<>();
 
     private volatile boolean active;
     private SubscriptionBase subscription;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ReplyTopicSubscription.
+     * 
+     * @param mq mq
+     * @param topic topic
+     * @since 0.1.7
      */
     public ReplyTopicSubscription(MessageQueueBase mq, String topic) {
         this.mq = mq;
@@ -40,7 +51,9 @@ public class ReplyTopicSubscription {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * activate.
+     * 
+     * @since 0.1.7
      */
     public void activate() {
         subscription = mq.subscribe(topic);
@@ -56,7 +69,9 @@ public class ReplyTopicSubscription {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deactivate.
+     * 
+     * @since 0.1.7
      */
     public void deactivate() {
         active = false;
@@ -75,13 +90,23 @@ public class ReplyTopicSubscription {
 
     /**
      * Whether this subscription is currently active.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isActive() {
         return active;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerCollector.
+     * 
+     * @param messageId messageId
+     * @param remoteId remoteId
+     * @param requestId requestId
+     * @param ttlSeconds ttlSeconds
+     * @return the result
+     * @since 0.1.7
      */
     public ResponseCollector registerCollector(String messageId, String remoteId, String requestId, Double ttlSeconds) {
         if (!active) {
@@ -89,8 +114,7 @@ public class ReplyTopicSubscription {
         }
         int maxConcurrency = RunnerConfig.getRunnerConfig().getDistributedConfig().getMaxRequestConcurrency();
         if (collectors.size() >= maxConcurrency) {
-            throw new RuntimeException(
-                    "[ReplyTopicSubscription] Too many collectors (" + maxConcurrency + ")");
+            throw new RuntimeException("[ReplyTopicSubscription] Too many collectors (" + maxConcurrency + ")");
         }
         CollectorKey key = new CollectorKey(remoteId, messageId, normalizeRequestId(requestId));
         ResponseCollector collector = new ResponseCollector(messageId, remoteId, requestId, ttlSeconds);
@@ -102,7 +126,12 @@ public class ReplyTopicSubscription {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * unregisterCollector.
+     * 
+     * @param messageId messageId
+     * @param remoteId remoteId
+     * @param requestId requestId
+     * @since 0.1.7
      */
     public void unregisterCollector(String messageId, String remoteId, String requestId) {
         if (messageId == null && remoteId == null && requestId == null) {
@@ -123,18 +152,24 @@ public class ReplyTopicSubscription {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTopic.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTopic() {
         return topic;
     }
 
+    /**
+     * onMessage.
+     * 
+     * @param message message
+     * @since 0.1.7
+     */
     private void onMessage(DmqResponseMessage message) {
-        CollectorKey key = new CollectorKey(
-                message.getSenderId(),
-                message.getMessageId(),
-                normalizeRequestId(message.getRequestId())
-        );
+        CollectorKey key =
+            new CollectorKey(message.getSenderId(), message.getMessageId(), normalizeRequestId(message.getRequestId()));
         ResponseCollector collector = collectors.get(key);
         if (collector != null) {
             collector.putMessage(message);
@@ -143,12 +178,21 @@ public class ReplyTopicSubscription {
         }
     }
 
+    /**
+     * normalizeRequestId.
+     * 
+     * @param requestId requestId
+     * @return the result
+     * @since 0.1.7
+     */
     private String normalizeRequestId(String requestId) {
         return requestId == null || requestId.isBlank() ? null : requestId;
     }
 
     /**
      * Unique key identifying a collector by remote ID, message ID, and optional request ID.
+     * 
+     * @since 0.1.7
      */
     public record CollectorKey(String remoteId, String messageId, String requestId) {
     }

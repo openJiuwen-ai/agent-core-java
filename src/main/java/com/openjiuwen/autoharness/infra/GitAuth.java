@@ -10,33 +10,56 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Auto-generated for codecheck compliance.
+ * GitAuth.
+ * 
+ * @since 0.1.7
  */
 public final class GitAuth {
     /**
-     * Auto-generated for codecheck compliance.
+     * GITCODE_EXTRAHEADER_KEY.
+     * 
+     * @since 0.1.7
      */
     public static final String GITCODE_EXTRAHEADER_KEY = "http.https://gitcode.com/.extraheader";
 
+    /**
+     * GitAuth.
+     * 
+     * @since 0.1.7
+     */
     private GitAuth() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildGitAuthEnv.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, String> buildGitAuthEnv() {
         return buildGitAuthEnv(System.getenv(), "", "");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildGitAuthEnv.
+     * 
+     * @param username username
+     * @param token token
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, String> buildGitAuthEnv(String username, String token) {
         return buildGitAuthEnv(System.getenv(), username, token);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildGitAuthEnv.
+     * 
+     * @param baseEnv baseEnv
+     * @param username username
+     * @param token token
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, String> buildGitAuthEnv(Map<String, String> baseEnv, String username, String token) {
         Map<String, String> env = new LinkedHashMap<>();
@@ -50,9 +73,7 @@ public final class GitAuth {
             return env;
         }
 
-        String basic = Base64.getEncoder().encodeToString(
-                (username + ":" + token).getBytes(StandardCharsets.UTF_8)
-        );
+        String basic = Base64.getEncoder().encodeToString((username + ":" + token).getBytes(StandardCharsets.UTF_8));
         env.put("GIT_CONFIG_COUNT", "3");
         env.put("GIT_CONFIG_KEY_0", "credential.helper");
         env.put("GIT_CONFIG_VALUE_0", "");
@@ -63,6 +84,13 @@ public final class GitAuth {
         return env;
     }
 
+    /**
+     * isBlank.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
     }

@@ -14,13 +14,15 @@ import lombok.EqualsAndHashCode;
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.react.ReActAgentCompConfig}.
  * Extends ReActAgentConfig with no additional fields — workflow-specific
  * configurations may be added later.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 @EqualsAndHashCode(callSuper = true)
 public class ReActAgentCompConfig extends ReActAgentConfig {
     /**
-     * No-arg constructor.
+     * ReActAgentCompConfig.
+     * 
+     * @since 0.1.7
      */
     public ReActAgentCompConfig() {
         super();
@@ -28,8 +30,9 @@ public class ReActAgentCompConfig extends ReActAgentConfig {
 
     /**
      * Copy constructor from a ReActAgentConfig.
-     *
+     * 
      * @param source source config to copy fields from
+     * @since 0.1.7
      */
     public ReActAgentCompConfig(ReActAgentConfig source) {
         super();

@@ -19,13 +19,14 @@ import java.util.Map;
  * Schema describing a plugin reference in agent configuration.
  * <p>
  * Mirrors Python's {@code PluginSchema} used in application agent configs.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class PluginSchema {
-
     @Builder.Default
     private String id = "";
 
@@ -39,6 +40,11 @@ public class PluginSchema {
     private String description = "";
 
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> inputs = new LinkedHashMap<>();
 
     @Builder.Default

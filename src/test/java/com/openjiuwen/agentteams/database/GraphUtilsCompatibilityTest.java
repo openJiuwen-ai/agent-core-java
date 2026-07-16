@@ -1,16 +1,17 @@
+
 package com.openjiuwen.agentteams.database;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.agentteams.tools.database.GraphUtils;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class GraphUtilsCompatibilityTest {
-
     @Test
     void shouldReturnNullForEmptyAdjacency() {
         assertThat(GraphUtils.detectCycleInAdjacency(null)).isNull();
@@ -36,8 +37,7 @@ class GraphUtilsCompatibilityTest {
         adjacency.put("B", List.of("A"));
 
         List<String> cycle = GraphUtils.detectCycleInAdjacency(adjacency);
-        assertThat(cycle).isNotNull()
-                .containsExactly("A", "B", "A");
+        assertThat(cycle).isNotNull().containsExactly("A", "B", "A");
     }
 
     @Test
@@ -49,8 +49,7 @@ class GraphUtilsCompatibilityTest {
         adjacency.put("C", List.of("A"));
 
         List<String> cycle = GraphUtils.detectCycleInAdjacency(adjacency);
-        assertThat(cycle).isNotNull()
-                .containsExactly("A", "B", "C", "A");
+        assertThat(cycle).isNotNull().containsExactly("A", "B", "C", "A");
     }
 
     @Test
@@ -59,8 +58,7 @@ class GraphUtilsCompatibilityTest {
         adjacency.put("A", List.of("A"));
 
         List<String> cycle = GraphUtils.detectCycleInAdjacency(adjacency);
-        assertThat(cycle).isNotNull()
-                .containsExactly("A", "A");
+        assertThat(cycle).isNotNull().containsExactly("A", "A");
     }
 
     @Test
@@ -88,13 +86,12 @@ class GraphUtilsCompatibilityTest {
 
     @Test
     void shouldDefineTerminalStatuses() {
-        assertThat(GraphUtils.TASK_TERMINAL_STATUSES)
-                .contains("completed", "cancelled");
+        assertThat(GraphUtils.TASK_TERMINAL_STATUSES).contains("completed", "cancelled");
     }
 
     @Test
     void shouldDefineDependencyRejectStatuses() {
-        assertThat(GraphUtils.TASK_DEPENDENCY_REJECT_STATUSES)
-                .contains("completed", "cancelled", "claimed", "plan_approved");
+        assertThat(GraphUtils.TASK_DEPENDENCY_REJECT_STATUSES).contains("completed", "cancelled", "claimed",
+                "plan_approved");
     }
 }

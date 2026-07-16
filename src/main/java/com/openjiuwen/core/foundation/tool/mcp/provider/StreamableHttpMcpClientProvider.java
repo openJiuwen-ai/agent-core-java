@@ -14,16 +14,17 @@ import com.openjiuwen.core.foundation.tool.mcp.client.StreamableHttpClient;
  * <p>
  * Creates MCP clients that communicate with MCP servers using the Streamable HTTP
  * protocol, which supports bidirectional streaming over HTTP connections.
- *
- * @since 0.1.12
+ * 
  * @see McpClientProvider
  * @see com.openjiuwen.core.foundation.tool.mcp.client.StreamableHttpClient
+ * @since 0.1.7
  */
 public final class StreamableHttpMcpClientProvider implements McpClientProvider {
     /**
-     * Returns the Streamable HTTP transport type name.
-     *
-     * @return the type name "streamable_http"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -32,9 +33,10 @@ public final class StreamableHttpMcpClientProvider implements McpClientProvider 
 
     /**
      * Creates an MCP client using Streamable HTTP transport.
-     *
+     * 
      * @param config the MCP server configuration
      * @return a new StreamableHttpClient instance
+     * @since 0.1.7
      */
     @Override
     public McpClient create(McpServerConfig config) {

@@ -6,37 +6,41 @@ package com.openjiuwen.harness.task_loop;
 
 /**
  * Public class TokenBudgetEvaluator used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class TokenBudgetEvaluator implements StopConditionEvaluator {
     private final int maxTokens;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TokenBudgetEvaluator.
+     * 
+     * @param maxTokens maxTokens
+     * @since 0.1.7
      */
     public TokenBudgetEvaluator(int maxTokens) {
         this.maxTokens = maxTokens;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String name() {
         return "TokenBudget";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shouldStop.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean shouldStop(StopEvaluationContext context) {
         return context != null && context.getTokenUsage() >= maxTokens;
     }

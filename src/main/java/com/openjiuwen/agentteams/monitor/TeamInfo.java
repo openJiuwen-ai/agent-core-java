@@ -9,15 +9,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Summary metadata for a monitored team instance.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-/**
- * Summary metadata for a monitored team instance.
- *
- * @since 1.0
- */
 public class TeamInfo {
     private String teamId;
     private String name;

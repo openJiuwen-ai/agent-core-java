@@ -1,13 +1,13 @@
-package com.openjiuwen.agentteams;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
+package com.openjiuwen.agentteams;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-class I18nCompatibilityTest {
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
 
+class I18nCompatibilityTest {
     @AfterEach
     void resetLanguage() {
         I18n.setLanguage(I18n.Language.CN);
@@ -52,14 +52,12 @@ class I18nCompatibilityTest {
 
     @Test
     void shouldThrowForMissingKey() {
-        assertThatThrownBy(() -> I18n.t("nonexistent.key"))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> I18n.t("nonexistent.key")).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void shouldThrowForNullLanguage() {
-        assertThatThrownBy(() -> I18n.setLanguage(null))
-                .isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> I18n.setLanguage(null)).isInstanceOf(RuntimeException.class);
     }
 
     @Test

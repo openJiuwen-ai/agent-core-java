@@ -17,25 +17,34 @@ import java.util.UUID;
 
 /**
  * Transformer between openjiuwen payloads and A2A protocol payloads.
+ * 
+ * @since 0.1.7
  */
 public final class A2ATransformer {
     private static final Map<String, TaskStatus> STATUS_MAPPING = Map.ofEntries(
             Map.entry("TASK_STATE_UNSPECIFIED", TaskStatus.UNKNOWN),
             Map.entry("TASK_STATE_SUBMITTED", TaskStatus.SUBMITTED),
             Map.entry("TASK_STATE_WORKING", TaskStatus.WORKING),
-            Map.entry("TASK_STATE_COMPLETED", TaskStatus.COMPLETED),
-            Map.entry("TASK_STATE_FAILED", TaskStatus.FAILED),
+            Map.entry("TASK_STATE_COMPLETED", TaskStatus.COMPLETED), Map.entry("TASK_STATE_FAILED", TaskStatus.FAILED),
             Map.entry("TASK_STATE_CANCELED", TaskStatus.CANCELED),
             Map.entry("TASK_STATE_INPUT_REQUIRED", TaskStatus.INPUT_REQUIRED),
             Map.entry("TASK_STATE_REJECTED", TaskStatus.FAILED),
-            Map.entry("TASK_STATE_AUTH_REQUIRED", TaskStatus.INPUT_REQUIRED)
-    );
+            Map.entry("TASK_STATE_AUTH_REQUIRED", TaskStatus.INPUT_REQUIRED));
 
+    /**
+     * A2ATransformer.
+     * 
+     * @since 0.1.7
+     */
     private A2ATransformer() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toA2ARequest.
+     * 
+     * @param request request
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> toA2ARequest(Map<String, Object> request) {
         if (request == null) {
@@ -45,11 +54,8 @@ public final class A2ATransformer {
         message.put("messageId", UUID.randomUUID().toString());
         message.put("role", "ROLE_USER");
 
-        Object sessionId = firstNonNull(
-                request.get("conversation_id"),
-                request.get("sessionId"),
-                request.get("contextId")
-        );
+        Object sessionId =
+            firstNonNull(request.get("conversation_id"), request.get("sessionId"), request.get("contextId"));
         if (sessionId != null) {
             message.put("contextId", String.valueOf(sessionId));
             message.put("taskId", String.valueOf(sessionId));
@@ -82,7 +88,13 @@ public final class A2ATransformer {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toJsonRpcRequest.
+     * 
+     * @param request request
+     * @param method method
+     * @param requestId requestId
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> toJsonRpcRequest(Map<String, Object> request, String method, String requestId) {
         Map<String, Object> envelope = new LinkedHashMap<>();
@@ -94,12 +106,13 @@ public final class A2ATransformer {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromA2AResponse.
+     * 
+     * @param response response
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static AgentResult fromA2AResponse(Map<String, Object> response) {
         if (response == null) {
             return AgentResult.builder().status(TaskStatus.UNKNOWN).build();
@@ -133,21 +146,28 @@ public final class A2ATransformer {
         return AgentResult.builder().status(TaskStatus.UNKNOWN).metadata(response).build();
     }
 
+    /**
+     * fromMessage.
+     * 
+     * @param message message
+     * @return the result
+     * @since 0.1.7
+     */
     private static AgentResult fromMessage(Map<String, Object> message) {
-        Artifact artifact = Artifact.builder()
-                .artifactId("message")
-                .parts(toParts(asList(message.get("parts"))))
-                .metadata(asMap(message.get("metadata")))
-                .build();
-        return AgentResult.builder()
-                .taskId(asString(message.get("taskId")))
-                .sessionId(asString(message.get("contextId")))
-                .status(TaskStatus.COMPLETED)
-                .artifacts(List.of(artifact))
-                .metadata(asMap(message.get("metadata")))
-                .build();
+        Artifact artifact = Artifact.builder().artifactId("message").parts(toParts(asList(message.get("parts"))))
+                .metadata(asMap(message.get("metadata"))).build();
+        return AgentResult.builder().taskId(asString(message.get("taskId")))
+                .sessionId(asString(message.get("contextId"))).status(TaskStatus.COMPLETED).artifacts(List.of(artifact))
+                .metadata(asMap(message.get("metadata"))).build();
     }
 
+    /**
+     * fromTask.
+     * 
+     * @param task task
+     * @return the result
+     * @since 0.1.7
+     */
     private static AgentResult fromTask(Map<String, Object> task) {
         List<Artifact> artifacts = new ArrayList<>();
         for (Object item : asList(task.get("artifacts"))) {
@@ -158,50 +178,61 @@ public final class A2ATransformer {
 
         Map<String, Object> statusMap = asMap(task.get("status"));
         TaskStatus status = mapTaskStatus(asString(statusMap.get("state")));
-        return AgentResult.builder()
-                .taskId(asString(task.get("id")))
-                .sessionId(asString(task.get("contextId")))
-                .status(status)
-                .artifacts(artifacts)
-                .metadata(asMap(task.get("metadata")))
-                .build();
+        return AgentResult.builder().taskId(asString(task.get("id"))).sessionId(asString(task.get("contextId")))
+                .status(status).artifacts(artifacts).metadata(asMap(task.get("metadata"))).build();
     }
 
+    /**
+     * fromStatusUpdate.
+     * 
+     * @param event event
+     * @return the result
+     * @since 0.1.7
+     */
     private static AgentResult fromStatusUpdate(Map<String, Object> event) {
         Map<String, Object> statusMap = asMap(event.get("status"));
-        return AgentResult.builder()
-                .taskId(asString(event.get("taskId")))
-                .sessionId(asString(event.get("contextId")))
-                .status(mapTaskStatus(asString(statusMap.get("state"))))
-                .metadata(asMap(event.get("metadata")))
-                .build();
+        return AgentResult.builder().taskId(asString(event.get("taskId"))).sessionId(asString(event.get("contextId")))
+                .status(mapTaskStatus(asString(statusMap.get("state")))).metadata(asMap(event.get("metadata"))).build();
     }
 
+    /**
+     * fromArtifactUpdate.
+     * 
+     * @param event event
+     * @return the result
+     * @since 0.1.7
+     */
     private static AgentResult fromArtifactUpdate(Map<String, Object> event) {
         List<Artifact> artifacts = new ArrayList<>();
         Map<String, Object> artifact = asMap(event.get("artifact"));
         if (!artifact.isEmpty()) {
             artifacts.add(toArtifact(artifact));
         }
-        return AgentResult.builder()
-                .taskId(asString(event.get("taskId")))
-                .sessionId(asString(event.get("contextId")))
-                .status(TaskStatus.WORKING)
-                .artifacts(artifacts)
-                .metadata(asMap(event.get("metadata")))
-                .build();
+        return AgentResult.builder().taskId(asString(event.get("taskId"))).sessionId(asString(event.get("contextId")))
+                .status(TaskStatus.WORKING).artifacts(artifacts).metadata(asMap(event.get("metadata"))).build();
     }
 
+    /**
+     * toArtifact.
+     * 
+     * @param artifact artifact
+     * @return the result
+     * @since 0.1.7
+     */
     private static Artifact toArtifact(Map<String, Object> artifact) {
         return Artifact.builder()
                 .artifactId(asString(firstNonNull(artifact.get("artifactId"), artifact.get("artifact_id"))))
-                .name(asString(artifact.get("name")))
-                .description(asString(artifact.get("description")))
-                .parts(toParts(asList(artifact.get("parts"))))
-                .metadata(asMap(artifact.get("metadata")))
-                .build();
+                .name(asString(artifact.get("name"))).description(asString(artifact.get("description")))
+                .parts(toParts(asList(artifact.get("parts")))).metadata(asMap(artifact.get("metadata"))).build();
     }
 
+    /**
+     * toParts.
+     * 
+     * @param parts parts
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Part> toParts(List<Object> parts) {
         List<Part> result = new ArrayList<>();
         for (Object item : parts) {
@@ -221,15 +252,18 @@ public final class A2ATransformer {
                 type = "raw";
                 content = String.valueOf(typedPart.get("raw"));
             }
-            result.add(Part.builder()
-                    .type(type)
-                    .content(content)
-                    .metadata(asMap(typedPart.get("metadata")))
-                    .build());
+            result.add(Part.builder().type(type).content(content).metadata(asMap(typedPart.get("metadata"))).build());
         }
         return result;
     }
 
+    /**
+     * mapTaskStatus.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static TaskStatus mapTaskStatus(String value) {
         if (value == null || value.isBlank()) {
             return TaskStatus.UNKNOWN;
@@ -238,6 +272,13 @@ public final class A2ATransformer {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * asMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> asMap(Object value) {
         if (value instanceof Map<?, ?> map) {
             return new LinkedHashMap<>((Map<String, Object>) map);
@@ -246,6 +287,13 @@ public final class A2ATransformer {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * asList.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> asList(Object value) {
         if (value instanceof List<?> list) {
             return new ArrayList<>((List<Object>) list);
@@ -253,10 +301,26 @@ public final class A2ATransformer {
         return new ArrayList<>();
     }
 
+    /**
+     * asString.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String asString(Object value) {
         return value != null ? String.valueOf(value) : null;
     }
 
+    /**
+     * firstNonNull.
+     * 
+     * @param first first
+     * @param second second
+     * @param third third
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object firstNonNull(Object first, Object second, Object third) {
         if (first != null) {
             return first;
@@ -267,6 +331,14 @@ public final class A2ATransformer {
         return third;
     }
 
+    /**
+     * firstNonNull.
+     * 
+     * @param first first
+     * @param second second
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object firstNonNull(Object first, Object second) {
         return first != null ? first : second;
     }

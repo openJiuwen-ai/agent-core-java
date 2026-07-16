@@ -1,30 +1,8 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.embedding;
-
-import com.alibaba.dashscope.embeddings.MultiModalEmbedding;
-import com.alibaba.dashscope.embeddings.MultiModalEmbeddingItemBase;
-import com.alibaba.dashscope.embeddings.MultiModalEmbeddingItemImage;
-import com.alibaba.dashscope.embeddings.MultiModalEmbeddingItemText;
-import com.alibaba.dashscope.embeddings.MultiModalEmbeddingOutput;
-import com.alibaba.dashscope.embeddings.MultiModalEmbeddingParam;
-import com.alibaba.dashscope.embeddings.MultiModalEmbeddingResult;
-import com.alibaba.dashscope.embeddings.MultiModalEmbeddingResultItem;
-import com.alibaba.dashscope.exception.ApiException;
-import com.alibaba.dashscope.common.DashScopeResult;
-import com.alibaba.dashscope.utils.JsonUtils;
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
-import com.openjiuwen.core.retrieval.common.MultimodalDocument;
-import org.junit.jupiter.api.Test;
-
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -36,16 +14,38 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class DashscopeEmbeddingTest {
+import com.alibaba.dashscope.common.DashScopeResult;
+import com.alibaba.dashscope.embeddings.MultiModalEmbedding;
+import com.alibaba.dashscope.embeddings.MultiModalEmbeddingItemBase;
+import com.alibaba.dashscope.embeddings.MultiModalEmbeddingItemImage;
+import com.alibaba.dashscope.embeddings.MultiModalEmbeddingItemText;
+import com.alibaba.dashscope.embeddings.MultiModalEmbeddingOutput;
+import com.alibaba.dashscope.embeddings.MultiModalEmbeddingParam;
+import com.alibaba.dashscope.embeddings.MultiModalEmbeddingResult;
+import com.alibaba.dashscope.embeddings.MultiModalEmbeddingResultItem;
+import com.alibaba.dashscope.exception.ApiException;
+import com.alibaba.dashscope.utils.JsonUtils;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
+import com.openjiuwen.core.retrieval.common.MultimodalDocument;
 
+import org.junit.jupiter.api.Test;
+
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+class DashscopeEmbeddingTest {
     @Test
     void initKeepsDashscopeFieldsAndDimension() {
-        EmbeddingConfig config = new EmbeddingConfig(
-                "test-model",
-                "https://dashscope.aliyuncs.com/api/v1/",
-                "test-api-key");
+        EmbeddingConfig config =
+            new EmbeddingConfig("test-model", "https://dashscope.aliyuncs.com/api/v1/", "test-api-key");
 
-        DashscopeEmbedding model = new DashscopeEmbedding(config, 120, 5, null, 16, 25, 256, mock(MultiModalEmbedding.class));
+        DashscopeEmbedding model =
+            new DashscopeEmbedding(config, 120, 5, null, 16, 25, 256, mock(MultiModalEmbedding.class));
 
         assertEquals("test-model", model.modelName);
         assertEquals("test-api-key", model.apiKey);
@@ -60,15 +60,9 @@ class DashscopeEmbeddingTest {
 
     @Test
     void initWithoutDimensionDoesNotSetMatryoshkaFlag() {
-        DashscopeEmbedding model = new DashscopeEmbedding(
-                new EmbeddingConfig("test-model", "https://dashscope.aliyuncs.com/api/v1/"),
-                60,
-                3,
-                null,
-                8,
-                50,
-                null,
-                mock(MultiModalEmbedding.class));
+        DashscopeEmbedding model =
+            new DashscopeEmbedding(new EmbeddingConfig("test-model", "https://dashscope.aliyuncs.com/api/v1/"), 60, 3,
+                    null, 8, 50, null, mock(MultiModalEmbedding.class));
 
         assertFalse(model.isMatryoshkaDimension());
         assertFalse(model.getRequestParams().containsKey("dimension"));
@@ -79,14 +73,13 @@ class DashscopeEmbeddingTest {
         DashscopeEmbedding model = new DashscopeEmbedding(
                 new EmbeddingConfig("test-model", "https://dashscope.aliyuncs.com/api/v1/", "test-key"));
 
-        List<List<Float>> embeddings = model.parseEmbeddings(com.fasterxml.jackson.databind.json.JsonMapper.builder()
-                .build()
-                .readTree("""
-                        {"output":{"embeddings":[
-                          {"index":1,"embedding":[0.2,0.3]},
-                          {"index":0,"embedding":[0.1,0.4]}
-                        ]}}
-                        """));
+        List<List<Float>> embeddings =
+            model.parseEmbeddings(com.fasterxml.jackson.databind.json.JsonMapper.builder().build().readTree("""
+                    {"output":{"embeddings":[
+                      {"index":1,"embedding":[0.2,0.3]},
+                      {"index":0,"embedding":[0.1,0.4]}
+                    ]}}
+                    """));
 
         assertEquals(List.of(0.1f, 0.4f), embeddings.get(0));
         assertEquals(List.of(0.2f, 0.3f), embeddings.get(1));
@@ -99,7 +92,8 @@ class DashscopeEmbeddingTest {
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
         assertThrows(BaseError.class, () -> model.parseEmbeddings(mapper.readTree("{\"output\":{\"embeddings\":[]}}")));
-        assertThrows(BaseError.class, () -> model.parseEmbeddings(mapper.readTree("{\"output\":{\"other\":\"value\"}}")));
+        assertThrows(BaseError.class,
+                () -> model.parseEmbeddings(mapper.readTree("{\"output\":{\"other\":\"value\"}}")));
     }
 
     @Test
@@ -128,18 +122,11 @@ class DashscopeEmbeddingTest {
     @Test
     void getEmbeddingsCallsOfficialDashscopeSdkAndRetriesApiException() throws Exception {
         MultiModalEmbedding client = mock(MultiModalEmbedding.class);
-        when(client.call(any(MultiModalEmbeddingParam.class)))
-                .thenThrow(new ApiException(new RuntimeException("boom")))
+        when(client.call(any(MultiModalEmbeddingParam.class))).thenThrow(new ApiException(new RuntimeException("boom")))
                 .thenReturn(result(List.of(item(0, List.of(0.1, 0.2)))));
         DashscopeEmbedding model = new DashscopeEmbedding(
-                new EmbeddingConfig("test-model", "https://dashscope.aliyuncs.com/api/v1/", "test-key"),
-                60,
-                2,
-                null,
-                8,
-                50,
-                256,
-                client);
+                new EmbeddingConfig("test-model", "https://dashscope.aliyuncs.com/api/v1/", "test-key"), 60, 2, null, 8,
+                50, 256, client);
 
         List<List<Float>> embeddings = model.getDashscopeEmbeddings(List.of("hello"), Map.of());
 
@@ -187,17 +174,11 @@ class DashscopeEmbeddingTest {
         when(serverError.statusCode()).thenReturn(500);
         when(ok.statusCode()).thenReturn(200);
         when(ok.body()).thenReturn("{\"embeddings\":[[0.1,0.2]]}");
-        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(serverError)
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(serverError)
                 .thenReturn(ok);
-        APIEmbedding model = new APIEmbedding(
-                new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key"),
-                60,
-                2,
-                null,
-                8,
-                50,
-                httpClient);
+        APIEmbedding model =
+            new APIEmbedding(new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key"), 60,
+                    2, null, 8, 50, httpClient);
 
         List<Float> embedding = model.embedQuery("test");
 
@@ -207,8 +188,7 @@ class DashscopeEmbeddingTest {
 
     @Test
     void dashscopeDocumentInputMatchesPythonShape() {
-        MultimodalDocument doc = new MultimodalDocument()
-                .addField("text", "Hello")
+        MultimodalDocument doc = new MultimodalDocument().addField("text", "Hello")
                 .addField("image", "https://openjiuwen.com/img/jiuwen_logo.png")
                 .addField("image", "data:image/png;base64,AA==");
 
@@ -216,15 +196,13 @@ class DashscopeEmbeddingTest {
 
         assertEquals("Hello", input.get("text"));
         assertFalse(input.containsKey("image"));
-        assertEquals(
-                List.of("https://openjiuwen.com/img/jiuwen_logo.png", "data:image/png;base64,AA=="),
+        assertEquals(List.of("https://openjiuwen.com/img/jiuwen_logo.png", "data:image/png;base64,AA=="),
                 input.get("multi_images"));
     }
 
     @Test
     void toDashscopeItemsUsesOfficialSdkItemTypes() {
-        MultimodalDocument doc = new MultimodalDocument()
-                .addField("text", "Hello")
+        MultimodalDocument doc = new MultimodalDocument().addField("text", "Hello")
                 .addField("image", "https://openjiuwen.com/img/jiuwen_logo.png")
                 .addField("image", "data:image/png;base64,AA==");
 
@@ -238,24 +216,19 @@ class DashscopeEmbeddingTest {
 
     @Test
     void dashscopeDocumentInputRejectsUnsupportedAudioAndBase64Video() {
-        assertThrows(BaseError.class, () -> new MultimodalDocument()
-                .addField("audio", "data:audio/wav;base64,AA==")
-                .getDashscopeInput());
-        assertThrows(BaseError.class, () -> new MultimodalDocument()
-                .addField("video", "data:video/mp4;base64,AA==")
-                .getDashscopeInput());
+        assertThrows(BaseError.class,
+                () -> new MultimodalDocument().addField("audio", "data:audio/wav;base64,AA==").getDashscopeInput());
+        assertThrows(BaseError.class,
+                () -> new MultimodalDocument().addField("video", "data:video/mp4;base64,AA==").getDashscopeInput());
     }
 
     @Test
     void dashscopeDocumentInputRejectsDuplicateNonImageFields() {
-        assertThrows(BaseError.class, () -> new MultimodalDocument()
-                .addField("text", "one")
-                .addField("text", "two")
-                .getDashscopeInput());
+        assertThrows(BaseError.class,
+                () -> new MultimodalDocument().addField("text", "one").addField("text", "two").getDashscopeInput());
     }
 
     private static final class StubDashscopeEmbedding extends DashscopeEmbedding {
-
         private Object lastInput;
         private final List<List<Object>> calls = new java.util.concurrent.CopyOnWriteArrayList<>();
 

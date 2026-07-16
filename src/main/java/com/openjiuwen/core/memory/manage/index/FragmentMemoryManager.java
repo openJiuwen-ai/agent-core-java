@@ -17,16 +17,33 @@ import com.openjiuwen.core.memory.manage.update.MemoryStatus;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.AbstractMap;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Manages fragment (user profile) memory CRUD with encryption and vector storage.
+ * 
+ * @since 0.1.7
  */
 public class FragmentMemoryManager extends BaseMemoryManager {
-
-    public static final int UPDATE_CHECK_OLD_MEMORY_NUM = 5;
     /**
-     * Auto-generated for codecheck compliance.
+     * UPDATE_CHECK_OLD_MEMORY_NUM.
+     * 
+     * @since 0.1.7
+     */
+    public static final int UPDATE_CHECK_OLD_MEMORY_NUM = 5;
+
+    /**
+     * UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD.
+     * 
+     * @since 0.1.7
      */
     public static final double UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD = 0.75;
     private static final List<String> FRAGMENT_MEMORY_TYPES = UserMemStore.FRAGMENT_MEMORY_TYPES;
@@ -36,7 +53,12 @@ public class FragmentMemoryManager extends BaseMemoryManager {
     private final byte[] cryptoKey;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * FragmentMemoryManager.
+     * 
+     * @param memStore memStore
+     * @param dataIdGenerator dataIdGenerator
+     * @param cryptoKey cryptoKey
+     * @since 0.1.7
      */
     public FragmentMemoryManager(UserMemStore memStore, DataIdManager dataIdGenerator, byte[] cryptoKey) {
         this.memStore = memStore;
@@ -44,12 +66,19 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         this.cryptoKey = cryptoKey;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addMemories.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memories memories
+     * @param llm llm
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
+    @Override
     public void addMemories(String userId, String scopeId, List<? extends BaseMemoryUnit> memories,
-                             Map.Entry<String, Model> llm, Map<String, Object> kwargs) {
+            Map.Entry<String, Model> llm, Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("add", kwargs);
 
         @SuppressWarnings("unchecked")
@@ -69,13 +98,13 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         Map<String, String> oldMemories = new LinkedHashMap<>();
         Set<String> oldMemIds = new HashSet<>();
         for (String newMem : newMemContent.values()) {
-            List<Map<String, Object>> searchResults = search(userId, scopeId, newMem,
-                    UPDATE_CHECK_OLD_MEMORY_NUM, kwargs);
+            List<Map<String, Object>> searchResults =
+                search(userId, scopeId, newMem, UPDATE_CHECK_OLD_MEMORY_NUM, kwargs);
             if (searchResults != null) {
                 for (Map<String, Object> result : searchResults) {
                     String resultId = String.valueOf(result.getOrDefault("id", ""));
-                    double resultScore = result.get("score") instanceof Number
-                            ? ((Number) result.get("score")).doubleValue() : 0.0;
+                    double resultScore =
+                        result.get("score") instanceof Number ? ((Number) result.get("score")).doubleValue() : 0.0;
                     String resultContent = String.valueOf(result.getOrDefault("mem", ""));
                     if (!resultId.isEmpty() && resultScore > UPDATE_CHECK_OLD_MEMORY_RELEVANCE_THRESHOLD
                             && !oldMemIds.contains(resultId)) {
@@ -112,8 +141,8 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         // Step 3: Use MemChecker to analyze for redundancy/conflicts
         MemUpdateChecker checker = new MemUpdateChecker();
         List<MemoryActionItem> actionItems = checker.check(newMemContent, oldMemories, llm);
-        MEMORY_LOGGER.info("[{}] Memory check completed, got {} action items",
-                LogEventType.MEMORY_PROCESS, actionItems.size());
+        MEMORY_LOGGER.info("[{}] Memory check completed, got {} action items", LogEventType.MEMORY_PROCESS,
+                actionItems.size());
 
         // Step 4: Execute actions
         for (MemoryActionItem actionItem : actionItems) {
@@ -124,16 +153,24 @@ public class FragmentMemoryManager extends BaseMemoryManager {
                 }
             } else if (actionItem.getStatus() == MemoryStatus.DELETE) {
                 delete(userId, scopeId, actionItem.getId(), kwargs);
+            } else {
+                // no-op
             }
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * update.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @param newMemory newMemory
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
-    public void update(String userId, String scopeId, String memId, String newMemory,
-                        Map<String, Object> kwargs) {
+    @Override
+    public void update(String userId, String scopeId, String memId, String newMemory, Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("update", kwargs);
         String time = OffsetDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         String encryptedMemory = encryptMemoryIfNeeded(cryptoKey, newMemory);
@@ -148,19 +185,24 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         semanticStore.addDocs(List.of(new AbstractMap.SimpleEntry<>(memId, newMemory)), tableName);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * search.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param query query
+     * @param topK topK
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<Map<String, Object>> search(String userId, String scopeId, String query, int topK,
-                                             Map<String, Object> kwargs) {
+            Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("search", kwargs);
-        String memType = kwargs != null && kwargs.containsKey("mem_type")
-                ? String.valueOf(kwargs.get("mem_type"))
-                : null;
-        List<String> memTypes = memType == null || memType.isBlank()
-                ? FRAGMENT_MEMORY_TYPES
-                : List.of(memType);
+        String memType =
+            kwargs != null && kwargs.containsKey("mem_type") ? String.valueOf(kwargs.get("mem_type")) : null;
+        List<String> memTypes = memType == null || memType.isBlank() ? FRAGMENT_MEMORY_TYPES : List.of(memType);
 
         // Step 1: Vector search
         List<String> memIds = new ArrayList<>();
@@ -209,19 +251,35 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         }
 
         // Sort by score descending and limit to topK
-        combinedRes.sort((a, b) -> Double.compare(
-                ((Number) b.getOrDefault("score", 0.0)).doubleValue(),
-                ((Number) a.getOrDefault("score", 0.0)).doubleValue()));
+        combinedRes.sort((a, b) -> Double.compare(scoreOf(b), scoreOf(a)));
         if (combinedRes.size() > topK) {
             return new ArrayList<>(combinedRes.subList(0, topK));
         }
         return combinedRes;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * scoreOf.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
      */
+    private static double scoreOf(Map<String, Object> item) {
+        Object score = item.getOrDefault("score", 0.0);
+        return score instanceof Number number ? number.doubleValue() : 0.0;
+    }
+
+    /**
+     * get.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @return the result
+     * @since 0.1.7
+     */
+    @Override
     public Map<String, Object> get(String userId, String scopeId, String memId) {
         Map<String, Object> result = memStore.get(userId, scopeId, memId);
         if (result != null && result.containsKey("mem")) {
@@ -230,25 +288,30 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         return result;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * delete.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean delete(String userId, String scopeId, String memId, Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("delete", kwargs);
         Map<String, Object> data = memStore.get(userId, scopeId, memId);
         if (data == null) {
-            MEMORY_LOGGER.error("[{}] Delete fragment failed, mem not found. memId={}",
-                    LogEventType.MEMORY_STORE, memId);
+            MEMORY_LOGGER.error("[{}] Delete fragment failed, mem not found. memId={}", LogEventType.MEMORY_STORE,
+                    memId);
             return false;
         }
         String memType = kwargs != null && kwargs.containsKey("mem_type")
                 ? String.valueOf(kwargs.get("mem_type"))
                 : String.valueOf(data.get("mem_type"));
         memStore.delete(userId, scopeId, memId);
-        List<String> memTypes = memType == null || memType.isBlank()
-                ? FRAGMENT_MEMORY_TYPES
-                : List.of(memType);
+        List<String> memTypes = memType == null || memType.isBlank() ? FRAGMENT_MEMORY_TYPES : List.of(memType);
         for (String currentType : memTypes) {
             String tableName = MemoryUtils.generateIdxName(userId, scopeId, currentType);
             semanticStore.deleteDocs(List.of(memId), tableName);
@@ -256,10 +319,16 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteByUserId.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean deleteByUserId(String userId, String scopeId, Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("delete", kwargs);
         List<Map<String, Object>> data = new ArrayList<>();
@@ -287,10 +356,15 @@ public class FragmentMemoryManager extends BaseMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listFragmentMemories.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memType memType
+     * @return the result
+     * @since 0.1.7
      */
-    public List<Map<String, Object>> listFragmentMemories(String userId, String scopeId,
-                                                           MemoryType memType) {
+    public List<Map<String, Object>> listFragmentMemories(String userId, String scopeId, MemoryType memType) {
         List<String> memTypes;
         if (memType == null) {
             memTypes = FRAGMENT_MEMORY_TYPES;
@@ -328,38 +402,41 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
     // ---- Private Helpers ----
 
-    private void addMemoryToStore(String userId, String scopeId,
-                                   FragmentMemoryUnit memory, SemanticStore semanticStore) {
+    /**
+     * addMemoryToStore.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memory memory
+     * @param semanticStore semanticStore
+     * @since 0.1.7
+     */
+    private void addMemoryToStore(String userId, String scopeId, FragmentMemoryUnit memory,
+            SemanticStore semanticStore) {
         if (userId == null || userId.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                    "memory_type", memory.getMemType().getValue(),
-                    "error_msg", "add operation must pass user_id");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
+                    memory.getMemType().getValue(), "error_msg", "add operation must pass user_id");
         }
         // Validate userId: reject overly long or control-character IDs
         if (userId.length() > 256) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                    "memory_type", memory.getMemType().getValue(),
-                    "error_msg", "user_id too long, max 256 chars");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
+                    memory.getMemType().getValue(), "error_msg", "user_id too long, max 256 chars");
         }
         if (userId.chars().anyMatch(c -> c < 0x20 && c != '\t')) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                    "memory_type", memory.getMemType().getValue(),
-                    "error_msg", "user_id contains invalid control characters");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
+                    memory.getMemType().getValue(), "error_msg", "user_id contains invalid control characters");
         }
         if (scopeId == null || scopeId.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                    "memory_type", memory.getMemType().getValue(),
-                    "error_msg", "add operation must pass scope_id");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
+                    memory.getMemType().getValue(), "error_msg", "add operation must pass scope_id");
         }
         if (memory.getContent() == null || memory.getContent().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                    "memory_type", memory.getMemType().getValue(),
-                    "error_msg", "add operation must pass content");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
+                    memory.getMemType().getValue(), "error_msg", "add operation must pass content");
         }
         if (memory.getMemType() == null || !FRAGMENT_MEMORY_TYPES.contains(memory.getMemType().getValue())) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                    "memory_type", String.valueOf(memory.getMemType()),
-                    "error_msg", "add operation must pass fragment memory type");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
+                    String.valueOf(memory.getMemType()), "error_msg", "add operation must pass fragment memory type");
         }
 
         String memId = dataIdGenerator.generateNextId(userId);
@@ -379,18 +456,23 @@ public class FragmentMemoryManager extends BaseMemoryManager {
 
         // Add to vector store (use unencrypted content for embedding)
         String tableName = MemoryUtils.generateIdxName(userId, scopeId, memory.getMemType().getValue());
-        boolean vectorSuccess = semanticStore.addDocs(
-                List.of(new AbstractMap.SimpleEntry<>(memId, memory.getContent())),
-                tableName
-        );
+        boolean vectorSuccess =
+            semanticStore.addDocs(List.of(new AbstractMap.SimpleEntry<>(memId, memory.getContent())), tableName);
         if (!vectorSuccess) {
             memStore.delete(userId, scopeId, memId);
-            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                    "memory_type", memory.getMemType().getValue(),
-                    "error_msg", "add vector store failed");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type",
+                    memory.getMemType().getValue(), "error_msg", "add vector store failed");
         }
     }
 
+    /**
+     * getSemanticStore.
+     * 
+     * @param operationType operationType
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     private SemanticStore getSemanticStore(String operationType, Map<String, Object> kwargs) {
         SemanticStore store = kwargs != null ? (SemanticStore) kwargs.get("semantic_store") : null;
         if (store == null) {
@@ -400,9 +482,8 @@ public class FragmentMemoryManager extends BaseMemoryManager {
                 case "search" -> StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR;
                 default -> StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR;
             };
-            throw ErrorHelper.buildError(code,
-                    "memory_type", "fragment_memory",
-                    "error_msg", "semantic_store is required");
+            throw ErrorHelper.buildError(code, "memory_type", "fragment_memory", "error_msg",
+                    "semantic_store is required");
         }
         return store;
     }

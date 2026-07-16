@@ -13,29 +13,40 @@ import java.util.Map;
  * In-memory store backed by a HashMap.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.store.MemoryStore}.
+ * 
+ * @since 0.1.7
  */
 public class MemoryStore extends Store {
-
     private Map<String, Object> data = new HashMap<>();
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * read.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object read(Object key) {
         return SessionUtils.getBySchema(key, data);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * write.
+     * 
+     * @param value value
+     * @since 0.1.7
      */
+    @Override
     public void write(Map<String, Object> value) {
         SessionUtils.updateDict(value, data);
     }
 
     /**
      * Get the underlying data map.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getData() {
         return data;

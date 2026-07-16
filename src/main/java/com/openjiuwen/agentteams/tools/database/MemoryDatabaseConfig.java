@@ -9,6 +9,11 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * MemoryDatabaseConfig.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
@@ -19,12 +24,14 @@ public class MemoryDatabaseConfig {
     @Builder.Default
     private int dbTimeout = 30;
 
+    /**
+     * toDatabaseConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public DatabaseConfig toDatabaseConfig() {
-        return DatabaseConfig.builder()
-                .dbType(DatabaseType.MEMORY)
-                .connectionString(":memory:")
-                .dbTimeout(dbTimeout)
-                .isDbEnableWal(false)
-                .build();
+        return DatabaseConfig.builder().dbType(DatabaseType.MEMORY).connectionString(":memory:").dbTimeout(dbTimeout)
+                .isDbEnableWal(false).build();
     }
 }

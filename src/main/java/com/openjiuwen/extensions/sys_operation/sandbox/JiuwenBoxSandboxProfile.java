@@ -12,31 +12,42 @@ import java.util.Map;
 
 /**
  * JiuwenBox sandbox provider preset for Java sandbox gateway configuration.
+ * 
+ * @since 0.1.7
  */
 public final class JiuwenBoxSandboxProfile {
+    /**
+     * JiuwenBoxSandboxProfile.
+     * 
+     * @since 0.1.7
+     */
     private JiuwenBoxSandboxProfile() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @param gatewayUrl gatewayUrl
+     * @return the result
+     * @since 0.1.7
      */
     public static SandboxGatewayConfig config(String gatewayUrl) {
         return config(gatewayUrl, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @param gatewayUrl gatewayUrl
+     * @param extraParams extraParams
+     * @return the result
+     * @since 0.1.7
      */
     public static SandboxGatewayConfig config(String gatewayUrl, Map<String, Object> extraParams) {
         return SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .gatewayUrl(gatewayUrl)
-                        .baseUrl(gatewayUrl)
-                        .sandboxType("jiuwenbox")
-                        .extraParams(new LinkedHashMap<>(extraParams))
+                .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy").gatewayUrl(gatewayUrl)
+                        .baseUrl(gatewayUrl).sandboxType("jiuwenbox").extraParams(new LinkedHashMap<>(extraParams))
                         .build())
-                .gatewayUrl(gatewayUrl)
-                .build();
+                .gatewayUrl(gatewayUrl).build();
     }
 }

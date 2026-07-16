@@ -8,12 +8,15 @@ import com.openjiuwen.autoharness.orchestrator.AutoHarnessOrchestrator;
 
 /**
  * Public class SessionContext used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class SessionContext extends BaseExecutionContext {
     /**
-     * Auto-generated for codecheck compliance.
+     * SessionContext.
+     * 
+     * @param orchestrator orchestrator
+     * @since 0.1.7
      */
     public SessionContext(AutoHarnessOrchestrator orchestrator) {
         super(orchestrator);

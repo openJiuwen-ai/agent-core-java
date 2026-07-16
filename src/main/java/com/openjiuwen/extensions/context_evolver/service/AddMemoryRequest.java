@@ -6,9 +6,10 @@ package com.openjiuwen.extensions.context_evolver.service;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.service.task_memory_service.AddMemoryRequest}.
+ * 
+ * @since 0.1.7
  */
 public class AddMemoryRequest {
-
     private String content;
     private String query;
     private String whenToUse;
@@ -18,112 +19,159 @@ public class AddMemoryRequest {
     private Boolean label;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AddMemoryRequest.
+     * 
+     * @since 0.1.7
      */
     public AddMemoryRequest() {
         // Default constructor
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AddMemoryRequest.
+     * 
+     * @param content content
+     * @since 0.1.7
      */
     public AddMemoryRequest(String content) {
         this.content = content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getContent() {
         return content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setContent.
+     * 
+     * @param content content
+     * @since 0.1.7
      */
     public void setContent(String content) {
         this.content = content;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getQuery.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getQuery() {
         return query;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setQuery.
+     * 
+     * @param query query
+     * @since 0.1.7
      */
     public void setQuery(String query) {
         this.query = query;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWhenToUse.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getWhenToUse() {
         return whenToUse;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWhenToUse.
+     * 
+     * @param whenToUse whenToUse
+     * @since 0.1.7
      */
     public void setWhenToUse(String whenToUse) {
         this.whenToUse = whenToUse;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTitle.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTitle() {
         return title;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTitle.
+     * 
+     * @param title title
+     * @since 0.1.7
      */
     public void setTitle(String title) {
         this.title = title;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDescription() {
         return description;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDescription.
+     * 
+     * @param description description
+     * @since 0.1.7
      */
     public void setDescription(String description) {
         this.description = description;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSection.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSection() {
         return section;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSection.
+     * 
+     * @param section section
+     * @since 0.1.7
      */
     public void setSection(String section) {
         this.section = section != null && !section.isBlank() ? section : "general";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLabel.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Boolean getLabel() {
         return label;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLabel.
+     * 
+     * @param label label
+     * @since 0.1.7
      */
     public void setLabel(Boolean label) {
         this.label = label;

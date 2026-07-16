@@ -6,8 +6,8 @@ package com.openjiuwen.agentteams.teamworkspace;
 
 /**
  * Public class WorkspaceLockRequest used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class WorkspaceLockRequest {
     private String teamName;
@@ -18,107 +18,157 @@ public class WorkspaceLockRequest {
     private Integer timeoutSeconds;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTeamName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTeamName() {
         return teamName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTeamName.
+     * 
+     * @param teamName teamName
+     * @since 0.1.7
      */
     public void setTeamName(String teamName) {
         this.teamName = teamName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMemberName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getMemberName() {
         return memberName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMemberName.
+     * 
+     * @param memberName memberName
+     * @since 0.1.7
      */
     public void setMemberName(String memberName) {
         this.memberName = memberName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAction.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getAction() {
         return action;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setAction.
+     * 
+     * @param action action
+     * @since 0.1.7
      */
     public void setAction(String action) {
         this.action = action;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFilePath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getFilePath() {
         return filePath;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setFilePath.
+     * 
+     * @param filePath filePath
+     * @since 0.1.7
      */
     public void setFilePath(String filePath) {
         this.filePath = filePath;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getHolderName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getHolderName() {
         return holderName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setHolderName.
+     * 
+     * @param holderName holderName
+     * @since 0.1.7
      */
     public void setHolderName(String holderName) {
         this.holderName = holderName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTimeoutSeconds.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Integer getTimeoutSeconds() {
         return timeoutSeconds;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTimeoutSeconds.
+     * 
+     * @param timeoutSeconds timeoutSeconds
+     * @since 0.1.7
      */
     public void setTimeoutSeconds(Integer timeoutSeconds) {
         this.timeoutSeconds = timeoutSeconds;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static final class Builder {
         private final WorkspaceLockRequest request = new WorkspaceLockRequest();
 
+        /**
+         * Builder.
+         * 
+         * @since 0.1.7
+         */
         private Builder() {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * teamName.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
          */
         public Builder teamName(String teamName) {
             request.setTeamName(teamName);
@@ -126,7 +176,11 @@ public class WorkspaceLockRequest {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * memberName.
+         * 
+         * @param memberName memberName
+         * @return the result
+         * @since 0.1.7
          */
         public Builder memberName(String memberName) {
             request.setMemberName(memberName);
@@ -134,7 +188,11 @@ public class WorkspaceLockRequest {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * action.
+         * 
+         * @param action action
+         * @return the result
+         * @since 0.1.7
          */
         public Builder action(String action) {
             request.setAction(action);
@@ -142,7 +200,11 @@ public class WorkspaceLockRequest {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * filePath.
+         * 
+         * @param filePath filePath
+         * @return the result
+         * @since 0.1.7
          */
         public Builder filePath(String filePath) {
             request.setFilePath(filePath);
@@ -150,7 +212,11 @@ public class WorkspaceLockRequest {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * holderName.
+         * 
+         * @param holderName holderName
+         * @return the result
+         * @since 0.1.7
          */
         public Builder holderName(String holderName) {
             request.setHolderName(holderName);
@@ -158,7 +224,11 @@ public class WorkspaceLockRequest {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * timeoutSeconds.
+         * 
+         * @param timeoutSeconds timeoutSeconds
+         * @return the result
+         * @since 0.1.7
          */
         public Builder timeoutSeconds(Integer timeoutSeconds) {
             request.setTimeoutSeconds(timeoutSeconds);
@@ -166,7 +236,10 @@ public class WorkspaceLockRequest {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public WorkspaceLockRequest build() {
             return request;

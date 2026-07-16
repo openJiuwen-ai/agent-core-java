@@ -15,19 +15,22 @@ import com.openjiuwen.dev_tools.tune.optimizer.BaseOptimizer;
 import com.openjiuwen.dev_tools.tune.optimizer.JointOptimizer;
 import com.openjiuwen.dev_tools.tune.optimizer.TextualParameter;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
  * Trainer for prompt optimization.
- *
- * <p>Mirrors Python's {@code Trainer} in {@code openjiuwen.dev_tools.tune.trainer.trainer}.
+ * <p>
+ * Mirrors Python's {@code Trainer} in {@code openjiuwen.dev_tools.tune.trainer.trainer}.
+ * 
+ * @since 0.1.7
  */
 public class Trainer {
-
     private static final int DEFAULT_CANDIDATES_SAMPLE_NUM = 6;
 
     private final BaseOptimizer optimizer;
@@ -38,10 +41,12 @@ public class Trainer {
 
     /**
      * Creates a Trainer.
-     *
-     * @param optimizer the optimizer
+     * 
      * @param evaluator the evaluator
-     * @param kwargs additional options (num_parallel, early_stop_score)
+     * @param optimizer the optimizer
+     * @param numParallel numParallel
+     * @param earlyStopScore earlyStopScore
+     * @since 0.1.7
      */
     public Trainer(DefaultEvaluator evaluator, JointOptimizer optimizer, int numParallel, double earlyStopScore) {
         validateLegacyRange(numParallel, "num_parallel", TuneConstant.MIN_PARALLEL_NUM, TuneConstant.MAX_PARALLEL_NUM);
@@ -54,53 +59,74 @@ public class Trainer {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Trainer.
+     * 
+     * @param optimizer optimizer
+     * @param evaluator evaluator
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
     public Trainer(BaseOptimizer optimizer, BaseEvaluator evaluator, Map<String, Object> kwargs) {
         this.optimizer = optimizer;
         this.evaluator = evaluator;
-        
+
         Map<String, Object> options = kwargs != null ? kwargs : new HashMap<>();
         this.numParallel = (int) options.getOrDefault("num_parallel", TuneConstant.DEFAULT_PARALLEL_NUM);
-        TuneUtils.validateDigitalParameter(this.numParallel, "num_parallel",
-                TuneConstant.MIN_PARALLEL_NUM, TuneConstant.MAX_PARALLEL_NUM);
-        
+        TuneUtils.validateDigitalParameter(this.numParallel, "num_parallel", TuneConstant.MIN_PARALLEL_NUM,
+                TuneConstant.MAX_PARALLEL_NUM);
+
         this.earlyStopScore = (double) options.getOrDefault("early_stop_score", TuneConstant.DEFAULT_EARLY_STOP_SCORE);
         TuneUtils.validateDigitalParameter(this.earlyStopScore, "early_stop_score", 0.0, 1.0);
-        
+
         this.callbacks = new Callbacks();
     }
 
     /**
      * Creates a Trainer with default options.
+     * 
+     * @param optimizer optimizer
+     * @param evaluator evaluator
+     * @since 0.1.7
      */
     public Trainer(BaseOptimizer optimizer, BaseEvaluator evaluator) {
         this(optimizer, evaluator, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEvaluator.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public DefaultEvaluator getEvaluator() {
         return (DefaultEvaluator) evaluator;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOptimizer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public JointOptimizer getOptimizer() {
         return (JointOptimizer) optimizer;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNumParallel.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getNumParallel() {
         return numParallel;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEarlyStopScore.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public double getEarlyStopScore() {
         return earlyStopScore;
@@ -108,12 +134,13 @@ public class Trainer {
 
     /**
      * Trains the agent.
-     *
+     * 
      * @param agent the agent to train
      * @param trainCases the training cases
      * @param valCases the validation cases (optional)
      * @param kwargs additional options (num_iterations)
      * @return the trained agent
+     * @since 0.1.7
      */
     public BaseAgent train(BaseAgent agent, CaseLoader trainCases, CaseLoader valCases, Map<String, Object> kwargs) {
         if (!checkTrainable(agent)) {
@@ -156,10 +183,8 @@ public class Trainer {
                 optimizer.backward(initialResult.evaluatedCases());
                 optimizer.update();
 
-                var searchResult = searcher.searchBest(
-                        agent, progress.getBestScore(), currentParams,
-                        List.of(getLlmCalls(agent))
-                );
+                var searchResult =
+                    searcher.searchBest(agent, progress.getBestScore(), currentParams, List.of(getLlmCalls(agent)));
 
                 if (searchResult.score() > progress.getBestBatchScore()) {
                     progress.setBestBatchScore(searchResult.score());
@@ -189,10 +214,11 @@ public class Trainer {
 
     /**
      * Evaluates the agent.
-     *
+     * 
      * @param agent the agent to evaluate
      * @param cases the cases
      * @return the evaluation result
+     * @since 0.1.7
      */
     public EvalResult evaluate(BaseAgent agent, CaseLoader cases) {
         List<Case> caseList = cases.getCases();
@@ -202,25 +228,31 @@ public class Trainer {
 
         List<Map<String, Object>> predicts = predict(agent, cases);
         List<EvaluatedCase> evaluatedCases = evaluator.batchEvaluate(caseList, predicts);
-        
-        double score = evaluatedCases.isEmpty() ? 0.0 :
-                evaluatedCases.stream().mapToDouble(EvaluatedCase::getScore).average().orElse(0.0);
-        
+
+        double score = evaluatedCases.isEmpty()
+                ? 0.0
+                : evaluatedCases.stream().mapToDouble(EvaluatedCase::getScore).average().orElse(0.0);
+
         return new EvalResult(score, evaluatedCases);
     }
 
     /**
      * Predicts outputs for cases.
+     * 
+     * @param agent agent
+     * @param cases cases
+     * @return the result
+     * @since 0.1.7
      */
     public List<Map<String, Object>> predict(BaseAgent agent, CaseLoader cases) {
         List<Map<String, Object>> results = new ArrayList<>();
         int workers = Math.min(numParallel, cases.size());
-        
+
         ExecutorService executor = Executors.newFixedThreadPool(workers);
-        
+
         try {
             List<CompletableFuture<Map<String, Object>>> futures = new ArrayList<>();
-            
+
             for (Case case_ : cases.getCases()) {
                 CompletableFuture<Map<String, Object>> future = CompletableFuture.supplyAsync(() -> {
                     try {
@@ -235,19 +267,22 @@ public class Trainer {
                 }, executor);
                 futures.add(future);
             }
-            
+
             for (CompletableFuture<Map<String, Object>> future : futures) {
                 results.add(future.join());
             }
         } finally {
             executor.shutdown();
         }
-        
+
         return results;
     }
 
     /**
      * Sets callbacks.
+     * 
+     * @param callbacks callbacks
+     * @since 0.1.7
      */
     public void setCallbacks(Callbacks callbacks) {
         if (callbacks == null) {
@@ -257,51 +292,81 @@ public class Trainer {
         this.callbacks = callbacks;
     }
 
+    /**
+     * validateLegacyRange.
+     * 
+     * @param value value
+     * @param name name
+     * @param min min
+     * @param max max
+     * @since 0.1.7
+     */
     private static void validateLegacyRange(double value, String name, double min, double max) {
         if (value < min || value > max) {
             throw new IllegalArgumentException(name + " should be between " + min + " and " + max);
         }
     }
 
+    /**
+     * preTrain.
+     * 
+     * @param agent agent
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     private Progress preTrain(BaseAgent agent, Map<String, Object> kwargs) {
-        int maxEpoch = kwargs != null 
+        int maxEpoch = kwargs != null
                 ? (int) kwargs.getOrDefault("num_iterations", TuneConstant.DEFAULT_ITERATION_NUM)
                 : TuneConstant.DEFAULT_ITERATION_NUM;
-        
-        TuneUtils.validateDigitalParameter(maxEpoch, "num_iterations",
-                TuneConstant.MIN_ITERATION_NUM, TuneConstant.MAX_ITERATION_NUM);
-        
+
+        TuneUtils.validateDigitalParameter(maxEpoch, "num_iterations", TuneConstant.MIN_ITERATION_NUM,
+                TuneConstant.MAX_ITERATION_NUM);
+
         Progress progress = Progress.builder().maxEpoch(maxEpoch).build();
         optimizer.bindParameter(getLlmCalls(agent));
-        
+
         return progress;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateAgent.
+     * 
+     * @param agent agent
+     * @param parameters parameters
+     * @since 0.1.7
      */
     public void updateAgent(BaseAgent agent, Map<String, ?> parameters) {
         if (parameters == null) {
             return;
         }
-        
+
         Map<String, LLMCall> agentParams = getLlmCalls(agent);
         for (Map.Entry<String, LLMCall> entry : agentParams.entrySet()) {
             String name = entry.getKey();
             Object param = parameters.get(name);
-            
+
             if (param instanceof TextualParameter tp) {
-                entry.getValue().updateSystemPrompt(
-                        TuneUtils.getContentStringFromTemplate(tp.getLlmCall().getSystemPrompt()));
-                entry.getValue().updateUserPrompt(
-                        TuneUtils.getContentStringFromTemplate(tp.getLlmCall().getUserPrompt()));
+                entry.getValue()
+                        .updateSystemPrompt(TuneUtils.getContentStringFromTemplate(tp.getLlmCall().getSystemPrompt()));
+                entry.getValue()
+                        .updateUserPrompt(TuneUtils.getContentStringFromTemplate(tp.getLlmCall().getUserPrompt()));
             } else if (param instanceof LLMCall llmCall) {
                 entry.getValue().updateSystemPrompt(TuneUtils.getContentStringFromTemplate(llmCall.getSystemPrompt()));
                 entry.getValue().updateUserPrompt(TuneUtils.getContentStringFromTemplate(llmCall.getUserPrompt()));
+            } else {
+                // no-op
             }
         }
     }
 
+    /**
+     * checkTrainable.
+     * 
+     * @param agent agent
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean checkTrainable(BaseAgent agent) {
         try {
             agent.getClass().getMethod("getLlmCalls");
@@ -312,6 +377,13 @@ public class Trainer {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * getLlmCalls.
+     * 
+     * @param agent agent
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, LLMCall> getLlmCalls(BaseAgent agent) {
         try {
             return (Map<String, LLMCall>) agent.getClass().getMethod("getLlmCalls").invoke(agent);
@@ -322,6 +394,9 @@ public class Trainer {
 
     /**
      * Evaluation result record.
+     * 
+     * @since 0.1.7
      */
-    public record EvalResult(double score, List<EvaluatedCase> evaluatedCases) {}
+    public record EvalResult(double score, List<EvaluatedCase> evaluatedCases) {
+    }
 }

@@ -13,24 +13,38 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Lightweight runtime holder for distributed-runner components.
+ * 
+ * @since 0.1.7
  */
 public final class DistributedRunner {
-
     private static final AtomicReference<MessageQueueBase> MQ = new AtomicReference<>();
+
+    /**
+     * AtomicReference<>.
+     * 
+     * @since 0.1.7
+     */
     private static final AtomicReference<ReplyTopicSubscription> REPLY_SUBSCRIPTION = new AtomicReference<>();
 
+    /**
+     * DistributedRunner.
+     * 
+     * @since 0.1.7
+     */
     private DistributedRunner() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ensureStarted.
+     * 
+     * @since 0.1.7
      */
     public static synchronized void ensureStarted() {
         if (MQ.get() != null && REPLY_SUBSCRIPTION.get() != null) {
             return;
         }
-        MessageQueueBase messageQueue = MessageQueueFactory.create(
-                RunnerConfig.getRunnerConfig().getDistributedConfig().getMessageQueueConfig());
+        MessageQueueBase messageQueue =
+            MessageQueueFactory.create(RunnerConfig.getRunnerConfig().getDistributedConfig().getMessageQueueConfig());
         messageQueue.start();
         MQ.set(messageQueue);
 
@@ -40,7 +54,10 @@ public final class DistributedRunner {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * messageQueue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static MessageQueueBase messageQueue() {
         ensureStarted();
@@ -48,7 +65,10 @@ public final class DistributedRunner {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * replySubscription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static ReplyTopicSubscription replySubscription() {
         ensureStarted();
@@ -56,7 +76,9 @@ public final class DistributedRunner {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shutdown.
+     * 
+     * @since 0.1.7
      */
     public static synchronized void shutdown() {
         ReplyTopicSubscription replyTopicSubscription = REPLY_SUBSCRIPTION.getAndSet(null);
@@ -70,7 +92,10 @@ public final class DistributedRunner {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * replyTopic.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static String replyTopic() {
         RunnerConfig config = RunnerConfig.getRunnerConfig();
@@ -78,12 +103,16 @@ public final class DistributedRunner {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * agentTopic.
+     * 
+     * @param agentId agentId
+     * @param version version
+     * @return the result
+     * @since 0.1.7
      */
     public static String agentTopic(String agentId, String version) {
         RunnerConfig config = RunnerConfig.getRunnerConfig();
-        return config.agentTopicTemplate()
-                .replace("{agent_id}", agentId != null ? agentId : "")
-                .replace("{version}", version != null ? version : "");
+        return config.agentTopicTemplate().replace("{agent_id}", agentId != null ? agentId : "").replace("{version}",
+                version != null ? version : "");
     }
 }

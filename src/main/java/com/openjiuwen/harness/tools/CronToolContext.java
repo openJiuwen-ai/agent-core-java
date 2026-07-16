@@ -12,24 +12,32 @@ import lombok.NoArgsConstructor;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Public class CronToolContext used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class CronToolContext used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class CronToolContext {
     private String channelId;
     private String sessionId;
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> metadata = new LinkedHashMap<>();
     private String mode;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toolScope.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String toolScope() {
         String channel = channelId != null && !channelId.isBlank() ? channelId : "unknown";

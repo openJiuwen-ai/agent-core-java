@@ -1,4 +1,7 @@
+
 package com.openjiuwen.core.multiagent.runtime;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.multiagent.BaseTeam;
 import com.openjiuwen.core.multiagent.TeamConfig;
@@ -8,6 +11,7 @@ import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.BaseAgent;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.Iterator;
@@ -15,10 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class TeamRuntimeCompatibilityTest {
-
     @Test
     void teamRuntimeShouldSendPointToPointMessages() {
         TeamRuntime runtime = new TeamRuntime("runtime-team");
@@ -43,7 +44,8 @@ class TeamRuntimeCompatibilityTest {
         runtime.subscribe("reviewer", "code_*");
         runtime.subscribe("auditor", "code_review");
 
-        runtime.publish(Map.of("event", "done"), "code_review", "lead", "team-pubsub", new AgentGroupSessionApi("team-pubsub"));
+        runtime.publish(Map.of("event", "done"), "code_review", "lead", "team-pubsub",
+                new AgentGroupSessionApi("team-pubsub"));
 
         assertThat(reviewer.lastInput.get()).isEqualTo(Map.of("event", "done"));
         assertThat(auditor.lastInput.get()).isEqualTo(Map.of("event", "done"));
@@ -59,7 +61,8 @@ class TeamRuntimeCompatibilityTest {
         runtime.registerAgent(responder.getCard(), () -> responder);
         runtime.registerAgent(requester.getCard(), () -> requester);
 
-        Object result = runtime.send(Map.of("task", "ping"), "requester", "lead", "runtime-bridge", new AgentGroupSessionApi("runtime-bridge"));
+        Object result = runtime.send(Map.of("task", "ping"), "requester", "lead", "runtime-bridge",
+                new AgentGroupSessionApi("runtime-bridge"));
 
         assertThat(result).isEqualTo("ack:ping");
         assertThat(responder.lastSessionId.get()).isEqualTo("runtime-bridge");
@@ -79,16 +82,13 @@ class TeamRuntimeCompatibilityTest {
     }
 
     private static final class DemoTeam extends BaseTeam {
-
         private DemoTeam(String teamId) {
             super(buildCard(teamId), new TeamConfig());
         }
 
         @Override
         public Object invoke(Object message, AgentGroupSessionApi groupSession) {
-            AgentGroupSessionApi resolved = groupSession != null
-                    ? groupSession
-                    : new AgentGroupSessionApi();
+            AgentGroupSessionApi resolved = groupSession != null ? groupSession : new AgentGroupSessionApi();
             return send(message, "reviewer", getTeamCard().getId(), resolved.getSessionId(), resolved);
         }
 
@@ -107,7 +107,6 @@ class TeamRuntimeCompatibilityTest {
     }
 
     private static final class RequesterAgent extends CommunicableAgent {
-
         private RequesterAgent(String agentId) {
             super(AgentCard.builder().id(agentId).name(agentId).description(agentId).build());
         }
@@ -137,7 +136,6 @@ class TeamRuntimeCompatibilityTest {
     }
 
     private static final class ResponderAgent extends CommunicableAgent {
-
         private final AtomicReference<String> lastSessionId = new AtomicReference<>();
 
         private ResponderAgent(String agentId) {
@@ -169,7 +167,6 @@ class TeamRuntimeCompatibilityTest {
     }
 
     private static final class RecordingAgent extends BaseAgent {
-
         private final Object output;
         private final AtomicReference<Object> lastInput = new AtomicReference<>();
         private final AtomicReference<String> lastSessionId = new AtomicReference<>();

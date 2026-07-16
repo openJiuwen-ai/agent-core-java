@@ -1,10 +1,5 @@
+
 package com.openjiuwen.core.memory.prompt;
-
-import com.openjiuwen.core.foundation.prompt.PromptTemplate;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
-
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -12,8 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class PromptApplierTest {
+import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.Map;
+
+class PromptApplierTest {
     @AfterEach
     void clearCache() {
         PromptApplier.getInstance().clearCache();
@@ -26,10 +27,8 @@ class PromptApplierTest {
 
     @Test
     void applySubstitutesVariables() {
-        String result = PromptApplier.getInstance().apply(
-                "ut_prompt_template",
-                Map.of("name", "Alice", "place", "Wonderland")
-        );
+        String result =
+            PromptApplier.getInstance().apply("ut_prompt_template", Map.of("name", "Alice", "place", "Wonderland"));
 
         assertEquals("Hello Alice, welcome to Wonderland!", result);
     }
@@ -43,7 +42,8 @@ class PromptApplierTest {
 
     @Test
     void memoryAnalysisPromptContainsForbiddenVariablesContract() {
-        String template = String.valueOf(PromptApplier.getInstance().getTemplate("memory_analysis_prompt").getContent());
+        String template =
+            String.valueOf(PromptApplier.getInstance().getTemplate("memory_analysis_prompt").getContent());
 
         assertTrue(template.contains("禁止记忆变量保护设置"));
         assertTrue(template.contains("仅严禁提取明确列出的禁止记忆变量"));
@@ -52,7 +52,8 @@ class PromptApplierTest {
 
     @Test
     void productionPromptResourcesKeepPythonContracts() {
-        String fragment = String.valueOf(PromptApplier.getInstance().getTemplate("fragment_memory_prompt").getContent());
+        String fragment =
+            String.valueOf(PromptApplier.getInstance().getTemplate("fragment_memory_prompt").getContent());
         String update = String.valueOf(PromptApplier.getInstance().getTemplate("memory_update_check").getContent());
 
         assertTrue(fragment.contains("用户本人画像信息(user_profile)"));
@@ -85,10 +86,8 @@ class PromptApplierTest {
 
     @Test
     void missingTemplateThrowsHelpfulError() {
-        IllegalArgumentException error = assertThrows(
-                IllegalArgumentException.class,
-                () -> PromptApplier.getInstance().getTemplate("does_not_exist")
-        );
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> PromptApplier.getInstance().getTemplate("does_not_exist"));
 
         assertTrue(error.getMessage().contains("Prompt file not found"));
     }

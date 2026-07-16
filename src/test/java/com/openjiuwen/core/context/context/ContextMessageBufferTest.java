@@ -1,30 +1,29 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.context.context;
 
+import static org.junit.jupiter.api.Assertions.*;
+
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for {@link ContextMessageBuffer}.
  */
 class ContextMessageBufferTest {
-
     @Test
     @DisplayName("New buffer with messages reports correct size")
     void testSize() {
-        List<BaseMessage> msgs = List.of(
-                new UserMessage("hello"),
-                new AssistantMessage("hi"));
+        List<BaseMessage> msgs = List.of(new UserMessage("hello"), new AssistantMessage("hi"));
         ContextMessageBuffer buffer = new ContextMessageBuffer(new ArrayList<>(msgs), null);
         assertEquals(2, buffer.size());
     }
@@ -43,10 +42,8 @@ class ContextMessageBufferTest {
     @Test
     @DisplayName("getBack returns all messages when size is null")
     void testGetBackAll() {
-        List<BaseMessage> msgs = new ArrayList<>(List.of(
-                new UserMessage("a"),
-                new UserMessage("b"),
-                new UserMessage("c")));
+        List<BaseMessage> msgs =
+            new ArrayList<>(List.of(new UserMessage("a"), new UserMessage("b"), new UserMessage("c")));
         ContextMessageBuffer buffer = new ContextMessageBuffer(msgs, null);
 
         List<BaseMessage> result = buffer.getBack();
@@ -56,10 +53,8 @@ class ContextMessageBufferTest {
     @Test
     @DisplayName("getBack returns last N messages with history")
     void testGetBackN() {
-        List<BaseMessage> msgs = new ArrayList<>(List.of(
-                new UserMessage("a"),
-                new UserMessage("b"),
-                new UserMessage("c")));
+        List<BaseMessage> msgs =
+            new ArrayList<>(List.of(new UserMessage("a"), new UserMessage("b"), new UserMessage("c")));
         ContextMessageBuffer buffer = new ContextMessageBuffer(msgs, null);
 
         // withHistory=true to include history messages
@@ -72,10 +67,8 @@ class ContextMessageBufferTest {
     @Test
     @DisplayName("popBack removes last N messages with history")
     void testPopBack() {
-        List<BaseMessage> msgs = new ArrayList<>(List.of(
-                new UserMessage("a"),
-                new UserMessage("b"),
-                new UserMessage("c")));
+        List<BaseMessage> msgs =
+            new ArrayList<>(List.of(new UserMessage("a"), new UserMessage("b"), new UserMessage("c")));
         ContextMessageBuffer buffer = new ContextMessageBuffer(msgs, null);
 
         // withHistory=true to pop from history too
@@ -101,10 +94,7 @@ class ContextMessageBufferTest {
     @DisplayName("Buffer respects maxBufferSize by resizing")
     void testMaxBufferSize() {
         ContextMessageBuffer buffer = new ContextMessageBuffer(new ArrayList<>(), 3);
-        buffer.addBack(List.of(
-                new UserMessage("a"),
-                new UserMessage("b"),
-                new UserMessage("c")));
+        buffer.addBack(List.of(new UserMessage("a"), new UserMessage("b"), new UserMessage("c")));
         assertEquals(3, buffer.size());
 
         buffer.addBack(List.of(new UserMessage("d")));
@@ -115,9 +105,7 @@ class ContextMessageBufferTest {
     @Test
     @DisplayName("rebuild replaces all messages maintaining history")
     void testRebuild() {
-        List<BaseMessage> initial = new ArrayList<>(List.of(
-                new UserMessage("a"),
-                new UserMessage("b")));
+        List<BaseMessage> initial = new ArrayList<>(List.of(new UserMessage("a"), new UserMessage("b")));
         ContextMessageBuffer buffer = new ContextMessageBuffer(initial, null);
 
         buffer.rebuild(List.of(new UserMessage("x"), new UserMessage("y"), new UserMessage("z")));

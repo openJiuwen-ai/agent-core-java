@@ -11,9 +11,10 @@ import java.util.function.Function;
  * <p>
  * Each function converts a specific {@link QueryExpr} subtype into a
  * database-native expression (usually a String or filter object).
+ * 
+ * @since 0.1.7
  */
 public class QueryLanguageDefinition {
-
     private final Function<QueryExpr, Object> comparison;
     private final Function<QueryExpr, Object> range;
     private final Function<QueryExpr, Object> arithmetic;
@@ -23,6 +24,12 @@ public class QueryLanguageDefinition {
     private final Function<QueryExpr, Object> logical;
     private final Function<QueryExpr, Object> textMatch;
 
+    /**
+     * QueryLanguageDefinition.
+     * 
+     * @param builder builder
+     * @since 0.1.7
+     */
     private QueryLanguageDefinition(Builder builder) {
         this.comparison = builder.comparison;
         this.range = builder.range;
@@ -35,70 +42,107 @@ public class QueryLanguageDefinition {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * applyComparison.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
     public Object applyComparison(QueryExpr expr) {
         return comparison.apply(expr);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * applyRange.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
     public Object applyRange(QueryExpr expr) {
         return range.apply(expr);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * applyArithmetic.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
     public Object applyArithmetic(QueryExpr expr) {
         return arithmetic.apply(expr);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * applyNullCheck.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
     public Object applyNullCheck(QueryExpr expr) {
         return nullCheck.apply(expr);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * applyJsonFilter.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
     public Object applyJsonFilter(QueryExpr expr) {
         return jsonFilter.apply(expr);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * applyArray.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
     public Object applyArray(QueryExpr expr) {
         return array.apply(expr);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * applyLogical.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
     public Object applyLogical(QueryExpr expr) {
         return logical.apply(expr);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * applyTextMatch.
+     * 
+     * @param expr expr
+     * @return the result
+     * @since 0.1.7
      */
     public Object applyTextMatch(QueryExpr expr) {
         return textMatch.apply(expr);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder {
         private Function<QueryExpr, Object> comparison;
@@ -111,7 +155,11 @@ public class QueryLanguageDefinition {
         private Function<QueryExpr, Object> textMatch;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * comparison.
+         * 
+         * @param comparison comparison
+         * @return the result
+         * @since 0.1.7
          */
         public Builder comparison(Function<QueryExpr, Object> comparison) {
             this.comparison = comparison;
@@ -119,7 +167,11 @@ public class QueryLanguageDefinition {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * range.
+         * 
+         * @param range range
+         * @return the result
+         * @since 0.1.7
          */
         public Builder range(Function<QueryExpr, Object> range) {
             this.range = range;
@@ -127,7 +179,11 @@ public class QueryLanguageDefinition {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * arithmetic.
+         * 
+         * @param arithmetic arithmetic
+         * @return the result
+         * @since 0.1.7
          */
         public Builder arithmetic(Function<QueryExpr, Object> arithmetic) {
             this.arithmetic = arithmetic;
@@ -135,7 +191,11 @@ public class QueryLanguageDefinition {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * nullCheck.
+         * 
+         * @param nullCheck nullCheck
+         * @return the result
+         * @since 0.1.7
          */
         public Builder nullCheck(Function<QueryExpr, Object> nullCheck) {
             this.nullCheck = nullCheck;
@@ -143,7 +203,11 @@ public class QueryLanguageDefinition {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * jsonFilter.
+         * 
+         * @param jsonFilter jsonFilter
+         * @return the result
+         * @since 0.1.7
          */
         public Builder jsonFilter(Function<QueryExpr, Object> jsonFilter) {
             this.jsonFilter = jsonFilter;
@@ -151,7 +215,11 @@ public class QueryLanguageDefinition {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * array.
+         * 
+         * @param array array
+         * @return the result
+         * @since 0.1.7
          */
         public Builder array(Function<QueryExpr, Object> array) {
             this.array = array;
@@ -159,7 +227,11 @@ public class QueryLanguageDefinition {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * logical.
+         * 
+         * @param logical logical
+         * @return the result
+         * @since 0.1.7
          */
         public Builder logical(Function<QueryExpr, Object> logical) {
             this.logical = logical;
@@ -167,7 +239,11 @@ public class QueryLanguageDefinition {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * textMatch.
+         * 
+         * @param textMatch textMatch
+         * @return the result
+         * @since 0.1.7
          */
         public Builder textMatch(Function<QueryExpr, Object> textMatch) {
             this.textMatch = textMatch;
@@ -175,7 +251,10 @@ public class QueryLanguageDefinition {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public QueryLanguageDefinition build() {
             return new QueryLanguageDefinition(this);

@@ -1,13 +1,16 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import com.openjiuwen.core.context.ContextEngine;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.session.Session;
 
 import org.junit.jupiter.api.DisplayName;
@@ -19,9 +22,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * Integration tests for the ContextEngine module.
  * Tests context creation, message management, and context windows.
@@ -29,7 +29,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 @Tag("system-test")
 class ContextEngineSystemTest {
-
     @Test
     @DisplayName("Create context and add messages")
     void testCreateContextAndAddMessages() {
@@ -39,8 +38,7 @@ class ContextEngineSystemTest {
         history.add(new UserMessage("你好"));
         history.add(new AssistantMessage("你好！有什么可以帮助你的？"));
 
-        ModelContext context = engine.createContext(
-                "ctx_test_1", new MinimalSession(), null, history, null);
+        ModelContext context = engine.createContext("ctx_test_1", new MinimalSession(), null, history, null);
 
         assertNotNull(context, "Context should be created");
         System.out.println("[ContextEngine] Context created: " + context);

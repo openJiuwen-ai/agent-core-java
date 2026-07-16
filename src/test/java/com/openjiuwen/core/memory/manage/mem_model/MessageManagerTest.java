@@ -1,24 +1,25 @@
+
 package com.openjiuwen.core.memory.manage.mem_model;
 
-import com.openjiuwen.core.common.exception.BaseError;
-import com.openjiuwen.core.memory.support.TestDbStore;
-import org.h2.jdbcx.JdbcDataSource;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
-import javax.sql.DataSource;
-import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.UUID;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class MessageManagerTest {
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.memory.support.TestDbStore;
 
+import org.h2.jdbcx.JdbcDataSource;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
+
+import javax.sql.DataSource;
+
+class MessageManagerTest {
     private MessageManager messageManager;
 
     @BeforeEach
@@ -30,22 +31,12 @@ class MessageManagerTest {
 
     @Test
     void addGetGetByIdAndDeleteFollowPythonMessageManagerFlow() {
-        String firstId = messageManager.add(MessageAddRequest.builder()
-                .userId("user-1")
-                .scopeId("scope-1")
-                .sessionId("session-1")
-                .role("user")
-                .content("first")
-                .timestamp(OffsetDateTime.parse("2026-05-11T01:00:00Z"))
-                .build());
-        String secondId = messageManager.add(MessageAddRequest.builder()
-                .userId("user-1")
-                .scopeId("scope-1")
-                .sessionId("session-1")
-                .role("assistant")
-                .content("second")
-                .timestamp(OffsetDateTime.parse("2026-05-11T02:00:00Z"))
-                .build());
+        String firstId =
+            messageManager.add(MessageAddRequest.builder().userId("user-1").scopeId("scope-1").sessionId("session-1")
+                    .role("user").content("first").timestamp(OffsetDateTime.parse("2026-05-11T01:00:00Z")).build());
+        String secondId = messageManager.add(
+                MessageAddRequest.builder().userId("user-1").scopeId("scope-1").sessionId("session-1").role("assistant")
+                        .content("second").timestamp(OffsetDateTime.parse("2026-05-11T02:00:00Z")).build());
 
         List<MessageManager.MessageRecord> records = messageManager.get("user-1", "scope-1", "session-1", 10);
 
@@ -62,18 +53,12 @@ class MessageManagerTest {
 
     @Test
     void addRequiresUserScopeAndContent() {
-        assertThrows(BaseError.class, () -> messageManager.add(MessageAddRequest.builder()
-                .scopeId("scope-1")
-                .content("content")
-                .build()));
-        assertThrows(BaseError.class, () -> messageManager.add(MessageAddRequest.builder()
-                .userId("user-1")
-                .content("content")
-                .build()));
-        assertThrows(BaseError.class, () -> messageManager.add(MessageAddRequest.builder()
-                .userId("user-1")
-                .scopeId("scope-1")
-                .build()));
+        assertThrows(BaseError.class,
+                () -> messageManager.add(MessageAddRequest.builder().scopeId("scope-1").content("content").build()));
+        assertThrows(BaseError.class,
+                () -> messageManager.add(MessageAddRequest.builder().userId("user-1").content("content").build()));
+        assertThrows(BaseError.class,
+                () -> messageManager.add(MessageAddRequest.builder().userId("user-1").scopeId("scope-1").build()));
     }
 
     @Test

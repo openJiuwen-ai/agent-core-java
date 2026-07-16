@@ -8,12 +8,18 @@ import java.util.Map;
 
 /**
  * Pluggable backend for risk analysis.
+ * 
+ * @since 0.1.7
  */
 @FunctionalInterface
 public interface GuardrailBackend {
-
     /**
-     * Analyze event data and return a risk assessment.
+     * analyze.
+     * 
+     * @param data data
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     RiskAssessment analyze(Map<String, Object> data) throws Exception;
 }

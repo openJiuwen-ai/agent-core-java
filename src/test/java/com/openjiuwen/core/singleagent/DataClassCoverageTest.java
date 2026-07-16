@@ -1,5 +1,8 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.common.schema.Part;
 import com.openjiuwen.core.controller.schema.TaskStatus;
@@ -9,22 +12,18 @@ import com.openjiuwen.core.singleagent.schema.AgentResult;
 import com.openjiuwen.core.singleagent.schema.Artifact;
 import com.openjiuwen.core.singleagent.skills.GitHubTree;
 import com.openjiuwen.core.singleagent.skills.Skill;
+
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Supplementary tests for Lombok-generated code in data classes.
  * Covers toString, equals, hashCode, getters/setters for coverage.
  */
 class DataClassCoverageTest {
-
     // ========== AgentCallbackContext getters/setters ==========
-
     @Test
     void testAgentCallbackContextGettersSetters() {
         AgentCallbackContext ctx = AgentCallbackContext.builder().build();
@@ -49,12 +48,8 @@ class DataClassCoverageTest {
 
     @Test
     void testAgentCallbackContextEqualsAndHashCode() {
-        AgentCallbackContext ctx1 = AgentCallbackContext.builder()
-                .retryAttempt(1)
-                .build();
-        AgentCallbackContext ctx2 = AgentCallbackContext.builder()
-                .retryAttempt(1)
-                .build();
+        AgentCallbackContext ctx1 = AgentCallbackContext.builder().retryAttempt(1).build();
+        AgentCallbackContext ctx2 = AgentCallbackContext.builder().retryAttempt(1).build();
 
         assertThat(ctx1).isEqualTo(ctx2);
         assertThat(ctx1.hashCode()).isEqualTo(ctx2.hashCode());
@@ -95,10 +90,7 @@ class DataClassCoverageTest {
 
     @Test
     void testInvokeInputsGettersSetters() {
-        InvokeInputs ii = InvokeInputs.builder()
-                .query("test query")
-                .conversationId("conv-1")
-                .build();
+        InvokeInputs ii = InvokeInputs.builder().query("test query").conversationId("conv-1").build();
 
         assertThat(ii.getQuery()).isEqualTo("test query");
         assertThat(ii.getConversationId()).isEqualTo("conv-1");
@@ -126,10 +118,7 @@ class DataClassCoverageTest {
 
     @Test
     void testModelCallInputsGettersSetters() {
-        ModelCallInputs mci = ModelCallInputs.builder()
-                .messages(List.of("msg"))
-                .tools(List.of())
-                .build();
+        ModelCallInputs mci = ModelCallInputs.builder().messages(List.of("msg")).tools(List.of()).build();
 
         assertThat(mci.getMessages()).hasSize(1);
         assertThat(mci.getTools()).isEmpty();
@@ -160,10 +149,7 @@ class DataClassCoverageTest {
 
     @Test
     void testToolCallInputsGettersSetters() {
-        ToolCallInputs tci = ToolCallInputs.builder()
-                .toolName("tool1")
-                .toolArgs("{}")
-                .build();
+        ToolCallInputs tci = ToolCallInputs.builder().toolName("tool1").toolArgs("{}").build();
 
         assertThat(tci.getToolName()).isEqualTo("tool1");
         assertThat(tci.getToolArgs()).isEqualTo("{}");
@@ -200,12 +186,9 @@ class DataClassCoverageTest {
 
     @Test
     void testAgentCardGettersSetters() {
-        AgentCard ac = AgentCard.builder()
-                .name("agent")
-                .description("desc")
-                .inputParams(Map.of("q", Map.of("type", "string")))
-                .outputParams(Map.of("o", Map.of("type", "string")))
-                .build();
+        AgentCard ac =
+            AgentCard.builder().name("agent").description("desc").inputParams(Map.of("q", Map.of("type", "string")))
+                    .outputParams(Map.of("o", Map.of("type", "string"))).build();
 
         assertThat(ac.getName()).isEqualTo("agent");
         assertThat(ac.getDescription()).isEqualTo("desc");
@@ -217,8 +200,7 @@ class DataClassCoverageTest {
     void testAgentCardEqualsHashCode() {
         AgentCard a1 = AgentCard.builder().name("a").description("d").build();
         // Use same id to ensure equals works (id is auto-generated)
-        AgentCard a2 = AgentCard.builder()
-                .name("a").description("d").id(a1.getId()).build();
+        AgentCard a2 = AgentCard.builder().name("a").description("d").id(a1.getId()).build();
 
         assertThat(a1).isEqualTo(a2);
         assertThat(a1.hashCode()).isEqualTo(a2.hashCode());
@@ -234,12 +216,8 @@ class DataClassCoverageTest {
 
     @Test
     void testAgentResultGettersSetters() {
-        AgentResult ar = AgentResult.builder()
-                .taskId("t-1")
-                .sessionId("s-1")
-                .status(TaskStatus.COMPLETED)
-                .metadata(Map.of("key", "value"))
-                .build();
+        AgentResult ar = AgentResult.builder().taskId("t-1").sessionId("s-1").status(TaskStatus.COMPLETED)
+                .metadata(Map.of("key", "value")).build();
 
         assertThat(ar.getTaskId()).isEqualTo("t-1");
         assertThat(ar.getSessionId()).isEqualTo("s-1");
@@ -270,13 +248,8 @@ class DataClassCoverageTest {
     @Test
     void testArtifactGettersSetters() {
         Part part = Part.builder().type("text").content("hello").build();
-        Artifact a = Artifact.builder()
-                .artifactId("aid-1")
-                .name("artifact")
-                .description("desc")
-                .parts(List.of(part))
-                .metadata(Map.of("m", "v"))
-                .build();
+        Artifact a = Artifact.builder().artifactId("aid-1").name("artifact").description("desc").parts(List.of(part))
+                .metadata(Map.of("m", "v")).build();
 
         assertThat(a.getArtifactId()).isEqualTo("aid-1");
         assertThat(a.getName()).isEqualTo("artifact");
@@ -307,11 +280,7 @@ class DataClassCoverageTest {
 
     @Test
     void testSkillGettersSetters() {
-        Skill s = Skill.builder()
-                .name("my-skill")
-                .description("skill desc")
-                .directory("/path/to/skill")
-                .build();
+        Skill s = Skill.builder().name("my-skill").description("skill desc").directory("/path/to/skill").build();
 
         assertThat(s.getName()).isEqualTo("my-skill");
         assertThat(s.getDescription()).isEqualTo("skill desc");
@@ -378,10 +347,7 @@ class DataClassCoverageTest {
     @Test
     void testAbilityExecutionErrorToString() {
         AbilityExecutionError err = new AbilityExecutionError(
-                com.openjiuwen.core.common.exception.StatusCode.AGENT_TOOL_EXECUTION_ERROR,
-                "test error",
-                null
-        );
+                com.openjiuwen.core.common.exception.StatusCode.AGENT_TOOL_EXECUTION_ERROR, "test error", null);
         assertThat(err.toString()).isNotNull();
         assertThat(err.getMessage()).contains("test error");
     }
@@ -389,15 +355,9 @@ class DataClassCoverageTest {
     @Test
     void testAbilityExecutionErrorGetToolMessage() {
         com.openjiuwen.core.foundation.llm.schema.ToolMessage msg =
-                com.openjiuwen.core.foundation.llm.schema.ToolMessage.builder()
-                        .content("err")
-                        .toolCallId("tc-1")
-                        .build();
+            com.openjiuwen.core.foundation.llm.schema.ToolMessage.builder().content("err").toolCallId("tc-1").build();
         AbilityExecutionError err = new AbilityExecutionError(
-                com.openjiuwen.core.common.exception.StatusCode.AGENT_TOOL_EXECUTION_ERROR,
-                "err",
-                msg
-        );
+                com.openjiuwen.core.common.exception.StatusCode.AGENT_TOOL_EXECUTION_ERROR, "err", msg);
         assertThat(err.getToolMessage()).isSameAs(msg);
     }
 }

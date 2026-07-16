@@ -11,21 +11,29 @@ import java.util.Map;
  * Output model for IntentDetection component.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.intent_detection_comp.IntentDetectionOutput}.
+ * 
+ * @since 0.1.7
  */
 public class IntentDetectionOutput {
-
     private int classificationId = -1;
     private String reason = "";
     private String categoryName = "";
 
     /**
-     * Auto-generated for codecheck compliance.
+     * IntentDetectionOutput.
+     * 
+     * @since 0.1.7
      */
     public IntentDetectionOutput() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * IntentDetectionOutput.
+     * 
+     * @param classificationId classificationId
+     * @param reason reason
+     * @param categoryName categoryName
+     * @since 0.1.7
      */
     public IntentDetectionOutput(int classificationId, String reason, String categoryName) {
         this.classificationId = classificationId;
@@ -34,7 +42,10 @@ public class IntentDetectionOutput {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -51,42 +62,60 @@ public class IntentDetectionOutput {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getClassificationId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getClassificationId() {
         return classificationId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setClassificationId.
+     * 
+     * @param classificationId classificationId
+     * @since 0.1.7
      */
     public void setClassificationId(int classificationId) {
         this.classificationId = classificationId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReason.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getReason() {
         return reason;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setReason.
+     * 
+     * @param reason reason
+     * @since 0.1.7
      */
     public void setReason(String reason) {
         this.reason = reason;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCategoryName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCategoryName() {
         return categoryName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCategoryName.
+     * 
+     * @param categoryName categoryName
+     * @since 0.1.7
      */
     public void setCategoryName(String categoryName) {
         this.categoryName = categoryName;

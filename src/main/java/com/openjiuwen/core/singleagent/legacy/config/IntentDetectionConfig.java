@@ -15,16 +15,23 @@ import java.util.Map;
 
 /**
  * Legacy intent detection configuration.
- *
- * <p>Mirrors Python's {@code IntentDetectionConfig} in {@code single_agent/legacy/config.py}.</p>
+ * <p>
+ * Mirrors Python's {@code IntentDetectionConfig} in {@code single_agent/legacy/config.py}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class IntentDetectionConfig {
-
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Map<String, String>> intentDetectionTemplate = new ArrayList<>();
 
     @Builder.Default
@@ -40,11 +47,21 @@ public class IntentDetectionConfig {
     private int chatHistoryMaxTurn = 5;
 
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> categoryList = new ArrayList<>();
 
     @Builder.Default
     private String userPrompt = "";
 
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> exampleContent = new ArrayList<>();
 }

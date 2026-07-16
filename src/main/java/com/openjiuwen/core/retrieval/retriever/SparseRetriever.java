@@ -16,69 +16,77 @@ import java.util.Map;
 
 /**
  * Sparse / BM25-like retriever.
+ * 
+ * @since 0.1.7
  */
 public class SparseRetriever extends AbstractStoreBackedRetriever {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * SparseRetriever.
+     * 
+     * @param vectorStore vectorStore
+     * @since 0.1.7
      */
     public SparseRetriever(VectorStore vectorStore) {
         super(vectorStore, null);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieve.
+     * 
+     * @param query query
+     * @param topK topK
+     * @param scoreThreshold scoreThreshold
+     * @param mode mode
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public List<RetrievalResult> retrieve(String query,
-                                          int topK,
-                                          Double scoreThreshold,
-                                          String mode,
-                                          Map<String, Object> options) {
+    @Override
+    public List<RetrievalResult> retrieve(String query, int topK, Double scoreThreshold, String mode,
+            Map<String, Object> options) {
         if (!"sparse".equals(mode)) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,
                     "SparseRetriever only supports 'sparse' mode, got " + mode);
         }
-        List<SearchResult> searchResults = vectorStore.sparseSearch(
-                query,
-                topK,
-                VectorRetriever.castMap(options == null ? null : options.get("filters")),
-                options);
+        List<SearchResult> searchResults = vectorStore.sparseSearch(query, topK,
+                VectorRetriever.castMap(options == null ? null : options.get("filters")), options);
         List<RetrievalResult> results = new ArrayList<>();
         for (SearchResult result : searchResults) {
             Map<String, Object> metadata = result.getMetadata();
-            results.add(new RetrievalResult(
-                    result.getText(),
-                    result.getScore(),
-                    metadata,
-                    metadata == null ? null : VectorRetriever.stringValue(metadata.get("doc_id")),
-                    result.getId()));
+            results.add(new RetrievalResult(result.getText(), result.getScore(), metadata,
+                    metadata == null ? null : VectorRetriever.stringValue(metadata.get("doc_id")), result.getId()));
         }
         return results;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieveSearchResults.
+     * 
+     * @param query query
+     * @param topK topK
+     * @param mode mode
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<SearchResult> retrieveSearchResults(String query, int topK, String mode, Map<String, Object> options) {
         if (!"sparse".equals(mode)) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,
                     "SparseRetriever only supports 'sparse' mode, got " + mode);
         }
-        return vectorStore.sparseSearch(
-                query,
-                topK,
-                VectorRetriever.castMap(options == null ? null : options.get("filters")),
-                options);
+        return vectorStore.sparseSearch(query, topK,
+                VectorRetriever.castMap(options == null ? null : options.get("filters")), options);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * supportsMode.
+     * 
+     * @param mode mode
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean supportsMode(String mode) {
         return "sparse".equals(mode);
     }

@@ -11,9 +11,10 @@ import java.io.Serializable;
  * Base message isPassed between Pregel nodes via channels.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.base.Message}.
+ * 
+ * @since 0.1.7
  */
 public class Message implements Serializable {
-
     @Serial
     private static final long serialVersionUID = 1L;
 
@@ -22,14 +23,23 @@ public class Message implements Serializable {
     private final Object payload;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Message.
+     * 
+     * @param sender sender
+     * @param target target
+     * @since 0.1.7
      */
     public Message(String sender, String target) {
         this(sender, target, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Message.
+     * 
+     * @param sender sender
+     * @param target target
+     * @param payload payload
+     * @since 0.1.7
      */
     public Message(String sender, String target, Object payload) {
         this.sender = sender;
@@ -38,30 +48,42 @@ public class Message implements Serializable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSender.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSender() {
         return sender;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTarget.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTarget() {
         return target;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPayload.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getPayload() {
         return payload;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String toString() {
         return "Message{sender='" + sender + "', target='" + target + "'}";
     }

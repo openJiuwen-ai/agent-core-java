@@ -21,9 +21,10 @@ import java.util.concurrent.CancellationException;
  * Executes a single Pregel node and produces routing messages.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.pregel.task.NodeTask}.
+ * 
+ * @since 0.1.7
  */
 public class NodeTask implements Callable<Object> {
-
     private static final LoggerProtocol logger = Loggers.GRAPH;
 
     private final PregelNode node;
@@ -31,7 +32,12 @@ public class NodeTask implements Callable<Object> {
     private final int version;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * NodeTask.
+     * 
+     * @param node node
+     * @param config config
+     * @param version version
+     * @since 0.1.7
      */
     public NodeTask(PregelNode node, PregelConfig config, int version) {
         this.node = node;
@@ -40,15 +46,13 @@ public class NodeTask implements Callable<Object> {
     }
 
     /**
-     * Execute the node function and dispatch routing messages.
-     *
-     * @return List&lt;Message&gt; on success, or a {@link GraphInterrupt} instance on interrupt
-     * @throws Exception on execution failure
+     * call.
+     * 
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object call() throws Exception {
         try {
             throwIfInterrupted();
@@ -83,7 +87,6 @@ public class NodeTask implements Callable<Object> {
                 messages.addAll(router.dispatch(node.getName()));
             }
             return messages;
-
         } catch (GraphInterrupt e) {
             // Convert interrupt exception to return value
             return e;
@@ -96,6 +99,11 @@ public class NodeTask implements Callable<Object> {
         }
     }
 
+    /**
+     * throwIfInterrupted.
+     * 
+     * @since 0.1.7
+     */
     private static void throwIfInterrupted() {
         if (Thread.currentThread().isInterrupted()) {
             throw new CancellationException("Node task cancelled");
@@ -103,6 +111,14 @@ public class NodeTask implements Callable<Object> {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * invokeFunc.
+     * 
+     * @param func func
+     * @param kwargs kwargs
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private void invokeFunc(Object func, Map<String, Object> kwargs) throws Exception {
         if (func instanceof Runnable runnable) {
             runnable.run();
@@ -135,6 +151,13 @@ public class NodeTask implements Callable<Object> {
         }
     }
 
+    /**
+     * findCallMethod.
+     * 
+     * @param func func
+     * @return the result
+     * @since 0.1.7
+     */
     private Method findCallMethod(Object func) {
         // Look for call(GraphNodeState, PregelConfig) or __call__ method
         for (Method method : func.getClass().getMethods()) {
@@ -145,6 +168,14 @@ public class NodeTask implements Callable<Object> {
         return null;
     }
 
+    /**
+     * buildArgs.
+     * 
+     * @param method method
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     private Object[] buildArgs(Method method, Map<String, Object> kwargs) {
         java.lang.reflect.Parameter[] params = method.getParameters();
         Object[] args = new Object[params.length];
@@ -169,6 +200,14 @@ public class NodeTask implements Callable<Object> {
         return args;
     }
 
+    /**
+     * acceptsParameter.
+     * 
+     * @param func func
+     * @param paramName paramName
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean acceptsParameter(Object func, String paramName) {
         if (func == null) {
             return false;
@@ -206,6 +245,13 @@ public class NodeTask implements Callable<Object> {
         return false;
     }
 
+    /**
+     * unwrapGraphInterrupt.
+     * 
+     * @param throwable throwable
+     * @return the result
+     * @since 0.1.7
+     */
     private static GraphInterrupt unwrapGraphInterrupt(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {

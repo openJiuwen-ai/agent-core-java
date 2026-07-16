@@ -15,13 +15,18 @@ import java.util.Map;
 
 /**
  * Legacy controller-driven agent wrapper.
+ * 
+ * @since 0.1.7
  */
 public class ControllerAgent extends BaseAgent {
-
     private BaseController controller;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ControllerAgent.
+     * 
+     * @param agentConfig agentConfig
+     * @param controller controller
+     * @since 0.1.7
      */
     public ControllerAgent(AgentConfig agentConfig, BaseController controller) {
         super(agentConfig);
@@ -32,14 +37,20 @@ public class ControllerAgent extends BaseAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getController.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public BaseController getController() {
         return controller;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setController.
+     * 
+     * @param controller controller
+     * @since 0.1.7
      */
     public void setController(BaseController controller) {
         this.controller = controller;
@@ -48,10 +59,15 @@ public class ControllerAgent extends BaseAgent {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object invoke(Map<String, Object> inputs, Session session) {
         AgentSessionApi effectiveSession = toAgentSession(inputs, session);
         try {
@@ -63,10 +79,15 @@ public class ControllerAgent extends BaseAgent {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Iterator<Object> stream(Map<String, Object> inputs, Session session) {
         AgentSessionApi effectiveSession = toAgentSession(inputs, session);
         Object result = controller.invoke(inputs, effectiveSession);
@@ -81,6 +102,14 @@ public class ControllerAgent extends BaseAgent {
         return outputs.iterator();
     }
 
+    /**
+     * toAgentSession.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private AgentSessionApi toAgentSession(Map<String, Object> inputs, Session session) {
         if (session instanceof AgentSessionApi agentSessionApi) {
             return agentSessionApi;

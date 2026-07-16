@@ -12,32 +12,49 @@ import lombok.NoArgsConstructor;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Public class TaskMutationResult used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class TaskMutationResult used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class TaskMutationResult {
     private TaskRecord task;
     private String reason;
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<TaskRecord> unblockedTasks = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<TaskRecord> cancelledTasks = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isSuccess.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isSuccess() {
         return reason == null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * success.
+     * 
+     * @param taskId taskId
+     * @return the result
+     * @since 0.1.7
      */
     public static TaskMutationResult success(String taskId) {
         TaskRecord record = new TaskRecord();
@@ -46,7 +63,11 @@ public class TaskMutationResult {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fail.
+     * 
+     * @param reason reason
+     * @return the result
+     * @since 0.1.7
      */
     public static TaskMutationResult fail(String reason) {
         return TaskMutationResult.builder().reason(reason).build();

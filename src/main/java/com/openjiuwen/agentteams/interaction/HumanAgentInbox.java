@@ -15,15 +15,19 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Inbox for human-agent members, validating sender identity before delivering messages.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class HumanAgentInbox {
     private final TeamBackend team;
     private final TeamMessageManager messageManager;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HumanAgentInbox.
+     * 
+     * @param team team
+     * @param messageManager messageManager
+     * @since 0.1.7
      */
     public HumanAgentInbox(TeamBackend team, TeamMessageManager messageManager) {
         this.team = team;
@@ -31,7 +35,13 @@ public class HumanAgentInbox {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * send.
+     * 
+     * @param body body
+     * @param to to
+     * @param sender sender
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<String> send(String body, String to, String sender) {
         String resolvedSender = resolveSender(sender);
@@ -41,12 +51,18 @@ public class HumanAgentInbox {
         return messageManager.sendMessage(body, to, resolvedSender);
     }
 
+    /**
+     * resolveSender.
+     * 
+     * @param sender sender
+     * @return the result
+     * @since 0.1.7
+     */
     private String resolveSender(String sender) {
         Set<String> names = team.humanAgentNames();
         if (names.isEmpty()) {
             throw new HumanAgentNotEnabledError(
-                    "No human-agent member is registered on this team; create the team with humanAgentEnabled=true"
-            );
+                    "No human-agent member is registered on this team; create the team with humanAgentEnabled=true");
         }
         if (sender == null) {
             if (names.contains(TeamConstants.HUMAN_AGENT_MEMBER_NAME)) {
@@ -55,13 +71,19 @@ public class HumanAgentInbox {
             return sortedNames(names).get(0);
         }
         if (!names.contains(sender)) {
-            throw new UnknownHumanAgentError(
-                    "'" + sender + "' is not a registered human-agent member; registered members: " + sortedNames(names)
-            );
+            throw new UnknownHumanAgentError("'" + sender
+                    + "' is not a registered human-agent member; registered members: " + sortedNames(names));
         }
         return sender;
     }
 
+    /**
+     * sortedNames.
+     * 
+     * @param names names
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> sortedNames(Set<String> names) {
         List<String> values = new ArrayList<>(names);
         values.sort(String::compareTo);

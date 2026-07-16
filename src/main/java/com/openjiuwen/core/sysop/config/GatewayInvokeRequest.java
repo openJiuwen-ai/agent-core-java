@@ -14,6 +14,8 @@ import java.util.Map;
 
 /**
  * Request model for full-chain gateway invoke routing.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -25,6 +27,11 @@ public class GatewayInvokeRequest {
     private String method;
 
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> params = new LinkedHashMap<>();
 
     private String isolationKey;

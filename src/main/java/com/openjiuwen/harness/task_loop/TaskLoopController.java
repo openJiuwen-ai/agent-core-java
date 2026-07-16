@@ -11,27 +11,39 @@ import java.util.concurrent.ConcurrentMap;
 
 /**
  * Public class TaskLoopController used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class TaskLoopController {
     /**
-     * Auto-generated for codecheck compliance.
+     * DEFAULT_SESSION_ID.
+     * 
+     * @since 0.1.7
      */
     public static final String DEFAULT_SESSION_ID = "__default__";
 
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final ConcurrentMap<String, SessionState> sessionStates = new ConcurrentHashMap<>();
     private final LoopQueues defaultQueues;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskLoopController.
+     * 
+     * @since 0.1.7
      */
     public TaskLoopController() {
         this(new LoopQueues());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskLoopController.
+     * 
+     * @param defaultQueues defaultQueues
+     * @since 0.1.7
      */
     public TaskLoopController(LoopQueues defaultQueues) {
         this.defaultQueues = defaultQueues == null ? new LoopQueues() : defaultQueues;
@@ -39,14 +51,22 @@ public class TaskLoopController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * prepareRound.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int prepareRound() {
         return prepareRound(DEFAULT_SESSION_ID, false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * prepareRound.
+     * 
+     * @param sessionId sessionId
+     * @param isFollowUp isFollowUp
+     * @return the result
+     * @since 0.1.7
      */
     public int prepareRound(String sessionId, boolean isFollowUp) {
         SessionState state = state(sessionId);
@@ -58,35 +78,57 @@ public class TaskLoopController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * submitRound.
+     * 
+     * @param query query
+     * @return the result
+     * @since 0.1.7
      */
     public int submitRound(String query) {
         return submitRound(DEFAULT_SESSION_ID, query, false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * submitRound.
+     * 
+     * @param query query
+     * @param isFollowUp isFollowUp
+     * @return the result
+     * @since 0.1.7
      */
     public int submitRound(String query, boolean isFollowUp) {
         return submitRound(DEFAULT_SESSION_ID, query, isFollowUp);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * submitRound.
+     * 
+     * @param sessionId sessionId
+     * @param query query
+     * @param isFollowUp isFollowUp
+     * @return the result
+     * @since 0.1.7
      */
     public int submitRound(String sessionId, String query, boolean isFollowUp) {
         return prepareRound(sessionId, isFollowUp);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * waitRoundCompletion.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> waitRoundCompletion() {
         return waitRoundCompletion(DEFAULT_SESSION_ID);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * waitRoundCompletion.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> waitRoundCompletion(String sessionId) {
         SessionState state = state(sessionId);
@@ -100,14 +142,25 @@ public class TaskLoopController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveCompletion.
+     * 
+     * @param completedRound completedRound
+     * @param result result
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> resolveCompletion(int completedRound, Map<String, Object> result) {
         return resolveCompletion(DEFAULT_SESSION_ID, completedRound, result);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveCompletion.
+     * 
+     * @param sessionId sessionId
+     * @param completedRound completedRound
+     * @param result result
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> resolveCompletion(String sessionId, int completedRound, Map<String, Object> result) {
         SessionState state = state(sessionId);
@@ -120,14 +173,21 @@ public class TaskLoopController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * recordSubmission.
+     * 
+     * @param result result
+     * @since 0.1.7
      */
     public void recordSubmission(Map<String, Object> result) {
         recordSubmission(DEFAULT_SESSION_ID, result);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * recordSubmission.
+     * 
+     * @param sessionId sessionId
+     * @param result result
+     * @since 0.1.7
      */
     public void recordSubmission(String sessionId, Map<String, Object> result) {
         if (result == null) {
@@ -138,14 +198,21 @@ public class TaskLoopController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * abort.
+     * 
+     * @param reason reason
+     * @since 0.1.7
      */
     public void abort(String reason) {
         abort(DEFAULT_SESSION_ID, reason);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * abort.
+     * 
+     * @param sessionId sessionId
+     * @param reason reason
+     * @since 0.1.7
      */
     public void abort(String sessionId, String reason) {
         SessionState state = state(sessionId);
@@ -154,56 +221,84 @@ public class TaskLoopController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLastResult.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getLastResult() {
         return getLastResult(DEFAULT_SESSION_ID);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLastResult.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getLastResult(String sessionId) {
         return state(sessionId).lastResult;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * enqueueFollowUp.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     public void enqueueFollowUp(String message) {
         enqueueFollowUp(DEFAULT_SESSION_ID, message);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * enqueueFollowUp.
+     * 
+     * @param sessionId sessionId
+     * @param message message
+     * @since 0.1.7
      */
     public void enqueueFollowUp(String sessionId, String message) {
         state(sessionId).queues.pushFollowUp(message);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * enqueueSteering.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     public void enqueueSteering(String message) {
         enqueueSteering(DEFAULT_SESSION_ID, message);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * enqueueSteering.
+     * 
+     * @param sessionId sessionId
+     * @param message message
+     * @since 0.1.7
      */
     public void enqueueSteering(String sessionId, String message) {
         state(sessionId).queues.pushSteer(message);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasFollowUp.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasFollowUp() {
         return hasFollowUp(DEFAULT_SESSION_ID);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasFollowUp.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasFollowUp(String sessionId) {
         if (DEFAULT_SESSION_ID.equals(normalizeSessionId(sessionId))) {
@@ -213,14 +308,21 @@ public class TaskLoopController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * drainFollowUp.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> drainFollowUp() {
         return drainFollowUp(DEFAULT_SESSION_ID);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * drainFollowUp.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> drainFollowUp(String sessionId) {
         String normalized = normalizeSessionId(sessionId);
@@ -233,56 +335,84 @@ public class TaskLoopController {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * drainSteering.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> drainSteering() {
         return drainSteering(DEFAULT_SESSION_ID);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * drainSteering.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> drainSteering(String sessionId) {
         return state(sessionId).queues.drainSteering();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInteractionQueues.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public LoopQueues getInteractionQueues() {
         return getInteractionQueues(DEFAULT_SESSION_ID);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInteractionQueues.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public LoopQueues getInteractionQueues(String sessionId) {
         return state(sessionId).queues;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRoundCounter.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getRoundCounter() {
         return getRoundCounter(DEFAULT_SESSION_ID);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRoundCounter.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public int getRoundCounter(String sessionId) {
         return state(sessionId).roundCounter;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isRoundActive.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isRoundActive(String sessionId) {
         return state(sessionId).isRoundActive;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * clearSession.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public void clearSession(String sessionId) {
         if (sessionId == null || DEFAULT_SESSION_ID.equals(sessionId)) {
@@ -291,12 +421,26 @@ public class TaskLoopController {
         sessionStates.remove(sessionId);
     }
 
+    /**
+     * state.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
+     */
     private SessionState state(String sessionId) {
         String normalized = normalizeSessionId(sessionId);
         return sessionStates.computeIfAbsent(normalized,
                 ignored -> new SessionState(DEFAULT_SESSION_ID.equals(normalized) ? defaultQueues : new LoopQueues()));
     }
 
+    /**
+     * normalizeSessionId.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
+     */
     private String normalizeSessionId(String sessionId) {
         return sessionId == null || sessionId.isBlank() ? DEFAULT_SESSION_ID : sessionId;
     }
@@ -308,6 +452,12 @@ public class TaskLoopController {
         private boolean isRoundActive;
         private Map<String, Object> lastResult;
 
+        /**
+         * SessionState.
+         * 
+         * @param queues queues
+         * @since 0.1.7
+         */
         private SessionState(LoopQueues queues) {
             this.queues = queues;
         }

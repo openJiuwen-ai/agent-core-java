@@ -14,46 +14,55 @@ import java.util.Map;
 
 /**
  * Adapter between openjiuwen AgentCard and A2A protocol card payloads.
+ * 
+ * @since 0.1.7
  */
 public final class A2AAgentCardAdapter {
     private static final List<String> DEFAULT_INPUT_MODES = List.of("text/plain", "application/json");
+
+    /**
+     * List.of.
+     * 
+     * @since 0.1.7
+     */
     private static final List<String> DEFAULT_OUTPUT_MODES = List.of("text/plain", "application/json");
 
+    /**
+     * A2AAgentCardAdapter.
+     * 
+     * @since 0.1.7
+     */
     private A2AAgentCardAdapter() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toA2ACard.
+     * 
+     * @param agentCard agentCard
+     * @param interfaceUrl interfaceUrl
+     * @param protocolBinding protocolBinding
+     * @param protocolVersion protocolVersion
+     * @param tenant tenant
+     * @param supportedInterfaces supportedInterfaces
+     * @return the result
+     * @since 0.1.7
      */
-    public static Map<String, Object> toA2ACard(
-            AgentCard agentCard,
-            String interfaceUrl,
-            String protocolBinding,
-            String protocolVersion,
-            String tenant,
-            List<Map<String, Object>> supportedInterfaces
-    ) {
+    public static Map<String, Object> toA2ACard(AgentCard agentCard, String interfaceUrl, String protocolBinding,
+            String protocolVersion, String tenant, List<Map<String, Object>> supportedInterfaces) {
         if (agentCard == null) {
             return Map.of();
         }
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("name", agentCard.getName() != null ? agentCard.getName() : "");
-        payload.put("description", buildDescription(
-                agentCard.getDescription(),
-                agentCard.getInputParams(),
-                agentCard.getOutputParams()
-        ));
+        payload.put("description",
+                buildDescription(agentCard.getDescription(), agentCard.getInputParams(), agentCard.getOutputParams()));
         payload.put("defaultInputModes", DEFAULT_INPUT_MODES);
         payload.put("defaultOutputModes", DEFAULT_OUTPUT_MODES);
 
-        List<Map<String, Object>> interfaces = buildInterfaces(
-                interfaceUrl,
-                protocolBinding != null ? protocolBinding : "HTTP+JSON",
-                protocolVersion != null ? protocolVersion : "1.0",
-                tenant,
-                supportedInterfaces
-        );
+        List<Map<String, Object>> interfaces =
+            buildInterfaces(interfaceUrl, protocolBinding != null ? protocolBinding : "HTTP+JSON",
+                    protocolVersion != null ? protocolVersion : "1.0", tenant, supportedInterfaces);
         if (!interfaces.isEmpty()) {
             payload.put("supportedInterfaces", interfaces);
         }
@@ -61,31 +70,42 @@ public final class A2AAgentCardAdapter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toA2ACard.
+     * 
+     * @param agentCard agentCard
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> toA2ACard(AgentCard agentCard) {
         return toA2ACard(agentCard, null, "HTTP+JSON", "1.0", null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromA2ACard.
+     * 
+     * @param a2aCard a2aCard
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static AgentCard fromA2ACard(Map<String, Object> a2aCard) {
         if (a2aCard == null) {
             return AgentCard.builder().name("").description("").build();
         }
         String name = a2aCard.getOrDefault("name", "") instanceof String value ? value : "";
         String description = a2aCard.getOrDefault("description", "") instanceof String value ? value : "";
-        return AgentCard.builder()
-                .name(name)
-                .description(description)
-                .build();
+        return AgentCard.builder().name(name).description(description).build();
     }
 
+    /**
+     * buildDescription.
+     * 
+     * @param baseDescription baseDescription
+     * @param inputParams inputParams
+     * @param outputParams outputParams
+     * @return the result
+     * @since 0.1.7
+     */
     private static String buildDescription(String baseDescription, Object inputParams, Object outputParams) {
         List<String> sections = new ArrayList<>();
         if (baseDescription != null && !baseDescription.isBlank()) {
@@ -102,6 +122,13 @@ public final class A2AAgentCardAdapter {
         return String.join("\n", sections).trim();
     }
 
+    /**
+     * serializePayload.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String serializePayload(Object value) {
         if (value == null) {
             return "";
@@ -115,13 +142,19 @@ public final class A2AAgentCardAdapter {
         return JsonUtils.safeJsonDumps(Map.of("value", String.valueOf(value)), "");
     }
 
-    private static List<Map<String, Object>> buildInterfaces(
-            String interfaceUrl,
-            String protocolBinding,
-            String protocolVersion,
-            String tenant,
-            List<Map<String, Object>> supportedInterfaces
-    ) {
+    /**
+     * buildInterfaces.
+     * 
+     * @param interfaceUrl interfaceUrl
+     * @param protocolBinding protocolBinding
+     * @param protocolVersion protocolVersion
+     * @param tenant tenant
+     * @param supportedInterfaces supportedInterfaces
+     * @return the result
+     * @since 0.1.7
+     */
+    private static List<Map<String, Object>> buildInterfaces(String interfaceUrl, String protocolBinding,
+            String protocolVersion, String tenant, List<Map<String, Object>> supportedInterfaces) {
         List<Map<String, Object>> result = new ArrayList<>();
         if (supportedInterfaces != null) {
             for (Map<String, Object> item : supportedInterfaces) {

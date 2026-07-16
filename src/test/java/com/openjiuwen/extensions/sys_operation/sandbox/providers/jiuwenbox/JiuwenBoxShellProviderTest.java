@@ -4,11 +4,20 @@
 
 package com.openjiuwen.extensions.sys_operation.sandbox.providers.jiuwenbox;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
 import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,17 +29,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyMap;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 class JiuwenBoxShellProviderTest {
-
     private JiuwenBoxClient mockClient;
     private JiuwenBoxShellProvider provider;
 
@@ -53,7 +52,8 @@ class JiuwenBoxShellProviderTest {
         hooks.clear();
     }
 
-    private JiuwenBoxShellProvider createProviderWithMockClient(SandboxEndpoint endpoint, SandboxGatewayConfig config) throws Exception {
+    private JiuwenBoxShellProvider createProviderWithMockClient(SandboxEndpoint endpoint, SandboxGatewayConfig config)
+            throws Exception {
         JiuwenBoxShellProvider prov = new JiuwenBoxShellProvider(endpoint, config);
         Field mixinField = JiuwenBoxShellProvider.class.getDeclaredField("mixin");
         mixinField.setAccessible(true);
@@ -78,18 +78,14 @@ class JiuwenBoxShellProviderTest {
         when(mockClient.exec(anyString(), anyList(), anyString(), anyInt(), any(), any()))
                 .thenReturn(makeExecResponse("hello world", "", 0));
 
-        SandboxEndpoint endpoint = SandboxEndpoint.builder()
-                .baseUrl("http://mock-server:8080")
-                .sandboxId("sb-shell-test")
-                .build();
-        SandboxGatewayConfig config = SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .baseUrl("http://mock-server:8080")
-                        .sandboxType("jiuwenbox")
-                        .extraParams(new LinkedHashMap<>())
-                        .build())
-                .build();
+        SandboxEndpoint endpoint =
+            SandboxEndpoint.builder().baseUrl("http://mock-server:8080").sandboxId("sb-shell-test").build();
+        SandboxGatewayConfig config =
+            SandboxGatewayConfig.builder()
+                    .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
+                            .baseUrl("http://mock-server:8080").sandboxType("jiuwenbox")
+                            .extraParams(new LinkedHashMap<>()).build())
+                    .build();
         provider = createProviderWithMockClient(endpoint, config);
 
         ExecuteCmdResult result = provider.executeCmd("echo hello", ".", 30, null, null);
@@ -107,19 +103,12 @@ class JiuwenBoxShellProviderTest {
         extraParams.put("excluded_commands", List.of("pwd"));
         extraParams.put("root_path", System.getProperty("java.io.tmpdir"));
 
-        SandboxEndpoint endpoint = SandboxEndpoint.builder()
-                .baseUrl("http://mock-server:8080")
-                .sandboxId("sb-shell-test")
-                .build();
+        SandboxEndpoint endpoint =
+            SandboxEndpoint.builder().baseUrl("http://mock-server:8080").sandboxId("sb-shell-test").build();
         SandboxGatewayConfig config = SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .baseUrl("http://mock-server:8080")
-                        .sandboxType("jiuwenbox")
-                        .extraParams(extraParams)
-                        .build())
-                .params(Map.of("root_path", System.getProperty("java.io.tmpdir"),
-                        "shell_allowlist", List.of("pwd")))
+                .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
+                        .baseUrl("http://mock-server:8080").sandboxType("jiuwenbox").extraParams(extraParams).build())
+                .params(Map.of("root_path", System.getProperty("java.io.tmpdir"), "shell_allowlist", List.of("pwd")))
                 .build();
         provider = createProviderWithMockClient(endpoint, config);
 
@@ -138,19 +127,12 @@ class JiuwenBoxShellProviderTest {
         extraParams.put("fallback_on_failure", true);
         extraParams.put("root_path", System.getProperty("java.io.tmpdir"));
 
-        SandboxEndpoint endpoint = SandboxEndpoint.builder()
-                .baseUrl("http://mock-server:8080")
-                .sandboxId("sb-shell-test")
-                .build();
+        SandboxEndpoint endpoint =
+            SandboxEndpoint.builder().baseUrl("http://mock-server:8080").sandboxId("sb-shell-test").build();
         SandboxGatewayConfig config = SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .baseUrl("http://mock-server:8080")
-                        .sandboxType("jiuwenbox")
-                        .extraParams(extraParams)
-                        .build())
-                .params(Map.of("root_path", System.getProperty("java.io.tmpdir"),
-                        "shell_allowlist", List.of("pwd")))
+                .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
+                        .baseUrl("http://mock-server:8080").sandboxType("jiuwenbox").extraParams(extraParams).build())
+                .params(Map.of("root_path", System.getProperty("java.io.tmpdir"), "shell_allowlist", List.of("pwd")))
                 .build();
         provider = createProviderWithMockClient(endpoint, config);
 
@@ -165,18 +147,14 @@ class JiuwenBoxShellProviderTest {
         when(mockClient.exec(anyString(), anyList(), anyString(), anyInt(), any(), any()))
                 .thenReturn(makeExecResponse("line1\nline2", "", 0));
 
-        SandboxEndpoint endpoint = SandboxEndpoint.builder()
-                .baseUrl("http://mock-server:8080")
-                .sandboxId("sb-shell-test")
-                .build();
-        SandboxGatewayConfig config = SandboxGatewayConfig.builder()
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .baseUrl("http://mock-server:8080")
-                        .sandboxType("jiuwenbox")
-                        .extraParams(new LinkedHashMap<>())
-                        .build())
-                .build();
+        SandboxEndpoint endpoint =
+            SandboxEndpoint.builder().baseUrl("http://mock-server:8080").sandboxId("sb-shell-test").build();
+        SandboxGatewayConfig config =
+            SandboxGatewayConfig.builder()
+                    .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
+                            .baseUrl("http://mock-server:8080").sandboxType("jiuwenbox")
+                            .extraParams(new LinkedHashMap<>()).build())
+                    .build();
         provider = createProviderWithMockClient(endpoint, config);
 
         Iterator<ExecuteCmdStreamResult> stream = provider.executeCmdStream("echo", ".", 30, null, null);

@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.graph.store;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.graph.pregel.GraphInterrupt;
 import com.openjiuwen.core.graph.pregel.Interrupt;
@@ -18,21 +21,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for {@link InMemoryStore}, {@link GraphStore}, {@link GraphStoreState}, {@link PendingNode}.
  * <p>
  * Ported from Python's {@code test_graph_store.py}.
  */
 class GraphStoreTest {
-
     // ---------- InMemoryStore basic tests ----------
-
     @Nested
     @DisplayName("InMemoryStore basic CRUD")
     class InMemoryStoreBasicTests {
-
         @Test
         @DisplayName("save, get, and delete checkpoint")
         void testSaveGetDelete() {
@@ -42,14 +40,9 @@ class GraphStoreTest {
             String ns = "default";
 
             // Create a mock checkpoint
-            GraphStoreState checkpoint = GraphStoreState.create(
-                    ns,
-                    1,
-                    Map.of("ch1", 42),
-                    List.of(new Message("pending", "msg")),
-                    Map.of("node1", new PendingNode("n1", "running")),
-                    new HashMap<>()
-            );
+            GraphStoreState checkpoint =
+                GraphStoreState.create(ns, 1, Map.of("ch1", 42), List.of(new Message("pending", "msg")),
+                        Map.of("node1", new PendingNode("n1", "running")), new HashMap<>());
 
             // Save
             saver.save(conversationId, ns, checkpoint);
@@ -91,10 +84,8 @@ class GraphStoreTest {
             String convId = "conv1";
             String ns = "ns1";
 
-            saver.save(convId, ns, GraphStoreState.create(ns, 1, Map.of("k", 1),
-                    List.of(), Map.of(), new HashMap<>()));
-            saver.save(convId, ns, GraphStoreState.create(ns, 2, Map.of("k", 2),
-                    List.of(), Map.of(), new HashMap<>()));
+            saver.save(convId, ns, GraphStoreState.create(ns, 1, Map.of("k", 1), List.of(), Map.of(), new HashMap<>()));
+            saver.save(convId, ns, GraphStoreState.create(ns, 2, Map.of("k", 2), List.of(), Map.of(), new HashMap<>()));
 
             Optional<GraphStoreState> loaded = saver.get(convId, ns);
             assertTrue(loaded.isPresent());
@@ -111,8 +102,7 @@ class GraphStoreTest {
 
             Map<String, Object> channelVals = new HashMap<>();
             channelVals.put("key", "original");
-            saver.save(convId, ns, GraphStoreState.create(ns, 1, channelVals,
-                    List.of(), Map.of(), new HashMap<>()));
+            saver.save(convId, ns, GraphStoreState.create(ns, 1, channelVals, List.of(), Map.of(), new HashMap<>()));
 
             Optional<GraphStoreState> loaded = saver.get(convId, ns);
             assertTrue(loaded.isPresent());
@@ -146,7 +136,8 @@ class GraphStoreTest {
             Map<String, PendingNode> pendingNode = new HashMap<>();
             pendingNode.put("node1", new PendingNode("node1", "__error__", exceptions));
 
-            GraphStoreState state = GraphStoreState.create(ns, 1, channelVals, pendingBuffer, pendingNode, Map.of("node1", 1));
+            GraphStoreState state =
+                GraphStoreState.create(ns, 1, channelVals, pendingBuffer, pendingNode, Map.of("node1", 1));
             saver.save(convId, ns, state);
 
             ((List<String>) nested.get("list")).add("mutated-after-save");
@@ -154,7 +145,8 @@ class GraphStoreTest {
             exceptions.add(new RuntimeException("second"));
 
             GraphStoreState loaded = saver.get(convId, ns).orElseThrow();
-            ((List<String>) ((Map<String, Object>) loaded.getChannelValues().get("nested")).get("list")).add("mutated-after-get");
+            ((List<String>) ((Map<String, Object>) loaded.getChannelValues().get("nested")).get("list"))
+                    .add("mutated-after-get");
             ((List<String>) ((Map<String, Object>) loaded.getPendingBuffer().get(0).getPayload()).get("items"))
                     .add("payload-mutated-after-get");
             loaded.getPendingNode().get("node1").getExceptions().add(new RuntimeException("third"));
@@ -173,7 +165,6 @@ class GraphStoreTest {
     @Nested
     @DisplayName("Delete checkpoint by NS prefix")
     class DeleteByNsPrefixTests {
-
         @Test
         @DisplayName("delete by ns prefix removes matching namespaces")
         void testDeleteByNsPrefix() {
@@ -181,20 +172,14 @@ class GraphStoreTest {
             String conversationId = "conv_123";
 
             String ns1 = "apple";
-            GraphStoreState checkpoint1 = GraphStoreState.create(
-                    ns1, 1, Map.of("ch1", 12),
-                    List.of(new Message("pending", "msg")),
-                    Map.of("node1", new PendingNode("n1", "running1")),
-                    new HashMap<>()
-            );
+            GraphStoreState checkpoint1 =
+                GraphStoreState.create(ns1, 1, Map.of("ch1", 12), List.of(new Message("pending", "msg")),
+                        Map.of("node1", new PendingNode("n1", "running1")), new HashMap<>());
 
             String ns2 = "apple:orange";
-            GraphStoreState checkpoint2 = GraphStoreState.create(
-                    ns2, 2, Map.of("ch2", 123),
-                    List.of(new Message("pending", "msg")),
-                    Map.of("node1", new PendingNode("n2", "running2")),
-                    new HashMap<>()
-            );
+            GraphStoreState checkpoint2 =
+                GraphStoreState.create(ns2, 2, Map.of("ch2", 123), List.of(new Message("pending", "msg")),
+                        Map.of("node1", new PendingNode("n2", "running2")), new HashMap<>());
 
             // Save both
             saver.save(conversationId, ns1, checkpoint1);
@@ -217,10 +202,8 @@ class GraphStoreTest {
             InMemoryStore saver = new InMemoryStore();
             String convId = "conv1";
 
-            saver.save(convId, "ns1", GraphStoreState.create("ns1", 1, Map.of(),
-                    List.of(), Map.of(), new HashMap<>()));
-            saver.save(convId, "ns2", GraphStoreState.create("ns2", 2, Map.of(),
-                    List.of(), Map.of(), new HashMap<>()));
+            saver.save(convId, "ns1", GraphStoreState.create("ns1", 1, Map.of(), List.of(), Map.of(), new HashMap<>()));
+            saver.save(convId, "ns2", GraphStoreState.create("ns2", 2, Map.of(), List.of(), Map.of(), new HashMap<>()));
 
             // Delete only ns1
             saver.delete(convId, "ns1");
@@ -235,7 +218,6 @@ class GraphStoreTest {
     @Nested
     @DisplayName("GraphStore decorator")
     class GraphStoreDecoratorTests {
-
         @Test
         @DisplayName("GraphStore delegates to underlying store")
         void testGraphStoreDelegate() {
@@ -245,12 +227,9 @@ class GraphStoreTest {
             String convId = "conv_321";
             String ns = "default_ns";
 
-            GraphStoreState checkpoint = GraphStoreState.create(
-                    ns, 2, Map.of("ch1", 25),
-                    List.of(new Message("pending", "msg2")),
-                    Map.of("node1", new PendingNode("n2", "running2")),
-                    new HashMap<>()
-            );
+            GraphStoreState checkpoint =
+                GraphStoreState.create(ns, 2, Map.of("ch1", 25), List.of(new Message("pending", "msg2")),
+                        Map.of("node1", new PendingNode("n2", "running2")), new HashMap<>());
 
             graphStore.save(convId, ns, checkpoint);
 
@@ -276,26 +255,20 @@ class GraphStoreTest {
     @Nested
     @DisplayName("GraphStoreState")
     class GraphStoreStateTests {
-
         @Test
         @DisplayName("Java serializer persists an interrupted graph checkpoint")
         void testSerializeInterruptedCheckpoint() {
             InteractionOutput output = new InteractionOutput("interactive", null);
-            GraphInterrupt exception = new GraphInterrupt(new Interrupt(Map.of(
-                    "type", "__interaction__",
-                    "index", 0,
-                    "payload", output)));
-            GraphStoreState state = GraphStoreState.create(
-                    "workflow", 2, Map.of(), List.of(),
-                    Map.of("interactive", new PendingNode(
-                            "interactive", "__interrupt__", List.of(exception))),
+            GraphInterrupt exception =
+                new GraphInterrupt(new Interrupt(Map.of("type", "__interaction__", "index", 0, "payload", output)));
+            GraphStoreState state = GraphStoreState.create("workflow", 2, Map.of(), List.of(),
+                    Map.of("interactive", new PendingNode("interactive", "__interrupt__", List.of(exception))),
                     Map.of("start", 1));
 
             Serializer serializer = Serializer.create("java");
             GraphStoreState restored = (GraphStoreState) serializer.loadsTyped(serializer.dumpsTyped(state));
 
-            Exception restoredException = restored.getPendingNode()
-                    .get("interactive").getExceptions().get(0);
+            Exception restoredException = restored.getPendingNode().get("interactive").getExceptions().get(0);
             assertInstanceOf(GraphInterrupt.class, restoredException);
             GraphInterrupt restoredInterrupt = (GraphInterrupt) restoredException;
             @SuppressWarnings("unchecked")
@@ -306,13 +279,8 @@ class GraphStoreTest {
         @Test
         @DisplayName("create with all fields")
         void testCreate() {
-            GraphStoreState state = GraphStoreState.create(
-                    "ns1", 5,
-                    Map.of("ch", "val"),
-                    List.of(new Message("s", "t")),
-                    Map.of("n1", new PendingNode("n1", "err")),
-                    Map.of("n1", 3)
-            );
+            GraphStoreState state = GraphStoreState.create("ns1", 5, Map.of("ch", "val"),
+                    List.of(new Message("s", "t")), Map.of("n1", new PendingNode("n1", "err")), Map.of("n1", 3));
             assertEquals("ns1", state.getNs());
             assertEquals(5, state.getStep());
             assertEquals("val", state.getChannelValues().get("ch"));
@@ -337,7 +305,6 @@ class GraphStoreTest {
     @Nested
     @DisplayName("PendingNode")
     class PendingNodeTests {
-
         @Test
         @DisplayName("construct with name and status")
         void testBasicConstruction() {

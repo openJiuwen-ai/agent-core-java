@@ -14,6 +14,7 @@ import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
+
 import io.milvus.v2.client.MilvusClientV2;
 import io.milvus.v2.service.collection.request.DescribeCollectionReq;
 import io.milvus.v2.service.collection.response.DescribeCollectionResp;
@@ -27,56 +28,83 @@ import java.util.Objects;
 
 /**
  * Milvus-backed index manager for retrieval.
+ * 
+ * @since 0.1.7
  */
 public class MilvusIndexer implements Indexer {
-
     private final MilvusVectorStore vectorStore;
     private final MilvusClientV2 client;
     private final boolean ownsStore;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MilvusIndexer.
+     * 
+     * @param vectorStore vectorStore
+     * @since 0.1.7
      */
     public MilvusIndexer(MilvusVectorStore vectorStore) {
         this(vectorStore, false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MilvusIndexer.
+     * 
+     * @param config config
+     * @param milvusUri milvusUri
+     * @param indexType indexType
+     * @since 0.1.7
      */
     public MilvusIndexer(VectorStoreConfig config, String milvusUri, String indexType) {
         this(new MilvusVectorStore(config, milvusUri, indexType), true);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MilvusIndexer.
+     * 
+     * @param config config
+     * @param milvusUri milvusUri
+     * @param milvusToken milvusToken
+     * @param indexType indexType
+     * @since 0.1.7
      */
     public MilvusIndexer(VectorStoreConfig config, String milvusUri, String milvusToken, String indexType) {
         this(new MilvusVectorStore(config, milvusUri, milvusToken, indexType), true);
     }
 
+    /**
+     * MilvusIndexer.
+     * 
+     * @param vectorStore vectorStore
+     * @param ownsStore ownsStore
+     * @since 0.1.7
+     */
     private MilvusIndexer(MilvusVectorStore vectorStore, boolean ownsStore) {
         this.vectorStore = Objects.requireNonNull(vectorStore, "vectorStore");
         this.client = vectorStore.getClient();
         this.ownsStore = ownsStore;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * buildIndex.
+     * 
+     * @param chunks chunks
+     * @param config config
+     * @param embedModel embedModel
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public boolean buildIndex(List<TextChunk> chunks, IndexConfig config, Embedding embedModel, Map<String, Object> options) {
+    @Override
+    public boolean buildIndex(List<TextChunk> chunks, IndexConfig config, Embedding embedModel,
+            Map<String, Object> options) {
         List<TextChunk> safeChunks = chunks == null ? List.of() : chunks;
         if (safeChunks.isEmpty()) {
             return true;
         }
         ensureCollection(config.getIndexName(), config, embedModel);
         VectorStore scopedStore = vectorStore.withCollection(config.getIndexName());
-        List<String> docIds = safeChunks.stream()
-                .map(TextChunk::getDocId)
-                .filter(id -> id != null && !id.isBlank())
-                .distinct()
-                .toList();
+        List<String> docIds =
+            safeChunks.stream().map(TextChunk::getDocId).filter(id -> id != null && !id.isBlank()).distinct().toList();
         if (!docIds.isEmpty()) {
             List<SearchResult> existing = scopedStore.queryByFilters(Map.of(getDocIdField(), docIds), docIds.size());
             if (!existing.isEmpty()) {
@@ -87,8 +115,7 @@ public class MilvusIndexer implements Indexer {
                         duplicateDocIds.add(String.valueOf(value));
                     }
                 }
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_INDEXING_ADD_DOC_RUNTIME_ERROR,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_INDEXING_ADD_DOC_RUNTIME_ERROR,
                         "some documents with same doc_id already exist: " + duplicateDocIds);
             }
         }
@@ -96,40 +123,59 @@ public class MilvusIndexer implements Indexer {
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateIndex.
+     * 
+     * @param chunks chunks
+     * @param docId docId
+     * @param config config
+     * @param embedModel embedModel
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public boolean updateIndex(List<TextChunk> chunks,
-                               String docId,
-                               IndexConfig config,
-                               Embedding embedModel,
-                               Map<String, Object> options) {
+    @Override
+    public boolean updateIndex(List<TextChunk> chunks, String docId, IndexConfig config, Embedding embedModel,
+            Map<String, Object> options) {
         deleteIndex(docId, config.getIndexName(), options);
         return buildIndex(chunks, config, embedModel, options);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteIndex.
+     * 
+     * @param docId docId
+     * @param indexName indexName
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean deleteIndex(String docId, String indexName, Map<String, Object> options) {
         VectorStore scopedStore = vectorStore.withCollection(indexName);
         return scopedStore.delete(null, Map.of(getDocIdField(), docId), options);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * indexExists.
+     * 
+     * @param indexName indexName
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean indexExists(String indexName) {
         return vectorStore.tableExists(indexName);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexInfo.
+     * 
+     * @param indexName indexName
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> getIndexInfo(String indexName) {
         Map<String, Object> info = new LinkedHashMap<>();
         boolean exists = indexExists(indexName);
@@ -139,7 +185,8 @@ public class MilvusIndexer implements Indexer {
             info.put("count", 0L);
             return info;
         }
-        DescribeCollectionReq.DescribeCollectionReqBuilder builder = DescribeCollectionReq.builder().collectionName(indexName);
+        DescribeCollectionReq.DescribeCollectionReqBuilder builder =
+            DescribeCollectionReq.builder().collectionName(indexName);
         if (getDatabaseName() != null && !getDatabaseName().isBlank()) {
             builder.databaseName(getDatabaseName());
         }
@@ -150,89 +197,129 @@ public class MilvusIndexer implements Indexer {
         return info;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void close() {
         if (ownsStore) {
             vectorStore.close();
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDatabaseName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getDatabaseName() {
         return vectorStore.getDatabaseName();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDistanceMetric.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getDistanceMetric() {
         return vectorStore.getDistanceMetric();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getIndexType() {
         return vectorStore.getIndexType();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getTextField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getTextField() {
         return vectorStore.getTextField();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getVectorField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getVectorField() {
         return vectorStore.getVectorField();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getSparseVectorField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getSparseVectorField() {
         return vectorStore.getSparseVectorField();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadataField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getMetadataField() {
         return vectorStore.getMetadataField();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getDocIdField.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getDocIdField() {
         return vectorStore.getDocIdField();
     }
 
+    /**
+     * ensureCollection.
+     * 
+     * @param collectionName collectionName
+     * @param config config
+     * @param embedModel embedModel
+     * @since 0.1.7
+     */
     private void ensureCollection(String collectionName, IndexConfig config, Embedding embedModel) {
         Integer dimension = "bm25".equals(config.getIndexType()) ? null : resolveDimension(embedModel);
         vectorStore.ensureCollection(collectionName, config.getIndexType(), dimension, Map.of());
     }
 
+    /**
+     * resolveDimension.
+     * 
+     * @param embedModel embedModel
+     * @return the result
+     * @since 0.1.7
+     */
     private int resolveDimension(Embedding embedModel) {
         if (embedModel == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_INDEXING_EMBED_MODEL_NOT_FOUND,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_INDEXING_EMBED_MODEL_NOT_FOUND,
                     "embed_model is required for vector or hybrid index");
         }
         int dimension = embedModel.getDimension();
@@ -243,20 +330,26 @@ public class MilvusIndexer implements Indexer {
         if (probe != null && !probe.isEmpty()) {
             return probe.size();
         }
-        throw RetrievalExceptions.error(
-                StatusCode.RETRIEVAL_INDEXING_DIMENSION_NOT_FOUND,
+        throw RetrievalExceptions.error(StatusCode.RETRIEVAL_INDEXING_DIMENSION_NOT_FOUND,
                 "dimension is required for vector or hybrid index");
     }
 
-    private List<Map<String, Object>> toDocs(List<TextChunk> chunks,
-                                             IndexConfig config,
-                                             Embedding embedModel,
-                                             Map<String, Object> options) {
+    /**
+     * toDocs.
+     * 
+     * @param chunks chunks
+     * @param config config
+     * @param embedModel embedModel
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<Map<String, Object>> toDocs(List<TextChunk> chunks, IndexConfig config, Embedding embedModel,
+            Map<String, Object> options) {
         List<List<Float>> embeddings = null;
         if (!"bm25".equals(config.getIndexType())) {
             if (embedModel == null) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_INDEXING_EMBED_MODEL_NOT_FOUND,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_INDEXING_EMBED_MODEL_NOT_FOUND,
                         "embed_model is required to build vector or hybrid index");
             }
             embeddings = embedBatches(chunks, embedModel, options);
@@ -281,14 +374,22 @@ public class MilvusIndexer implements Indexer {
         return docs;
     }
 
+    /**
+     * embedBatches.
+     * 
+     * @param chunks chunks
+     * @param embedModel embedModel
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     private List<List<Float>> embedBatches(List<TextChunk> chunks, Embedding embedModel, Map<String, Object> options) {
         if (chunks.isEmpty()) {
             return List.of();
         }
         int batchSize = Math.max(1, embedModel.getMaxBatchSize());
-        BaseCallback callback = options != null && options.get("callback") instanceof BaseCallback baseCallback
-                ? baseCallback
-                : null;
+        BaseCallback callback =
+            options != null && options.get("callback") instanceof BaseCallback baseCallback ? baseCallback : null;
         List<List<Float>> embeddings = new ArrayList<>(chunks.size());
         for (int start = 0; start < chunks.size(); start += batchSize) {
             int end = Math.min(start + batchSize, chunks.size());
@@ -300,5 +401,4 @@ public class MilvusIndexer implements Indexer {
         }
         return embeddings;
     }
-
 }

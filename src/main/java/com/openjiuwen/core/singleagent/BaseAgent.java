@@ -24,23 +24,27 @@ import java.util.function.Consumer;
 
 /**
  * Single Agent Base Class.
- *
- * <p>Design principles:
+ * <p>
+ * Design principles:
  * <ul>
- *   <li>Card is required (defines what the Agent is)</li>
- *   <li>Config is optional (defines how the Agent runs)</li>
- *   <li>All configuration methods support chaining</li>
+ * <li>Card is required (defines what the Agent is)</li>
+ * <li>Config is optional (defines how the Agent runs)</li>
+ * <li>All configuration methods support chaining</li>
  * </ul>
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseAgent implements AgentCallbackFirer {
-
     private final AgentCard card;
     private final AbilityManager abilityManager;
     private final AgentCallbackManager agentCallbackManager;
     private SkillUtil skillUtil;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseAgent.
+     * 
+     * @param card card
+     * @since 0.1.7
      */
     protected BaseAgent(AgentCard card) {
         this.card = card;
@@ -51,6 +55,8 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     /**
      * Lazy init SkillUtil.
+     * 
+     * @since 0.1.7
      */
     protected void lazyInitSkill() {
         Object config = getConfig();
@@ -70,6 +76,10 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     /**
      * Extract sys_operation_id from config via reflection. Override for concrete types.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     protected String getSysOperationId(Object config) {
         try {
@@ -84,49 +94,66 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     /**
      * Set configuration.
-     *
+     * 
      * @param config the configuration object
      * @return self for chaining
+     * @since 0.1.7
      */
     public abstract BaseAgent configure(Object config);
 
     /**
      * Get current configuration.
-     *
+     * 
      * @return current config, or null
+     * @since 0.1.7
      */
     public abstract Object getConfig();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCard.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AgentCard getCard() {
         return card;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAbilityManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AbilityManager getAbilityManager() {
         return abilityManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentCallbackManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public AgentCallbackManager getAgentCallbackManager() {
         return agentCallbackManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSkillUtil.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public SkillUtil getSkillUtil() {
         return skillUtil;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSkillUtil.
+     * 
+     * @param skillUtil skillUtil
+     * @since 0.1.7
      */
     protected void setSkillUtil(SkillUtil skillUtil) {
         this.skillUtil = skillUtil;
@@ -134,8 +161,9 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     /**
      * Register a skill from a local path.
-     *
+     * 
      * @param skillPath path to the skill directory or file (String or List of Strings)
+     * @since 0.1.7
      */
     public void registerSkill(Object skillPath) {
         lazyInitSkill();
@@ -146,10 +174,11 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     /**
      * Register remote skills from GitHub.
-     *
-     * @param skillsDir  local directory for skills
+     * 
+     * @param skillsDir local directory for skills
      * @param githubTree the GitHub tree reference
-     * @param token      GitHub API token (optional, pass empty string if not needed)
+     * @param token GitHub API token (optional, pass empty string if not needed)
+     * @since 0.1.7
      */
     public void registerRemoteSkills(String skillsDir, GitHubTree githubTree, String token) {
         lazyInitSkill();
@@ -160,11 +189,12 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     /**
      * Register a callback for an event.
-     *
-     * @param event    event type
+     * 
+     * @param event event type
      * @param callback callback function
      * @param priority execution priority
      * @return self for chaining
+     * @since 0.1.7
      */
     public BaseAgent registerCallback(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback, int priority) {
         agentCallbackManager.registerCallback(event, callback, priority);
@@ -173,9 +203,10 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     /**
      * Register a rail instance.
-     *
+     * 
      * @param rail the AgentRail to register
      * @return self for chaining
+     * @since 0.1.7
      */
     public BaseAgent registerRail(AgentRail rail) {
         agentCallbackManager.registerRail(rail, this);
@@ -184,48 +215,56 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     /**
      * Unregister a rail instance.
-     *
+     * 
      * @param rail the AgentRail to unregister
      * @return self for chaining
+     * @since 0.1.7
      */
     public BaseAgent unregisterRail(AgentRail rail) {
         agentCallbackManager.unregisterRail(rail, this);
         return this;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * fireCallbackEvent.
+     * 
+     * @param event event
+     * @param ctx ctx
+     * @since 0.1.7
      */
+    @Override
     public void fireCallbackEvent(AgentCallbackEvent event, AgentCallbackContext ctx) {
         agentCallbackManager.execute(event, ctx);
     }
 
     /**
      * Batch execution.
-     *
-     * @param inputs  agent input
+     * 
+     * @param inputs agent input
      * @param session session object
      * @return agent output result
+     * @since 0.1.7
      */
     public abstract Object invoke(Object inputs, Session session);
 
     /**
      * Stream execution.
-     *
-     * @param inputs      agent input
-     * @param session     session object
+     * 
+     * @param inputs agent input
+     * @param session session object
      * @param streamModes stream output modes
      * @return iterator of stream output
+     * @since 0.1.7
      */
     public abstract Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes);
 
     /**
      * Reactive version of {@link #invoke(Object, Session)}.
-     *
+     * 
      * @param inputs agent inputs
      * @param session session context, nullable
      * @return Mono emitting the invocation result
+     * @since 0.1.7
      */
     public Mono<Object> invokeAsync(Object inputs, Session session) {
         return ReactiveAdapters.fromCallable(() -> invoke(inputs, session));
@@ -233,11 +272,12 @@ public abstract class BaseAgent implements AgentCallbackFirer {
 
     /**
      * Reactive version of {@link #stream(Object, Session, List)}.
-     *
+     * 
      * @param inputs agent inputs
      * @param session session context, nullable
      * @param streamModes stream output modes
      * @return Flux emitting stream chunks
+     * @since 0.1.7
      */
     public Flux<Object> streamAsync(Object inputs, Session session, List<StreamMode> streamModes) {
         return ReactiveAdapters.fromAutoCloseableIterator(() -> stream(inputs, session, streamModes));

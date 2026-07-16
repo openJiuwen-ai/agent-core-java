@@ -9,14 +9,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Public class MessageRecord used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class MessageRecord used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class MessageRecord {
     private String messageId;
@@ -29,11 +29,17 @@ public class MessageRecord {
     private boolean isRead;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MessageRecordBuilder.
+     * 
+     * @since 0.1.7
      */
     public static class MessageRecordBuilder {
         /**
-         * Auto-generated for codecheck compliance.
+         * broadcast.
+         * 
+         * @param value value
+         * @return the result
+         * @since 0.1.7
          */
         public MessageRecordBuilder broadcast(boolean value) {
             this.isBroadcast = value;

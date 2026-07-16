@@ -1,28 +1,26 @@
+
 package com.openjiuwen.harness.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.harness.tools.browser.BrowserJsonUtils;
 import com.openjiuwen.harness.tools.browser.BrowserMoveStreamableHttpClient;
 import com.openjiuwen.harness.tools.browser.BrowserRuntimeSettings;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessBrowserConfigCompatibilityTest {
-
     @Test
     void runtimeSettingsShouldUseDefaultsAndOverrides() {
         BrowserRuntimeSettings defaults = BrowserRuntimeSettings.buildRuntimeSettings(Map.of());
-        BrowserRuntimeSettings overridden = BrowserRuntimeSettings.buildRuntimeSettings(Map.of(
-                "MODEL_PROVIDER", "openrouter",
-                "OPENROUTER_API_KEY", "test-key",
-                "MODEL_NAME", "google/gemini-3.1-pro-preview",
-                "BROWSER_TIMEOUT_S", "45",
-                "PLAYWRIGHT_MCP_ARGS", "[\"-y\", \"@playwright/mcp@latest\", \"--headless\"]"
-        ));
+        BrowserRuntimeSettings overridden =
+            BrowserRuntimeSettings.buildRuntimeSettings(Map.of("MODEL_PROVIDER", "openrouter", "OPENROUTER_API_KEY",
+                    "test-key", "MODEL_NAME", "google/gemini-3.1-pro-preview", "BROWSER_TIMEOUT_S", "45",
+                    "PLAYWRIGHT_MCP_ARGS", "[\"-y\", \"@playwright/mcp@latest\", \"--headless\"]"));
 
         assertThat(defaults.getProvider()).isEqualTo("openai");
         assertThat(defaults.getApiBase()).isEqualTo("https://api.openai.com/v1");
@@ -37,18 +35,12 @@ class HarnessBrowserConfigCompatibilityTest {
     @Test
     void browserRuntimeMcpConfigAndJsonUtilsShouldBehave() {
         McpServerConfig disabled = BrowserRuntimeSettings.buildBrowserRuntimeMcpConfig(Map.of());
-        McpServerConfig httpCfg = BrowserRuntimeSettings.buildBrowserRuntimeMcpConfig(Map.of(
-                "PLAYWRIGHT_RUNTIME_MCP_ENABLED", "1",
-                "PLAYWRIGHT_RUNTIME_MCP_CLIENT_TYPE", "http",
-                "PLAYWRIGHT_RUNTIME_MCP_HOST", "127.0.0.1",
-                "PLAYWRIGHT_RUNTIME_MCP_PORT", "8940"
-        ));
+        McpServerConfig httpCfg = BrowserRuntimeSettings.buildBrowserRuntimeMcpConfig(
+                Map.of("PLAYWRIGHT_RUNTIME_MCP_ENABLED", "1", "PLAYWRIGHT_RUNTIME_MCP_CLIENT_TYPE", "http",
+                        "PLAYWRIGHT_RUNTIME_MCP_HOST", "127.0.0.1", "PLAYWRIGHT_RUNTIME_MCP_PORT", "8940"));
         BrowserMoveStreamableHttpClient client = new BrowserMoveStreamableHttpClient(McpServerConfig.builder()
-                .serverId("playwright-runtime-wrapper")
-                .serverName("playwright-runtime-wrapper")
-                .serverPath("http://127.0.0.1:8940/mcp")
-                .clientType("streamable-http")
-                .build());
+                .serverId("playwright-runtime-wrapper").serverName("playwright-runtime-wrapper")
+                .serverPath("http://127.0.0.1:8940/mcp").clientType("streamable-http").build());
 
         assertThat(disabled).isNull();
         assertThat(httpCfg.getClientType()).isEqualTo("streamable-http");

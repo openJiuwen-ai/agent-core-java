@@ -12,22 +12,28 @@ import java.util.Map;
 
 /**
  * Public class WebPaidSearchTool used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class WebPaidSearchTool {
     private final WebHttpFetcher fetcher;
     private final Map<String, String> env;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WebPaidSearchTool.
+     * 
+     * @since 0.1.7
      */
     public WebPaidSearchTool() {
         this(WebFetchWebpageTool::defaultFetch, System.getenv());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WebPaidSearchTool.
+     * 
+     * @param fetcher fetcher
+     * @param env env
+     * @since 0.1.7
      */
     public WebPaidSearchTool(WebHttpFetcher fetcher, Map<String, String> env) {
         this.fetcher = fetcher;
@@ -35,7 +41,12 @@ public class WebPaidSearchTool {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param query query
+     * @param provider provider
+     * @return the result
+     * @since 0.1.7
      */
     public String invoke(String query, String provider) {
         if (query == null || query.isBlank()) {
@@ -60,12 +71,24 @@ public class WebPaidSearchTool {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isPaidSearchEnabled.
+     * 
+     * @param env env
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isPaidSearchEnabled(Map<String, String> env) {
         return hasKey(env, "BOCHA_API_KEY") || hasKey(env, "PERPLEXITY_API_KEY") || hasKey(env, "SERPER_API_KEY");
     }
 
+    /**
+     * hasKey.
+     * 
+     * @param env env
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean hasKey(Map<String, String> env, String key) {
         String value = env.get(key);
         return value != null && !value.isBlank();

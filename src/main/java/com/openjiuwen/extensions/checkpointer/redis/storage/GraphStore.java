@@ -15,17 +15,22 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.checkpointer.redis.storage.GraphStore}.
- *
- * <p>Redis-based graph state store implementation.
+ * <p>
+ * Redis-based graph state store implementation.
+ * 
+ * @since 0.1.7
  */
 public class GraphStore extends BaseRedisStorage {
-
     private static final String DATA_TYPE = "checkpoint_data_type";
     private static final String DATA_VALUE = "checkpoint_data_value";
     private static final int KEY_NUMS = 2;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GraphStore.
+     * 
+     * @param redisStore redisStore
+     * @param ttl ttl
+     * @since 0.1.7
      */
     public GraphStore(RedisStore redisStore, Map<String, Object> ttl) {
         super(redisStore, ttl);
@@ -33,13 +38,18 @@ public class GraphStore extends BaseRedisStorage {
 
     /**
      * Get graph state from Redis.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<Object> get(String sessionId, String ns) {
         try {
-            String keyType = Checkpointer.buildKeyWithNamespace(
-                    sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
-            String keyValue = Checkpointer.buildKeyWithNamespace(
-                    sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
+            String keyType =
+                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
+            String keyValue =
+                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
 
             KVStorePipeline pipeline = redisStore.pipeline();
             pipeline.get(keyType);
@@ -69,6 +79,12 @@ public class GraphStore extends BaseRedisStorage {
 
     /**
      * Save graph state to Redis.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @param state state
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<Void> save(String sessionId, String ns, Object state) {
         try {
@@ -78,10 +94,10 @@ public class GraphStore extends BaseRedisStorage {
                 return CompletableFuture.completedFuture(null);
             }
 
-            String keyType = Checkpointer.buildKeyWithNamespace(
-                    sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
-            String keyValue = Checkpointer.buildKeyWithNamespace(
-                    sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
+            String keyType =
+                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
+            String keyValue =
+                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
 
             KVStorePipeline pipeline = redisStore.pipeline();
             pipeline.set(keyType, stateBlob.type(), ttlSeconds);
@@ -95,6 +111,11 @@ public class GraphStore extends BaseRedisStorage {
 
     /**
      * Delete graph state from Redis.
+     * 
+     * @param sessionId sessionId
+     * @param ns ns
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<Void> delete(String sessionId, String ns) {
         try {

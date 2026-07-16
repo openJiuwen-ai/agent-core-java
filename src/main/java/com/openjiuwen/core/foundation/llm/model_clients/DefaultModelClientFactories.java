@@ -8,16 +8,24 @@ import com.openjiuwen.core.foundation.llm.Model;
 
 /**
  * Registers the built-in OpenAI-compatible model client factories.
+ * 
+ * @since 0.1.7
  */
 public final class DefaultModelClientFactories {
-
     private static volatile boolean registered;
 
+    /**
+     * DefaultModelClientFactories.
+     * 
+     * @since 0.1.7
+     */
     private DefaultModelClientFactories() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ensureRegistered.
+     * 
+     * @since 0.1.7
      */
     public static synchronized void ensureRegistered() {
         if (registered) {

@@ -9,11 +9,12 @@ import lombok.EqualsAndHashCode;
 
 /**
  * Distributed response message.
+ * 
+ * @since 0.1.7
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class DmqResponseMessage extends DmqMessage {
-
     private DMessageType type = DMessageType.OUTPUT;
 
     private ResultType resultType = ResultType.MESSAGE;

@@ -23,31 +23,47 @@ import java.util.Optional;
  * All methods are static and stateless.
  * <p>
  * Mirrors Python's {@code ContextUtils} from {@code context_engine/context/context_utils.py}.
+ * 
+ * @since 0.1.7
  */
 public final class ContextUtils {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * CONTEXT_MESSAGE_ID_KEY.
+     * 
+     * @since 0.1.7
      */
     public static final String CONTEXT_MESSAGE_ID_KEY = "context_message_id";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * DEFAULT_CONTEXT_MAX_TOKENS.
+     * 
+     * @since 0.1.7
      */
     public static final int DEFAULT_CONTEXT_MAX_TOKENS = 200000;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * MODEL_DEFAULT_CONTEXT_WINDOW_TOKENS.
+     * 
+     * @since 0.1.7
      */
     public static final Map<String, Integer> MODEL_DEFAULT_CONTEXT_WINDOW_TOKENS = defaultContextWindowTokens();
 
+    /**
+     * ContextUtils.
+     * 
+     * @since 0.1.7
+     */
     private ContextUtils() {
     }
 
     /**
      * Find the index of the last assistant message without tool calls.
-     *
+     * 
      * @param messages the message list to search
      * @return the index, or empty if not found
+     * @since 0.1.7
      */
     public static Optional<Integer> findLastAiMessageWithoutToolCall(List<BaseMessage> messages) {
         if (messages == null || messages.isEmpty()) {
@@ -66,23 +82,21 @@ public final class ContextUtils {
 
     /**
      * Replace a range of messages with target messages.
-     *
-     * @param messages       the original message list
+     * 
+     * @param messages the original message list
      * @param targetMessages the replacement messages
-     * @param startIndex     the start index (inclusive)
-     * @param endIndex       the end index (inclusive)
+     * @param startIndex the start index (inclusive)
+     * @param endIndex the end index (inclusive)
      * @return the new message list
+     * @since 0.1.7
      */
-    public static List<BaseMessage> replaceMessages(
-            List<BaseMessage> messages,
-            List<BaseMessage> targetMessages,
-            int startIndex,
-            int endIndex) {
-
+    public static List<BaseMessage> replaceMessages(List<BaseMessage> messages, List<BaseMessage> targetMessages,
+            int startIndex, int endIndex) {
         if (startIndex < 0 || endIndex >= messages.size() || startIndex > endIndex) {
             throw new IndexOutOfBoundsException("Invalid start/end index");
         }
-        List<BaseMessage> result = new ArrayList<>(messages.size() - (endIndex - startIndex + 1) + targetMessages.size());
+        List<BaseMessage> result =
+            new ArrayList<>(messages.size() - (endIndex - startIndex + 1) + targetMessages.size());
         result.addAll(messages.subList(0, startIndex));
         result.addAll(targetMessages);
         result.addAll(messages.subList(endIndex + 1, messages.size()));
@@ -91,10 +105,11 @@ public final class ContextUtils {
 
     /**
      * Format reloaded messages for display.
-     *
+     * 
      * @param offloadHandle the handle used for offloading
-     * @param messages      the reloaded messages
+     * @param messages the reloaded messages
      * @return formatted string
+     * @since 0.1.7
      */
     public static String formatReloadedMessages(String offloadHandle, List<BaseMessage> messages) {
         StringBuilder sb = new StringBuilder();
@@ -117,9 +132,10 @@ public final class ContextUtils {
      * Find all dialogue rounds in the message list.
      * A round starts from a user message and ends at the next assistant message
      * that contains no tool calls.
-     *
+     * 
      * @param messages the message list
      * @return list of rounds, each represented as [userIndex, assistantIndex] (assistantIndex may be null)
+     * @since 0.1.7
      */
     public static List<int[]> findAllDialogueRound(List<BaseMessage> messages) {
         List<int[]> rounds = new ArrayList<>();
@@ -159,10 +175,7 @@ public final class ContextUtils {
             if (rounds.isEmpty()) {
                 for (int lastRoundIndex = messages.size() - 1; lastRoundIndex > foundUserIdx; lastRoundIndex--) {
                     if ("user".equals(messages.get(lastRoundIndex).getRole())) {
-                        rounds.add(new int[]{
-                                findContiguousUserGroupStart(messages, lastRoundIndex),
-                                -1
-                        });
+                        rounds.add(new int[]{findContiguousUserGroupStart(messages, lastRoundIndex), -1});
                         break;
                     }
                 }
@@ -176,6 +189,14 @@ public final class ContextUtils {
         return rounds;
     }
 
+    /**
+     * findContiguousUserGroupStart.
+     * 
+     * @param messages messages
+     * @param userIdx userIdx
+     * @return the result
+     * @since 0.1.7
+     */
     private static int findContiguousUserGroupStart(List<BaseMessage> messages, int userIdx) {
         int currentUserIdx = userIdx;
         while (currentUserIdx - 1 >= 0 && "user".equals(messages.get(currentUserIdx - 1).getRole())) {
@@ -186,10 +207,11 @@ public final class ContextUtils {
 
     /**
      * Find the start index for the last N dialogue rounds.
-     *
+     * 
      * @param messages the message list
-     * @param n        number of rounds to retain
+     * @param n number of rounds to retain
      * @return the start index, or -1 if no rounds found
+     * @since 0.1.7
      */
     public static int findLastNDialogueRound(List<BaseMessage> messages, int n) {
         List<int[]> rounds = findAllDialogueRound(messages);
@@ -202,6 +224,11 @@ public final class ContextUtils {
 
     /**
      * Resolve the tool call associated with a tool message by scanning backward.
+     * 
+     * @param message message
+     * @param contextMessages contextMessages
+     * @return the result
+     * @since 0.1.7
      */
     public static ToolCall resolveToolCallFromMessage(BaseMessage message, List<BaseMessage> contextMessages) {
         if (!(message instanceof ToolMessage toolMessage) || toolMessage.getToolCallId() == null) {
@@ -210,8 +237,7 @@ public final class ContextUtils {
         String toolCallId = toolMessage.getToolCallId();
         for (int idx = contextMessages.indexOf(message); idx >= 0; idx--) {
             BaseMessage candidate = contextMessages.get(idx);
-            if (candidate instanceof AssistantMessage assistant
-                    && assistant.getToolCalls() != null) {
+            if (candidate instanceof AssistantMessage assistant && assistant.getToolCalls() != null) {
                 for (ToolCall toolCall : assistant.getToolCalls()) {
                     if (toolCallId.equals(toolCall.getId())) {
                         return toolCall;
@@ -223,7 +249,12 @@ public final class ContextUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveToolNameFromMessage.
+     * 
+     * @param message message
+     * @param contextMessages contextMessages
+     * @return the result
+     * @since 0.1.7
      */
     public static String resolveToolNameFromMessage(BaseMessage message, List<BaseMessage> contextMessages) {
         ToolCall toolCall = resolveToolCallFromMessage(message, contextMessages);
@@ -231,14 +262,22 @@ public final class ContextUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extractToolName.
+     * 
+     * @param toolCall toolCall
+     * @return the result
+     * @since 0.1.7
      */
     public static String extractToolName(ToolCall toolCall) {
         return toolCall != null ? toolCall.getName() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ensureContextMessageIds.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
      */
     public static List<BaseMessage> ensureContextMessageIds(List<BaseMessage> messages) {
         if (messages == null) {
@@ -254,11 +293,15 @@ public final class ContextUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveContextMax.
+     * 
+     * @param modelName modelName
+     * @param fallbackContextWindowTokens fallbackContextWindowTokens
+     * @param modelContextWindowTokens modelContextWindowTokens
+     * @return the result
+     * @since 0.1.7
      */
-    public static int resolveContextMax(
-            String modelName,
-            Integer fallbackContextWindowTokens,
+    public static int resolveContextMax(String modelName, Integer fallbackContextWindowTokens,
             Map<String, Integer> modelContextWindowTokens) {
         if (fallbackContextWindowTokens != null && fallbackContextWindowTokens > 0) {
             return fallbackContextWindowTokens;
@@ -279,7 +322,11 @@ public final class ContextUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isCompressionProcessor.
+     * 
+     * @param processor processor
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isCompressionProcessor(Object processor) {
         if (processor == null) {
@@ -287,13 +334,16 @@ public final class ContextUtils {
         }
         String processorType = processor.getClass().getSimpleName().toLowerCase(Locale.ROOT);
         String moduleName = processor.getClass().getName().toLowerCase(Locale.ROOT);
-        return processorType.contains("compressor")
-                || processorType.contains("compact")
+        return processorType.contains("compressor") || processorType.contains("compact")
                 || moduleName.contains(".processor.compressor.");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * estimateTokens.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
     public static int estimateTokens(Object content) {
         if (content instanceof String text) {
@@ -307,7 +357,11 @@ public final class ContextUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * estimateMessageTokens.
+     * 
+     * @param message message
+     * @return the result
+     * @since 0.1.7
      */
     public static int estimateMessageTokens(BaseMessage message) {
         return estimateTokens(message != null ? message.getContent() : "");
@@ -315,6 +369,10 @@ public final class ContextUtils {
 
     /**
      * Check whether a message has tool calls (AssistantMessage with non-empty toolCalls).
+     * 
+     * @param msg msg
+     * @return the result
+     * @since 0.1.7
      */
     private static boolean hasToolCalls(BaseMessage msg) {
         if (msg instanceof com.openjiuwen.core.foundation.llm.schema.AssistantMessage am) {
@@ -324,6 +382,13 @@ public final class ContextUtils {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * ensureMetadata.
+     * 
+     * @param message message
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> ensureMetadata(BaseMessage message) {
         try {
             var getter = message.getClass().getMethod("getMetadata");
@@ -345,6 +410,12 @@ public final class ContextUtils {
         return new HashMap<>();
     }
 
+    /**
+     * defaultContextWindowTokens.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Integer> defaultContextWindowTokens() {
         Map<String, Integer> values = new HashMap<>();
         values.put("glm-5", 200000);

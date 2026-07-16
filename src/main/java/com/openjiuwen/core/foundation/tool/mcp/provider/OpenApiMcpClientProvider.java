@@ -14,16 +14,17 @@ import com.openjiuwen.core.foundation.tool.mcp.client.OpenApiClient;
  * <p>
  * Creates MCP clients that interact with MCP servers exposing tools
  * defined by OpenAPI specifications, enabling REST API integration.
- *
- * @since 0.1.12
+ * 
  * @see McpClientProvider
  * @see com.openjiuwen.core.foundation.tool.mcp.client.OpenApiClient
+ * @since 0.1.7
  */
 public final class OpenApiMcpClientProvider implements McpClientProvider {
     /**
-     * Returns the OpenAPI transport type name.
-     *
-     * @return the type name "openapi"
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
     public String typeName() {
@@ -32,9 +33,10 @@ public final class OpenApiMcpClientProvider implements McpClientProvider {
 
     /**
      * Creates an MCP client using OpenAPI specification.
-     *
+     * 
      * @param config the MCP server configuration
      * @return a new OpenApiClient instance
+     * @since 0.1.7
      */
     @Override
     public McpClient create(McpServerConfig config) {

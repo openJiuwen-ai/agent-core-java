@@ -11,13 +11,19 @@ import com.openjiuwen.core.graph.Graph;
  * This is the most common base class for user-defined workflow components.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.component.WorkflowComponent}.
+ * 
+ * @since 0.1.7
  */
 public abstract class WorkflowComponent extends ComponentExecutable implements ComponentComposable {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addComponent.
+     * 
+     * @param graph graph
+     * @param nodeId nodeId
+     * @param waitForAll waitForAll
+     * @since 0.1.7
      */
+    @Override
     public void addComponent(Graph graph, String nodeId, boolean waitForAll) {
         graph.addNode(nodeId, this, waitForAll);
     }

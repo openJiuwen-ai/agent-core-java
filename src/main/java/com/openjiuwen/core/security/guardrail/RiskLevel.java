@@ -6,6 +6,8 @@ package com.openjiuwen.core.security.guardrail;
 
 /**
  * Risk severity levels for guardrail assessments.
+ * 
+ * @since 0.1.7
  */
 public enum RiskLevel {
     SAFE("safe"),
@@ -21,7 +23,10 @@ public enum RiskLevel {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

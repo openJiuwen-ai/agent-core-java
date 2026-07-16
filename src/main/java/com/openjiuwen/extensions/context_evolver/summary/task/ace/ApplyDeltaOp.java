@@ -20,35 +20,45 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.summary.task.ace.update.ApplyDeltaOp}.
- *
- * <p>Applies ACE playbook delta operations, enforces the maximum playbook size, deletes removed
+ * <p>
+ * Applies ACE playbook delta operations, enforces the maximum playbook size, deletes removed
  * bullets from the vector store, and emits only the affected ACE memories for persistence.
+ * 
+ * @since 0.1.7
  */
 public class ApplyDeltaOp extends BaseOp {
-
     private final int maxBullets;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ApplyDeltaOp.
+     * 
+     * @since 0.1.7
      */
     public ApplyDeltaOp() {
         this(50);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ApplyDeltaOp.
+     * 
+     * @param maxBullets maxBullets
+     * @since 0.1.7
      */
     public ApplyDeltaOp(int maxBullets) {
         this.maxBullets = maxBullets;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * asyncExecute.
+     * 
+     * @param context context
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected CompletableFuture<Void> asyncExecute(RuntimeContext context) {
         Object deltaValue = context.get("delta");
-        Playbook.DeltaBatch delta = null ;
+        Playbook.DeltaBatch delta = null;
         if (deltaValue instanceof Playbook.DeltaBatch) {
             delta = (Playbook.DeltaBatch) deltaValue;
         }
@@ -88,18 +98,13 @@ public class ApplyDeltaOp extends BaseOp {
         }
 
         for (Playbook.DeltaOperation operation : delta.getOperations()) {
-            String operationType = operation.getType() != null
-                ? operation.getType().toUpperCase(Locale.ROOT)
-                : "ADD";
+            String operationType = operation.getType() != null ? operation.getType().toUpperCase(Locale.ROOT) : "ADD";
 
             switch (operationType) {
                 case "ADD" -> {
-                    Playbook.Bullet bullet = playbook.addBullet(
-                        operation.getSection(),
-                        operation.getContent() != null ? operation.getContent() : "",
-                        operation.getBulletId(),
-                        operation.getMetadata()
-                    );
+                    Playbook.Bullet bullet = playbook.addBullet(operation.getSection(),
+                            operation.getContent() != null ? operation.getContent() : "", operation.getBulletId(),
+                            operation.getMetadata());
                     affectedBulletIds.add(bullet.getId());
                 }
                 case "UPDATE" -> {
@@ -107,11 +112,8 @@ public class ApplyDeltaOp extends BaseOp {
                     if (bulletId == null || bulletId.isBlank()) {
                         continue;
                     }
-                    Playbook.Bullet updatedBullet = playbook.updateBullet(
-                        bulletId,
-                        operation.getContent(),
-                        operation.getMetadata()
-                    );
+                    Playbook.Bullet updatedBullet =
+                        playbook.updateBullet(bulletId, operation.getContent(), operation.getMetadata());
                     if (updatedBullet != null) {
                         affectedBulletIds.add(bulletId);
                     } else if (operation.getContent() != null && !operation.getContent().isBlank()) {
@@ -119,13 +121,12 @@ public class ApplyDeltaOp extends BaseOp {
                         if ((section == null || section.isBlank()) && bulletId.contains("-")) {
                             section = bulletId.substring(0, bulletId.lastIndexOf('-')).replace('_', ' ');
                         }
-                        Playbook.Bullet bullet = playbook.addBullet(
-                            section != null && !section.isBlank() ? section : "general",
-                            operation.getContent(),
-                            null,
-                            operation.getMetadata()
-                        );
+                        Playbook.Bullet bullet =
+                            playbook.addBullet(section != null && !section.isBlank() ? section : "general",
+                                    operation.getContent(), null, operation.getMetadata());
                         affectedBulletIds.add(bullet.getId());
+                    } else {
+                        // no-op
                     }
                 }
                 case "TAG" -> {
@@ -175,6 +176,14 @@ public class ApplyDeltaOp extends BaseOp {
         });
     }
 
+    /**
+     * toAceMemory.
+     * 
+     * @param userId userId
+     * @param bullet bullet
+     * @return the result
+     * @since 0.1.7
+     */
     private static ACEMemory toAceMemory(String userId, Playbook.Bullet bullet) {
         ACEMemory memory = new ACEMemory(bullet.getId(), bullet.getSection(), bullet.getContent());
         memory.setWorkspaceId(userId);
@@ -186,6 +195,13 @@ public class ApplyDeltaOp extends BaseOp {
         return memory;
     }
 
+    /**
+     * parseInstant.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Instant parseInstant(String value) {
         try {
             return Instant.parse(value);
@@ -194,6 +210,13 @@ public class ApplyDeltaOp extends BaseOp {
         }
     }
 
+    /**
+     * toStringKeyMap.
+     * 
+     * @param rawMap rawMap
+     * @return the result
+     * @since 0.1.7
+     */
     private static java.util.Map<String, Object> toStringKeyMap(java.util.Map<?, ?> rawMap) {
         java.util.Map<String, Object> converted = new java.util.LinkedHashMap<>();
         for (var entry : rawMap.entrySet()) {

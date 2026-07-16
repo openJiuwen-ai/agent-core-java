@@ -15,14 +15,14 @@ import java.util.Map;
  * Data structure for chunked code execution output.
  * <p>
  * Mirrors Python's {@code ExecuteCodeChunkData}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ExecuteCodeChunkData {
-
-    /** Raw content of the output chunk. */
     @Builder.Default
     private String text = "";
 

@@ -16,14 +16,25 @@ import java.util.Map;
 
 /**
  * Fusion algorithms such as reciprocal rank fusion.
+ * 
+ * @since 0.1.7
  */
 public final class FusionUtils {
-
+    /**
+     * FusionUtils.
+     * 
+     * @since 0.1.7
+     */
     private FusionUtils() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * rrfFusionRetrieval.
+     * 
+     * @param resultsList resultsList
+     * @param k k
+     * @return the result
+     * @since 0.1.7
      */
     public static List<RetrievalResult> rrfFusionRetrieval(List<List<RetrievalResult>> resultsList, int k) {
         Map<String, Double> scoreMap = new LinkedHashMap<>();
@@ -55,7 +66,12 @@ public final class FusionUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * rrfFusionSearch.
+     * 
+     * @param resultsList resultsList
+     * @param k k
+     * @return the result
+     * @since 0.1.7
      */
     public static List<SearchResult> rrfFusionSearch(List<List<SearchResult>> resultsList, int k) {
         Map<String, Double> scoreMap = new LinkedHashMap<>();
@@ -86,30 +102,41 @@ public final class FusionUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * rrfFusionRetrieval.
+     * 
+     * @param resultsList resultsList
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<RetrievalResult> rrfFusionRetrieval(
-            List<List<RetrievalResult>> resultsList,
+    public static List<RetrievalResult> rrfFusionRetrieval(List<List<RetrievalResult>> resultsList,
             RRFRankConfig config) {
-        return rrfFusionRetrieval(
-                filterActive(resultsList, config == null ? null : config.isActive()),
+        return rrfFusionRetrieval(filterActive(resultsList, config == null ? null : config.isActive()),
                 config == null ? 40 : config.getK());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * rrfFusionSearch.
+     * 
+     * @param resultsList resultsList
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public static List<SearchResult> rrfFusionSearch(List<List<SearchResult>> resultsList, RRFRankConfig config) {
-        return rrfFusionSearch(
-                filterActive(resultsList, config == null ? null : config.isActive()),
+        return rrfFusionSearch(filterActive(resultsList, config == null ? null : config.isActive()),
                 config == null ? 40 : config.getK());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * weightedFusionRetrieval.
+     * 
+     * @param resultsList resultsList
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<RetrievalResult> weightedFusionRetrieval(
-            List<List<RetrievalResult>> resultsList,
+    public static List<RetrievalResult> weightedFusionRetrieval(List<List<RetrievalResult>> resultsList,
             WeightedRankConfig config) {
         List<Double> weights = normalizeWeights(config);
         Map<String, Double> scoreMap = new LinkedHashMap<>();
@@ -130,10 +157,14 @@ public final class FusionUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * weightedFusionSearch.
+     * 
+     * @param resultsList resultsList
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<SearchResult> weightedFusionSearch(
-            List<List<SearchResult>> resultsList,
+    public static List<SearchResult> weightedFusionSearch(List<List<SearchResult>> resultsList,
             WeightedRankConfig config) {
         List<Double> weights = normalizeWeights(config);
         Map<String, Double> scoreMap = new LinkedHashMap<>();
@@ -153,6 +184,14 @@ public final class FusionUtils {
         return finalizeSearch(scoreMap, resultMap);
     }
 
+    /**
+     * filterActive.
+     * 
+     * @param resultsList resultsList
+     * @param active active
+     * @return the result
+     * @since 0.1.7
+     */
     private static <T> List<List<T>> filterActive(List<List<T>> resultsList, List<Integer> active) {
         if (resultsList == null || active == null || active.isEmpty()) {
             return resultsList == null ? List.of() : resultsList;
@@ -166,6 +205,13 @@ public final class FusionUtils {
         return filtered;
     }
 
+    /**
+     * normalizeWeights.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Double> normalizeWeights(WeightedRankConfig config) {
         if (config == null) {
             return List.of(1.0);
@@ -182,8 +228,15 @@ public final class FusionUtils {
         return normalized;
     }
 
-    private static List<RetrievalResult> finalizeRetrieval(
-            Map<String, Double> scoreMap,
+    /**
+     * finalizeRetrieval.
+     * 
+     * @param scoreMap scoreMap
+     * @param resultMap resultMap
+     * @return the result
+     * @since 0.1.7
+     */
+    private static List<RetrievalResult> finalizeRetrieval(Map<String, Double> scoreMap,
             Map<String, RetrievalResult> resultMap) {
         List<Map.Entry<String, Double>> entries = new ArrayList<>(scoreMap.entrySet());
         entries.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
@@ -196,8 +249,15 @@ public final class FusionUtils {
         return fused;
     }
 
-    private static List<SearchResult> finalizeSearch(
-            Map<String, Double> scoreMap,
+    /**
+     * finalizeSearch.
+     * 
+     * @param scoreMap scoreMap
+     * @param resultMap resultMap
+     * @return the result
+     * @since 0.1.7
+     */
+    private static List<SearchResult> finalizeSearch(Map<String, Double> scoreMap,
             Map<String, SearchResult> resultMap) {
         List<Map.Entry<String, Double>> entries = new ArrayList<>(scoreMap.entrySet());
         entries.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));

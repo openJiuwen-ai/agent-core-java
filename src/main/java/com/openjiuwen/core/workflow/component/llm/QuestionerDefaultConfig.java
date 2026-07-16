@@ -14,9 +14,10 @@ import java.util.List;
  * Default prompt configuration for Questioner component.
  * <p>
  * Mirrors Python's {@code QuestionerDefaultConfig}.
+ * 
+ * @since 0.1.7
  */
 public class QuestionerDefaultConfig {
-
     // ========== Chinese Templates ==========
     private static final String QUESTIONER_SYSTEM_TEMPLATE_ZH = """
             你是一个信息收集助手，你需要根据指定的参数收集用户的信息，然后提交到系统。
@@ -77,51 +78,65 @@ public class QuestionerDefaultConfig {
             """;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CONTINUE_ASK_STATEMENT_ZH.
+     * 
+     * @since 0.1.7
      */
     public static final String CONTINUE_ASK_STATEMENT_ZH = "请您提供{non_extracted_key_fields_names}相关的信息";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * CONTINUE_ASK_STATEMENT_EN.
+     * 
+     * @since 0.1.7
      */
-    public static final String CONTINUE_ASK_STATEMENT_EN = "Please provide information related to: "
-            + "{non_extracted_key_fields_names}";
+    public static final String CONTINUE_ASK_STATEMENT_EN =
+        "Please provide information related to: " + "{non_extracted_key_fields_names}";
 
     private final List<BaseMessage> promptTemplate;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * QuestionerDefaultConfig.
+     * 
+     * @param promptTemplate promptTemplate
+     * @since 0.1.7
      */
     public QuestionerDefaultConfig(List<BaseMessage> promptTemplate) {
         this.promptTemplate = promptTemplate;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromLanguage.
+     * 
+     * @param acceptLanguage acceptLanguage
+     * @return the result
+     * @since 0.1.7
      */
     public static QuestionerDefaultConfig fromLanguage(String acceptLanguage) {
         return new QuestionerDefaultConfig(getDefaultTemplate(acceptLanguage));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPromptTemplate.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<BaseMessage> getPromptTemplate() {
         return promptTemplate;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDefaultTemplate.
+     * 
+     * @param acceptLanguage acceptLanguage
+     * @return the result
+     * @since 0.1.7
      */
     public static List<BaseMessage> getDefaultTemplate(String acceptLanguage) {
         if ("en".equals(acceptLanguage)) {
-            return List.of(
-                    new SystemMessage(QUESTIONER_SYSTEM_TEMPLATE_EN),
-                    new UserMessage(QUESTIONER_USER_TEMPLATE_EN)
-            );
+            return List.of(new SystemMessage(QUESTIONER_SYSTEM_TEMPLATE_EN),
+                    new UserMessage(QUESTIONER_USER_TEMPLATE_EN));
         }
-        return List.of(
-                new SystemMessage(QUESTIONER_SYSTEM_TEMPLATE_ZH),
-                new UserMessage(QUESTIONER_USER_TEMPLATE_ZH)
-        );
+        return List.of(new SystemMessage(QUESTIONER_SYSTEM_TEMPLATE_ZH), new UserMessage(QUESTIONER_USER_TEMPLATE_ZH));
     }
 }

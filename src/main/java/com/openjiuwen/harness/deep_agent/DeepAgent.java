@@ -35,7 +35,6 @@ import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.security.PermissionFactory;
 import com.openjiuwen.harness.subagents.SubAgentConfig;
-
 import com.openjiuwen.harness.task_loop.CompletionPromiseEvaluator;
 import com.openjiuwen.harness.task_loop.CoreTaskLoopEventExecutor;
 import com.openjiuwen.harness.task_loop.LoopCoordinator;
@@ -48,6 +47,7 @@ import com.openjiuwen.harness.task_loop.TaskIterationContext;
 import com.openjiuwen.harness.task_loop.TimeoutEvaluator;
 import com.openjiuwen.harness.tools.SessionToolkit;
 import com.openjiuwen.harness.workspace.Workspace;
+
 import lombok.Getter;
 
 import java.nio.file.Files;
@@ -63,10 +63,13 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 /**
  * Minimal Java baseline for the Python DeepAgent public surface.
+ * 
+ * @since 0.1.7
  */
 @Getter
 public class DeepAgent {
@@ -75,17 +78,47 @@ public class DeepAgent {
     private final Workspace workspace;
     private final ReActAgent agent;
     private AgentMode currentMode;
+
+    /**
+     * CopyOnWriteArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<Object> registeredRails = new CopyOnWriteArrayList<>();
+
+    /**
+     * CopyOnWriteArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<Object> registeredTools = new CopyOnWriteArrayList<>();
+
+    /**
+     * CopyOnWriteArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<McpServerConfig> registeredMcps = new CopyOnWriteArrayList<>();
     private SessionToolkit sessionToolkit;
-    private LoopCoordinator loopCoordinator;
+    private final AtomicLong requestSeq = new AtomicLong(0);
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, LoopCoordinator> sessionLoopCoordinators = new ConcurrentHashMap<>();
     private TaskLoopController loopController;
     private TaskManager taskManager;
     private TaskScheduler taskScheduler;
     private EventQueue eventQueue;
     private TaskLoopEventHandler eventHandler;
+
+    /**
+     * ConcurrentHashMap.newKeySet.
+     * 
+     * @since 0.1.7
+     */
     private final Set<String> activeTaskLoopSessions = ConcurrentHashMap.newKeySet();
     private Path planFilePath;
     private boolean isInitialized;
@@ -94,16 +127,19 @@ public class DeepAgent {
     private boolean isExplicitCompletionPolicy;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DeepAgent.
+     * 
+     * @param card card
+     * @param config config
+     * @param workspace workspace
+     * @since 0.1.7
      */
     public DeepAgent(AgentCard card, DeepAgentConfig config, Workspace workspace) {
         this.card = card != null ? card : AgentCard.builder().name("deep_agent").description("DeepAgent").build();
         this.config = config != null ? config : DeepAgentConfig.builder().build();
         this.workspace = workspace != null
                 ? workspace
-                : Workspace.builder()
-                        .rootPath(this.config.getWorkspacePath())
-                        .language(this.config.getLanguage())
+                : Workspace.builder().rootPath(this.config.getWorkspacePath()).language(this.config.getLanguage())
                         .build();
         this.agent = new ReActAgent(this.card);
         this.currentMode = this.config.getDefaultMode();
@@ -114,19 +150,29 @@ public class DeepAgent {
         }
     }
 
+    /**
+     * buildReActAgentConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private ReActAgentConfig buildReActAgentConfig() {
-        ReActAgentConfig runtimeConfig = ReActAgentConfig.builder()
-                .promptMode(this.config.getPromptMode())
-                .build()
-                .configurePromptTemplate(java.util.List.of(
-                        java.util.Map.of("role", "system", "content", this.config.getSystemPrompt())
-                ))
+        ReActAgentConfig runtimeConfig = ReActAgentConfig.builder().promptMode(this.config.getPromptMode()).build()
+                .configurePromptTemplate(
+                        java.util.List.of(java.util.Map.of("role", "system", "content", this.config.getSystemPrompt())))
                 .configureMaxIterations(this.config.getMaxIterations());
         applyModelConfig(runtimeConfig, this.config.getModel());
         applyBackendConfig(runtimeConfig, this.config.getBackend());
         return runtimeConfig;
     }
 
+    /**
+     * applyModelConfig.
+     * 
+     * @param runtimeConfig runtimeConfig
+     * @param modelConfig modelConfig
+     * @since 0.1.7
+     */
     private void applyModelConfig(ReActAgentConfig runtimeConfig, Object modelConfig) {
         if (runtimeConfig == null || modelConfig == null) {
             return;
@@ -161,13 +207,13 @@ public class DeepAgent {
         }
         if (modelConfig instanceof Map<?, ?> modelMap) {
             ModelRequestConfig requestConfig = ModelRequestConfig.builder()
-                    .modelName(string(firstPresent(modelMap, new String[] {"model", "model_name", "modelName"})))
-                    .temperature(doubleValue(firstPresent(modelMap, new String[] {"temperature"})))
-                    .topP(doubleValue(firstPresent(modelMap, new String[] {"top_p", "topP"})))
-                    .maxTokens(integerValue(firstPresent(modelMap, new String[] {"max_tokens", "maxTokens"})))
-                    .stop(string(firstPresent(modelMap, new String[] {"stop"})))
-                    .user(string(firstPresent(modelMap, new String[] {"user"})))
-                    .seed(integerValue(firstPresent(modelMap, new String[] {"seed"})))
+                    .modelName(string(firstPresent(modelMap, new String[]{"model", "model_name", "modelName"})))
+                    .temperature(doubleValue(firstPresent(modelMap, new String[]{"temperature"})))
+                    .topP(doubleValue(firstPresent(modelMap, new String[]{"top_p", "topP"})))
+                    .maxTokens(integerValue(firstPresent(modelMap, new String[]{"max_tokens", "maxTokens"})))
+                    .stop(string(firstPresent(modelMap, new String[]{"stop"})))
+                    .user(string(firstPresent(modelMap, new String[]{"user"})))
+                    .seed(integerValue(firstPresent(modelMap, new String[]{"seed"})))
                     .extraFields(extraFields(modelMap, "model", "model_name", "modelName", "temperature", "top_p",
                             "topP", "max_tokens", "maxTokens", "stop", "user", "seed"))
                     .build();
@@ -178,6 +224,13 @@ public class DeepAgent {
         }
     }
 
+    /**
+     * applyBackendConfig.
+     * 
+     * @param runtimeConfig runtimeConfig
+     * @param backendConfig backendConfig
+     * @since 0.1.7
+     */
     private void applyBackendConfig(ReActAgentConfig runtimeConfig, Object backendConfig) {
         if (runtimeConfig == null || backendConfig == null) {
             return;
@@ -194,28 +247,23 @@ public class DeepAgent {
             return;
         }
         if (backendConfig instanceof Map<?, ?> backendMap) {
-            String provider = string(firstPresent(backendMap, new String[] {"client_provider", "clientProvider",
+            String provider = string(firstPresent(backendMap, new String[]{"client_provider", "clientProvider",
                     "model_provider", "modelProvider", "provider", "backend"}));
-            String apiKey = string(firstPresent(backendMap, new String[] {"api_key", "apiKey"}));
-            String apiBase = string(firstPresent(
-                    backendMap,
-                    new String[] {"api_base", "apiBase", "base_url", "baseUrl"}));
+            String apiKey = string(firstPresent(backendMap, new String[]{"api_key", "apiKey"}));
+            String apiBase =
+                string(firstPresent(backendMap, new String[]{"api_base", "apiBase", "base_url", "baseUrl"}));
             if (provider == null || apiKey == null || apiBase == null) {
                 return;
             }
             ModelClientConfig clientConfig = ModelClientConfig.builder()
-                    .clientId(string(firstPresent(backendMap, new String[] {"client_id", "clientId"})))
-                    .clientProvider(provider)
-                    .apiKey(apiKey)
-                    .apiBase(apiBase)
-                    .timeout(doubleOrDefault(firstPresent(backendMap, new String[] {"timeout"}), 60.0))
-                    .maxRetries(intOrDefault(firstPresent(backendMap, new String[] {"max_retries", "maxRetries"}), 3))
-                    .verifySsl(booleanOrDefault(
-                            firstPresent(backendMap, new String[] {"verify_ssl", "verifySsl"}),
-                            true))
-                    .sslCert(string(firstPresent(backendMap, new String[] {"ssl_cert", "sslCert"})))
-                    .headers(headers(firstPresent(backendMap, new String[] {"headers"})))
-                    .build();
+                    .clientId(string(firstPresent(backendMap, new String[]{"client_id", "clientId"})))
+                    .clientProvider(provider).apiKey(apiKey).apiBase(apiBase)
+                    .timeout(doubleOrDefault(firstPresent(backendMap, new String[]{"timeout"}), 60.0))
+                    .maxRetries(intOrDefault(firstPresent(backendMap, new String[]{"max_retries", "maxRetries"}), 3))
+                    .verifySsl(
+                            booleanOrDefault(firstPresent(backendMap, new String[]{"verify_ssl", "verifySsl"}), true))
+                    .sslCert(string(firstPresent(backendMap, new String[]{"ssl_cert", "sslCert"})))
+                    .headers(headers(firstPresent(backendMap, new String[]{"headers"}))).build();
             runtimeConfig.setModelClientConfig(clientConfig);
             runtimeConfig.setModelProvider(provider);
             runtimeConfig.setApiKey(apiKey);
@@ -223,6 +271,12 @@ public class DeepAgent {
         }
     }
 
+    /**
+     * resolveConfiguredModel.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Model resolveConfiguredModel() {
         Object modelConfig = this.config.getModel();
         if (modelConfig instanceof Model model) {
@@ -245,6 +299,14 @@ public class DeepAgent {
         return nullValue();
     }
 
+    /**
+     * firstPresent.
+     * 
+     * @param source source
+     * @param keys keys
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object firstPresent(Map<?, ?> source, String[] keys) {
         if (source == null || keys == null) {
             return nullValue();
@@ -257,10 +319,24 @@ public class DeepAgent {
         return nullValue();
     }
 
+    /**
+     * string.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String string(Object value) {
         return value == null ? null : String.valueOf(value);
     }
 
+    /**
+     * doubleValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Double doubleValue(Object value) {
         if (value instanceof Number number) {
             return number.doubleValue();
@@ -275,6 +351,14 @@ public class DeepAgent {
         return nullValue();
     }
 
+    /**
+     * doubleOrDefault.
+     * 
+     * @param value value
+     * @param isFallback isFallback
+     * @return the result
+     * @since 0.1.7
+     */
     private static double doubleOrDefault(Object value, double isFallback) {
         Double parsed = doubleValue(value);
         if (parsed != null) {
@@ -283,6 +367,13 @@ public class DeepAgent {
         return isFallback;
     }
 
+    /**
+     * integerValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Integer integerValue(Object value) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -297,6 +388,14 @@ public class DeepAgent {
         return nullValue();
     }
 
+    /**
+     * intOrDefault.
+     * 
+     * @param value value
+     * @param isFallback isFallback
+     * @return the result
+     * @since 0.1.7
+     */
     private static int intOrDefault(Object value, int isFallback) {
         Integer parsed = integerValue(value);
         if (parsed != null) {
@@ -305,6 +404,14 @@ public class DeepAgent {
         return isFallback;
     }
 
+    /**
+     * booleanOrDefault.
+     * 
+     * @param value value
+     * @param isFallback isFallback
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean booleanOrDefault(Object value, boolean isFallback) {
         if (value instanceof Boolean boolValue) {
             return boolValue;
@@ -315,6 +422,14 @@ public class DeepAgent {
         return isFallback;
     }
 
+    /**
+     * extraFields.
+     * 
+     * @param source source
+     * @param consumedKeys consumedKeys
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> extraFields(Map<?, ?> source, String... consumedKeys) {
         Map<String, Object> extras = new LinkedHashMap<>();
         if (source == null) {
@@ -329,6 +444,13 @@ public class DeepAgent {
         return extras;
     }
 
+    /**
+     * headers.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, String> headers(Object value) {
         Map<String, String> normalized = new LinkedHashMap<>();
         if (value instanceof Map<?, ?> map) {
@@ -342,7 +464,9 @@ public class DeepAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ensureInitialized.
+     * 
+     * @since 0.1.7
      */
     public void ensureInitialized() {
         if (isInitialized) {
@@ -371,11 +495,8 @@ public class DeepAgent {
             registeredMcps.addAll(config.getMcps());
         }
         if (config.getPermissions() != null && Boolean.TRUE.equals(config.getPermissions().get("enabled"))) {
-            var rail = PermissionFactory.buildPermissionInterruptRail(
-                    config.getPermissions(),
-                    config.getPermissionHost(),
-                    workspace.root()
-            );
+            var rail = PermissionFactory.buildPermissionInterruptRail(config.getPermissions(),
+                    config.getPermissionHost(), workspace.root());
             agent.registerRail(rail);
             registeredRails.add(rail);
         }
@@ -385,12 +506,21 @@ public class DeepAgent {
         isInitialized = true;
     }
 
+    /**
+     * registerDeepRail.
+     * 
+     * @param rail rail
+     * @since 0.1.7
+     */
     private void registerDeepRail(Object rail) {
         registeredRails.add(rail);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerHarnessTool.
+     * 
+     * @param tool tool
+     * @since 0.1.7
      */
     public void registerHarnessTool(Tool tool) {
         if (tool == null) {
@@ -406,7 +536,10 @@ public class DeepAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * unregisterHarnessTool.
+     * 
+     * @param tool tool
+     * @since 0.1.7
      */
     public void unregisterHarnessTool(Tool tool) {
         if (tool == null) {
@@ -417,6 +550,12 @@ public class DeepAgent {
         registeredTools.remove(tool);
     }
 
+    /**
+     * registerConfiguredTool.
+     * 
+     * @param tool tool
+     * @since 0.1.7
+     */
     private void registerConfiguredTool(Object tool) {
         if (tool instanceof Tool toolInstance) {
             registerHarnessTool(toolInstance);
@@ -429,19 +568,47 @@ public class DeepAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> invoke(Map<String, Object> inputs) {
+        return invoke(inputs, null);
+    }
+
+    /**
+     * 执行 DeepAgent，传入外部 session 以支持中断恢复。
+     * <p>
+     * 外部 session 的状态（如中断信息）会被传播到内部 session，
+     * 执行完毕后内部 session 的状态也会反向传播回外部 session。
+     *
+     * @param inputs  输入参数（必须包含 query 和 conversation_id）
+     * @param session 外部 session，可为 null（此时自动创建新 session）
+     * @return 执行结果
+     */
+    public Map<String, Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
         ensureInitialized();
         Map<String, Object> normalized = new LinkedHashMap<>(inputs);
         normalized.putIfAbsent("conversation_id", card.getName() + "_session");
         normalized.putIfAbsent("query", "");
         if (config.isEnableTaskLoop()) {
-            AgentSessionApi session = new AgentSessionApi(
-                    String.valueOf(normalized.get("conversation_id")),
-                    null,
-                    card);
-            return runTaskLoop(normalized, session);
+            String requestLevelSessionId = String.valueOf(normalized.get("conversation_id"))
+                    + "_" + requestSeq.incrementAndGet();
+            AgentSessionApi effectiveSession = session != null
+                    ? new AgentSessionApi(requestLevelSessionId, session.getEnvs(), card)
+                    : new AgentSessionApi(requestLevelSessionId, null, card);
+            // 将外部 session 的状态传播到 effectiveSession（关键：中断恢复依赖此步骤）
+            if (session != null) {
+                copySessionState(session, effectiveSession);
+            }
+            Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
+            // 将 effectiveSession 的状态反向传播到外部 session（关键：中断状态保存依赖此步骤）
+            if (session != null) {
+                copySessionState(effectiveSession, session);
+            }
+            return result;
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("agent_name", card.getName());
@@ -452,18 +619,30 @@ public class DeepAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @return Iterator<Object>
+     * @since 0.1.7
      */
     public java.util.Iterator<Object> stream(Map<String, Object> inputs) {
         return stream(inputs, List.of(StreamMode.OUTPUT));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param streamModes streamModes
+     * @return Iterator<Object>
+     * @since 0.1.7
      */
     public java.util.Iterator<Object> stream(Map<String, Object> inputs, List<StreamMode> streamModes) {
+        String requestLevelSessionId = String.valueOf(inputs.getOrDefault("conversation_id",
+        card.getName() + "_session"))
+                + "_" + requestSeq.incrementAndGet();
         AgentSessionApi session = new AgentSessionApi(
-                String.valueOf(inputs.getOrDefault("conversation_id", card.getName() + "_session")),
+                requestLevelSessionId,
                 null,
                 card,
                 streamModes == null || streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes
@@ -472,13 +651,16 @@ public class DeepAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param streamModes streamModes
+     * @return Iterator<Object>
+     * @since 0.1.7
      */
-    public java.util.Iterator<Object> stream(
-            Map<String, Object> inputs,
-            AgentSessionApi session,
-            List<StreamMode> streamModes
-    ) {
+    public java.util.Iterator<Object> stream(Map<String, Object> inputs, AgentSessionApi session,
+            List<StreamMode> streamModes) {
         ensureInitialized();
         Map<String, Object> normalized = new LinkedHashMap<>(inputs);
         normalized.putIfAbsent("conversation_id", card.getName() + "_session");
@@ -486,38 +668,45 @@ public class DeepAgent {
         if (config.isEnableTaskLoop()) {
             normalized.put("_collect_inner_stream", true);
         }
+        String baseConversationId = String.valueOf(normalized.get("conversation_id"));
+        String requestLevelSessionId = baseConversationId + "_" + requestSeq.incrementAndGet();
         AgentSessionApi effectiveSession = session != null
-                ? session
+                ? new AgentSessionApi(requestLevelSessionId, session.getEnvs(), this.card,
+                        session.getInner().streamWriterManager().getEnabledModes())
                 : new AgentSessionApi(
-                String.valueOf(normalized.get("conversation_id")),
+                requestLevelSessionId,
                 null,
-                card,
+                this.card,
                 streamModes == null || streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes
         );
         effectiveSession.preRun(normalized);
+        // 将输入 session 的状态传播到 effectiveSession（关键：中断恢复依赖此步骤）
+        // 在 preRun 之后执行，遵循 invokeInnerRoundStreaming 的既定模式
+        if (session != null) {
+            copySessionState(session, effectiveSession);
+        }
         if (config.isEnableTaskLoop()) {
             Thread streamThread = new Thread(() -> {
                 try {
-                    Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
-                    writeTopLevelStreamResult(effectiveSession, 0, result);
+                    runTaskLoop(normalized, effectiveSession);
                 } catch (RuntimeException ex) {
-                    effectiveSession.writeStream(new OutputSchema("error", 0, Map.of(
-                            "output", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
-                            "result_type", "error"
-                    )));
+                    effectiveSession.writeStream(new OutputSchema("error", 0,
+                            Map.of("output", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
+                                    "result_type", "error")));
                 } finally {
                     effectiveSession.postRun();
+                    // 将 effectiveSession 的状态反向传播到输入 session（关键：中断状态保存依赖此步骤）
+                    if (session != null) {
+                        copySessionState(effectiveSession, session);
+                    }
                 }
             }, "deep-agent-stream-" + effectiveSession.getSessionId());
             streamThread.setDaemon(true);
-            streamThread.setUncaughtExceptionHandler((thread, error) -> effectiveSession.writeStream(
-                    new OutputSchema("error", 0, Map.of(
-                            "output", error.getMessage() == null
-                                    ? error.getClass().getSimpleName()
-                                    : error.getMessage(),
-                            "result_type", "error"
-                    ))
-            ));
+            streamThread
+                    .setUncaughtExceptionHandler((thread,
+                            error) -> effectiveSession.writeStream(new OutputSchema("error", 0, Map.of("output",
+                                    error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage(),
+                                    "result_type", "error"))));
             streamThread.start();
             return effectiveSession.streamIterator();
         }
@@ -526,12 +715,15 @@ public class DeepAgent {
             Map<String, Object> result = invoke(normalized);
             writeTopLevelStreamResult(effectiveSession, outputs.size(), result);
         } catch (RuntimeException ex) {
-            effectiveSession.writeStream(new OutputSchema("error", outputs.size(), Map.of(
-                    "output", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
-                    "result_type", "error"
-            )));
+            effectiveSession.writeStream(new OutputSchema("error", outputs.size(),
+                    Map.of("output", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
+                            "result_type", "error")));
         } finally {
             effectiveSession.postRun();
+            // 将 effectiveSession 的状态反向传播到输入 session
+            if (session != null) {
+                copySessionState(effectiveSession, session);
+            }
         }
         java.util.Iterator<Object> iterator = effectiveSession.streamIterator();
         while (iterator.hasNext()) {
@@ -541,30 +733,54 @@ public class DeepAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * requestAbort.
+     * 
+     * @since 0.1.7
      */
     public void requestAbort() {
-        if (loopCoordinator != null) {
-            loopCoordinator.requestAbort();
+        for (LoopCoordinator coordinator : sessionLoopCoordinators.values()) {
+            coordinator.requestAbort();
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * 请求中止指定会话的任务循环。
+     *
+     * @param sessionId 会话ID
+     */
+    public void requestAbort(String sessionId) {
+        LoopCoordinator coordinator = sessionLoopCoordinators.get(sessionId);
+        if (coordinator != null) {
+            coordinator.requestAbort();
+        }
+    }
+
+    /**
+     * steer.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     public void steer(String message) {
         steer(message, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isFollowUp.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     public void isFollowUp(String message) {
         isFollowUp(message, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isFollowUp.
+     * 
+     * @param message message
+     * @param session session
+     * @since 0.1.7
      */
     public void isFollowUp(String message, AgentSessionApi session) {
         if (message == null || message.isBlank()) {
@@ -580,7 +796,11 @@ public class DeepAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * steer.
+     * 
+     * @param message message
+     * @param session session
+     * @since 0.1.7
      */
     public void steer(String message, AgentSessionApi session) {
         if (message == null || message.isBlank()) {
@@ -596,20 +816,20 @@ public class DeepAgent {
             loopController.enqueueSteering(sessionId, message);
             return;
         }
-        TaskInteractionEvent event = new TaskInteractionEvent(
-                List.of(new DataFrame.TextDataFrame(message)),
-                null
-        );
+        TaskInteractionEvent event = new TaskInteractionEvent(List.of(new DataFrame.TextDataFrame(message)), null);
         eventQueue.publishEvent(card.getId(), session, event);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ensurePlanFile.
+     * 
+     * @param conversationId conversationId
+     * @return the result
+     * @since 0.1.7
      */
     public Path ensurePlanFile(String conversationId) {
-        String sessionId = conversationId != null && !conversationId.isBlank()
-                ? conversationId
-                : card.getName() + "_session";
+        String sessionId =
+            conversationId != null && !conversationId.isBlank() ? conversationId : card.getName() + "_session";
         Path planDir = workspace.root().resolve(".plans");
         Path isResolved = planDir.resolve(sessionId + ".md").normalize();
         try {
@@ -625,14 +845,21 @@ public class DeepAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPlanFilePath.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path getPlanFilePath() {
         return planFilePath;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * run.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     public Object run(Map<String, Object> inputs) {
         ensureInitialized();
@@ -640,7 +867,10 @@ public class DeepAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fireAfterTaskIteration.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     public void fireAfterTaskIteration(TaskIterationContext ctx) {
         if (ctx == null) {
@@ -657,7 +887,12 @@ public class DeepAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createSubagent.
+     * 
+     * @param subagentType subagentType
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public DeepAgent createSubagent(String subagentType, String sessionId) {
         String normalized = subagentType != null ? subagentType.trim().toLowerCase(Locale.ROOT) : "";
@@ -672,19 +907,32 @@ public class DeepAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMode.
+     * 
+     * @param mode mode
+     * @since 0.1.7
      */
     public void setMode(AgentMode mode) {
         this.currentMode = mode;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSessionToolkit.
+     * 
+     * @param sessionToolkit sessionToolkit
+     * @since 0.1.7
      */
     public void setSessionToolkit(SessionToolkit sessionToolkit) {
         this.sessionToolkit = sessionToolkit;
     }
 
+    /**
+     * findSubagentSpec.
+     * 
+     * @param subagentType subagentType
+     * @return the result
+     * @since 0.1.7
+     */
     private Object findSubagentSpec(String subagentType) {
         if (config.getSubagents() == null) {
             return nullValue();
@@ -706,6 +954,14 @@ public class DeepAgent {
         return nullValue();
     }
 
+    /**
+     * matchesSubagentName.
+     * 
+     * @param name name
+     * @param requested requested
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean matchesSubagentName(String name, String requested) {
         if (name == null || requested == null) {
             return false;
@@ -724,6 +980,15 @@ public class DeepAgent {
         };
     }
 
+    /**
+     * instantiateConfiguredSubagent.
+     * 
+     * @param spec spec
+     * @param normalizedType normalizedType
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
+     */
     private DeepAgent instantiateConfiguredSubagent(SubAgentConfig spec, String normalizedType, String sessionId) {
         Workspace childWorkspace = resolveChildWorkspace(spec, sessionId);
         DeepAgentConfig childConfig = spec.toDeepAgentConfig();
@@ -731,6 +996,12 @@ public class DeepAgent {
         return HarnessFactory.createDeepAgent(spec.getAgentCard(), childConfig, childWorkspace);
     }
 
+    /**
+     * applyParentRuntimeFallbacks.
+     * 
+     * @param childConfig childConfig
+     * @since 0.1.7
+     */
     private void applyParentRuntimeFallbacks(DeepAgentConfig childConfig) {
         if (childConfig == null || config == null) {
             return;
@@ -746,6 +1017,14 @@ public class DeepAgent {
         }
     }
 
+    /**
+     * resolveChildWorkspace.
+     * 
+     * @param spec spec
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
+     */
     private Workspace resolveChildWorkspace(SubAgentConfig spec, String sessionId) {
         Path basePath;
         if (spec.getWorkspacePath() != null && !spec.getWorkspacePath().isBlank()) {
@@ -754,18 +1033,19 @@ public class DeepAgent {
             basePath = workspace.root();
         }
         Path childPath = sessionId != null && !sessionId.isBlank() ? basePath.resolve(sessionId) : basePath;
-        return Workspace.builder()
-                .rootPath(childPath.toString())
+        return Workspace.builder().rootPath(childPath.toString())
                 .language(spec.getLanguage() != null && !spec.getLanguage().isBlank()
                         ? spec.getLanguage()
                         : workspace.getLanguage())
                 .build();
     }
 
+    /**
+     * ensureTaskLoopRuntime.
+     * 
+     * @since 0.1.7
+     */
     private void ensureTaskLoopRuntime() {
-        if (loopCoordinator == null) {
-            loopCoordinator = new LoopCoordinator(buildStopEvaluators());
-        }
         if (loopController == null) {
             loopController = new TaskLoopController();
         }
@@ -779,25 +1059,23 @@ public class DeepAgent {
             eventHandler.setContextEngine(agent.getContextEngine());
             eventHandler.setAbilityManager(agent.getAbilityManager());
             eventHandler.setTaskManager(taskManager);
-            taskScheduler = new TaskScheduler(
-                    controllerConfig,
-                    taskManager,
-                    agent.getContextEngine(),
-                    agent.getAbilityManager(),
-                    eventQueue,
-                    card
-            );
+            taskScheduler = new TaskScheduler(controllerConfig, taskManager, agent.getContextEngine(),
+                    agent.getAbilityManager(), eventQueue, card);
             eventHandler.setTaskScheduler(taskScheduler);
             eventQueue.setEventHandler(eventHandler);
             eventQueue.start();
             taskScheduler.start();
         }
-        taskScheduler
-                .getTaskExecutorRegistry()
-                .addTaskExecutor(TaskLoopEventExecutor.DEEP_TASK_TYPE,
-                        dependencies -> new CoreTaskLoopEventExecutor(dependencies, this, this::invokeInnerRound));
+        taskScheduler.getTaskExecutorRegistry().addTaskExecutor(TaskLoopEventExecutor.DEEP_TASK_TYPE,
+                dependencies -> new CoreTaskLoopEventExecutor(dependencies, this, this::invokeInnerRound));
     }
 
+    /**
+     * buildStopEvaluators.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private List<StopConditionEvaluator> buildStopEvaluators() {
         List<StopConditionEvaluator> evaluators = new ArrayList<>();
         isExplicitCompletionPolicy = taskCompletionRail != null && taskCompletionRail.hasCompletionPromise();
@@ -822,11 +1100,18 @@ public class DeepAgent {
         return evaluators;
     }
 
+    /**
+     * runTaskLoop.
+     * 
+     * @param normalized normalized
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> runTaskLoop(Map<String, Object> normalized, AgentSessionApi session) {
         ensureTaskLoopRuntime();
         LoopCoordinator coordinator = coordinatorForSession(session);
         coordinator.reset();
-        loopCoordinator = coordinator;
         String sessionId = session != null
                 ? session.getSessionId()
                 : String.valueOf(normalized.getOrDefault("conversation_id", card.getName() + "_session"));
@@ -842,18 +1127,21 @@ public class DeepAgent {
                 if (taskCompletionRail != null && currentQuery instanceof String currentQueryText) {
                     roundQuery = taskCompletionRail.applyTaskInstruction(currentQueryText, isFollowUp);
                 }
-                Map<String, Object> roundResult = new LinkedHashMap<>(executeCoreLoopRound(
-                        roundQuery,
-                        isFollowUp,
-                        session,
-                        Boolean.TRUE.equals(normalized.get("_collect_inner_stream"))
-                ));
+                Map<String, Object> roundResult = new LinkedHashMap<>(executeCoreLoopRound(roundQuery, isFollowUp,
+                        session, Boolean.TRUE.equals(normalized.get("_collect_inner_stream"))));
                 roundResult.put("query", currentQuery);
                 if (!Objects.equals(roundQuery, currentQuery)) {
                     roundResult.put("task_instruction_query", roundQuery);
                 }
                 roundResult.put("mode", currentMode.name().toLowerCase(Locale.ROOT));
                 rounds.add(roundResult);
+                Object roundError = roundResult.get("error");
+                if (roundError != null) {
+                    session.writeStream(new OutputSchema("error", rounds.size(), Map.of(
+                            "output", String.valueOf(roundError),
+                            "result_type", "error"
+                    )));
+                }
 
                 coordinator.incrementIteration();
                 coordinator.addTokenUsage(resolveTokenUsage(roundResult));
@@ -884,7 +1172,6 @@ public class DeepAgent {
             }
         } finally {
             stopTaskLoopRuntime(session);
-            loopCoordinator = null;
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -908,6 +1195,12 @@ public class DeepAgent {
         return result;
     }
 
+    /**
+     * startTaskLoopRuntime.
+     * 
+     * @param session session
+     * @since 0.1.7
+     */
     private void startTaskLoopRuntime(AgentSessionApi session) {
         if (session == null) {
             return;
@@ -918,6 +1211,12 @@ public class DeepAgent {
         }
     }
 
+    /**
+     * stopTaskLoopRuntime.
+     * 
+     * @param session session
+     * @since 0.1.7
+     */
     private void stopTaskLoopRuntime(AgentSessionApi session) {
         if (session == null) {
             return;
@@ -927,19 +1226,31 @@ public class DeepAgent {
         taskScheduler.getSessions().remove(session.getSessionId());
     }
 
+    /**
+     * coordinatorForSession.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private LoopCoordinator coordinatorForSession(AgentSessionApi session) {
         String sessionId = session != null && session.getSessionId() != null
                 ? session.getSessionId()
                 : TaskLoopController.DEFAULT_SESSION_ID;
-        return sessionLoopCoordinators.computeIfAbsent(
-                sessionId,
+        return sessionLoopCoordinators.computeIfAbsent(sessionId,
                 ignored -> new LoopCoordinator(buildStopEvaluators()));
     }
 
+    /**
+     * updateCompletionPromise.
+     * 
+     * @param coordinator coordinator
+     * @param roundResult roundResult
+     * @since 0.1.7
+     */
     private void updateCompletionPromise(LoopCoordinator coordinator, Map<String, Object> roundResult) {
-        CompletionPromiseEvaluator completion = coordinator != null
-                ? coordinator.getCompletionPromiseEvaluator()
-                : completionPromiseEvaluator;
+        CompletionPromiseEvaluator completion =
+            coordinator != null ? coordinator.getCompletionPromiseEvaluator() : completionPromiseEvaluator;
         if (completion == null) {
             return;
         }
@@ -956,18 +1267,23 @@ public class DeepAgent {
         }
     }
 
-    private Map<String, Object> executeCoreLoopRound(Object query,
-                                                     boolean isFollowUp,
-                                                     AgentSessionApi session,
-                                                     boolean isCollectInnerStream) {
+    /**
+     * executeCoreLoopRound.
+     * 
+     * @param query query
+     * @param isFollowUp isFollowUp
+     * @param session session
+     * @param isCollectInnerStream isCollectInnerStream
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, Object> executeCoreLoopRound(Object query, boolean isFollowUp, AgentSessionApi session,
+            boolean isCollectInnerStream) {
         InputEvent event = query instanceof String || query instanceof InputEvent
                 ? InputEvent.fromUserInput(query)
-                : InputEvent.fromUserInput(Map.of(
-                        "query", query,
-                        "query_payload", query
-                ));
+                : InputEvent.fromUserInput(Map.of("query", query, "query_payload", query));
         int handlerRound = eventHandler.prepareRound(session.getSessionId(), isFollowUp);
-        String taskId = "deep_agent_task_" + handlerRound;
+        String taskId = "deep_agent_task_" + session.getSessionId() + "_" + handlerRound;
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("_handler_round_id", handlerRound);
         metadata.put("task_id", taskId);
@@ -982,10 +1298,17 @@ public class DeepAgent {
         return awaitRoundCompletion(taskId, session);
     }
 
+    /**
+     * awaitRoundCompletion.
+     * 
+     * @param taskId taskId
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> awaitRoundCompletion(String taskId, AgentSessionApi session) {
-        double timeoutSeconds = config.getCompletionTimeout() == null
-                ? 600.0
-                : Math.max(1.0, config.getCompletionTimeout());
+        double timeoutSeconds =
+            config.getCompletionTimeout() == null ? 600.0 : Math.max(1.0, config.getCompletionTimeout());
         long timeoutMillis = (long) Math.ceil(timeoutSeconds * 1000.0);
         long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         String sessionId = session != null ? session.getSessionId() : TaskLoopController.DEFAULT_SESSION_ID;
@@ -1001,22 +1324,30 @@ public class DeepAgent {
             try {
                 Thread.sleep(25L);
             } catch (InterruptedException ex) {
-
                 return Map.of("error", "interrupted", "task_id", taskId);
             }
         }
         return Map.of("error", "completion_timeout", "task_id", taskId);
     }
 
+    /**
+     * invokeInnerRound.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> invokeInnerRound(Map<String, Object> inputs, AgentSessionApi session) {
         Map<String, Object> effectiveInputs = new LinkedHashMap<>();
         if (inputs != null) {
             effectiveInputs.putAll(inputs);
         }
         effectiveInputs.putIfAbsent("query", "");
-        effectiveInputs.putIfAbsent("conversation_id", session != null && session.getSessionId() != null
-                ? session.getSessionId()
-                : card.getName() + "_session");
+        effectiveInputs.putIfAbsent("conversation_id",
+                session != null && session.getSessionId() != null
+                        ? session.getSessionId()
+                        : card.getName() + "_session");
 
         boolean isCollectInnerStream = Boolean.TRUE.equals(effectiveInputs.get("collect_inner_stream"));
         Map<String, Object> rawResult = isCollectInnerStream
@@ -1026,24 +1357,40 @@ public class DeepAgent {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * invokeInnerRoundOnce.
+     * 
+     * @param effectiveInputs effectiveInputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> invokeInnerRoundOnce(Map<String, Object> effectiveInputs, AgentSessionApi session) {
         return (Map<String, Object>) agent.invoke(effectiveInputs, session);
     }
 
-    private Map<String, Object> invokeInnerRoundStreaming(
-            Map<String, Object> effectiveInputs,
-            AgentSessionApi session
-    ) {
-        AgentSessionApi innerSession = new AgentSessionApi(
-                String.valueOf(effectiveInputs.get("conversation_id")),
-                session != null ? session.getEnvs() : null,
-                card,
-                List.of(StreamMode.OUTPUT)
-        );
+    /**
+     * invokeInnerRoundStreaming.
+     * 
+     * @param effectiveInputs effectiveInputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, Object> invokeInnerRoundStreaming(Map<String, Object> effectiveInputs,
+            AgentSessionApi session) {
+        AgentSessionApi innerSession = new AgentSessionApi(String.valueOf(effectiveInputs.get("conversation_id")),
+                session != null ? session.getEnvs() : null, card, List.of(StreamMode.OUTPUT));
         innerSession.preRun(effectiveInputs);
         copySessionState(session, innerSession);
         List<Object> streamItems = new ArrayList<>();
-        agent.stream(effectiveInputs, innerSession, List.of(StreamMode.OUTPUT)).forEachRemaining(streamItems::add);
+        agent.stream(effectiveInputs, innerSession, List.of(StreamMode.OUTPUT))
+                .forEachRemaining(chunk -> {
+                    streamItems.add(chunk);
+                    if (chunk instanceof OutputSchema outputSchema) {
+                        session.writeStream(outputSchema);
+                    }
+                });
         copySessionState(innerSession, session);
         Map<String, Object> result = extractFinalStreamResult(streamItems);
         List<Object> normalizedChunks = normalizeStreamChunks(streamItems);
@@ -1053,6 +1400,13 @@ public class DeepAgent {
         return result;
     }
 
+    /**
+     * copySessionState.
+     * 
+     * @param source source
+     * @param target target
+     * @since 0.1.7
+     */
     private void copySessionState(AgentSessionApi source, AgentSessionApi target) {
         if (source == null || target == null) {
             return;
@@ -1060,6 +1414,14 @@ public class DeepAgent {
         target.getInner().state().setState(source.getInner().state().getState());
     }
 
+    /**
+     * writeTopLevelStreamResult.
+     * 
+     * @param session session
+     * @param index index
+     * @param result result
+     * @since 0.1.7
+     */
     private void writeTopLevelStreamResult(AgentSessionApi session, int index, Map<String, Object> result) {
         if (session == null) {
             return;
@@ -1073,12 +1435,17 @@ public class DeepAgent {
             }
             return;
         }
-        session.writeStream(new OutputSchema("answer", index, Map.of(
-                "output", result,
-                "result_type", "answer"
-        )));
+        session.writeStream(new OutputSchema("answer", index, Map.of("output", result, "result_type", "answer")));
     }
 
+    /**
+     * normalizeInnerRoundResult.
+     * 
+     * @param rawResult rawResult
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> normalizeInnerRoundResult(Map<String, Object> rawResult, Map<String, Object> inputs) {
         Map<String, Object> result = new LinkedHashMap<>();
         Map<String, Object> source = rawResult == null ? Map.of() : rawResult;
@@ -1102,6 +1469,13 @@ public class DeepAgent {
         return result;
     }
 
+    /**
+     * resolveOutput.
+     * 
+     * @param source source
+     * @return the result
+     * @since 0.1.7
+     */
     private Object resolveOutput(Map<String, Object> source) {
         if (source == null || source.isEmpty()) {
             return "";
@@ -1115,6 +1489,13 @@ public class DeepAgent {
         return source;
     }
 
+    /**
+     * extractFinalStreamResult.
+     * 
+     * @param streamItems streamItems
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> extractFinalStreamResult(List<Object> streamItems) {
         Map<String, Object> fallback = new LinkedHashMap<>();
         fallback.put("output", "");
@@ -1143,6 +1524,13 @@ public class DeepAgent {
         return fallback;
     }
 
+    /**
+     * normalizeStreamChunks.
+     * 
+     * @param streamItems streamItems
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> normalizeStreamChunks(List<Object> streamItems) {
         List<Object> normalized = new ArrayList<>();
         for (Object item : streamItems) {
@@ -1162,11 +1550,20 @@ public class DeepAgent {
                 }
             } else if (item != null) {
                 normalized.add(item);
+            } else {
+                // no-op
             }
         }
         return normalized;
     }
 
+    /**
+     * isTerminalAnswerEnvelope.
+     * 
+     * @param payload payload
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isTerminalAnswerEnvelope(Map<String, Object> payload) {
         if (payload == null || payload.isEmpty()) {
             return false;
@@ -1182,6 +1579,13 @@ public class DeepAgent {
                 || outputMap.containsKey("result_type") || outputMap.containsKey("usage_metadata");
     }
 
+    /**
+     * resolveTokenUsage.
+     * 
+     * @param roundResult roundResult
+     * @return the result
+     * @since 0.1.7
+     */
     private int resolveTokenUsage(Map<String, Object> roundResult) {
         UsageMetadata usageMetadata = TaskIterationContext.usageMetadataFrom(roundResult);
         if (usageMetadata != null) {
@@ -1190,6 +1594,13 @@ public class DeepAgent {
         return 0;
     }
 
+    /**
+     * castMap.
+     * 
+     * @param source source
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> castMap(Map<?, ?> source) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : source.entrySet()) {
@@ -1198,13 +1609,27 @@ public class DeepAgent {
         return result;
     }
 
+    /**
+     * copyIfPresent.
+     * 
+     * @param source source
+     * @param target target
+     * @param key key
+     * @since 0.1.7
+     */
     private static void copyIfPresent(Map<String, Object> source, Map<String, Object> target, String key) {
         if (source != null && source.get(key) != null) {
             target.put(key, source.get(key));
         }
     }
+
+    /**
+     * nullValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static <T> T nullValue() {
         return null;
     }
-
 }

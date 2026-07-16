@@ -12,34 +12,75 @@ import java.util.Map;
 
 /**
  * Structured representation of Markdown content.
+ * 
+ * @since 0.1.7
  */
 @Data
 public class MarkdownContent {
-
     private String rawContent = "";
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<MarkdownElement> elements = new ArrayList<>();
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Map<String, Object>> headers = new ArrayList<>();
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Map<String, Object>> codeBlocks = new ArrayList<>();
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Map<String, Object>> links = new ArrayList<>();
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Map<String, Object>> images = new ArrayList<>();
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> tables = new ArrayList<>();
 
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> lists = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MarkdownContent.
+     * 
+     * @since 0.1.7
      */
     public MarkdownContent() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MarkdownContent.
+     * 
+     * @param rawContent rawContent
+     * @since 0.1.7
      */
     public MarkdownContent(String rawContent) {
         this.rawContent = rawContent != null ? rawContent : "";

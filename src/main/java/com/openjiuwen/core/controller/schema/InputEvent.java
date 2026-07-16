@@ -13,13 +13,16 @@ import java.util.List;
  * This is the main input type for the controller, used to receive user requests.
  * <p>
  * Mirrors Python's {@code InputEvent}.
+ * 
+ * @since 0.1.7
  */
 public class InputEvent extends Event {
-
     private List<DataFrame> inputData;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * InputEvent.
+     * 
+     * @since 0.1.7
      */
     public InputEvent() {
         super(EventType.INPUT);
@@ -27,7 +30,10 @@ public class InputEvent extends Event {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * InputEvent.
+     * 
+     * @param inputData inputData
+     * @since 0.1.7
      */
     public InputEvent(List<DataFrame> inputData) {
         super(EventType.INPUT);
@@ -35,29 +41,33 @@ public class InputEvent extends Event {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputData.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<DataFrame> getInputData() {
         return inputData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInputData.
+     * 
+     * @param inputData inputData
+     * @since 0.1.7
      */
     public void setInputData(List<DataFrame> inputData) {
         this.inputData = inputData != null ? inputData : new ArrayList<>();
     }
 
     /**
-     * Create input event from user input.
-     *
-     * @param userInput user input (String, Map, or InputEvent)
-     * @return InputEvent instance
+     * fromUserInput.
+     * 
+     * @param userInput userInput
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static InputEvent fromUserInput(Object userInput) {
         if (userInput instanceof InputEvent inputEvent) {
             return inputEvent;
@@ -66,11 +76,9 @@ public class InputEvent extends Event {
             return new InputEvent(List.of(new DataFrame.TextDataFrame(text)));
         }
         if (userInput instanceof java.util.Map<?, ?> map) {
-            return new InputEvent(List.of(
-                    new DataFrame.JsonDataFrame((java.util.Map<String, Object>) map)));
+            return new InputEvent(List.of(new DataFrame.JsonDataFrame((java.util.Map<String, Object>) map)));
         }
-        throw new IllegalArgumentException(
-                "Unsupported user input type: " + userInput.getClass().getName()
-                        + ". Must be String, Map, or InputEvent.");
+        throw new IllegalArgumentException("Unsupported user input type: " + userInput.getClass().getName()
+                + ". Must be String, Map, or InputEvent.");
     }
 }

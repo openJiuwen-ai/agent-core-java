@@ -12,21 +12,29 @@ import java.util.Map;
  * <p>
  * Default index type providing good balance between performance and ease of use.
  * Configurable in milvus.yaml when deploying Milvus database.
+ * 
+ * @since 0.1.7
  */
 public class MilvusAUTO extends MilvusVectorField {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String getIndexType() {
         return "auto";
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toDict.
+     * 
+     * @param stage stage
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> toDict(String stage) {
         return new HashMap<>();
     }

@@ -8,6 +8,8 @@ package com.openjiuwen.core.sysop.local;
  * Enumeration of stream event types for process output monitoring.
  * <p>
  * Mirrors Python's {@code StreamEventType} in {@code local/utils.py}.
+ * 
+ * @since 0.1.7
  */
 public enum StreamEventType {
     STDOUT("stdout"),
@@ -22,7 +24,10 @@ public enum StreamEventType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

@@ -27,24 +27,46 @@ import java.util.function.Consumer;
 
 /**
  * Public class TeamMonitor used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class TeamMonitor {
     private final TeamBackend backend;
     private final TeamAgent teamAgent;
     private final Consumer<EventMessage> agentEventListener;
+
+    /**
+     * LinkedBlockingQueue<>.
+     * 
+     * @since 0.1.7
+     */
     private final BlockingQueue<MonitorEvent> events = new LinkedBlockingQueue<>();
+
+    /**
+     * java.util.ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<String> subscribedTopics = new java.util.ArrayList<>();
     private boolean isStarted;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamMonitor.
+     * 
+     * @param backend backend
+     * @since 0.1.7
      */
     public TeamMonitor(TeamBackend backend) {
         this(backend, null);
     }
 
+    /**
+     * TeamMonitor.
+     * 
+     * @param backend backend
+     * @param teamAgent teamAgent
+     * @since 0.1.7
+     */
     private TeamMonitor(TeamBackend backend, TeamAgent teamAgent) {
         this.backend = backend;
         this.teamAgent = teamAgent;
@@ -52,11 +74,14 @@ public class TeamMonitor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createMonitor.
+     * 
+     * @param teamAgent teamAgent
+     * @return the result
+     * @since 0.1.7
      */
     public static TeamMonitor createMonitor(TeamAgent teamAgent) {
-        if (teamAgent == null
-                || teamAgent.getContext() == null
+        if (teamAgent == null || teamAgent.getContext() == null
                 || teamAgent.getContext().getRole() != TeamRole.LEADER) {
             throw new IllegalArgumentException("TeamMonitor can only be bound to a leader TeamAgent");
         }
@@ -68,7 +93,9 @@ public class TeamMonitor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * start.
+     * 
+     * @since 0.1.7
      */
     public void start() {
         if (isStarted) {
@@ -89,7 +116,9 @@ public class TeamMonitor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stop.
+     * 
+     * @since 0.1.7
      */
     public void stop() {
         if (!isStarted) {
@@ -110,52 +139,70 @@ public class TeamMonitor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isStarted.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isStarted() {
         return isStarted;
     }
 
+    /**
+     * subscribe.
+     * 
+     * @param messager messager
+     * @param topic topic
+     * @since 0.1.7
+     */
     private void subscribe(InProcessMessager messager, String topic) {
         messager.subscribe(topic, this::onEvent).join();
         subscribedTopics.add(topic);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTeamInfo.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TeamInfo getTeamInfo() {
         TeamRecord team = backend.getDb().team.getTeam(backend.getTeamName());
         if (team == null) {
             return null;
         }
-        return TeamInfo.builder()
-                .teamId(team.getTeamName())
-                .name(team.getDisplayName())
-                .leaderId(team.getLeaderMemberName())
-                .desc(team.getDesc())
-                .created(team.getCreated())
-                .build();
+        return TeamInfo.builder().teamId(team.getTeamName()).name(team.getDisplayName())
+                .leaderId(team.getLeaderMemberName()).desc(team.getDesc()).created(team.getCreated()).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMembers.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<MemberInfo> getMembers() {
         return getMembers(null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMembers.
+     * 
+     * @param status status
+     * @return the result
+     * @since 0.1.7
      */
     public List<MemberInfo> getMembers(String status) {
-        return backend.getDb().member.getTeamMembers(backend.getTeamName(), status).stream()
-                .map(this::toMemberInfo)
+        return backend.getDb().member.getTeamMembers(backend.getTeamName(), status).stream().map(this::toMemberInfo)
                 .toList();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMember.
+     * 
+     * @param memberName memberName
+     * @return the result
+     * @since 0.1.7
      */
     public MemberInfo getMember(String memberName) {
         MemberRecord member = backend.getDb().member.getMember(memberName, backend.getTeamName());
@@ -163,72 +210,86 @@ public class TeamMonitor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTasks.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<TaskInfo> getTasks() {
         return getTasks(null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTasks.
+     * 
+     * @param status status
+     * @return the result
+     * @since 0.1.7
      */
     public List<TaskInfo> getTasks(String status) {
-        return backend.getDb().task.getTeamTasks(backend.getTeamName(), status).stream()
-                .map(this::toTaskInfo)
-                .toList();
+        return backend.getDb().task.getTeamTasks(backend.getTeamName(), status).stream().map(this::toTaskInfo).toList();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMessages.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<MessageInfo> getMessages() {
         return getMessages(null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMessages.
+     * 
+     * @param toMember toMember
+     * @param fromMember fromMember
+     * @return the result
+     * @since 0.1.7
      */
     public List<MessageInfo> getMessages(String toMember, String fromMember) {
         if (toMember != null) {
             return backend.getDb().message.getMessages(backend.getTeamName(), toMember, false, fromMember).stream()
-                    .map(this::toMessageInfo)
-                    .toList();
+                    .map(this::toMessageInfo).toList();
         }
         return backend.getDb().message.getTeamMessages(backend.getTeamName()).stream()
                 .filter(message -> fromMember == null || fromMember.equals(message.getFromMemberName()))
-                .map(this::toMessageInfo)
-                .toList();
+                .map(this::toMessageInfo).toList();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * nextEvent.
+     * 
+     * @return the result
+     * @throws InterruptedException InterruptedException
+     * @since 0.1.7
      */
     public MonitorEvent nextEvent() throws InterruptedException {
         return events.take();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasQueuedEvents.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasQueuedEvents() {
         return !events.isEmpty();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * events.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Iterable<MonitorEvent> events() {
         return () -> new Iterator<>() {
             private MonitorEvent next;
             private boolean isFinished;
-
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public boolean hasNext() {
                 if (isFinished) {
                     return false;
@@ -243,13 +304,7 @@ public class TeamMonitor {
                 return next != null;
             }
 
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public MonitorEvent next() {
                 if (!hasNext()) {
                     throw new NoSuchElementException();
@@ -261,20 +316,37 @@ public class TeamMonitor {
         };
     }
 
+    /**
+     * takeNextEvent.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private MonitorEvent takeNextEvent() {
         try {
             return nextEvent();
         } catch (InterruptedException e) {
-
             return MonitorEvent.builder().build();
         }
     }
 
+    /**
+     * onEvent.
+     * 
+     * @param message message
+     * @since 0.1.7
+     */
     private java.util.concurrent.CompletableFuture<Void> onEvent(EventMessage message) {
         enqueueEvent(message);
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     }
 
+    /**
+     * enqueueEvent.
+     * 
+     * @param message message
+     * @since 0.1.7
+     */
     private void enqueueEvent(EventMessage message) {
         MonitorEvent event = MonitorEvent.fromEventMessage(message, backend.getTeamName());
         if (event != null) {
@@ -282,77 +354,83 @@ public class TeamMonitor {
         }
     }
 
+    /**
+     * toMemberInfo.
+     * 
+     * @param member member
+     * @return the result
+     * @since 0.1.7
+     */
     private MemberInfo toMemberInfo(TeamMember member) {
-        return MemberInfo.builder()
-                .memberId(member.getMemberName())
-                .teamId(backend.getTeamName())
-                .name(member.getDisplayName())
-                .desc(member.getDescription())
-                .status("busy")
-                .executionStatus(null)
-                .mode(member.getRole().name().toLowerCase(Locale.ROOT))
-                .build();
+        return MemberInfo.builder().memberId(member.getMemberName()).teamId(backend.getTeamName())
+                .name(member.getDisplayName()).desc(member.getDescription()).status("busy").executionStatus(null)
+                .mode(member.getRole().name().toLowerCase(Locale.ROOT)).build();
     }
 
+    /**
+     * toMemberInfo.
+     * 
+     * @param member member
+     * @return the result
+     * @since 0.1.7
+     */
     private MemberInfo toMemberInfo(MemberRecord member) {
-        return MemberInfo.builder()
-                .memberId(member.getMemberName())
-                .teamId(member.getTeamName())
-                .name(member.getDisplayName())
-                .desc(member.getDesc())
-                .status(member.getStatus())
-                .executionStatus(member.getExecutionStatus())
-                .mode(member.getMode())
-                .build();
+        return MemberInfo.builder().memberId(member.getMemberName()).teamId(member.getTeamName())
+                .name(member.getDisplayName()).desc(member.getDesc()).status(member.getStatus())
+                .executionStatus(member.getExecutionStatus()).mode(member.getMode()).build();
     }
 
+    /**
+     * toTaskInfo.
+     * 
+     * @param task task
+     * @return the result
+     * @since 0.1.7
+     */
     private TaskInfo toTaskInfo(TeamTask task) {
-        return TaskInfo.builder()
-                .taskId(task.getTaskId())
-                .teamId(task.getTeamName())
-                .title(task.getTitle())
-                .content(task.getContent())
-                .status(task.getStatus())
-                .assignee(task.getAssignee())
-                .updatedAt(task.getUpdatedAt())
-                .build();
+        return TaskInfo.builder().taskId(task.getTaskId()).teamId(task.getTeamName()).title(task.getTitle())
+                .content(task.getContent()).status(task.getStatus()).assignee(task.getAssignee())
+                .updatedAt(task.getUpdatedAt()).build();
     }
 
+    /**
+     * toTaskInfo.
+     * 
+     * @param task task
+     * @return the result
+     * @since 0.1.7
+     */
     private TaskInfo toTaskInfo(TaskRecord task) {
-        return TaskInfo.builder()
-                .taskId(task.getTaskId())
-                .teamId(task.getTeamName())
-                .title(task.getTitle())
-                .content(task.getContent())
-                .status(task.getStatus())
-                .assignee(task.getAssignee())
-                .updatedAt(task.getUpdatedAt())
-                .build();
+        return TaskInfo.builder().taskId(task.getTaskId()).teamId(task.getTeamName()).title(task.getTitle())
+                .content(task.getContent()).status(task.getStatus()).assignee(task.getAssignee())
+                .updatedAt(task.getUpdatedAt()).build();
     }
 
+    /**
+     * toMessageInfo.
+     * 
+     * @param message message
+     * @return the result
+     * @since 0.1.7
+     */
     private MessageInfo toMessageInfo(TeamMessage message) {
-        return MessageInfo.builder()
-                .messageId(message.getMessageId())
-                .teamId(message.getTeamName())
-                .fromMember(message.getFromMemberName())
-                .toMember(message.getToMemberName())
-                .content(message.getContent())
-                .timestamp(message.getTimestamp())
-                .broadcast(message.isBroadcast())
-                .read(message.isRead())
-                .build();
+        return MessageInfo.builder().messageId(message.getMessageId()).teamId(message.getTeamName())
+                .fromMember(message.getFromMemberName()).toMember(message.getToMemberName())
+                .content(message.getContent()).timestamp(message.getTimestamp()).broadcast(message.isBroadcast())
+                .read(message.isRead()).build();
     }
 
+    /**
+     * toMessageInfo.
+     * 
+     * @param message message
+     * @return the result
+     * @since 0.1.7
+     */
     private MessageInfo toMessageInfo(MessageRecord message) {
-        return MessageInfo.builder()
-                .messageId(message.getMessageId())
-                .teamId(message.getTeamName())
-                .fromMember(message.getFromMemberName())
-                .toMember(message.getToMemberName())
-                .content(message.getContent())
-                .timestamp(message.getTimestamp())
-                .broadcast(message.isBroadcast())
-                .read(message.isRead())
-                .build();
+        return MessageInfo.builder().messageId(message.getMessageId()).teamId(message.getTeamName())
+                .fromMember(message.getFromMemberName()).toMember(message.getToMemberName())
+                .content(message.getContent()).timestamp(message.getTimestamp()).broadcast(message.isBroadcast())
+                .read(message.isRead()).build();
     }
 }

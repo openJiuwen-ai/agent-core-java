@@ -1,4 +1,8 @@
+
 package com.openjiuwen.autoharness;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.autoharness.factory.AutoHarnessFactory;
 import com.openjiuwen.autoharness.orchestrator.AutoHarnessOrchestrator;
@@ -18,10 +22,11 @@ import com.openjiuwen.autoharness.schema.StageResult;
 import com.openjiuwen.autoharness.schema.TaskPlanArtifact;
 import com.openjiuwen.autoharness.schema.TaskStatus;
 import com.openjiuwen.autoharness.schema.VerifyReportArtifact;
-import com.openjiuwen.core.common.security.JsonUtils;
 import com.openjiuwen.autoharness.stages.CommitStage;
-import com.openjiuwen.autoharness.stages.PublishPrStage;
 import com.openjiuwen.autoharness.stages.LearningsStage;
+import com.openjiuwen.autoharness.stages.PublishPrStage;
+import com.openjiuwen.core.common.security.JsonUtils;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -31,25 +36,21 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class AutoHarnessCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
     @Test
     void orchestratorShouldExposeDefaultRegistries() {
-        AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(
-                AutoHarnessConfig.builder().workspace(".").build()
-        );
+        AutoHarnessOrchestrator orchestrator =
+            AutoHarnessFactory.createAutoHarnessOrchestrator(AutoHarnessConfig.builder().workspace(".").build());
 
         assertThat(orchestrator.getStageRegistry().names()).contains("assess", "plan", "implement", "verify");
         assertThat(orchestrator.getStageRegistry().require("commit").getStageCls()).isEqualTo(CommitStage.class);
         assertThat(orchestrator.getStageRegistry().require("publish_pr").getStageCls()).isEqualTo(PublishPrStage.class);
         assertThat(orchestrator.getStageRegistry().require("learnings").getStageCls()).isEqualTo(LearningsStage.class);
-        assertThat(orchestrator.getPipelineRegistry().names()).contains("meta_evolve_pipeline", "extended_evolve_pipeline");
+        assertThat(orchestrator.getPipelineRegistry().names()).contains("meta_evolve_pipeline",
+                "extended_evolve_pipeline");
         assertThat(orchestrator.getPipelineRegistry().require("meta_evolve_pipeline").getPipelineCls())
                 .isEqualTo(MetaEvolvePipeline.class);
         assertThat(orchestrator.getPipelineRegistry().require("extended_evolve_pipeline").getPipelineCls())
@@ -59,12 +60,10 @@ class AutoHarnessCompatibilityTest {
     @Test
     void orchestratorShouldSelectExplicitPipelineWhenTaskRequestsOne() {
         AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(
-                AutoHarnessConfig.builder().pipelineName("meta_evolve_pipeline").build()
-        );
+                AutoHarnessConfig.builder().pipelineName("meta_evolve_pipeline").build());
 
-        PipelineSelectionArtifact selected = orchestrator.selectPipeline(List.of(
-                OptimizationTask.builder().topic("Refine prompt rails").pipelineName("extended_evolve_pipeline").build()
-        ));
+        PipelineSelectionArtifact selected = orchestrator.selectPipeline(List.of(OptimizationTask.builder()
+                .topic("Refine prompt rails").pipelineName("extended_evolve_pipeline").build()));
 
         assertThat(selected.getPipelineName()).isEqualTo("extended_evolve_pipeline");
         assertThat(selected.getReason()).isEqualTo("tasks requested explicit pipeline");
@@ -76,12 +75,10 @@ class AutoHarnessCompatibilityTest {
     @Test
     void orchestratorShouldNormalizeLegacyPipelineAlias() {
         AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(
-                AutoHarnessConfig.builder().pipelineName("meta_evolve_pipeline").build()
-        );
+                AutoHarnessConfig.builder().pipelineName("meta_evolve_pipeline").build());
 
-        PipelineSelectionArtifact selected = orchestrator.selectPipeline(List.of(
-                OptimizationTask.builder().topic("Refine prompt rails").pipelineName("pr_pipeline").build()
-        ));
+        PipelineSelectionArtifact selected = orchestrator.selectPipeline(
+                List.of(OptimizationTask.builder().topic("Refine prompt rails").pipelineName("pr_pipeline").build()));
 
         assertThat(selected.getPipelineName()).isEqualTo("meta_evolve_pipeline");
         assertThat(selected.getFallbackPipeline()).isEqualTo("meta_evolve_pipeline");
@@ -90,49 +87,47 @@ class AutoHarnessCompatibilityTest {
     @Test
     void orchestratorShouldRejectConflictingExplicitPipelines() {
         AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(
-                AutoHarnessConfig.builder().pipelineName("meta_evolve_pipeline").build()
-        );
+                AutoHarnessConfig.builder().pipelineName("meta_evolve_pipeline").build());
 
-        assertThatThrownBy(() -> orchestrator.selectPipeline(List.of(
-                OptimizationTask.builder().topic("t1").pipelineName("meta_evolve_pipeline").build(),
-                OptimizationTask.builder().topic("t2").pipelineName("extended_evolve_pipeline").build()
-        ))).isInstanceOf(IllegalArgumentException.class)
+        assertThatThrownBy(() -> orchestrator.selectPipeline(
+                List.of(OptimizationTask.builder().topic("t1").pipelineName("meta_evolve_pipeline").build(),
+                        OptimizationTask.builder().topic("t2").pipelineName("extended_evolve_pipeline").build())))
+                .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Conflicting task pipeline_name values");
     }
 
     @Test
     void orchestratorShouldFallbackWhenExplicitPipelineIsUnsupported() {
         AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(
-                AutoHarnessConfig.builder().pipelineName("extended_evolve_pipeline").build()
-        );
+                AutoHarnessConfig.builder().pipelineName("extended_evolve_pipeline").build());
 
-        PipelineSelectionArtifact selected = orchestrator.selectPipeline(List.of(
-                OptimizationTask.builder().topic("t1").pipelineName("missing_pipeline").build()
-        ));
+        PipelineSelectionArtifact selected = orchestrator.selectPipeline(
+                List.of(OptimizationTask.builder().topic("t1").pipelineName("missing_pipeline").build()));
 
         assertThat(selected.getPipelineName()).isEqualTo("meta_evolve_pipeline");
-        assertThat(selected.getReason()).isEqualTo("requested session pipeline unsupported, fallback to meta_evolve_pipeline");
+        assertThat(selected.getReason())
+                .isEqualTo("requested session pipeline unsupported, fallback to meta_evolve_pipeline");
         assertThat(selected.getConfidence()).isZero();
         assertThat(selected.getFallbackPipeline()).isEqualTo("meta_evolve_pipeline");
     }
 
     @Test
     void orchestratorShouldRunTasksIntoCycleResults() {
-        AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(
-                AutoHarnessConfig.builder().workspace("./repo").build()
-        );
+        AutoHarnessOrchestrator orchestrator =
+            AutoHarnessFactory.createAutoHarnessOrchestrator(AutoHarnessConfig.builder().workspace("./repo").build());
 
-        List<CycleResult> results = orchestrator.runSession(List.of(
-                OptimizationTask.builder().topic("Improve task planning rail").build(),
-                OptimizationTask.builder().topic("Tighten verify stage").build()
-        ));
+        List<CycleResult> results =
+            orchestrator.runSession(List.of(OptimizationTask.builder().topic("Improve task planning rail").build(),
+                    OptimizationTask.builder().topic("Tighten verify stage").build()));
 
         assertThat(results).hasSize(2);
         assertThat(results.get(0).isSuccess()).isFalse();
         assertThat(results.get(0).getError()).contains("No allowed repo file was changed");
         assertThat(orchestrator.getArtifacts().require("task_plan", "")).isInstanceOf(TaskPlanArtifact.class);
-        assertThat(orchestrator.getArtifacts().require("session_results", "")).isInstanceOf(SessionResultsArtifact.class);
-        assertThat(orchestrator.getArtifacts().require("task_result", "Improve task planning rail")).isEqualTo(results.get(0));
+        assertThat(orchestrator.getArtifacts().require("session_results", ""))
+                .isInstanceOf(SessionResultsArtifact.class);
+        assertThat(orchestrator.getArtifacts().require("task_result", "Improve task planning rail"))
+                .isEqualTo(results.get(0));
         assertThat(orchestrator.getLastCycleResult()).isEqualTo(results.get(1));
         assertThat(orchestrator.getRuntime().getSelectedPipeline()).isEqualTo("meta_evolve_pipeline");
         assertThat(orchestrator.getTaskContexts()).isEmpty();
@@ -141,12 +136,9 @@ class AutoHarnessCompatibilityTest {
     @Test
     void orchestratorShouldStorePipelineSelectionArtifact() {
         AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(
-                AutoHarnessConfig.builder().pipelineName("meta_evolve_pipeline").build()
-        );
+                AutoHarnessConfig.builder().pipelineName("meta_evolve_pipeline").build());
 
-        orchestrator.runSession(List.of(
-                OptimizationTask.builder().topic("Refine prompt rails").build()
-        ));
+        orchestrator.runSession(List.of(OptimizationTask.builder().topic("Refine prompt rails").build()));
 
         Object artifact = orchestrator.getArtifacts().require("pipeline_selection", "");
         assertThat(artifact).isInstanceOf(PipelineSelectionArtifact.class);
@@ -191,13 +183,8 @@ class AutoHarnessCompatibilityTest {
     @Test
     void schemaDefaultsShouldMirrorPythonCoreModels() {
         Gap emptyGap = new Gap();
-        Gap weightedGap = Gap.builder()
-                .impact(0.8)
-                .feasibility(0.5)
-                .build();
-        OptimizationTask task = OptimizationTask.builder()
-                .topic("fix timeout")
-                .build();
+        Gap weightedGap = Gap.builder().impact(0.8).feasibility(0.5).build();
+        OptimizationTask task = OptimizationTask.builder().topic("fix timeout").build();
         CycleResult cycle = new CycleResult();
 
         assertThat(emptyGap.getId()).isEmpty();
@@ -241,12 +228,8 @@ class AutoHarnessCompatibilityTest {
         AutoHarnessConfig secondConfig = new AutoHarnessConfig();
         Gap firstGap = new Gap();
         Gap secondGap = new Gap();
-        OptimizationTask firstTask = OptimizationTask.builder()
-                .topic("first")
-                .build();
-        OptimizationTask secondTask = OptimizationTask.builder()
-                .topic("second")
-                .build();
+        OptimizationTask firstTask = OptimizationTask.builder().topic("first").build();
+        OptimizationTask secondTask = OptimizationTask.builder().topic("second").build();
         ResearchContext firstContext = new ResearchContext();
         ResearchContext secondContext = new ResearchContext();
         TaskPlanArtifact firstPlan = new TaskPlanArtifact();
@@ -307,19 +290,11 @@ class AutoHarnessCompatibilityTest {
 
     @Test
     void configShouldDeriveDefaultAutoHarnessPaths() {
-        AutoHarnessConfig config = AutoHarnessConfig.builder()
-                .dataDir("./state")
-                .upstreamRepo("agent-core")
-                .build();
-        AutoHarnessConfig repoUrlConfig = AutoHarnessConfig.builder()
-                .dataDir("./state")
-                .upstreamRepo("")
-                .repoUrl("https://example.com/team/demo.git")
-                .build();
-        AutoHarnessConfig explicitExperienceConfig = AutoHarnessConfig.builder()
-                .dataDir("./state")
-                .experienceDir("./custom-experience")
-                .build();
+        AutoHarnessConfig config = AutoHarnessConfig.builder().dataDir("./state").upstreamRepo("agent-core").build();
+        AutoHarnessConfig repoUrlConfig = AutoHarnessConfig.builder().dataDir("./state").upstreamRepo("")
+                .repoUrl("https://example.com/team/demo.git").build();
+        AutoHarnessConfig explicitExperienceConfig =
+            AutoHarnessConfig.builder().dataDir("./state").experienceDir("./custom-experience").build();
 
         assertThat(config.experiencePath().toString()).contains("state");
         assertThat(config.experiencePath().toString()).contains("experience");
@@ -334,25 +309,16 @@ class AutoHarnessCompatibilityTest {
         assertThat(config.resolveRepoName()).isEqualTo("agent-core");
         assertThat(repoUrlConfig.resolveRepoName()).isEqualTo("demo");
         assertThat(repoUrlConfig.cacheRepoPath().toString()).contains("demo");
-        assertThat(AutoHarnessConfig.builder()
-                .dataDir("./state")
-                .upstreamRepo("custom-repo.git")
-                .build()
+        assertThat(AutoHarnessConfig.builder().dataDir("./state").upstreamRepo("custom-repo.git").build()
                 .resolveRepoName()).isEqualTo("custom-repo");
         assertThat(explicitExperienceConfig.experiencePath().toString()).contains("custom-experience");
     }
 
     @Test
     void configShouldBuildProjectProfileAndRuntimeMetadata() {
-        AutoHarnessConfig config = AutoHarnessConfig.builder()
-                .workspace("./repo")
-                .dataDir("./state")
-                .gitBaseBranch("main")
-                .isConfigBootstrapped(true)
-                .suggestedLocalRepo("/tmp/local-repo")
-                .immutableFiles(List.of("a.txt"))
-                .highImpactPrefixes(List.of("src/main/"))
-                .build();
+        AutoHarnessConfig config = AutoHarnessConfig.builder().workspace("./repo").dataDir("./state")
+                .gitBaseBranch("main").isConfigBootstrapped(true).suggestedLocalRepo("/tmp/local-repo")
+                .immutableFiles(List.of("a.txt")).highImpactPrefixes(List.of("src/main/")).build();
 
         AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(config);
 
@@ -368,47 +334,21 @@ class AutoHarnessCompatibilityTest {
 
     @Test
     void configShouldLoadNestedYamlSectionsFromDict() {
-        AutoHarnessConfig config = AutoHarnessConfig.loadFromDict(Map.of(
-                "local_repo", "./repo",
-                "language", "en",
-                "immutable_files", List.of("a.py", "b.py"),
-                "git", Map.of(
-                        "remote", "myfork",
-                        "base_branch", "main",
-                        "user_name", "test",
-                        "user_email", "test@example.com",
-                        "fork_owner", "TestOwner"
-                ),
-                "gitcode", Map.of(
-                        "username", "bot-user",
-                        "access_token_env", "AUTO_TOKEN",
-                        "access_token", "inline-token"
-                ),
-                "budget", Map.of(
-                        "session_secs", 600,
-                        "cost_limit_usd", 5.0,
-                        "task_timeout_secs", 300,
-                        "model_timeout_secs", 240,
-                        "max_tasks_per_session", 2
-                ),
-                "ci_gate", Map.of(
-                        "config_path", "/tmp/ci_gate.yaml",
-                        "python_executable", "/tmp/python3.11",
-                        "install_command", "uv sync --active --group dev --extra cli"
-                ),
-                "fix_loop", Map.of(
-                        "phase1_max_retries", 4,
-                        "phase2_max_retries", 3
-                ),
-                "agent", Map.of(
-                        "implement", 12,
-                        "plan", 7
-                ),
-                "extensions", Map.of(
-                        "stage_registrars", List.of("pkg.stage:register"),
-                        "pipeline_registrars", List.of("pkg.pipeline:register")
-                )
-        ));
+        AutoHarnessConfig config = AutoHarnessConfig.loadFromDict(Map.of("local_repo", "./repo", "language", "en",
+                "immutable_files", List.of("a.py", "b.py"), "git",
+                Map.of("remote", "myfork", "base_branch", "main", "user_name", "test", "user_email", "test@example.com",
+                        "fork_owner", "TestOwner"),
+                "gitcode",
+                Map.of("username", "bot-user", "access_token_env", "AUTO_TOKEN", "access_token", "inline-token"),
+                "budget",
+                Map.of("session_secs", 600, "cost_limit_usd", 5.0, "task_timeout_secs", 300, "model_timeout_secs", 240,
+                        "max_tasks_per_session", 2),
+                "ci_gate",
+                Map.of("config_path", "/tmp/ci_gate.yaml", "python_executable", "/tmp/python3.11", "install_command",
+                        "uv sync --active --group dev --extra cli"),
+                "fix_loop", Map.of("phase1_max_retries", 4, "phase2_max_retries", 3), "agent",
+                Map.of("implement", 12, "plan", 7), "extensions", Map.of("stage_registrars",
+                        List.of("pkg.stage:register"), "pipeline_registrars", List.of("pkg.pipeline:register"))));
 
         assertThat(config.getLocalRepo()).isEqualTo("./repo");
         assertThat(config.getLanguage()).isEqualTo("en");
@@ -476,9 +416,7 @@ class AutoHarnessCompatibilityTest {
 
     @Test
     void configShouldResolveGitcodeUsernameFromForkOwner() {
-        AutoHarnessConfig config = AutoHarnessConfig.builder()
-                .forkOwner("fallback-owner")
-                .build();
+        AutoHarnessConfig config = AutoHarnessConfig.builder().forkOwner("fallback-owner").build();
 
         assertThat(config.resolveGitcodeUsername()).isEqualTo("fallback-owner");
     }
@@ -493,18 +431,14 @@ class AutoHarnessCompatibilityTest {
         Files.writeString(localRepoPython, "#!/usr/bin/env python\n");
 
         AutoHarnessConfig explicitConfig = AutoHarnessConfig.builder()
-                .workspace(tempDir.resolve("workspace").toString())
-                .localRepo(tempDir.resolve("local-repo").toString())
-                .ciGatePythonExecutable("/tmp/python3.11")
-                .build();
-        AutoHarnessConfig workspaceConfig = AutoHarnessConfig.builder()
-                .workspace(tempDir.resolve("workspace").toString())
-                .localRepo(tempDir.resolve("local-repo").toString())
-                .build();
-        AutoHarnessConfig localRepoConfig = AutoHarnessConfig.builder()
-                .workspace(tempDir.resolve("missing-workspace").toString())
-                .localRepo(tempDir.resolve("local-repo").toString())
-                .build();
+                .workspace(tempDir.resolve("workspace").toString()).localRepo(tempDir.resolve("local-repo").toString())
+                .ciGatePythonExecutable("/tmp/python3.11").build();
+        AutoHarnessConfig workspaceConfig =
+            AutoHarnessConfig.builder().workspace(tempDir.resolve("workspace").toString())
+                    .localRepo(tempDir.resolve("local-repo").toString()).build();
+        AutoHarnessConfig localRepoConfig =
+            AutoHarnessConfig.builder().workspace(tempDir.resolve("missing-workspace").toString())
+                    .localRepo(tempDir.resolve("local-repo").toString()).build();
 
         assertThat(explicitConfig.resolveCiGatePythonExecutable()).isEqualTo("/tmp/python3.11");
         assertThat(workspaceConfig.resolveCiGatePythonExecutable())
@@ -516,15 +450,8 @@ class AutoHarnessCompatibilityTest {
     @Test
     void configShouldLoadYamlFileAndDefaultDataDir() throws Exception {
         Path configFile = tempDir.resolve("config.yaml");
-        Files.writeString(configFile, String.join("\n",
-                "local_repo: /tmp/repo",
-                "git:",
-                "  remote: myfork",
-                "  fork_owner: TestOwner",
-                "budget:",
-                "  session_secs: 900",
-                ""
-        ));
+        Files.writeString(configFile, String.join("\n", "local_repo: /tmp/repo", "git:", "  remote: myfork",
+                "  fork_owner: TestOwner", "budget:", "  session_secs: 900", ""));
 
         AutoHarnessConfig config = AutoHarnessConfig.loadAutoHarnessConfig(configFile.toString());
 

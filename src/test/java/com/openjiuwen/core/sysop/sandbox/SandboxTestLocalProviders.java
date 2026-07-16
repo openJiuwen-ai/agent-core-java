@@ -1,3 +1,4 @@
+
 package com.openjiuwen.core.sysop.sandbox;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
@@ -15,7 +16,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Test-only local providers mirroring Python's test-local sandbox provider pattern.
  */
 final class SandboxTestLocalProviders {
-
     private static final AtomicBoolean INITIALIZED = new AtomicBoolean();
 
     private SandboxTestLocalProviders() {
@@ -30,21 +30,18 @@ final class SandboxTestLocalProviders {
     }
 
     public static final class TestLocalFsProvider extends LocalFsOperation {
-
         public TestLocalFsProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
             super(SandboxOperationSupport.toLocalWorkConfig(config));
         }
     }
 
     public static final class TestLocalShellProvider extends LocalShellOperation {
-
         public TestLocalShellProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
             super(SandboxOperationSupport.toLocalWorkConfig(config));
         }
     }
 
     public static final class TestLocalCodeProvider extends LocalCodeOperation {
-
         private final SandboxGatewayConfig config;
 
         public TestLocalCodeProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
@@ -53,28 +50,17 @@ final class SandboxTestLocalProviders {
         }
 
         @Override
-        public ExecuteCodeResult executeCode(String code, String language, int timeout,
-                                             Map<String, String> environment, Map<String, Object> options) {
-            return super.executeCode(
-                    SandboxOperationSupport.wrapCodeWithSandboxCwd(code, language, config),
-                    language,
-                    timeout,
-                    environment,
-                    options
-            );
+        public ExecuteCodeResult executeCode(String code, String language, int timeout, Map<String, String> environment,
+                Map<String, Object> options) {
+            return super.executeCode(SandboxOperationSupport.wrapCodeWithSandboxCwd(code, language, config), language,
+                    timeout, environment, options);
         }
 
         @Override
         public Iterator<ExecuteCodeStreamResult> executeCodeStream(String code, String language, int timeout,
-                                                                   Map<String, String> environment,
-                                                                   Map<String, Object> options) {
-            return super.executeCodeStream(
-                    SandboxOperationSupport.wrapCodeWithSandboxCwd(code, language, config),
-                    language,
-                    timeout,
-                    environment,
-                    options
-            );
+                Map<String, String> environment, Map<String, Object> options) {
+            return super.executeCodeStream(SandboxOperationSupport.wrapCodeWithSandboxCwd(code, language, config),
+                    language, timeout, environment, options);
         }
     }
 }

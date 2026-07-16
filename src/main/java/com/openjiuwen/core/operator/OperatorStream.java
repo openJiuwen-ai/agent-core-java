@@ -9,12 +9,16 @@ import java.util.Iterator;
 
 /**
  * Iterator-like stream with an explicit close hook for early termination.
- *
- * @param <T> streamed chunk type
+ * 
+ * @since 0.1.7
  */
 public interface OperatorStream<T> extends Iterator<T>, AutoCloseable {
-
     @Override
+    /**
+     * close.
+     * 
+     * @since 0.1.7
+     */
     default void close() {
     }
 
@@ -24,17 +28,17 @@ public interface OperatorStream<T> extends Iterator<T>, AutoCloseable {
      * The returned stream guarantees that {@code onClose} is invoked exactly once
      * when any of the following occurs:
      * <ul>
-     *     <li>All elements are consumed</li>
-     *     <li>{@link #close()} is called explicitly</li>
-     *     <li>An exception occurs during iteration</li>
-     *     <li>The stream is garbage collected without being isClosed (safety net)</li>
+     * <li>All elements are consumed</li>
+     * <li>{@link #close()} is called explicitly</li>
+     * <li>An exception occurs during iteration</li>
+     * <li>The stream is garbage collected without being isClosed (safety net)</li>
      * </ul>
      * This mirrors Python's generator close-on-GC behavior for {@code async for} loops.
-     *
+     * 
      * @param delegate the underlying iterator
-     * @param onClose  cleanup action to run on termination
-     * @param <T>      element type
+     * @param onClose cleanup action to run on termination
      * @return wrapped operator stream with cleanup guarantees
+     * @since 0.1.7
      */
     static <T> OperatorStream<T> wrap(Iterator<T> delegate, Runnable onClose) {
         return new ContextClosingStream<>(delegate, onClose);
@@ -49,7 +53,6 @@ public interface OperatorStream<T> extends Iterator<T>, AutoCloseable {
  * close-on-GC behavior for {@code async for} loops.
  */
 final class ContextClosingStream<T> implements OperatorStream<T> {
-
     private static final Cleaner CLEANER = Cleaner.create();
 
     private final Iterator<T> delegate;
@@ -60,10 +63,13 @@ final class ContextClosingStream<T> implements OperatorStream<T> {
         this.cleanable = CLEANER.register(this, new CleanupAction(onClose));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * hasNext.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean hasNext() {
         try {
             boolean hasNext = delegate.hasNext();
@@ -77,10 +83,13 @@ final class ContextClosingStream<T> implements OperatorStream<T> {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * next.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public T next() {
         try {
             T value = delegate.next();
@@ -94,10 +103,12 @@ final class ContextClosingStream<T> implements OperatorStream<T> {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void close() {
         cleanable.clean();
     }
@@ -114,10 +125,12 @@ final class ContextClosingStream<T> implements OperatorStream<T> {
             this.onClose = onClose;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * run.
+         * 
+         * @since 0.1.7
          */
+        @Override
         public void run() {
             if (!isClosed) {
                 isClosed = true;

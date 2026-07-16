@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.interaction;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.exception.BaseError;
 
@@ -9,19 +12,15 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Comprehensive tests for {@link InteractiveInput}.
  * <p>
  * Ported from Python's {@code test_interactive_input.py}.
  */
 class InteractiveInputFullTest {
-
     @Nested
     @DisplayName("Constructor validation")
     class ConstructorTests {
-
         @Test
         @DisplayName("null raw inputs throws BaseError")
         void testNullRawInputsThrows() {
@@ -57,7 +56,6 @@ class InteractiveInputFullTest {
     @Nested
     @DisplayName("Update validation")
     class UpdateTests {
-
         @Test
         @DisplayName("update with rawInputs existing throws BaseError")
         void testUpdateWithRawInputsThrows() {
@@ -113,7 +111,6 @@ class InteractiveInputFullTest {
     @Nested
     @DisplayName("Setter operations")
     class SetterTests {
-
         @Test
         @DisplayName("setRawInputs changes raw inputs")
         void testSetRawInputs() {

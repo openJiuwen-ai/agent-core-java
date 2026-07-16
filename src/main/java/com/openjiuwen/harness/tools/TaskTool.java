@@ -13,30 +13,37 @@ import java.util.UUID;
 
 /**
  * Public class TaskTool used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class TaskTool {
     private final DeepAgent parentAgent;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskTool.
+     * 
+     * @param parentAgent parentAgent
+     * @since 0.1.7
      */
     public TaskTool(DeepAgent parentAgent) {
         this.parentAgent = parentAgent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * delegate.
+     * 
+     * @param subagentType subagentType
+     * @param taskDescription taskDescription
+     * @param parentSessionId parentSessionId
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput delegate(String subagentType, String taskDescription, String parentSessionId) {
         String subSessionId = buildSubSessionId(parentSessionId, subagentType);
         try {
             DeepAgent subagent = parentAgent.createSubagent(subagentType, subSessionId);
-            Map<String, Object> result = subagent.invoke(Map.of(
-                    "query", taskDescription,
-                    "conversation_id", subSessionId
-            ));
+            Map<String, Object> result =
+                subagent.invoke(Map.of("query", taskDescription, "conversation_id", subSessionId));
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("agent_id", subagent.getCard().getId());
             payload.put("sub_session_id", subSessionId);
@@ -46,10 +53,8 @@ public class TaskTool {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("agent_id", subagentType == null ? "subagent" : subagentType);
             payload.put("sub_session_id", subSessionId);
-            payload.put("result", Map.of(
-                    "status", "skipped",
-                    "reason", ex.getMessage() == null ? "" : ex.getMessage()
-            ));
+            payload.put("result",
+                    Map.of("status", "skipped", "reason", ex.getMessage() == null ? "" : ex.getMessage()));
             return ToolOutput.builder().success(true).data(payload).build();
         } catch (Exception ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();

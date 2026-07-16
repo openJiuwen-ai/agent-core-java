@@ -4,21 +4,26 @@
 
 package com.openjiuwen.agentevolving.dataset;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.List;
 
 /**
  * Container for Case list with iteration and split support.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.dataset.case_loader.CaseLoader}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.dataset.case_loader.CaseLoader}.
+ * 
+ * @since 0.1.7
  */
 public class CaseLoader implements Iterable<Case> {
-
     private final List<Case> cases;
 
     /**
      * Initialize with case list.
-     *
+     * 
      * @param cases List of Cases to wrap
+     * @since 0.1.7
      */
     public CaseLoader(List<Case> cases) {
         this.cases = cases != null ? new ArrayList<>(cases) : new ArrayList<>();
@@ -26,8 +31,9 @@ public class CaseLoader implements Iterable<Case> {
 
     /**
      * Return number of cases.
-     *
+     * 
      * @return Number of cases
+     * @since 0.1.7
      */
     public int size() {
         return cases.size();
@@ -35,25 +41,30 @@ public class CaseLoader implements Iterable<Case> {
 
     /**
      * Check if empty.
-     *
+     * 
      * @return True if no cases
+     * @since 0.1.7
      */
     public boolean isEmpty() {
         return cases.isEmpty();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * iterator.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Iterator<Case> iterator() {
         return getCases().iterator();
     }
 
     /**
      * Get copy of cases list.
-     *
+     * 
      * @return Copy of internal case list
+     * @since 0.1.7
      */
     public List<Case> getCases() {
         return new ArrayList<>(cases);
@@ -61,11 +72,11 @@ public class CaseLoader implements Iterable<Case> {
 
     /**
      * Split samples into two parts by ratio.
-     *
+     * 
      * @param ratio Split ratio in [0.0, 1.0]
-     * @param seed  Random seed for reproducible shuffle
+     * @param seed Random seed for reproducible shuffle
      * @return Tuple of (first_half, second_half) CaseLoaders
-     * @throws IllegalArgumentException if ratio is not in [0.0, 1.0]
+     * @since 0.1.7
      */
     public CaseLoader[] split(double ratio, int seed) {
         if (ratio < 0.0 || ratio > 1.0) {
@@ -74,18 +85,17 @@ public class CaseLoader implements Iterable<Case> {
 
         List<Case> shuffled = shuffleCases(cases, seed);
         int cut = (int) (shuffled.size() * ratio);
-        return new CaseLoader[]{
-                new CaseLoader(shuffled.subList(0, cut)),
-                new CaseLoader(shuffled.subList(cut, shuffled.size()))
-        };
+        return new CaseLoader[]{new CaseLoader(shuffled.subList(0, cut)),
+                new CaseLoader(shuffled.subList(cut, shuffled.size()))};
     }
 
     /**
      * Shuffle Case list with optional seed.
-     *
+     * 
      * @param cases Cases to shuffle
-     * @param seed  Random seed for reproducibility
+     * @param seed Random seed for reproducibility
      * @return New shuffled list (original unchanged)
+     * @since 0.1.7
      */
     public static List<Case> shuffleCases(List<Case> cases, int seed) {
         List<Case> shuffled = new ArrayList<>(cases != null ? cases : Collections.emptyList());
@@ -95,11 +105,11 @@ public class CaseLoader implements Iterable<Case> {
 
     /**
      * Split Case list by ratio.
-     *
+     * 
      * @param cases Cases to split
      * @param ratio Split ratio in [0.0, 1.0]
      * @return Array of [first_half, second_half]
-     * @throws IllegalArgumentException if ratio is not in [0.0, 1.0]
+     * @since 0.1.7
      */
     public static List<Case>[] splitCases(List<Case> cases, double ratio) {
         if (ratio < 0.0 || ratio > 1.0) {
@@ -127,15 +137,34 @@ public class CaseLoader implements Iterable<Case> {
         private final int[] mt = new int[N];
         private int index = N;
 
+        /**
+         * PythonRandom.
+         * 
+         * @param seed seed
+         * @since 0.1.7
+         */
         private PythonRandom(int seed) {
             initByArray(seedWords(seed));
         }
 
+        /**
+         * seedWords.
+         * 
+         * @param seed seed
+         * @return the result
+         * @since 0.1.7
+         */
         private static int[] seedWords(int seed) {
             long normalized = Math.abs((long) seed);
             return new int[]{(int) normalized};
         }
 
+        /**
+         * initGenRand.
+         * 
+         * @param seed seed
+         * @since 0.1.7
+         */
         private void initGenRand(int seed) {
             mt[0] = seed;
             for (int i = 1; i < N; i++) {
@@ -146,6 +175,12 @@ public class CaseLoader implements Iterable<Case> {
             index = N;
         }
 
+        /**
+         * initByArray.
+         * 
+         * @param initKey initKey
+         * @since 0.1.7
+         */
         private void initByArray(int[] initKey) {
             initGenRand(19650218);
             int i = 1;
@@ -184,6 +219,12 @@ public class CaseLoader implements Iterable<Case> {
             mt[0] = 0x80000000;
         }
 
+        /**
+         * nextInt32.
+         * 
+         * @return the result
+         * @since 0.1.7
+         */
         private int nextInt32() {
             if (index >= N) {
                 twist();
@@ -197,24 +238,35 @@ public class CaseLoader implements Iterable<Case> {
             return y;
         }
 
+        /**
+         * twist.
+         * 
+         * @since 0.1.7
+         */
         private void twist() {
             for (int kk = 0; kk < N - M; kk++) {
-                long y = (Integer.toUnsignedLong(mt[kk]) & UPPER_MASK)
-                        | (Integer.toUnsignedLong(mt[kk + 1]) & LOWER_MASK);
+                long y =
+                    (Integer.toUnsignedLong(mt[kk]) & UPPER_MASK) | (Integer.toUnsignedLong(mt[kk + 1]) & LOWER_MASK);
                 mt[kk] = mt[kk + M] ^ (int) (y >>> 1) ^ ((y & 1L) == 0L ? 0 : MATRIX_A);
             }
             for (int kk = N - M; kk < N - 1; kk++) {
-                long y = (Integer.toUnsignedLong(mt[kk]) & UPPER_MASK)
-                        | (Integer.toUnsignedLong(mt[kk + 1]) & LOWER_MASK);
+                long y =
+                    (Integer.toUnsignedLong(mt[kk]) & UPPER_MASK) | (Integer.toUnsignedLong(mt[kk + 1]) & LOWER_MASK);
                 mt[kk] = mt[kk + (M - N)] ^ (int) (y >>> 1) ^ ((y & 1L) == 0L ? 0 : MATRIX_A);
             }
 
-            long y = (Integer.toUnsignedLong(mt[N - 1]) & UPPER_MASK)
-                    | (Integer.toUnsignedLong(mt[0]) & LOWER_MASK);
+            long y = (Integer.toUnsignedLong(mt[N - 1]) & UPPER_MASK) | (Integer.toUnsignedLong(mt[0]) & LOWER_MASK);
             mt[N - 1] = mt[M - 1] ^ (int) (y >>> 1) ^ ((y & 1L) == 0L ? 0 : MATRIX_A);
             index = 0;
         }
 
+        /**
+         * getRandBits.
+         * 
+         * @param bits bits
+         * @return the result
+         * @since 0.1.7
+         */
         private long getRandBits(int bits) {
             if (bits <= 0) {
                 return 0L;
@@ -237,6 +289,13 @@ public class CaseLoader implements Iterable<Case> {
             return value;
         }
 
+        /**
+         * randBelow.
+         * 
+         * @param boundExclusive boundExclusive
+         * @return the result
+         * @since 0.1.7
+         */
         private int randBelow(int boundExclusive) {
             int bits = 32 - Integer.numberOfLeadingZeros(boundExclusive);
             long candidate = getRandBits(bits);
@@ -246,6 +305,12 @@ public class CaseLoader implements Iterable<Case> {
             return (int) candidate;
         }
 
+        /**
+         * shuffle.
+         * 
+         * @param values values
+         * @since 0.1.7
+         */
         private <T> void shuffle(List<T> values) {
             for (int i = values.size() - 1; i > 0; i--) {
                 int j = randBelow(i + 1);

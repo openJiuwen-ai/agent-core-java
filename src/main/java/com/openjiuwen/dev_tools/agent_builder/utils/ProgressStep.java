@@ -13,28 +13,41 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Public class ProgressStep used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class ProgressStep used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class ProgressStep {
     private ProgressStage stage;
     private ProgressStatus status;
     private String message;
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> details = new LinkedHashMap<>();
     private Double duration;
     private String error;
     @Builder.Default
+    /**
+     * Instant.now.
+     * 
+     * @since 0.1.7
+     */
     private Instant timestamp = Instant.now();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> data = new LinkedHashMap<>();

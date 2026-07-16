@@ -6,29 +6,40 @@ package com.openjiuwen.spi.store.query;
 
 /**
  * Expression for custom / pass-through queries.
+ * 
+ * @since 0.1.7
  */
 public class CustomExpr extends QueryExpr {
-
     private final Object expr;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CustomExpr.
+     * 
+     * @param expr expr
+     * @since 0.1.7
      */
     public CustomExpr(Object expr) {
         this.expr = expr;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExpr.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getExpr() {
         return expr;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toExpr.
+     * 
+     * @param database database
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object toExpr(String database) {
         return expr;
     }

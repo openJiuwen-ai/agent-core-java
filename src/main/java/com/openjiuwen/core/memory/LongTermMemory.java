@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.memory;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -42,9 +43,9 @@ import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
 import com.openjiuwen.spi.store.BaseDbStore;
 import com.openjiuwen.spi.store.BaseKVStore;
+
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -57,20 +58,51 @@ import java.util.function.BooleanSupplier;
 /**
  * Main memory engine implementing long-term memory management.
  * Singleton class managing conversation memory, user variables, semantic search, and persistence.
+ * 
+ * @since 0.1.7
  */
 public class LongTermMemory {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * DateTimeFormatter.ofPattern.
+     * 
+     * @param HH:mm:ss" HH:mm:ss"
+     * @since 0.1.7
+     */
     private static final DateTimeFormatter TIMESTAMP_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+    /**
+     * DEFAULT_VALUE.
+     * 
+     * @since 0.1.7
+     */
     public static final String DEFAULT_VALUE = "__default__";
+
+    /**
+     * SCOPE_CONFIG_KEY.
+     * 
+     * @since 0.1.7
+     */
     public static final String SCOPE_CONFIG_KEY = "memory_scope_config";
 
     private static volatile LongTermMemory instance;
 
     // config
     private MemoryEngineConfig sysMemConfig;
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final ConcurrentHashMap<String, MemoryScopeConfig> scopeConfig = new ConcurrentHashMap<>();
 
     // stores
@@ -93,15 +125,27 @@ public class LongTermMemory {
 
     // embedding
     private Embedding baseEmbed;
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final ConcurrentHashMap<String, Embedding> scopeEmbedding = new ConcurrentHashMap<>();
 
+    /**
+     * LongTermMemory.
+     * 
+     * @since 0.1.7
+     */
     private LongTermMemory() {
     }
 
     /**
      * Gets the singleton instance of LongTermMemory.
-     *
+     * 
      * @return the LongTermMemory singleton instance
+     * @since 0.1.7
      */
     public static LongTermMemory getInstance() {
         if (instance == null) {
@@ -116,6 +160,8 @@ public class LongTermMemory {
 
     /**
      * Reset singleton for testing.
+     * 
+     * @since 0.1.7
      */
     public static void resetInstance() {
         synchronized (LongTermMemory.class) {
@@ -127,19 +173,18 @@ public class LongTermMemory {
 
     /**
      * Registers storage backends for the memory engine.
-     *
-     * @param kvStore        the key-value store for persistence
-     * @param vectorStore    the vector store for semantic search
-     * @param dbStore        the database store for structured data
+     * 
+     * @param kvStore the key-value store for persistence
+     * @param vectorStore the vector store for semantic search
+     * @param dbStore the database store for structured data
      * @param embeddingModel the embedding model for vectorization
+     * @since 0.1.7
      */
-    public void registerStore(BaseKVStore kvStore,
-                              VectorStore vectorStore,
-                              BaseDbStore<?> dbStore,
-                              Embedding embeddingModel) {
+    public void registerStore(BaseKVStore kvStore, VectorStore vectorStore, BaseDbStore<?> dbStore,
+            Embedding embeddingModel) {
         if (kvStore == null) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_REGISTER_STORE_EXECUTION_ERROR,
-                    "store_type", "kv store", "error_msg", "kv store is required, cannot be None");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_REGISTER_STORE_EXECUTION_ERROR, "store_type", "kv store",
+                    "error_msg", "kv store is required, cannot be None");
         }
         this.kvStore = kvStore;
         this.vectorStore = vectorStore;
@@ -165,17 +210,16 @@ public class LongTermMemory {
         }
     }
 
-    // ========================= Configuration =========================
-
     /**
      * Sets the system memory engine configuration.
-     *
+     * 
      * @param config the memory engine configuration
+     * @since 0.1.7
      */
     public void setConfig(MemoryEngineConfig config) {
         if (kvStore == null || dbStore == null || vectorStore == null) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR,
-                    "config_type", "system", "error_msg", "stores must be registered before setting config");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_SET_CONFIG_EXECUTION_ERROR, "config_type", "system",
+                    "error_msg", "stores must be registered before setting config");
         }
         config.validateCryptoKey();
         this.sysMemConfig = config;
@@ -210,16 +254,14 @@ public class LongTermMemory {
     }
 
     /**
-     * Sets the configuration for a specific scope.
-     *
-     * @param scopeId             the scope identifier
-     * @param memoryScopeConfig   the scope-specific memory configuration
-     * @return true if configuration was set successfully, false otherwise
+     * setScopeConfig.
+     * 
+     * @param scopeId scopeId
+     * @param memoryScopeConfig memoryScopeConfig
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean setScopeConfig(String scopeId, MemoryScopeConfig memoryScopeConfig) {
         if (!validateId(LogEventType.MEMORY_STORE, scopeId)) {
             MEMORY_LOGGER.error("[{}] Invalid scope_id format.", LogEventType.MEMORY_STORE);
@@ -242,22 +284,20 @@ public class LongTermMemory {
 
             scopeEmbedding.remove(scopeId);
             return true;
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             MEMORY_LOGGER.error("[{}] Failed to set scope config: {}", LogEventType.MEMORY_STORE, e.getMessage());
             return false;
         }
     }
 
     /**
-     * Gets the configuration for a specific scope.
-     *
-     * @param scopeId the scope identifier
-     * @return the scope configuration, or null if not found
+     * getScopeConfig.
+     * 
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public MemoryScopeConfig getScopeConfig(String scopeId) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             MEMORY_LOGGER.error("[{}] Invalid scope_id format.", LogEventType.MEMORY_RETRIEVE);
@@ -275,7 +315,7 @@ public class LongTermMemory {
             decryptApiKeyInMap(configMap, "embedding_cfg");
             String decryptedJson = MAPPER.writeValueAsString(configMap);
             return MAPPER.readValue(decryptedJson, MemoryScopeConfig.class);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             MEMORY_LOGGER.error("[{}] Failed to parse scope config: {}", LogEventType.MEMORY_RETRIEVE, e.getMessage());
             return null;
         }
@@ -283,9 +323,10 @@ public class LongTermMemory {
 
     /**
      * Deletes the configuration for a specific scope.
-     *
+     * 
      * @param scopeId the scope identifier
      * @return true if deletion was successful, false otherwise
+     * @since 0.1.7
      */
     public boolean deleteScopeConfig(String scopeId) {
         if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
@@ -298,8 +339,7 @@ public class LongTermMemory {
             scopeEmbedding.remove(scopeId);
             return true;
         } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Failed to delete configuration: {}",
-                    LogEventType.MEMORY_DELETE, e.getMessage());
+            MEMORY_LOGGER.error("[{}] Failed to delete configuration: {}", LogEventType.MEMORY_DELETE, e.getMessage());
             return false;
         }
     }
@@ -308,9 +348,10 @@ public class LongTermMemory {
 
     /**
      * Deletes all memory data for a specific scope.
-     *
+     * 
      * @param scopeId the scope identifier
      * @return true if deletion was successful, false otherwise
+     * @since 0.1.7
      */
     public boolean deleteMemByScope(String scopeId) {
         if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
@@ -331,18 +372,22 @@ public class LongTermMemory {
         return true;
     }
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * addMessages.
+     * 
+     * @param messages messages
+     * @param agentConfig agentConfig
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param sessionId sessionId
+     * @param timestamp timestamp
+     * @param genMem genMem
+     * @param genMemWithHistoryMsgNum genMemWithHistoryMsgNum
+     * @since 0.1.7
      */
-    public void addMessages(List<BaseMessage> messages,
-                            AgentMemoryConfig agentConfig,
-                            String userId,
-                            String scopeId,
-                            String sessionId,
-                            OffsetDateTime timestamp,
-                            boolean genMem,
-                            int genMemWithHistoryMsgNum) {
+    @SuppressWarnings("unchecked")
+    public void addMessages(List<BaseMessage> messages, AgentMemoryConfig agentConfig, String userId, String scopeId,
+            String sessionId, OffsetDateTime timestamp, boolean genMem, int genMemWithHistoryMsgNum) {
         if (!validateId(LogEventType.MEMORY_STORE, scopeId)) {
             return;
         }
@@ -372,14 +417,9 @@ public class LongTermMemory {
             for (int i = 0; i < messages.size(); i++) {
                 BaseMessage msg = messages.get(i);
                 OffsetDateTime msgTimestamp = timestamp.plusNanos((long) i * 1_000_000);
-                MessageAddRequest addReq = MessageAddRequest.builder()
-                        .userId(userId)
-                        .scopeId(scopeId)
-                        .role(msg.getRole())
-                        .content(msg.getContentAsString())
-                        .sessionId(sessionId)
-                        .timestamp(msgTimestamp)
-                        .build();
+                MessageAddRequest addReq =
+                    MessageAddRequest.builder().userId(userId).scopeId(scopeId).role(msg.getRole())
+                            .content(msg.getContentAsString()).sessionId(sessionId).timestamp(msgTimestamp).build();
                 msgId = messageManager.add(addReq);
             }
 
@@ -413,24 +453,38 @@ public class LongTermMemory {
                 writeManager.addMemories(userId, scopeId, allMemory, llm, semanticStore);
             } catch (Exception e) {
                 MEMORY_LOGGER.error("[{}] Failed to add mem: {}", LogEventType.MEMORY_STORE, e.getMessage());
-                throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR,
-                        "memory_type", "unknown", "error_msg", e.getMessage());
+                throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type", "unknown",
+                        "error_msg", e.getMessage());
             }
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addMessages.
+     * 
+     * @param messages messages
+     * @param agentConfig agentConfig
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
-    public void addMessages(List<BaseMessage> messages, AgentMemoryConfig agentConfig,
-                            String userId, String scopeId, String sessionId) {
+    public void addMessages(List<BaseMessage> messages, AgentMemoryConfig agentConfig, String userId, String scopeId,
+            String sessionId) {
         addMessages(messages, agentConfig, userId, scopeId, sessionId, null, true, 2);
     }
 
     // ========================= Message Operations =========================
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRecentMessages.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param sessionId sessionId
+     * @param num num
+     * @return the result
+     * @since 0.1.7
      */
     public List<BaseMessage> getRecentMessages(String userId, String scopeId, String sessionId, int num) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
@@ -445,7 +499,11 @@ public class LongTermMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMessageById.
+     * 
+     * @param msgId msgId
+     * @return the result
+     * @since 0.1.7
      */
     public MessageManager.MessageRecord getMessageById(String msgId) {
         if (messageManager == null) {
@@ -456,7 +514,11 @@ public class LongTermMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteMessagesByUserAndScope.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @since 0.1.7
      */
     public void deleteMessagesByUserAndScope(String userId, String scopeId) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
@@ -468,7 +530,12 @@ public class LongTermMemory {
     // ========================= Memory CRUD =========================
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteMemById.
+     * 
+     * @param memId memId
+     * @param userId userId
+     * @param scopeId scopeId
+     * @since 0.1.7
      */
     public void deleteMemById(String memId, String userId, String scopeId) {
         if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
@@ -478,15 +545,19 @@ public class LongTermMemory {
         try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
             lock.acquire();
             if (writeManager == null) {
-                throw ErrorHelper.buildError(StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR,
-                        "memory_type", "all", "error_msg", "write manager is not initialized");
+                throw ErrorHelper.buildError(StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR, "memory_type", "all",
+                        "error_msg", "write manager is not initialized");
             }
             writeManager.deleteMemById(userId, scopeId, memId, semanticStore);
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteMemByUserId.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @since 0.1.7
      */
     public void deleteMemByUserId(String userId, String scopeId) {
         if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
@@ -496,15 +567,21 @@ public class LongTermMemory {
         try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
             lock.acquire();
             if (writeManager == null) {
-                throw ErrorHelper.buildError(StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR,
-                        "memory_type", "all", "error_msg", "write manager is not initialized");
+                throw ErrorHelper.buildError(StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR, "memory_type", "all",
+                        "error_msg", "write manager is not initialized");
             }
             writeManager.deleteMemByUserId(userId, scopeId, semanticStore);
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateMemById.
+     * 
+     * @param memId memId
+     * @param memory memory
+     * @param userId userId
+     * @param scopeId scopeId
+     * @since 0.1.7
      */
     public void updateMemById(String memId, String memory, String userId, String scopeId) {
         if (!validateId(LogEventType.MEMORY_UPDATE, scopeId)) {
@@ -514,8 +591,8 @@ public class LongTermMemory {
         try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
             lock.acquire();
             if (writeManager == null) {
-                throw ErrorHelper.buildError(StatusCode.MEMORY_UPDATE_MEMORY_EXECUTION_ERROR,
-                        "memory_type", "all", "error_msg", "write manager is not initialized");
+                throw ErrorHelper.buildError(StatusCode.MEMORY_UPDATE_MEMORY_EXECUTION_ERROR, "memory_type", "all",
+                        "error_msg", "write manager is not initialized");
             }
             writeManager.updateMemById(userId, scopeId, memId, memory, semanticStore);
         }
@@ -524,15 +601,21 @@ public class LongTermMemory {
     // ========================= Variable Operations =========================
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getVariables.
+     * 
+     * @param names names
+     * @param userId userId
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, String> getVariables(Object names, String userId, String scopeId) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             return Map.of();
         }
         if (searchManager == null) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
-                    "memory_type", "all", "error_msg", "search manager is not initialized");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "all",
+                    "error_msg", "search manager is not initialized");
         }
         Map<String, String> ret = new HashMap<>();
         if (names == null) {
@@ -551,12 +634,17 @@ public class LongTermMemory {
             }
             return ret;
         }
-        throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
-                "memory_type", "all", "error_msg", "names must be String | List<String> | null");
+        throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "all", "error_msg",
+                "names must be String | List<String> | null");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateVariables.
+     * 
+     * @param variables variables
+     * @param userId userId
+     * @param scopeId scopeId
+     * @since 0.1.7
      */
     public void updateVariables(Map<String, String> variables, String userId, String scopeId) {
         if (!validateId(LogEventType.MEMORY_UPDATE, scopeId)) {
@@ -565,8 +653,8 @@ public class LongTermMemory {
         try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
             lock.acquire();
             if (variableManager == null) {
-                throw ErrorHelper.buildError(StatusCode.MEMORY_UPDATE_MEMORY_EXECUTION_ERROR,
-                        "memory_type", "variable", "error_msg", "variable manager is not initialized");
+                throw ErrorHelper.buildError(StatusCode.MEMORY_UPDATE_MEMORY_EXECUTION_ERROR, "memory_type", "variable",
+                        "error_msg", "variable manager is not initialized");
             }
             for (Map.Entry<String, String> entry : variables.entrySet()) {
                 variableManager.updateUserVariable(userId, scopeId, entry.getKey(), entry.getValue());
@@ -575,7 +663,13 @@ public class LongTermMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteVariables.
+     * 
+     * @param names names
+     * @param userId userId
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
      */
     public boolean deleteVariables(List<String> names, String userId, String scopeId) {
         if (!validateId(LogEventType.MEMORY_DELETE, scopeId)) {
@@ -584,8 +678,8 @@ public class LongTermMemory {
         try (DistributedLock lock = new DistributedLock(kvStore, "user/" + userId)) {
             lock.acquire();
             if (variableManager == null) {
-                throw ErrorHelper.buildError(StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR,
-                        "memory_type", "variable", "error_msg", "variable manager is not initialized");
+                throw ErrorHelper.buildError(StatusCode.MEMORY_DELETE_MEMORY_EXECUTION_ERROR, "memory_type", "variable",
+                        "error_msg", "variable manager is not initialized");
             }
             for (String name : names) {
                 variableManager.deleteUserVariable(userId, scopeId, name);
@@ -597,7 +691,15 @@ public class LongTermMemory {
     // ========================= Search Operations =========================
 
     /**
-     * Auto-generated for codecheck compliance.
+     * searchUserMem.
+     * 
+     * @param query query
+     * @param num num
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param threshold threshold
+     * @return the result
+     * @since 0.1.7
      */
     public List<MemResult> searchUserMem(String query, int num, String userId, String scopeId, double threshold) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
@@ -605,17 +707,14 @@ public class LongTermMemory {
         }
         SemanticStore semanticStore = createSemanticStoreWithEmbedding(scopeId);
         if (searchManager == null) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
-                    "memory_type", "all", "error_msg", "search manager is not initialized");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "all",
+                    "error_msg", "search manager is not initialized");
         }
-        SearchParams params = SearchParams.builder()
-                .query(query).scopeId(scopeId).topK(num).userId(userId).threshold(threshold)
-                .build();
+        SearchParams params =
+            SearchParams.builder().query(query).scopeId(scopeId).topK(num).userId(userId).threshold(threshold).build();
         try {
             List<Map<String, Object>> searchData = new ArrayList<>();
-            for (MemoryType memType : List.of(
-                    MemoryType.USER_PROFILE,
-                    MemoryType.SEMANTIC_MEMORY,
+            for (MemoryType memType : List.of(MemoryType.USER_PROFILE, MemoryType.SEMANTIC_MEMORY,
                     MemoryType.EPISODIC_MEMORY)) {
                 params.setSearchType(memType.getValue());
                 List<Map<String, Object>> res = searchManager.search(params, semanticStore);
@@ -624,53 +723,68 @@ public class LongTermMemory {
                 }
             }
 
-            searchData.sort((a, b) -> Double.compare(
-                    scoreValue(b.get("score")),
-                    scoreValue(a.get("score"))));
+            searchData.sort((a, b) -> Double.compare(scoreValue(b.get("score")), scoreValue(a.get("score"))));
             if (searchData.size() > num) {
                 searchData = new ArrayList<>(searchData.subList(0, num));
             }
             return toMemResults(searchData, MemoryType.USER_PROFILE);
         } catch (Exception e) {
-            MEMORY_LOGGER.warn("[{}] Search user mem has exception: {}",
-                    LogEventType.MEMORY_RETRIEVE, e.getMessage());
+            MEMORY_LOGGER.warn("[{}] Search user mem has exception: {}", LogEventType.MEMORY_RETRIEVE, e.getMessage());
             return List.of();
         }
     }
 
+    /**
+     * scoreValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static double scoreValue(Object value) {
         return value instanceof Number number ? number.doubleValue() : 0.0;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * searchUserHistorySummary.
+     * 
+     * @param query query
+     * @param num num
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param threshold threshold
+     * @return the result
+     * @since 0.1.7
      */
-    public List<MemResult> searchUserHistorySummary(String query, int num, String userId,
-                                                     String scopeId, double threshold) {
+    public List<MemResult> searchUserHistorySummary(String query, int num, String userId, String scopeId,
+            double threshold) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             return List.of();
         }
         SemanticStore semanticStore = createSemanticStoreWithEmbedding(scopeId);
         if (searchManager == null) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
-                    "memory_type", "all", "error_msg", "search manager is not initialized");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "all",
+                    "error_msg", "search manager is not initialized");
         }
-        SearchParams params = SearchParams.builder()
-                .query(query).scopeId(scopeId).topK(num).userId(userId).threshold(threshold)
-                .searchType(MemoryType.SUMMARY.getValue())
-                .build();
+        SearchParams params = SearchParams.builder().query(query).scopeId(scopeId).topK(num).userId(userId)
+                .threshold(threshold).searchType(MemoryType.SUMMARY.getValue()).build();
         try {
             List<Map<String, Object>> searchData = searchManager.search(params, semanticStore);
             return toMemResults(searchData, MemoryType.SUMMARY);
         } catch (Exception e) {
-            MEMORY_LOGGER.warn("[{}] Search user history summary has exception: {}",
-                    LogEventType.MEMORY_RETRIEVE, e.getMessage());
+            MEMORY_LOGGER.warn("[{}] Search user history summary has exception: {}", LogEventType.MEMORY_RETRIEVE,
+                    e.getMessage());
             return List.of();
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * userMemTotalNum.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
      */
     public int userMemTotalNum(String userId, String scopeId) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
@@ -681,42 +795,62 @@ public class LongTermMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUserMemByPage.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param pageSize pageSize
+     * @param pageIdx pageIdx
+     * @param memoryType memoryType
+     * @return the result
+     * @since 0.1.7
      */
-    public List<MemInfo> getUserMemByPage(String userId, String scopeId,
-                                           int pageSize, int pageIdx, MemoryType memoryType) {
+    public List<MemInfo> getUserMemByPage(String userId, String scopeId, int pageSize, int pageIdx,
+            MemoryType memoryType) {
         if (!validateId(LogEventType.MEMORY_RETRIEVE, scopeId)) {
             return List.of();
         }
         if (searchManager == null) {
-            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR,
-                    "memory_type", "all", "error_msg", "search manager is not initialized");
+            throw ErrorHelper.buildError(StatusCode.MEMORY_GET_MEMORY_EXECUTION_ERROR, "memory_type", "all",
+                    "error_msg", "search manager is not initialized");
         }
         String searchMemType = memoryType == MemoryType.UNKNOWN ? null : memoryType.getValue();
-        List<Map<String, Object>> searchData = searchManager.listUserMem(userId, scopeId,
-                pageSize, pageIdx, searchMemType);
+        List<Map<String, Object>> searchData =
+            searchManager.listUserMem(userId, scopeId, pageSize, pageIdx, searchMemType);
         if (searchData == null || searchData.isEmpty()) {
             return List.of();
         }
         List<MemInfo> results = new ArrayList<>();
         for (Map<String, Object> item : searchData) {
             String memTypeStr = String.valueOf(item.getOrDefault("mem_type", MemoryType.UNKNOWN.getValue()));
-            results.add(MemInfo.builder()
-                    .memId(String.valueOf(item.get("id")))
-                    .content(String.valueOf(item.get("mem")))
-                    .type(MemoryType.fromValue(memTypeStr))
-                    .build());
+            results.add(MemInfo.builder().memId(String.valueOf(item.get("id"))).content(String.valueOf(item.get("mem")))
+                    .type(MemoryType.fromValue(memTypeStr)).build());
         }
         return results;
     }
 
     // ========================= Private Helpers =========================
 
+    /**
+     * getLlmFromConfig.
+     * 
+     * @param modelConfig modelConfig
+     * @param modelClientConfig modelClientConfig
+     * @return the result
+     * @since 0.1.7
+     */
     private static Model getLlmFromConfig(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         return new Model(modelClientConfig, modelConfig);
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * getInternalScopeConfig.
+     * 
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
+     */
     private MemoryScopeConfig getInternalScopeConfig(String scopeId) {
         if (scopeConfig.containsKey(scopeId)) {
             MemoryScopeConfig config = scopeConfig.get(scopeId);
@@ -727,15 +861,22 @@ public class LongTermMemory {
                 decryptApiKeyInMap(configMap, "embedding_cfg");
                 String decryptedJson = MAPPER.writeValueAsString(configMap);
                 return MAPPER.readValue(decryptedJson, MemoryScopeConfig.class);
-            } catch (Exception e) {
-                MEMORY_LOGGER.error("[{}] Failed to decrypt scope config: {}",
-                        LogEventType.MEMORY_RETRIEVE, e.getMessage());
+            } catch (JsonProcessingException e) {
+                MEMORY_LOGGER.error("[{}] Failed to decrypt scope config: {}", LogEventType.MEMORY_RETRIEVE,
+                        e.getMessage());
                 return null;
             }
         }
         return getScopeConfig(scopeId);
     }
 
+    /**
+     * getScopeEmbeddingModel.
+     * 
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
+     */
     private Embedding getScopeEmbeddingModel(String scopeId) {
         Embedding cached = scopeEmbedding.get(scopeId);
         if (cached != null) {
@@ -753,11 +894,17 @@ public class LongTermMemory {
                     LogEventType.MEMORY_RETRIEVE, scopeId, e.getMessage());
             return null;
         }
-        MEMORY_LOGGER.error("[{}] No embedding model available for scope: {}",
-                LogEventType.MEMORY_RETRIEVE, scopeId);
+        MEMORY_LOGGER.error("[{}] No embedding model available for scope: {}", LogEventType.MEMORY_RETRIEVE, scopeId);
         return null;
     }
 
+    /**
+     * getScopeLlm.
+     * 
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
+     */
     private Map.Entry<String, Model> getScopeLlm(String scopeId) {
         try {
             MemoryScopeConfig config = getInternalScopeConfig(scopeId);
@@ -767,8 +914,8 @@ public class LongTermMemory {
             }
             if (sysMemConfig != null && sysMemConfig.getDefaultModelCfg() != null
                     && sysMemConfig.getDefaultModelClientCfg() != null) {
-                Model llm = getLlmFromConfig(sysMemConfig.getDefaultModelCfg(),
-                        sysMemConfig.getDefaultModelClientCfg());
+                Model llm =
+                    getLlmFromConfig(sysMemConfig.getDefaultModelCfg(), sysMemConfig.getDefaultModelClientCfg());
                 return new AbstractMap.SimpleEntry<>(sysMemConfig.getDefaultModelCfg().getModelName(), llm);
             }
             return baseLlm;
@@ -778,6 +925,13 @@ public class LongTermMemory {
         }
     }
 
+    /**
+     * createSemanticStoreWithEmbedding.
+     * 
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
+     */
     private SemanticStore createSemanticStoreWithEmbedding(String scopeId) {
         SemanticStore semanticStore = new SemanticStore(vectorStore);
         Embedding embeddingModel = getScopeEmbeddingModel(scopeId);
@@ -789,6 +943,13 @@ public class LongTermMemory {
         return semanticStore;
     }
 
+    /**
+     * checkMessages.
+     * 
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
+     */
     private CheckMessagesResult checkMessages(List<BaseMessage> messages) {
         List<BaseMessage> outMessages = new ArrayList<>();
         boolean hasHumanMsg = false;
@@ -809,8 +970,18 @@ public class LongTermMemory {
         return new CheckMessagesResult(hasHumanMsg, outMessages);
     }
 
-    private List<BaseMessage> getHistoryMessages(String userId, String scopeId,
-                                                  String sessionId, int historyWindowSize) {
+    /**
+     * getHistoryMessages.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param sessionId sessionId
+     * @param historyWindowSize historyWindowSize
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<BaseMessage> getHistoryMessages(String userId, String scopeId, String sessionId,
+            int historyWindowSize) {
         if (messageManager == null) {
             return List.of();
         }
@@ -833,6 +1004,14 @@ public class LongTermMemory {
         return historyMessages;
     }
 
+    /**
+     * validateId.
+     * 
+     * @param eventType eventType
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean validateId(LogEventType eventType, String scopeId) {
         if (scopeId == null || scopeId.isEmpty()) {
             MEMORY_LOGGER.error("[{}] Scope_id is invalid.", eventType);
@@ -849,6 +1028,13 @@ public class LongTermMemory {
         return true;
     }
 
+    /**
+     * runMigration.
+     * 
+     * @param migrateFunc migrateFunc
+     * @param storeType storeType
+     * @since 0.1.7
+     */
     private void runMigration(BooleanSupplier migrateFunc, String storeType) {
         try {
             MEMORY_LOGGER.info("[{}] Starting {} migration", LogEventType.MEMORY_INIT, storeType);
@@ -859,31 +1045,43 @@ public class LongTermMemory {
             MEMORY_LOGGER.info("[{}] {} migration completed successfully", LogEventType.MEMORY_INIT, storeType);
         } catch (Exception e) {
             MEMORY_LOGGER.error("[{}] {} migration failed: {}", LogEventType.MEMORY_INIT, storeType, e.getMessage());
-            throw ErrorHelper.buildError(StatusCode.MEMORY_REGISTER_STORE_EXECUTION_ERROR,
-                    "store_type", storeType, "error_msg", storeType + " migration failed: " + e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.MEMORY_REGISTER_STORE_EXECUTION_ERROR, "store_type", storeType,
+                    "error_msg", storeType + " migration failed: " + e.getMessage());
         }
     }
 
+    /**
+     * toMemResults.
+     * 
+     * @param searchData searchData
+     * @param defaultType defaultType
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<MemResult> toMemResults(List<Map<String, Object>> searchData, MemoryType defaultType) {
         List<MemResult> results = new ArrayList<>();
         for (Map<String, Object> item : searchData) {
             Object memTypeObj = item.get("mem_type");
-            MemoryType memType = memTypeObj instanceof MemoryType mt ? mt
+            MemoryType memType = memTypeObj instanceof MemoryType mt
+                    ? mt
                     : memTypeObj != null ? MemoryType.fromValue(String.valueOf(memTypeObj)) : defaultType;
 
             results.add(MemResult.builder()
-                    .memInfo(MemInfo.builder()
-                            .memId(String.valueOf(item.get("id")))
-                            .content(String.valueOf(item.get("mem")))
-                            .type(memType)
-                            .build())
-                    .score(item.get("score") instanceof Number n ? n.doubleValue() : 0.0)
-                    .build());
+                    .memInfo(MemInfo.builder().memId(String.valueOf(item.get("id")))
+                            .content(String.valueOf(item.get("mem"))).type(memType).build())
+                    .score(item.get("score") instanceof Number n ? n.doubleValue() : 0.0).build());
         }
         return results;
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * encryptApiKeyInMap.
+     * 
+     * @param configMap configMap
+     * @param cfgKey cfgKey
+     * @since 0.1.7
+     */
     private void encryptApiKeyInMap(Map<String, Object> configMap, String cfgKey) {
         Object subCfg = configMap.get(cfgKey);
         if (subCfg instanceof Map<?, ?> subMap) {
@@ -901,6 +1099,13 @@ public class LongTermMemory {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * decryptApiKeyInMap.
+     * 
+     * @param configMap configMap
+     * @param cfgKey cfgKey
+     * @since 0.1.7
+     */
     private void decryptApiKeyInMap(Map<String, Object> configMap, String cfgKey) {
         Object subCfg = configMap.get(cfgKey);
         if (subCfg instanceof Map<?, ?> subMap) {
@@ -917,6 +1122,13 @@ public class LongTermMemory {
         }
     }
 
+    /**
+     * CheckMessagesResult.
+     * 
+     * @param hasHumanMsg hasHumanMsg
+     * @param messages messages
+     * @since 0.1.7
+     */
     private record CheckMessagesResult(boolean hasHumanMsg, List<BaseMessage> messages) {
     }
 }

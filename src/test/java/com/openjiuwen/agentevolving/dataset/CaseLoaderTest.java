@@ -1,4 +1,7 @@
+
 package com.openjiuwen.agentevolving.dataset;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
 
@@ -6,10 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.IntStream;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 class CaseLoaderTest {
-
     @Test
     void shuffleCasesIsDeterministicForSameSeed() {
         List<Case> cases = makeCases(5);
@@ -17,10 +17,7 @@ class CaseLoaderTest {
         List<Case> first = CaseLoader.shuffleCases(cases, 42);
         List<Case> second = CaseLoader.shuffleCases(cases, 42);
 
-        assertEquals(
-                first.stream().map(Case::getCaseId).toList(),
-                second.stream().map(Case::getCaseId).toList()
-        );
+        assertEquals(first.stream().map(Case::getCaseId).toList(), second.stream().map(Case::getCaseId).toList());
         assertNotSame(first, second);
     }
 
@@ -28,10 +25,8 @@ class CaseLoaderTest {
     void shuffleCasesMatchesPythonRandomOrder() {
         List<Case> shuffled = CaseLoader.shuffleCases(makeCases(10), 42);
 
-        assertEquals(
-                List.of(7, 3, 2, 8, 5, 6, 9, 4, 0, 1),
-                shuffled.stream().map(caseData -> caseData.getInputs().get("id")).toList()
-        );
+        assertEquals(List.of(7, 3, 2, 8, 5, 6, 9, 4, 0, 1),
+                shuffled.stream().map(caseData -> caseData.getInputs().get("id")).toList());
     }
 
     @Test
@@ -51,14 +46,10 @@ class CaseLoaderTest {
 
         CaseLoader[] split = loader.split(0.5, 42);
 
-        assertEquals(
-                List.of(7, 3, 2, 8, 5),
-                split[0].getCases().stream().map(caseData -> caseData.getInputs().get("id")).toList()
-        );
-        assertEquals(
-                List.of(6, 9, 4, 0, 1),
-                split[1].getCases().stream().map(caseData -> caseData.getInputs().get("id")).toList()
-        );
+        assertEquals(List.of(7, 3, 2, 8, 5),
+                split[0].getCases().stream().map(caseData -> caseData.getInputs().get("id")).toList());
+        assertEquals(List.of(6, 9, 4, 0, 1),
+                split[1].getCases().stream().map(caseData -> caseData.getInputs().get("id")).toList());
     }
 
     @Test
@@ -88,8 +79,7 @@ class CaseLoaderTest {
     }
 
     private static List<Case> makeCases(int count) {
-        return IntStream.range(0, count)
-                .mapToObj(i -> new Case(Map.of("id", i), Map.of("answer", "ok"), "case_" + i))
+        return IntStream.range(0, count).mapToObj(i -> new Case(Map.of("id", i), Map.of("answer", "ok"), "case_" + i))
                 .toList();
     }
 }

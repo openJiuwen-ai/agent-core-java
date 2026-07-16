@@ -21,8 +21,8 @@ import java.util.Map;
  * Retrieves memories from long-term memory based on query.
  * <p>
  * Mirrors Python's {@code MemoryRetrievalExecutable}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 public class MemoryRetrievalExecutable extends ComponentExecutable {
     private final MemoryRetrievalCompConfig config;
@@ -30,13 +30,23 @@ public class MemoryRetrievalExecutable extends ComponentExecutable {
 
     /**
      * Create a MemoryRetrievalExecutable with the given configuration.
-     *
+     * 
      * @param config the component configuration
+     * @since 0.1.7
      */
     public MemoryRetrievalExecutable(MemoryRetrievalCompConfig config) {
         this.config = config;
     }
 
+    /**
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param context context
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Object invoke(Object inputs, NodeSessionApi session, ModelContext context) {
         this.session = session;
@@ -45,43 +55,50 @@ public class MemoryRetrievalExecutable extends ComponentExecutable {
         String query = retrievalInput.getQuery();
 
         if (query == null || query.strip().isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_MEMORY_RETRIEVAL_INPUT_PARAM_ERROR,
-                    "error_msg", "Query must be a non-empty string");
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_MEMORY_RETRIEVAL_INPUT_PARAM_ERROR, "error_msg",
+                    "Query must be a non-empty string");
         }
 
         LongTermMemory memory = config.getMemory();
         List<MemResult> memResults;
         List<MemResult> summaryResults;
         try {
-            memResults = memory.searchUserMem(
-                    query,
-                    retrievalInput.getTopK(),
-                    config.getUserId(),
-                    config.getScopeId(),
+            memResults = memory.searchUserMem(query, retrievalInput.getTopK(), config.getUserId(), config.getScopeId(),
                     config.getThreshold());
-            summaryResults = memory.searchUserHistorySummary(
-                    query,
-                    retrievalInput.getTopK(),
-                    config.getUserId(),
-                    config.getScopeId(),
-                    config.getThreshold());
+            summaryResults = memory.searchUserHistorySummary(query, retrievalInput.getTopK(), config.getUserId(),
+                    config.getScopeId(), config.getThreshold());
         } catch (Exception e) {
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_MEMORY_RETRIEVAL_INVOKE_CALL_FAILED,
-                    "error_msg", "Memory retrieval call failed: " + e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_MEMORY_RETRIEVAL_INVOKE_CALL_FAILED, "error_msg",
+                    "Memory retrieval call failed: " + e.getMessage());
         }
 
         return formatOutput(memResults, summaryResults);
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * validateInputs.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private MemoryRetrievalInput validateInputs(Object inputs) {
         if (inputs instanceof Map) {
             return MemoryRetrievalInput.fromMap((Map<String, Object>) inputs);
         }
-        throw ErrorHelper.buildError(StatusCode.COMPONENT_MEMORY_RETRIEVAL_INPUT_PARAM_ERROR,
-                "error_msg", "inputs must be a map containing 'query'");
+        throw ErrorHelper.buildError(StatusCode.COMPONENT_MEMORY_RETRIEVAL_INPUT_PARAM_ERROR, "error_msg",
+                "inputs must be a map containing 'query'");
     }
 
+    /**
+     * formatOutput.
+     * 
+     * @param memResults memResults
+     * @param summaryResults summaryResults
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> formatOutput(List<MemResult> memResults, List<MemResult> summaryResults) {
         MemoryRetrievalOutput output = new MemoryRetrievalOutput(memResults, summaryResults);
         return output.toMap();

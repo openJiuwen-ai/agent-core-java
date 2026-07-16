@@ -9,43 +9,59 @@ import java.util.Map;
 
 /**
  * Base connector pool with reference counting.
+ * 
+ * @since 0.1.7
  */
 public abstract class ConnectorPool extends RefCountedResource {
     private final ConnectorPoolConfig config;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ConnectorPool.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     protected ConnectorPool(ConnectorPoolConfig config) {
         this.config = config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ConnectorPoolConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * conn.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public abstract Object conn();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isExpired.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isExpired() {
         long now = System.currentTimeMillis();
         if (config.getTtl() != null && (now - getCreatedAtMillis()) > config.getTtl() * 1000L) {
             return true;
         }
-        return config.getMaxIdleTime() != null
-                && (now - getLastUsedMillis()) > config.getMaxIdleTime() * 1000L;
+        return config.getMaxIdleTime() != null && (now - getLastUsedMillis()) > config.getMaxIdleTime() * 1000L;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stat.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> stat() {
         Map<String, Object> stats = new LinkedHashMap<>();

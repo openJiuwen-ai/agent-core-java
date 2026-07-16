@@ -1,21 +1,24 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.context.context;
 
+import static org.junit.jupiter.api.Assertions.*;
+
+import com.openjiuwen.core.context.ContextStats;
+import com.openjiuwen.core.context.ContextWindow;
+import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.context.token.TokenCounter;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import com.openjiuwen.core.context.ContextWindow;
-import com.openjiuwen.core.context.ModelContext;
-import com.openjiuwen.core.context.ContextStats;
-import com.openjiuwen.core.context.schema.ContextEngineConfig;
-import com.openjiuwen.core.context.token.TokenCounter;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import com.openjiuwen.core.session.Session;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -24,23 +27,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for {@link SessionMemoryManager}.
  */
 class SessionMemoryManagerTest {
-
     @Test
     @DisplayName("session memory runtime round-trips through session state")
     void testSessionMemoryRuntimeRoundTrip() {
         RecordingSession session = new RecordingSession();
 
-        SessionMemoryManager.updateSessionMemoryRuntime(session, Map.of(
-                "memory_path", "/tmp/session.md",
-                "initialized", true,
-                "tokens_at_last_update", 100
-        ));
+        SessionMemoryManager.updateSessionMemoryRuntime(session,
+                Map.of("memory_path", "/tmp/session.md", "initialized", true, "tokens_at_last_update", 100));
 
         Map<String, Object> runtime = SessionMemoryManager.getSessionMemoryRuntime(session);
         assertEquals("/tmp/session.md", runtime.get("memory_path"));
@@ -52,11 +49,8 @@ class SessionMemoryManagerTest {
     @DisplayName("invalidateSessionMemoryAnchor resets anchor fields")
     void testInvalidateSessionMemoryAnchor() {
         RecordingSession session = new RecordingSession();
-        SessionMemoryManager.updateSessionMemoryRuntime(session, Map.of(
-                "tokens_at_last_update", 100,
-                "last_summarized_message_count", 4,
-                "notes_upto_message_id", "msg-1"
-        ));
+        SessionMemoryManager.updateSessionMemoryRuntime(session, Map.of("tokens_at_last_update", 100,
+                "last_summarized_message_count", 4, "notes_upto_message_id", "msg-1"));
 
         SessionMemoryManager.invalidateSessionMemoryAnchor(session);
         Map<String, Object> runtime = SessionMemoryManager.getSessionMemoryRuntime(session);
@@ -82,15 +76,11 @@ class SessionMemoryManagerTest {
     @Test
     @DisplayName("groupCompletedApiRounds groups user tool assistant spans")
     void testGroupCompletedApiRounds() {
-        List<BaseMessage> messages = List.of(
-                new UserMessage("q1"),
-                AssistantMessage.builder().content("").toolCalls(List.of(
-                        ToolCall.builder().id("tc-1").name("grep").arguments("{}").build()
-                )).build(),
-                ToolMessage.builder().content("r1").toolCallId("tc-1").name("grep").build(),
-                new UserMessage("q2"),
-                new AssistantMessage("a2")
-        );
+        List<BaseMessage> messages = List.of(new UserMessage("q1"),
+                AssistantMessage.builder().content("")
+                        .toolCalls(List.of(ToolCall.builder().id("tc-1").name("grep").arguments("{}").build())).build(),
+                ToolMessage.builder().content("r1").toolCallId("tc-1").name("grep").build(), new UserMessage("q2"),
+                new AssistantMessage("a2"));
 
         List<int[]> rounds = SessionMemoryManager.groupCompletedApiRounds(messages);
 
@@ -103,18 +93,12 @@ class SessionMemoryManagerTest {
     @Test
     @DisplayName("truncateContextWindowToCompletedApiRound drops incomplete tail")
     void testTruncateContextWindowToCompletedApiRound() {
-        ContextWindow window = ContextWindow.builder()
-                .systemMessages(List.of())
-                .contextMessages(List.of(
-                        new UserMessage("q1"),
-                        new AssistantMessage("a1"),
-                        new UserMessage("q2"),
-                        AssistantMessage.builder().content("").toolCalls(List.of(
-                                ToolCall.builder().id("tc-1").name("grep").arguments("{}").build()
-                        )).build()
-                ))
-                .tools(List.of())
-                .build();
+        ContextWindow window = ContextWindow.builder().systemMessages(List.of())
+                .contextMessages(List.of(new UserMessage("q1"), new AssistantMessage("a1"), new UserMessage("q2"),
+                        AssistantMessage.builder().content("")
+                                .toolCalls(List.of(ToolCall.builder().id("tc-1").name("grep").arguments("{}").build()))
+                                .build()))
+                .tools(List.of()).build();
 
         ContextWindow truncated = SessionMemoryManager.truncateContextWindowToCompletedApiRound(window);
 
@@ -127,34 +111,24 @@ class SessionMemoryManagerTest {
     void testShouldUpdateThresholdsAndBaselineReset() {
         RecordingSession session = new RecordingSession();
         TestContext context = new TestContext(120);
-        SessionMemoryManager manager = new SessionMemoryManager(SessionMemoryConfig.builder()
-                .triggerTokens(100)
-                .triggerAddTokens(50)
-                .toolMin(2)
-                .build());
-        ContextWindow initialWindow = ContextWindow.builder()
-                .systemMessages(List.of())
-                .contextMessages(List.of(new UserMessage("q"), new AssistantMessage("a")))
-                .tools(List.of())
-                .build();
+        SessionMemoryManager manager = new SessionMemoryManager(
+                SessionMemoryConfig.builder().triggerTokens(100).triggerAddTokens(50).toolMin(2).build());
+        ContextWindow initialWindow = ContextWindow.builder().systemMessages(List.of())
+                .contextMessages(List.of(new UserMessage("q"), new AssistantMessage("a"))).tools(List.of()).build();
 
         assertTrue(manager.shouldUpdate(session, context, initialWindow));
         assertEquals(true, SessionMemoryManager.getSessionMemoryRuntime(session).get("initialized"));
 
-        SessionMemoryManager.updateSessionMemoryRuntime(session, Map.of(
-                "tokens_at_last_update", 100,
-                "tool_calls_at_last_update", 1
-        ));
+        SessionMemoryManager.updateSessionMemoryRuntime(session,
+                Map.of("tokens_at_last_update", 100, "tool_calls_at_last_update", 1));
         context.tokenCount = 130;
         assertFalse(manager.shouldUpdate(session, context, toolWindow(3)));
 
         context.tokenCount = 170;
         assertTrue(manager.shouldUpdate(session, context, toolWindow(3)));
 
-        SessionMemoryManager.updateSessionMemoryRuntime(session, Map.of(
-                "tokens_at_last_update", 500,
-                "tool_calls_at_last_update", 5
-        ));
+        SessionMemoryManager.updateSessionMemoryRuntime(session,
+                Map.of("tokens_at_last_update", 500, "tool_calls_at_last_update", 5));
         context.tokenCount = 120;
         assertTrue(manager.shouldUpdate(session, context, toolWindow(3)));
         Map<String, Object> runtime = SessionMemoryManager.getSessionMemoryRuntime(session);
@@ -168,17 +142,14 @@ class SessionMemoryManagerTest {
         RecordingSession session = new RecordingSession();
         TestContext context = new TestContext(120);
         context.setMessages(List.of(new UserMessage("q"), new AssistantMessage("a")));
-        SessionMemoryManager manager = new SessionMemoryManager(SessionMemoryConfig.builder()
-                .triggerTokens(100)
-                .triggerAddTokens(50)
-                .toolMin(1)
-                .build());
+        SessionMemoryManager manager = new SessionMemoryManager(
+                SessionMemoryConfig.builder().triggerTokens(100).triggerAddTokens(50).toolMin(1).build());
 
         assertTrue(manager.maybeScheduleUpdate(session, context, new WorkspaceLike("/tmp/workspace")));
         Map<String, Object> runtime = SessionMemoryManager.getSessionMemoryRuntime(session);
         assertEquals(true, runtime.get("is_extracting"));
-        assertTrue(String.valueOf(runtime.get("memory_path")).endsWith(
-                "context/session-1_context/session_memory/session_context.md"));
+        assertTrue(String.valueOf(runtime.get("memory_path"))
+                .endsWith("context/session-1_context/session_memory/session_context.md"));
         assertTrue(String.valueOf(runtime.get("pending_memory_path")).endsWith("session_context.pending.md"));
     }
 
@@ -213,11 +184,10 @@ class SessionMemoryManagerTest {
         for (int index = 0; index < toolCalls; index++) {
             calls.add(ToolCall.builder().id("tc-" + index).name("tool").arguments("{}").build());
         }
-        return ContextWindow.builder()
-                .systemMessages(List.of())
-                .contextMessages(List.of(new UserMessage("q"), AssistantMessage.builder().content("").toolCalls(calls).build()))
-                .tools(List.of())
-                .build();
+        return ContextWindow.builder().systemMessages(List.of())
+                .contextMessages(
+                        List.of(new UserMessage("q"), AssistantMessage.builder().content("").toolCalls(calls).build()))
+                .tools(List.of()).build();
     }
 
     private static final class WorkspaceLike {
@@ -253,7 +223,8 @@ class SessionMemoryManagerTest {
 
         @Override
         public List<BaseMessage> popMessages(int size, boolean withHistory) {
-            List<BaseMessage> popped = new ArrayList<>(messages.subList(Math.max(0, messages.size() - size), messages.size()));
+            List<BaseMessage> popped =
+                new ArrayList<>(messages.subList(Math.max(0, messages.size() - size), messages.size()));
             messages = new ArrayList<>(messages.subList(0, Math.max(0, messages.size() - size)));
             return popped;
         }
@@ -294,17 +265,10 @@ class SessionMemoryManagerTest {
         }
 
         @Override
-        public ContextWindow getContextWindow(
-                List<BaseMessage> systemMessages,
-                List<ToolInfo> tools,
-                Integer windowSize,
-                Integer dialogueRound,
-                Map<String, Object> kwargs) {
-            return ContextWindow.builder()
-                    .systemMessages(systemMessages == null ? List.of() : systemMessages)
-                    .contextMessages(new ArrayList<>(messages))
-                    .tools(tools == null ? List.of() : tools)
-                    .build();
+        public ContextWindow getContextWindow(List<BaseMessage> systemMessages, List<ToolInfo> tools,
+                Integer windowSize, Integer dialogueRound, Map<String, Object> kwargs) {
+            return ContextWindow.builder().systemMessages(systemMessages == null ? List.of() : systemMessages)
+                    .contextMessages(new ArrayList<>(messages)).tools(tools == null ? List.of() : tools).build();
         }
 
         @Override

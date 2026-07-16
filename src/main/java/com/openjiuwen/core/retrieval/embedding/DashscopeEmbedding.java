@@ -34,6 +34,8 @@ import java.util.concurrent.CompletionException;
 
 /**
  * DashScope multimodal embedding client.
+ * 
+ * @since 0.1.7
  */
 public class DashscopeEmbedding extends APIEmbedding {
     private final boolean isMatryoshkaDimension;
@@ -43,23 +45,30 @@ public class DashscopeEmbedding extends APIEmbedding {
     private volatile Integer resolvedDimension;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DashscopeEmbedding.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public DashscopeEmbedding(EmbeddingConfig config) {
         this(config, 60, 3, null, 8, 50, null, (HttpClient) null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DashscopeEmbedding.
+     * 
+     * @param config config
+     * @param timeout timeout
+     * @param maxRetries maxRetries
+     * @param extraHeaders extraHeaders
+     * @param maxBatchSize maxBatchSize
+     * @param maxConcurrent maxConcurrent
+     * @param dimension dimension
+     * @param httpClient httpClient
+     * @since 0.1.7
      */
-    public DashscopeEmbedding(EmbeddingConfig config,
-                              int timeout,
-                              int maxRetries,
-                              Map<String, String> extraHeaders,
-                              int maxBatchSize,
-                              int maxConcurrent,
-                              Integer dimension,
-                              HttpClient httpClient) {
+    public DashscopeEmbedding(EmbeddingConfig config, int timeout, int maxRetries, Map<String, String> extraHeaders,
+            int maxBatchSize, int maxConcurrent, Integer dimension, HttpClient httpClient) {
         super(config, timeout, maxRetries, extraHeaders, maxBatchSize, maxConcurrent, httpClient);
         this.dashscopeClient = new MultiModalEmbedding(this.apiUrl);
         this.configuredDimension = dimension;
@@ -74,14 +83,8 @@ public class DashscopeEmbedding extends APIEmbedding {
         }
     }
 
-    DashscopeEmbedding(EmbeddingConfig config,
-                       int timeout,
-                       int maxRetries,
-                       Map<String, String> extraHeaders,
-                       int maxBatchSize,
-                       int maxConcurrent,
-                       Integer dimension,
-                       MultiModalEmbedding dashscopeClient) {
+    DashscopeEmbedding(EmbeddingConfig config, int timeout, int maxRetries, Map<String, String> extraHeaders,
+            int maxBatchSize, int maxConcurrent, Integer dimension, MultiModalEmbedding dashscopeClient) {
         super(config, timeout, maxRetries, extraHeaders, maxBatchSize, maxConcurrent, null);
         this.dashscopeClient = dashscopeClient;
         this.configuredDimension = dimension;
@@ -97,26 +100,32 @@ public class DashscopeEmbedding extends APIEmbedding {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isMatryoshkaDimension.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isMatryoshkaDimension() {
         return isMatryoshkaDimension;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRequestParams.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getRequestParams() {
         return new LinkedHashMap<>(requestParams);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDimension.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int getDimension() {
         if (configuredDimension != null) {
             return configuredDimension;
@@ -134,36 +143,48 @@ public class DashscopeEmbedding extends APIEmbedding {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedQuery.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Float> embedQuery(String text) {
         return embedQuery((Object) text, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedQuery.
+     * 
+     * @param text text
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Float> embedQuery(String text, Map<String, Object> options) {
         return embedQuery((Object) text, options);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedQuery.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedQuery(Object text) {
         return embedQuery(text, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedQuery.
+     * 
+     * @param text text
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedQuery(Object text, Map<String, Object> options) {
         List<List<Float>> embeddings = embedDocuments(List.of(text), null, options);
@@ -171,19 +192,26 @@ public class DashscopeEmbedding extends APIEmbedding {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedDocumentsRaw.
+     * 
+     * @param texts texts
+     * @return the result
+     * @since 0.1.7
      */
     public List<List<Float>> embedDocumentsRaw(List<?> texts) {
         return embedDocuments(texts, null, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedDocuments.
+     * 
+     * @param texts texts
+     * @param batchSize batchSize
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize, Map<String, Object> options) {
         List<Object> nonEmpty = validateDashscopeInputs(texts);
         List<Object> converted = new ArrayList<>(nonEmpty.size());
@@ -231,54 +259,86 @@ public class DashscopeEmbedding extends APIEmbedding {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedMultimodal.
+     * 
+     * @param document document
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedMultimodal(MultimodalDocument document) {
         return embedMultimodal(document, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedMultimodal.
+     * 
+     * @param input input
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedMultimodal(Object input, Map<String, Object> options) {
         if (!(input instanceof MultimodalDocument document)) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
                     "input provided for multimodal embedding is not a MultimodalDocument");
         }
         return getDashscopeEmbeddings(List.of(document.getDashscopeInput()), options).get(0);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedMultimodal.
+     * 
+     * @param document document
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedMultimodal(MultimodalDocument document, Map<String, Object> options) {
         return embedMultimodal((Object) document, options);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedMultimodalSync.
+     * 
+     * @param document document
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedMultimodalSync(MultimodalDocument document) {
         return embedMultimodalSync(document, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedMultimodalSync.
+     * 
+     * @param input input
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedMultimodalSync(Object input, Map<String, Object> options) {
         return embedMultimodal(input, options);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedMultimodalSync.
+     * 
+     * @param document document
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public List<Float> embedMultimodalSync(MultimodalDocument document, Map<String, Object> options) {
         return embedMultimodalSync((Object) document, options);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDashscopeEmbeddings.
+     * 
+     * @param input input
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     protected List<List<Float>> getDashscopeEmbeddings(Object input, Map<String, Object> options) {
         List<?> payloadInput = input instanceof List<?> list ? list : List.of(input);
@@ -292,40 +352,36 @@ public class DashscopeEmbedding extends APIEmbedding {
                 }
             } catch (ApiException | NoApiKeyException | UploadFileException ex) {
                 if (attempt >= maxRetries - 1) {
-                    throw RetrievalExceptions.error(
-                            StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
+                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
                             "Failed to get embedding after " + maxRetries + " attempts: " + ex.getMessage());
                 }
             }
         }
-        throw RetrievalExceptions.error(
-                StatusCode.RETRIEVAL_EMBEDDING_UNREACHABLE_CALL_FAILED,
+        throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_UNREACHABLE_CALL_FAILED,
                 "Unreachable code in DashscopeEmbedding.getDashscopeEmbeddings");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseEmbeddings.
+     * 
+     * @param root root
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected List<List<Float>> parseEmbeddings(JsonNode root) {
         if (root == null || root.isMissingNode() || root.isNull()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                     "No embeddings in response: null");
         }
         JsonNode output = root.has("output") ? root.get("output") : root;
         JsonNode embeddingsNode = output == null ? null : output.get("embeddings");
         if (embeddingsNode == null || !embeddingsNode.isArray()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                     "No embeddings in response: " + output);
         }
         if (embeddingsNode.isEmpty()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                     "The embeddings field in response is empty: " + output);
         }
 
@@ -340,14 +396,18 @@ public class DashscopeEmbedding extends APIEmbedding {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * handleDashscopeResult.
+     * 
+     * @param result result
+     * @param attempt attempt
+     * @return the result
+     * @since 0.1.7
      */
     protected List<List<Float>> handleDashscopeResult(MultiModalEmbeddingResult result, int attempt) {
         Integer statusCode = result == null ? null : result.getStatusCode();
         if (statusCode != null && statusCode != 200 && attempt >= maxRetries - 1) {
             String message = result.getMessage();
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
                     "Failed to get embedding after " + maxRetries + " attempts: " + message);
         }
         if (statusCode != null && statusCode != 200) {
@@ -356,13 +416,11 @@ public class DashscopeEmbedding extends APIEmbedding {
         MultiModalEmbeddingOutput output = result == null ? null : result.getOutput();
         List<MultiModalEmbeddingResultItem> items = output == null ? null : output.getEmbeddings();
         if (items == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                     "No embeddings in response: " + output);
         }
         if (items.isEmpty()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                     "The embeddings field in response is empty: " + output);
         }
         items.sort(Comparator.comparingInt(item -> item.getIndex() == null ? 0 : item.getIndex()));
@@ -376,6 +434,14 @@ public class DashscopeEmbedding extends APIEmbedding {
         return embeddings;
     }
 
+    /**
+     * buildParam.
+     * 
+     * @param input input
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     private MultiModalEmbeddingParam buildParam(List<?> input, Map<String, Object> options) {
         Map<String, Object> parameters = new LinkedHashMap<>();
         if (configuredDimension != null) {
@@ -384,12 +450,8 @@ public class DashscopeEmbedding extends APIEmbedding {
         if (options != null) {
             parameters.putAll(options);
         }
-        return MultiModalEmbeddingParam.builder()
-                .model(modelName)
-                .apiKey(apiKey)
-                .contents(toDashscopeItems(input))
-                .parameters(parameters)
-                .build();
+        return MultiModalEmbeddingParam.builder().model(modelName).apiKey(apiKey).contents(toDashscopeItems(input))
+                .parameters(parameters).build();
     }
 
     static List<MultiModalEmbeddingItemBase> toDashscopeItems(List<?> input) {
@@ -404,6 +466,13 @@ public class DashscopeEmbedding extends APIEmbedding {
         return items;
     }
 
+    /**
+     * appendMapItems.
+     * 
+     * @param items items
+     * @param map map
+     * @since 0.1.7
+     */
     private static void appendMapItems(List<MultiModalEmbeddingItemBase> items, Map<?, ?> map) {
         Object text = map.get("text");
         if (text != null) {
@@ -425,17 +494,21 @@ public class DashscopeEmbedding extends APIEmbedding {
         }
     }
 
+    /**
+     * toFloatEmbedding.
+     * 
+     * @param embedding embedding
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Float> toFloatEmbedding(List<Double> embedding) {
         if (embedding == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
-                    "embedding item is null");
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID, "embedding item is null");
         }
         List<Float> values = new ArrayList<>(embedding.size());
         for (Double item : embedding) {
             if (item == null) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                         "embedding item is null");
             }
             values.add(item.floatValue());
@@ -443,6 +516,13 @@ public class DashscopeEmbedding extends APIEmbedding {
         return values;
     }
 
+    /**
+     * toDashscopeInput.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object toDashscopeInput(Object item) {
         if (item instanceof MultimodalDocument document) {
             return document.getDashscopeInput();
@@ -450,11 +530,16 @@ public class DashscopeEmbedding extends APIEmbedding {
         return item;
     }
 
+    /**
+     * validateDashscopeInputs.
+     * 
+     * @param texts texts
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> validateDashscopeInputs(List<?> texts) {
         if (texts == null || texts.isEmpty()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
-                    "Empty texts list provided");
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID, "Empty texts list provided");
         }
         List<Object> nonEmpty = new ArrayList<>(texts.size());
         int emptyCount = 0;
@@ -478,18 +563,23 @@ public class DashscopeEmbedding extends APIEmbedding {
             }
         }
         if (emptyCount > 0) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
                     emptyCount + " chunks are empty while embedding");
         }
         if (nonEmpty.isEmpty()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
                     "All texts are empty after filtering");
         }
         return nonEmpty;
     }
 
+    /**
+     * BatchResult.
+     * 
+     * @param start start
+     * @param embeddings embeddings
+     * @since 0.1.7
+     */
     private record BatchResult(int start, List<List<Float>> embeddings) {
     }
 }

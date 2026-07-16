@@ -26,9 +26,10 @@ import java.util.Map;
  * Since Java does not have a native tiktoken binding, this implementation
  * approximates token counts. For production use, consider integrating
  * a Java tiktoken library (e.g., jtokkit).
+ * 
+ * @since 0.1.7
  */
 public class SimpleTokenCounter extends TokenCounter {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** Approximate chars per token — tuned towards cl100k_base behaviour. */
@@ -43,23 +44,33 @@ public class SimpleTokenCounter extends TokenCounter {
     private final String model;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SimpleTokenCounter.
+     * 
+     * @since 0.1.7
      */
     public SimpleTokenCounter() {
         this("gpt-4");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SimpleTokenCounter.
+     * 
+     * @param model model
+     * @since 0.1.7
      */
     public SimpleTokenCounter(String model) {
         this.model = model;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * count.
+     * 
+     * @param text text
+     * @param model model
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public int count(String text, String model) {
         if (text == null || text.isEmpty()) {
             return 0;
@@ -78,10 +89,15 @@ public class SimpleTokenCounter extends TokenCounter {
         return Math.max(1, weighted / CHARS_PER_TOKEN);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * countMessages.
+     * 
+     * @param messages messages
+     * @param model model
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public int countMessages(List<BaseMessage> messages, String model) {
         if (messages == null || messages.isEmpty()) {
             return 0;
@@ -107,10 +123,15 @@ public class SimpleTokenCounter extends TokenCounter {
         return total + REPLY_OVERHEAD;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * countTools.
+     * 
+     * @param tools tools
+     * @param model model
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public int countTools(List<ToolInfo> tools, String model) {
         if (tools == null || tools.isEmpty()) {
             return 0;

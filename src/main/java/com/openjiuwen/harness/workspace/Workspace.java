@@ -15,14 +15,14 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Public class Workspace used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class Workspace used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class Workspace {
     @Builder.Default
@@ -30,24 +30,42 @@ public class Workspace {
     @Builder.Default
     private String language = "cn";
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, String> links = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * root.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path root() {
         return Path.of(rootPath).toAbsolutePath().normalize();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNodePath.
+     * 
+     * @param nodeName nodeName
+     * @return the result
+     * @since 0.1.7
      */
     public Path getNodePath(String nodeName) {
         return root().resolve(nodeName);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * linkTeam.
+     * 
+     * @param teamId teamId
+     * @param targetPath targetPath
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public Path linkTeam(String teamId, String targetPath) throws IOException {
         Path linkDir = root().resolve(".team");
@@ -66,7 +84,12 @@ public class Workspace {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * unlinkTeam.
+     * 
+     * @param teamId teamId
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public boolean unlinkTeam(String teamId) throws IOException {
         Path link = root().resolve(".team").resolve(teamId);

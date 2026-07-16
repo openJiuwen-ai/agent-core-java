@@ -1,4 +1,9 @@
+
 package com.openjiuwen.extensions.context_evolver;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.extensions.context_evolver.core.config.Config;
 import com.openjiuwen.extensions.context_evolver.core.context.ServiceContext;
@@ -11,6 +16,7 @@ import com.openjiuwen.extensions.context_evolver.schema.ReasoningBankRetrievedMe
 import com.openjiuwen.extensions.context_evolver.schema.RetrieveResponse;
 import com.openjiuwen.extensions.context_evolver.service.AddMemoryRequest;
 import com.openjiuwen.extensions.context_evolver.service.TaskMemoryService;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,12 +27,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class ContextEvolverRetrievePipelineTest {
-
     private Map<String, Object> configSnapshot;
 
     @BeforeEach
@@ -43,13 +44,7 @@ class ContextEvolverRetrievePipelineTest {
 
     @Test
     void aceRetrieveLoadsAllPlaybookBulletsForTheUser() {
-        TaskMemoryService service = new TaskMemoryService(
-            "gpt-5.2",
-            "text-embedding-3-small",
-            null,
-            "ACE",
-            "ACE"
-        );
+        TaskMemoryService service = new TaskMemoryService("gpt-5.2", "text-embedding-3-small", null, "ACE", "ACE");
 
         AddMemoryRequest first = new AddMemoryRequest();
         first.setContent("Always cache the expensive result.");
@@ -70,29 +65,16 @@ class ContextEvolverRetrievePipelineTest {
 
     @Test
     void reasoningBankRetrieveUsesQuerySearchAndFlattensMemoryItems() {
-        TaskMemoryService service = new TaskMemoryService(
-            "gpt-5.2",
-            "text-embedding-3-small",
-            null,
-            "RB",
-            "RB"
-        );
+        TaskMemoryService service = new TaskMemoryService("gpt-5.2", "text-embedding-3-small", null, "RB", "RB");
 
         ReasoningBankMemory relevant = new ReasoningBankMemory();
         relevant.setWorkspaceId("user-rb");
         relevant.setQuery("cache python api results");
         relevant.setMemory(List.of(
-            new ReasoningBankMemoryItem(
-                "Use a cache boundary",
-                "Introduce a stable cache key",
-                "Derive the cache key from the normalized request."
-            ),
-            new ReasoningBankMemoryItem(
-                "Store invalidation hints",
-                "Keep invalidation near the write path",
-                "Invalidate cache entries when the backing record changes."
-            )
-        ));
+                new ReasoningBankMemoryItem("Use a cache boundary", "Introduce a stable cache key",
+                        "Derive the cache key from the normalized request."),
+                new ReasoningBankMemoryItem("Store invalidation hints", "Keep invalidation near the write path",
+                        "Invalidate cache entries when the backing record changes.")));
         VectorNode relevantNode = relevant.toVectorNode();
         relevantNode.setEmbedding(defaultEmbeddingFor(relevant.getQuery()));
         service.getVectorStore().asyncUpsert(relevantNode).join();
@@ -100,27 +82,18 @@ class ContextEvolverRetrievePipelineTest {
         ReasoningBankMemory unrelated = new ReasoningBankMemory();
         unrelated.setWorkspaceId("user-rb");
         unrelated.setQuery("css layout spacing");
-        unrelated.setMemory(List.of(
-            new ReasoningBankMemoryItem(
-                "Use gap",
-                "Prefer layout gap properties",
-                "Use gap instead of manual child margins."
-            )
-        ));
+        unrelated.setMemory(List.of(new ReasoningBankMemoryItem("Use gap", "Prefer layout gap properties",
+                "Use gap instead of manual child margins.")));
         VectorNode unrelatedNode = unrelated.toVectorNode();
         unrelatedNode.setEmbedding(defaultEmbeddingFor(unrelated.getQuery()));
         service.getVectorStore().asyncUpsert(unrelatedNode).join();
 
         RetrieveResponse response = service.retrieveResponse("user-rb", "How do I cache Python API results?").join();
         assertEquals(2, response.getRetrievedMemory().size());
-        ReasoningBankRetrievedMemory first = assertInstanceOf(
-            ReasoningBankRetrievedMemory.class,
-            response.getRetrievedMemory().get(0)
-        );
-        ReasoningBankRetrievedMemory second = assertInstanceOf(
-            ReasoningBankRetrievedMemory.class,
-            response.getRetrievedMemory().get(1)
-        );
+        ReasoningBankRetrievedMemory first =
+            assertInstanceOf(ReasoningBankRetrievedMemory.class, response.getRetrievedMemory().get(0));
+        ReasoningBankRetrievedMemory second =
+            assertInstanceOf(ReasoningBankRetrievedMemory.class, response.getRetrievedMemory().get(1));
         assertEquals("Use a cache boundary", first.getTitle());
         assertEquals("Store invalidation hints", second.getTitle());
         assertTrue(response.getMemoryString().contains("Use a cache boundary"));
@@ -134,13 +107,7 @@ class ContextEvolverRetrievePipelineTest {
         Config.setValue("LLM_RERANK", true);
         Config.setValue("LLM_REWRITE", true);
 
-        TaskMemoryService service = new TaskMemoryService(
-            "gpt-5.2",
-            "text-embedding-3-small",
-            null,
-            "ReMe",
-            "ReMe"
-        );
+        TaskMemoryService service = new TaskMemoryService("gpt-5.2", "text-embedding-3-small", null, "ReMe", "ReMe");
 
         AddMemoryRequest cache = new AddMemoryRequest();
         cache.setWhenToUse("When caching Redis API responses");
@@ -157,10 +124,8 @@ class ContextEvolverRetrievePipelineTest {
         unrelated.setContent("Use gap and clamp for responsive spacing.");
         service.addMemory("user-reme", unrelated).join();
 
-        RetrieveResponse response = service.retrieveResponse(
-            "user-reme",
-            "How should I cache API responses in Redis?"
-        ).join();
+        RetrieveResponse response =
+            service.retrieveResponse("user-reme", "How should I cache API responses in Redis?").join();
         assertEquals(2, response.getRetrievedMemory().size());
 
         ReMeRetrievedMemory first = assertInstanceOf(ReMeRetrievedMemory.class, response.getRetrievedMemory().get(0));

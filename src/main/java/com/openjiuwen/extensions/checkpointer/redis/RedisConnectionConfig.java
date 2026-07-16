@@ -10,17 +10,15 @@ import java.util.Map;
 
 /**
  * Redis connection configuration.
- *
- * <p>This class provides a structured way to configure Redis connections
+ * <p>
+ * This class provides a structured way to configure Redis connections
  * with validation and type safety.
- *
- * <p>Mirrors Python's {@code openjiuwen.extensions.checkpointer.redis.checkpointer.RedisConnectionConfig}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.extensions.checkpointer.redis.checkpointer.RedisConnectionConfig}.
+ * 
+ * @since 0.1.7
  */
 public class RedisConnectionConfig {
-
-    /**
-     * Pre-configured Redis client instance.
-     */
     private Object redisClient;
 
     /**
@@ -40,6 +38,8 @@ public class RedisConnectionConfig {
 
     /**
      * Default constructor.
+     * 
+     * @since 0.1.7
      */
     public RedisConnectionConfig() {
         this.connectionArgs = new LinkedHashMap<>();
@@ -47,8 +47,9 @@ public class RedisConnectionConfig {
 
     /**
      * Constructor with URL.
-     *
+     * 
      * @param url Redis connection URL
+     * @since 0.1.7
      */
     public RedisConnectionConfig(String url) {
         this.url = url;
@@ -57,8 +58,9 @@ public class RedisConnectionConfig {
 
     /**
      * Constructor with pre-configured client.
-     *
+     * 
      * @param redisClient Pre-configured Redis client
+     * @since 0.1.7
      */
     public RedisConnectionConfig(Object redisClient) {
         this.redisClient = redisClient;
@@ -67,9 +69,10 @@ public class RedisConnectionConfig {
 
     /**
      * Create from a configuration map.
-     *
+     * 
      * @param config Configuration map
      * @return RedisConnectionConfig instance
+     * @since 0.1.7
      */
     public static RedisConnectionConfig fromMap(Map<String, Object> config) {
         if (config == null) {
@@ -82,11 +85,11 @@ public class RedisConnectionConfig {
         if (urlValue != null) {
             connectionConfig.setUrl(String.valueOf(urlValue));
         }
-        
+
         if (config.get("cluster_mode") != null) {
             connectionConfig.setClusterMode((Boolean) config.get("cluster_mode"));
         }
-        
+
         @SuppressWarnings("unchecked")
         Map<String, Object> args = (Map<String, Object>) config.get("connection_args");
         connectionConfig.setConnectionArgs(args);
@@ -96,31 +99,29 @@ public class RedisConnectionConfig {
 
     /**
      * Validate the configuration.
-     *
-     * @throws IllegalArgumentException if configuration is invalid
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         if (redisClient == null && (url == null || url.isBlank())) {
             throw new IllegalArgumentException(
-                "Either 'redis_client' or 'url' must be provided in RedisConnectionConfig"
-            );
+                    "Either 'redis_client' or 'url' must be provided in RedisConnectionConfig");
         }
 
         if (url != null && !url.isBlank()) {
-            if (!url.startsWith("redis://") && !url.startsWith("rediss://") &&
-                !url.startsWith("redis+cluster://") && !url.startsWith("rediss+cluster://")) {
-                throw new IllegalArgumentException(
-                    "Invalid Redis URL format: " + url + ". " +
-                    "URL must start with redis://, rediss://, redis+cluster://, or rediss+cluster://"
-                );
+            if (!url.startsWith("redis://") && !url.startsWith("rediss://") && !url.startsWith("redis+cluster://")
+                    && !url.startsWith("rediss+cluster://")) {
+                throw new IllegalArgumentException("Invalid Redis URL format: " + url + ". "
+                        + "URL must start with redis://, rediss://, redis+cluster://, or rediss+cluster://");
             }
         }
     }
 
     /**
      * Determine if cluster mode should be used.
-     *
+     * 
      * @return True if cluster mode should be used
+     * @since 0.1.7
      */
     public boolean isClusterMode() {
         if (redisClient != null) {
@@ -151,8 +152,9 @@ public class RedisConnectionConfig {
 
     /**
      * Get the connection URL, normalizing cluster URLs if needed.
-     *
+     * 
      * @return Normalized connection URL
+     * @since 0.1.7
      */
     public String getConnectionUrl() {
         if (url == null) {
@@ -171,49 +173,70 @@ public class RedisConnectionConfig {
 
     // Getters and Setters
     /**
-     * Auto-generated for codecheck compliance.
+     * getRedisClient.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getRedisClient() {
         return redisClient;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setRedisClient.
+     * 
+     * @param redisClient redisClient
+     * @since 0.1.7
      */
     public void setRedisClient(Object redisClient) {
         this.redisClient = redisClient;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUrl.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getUrl() {
         return url;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setUrl.
+     * 
+     * @param url url
+     * @since 0.1.7
      */
     public void setUrl(String url) {
         this.url = url != null ? url.trim() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getClusterMode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Boolean getClusterMode() {
         return clusterMode;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setClusterMode.
+     * 
+     * @param clusterMode clusterMode
+     * @since 0.1.7
      */
     public void setClusterMode(Boolean clusterMode) {
         this.clusterMode = clusterMode;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConnectionArgs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getConnectionArgs() {
         if (connectionArgs == null) {
@@ -223,7 +246,10 @@ public class RedisConnectionConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setConnectionArgs.
+     * 
+     * @param connectionArgs connectionArgs
+     * @since 0.1.7
      */
     public void setConnectionArgs(Map<String, Object> connectionArgs) {
         if (connectionArgs == null) {

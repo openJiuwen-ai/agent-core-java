@@ -1,25 +1,25 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.common.utils;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.openjiuwen.core.common.exception.ValidationError;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * JUnit 5 tests for SchemaUtils.
  * Ported from Python: tests/unit_tests/core/common/utils/test_schema_utils.py
  */
 class SchemaUtilsTest {
-
     // ==================== JSON Schema definition (mirrors Python USER_SCHEMA) ====================
-
     private static Map<String, Object> createUserSchema() {
         Map<String, Object> nameSchema = new LinkedHashMap<>();
         nameSchema.put("type", "string");
@@ -88,8 +88,8 @@ class SchemaUtilsTest {
         assertEquals("Jane Doe", result.get("name"));
         assertEquals(25, result.get("age"));
         assertEquals("jane@example.com", result.get("email"));
-        assertEquals(true, result.get("is_active"));  // Default value
-        assertEquals(List.of("new_user"), result.get("tags"));  // Default value
+        assertEquals(true, result.get("is_active")); // Default value
+        assertEquals(List.of("new_user"), result.get("tags")); // Default value
     }
 
     // ==========================================================================
@@ -99,8 +99,7 @@ class SchemaUtilsTest {
     @DisplayName("Format with null data throws ValidationError")
     void testFormatNoneData() {
         Map<String, Object> schema = createUserSchema();
-        assertThrows(ValidationError.class, () ->
-                SchemaUtils.formatWithSchema(null, schema));
+        assertThrows(ValidationError.class, () -> SchemaUtils.formatWithSchema(null, schema));
     }
 
     // ==========================================================================
@@ -147,19 +146,17 @@ class SchemaUtilsTest {
     @Nested
     @DisplayName("Validation of invalid data")
     class InvalidDataTests {
-
         @Test
         @DisplayName("Empty string violates minLength")
         void testEmptyStringViolatesMinLength() {
             Map<String, Object> schema = createUserSchema();
 
             Map<String, Object> invalidData = new LinkedHashMap<>();
-            invalidData.put("name", "");  // Empty string, violates minLength=1
+            invalidData.put("name", ""); // Empty string, violates minLength=1
             invalidData.put("age", 30);
             invalidData.put("email", "test@example.com");
 
-            assertThrows(ValidationError.class, () ->
-                    SchemaUtils.validateWithSchema(invalidData, schema));
+            assertThrows(ValidationError.class, () -> SchemaUtils.validateWithSchema(invalidData, schema));
         }
 
         @Test
@@ -169,11 +166,10 @@ class SchemaUtilsTest {
 
             Map<String, Object> invalidData = new LinkedHashMap<>();
             invalidData.put("name", "Test");
-            invalidData.put("age", 200);   // Too high, violates maximum=150
+            invalidData.put("age", 200); // Too high, violates maximum=150
             invalidData.put("email", "test@example.com");
 
-            assertThrows(ValidationError.class, () ->
-                    SchemaUtils.validateWithSchema(invalidData, schema));
+            assertThrows(ValidationError.class, () -> SchemaUtils.validateWithSchema(invalidData, schema));
         }
 
         @Test
@@ -185,16 +181,14 @@ class SchemaUtilsTest {
             invalidData.put("name", "Test");
             // Missing required 'age' and 'email'
 
-            assertThrows(ValidationError.class, () ->
-                    SchemaUtils.validateWithSchema(invalidData, schema));
+            assertThrows(ValidationError.class, () -> SchemaUtils.validateWithSchema(invalidData, schema));
         }
 
         @Test
         @DisplayName("Null data throws ValidationError")
         void testNullData() {
             Map<String, Object> schema = createUserSchema();
-            assertThrows(ValidationError.class, () ->
-                    SchemaUtils.validateWithSchema(null, schema));
+            assertThrows(ValidationError.class, () -> SchemaUtils.validateWithSchema(null, schema));
         }
     }
 
@@ -232,7 +226,6 @@ class SchemaUtilsTest {
     @Nested
     @DisplayName("Schema defaults and edge cases")
     class SchemaDefaultsTests {
-
         @Test
         @DisplayName("Defaults include List and Map types")
         void testDefaultListAndMap() {

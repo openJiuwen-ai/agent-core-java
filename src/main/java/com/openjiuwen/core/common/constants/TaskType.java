@@ -6,11 +6,13 @@ package com.openjiuwen.core.common.constants;
 
 /**
  * Task type enumeration.
- *
- * <p>Defines the supported task types for agent execution.</p>
+ * <p>
+ * Defines the supported task types for agent execution.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public enum TaskType {
-
     PLUGIN("plugin"),
     WORKFLOW("workflow"),
     MCP("mcp"),
@@ -23,7 +25,10 @@ public enum TaskType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
@@ -31,9 +36,10 @@ public enum TaskType {
 
     /**
      * Parse a string value into the corresponding {@link TaskType}.
-     *
+     * 
      * @param value the string representation
      * @return the matching enum constant, or {@link #UNDEFINED} if no match
+     * @since 0.1.7
      */
     public static TaskType fromValue(String value) {
         for (TaskType type : values()) {

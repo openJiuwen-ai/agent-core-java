@@ -17,10 +17,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * {@link #register(String, KVStoreProvider)} without modifying Core source.
  * <p>
  * Calling point: PersistenceCheckpointer, Workflow state persistence, etc.
- *
- * @since 0.1.12
+ * 
  * @see KVStoreProvider
  * @see BaseKVStore
+ * @since 0.1.7
  */
 public final class KVStoreFactory {
     private static final Map<String, KVStoreProvider> REGISTRY = new ConcurrentHashMap<>();
@@ -32,14 +32,20 @@ public final class KVStoreFactory {
         }
     }
 
+    /**
+     * KVStoreFactory.
+     * 
+     * @since 0.1.7
+     */
     private KVStoreFactory() {
     }
 
     /**
      * Register a KV store provider for a given type name.
-     *
-     * @param type     the store type name (e.g. "in_memory", "redis", "hbase")
+     * 
+     * @param type the store type name (e.g. "in_memory", "redis", "hbase")
      * @param provider the provider that creates BaseKVStore instances
+     * @since 0.1.7
      */
     public static void register(String type, KVStoreProvider provider) {
         REGISTRY.put(type, provider);
@@ -47,11 +53,11 @@ public final class KVStoreFactory {
 
     /**
      * Create a KV store from a type and configuration.
-     *
+     * 
      * @param type the store type
      * @param conf the configuration map
      * @return a new BaseKVStore instance
-     * @throws IllegalArgumentException if no provider is registered for the type
+     * @since 0.1.7
      */
     public static BaseKVStore create(String type, Map<String, Object> conf) {
         KVStoreProvider provider = REGISTRY.get(type);
@@ -63,9 +69,10 @@ public final class KVStoreFactory {
 
     /**
      * Check whether a provider is registered for the given type.
-     *
+     * 
      * @param type the store type name
      * @return true if a provider exists
+     * @since 0.1.7
      */
     public static boolean hasProvider(String type) {
         return type != null && REGISTRY.containsKey(type);

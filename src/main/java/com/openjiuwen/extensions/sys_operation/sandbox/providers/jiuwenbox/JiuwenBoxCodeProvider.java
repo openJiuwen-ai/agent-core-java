@@ -27,21 +27,39 @@ import java.util.Optional;
 /**
  * JiuwenBox sandbox code provider that extends BaseCodeProvider
  * and uses JiuwenBoxProviderMixin for sandbox management.
- *
- * @since 2026-01-01
+ * 
  * @version 1.0
+ * @since 0.1.7
  */
 public class JiuwenBoxCodeProvider extends BaseCodeProvider {
     private final JiuwenBoxProviderMixin mixin;
 
+    /**
+     * JiuwenBoxCodeProvider.
+     * 
+     * @param endpoint endpoint
+     * @param config config
+     * @since 0.1.7
+     */
     public JiuwenBoxCodeProvider(SandboxEndpoint endpoint, SandboxGatewayConfig config) {
         super(endpoint, config);
         this.mixin = new JiuwenBoxProviderMixin(endpoint, config);
     }
 
+    /**
+     * executeCode.
+     * 
+     * @param code code
+     * @param language language
+     * @param timeout timeout
+     * @param environment environment
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public ExecuteCodeResult executeCode(String code, String language, int timeout,
-            Map<String, String> environment, Map<String, Object> options) {
+    public ExecuteCodeResult executeCode(String code, String language, int timeout, Map<String, String> environment,
+            Map<String, Object> options) {
         if (isLanguageExcluded(language)) {
             return executeLocalCode(code, language, timeout, environment, options);
         }
@@ -52,15 +70,11 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
         ExecuteCodeResult result;
         try {
             result = mixin.executeWithSandboxRetry(sandboxId -> {
-                JiuwenBoxClient.ExecResponse resp = mixin.getClient().exec(
-                        sandboxId, commandList, normalizedCwd, timeout, mergedEnv, null);
-                ExecuteCodeData data = ExecuteCodeData.builder()
-                        .codeContent(code)
-                        .language(language)
-                        .exitCode(resp.getExitCode())
-                        .stdout(resp.getStdout() != null ? resp.getStdout() : "")
-                        .stderr(resp.getStderr() != null ? resp.getStderr() : "")
-                        .build();
+                JiuwenBoxClient.ExecResponse resp =
+                    mixin.getClient().exec(sandboxId, commandList, normalizedCwd, timeout, mergedEnv, null);
+                ExecuteCodeData data = ExecuteCodeData.builder().codeContent(code).language(language)
+                        .exitCode(resp.getExitCode()).stdout(resp.getStdout() != null ? resp.getStdout() : "")
+                        .stderr(resp.getStderr() != null ? resp.getStderr() : "").build();
                 return new ExecuteCodeResult(0, "success", data);
             });
         } catch (SandboxOperationException | SandboxRecreateExhaustedException e) {
@@ -69,16 +83,27 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
             }
             throw e;
         }
-        if (isFallbackOnFailure() && result.getData() != null
-                && result.getData().getExitCode() != null && result.getData().getExitCode() != 0) {
+        if (isFallbackOnFailure() && result.getData() != null && result.getData().getExitCode() != null
+                && result.getData().getExitCode() != 0) {
             return executeLocalCode(code, language, timeout, environment, options);
         }
         return result;
     }
 
+    /**
+     * executeCodeStream.
+     * 
+     * @param code code
+     * @param language language
+     * @param timeout timeout
+     * @param environment environment
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
-    public Iterator<ExecuteCodeStreamResult> executeCodeStream(String code, String language,
-            int timeout, Map<String, String> environment, Map<String, Object> options) {
+    public Iterator<ExecuteCodeStreamResult> executeCodeStream(String code, String language, int timeout,
+            Map<String, String> environment, Map<String, Object> options) {
         ExecuteCodeResult fullResult = executeCode(code, language, timeout, environment, options);
         String stdout = fullResult.getData() != null ? fullResult.getData().getStdout() : "";
         String stderr = fullResult.getData() != null ? fullResult.getData().getStderr() : "";
@@ -97,21 +122,25 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
                 chunkText = lines[i];
             }
             boolean isLast = i == totalChunks - 1;
-            ExecuteCodeChunkData chunkData = ExecuteCodeChunkData.builder()
-                    .text(chunkText)
-                    .type("stdout")
-                    .chunkIndex(i)
+            ExecuteCodeChunkData chunkData = ExecuteCodeChunkData.builder().text(chunkText).type("stdout").chunkIndex(i)
                     .exitCode(isLast ? exitCode : null)
-                    .metadata(isLast ? Map.of("language", language, "stderr", stderr) : null)
-                    .build();
+                    .metadata(isLast ? Map.of("language", language, "stderr", stderr) : null).build();
             chunks.add(new ExecuteCodeStreamResult(isLast ? fullResult.getCode() : 0, "success", chunkData));
         }
         return chunks.iterator();
     }
 
+    /**
+     * buildCodeCommand.
+     * 
+     * @param code code
+     * @param language language
+     * @return the result
+     * @since 0.1.7
+     */
     private String buildCodeCommand(String code, String language) {
-        String base64Encoded = Base64.getEncoder().encodeToString(
-                code.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String base64Encoded =
+            Base64.getEncoder().encodeToString(code.getBytes(java.nio.charset.StandardCharsets.UTF_8));
         switch (language) {
             case "python":
                 return "python3 -c \"import base64,sys;exec(base64.b64decode('" + base64Encoded + "').decode())\"";
@@ -123,6 +152,13 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
         }
     }
 
+    /**
+     * getInterpreter.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
+     */
     private String getInterpreter(String language) {
         switch (language) {
             case "python":
@@ -141,6 +177,14 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
         }
     }
 
+    /**
+     * prepareCodeEnvironment.
+     * 
+     * @param language language
+     * @param userEnv userEnv
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, String> prepareCodeEnvironment(String language, Map<String, String> userEnv) {
         Map<String, String> defaults = new LinkedHashMap<>();
         switch (language) {
@@ -160,6 +204,13 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
         return defaults;
     }
 
+    /**
+     * isLanguageExcluded.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isLanguageExcluded(String language) {
         Map<String, Object> extraParams = mixin.launcherExtraParams(false);
         Object excludedCommands = extraParams.get("excluded_commands");
@@ -174,6 +225,14 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
         return false;
     }
 
+    /**
+     * matchesGlobPattern.
+     * 
+     * @param text text
+     * @param pattern pattern
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean matchesGlobPattern(String text, String pattern) {
         try {
             PathMatcher matcher = FileSystems.getDefault().getPathMatcher("glob:" + pattern);
@@ -184,6 +243,13 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
         }
     }
 
+    /**
+     * globToRegex.
+     * 
+     * @param glob glob
+     * @return the result
+     * @since 0.1.7
+     */
     private String globToRegex(String glob) {
         StringBuilder regex = new StringBuilder();
         regex.append("^");
@@ -203,6 +269,12 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
         return regex.toString();
     }
 
+    /**
+     * isFallbackOnFailure.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isFallbackOnFailure() {
         Map<String, Object> extraParams = mixin.launcherExtraParams(false);
         Object fallback = extraParams.get("fallback_on_failure");
@@ -212,6 +284,12 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
         return false;
     }
 
+    /**
+     * resolveCwd.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Optional<String> resolveCwd() {
         if (config != null && config.getLauncherConfig() != null) {
             Map<String, Object> params = config.getParams();
@@ -222,10 +300,20 @@ public class JiuwenBoxCodeProvider extends BaseCodeProvider {
         return Optional.empty();
     }
 
+    /**
+     * executeLocalCode.
+     * 
+     * @param code code
+     * @param language language
+     * @param timeout timeout
+     * @param environment environment
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     private ExecuteCodeResult executeLocalCode(String code, String language, int timeout,
             Map<String, String> environment, Map<String, Object> options) {
-        LocalCodeOperation localOp = new LocalCodeOperation(
-                SandboxOperationSupport.toLocalWorkConfig(config));
+        LocalCodeOperation localOp = new LocalCodeOperation(SandboxOperationSupport.toLocalWorkConfig(config));
         return localOp.executeCode(code, language, timeout, environment, options);
     }
 }

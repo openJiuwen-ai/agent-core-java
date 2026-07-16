@@ -27,93 +27,88 @@ import java.util.Set;
 
 /**
  * Public class CommitStage used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class CommitStage extends TaskStage {
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String name() {
         return "commit";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * description.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String description() {
         return "Create a git commit for the task.";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * consumes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<String> consumes() {
         return List.of("verify_report");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * produces.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<String> produces() {
         return List.of("commit_result");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * run.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public StageResult run(BaseExecutionContext ctx) {
         for (Object event : stream(ctx)) {
             if (event instanceof StageResult result) {
                 return result;
             }
         }
-        return StageResult.builder()
-                .status("failed")
-                .error("commit stage did not return StageResult")
-                .build();
+        return StageResult.builder().status("failed").error("commit stage did not return StageResult").build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Object> stream(BaseExecutionContext ctx) {
         if (!(ctx instanceof TaskContext taskContext)) {
             return List.of(failed("commit requires TaskContext", null, null, "", ""));
         }
         Object verifyRaw = taskContext.requireArtifact("verify_report");
-        VerifyReportArtifact verifyReport = verifyRaw instanceof VerifyReportArtifact report
-                ? report
-                : VerifyReportArtifact.builder().build();
+        VerifyReportArtifact verifyReport =
+            verifyRaw instanceof VerifyReportArtifact report ? report : VerifyReportArtifact.builder().build();
         if (verifyReport.isReverted()) {
-            return List.of(StageResult.builder()
-                    .status("failed")
-                    .error(verifyReport.getError())
-                    .build());
+            return List.of(StageResult.builder().status("failed").error(verifyReport.getError()).build());
         }
         CommitFacts facts = collectCommitFacts(taskContext, verifyReport);
         List<String> messages = new ArrayList<>(List.of("[4/5] 检查提交范围", "[5/5] 提交变更"));
@@ -121,47 +116,27 @@ public class CommitStage extends TaskStage {
                 taskContext.getRuntime().getCommitAgent() != null
                         ? taskContext.getRuntime().getCommitAgent()
                         : taskContext.getRuntime().getTaskAgent(),
-                taskContext.getTask(),
-                taskContext.getOrchestrator().getGit(),
-                facts,
-                "",
-                "",
-                ""
-        );
+                taskContext.getTask(), taskContext.getOrchestrator().getGit(), facts, "", "", "");
         List<Object> events = new ArrayList<>(firstRound.events());
         CommitRoundResult finalRound = firstRound;
         if (!firstRound.isOk()) {
-            messages.add("首次提交未成功:\n" + formatCommitFailure(
-                    firstRound.reason(),
-                    firstRound.statusText(),
-                    firstRound.lastCommitStat()
-            ));
+            messages.add("首次提交未成功:\n"
+                    + formatCommitFailure(firstRound.reason(), firstRound.statusText(), firstRound.lastCommitStat()));
             CommitFacts refreshedFacts = collectCommitFacts(taskContext, verifyReport);
             CommitRoundResult retryRound = runCommitRoundStream(
                     taskContext.getRuntime().getCommitAgent() != null
                             ? taskContext.getRuntime().getCommitAgent()
                             : taskContext.getRuntime().getTaskAgent(),
-                    taskContext.getTask(),
-                    taskContext.getOrchestrator().getGit(),
-                    refreshedFacts,
-                    firstRound.reason(),
-                    firstRound.statusText(),
-                    firstRound.lastCommitStat()
-            );
+                    taskContext.getTask(), taskContext.getOrchestrator().getGit(), refreshedFacts, firstRound.reason(),
+                    firstRound.statusText(), firstRound.lastCommitStat());
             events.addAll(retryRound.events());
             finalRound = retryRound;
             facts = refreshedFacts;
         }
         StageResult result = finalRound.isOk()
                 ? success(facts, finalRound.statusText(), finalRound.lastCommitStat(), messages)
-                : failed(
-                        formatCommitFailure(finalRound.reason(), finalRound.statusText(), finalRound.lastCommitStat()),
-                        facts,
-                        taskContext,
-                        finalRound.statusText(),
-                        finalRound.lastCommitStat(),
-                        messages
-                );
+                : failed(formatCommitFailure(finalRound.reason(), finalRound.statusText(), finalRound.lastCommitStat()),
+                        facts, taskContext, finalRound.statusText(), finalRound.lastCommitStat(), messages);
         if (!finalRound.isOk()) {
             recordCommitFailure(taskContext, facts, result.getError());
         }
@@ -170,12 +145,18 @@ public class CommitStage extends TaskStage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * collectCommitFacts.
+     * 
+     * @param task task
+     * @param status status
+     * @param editedFiles editedFiles
+     * @param preexistingDirtyFiles preexistingDirtyFiles
+     * @param verifyReport verifyReport
+     * @return the result
+     * @since 0.1.7
      */
     public static CommitFacts collectCommitFacts(OptimizationTask task, Map<String, List<String>> status,
-                                                 List<String> editedFiles,
-                                                 List<String> preexistingDirtyFiles,
-                                                 VerifyReportArtifact verifyReport) {
+            List<String> editedFiles, List<String> preexistingDirtyFiles, VerifyReportArtifact verifyReport) {
         List<String> dirtyFiles = getList(status, "dirty_files");
         List<String> derivedTestFiles = new ArrayList<>();
         for (String path : editedFiles == null ? List.<String>of() : editedFiles) {
@@ -183,48 +164,42 @@ public class CommitStage extends TaskStage {
                 derivedTestFiles.add(path);
             }
         }
-        List<String> verifyRelated = CommitScope.extractVerifyRelatedFiles(
-                ciResultToGateResult(verifyReport),
-                verifyReport == null ? "" : verifyReport.getFixErrors()
-        );
-        List<String> legacyRelated = CommitScope.deriveLegacyRelatedTestFiles(
-                editedFiles == null ? List.of() : editedFiles,
-                verifyRelated
-        );
-        CommitFacts facts = CommitFacts.builder()
-                .branchName("")
-                .taskDeclaredFiles(taskFiles(task))
+        List<String> verifyRelated = CommitScope.extractVerifyRelatedFiles(ciResultToGateResult(verifyReport),
+                verifyReport == null ? "" : verifyReport.getFixErrors());
+        List<String> legacyRelated =
+            CommitScope.deriveLegacyRelatedTestFiles(editedFiles == null ? List.of() : editedFiles, verifyRelated);
+        CommitFacts facts = CommitFacts.builder().branchName("").taskDeclaredFiles(taskFiles(task))
                 .preexistingDirtyFiles(preexistingDirtyFiles == null ? List.of() : preexistingDirtyFiles)
-                .currentDirtyFiles(dirtyFiles)
-                .trackedModifiedFiles(getList(status, "tracked_modified_files"))
+                .currentDirtyFiles(dirtyFiles).trackedModifiedFiles(getList(status, "tracked_modified_files"))
                 .untrackedFiles(getList(status, "untracked_files"))
-                .editedFiles(editedFiles == null ? List.of() : editedFiles)
-                .derivedTestFiles(derivedTestFiles)
-                .legacyRelatedTestFiles(legacyRelated)
-                .verifyRelatedFiles(verifyRelated)
-                .build();
+                .editedFiles(editedFiles == null ? List.of() : editedFiles).derivedTestFiles(derivedTestFiles)
+                .legacyRelatedTestFiles(legacyRelated).verifyRelatedFiles(verifyRelated).build();
         facts.setAllowedFiles(deriveAllowedFiles(facts));
         return facts;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * collectCommitFacts.
+     * 
+     * @param ctx ctx
+     * @param verifyReport verifyReport
+     * @return the result
+     * @since 0.1.7
      */
     public static CommitFacts collectCommitFacts(TaskContext ctx, VerifyReportArtifact verifyReport) {
-        CommitFacts facts = collectCommitFacts(
-                ctx.getTask(),
-                ctx.getOrchestrator().getGit().collectStatus(),
-                editedFiles(ctx),
-                ctx.getRuntime().getPreexistingDirtyFiles(),
-                verifyReport
-        );
+        CommitFacts facts = collectCommitFacts(ctx.getTask(), ctx.getOrchestrator().getGit().collectStatus(),
+                editedFiles(ctx), ctx.getRuntime().getPreexistingDirtyFiles(), verifyReport);
         facts.setBranchName(ctx.getOrchestrator().getGit().currentBranch());
         facts.setDiffStat(ctx.getOrchestrator().getGit().diffStat());
         return facts;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deriveAllowedFiles.
+     * 
+     * @param facts facts
+     * @return the result
+     * @since 0.1.7
      */
     public static List<String> deriveAllowedFiles(CommitFacts facts) {
         Set<String> edited = new LinkedHashSet<>(facts.getEditedFiles());
@@ -245,8 +220,7 @@ public class CommitStage extends TaskStage {
             allowed.add(path);
         }
         for (String path : facts.getDerivedTestFiles()) {
-            if (edited.contains(path)
-                    && CommitScope.isAllowedRepoEditPath(path)
+            if (edited.contains(path) && CommitScope.isAllowedRepoEditPath(path)
                     && CommitScope.isDerivedTestFile(facts.getTaskDeclaredFiles(), path)) {
                 allowed.add(path);
             }
@@ -271,33 +245,42 @@ public class CommitStage extends TaskStage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildCommitPrompt.
+     * 
+     * @param task task
+     * @param facts facts
+     * @param retryReason retryReason
+     * @param retryStatus retryStatus
+     * @param lastCommitStat lastCommitStat
+     * @return the result
+     * @since 0.1.7
      */
-    public static String buildCommitPrompt(OptimizationTask task, CommitFacts facts,
-                                           String retryReason, String retryStatus, String lastCommitStat) {
+    public static String buildCommitPrompt(OptimizationTask task, CommitFacts facts, String retryReason,
+            String retryStatus, String lastCommitStat) {
         String retryText = hasText(retryReason) ? "\n上一次提交尝试失败原因:\n" + retryReason + "\n" : "";
         String statusText = hasText(retryReason)
                 ? "\n上一次提交尝试后的 git status --porcelain:\n" + valueOrDefault(retryStatus, "无") + "\n"
                 : "";
         String commitStatText = hasText(lastCommitStat) ? "\n最近一次提交摘要:\n" + lastCommitStat + "\n" : "";
-        return "任务: " + TaskContext.taskKey(task) + "\n"
-                + "描述: " + value(task == null ? "" : task.getDescription()) + "\n"
-                + "声明文件: " + joinOrNone(facts.getTaskDeclaredFiles()) + "\n"
-                + "当前脏文件: " + joinOrNone(facts.getCurrentDirtyFiles()) + "\n"
-                + "本轮实际修改: " + joinOrNone(facts.getEditedFiles()) + "\n"
-                + "允许提交文件: " + joinOrNone(facts.getAllowedFiles()) + "\n"
-                + "派生测试文件: " + joinOrNone(facts.getDerivedTestFiles()) + "\n"
-                + "验证关联老测试: " + joinOrNone(facts.getLegacyRelatedTestFiles()) + "\n"
-                + "禁止混入旧脏文件: " + joinOrNone(facts.getPreexistingDirtyFiles()) + "\n"
-                + "diff 统计:\n" + valueOrDefault(facts.getDiffStat(), "无") + "\n"
-                + retryText
-                + statusText
-                + commitStatText + "\n"
+        return "任务: " + TaskContext.taskKey(task) + "\n" + "描述: " + value(task == null ? "" : task.getDescription())
+                + "\n" + "声明文件: " + joinOrNone(facts.getTaskDeclaredFiles()) + "\n" + "当前脏文件: "
+                + joinOrNone(facts.getCurrentDirtyFiles()) + "\n" + "本轮实际修改: " + joinOrNone(facts.getEditedFiles())
+                + "\n" + "允许提交文件: " + joinOrNone(facts.getAllowedFiles()) + "\n" + "派生测试文件: "
+                + joinOrNone(facts.getDerivedTestFiles()) + "\n" + "验证关联老测试: "
+                + joinOrNone(facts.getLegacyRelatedTestFiles()) + "\n" + "禁止混入旧脏文件: "
+                + joinOrNone(facts.getPreexistingDirtyFiles()) + "\n" + "diff 统计:\n"
+                + valueOrDefault(facts.getDiffStat(), "无") + "\n" + retryText + statusText + commitStatText + "\n"
                 + "请遵循 commit skill，通过 bash 执行 git status、git add 明确文件路径、git commit，并在提交后自检。";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * formatCommitFailure.
+     * 
+     * @param reason reason
+     * @param statusText statusText
+     * @param lastCommitStat lastCommitStat
+     * @return the result
+     * @since 0.1.7
      */
     public static String formatCommitFailure(String reason, String statusText, String lastCommitStat) {
         List<String> details = new ArrayList<>();
@@ -312,101 +295,112 @@ public class CommitStage extends TaskStage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runCommitRoundStream.
+     * 
+     * @param commitAgent commitAgent
+     * @param task task
+     * @param git git
+     * @param facts facts
+     * @param retryReason retryReason
+     * @param retryStatus retryStatus
+     * @param lastCommitStat lastCommitStat
+     * @return the result
+     * @since 0.1.7
      */
-    public static CommitRoundResult runCommitRoundStream(Object commitAgent,
-                                                         OptimizationTask task,
-                                                         com.openjiuwen.autoharness.infra.GitOperations git,
-                                                         CommitFacts facts,
-                                                         String retryReason,
-                                                         String retryStatus,
-                                                         String lastCommitStat) {
+    public static CommitRoundResult runCommitRoundStream(Object commitAgent, OptimizationTask task,
+            com.openjiuwen.autoharness.infra.GitOperations git, CommitFacts facts, String retryReason,
+            String retryStatus, String lastCommitStat) {
         if (commitAgent == null) {
-            return CommitRoundResult.builder()
-                    .isOk(false)
-                    .reason("No agent available for commit phase.")
-                    .build();
+            return CommitRoundResult.builder().isOk(false).reason("No agent available for commit phase.").build();
         }
         String beforeHead = git.currentHead();
-        List<Object> events = streamAgent(commitAgent, buildCommitPrompt(
-                task,
-                facts,
-                retryReason,
-                retryStatus,
-                lastCommitStat
-        ));
+        List<Object> events =
+            streamAgent(commitAgent, buildCommitPrompt(task, facts, retryReason, retryStatus, lastCommitStat));
         String afterHead = git.currentHead();
         String statusText = git.statusPorcelain();
         String latestCommit = "";
         if (!value(beforeHead).equals(value(afterHead))) {
             latestCommit = git.showLastCommitStat();
-            return CommitRoundResult.builder()
-                    .isOk(true)
-                    .statusText(statusText)
-                    .lastCommitStat(latestCommit)
-                    .events(events)
-                    .build();
+            return CommitRoundResult.builder().isOk(true).statusText(statusText).lastCommitStat(latestCommit)
+                    .events(events).build();
         }
-        return CommitRoundResult.builder()
-                .isOk(false)
-                .reason("Agent did not create a git commit during commit phase.")
-                .statusText(statusText)
-                .lastCommitStat(latestCommit)
-                .events(events)
-                .build();
+        return CommitRoundResult.builder().isOk(false).reason("Agent did not create a git commit during commit phase.")
+                .statusText(statusText).lastCommitStat(latestCommit).events(events).build();
     }
 
+    /**
+     * success.
+     * 
+     * @param facts facts
+     * @param statusText statusText
+     * @param lastCommitStat lastCommitStat
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
+     */
     private static StageResult success(CommitFacts facts, String statusText, String lastCommitStat,
-                                       List<String> messages) {
+            List<String> messages) {
         return StageResult.builder()
-                .artifacts(Map.of("commit_result", CommitArtifact.builder()
-                        .facts(facts)
-                        .statusText(value(statusText))
+                .artifacts(Map.of("commit_result", CommitArtifact.builder().facts(facts).statusText(value(statusText))
                         .lastCommitStat(value(lastCommitStat))
-                        .branchName(value(facts == null ? "" : facts.getBranchName()))
-                        .isCommitted(true)
-                        .build()))
-                .messages(messages == null ? List.of("[4/5] 检查提交范围", "[5/5] 提交变更") : messages)
-                .build();
+                        .branchName(value(facts == null ? "" : facts.getBranchName())).isCommitted(true).build()))
+                .messages(messages == null ? List.of("[4/5] 检查提交范围", "[5/5] 提交变更") : messages).build();
     }
 
+    /**
+     * failed.
+     * 
+     * @param reason reason
+     * @param facts facts
+     * @param ctx ctx
+     * @param statusText statusText
+     * @param lastCommitStat lastCommitStat
+     * @return the result
+     * @since 0.1.7
+     */
     private static StageResult failed(String reason, CommitFacts facts, TaskContext ctx, String statusText,
-                                      String lastCommitStat) {
-        return failed(reason, facts, ctx, statusText, lastCommitStat,
-                List.of("[4/5] 检查提交范围", "[5/5] 提交变更"));
+            String lastCommitStat) {
+        return failed(reason, facts, ctx, statusText, lastCommitStat, List.of("[4/5] 检查提交范围", "[5/5] 提交变更"));
     }
 
+    /**
+     * failed.
+     * 
+     * @param reason reason
+     * @param facts facts
+     * @param ctx ctx
+     * @param statusText statusText
+     * @param lastCommitStat lastCommitStat
+     * @param messages messages
+     * @return the result
+     * @since 0.1.7
+     */
     private static StageResult failed(String reason, CommitFacts facts, TaskContext ctx, String statusText,
-                                      String lastCommitStat, List<String> messages) {
+            String lastCommitStat, List<String> messages) {
         String formatted = value(reason);
         if (ctx != null) {
             ctx.getTask().setStatus(TaskStatus.FAILED);
         }
-        List<String> outputMessages = new ArrayList<>(messages == null
-                ? List.of("[4/5] 检查提交范围", "[5/5] 提交变更")
-                : messages);
+        List<String> outputMessages =
+            new ArrayList<>(messages == null ? List.of("[4/5] 检查提交范围", "[5/5] 提交变更") : messages);
         outputMessages.add("提交失败: " + formatted);
-        return StageResult.builder()
-                .status("failed")
-                .artifacts(Map.of(
-                        "commit_result", CommitArtifact.builder()
-                                .facts(facts)
-                                .statusText(value(statusText))
+        return StageResult.builder().status("failed")
+                .artifacts(Map.of("commit_result",
+                        CommitArtifact.builder().facts(facts).statusText(value(statusText))
                                 .lastCommitStat(value(lastCommitStat))
-                                .branchName(value(facts == null ? "" : facts.getBranchName()))
-                                .isCommitted(false)
-                                .error(formatted)
-                                .build(),
-                        "task_result", CycleResult.builder()
-                                .isSuccess(false)
-                                .error(formatted)
-                                .build()
-                ))
-                .messages(outputMessages)
-                .error(formatted)
-                .build();
+                                .branchName(value(facts == null ? "" : facts.getBranchName())).isCommitted(false)
+                                .error(formatted).build(),
+                        "task_result", CycleResult.builder().isSuccess(false).error(formatted).build()))
+                .messages(outputMessages).error(formatted).build();
     }
 
+    /**
+     * editedFiles.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> editedFiles(TaskContext ctx) {
         Object rail = ctx.getRuntime().getEditSafetyRail();
         if (rail == null) {
@@ -423,11 +417,17 @@ public class CommitStage extends TaskStage {
         return List.of();
     }
 
+    /**
+     * streamAgent.
+     * 
+     * @param agent agent
+     * @param prompt prompt
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> streamAgent(Object agent, String prompt) {
         try {
-            Object stream = agent.getClass()
-                    .getMethod("stream", Map.class)
-                    .invoke(agent, Map.of("query", prompt));
+            Object stream = agent.getClass().getMethod("stream", Map.class).invoke(agent, Map.of("query", prompt));
             if (stream instanceof Iterator<?> iterator) {
                 List<Object> events = new ArrayList<>();
                 while (iterator.hasNext()) {
@@ -448,31 +448,48 @@ public class CommitStage extends TaskStage {
         return List.of();
     }
 
+    /**
+     * recordCommitFailure.
+     * 
+     * @param ctx ctx
+     * @param facts facts
+     * @param formattedError formattedError
+     * @since 0.1.7
+     */
     private static void recordCommitFailure(TaskContext ctx, CommitFacts facts, String formattedError) {
         try {
-            ctx.getOrchestrator().getExperienceStore().record(Experience.builder()
-                    .type(ExperienceType.FAILURE)
-                    .topic(TaskContext.taskKey(ctx.getTask()))
-                    .summary("commit failed")
-                    .outcome("failed")
-                    .details(value(formattedError))
-                    .filesChanged(facts == null ? List.of() : facts.getAllowedFiles())
-                    .build());
+            ctx.getOrchestrator().getExperienceStore()
+                    .record(Experience.builder().type(ExperienceType.FAILURE).topic(TaskContext.taskKey(ctx.getTask()))
+                            .summary("commit failed").outcome("failed").details(value(formattedError))
+                            .filesChanged(facts == null ? List.of() : facts.getAllowedFiles()).build());
         } catch (IOException ignored) {
             // Python records failure experience but does not let persistence failure isReplace the stage result.
         }
     }
 
+    /**
+     * ciResultToGateResult.
+     * 
+     * @param report report
+     * @return CIGateResult
+     * @since 0.1.7
+     */
     private static com.openjiuwen.autoharness.infra.CIGateResult ciResultToGateResult(VerifyReportArtifact report) {
         if (report == null || report.getCiResult() == null) {
             return null;
         }
         return com.openjiuwen.autoharness.infra.CIGateResult.builder()
                 .errors(String.valueOf(report.getCiResult().getOrDefault("errors", "")))
-                .gateOutputs(extractGateOutputs(report.getCiResult()))
-                .build();
+                .gateOutputs(extractGateOutputs(report.getCiResult())).build();
     }
 
+    /**
+     * extractGateOutputs.
+     * 
+     * @param ciResult ciResult
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> extractGateOutputs(Map<String, Object> ciResult) {
         Object outputs = ciResult.get("gate_outputs");
         if (outputs instanceof List<?> list) {
@@ -481,6 +498,14 @@ public class CommitStage extends TaskStage {
         return List.of();
     }
 
+    /**
+     * getList.
+     * 
+     * @param map map
+     * @param key key
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> getList(Map<String, List<String>> map, String key) {
         if (map == null || map.get(key) == null) {
             return List.of();
@@ -488,36 +513,71 @@ public class CommitStage extends TaskStage {
         return map.get(key);
     }
 
+    /**
+     * taskFiles.
+     * 
+     * @param task task
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<String> taskFiles(OptimizationTask task) {
         return task == null || task.getFiles() == null ? List.of() : task.getFiles();
     }
 
+    /**
+     * joinOrNone.
+     * 
+     * @param values values
+     * @return the result
+     * @since 0.1.7
+     */
     private static String joinOrNone(List<String> values) {
         return values == null || values.isEmpty() ? "无" : String.join(", ", values);
     }
 
+    /**
+     * hasText.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
     }
 
+    /**
+     * value.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String value(String value) {
         return value == null ? "" : value;
     }
 
+    /**
+     * valueOrDefault.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static String valueOrDefault(String value, String defaultValue) {
         return hasText(value) ? value : defaultValue;
     }
 
+    /**
+     * CommitRoundResult.
+     * 
+     * @since 0.1.7
+     */
     @lombok.Data
     @lombok.Builder
     @lombok.NoArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     @lombok.AllArgsConstructor
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static class CommitRoundResult {
         @lombok.Builder.Default
         private boolean isOk = false;
@@ -528,38 +588,58 @@ public class CommitStage extends TaskStage {
         @lombok.Builder.Default
         private String lastCommitStat = "";
         @lombok.Builder.Default
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private List<Object> events = new ArrayList<>();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * isOk.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public boolean isOk() {
             return isOk;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * reason.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String reason() {
             return reason;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * statusText.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String statusText() {
             return statusText;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * lastCommitStat.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public String lastCommitStat() {
             return lastCommitStat;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * events.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public List<Object> events() {
             return events == null ? List.of() : events;

@@ -8,6 +8,8 @@ import java.util.function.Consumer;
 
 /**
  * Functional interface for agent callback.
+ * 
+ * @since 0.1.7
  */
 @FunctionalInterface
 public interface AgentCallback extends Consumer<AgentCallbackContext> {

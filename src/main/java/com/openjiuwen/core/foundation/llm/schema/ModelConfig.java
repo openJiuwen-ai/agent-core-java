@@ -8,19 +8,10 @@ package com.openjiuwen.core.foundation.llm.schema;
  * Model configuration combining provider info and model info.
  * <p>
  * Mirrors Python's {@code ModelConfig} dataclass.
- *
- * @param modelProvider the model provider name (e.g., "OpenAI", "DashScope")
- * @param modelInfo     the detailed model connection info
+ * 
+ * @since 0.1.7
  */
-public record ModelConfig(
-        String modelProvider,
-        BaseModelInfo modelInfo
-) {
-    /**
-     * Creates a ModelConfig with the given model provider and default model info.
-     *
-     * @param modelProvider the model provider name
-     */
+public record ModelConfig(String modelProvider, BaseModelInfo modelInfo) {
     public ModelConfig(String modelProvider) {
         this(modelProvider, new BaseModelInfo());
     }

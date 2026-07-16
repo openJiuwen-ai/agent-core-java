@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Represents a memory with its action status.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

@@ -17,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
  * instead of Python's {@code asyncio.Future}.
  * <p>
  * Usage example:
+ * 
  * <pre>
  * AsyncMessageHandler handler = message -> {
  *     return CompletableFuture.supplyAsync(() -> {
@@ -25,18 +26,17 @@ import java.util.concurrent.CompletableFuture;
  *     });
  * };
  * </pre>
- *
- * @param <T> the input message type
- * @param <R> the result type
+ * 
+ * @since 0.1.7
  */
 @FunctionalInterface
 public interface AsyncMessageHandler<T, R> {
-
     /**
-     * Processes a message asynchronously.
-     *
-     * @param message the input message to process
-     * @return a CompletableFuture containing the processed result
+     * handle.
+     * 
+     * @param message message
+     * @return the result
+     * @since 0.1.7
      */
     CompletableFuture<R> handle(T message);
 }

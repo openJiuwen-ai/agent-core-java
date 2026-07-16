@@ -1,19 +1,19 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.embedding;
-
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class HashEmbeddingTest {
+import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
+class HashEmbeddingTest {
     @Test
     void embedQueryReturnsDeterministicVector() {
         HashEmbedding embedding = new HashEmbedding();

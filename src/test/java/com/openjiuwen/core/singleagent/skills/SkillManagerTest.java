@@ -1,5 +1,8 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent.skills;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -9,13 +12,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Unit tests for {@link SkillManager} and {@link Skill}.
  */
 class SkillManagerTest {
-
     private SkillManager manager;
 
     @BeforeEach
@@ -27,11 +27,8 @@ class SkillManagerTest {
 
     @Test
     void testSkillBuilder() {
-        Skill skill = Skill.builder()
-                .name("codeReview")
-                .description("Code review skill")
-                .directory("/skills/code_review")
-                .build();
+        Skill skill = Skill.builder().name("codeReview").description("Code review skill")
+                .directory("/skills/code_review").build();
 
         assertThat(skill.getName()).isEqualTo("codeReview");
         assertThat(skill.getDescription()).isEqualTo("Code review skill");
@@ -40,11 +37,7 @@ class SkillManagerTest {
 
     @Test
     void testSkillToString() {
-        Skill skill = Skill.builder()
-                .name("test")
-                .description("desc")
-                .directory("/dir")
-                .build();
+        Skill skill = Skill.builder().name("test").description("desc").directory("/dir").build();
 
         String str = skill.toString();
         assertThat(str).contains("test");
@@ -181,20 +174,16 @@ class SkillManagerTest {
         Path skillDir = tempDir.resolve("block_literal");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n"
-                        + "name: block_literal\n"
-                        + "description: |\n"
+                "---\n" + "name: block_literal\n" + "description: |\n"
                         + "  8-role debate-pattern investment analysis team.\n"
                         + "  Use when analyzing a security for investment decision.\n"
-                        + "  Do NOT use for single-perspective analysis.\n"
-                        + "---\n# Skill");
+                        + "  Do NOT use for single-perspective analysis.\n" + "---\n# Skill");
         manager.register(skillDir.resolve("SKILL.md").toString());
         Skill skill = manager.get("block_literal");
         assertThat(skill).isNotNull();
-        assertThat(skill.getDescription())
-                .isEqualTo("8-role debate-pattern investment analysis team.\n"
-                        + "Use when analyzing a security for investment decision.\n"
-                        + "Do NOT use for single-perspective analysis.");
+        assertThat(skill.getDescription()).isEqualTo("8-role debate-pattern investment analysis team.\n"
+                + "Use when analyzing a security for investment decision.\n"
+                + "Do NOT use for single-perspective analysis.");
     }
 
     @Test
@@ -202,14 +191,9 @@ class SkillManagerTest {
         Path skillDir = tempDir.resolve("block_strip");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n"
-                        + "description: |-\n"
-                        + "  line one\n"
-                        + "  line two\n"
-                        + "---\n");
+                "---\n" + "description: |-\n" + "  line one\n" + "  line two\n" + "---\n");
         manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.get("block_strip").getDescription())
-                .isEqualTo("line one\nline two");
+        assertThat(manager.get("block_strip").getDescription()).isEqualTo("line one\nline two");
     }
 
     @Test
@@ -217,14 +201,9 @@ class SkillManagerTest {
         Path skillDir = tempDir.resolve("block_folded");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n"
-                        + "description: >\n"
-                        + "  folded paragraph\n"
-                        + "  continues here\n"
-                        + "---\n");
+                "---\n" + "description: >\n" + "  folded paragraph\n" + "  continues here\n" + "---\n");
         manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.get("block_folded").getDescription())
-                .isEqualTo("folded paragraph continues here");
+        assertThat(manager.get("block_folded").getDescription()).isEqualTo("folded paragraph continues here");
     }
 
     @Test
@@ -232,14 +211,9 @@ class SkillManagerTest {
         Path skillDir = tempDir.resolve("block_folded_strip");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n"
-                        + "description: >-\n"
-                        + "  alpha\n"
-                        + "  beta\n"
-                        + "---\n");
+                "---\n" + "description: >-\n" + "  alpha\n" + "  beta\n" + "---\n");
         manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.get("block_folded_strip").getDescription())
-                .isEqualTo("alpha beta");
+        assertThat(manager.get("block_folded_strip").getDescription()).isEqualTo("alpha beta");
     }
 
     @Test
@@ -247,12 +221,9 @@ class SkillManagerTest {
         Path skillDir = tempDir.resolve("quoted");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n"
-                        + "description: \"quoted: with colons and ; semicolons\"\n"
-                        + "---\n");
+                "---\n" + "description: \"quoted: with colons and ; semicolons\"\n" + "---\n");
         manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.get("quoted").getDescription())
-                .isEqualTo("quoted: with colons and ; semicolons");
+        assertThat(manager.get("quoted").getDescription()).isEqualTo("quoted: with colons and ; semicolons");
     }
 
     @Test
@@ -262,12 +233,9 @@ class SkillManagerTest {
         Path skillDir = tempDir.resolve("inline_colons");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n"
-                        + "description: Use this when path/to:thing matters\n"
-                        + "---\n");
+                "---\n" + "description: Use this when path/to:thing matters\n" + "---\n");
         manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.get("inline_colons").getDescription())
-                .isEqualTo("Use this when path/to:thing matters");
+        assertThat(manager.get("inline_colons").getDescription()).isEqualTo("Use this when path/to:thing matters");
     }
 
     @Test
@@ -275,14 +243,8 @@ class SkillManagerTest {
         Path skillDir = tempDir.resolve("block_with_blank");
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"),
-                "---\n"
-                        + "description: |\n"
-                        + "  first paragraph\n"
-                        + "\n"
-                        + "  second paragraph\n"
-                        + "---\n");
+                "---\n" + "description: |\n" + "  first paragraph\n" + "\n" + "  second paragraph\n" + "---\n");
         manager.register(skillDir.resolve("SKILL.md").toString());
-        assertThat(manager.get("block_with_blank").getDescription())
-                .isEqualTo("first paragraph\n\nsecond paragraph");
+        assertThat(manager.get("block_with_blank").getDescription()).isEqualTo("first paragraph\n\nsecond paragraph");
     }
 }

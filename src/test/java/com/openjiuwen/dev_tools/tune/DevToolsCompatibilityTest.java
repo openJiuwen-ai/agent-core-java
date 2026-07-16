@@ -1,4 +1,8 @@
+
 package com.openjiuwen.dev_tools.tune;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -7,16 +11,13 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.dev_tools.tune.evaluator.DefaultEvaluator;
 import com.openjiuwen.dev_tools.tune.optimizer.JointOptimizer;
 import com.openjiuwen.dev_tools.tune.trainer.Trainer;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 class DevToolsCompatibilityTest {
-
     @Test
     void legacyTrainerAndEvaluatorAccessorsRemainAvailable() {
         ModelRequestConfig modelConfig = modelConfig();
@@ -47,37 +48,28 @@ class DevToolsCompatibilityTest {
         assertThat(caseLoader.size()).isEqualTo(2);
         assertThat(caseLoader.length()).isEqualTo(2);
         assertThat(caseLoader.get_cases()).hasSize(2);
-        assertThat(caseLoader.get_cases()).extracting(Case::getCaseId)
-                .containsExactly("case_0", "case_1");
+        assertThat(caseLoader.get_cases()).extracting(Case::getCaseId).containsExactly("case_0", "case_1");
 
         caseLoader.shuffle();
 
         assertThat(caseLoader.get_cases()).hasSize(2);
-        assertThat(caseLoader.get_cases()).extracting(Case::getCaseId)
-                .allMatch(caseId -> caseId.startsWith("case_"));
+        assertThat(caseLoader.get_cases()).extracting(Case::getCaseId).allMatch(caseId -> caseId.startsWith("case_"));
     }
 
     @Test
     void legacyJointOptimizerRangeValidationUsesToolchainStatus() {
-        assertThatThrownBy(() -> new JointOptimizer(modelConfig(), clientConfig(), 21))
-                .isInstanceOf(BaseError.class)
+        assertThatThrownBy(() -> new JointOptimizer(modelConfig(), clientConfig(), 21)).isInstanceOf(BaseError.class)
                 .satisfies(error -> assertThat(((BaseError) error).getCode())
                         .isEqualTo(StatusCode.TOOLCHAIN_OPTIMIZER_PARAM_ERROR.code()))
                 .hasMessageContaining("num_examples should be between 0 and 20");
     }
 
     private static ModelRequestConfig modelConfig() {
-        return ModelRequestConfig.builder()
-                .modelName("test-model")
-                .build();
+        return ModelRequestConfig.builder().modelName("test-model").build();
     }
 
     private static ModelClientConfig clientConfig() {
-        return ModelClientConfig.builder()
-                .clientProvider("OpenAI")
-                .apiKey("test-key")
-                .apiBase("https://example.com/v1")
-                .verifySsl(false)
-                .build();
+        return ModelClientConfig.builder().clientProvider("OpenAI").apiKey("test-key").apiBase("https://example.com/v1")
+                .verifySsl(false).build();
     }
 }

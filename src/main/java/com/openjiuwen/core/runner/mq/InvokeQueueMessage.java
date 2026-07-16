@@ -9,26 +9,36 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Message for invoke (request-response) pattern.
  * Mirrors Python's {@code InvokeQueueMessage}.
+ * 
+ * @since 0.1.7
  */
 public class InvokeQueueMessage extends QueueMessage {
-
     private final CompletableFuture<Object> response = new CompletableFuture<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * InvokeQueueMessage.
+     * 
+     * @since 0.1.7
      */
     public InvokeQueueMessage() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * InvokeQueueMessage.
+     * 
+     * @param messageId messageId
+     * @param payload payload
+     * @since 0.1.7
      */
     public InvokeQueueMessage(String messageId, Object payload) {
         super(messageId, payload);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getResponse.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public CompletableFuture<Object> getResponse() {
         return response;

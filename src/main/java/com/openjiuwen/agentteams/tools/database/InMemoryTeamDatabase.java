@@ -17,35 +17,110 @@ import java.util.stream.Collectors;
  * Drop-in replacement for SQLite-backed TeamDatabase using plain concurrent
  * data structures for single-process mode. Same public DAO interface as
  * TeamDatabase so callers can use it transparently.
- *
- * <p>Mirrors Python tools/memory_database.py InMemoryTeamDatabase.</p>
+ * <p>
+ * Mirrors Python tools/memory_database.py InMemoryTeamDatabase.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class InMemoryTeamDatabase {
-
     private final Map<String, Map<String, Object>> teams = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, MemberRecord> members = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, TaskRecord> tasks = new ConcurrentHashMap<>();
+
+    /**
+     * CopyOnWriteArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<TaskDependencyRecord> taskDeps = new CopyOnWriteArrayList<>();
+
+    /**
+     * CopyOnWriteArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<MessageRecord> messages = new CopyOnWriteArrayList<>();
+
+    /**
+     * AtomicLong.
+     * 
+     * @since 0.1.7
+     */
     private final AtomicLong clock = new AtomicLong(System.currentTimeMillis());
 
+    /**
+     * team.
+     * 
+     * @since 0.1.7
+     */
     public final TeamDao team = new TeamDao();
+
+    /**
+     * member.
+     * 
+     * @since 0.1.7
+     */
     public final MemberDao member = new MemberDao();
+
+    /**
+     * task.
+     * 
+     * @since 0.1.7
+     */
     public final TaskDao task = new TaskDao();
+
+    /**
+     * message.
+     * 
+     * @since 0.1.7
+     */
     public final MessageDao message = new MessageDao();
 
+    /**
+     * initialize.
+     * 
+     * @since 0.1.7
+     */
     public void initialize() {
     }
 
+    /**
+     * createCurSessionTables.
+     * 
+     * @since 0.1.7
+     */
     public void createCurSessionTables() {
     }
 
+    /**
+     * dropCurSessionTables.
+     * 
+     * @since 0.1.7
+     */
     public void dropCurSessionTables() {
         tasks.clear();
         taskDeps.clear();
         messages.clear();
     }
 
+    /**
+     * close.
+     * 
+     * @since 0.1.7
+     */
     public void close() {
         teams.clear();
         members.clear();
@@ -54,16 +129,34 @@ public class InMemoryTeamDatabase {
         messages.clear();
     }
 
+    /**
+     * TeamDao.
+     * 
+     * @since 0.1.7
+     */
     public class TeamDao {
+        /**
+         * createTeam.
+         * 
+         * @param record record
+         * @since 0.1.7
+         */
         public void createTeam(TeamRecord record) {
-            Map<String, Object> teamInfo = new LinkedHashMap<>();
-            teamInfo.put("team_name", record.getTeamName());
-            teamInfo.put("display_name", record.getDisplayName());
-            teamInfo.put("desc", record.getDesc());
-            teamInfo.put("updated_at", currentTimeMillis());
-            teams.put(record.getTeamName(), teamInfo);
+            Map<String, Object> teamData = new LinkedHashMap<>();
+            teamData.put("team_name", record.getTeamName());
+            teamData.put("display_name", record.getDisplayName());
+            teamData.put("desc", record.getDesc());
+            teamData.put("updated_at", currentTimeMillis());
+            teams.put(record.getTeamName(), teamData);
         }
 
+        /**
+         * getTeam.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
+         */
         public TeamRecord getTeam(String teamName) {
             Map<String, Object> t = teams.get(teamName);
             if (t == null) {
@@ -77,6 +170,12 @@ public class InMemoryTeamDatabase {
             return record;
         }
 
+        /**
+         * deleteTeam.
+         * 
+         * @param teamName teamName
+         * @since 0.1.7
+         */
         public void deleteTeam(String teamName) {
             teams.remove(teamName);
             members.entrySet().removeIf(e -> teamName.equals(e.getValue().getTeamName()));
@@ -88,36 +187,80 @@ public class InMemoryTeamDatabase {
             });
         }
 
+        /**
+         * getTeamUpdatedAt.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
+         */
         public long getTeamUpdatedAt(String teamName) {
             TeamRecord t = getTeam(teamName);
             return t != null ? t.getUpdatedAt() : 0L;
         }
     }
 
+    /**
+     * MemberDao.
+     * 
+     * @since 0.1.7
+     */
     public class MemberDao {
+        /**
+         * createMember.
+         * 
+         * @param record record
+         * @since 0.1.7
+         */
         public void createMember(MemberRecord record) {
             String key = key(record.getTeamName(), record.getMemberName());
             members.put(key, record);
         }
 
+        /**
+         * getMember.
+         * 
+         * @param memberName memberName
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
+         */
         public MemberRecord getMember(String memberName, String teamName) {
             return members.get(key(teamName, memberName));
         }
 
+        /**
+         * getTeamMembers.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
+         */
         public List<MemberRecord> getTeamMembers(String teamName) {
-            return members.values().stream()
-                    .filter(m -> teamName.equals(m.getTeamName()))
-                    .collect(Collectors.toList());
+            return members.values().stream().filter(m -> teamName.equals(m.getTeamName())).collect(Collectors.toList());
         }
 
+        /**
+         * getMembersMaxUpdatedAt.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
+         */
         public long getMembersMaxUpdatedAt(String teamName) {
-            return members.values().stream()
-                    .filter(m -> teamName.equals(m.getTeamName()))
-                    .mapToLong(MemberRecord::getUpdatedAt)
-                    .max()
-                    .orElse(0L);
+            return members.values().stream().filter(m -> teamName.equals(m.getTeamName()))
+                    .mapToLong(MemberRecord::getUpdatedAt).max().orElse(0L);
         }
 
+        /**
+         * updateMemberStatus.
+         * 
+         * @param memberName memberName
+         * @param teamName teamName
+         * @param status status
+         * @return the result
+         * @since 0.1.7
+         */
         public boolean updateMemberStatus(String memberName, String teamName, String status) {
             MemberRecord record = getMember(memberName, teamName);
             if (record == null) {
@@ -129,8 +272,16 @@ public class InMemoryTeamDatabase {
             return true;
         }
 
-        public boolean updateMemberExecutionStatus(
-                String memberName, String teamName, String executionStatus) {
+        /**
+         * updateMemberExecutionStatus.
+         * 
+         * @param memberName memberName
+         * @param teamName teamName
+         * @param executionStatus executionStatus
+         * @return the result
+         * @since 0.1.7
+         */
+        public boolean updateMemberExecutionStatus(String memberName, String teamName, String executionStatus) {
             MemberRecord record = getMember(memberName, teamName);
             if (record == null) {
                 return false;
@@ -142,22 +293,54 @@ public class InMemoryTeamDatabase {
         }
     }
 
+    /**
+     * TaskDao.
+     * 
+     * @since 0.1.7
+     */
     public class TaskDao {
+        /**
+         * createTask.
+         * 
+         * @param record record
+         * @since 0.1.7
+         */
         public void createTask(TaskRecord record) {
             tasks.put(record.getTaskId(), record);
         }
 
+        /**
+         * getTask.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
+         */
         public TaskRecord getTask(String taskId) {
             return tasks.get(taskId);
         }
 
+        /**
+         * getTeamTasks.
+         * 
+         * @param teamName teamName
+         * @param status status
+         * @return the result
+         * @since 0.1.7
+         */
         public List<TaskRecord> getTeamTasks(String teamName, String status) {
-            return tasks.values().stream()
-                    .filter(t -> teamName.equals(t.getTeamName()))
-                    .filter(t -> status == null || status.equals(t.getStatus()))
-                    .collect(Collectors.toList());
+            return tasks.values().stream().filter(t -> teamName.equals(t.getTeamName()))
+                    .filter(t -> status == null || status.equals(t.getStatus())).collect(Collectors.toList());
         }
 
+        /**
+         * claimTask.
+         * 
+         * @param taskId taskId
+         * @param memberName memberName
+         * @return the result
+         * @since 0.1.7
+         */
         public boolean claimTask(String taskId, String memberName) {
             TaskRecord t = tasks.get(taskId);
             if (t == null || !"pending".equals(t.getStatus())) {
@@ -169,6 +352,13 @@ public class InMemoryTeamDatabase {
             return true;
         }
 
+        /**
+         * resetTask.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
+         */
         public boolean resetTask(String taskId) {
             TaskRecord t = tasks.get(taskId);
             if (t == null || !"claimed".equals(t.getStatus())) {
@@ -180,6 +370,13 @@ public class InMemoryTeamDatabase {
             return true;
         }
 
+        /**
+         * approvePlanTask.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
+         */
         public boolean approvePlanTask(String taskId) {
             TaskRecord t = tasks.get(taskId);
             if (t == null || !"claimed".equals(t.getStatus())) {
@@ -190,6 +387,13 @@ public class InMemoryTeamDatabase {
             return true;
         }
 
+        /**
+         * completeTaskResult.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
+         */
         public TaskMutationResult completeTaskResult(String taskId) {
             TaskRecord t = tasks.get(taskId);
             if (t == null) {
@@ -197,8 +401,7 @@ public class InMemoryTeamDatabase {
             }
             String status = t.getStatus();
             if (!"claimed".equals(status) && !"plan_approved".equals(status)) {
-                return TaskMutationResult.fail(
-                        "Cannot complete task '" + taskId + "' from status '" + status + "'");
+                return TaskMutationResult.fail("Cannot complete task '" + taskId + "' from status '" + status + "'");
             }
             t.setStatus("completed");
             t.setAssignee(null);
@@ -208,6 +411,13 @@ public class InMemoryTeamDatabase {
             return TaskMutationResult.success(taskId);
         }
 
+        /**
+         * cancelTaskResult.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
+         */
         public TaskMutationResult cancelTaskResult(String taskId) {
             TaskRecord t = tasks.get(taskId);
             if (t == null) {
@@ -221,20 +431,33 @@ public class InMemoryTeamDatabase {
             return TaskMutationResult.success(taskId);
         }
 
+        /**
+         * cancelAllTasksResult.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
+         */
         public TaskMutationResult cancelAllTasksResult(String teamName) {
             List<TaskRecord> cancelled = getTeamTasks(teamName, null).stream()
-                    .filter(t -> !"completed".equals(t.getStatus())
-                            && !"cancelled".equals(t.getStatus()))
-                    .peek(t -> {
+                    .filter(t -> !"completed".equals(t.getStatus()) && !"cancelled".equals(t.getStatus())).peek(t -> {
                         t.setStatus("cancelled");
                         t.setUpdatedAt(currentTimeMillis());
-                    })
-                    .collect(Collectors.toList());
+                    }).collect(Collectors.toList());
             TaskRecord placeholder = new TaskRecord();
             placeholder.setTaskId("cancelled_" + cancelled.size());
             return TaskMutationResult.success(placeholder.getTaskId());
         }
 
+        /**
+         * updateTask.
+         * 
+         * @param taskId taskId
+         * @param title title
+         * @param content content
+         * @return the result
+         * @since 0.1.7
+         */
         public boolean updateTask(String taskId, String title, String content) {
             TaskRecord t = tasks.get(taskId);
             if (t == null) {
@@ -249,61 +472,85 @@ public class InMemoryTeamDatabase {
             return true;
         }
 
+        /**
+         * getDependencies.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
+         */
         public List<TaskDependencyRecord> getDependencies(String taskId) {
-            return taskDeps.stream()
-                    .filter(d -> taskId.equals(d.getTaskId()))
-                    .collect(Collectors.toList());
+            return taskDeps.stream().filter(d -> taskId.equals(d.getTaskId())).collect(Collectors.toList());
         }
 
+        /**
+         * addDependency.
+         * 
+         * @param taskId taskId
+         * @param dependsOnId dependsOnId
+         * @return the result
+         * @since 0.1.7
+         */
         public boolean addDependency(String taskId, String dependsOnId) {
-            boolean exists = taskDeps.stream().anyMatch(
-                    d -> taskId.equals(d.getTaskId())
-                            && dependsOnId.equals(d.getDependsOnTaskId()));
+            boolean exists = taskDeps.stream()
+                    .anyMatch(d -> taskId.equals(d.getTaskId()) && dependsOnId.equals(d.getDependsOnTaskId()));
             if (exists) {
                 return true;
             }
-            TaskDependencyRecord dep = TaskDependencyRecord.builder()
-                    .taskId(taskId)
-                    .dependsOnTaskId(dependsOnId)
-                    .isResolved(false)
-                    .build();
+            TaskDependencyRecord dep =
+                TaskDependencyRecord.builder().taskId(taskId).dependsOnTaskId(dependsOnId).isResolved(false).build();
             taskDeps.add(dep);
             refreshDependentTasks(taskId, currentTimeMillis());
             return true;
         }
 
+        /**
+         * getTasksByAssignee.
+         * 
+         * @param assignee assignee
+         * @param status status
+         * @return the result
+         * @since 0.1.7
+         */
         public List<TaskRecord> getTasksByAssignee(String assignee, String status) {
-            return tasks.values().stream()
-                    .filter(t -> assignee.equals(t.getAssignee()))
-                    .filter(t -> status == null || status.equals(t.getStatus()))
-                    .collect(Collectors.toList());
+            return tasks.values().stream().filter(t -> assignee.equals(t.getAssignee()))
+                    .filter(t -> status == null || status.equals(t.getStatus())).collect(Collectors.toList());
         }
 
-        public GraphMutationResult mutateDependencyGraph(
-                String teamName, List<TaskDependencyRecord> newDeps) {
+        /**
+         * mutateDependencyGraph.
+         * 
+         * @param teamName teamName
+         * @param newDeps newDeps
+         * @return the result
+         * @since 0.1.7
+         */
+        public GraphMutationResult mutateDependencyGraph(String teamName, List<TaskDependencyRecord> newDeps) {
             Map<String, List<String>> adjacency = new LinkedHashMap<>();
             for (TaskDependencyRecord dep : taskDeps) {
-                adjacency.computeIfAbsent(dep.getTaskId(), k -> new ArrayList<>())
-                        .add(dep.getDependsOnTaskId());
+                adjacency.computeIfAbsent(dep.getTaskId(), k -> new ArrayList<>()).add(dep.getDependsOnTaskId());
             }
             for (TaskDependencyRecord dep : newDeps) {
-                adjacency.computeIfAbsent(dep.getTaskId(), k -> new ArrayList<>())
-                        .add(dep.getDependsOnTaskId());
+                adjacency.computeIfAbsent(dep.getTaskId(), k -> new ArrayList<>()).add(dep.getDependsOnTaskId());
             }
             List<String> cycle = GraphUtils.detectCycleInAdjacency(adjacency);
             if (cycle != null) {
-                return GraphMutationResult.fail(
-                        "Cycle detected: " + String.join(" -> ", cycle));
+                return GraphMutationResult.fail("Cycle detected: " + String.join(" -> ", cycle));
             }
             taskDeps.addAll(newDeps);
             return GraphMutationResult.success(List.of());
         }
 
+        /**
+         * refreshDependentTasks.
+         * 
+         * @param dependsOnId dependsOnId
+         * @param now now
+         * @since 0.1.7
+         */
         private void refreshDependentTasks(String dependsOnId, long now) {
-            List<String> dependent = taskDeps.stream()
-                    .filter(d -> dependsOnId.equals(d.getDependsOnTaskId()))
-                    .map(TaskDependencyRecord::getTaskId)
-                    .collect(Collectors.toList());
+            List<String> dependent = taskDeps.stream().filter(d -> dependsOnId.equals(d.getDependsOnTaskId()))
+                    .map(TaskDependencyRecord::getTaskId).collect(Collectors.toList());
             for (String taskId : dependent) {
                 TaskRecord t = tasks.get(taskId);
                 if (t == null) {
@@ -320,47 +567,97 @@ public class InMemoryTeamDatabase {
                 } else if (!allResolved && "pending".equals(t.getStatus())) {
                     t.setStatus("blocked");
                     t.setUpdatedAt(now);
+                } else {
+                    // no-op
                 }
             }
         }
 
+        /**
+         * isTaskTerminal.
+         * 
+         * @param taskId taskId
+         * @return the result
+         * @since 0.1.7
+         */
         private boolean isTaskTerminal(String taskId) {
             TaskRecord t = tasks.get(taskId);
             return t != null && GraphUtils.TASK_TERMINAL_STATUSES.contains(t.getStatus());
         }
     }
 
+    /**
+     * MessageDao.
+     * 
+     * @since 0.1.7
+     */
     public class MessageDao {
+        /**
+         * createMessage.
+         * 
+         * @param record record
+         * @since 0.1.7
+         */
         public void createMessage(MessageRecord record) {
             messages.add(record);
         }
 
+        /**
+         * getTeamMessages.
+         * 
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
+         */
         public List<MessageRecord> getTeamMessages(String teamName) {
-            return messages.stream()
-                    .filter(m -> teamName.equals(m.getTeamName()))
-                    .collect(Collectors.toList());
+            return messages.stream().filter(m -> teamName.equals(m.getTeamName())).collect(Collectors.toList());
         }
 
+        /**
+         * getMessages.
+         * 
+         * @param memberName memberName
+         * @param teamName teamName
+         * @return the result
+         * @since 0.1.7
+         */
         public List<MessageRecord> getMessages(String memberName, String teamName) {
-            return messages.stream()
-                    .filter(m -> teamName.equals(m.getTeamName()))
-                    .filter(m -> memberName.equals(m.getToMemberName())
-                            || m.getToMemberName() == null || m.getToMemberName().isBlank())
+            return messages.stream().filter(m -> teamName.equals(m.getTeamName()))
+                    .filter(m -> memberName.equals(m.getToMemberName()) || m.getToMemberName() == null
+                            || m.getToMemberName().isBlank())
                     .collect(Collectors.toList());
         }
 
+        /**
+         * getMessage.
+         * 
+         * @param messageId messageId
+         * @return the result
+         * @since 0.1.7
+         */
         public MessageRecord getMessage(String messageId) {
-            return messages.stream()
-                    .filter(m -> messageId.equals(m.getMessageId()))
-                    .findFirst()
-                    .orElse(null);
+            return messages.stream().filter(m -> messageId.equals(m.getMessageId())).findFirst().orElse(null);
         }
     }
 
+    /**
+     * currentTimeMillis.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private long currentTimeMillis() {
         return clock.incrementAndGet();
     }
 
+    /**
+     * key.
+     * 
+     * @param teamName teamName
+     * @param memberName memberName
+     * @return the result
+     * @since 0.1.7
+     */
     private static String key(String teamName, String memberName) {
         return teamName + "::" + memberName;
     }

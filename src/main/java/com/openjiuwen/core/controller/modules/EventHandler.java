@@ -17,102 +17,147 @@ import java.util.Map;
  * <p>
  * Main responsibilities:
  * <ul>
- *   <li>Handle input events ({@link #handleInput})</li>
- *   <li>Handle task interaction events ({@link #handleTaskInteraction})</li>
- *   <li>Handle task completion events ({@link #handleTaskCompletion})</li>
- *   <li>Handle task failure events ({@link #handleTaskFailed})</li>
+ * <li>Handle input events ({@link #handleInput})</li>
+ * <li>Handle task interaction events ({@link #handleTaskInteraction})</li>
+ * <li>Handle task completion events ({@link #handleTaskCompletion})</li>
+ * <li>Handle task failure events ({@link #handleTaskFailed})</li>
  * </ul>
  * <p>
  * Mirrors Python's {@code EventHandler(ABC)}.
+ * 
+ * @since 0.1.7
  */
 public abstract class EventHandler {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @since 0.1.7
      */
     protected ControllerConfig config;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * contextEngine.
+     * 
+     * @since 0.1.7
      */
     protected ContextEngine contextEngine;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * abilityManager.
+     * 
+     * @since 0.1.7
      */
     protected Object abilityManager;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * taskManager.
+     * 
+     * @since 0.1.7
      */
     protected TaskManager taskManager;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * taskScheduler.
+     * 
+     * @since 0.1.7
      */
     protected TaskScheduler taskScheduler;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ControllerConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setConfig.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public void setConfig(ControllerConfig config) {
         this.config = config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContextEngine.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ContextEngine getContextEngine() {
         return contextEngine;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setContextEngine.
+     * 
+     * @param contextEngine contextEngine
+     * @since 0.1.7
      */
     public void setContextEngine(ContextEngine contextEngine) {
         this.contextEngine = contextEngine;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAbilityManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getAbilityManager() {
         return abilityManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setAbilityManager.
+     * 
+     * @param abilityManager abilityManager
+     * @since 0.1.7
      */
     public void setAbilityManager(Object abilityManager) {
         this.abilityManager = abilityManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TaskManager getTaskManager() {
         return taskManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTaskManager.
+     * 
+     * @param taskManager taskManager
+     * @since 0.1.7
      */
     public void setTaskManager(TaskManager taskManager) {
         this.taskManager = taskManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskScheduler.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TaskScheduler getTaskScheduler() {
         return taskScheduler;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTaskScheduler.
+     * 
+     * @param taskScheduler taskScheduler
+     * @since 0.1.7
      */
     public void setTaskScheduler(TaskScheduler taskScheduler) {
         this.taskScheduler = taskScheduler;
@@ -120,33 +165,37 @@ public abstract class EventHandler {
 
     /**
      * Handle input events.
-     *
+     * 
      * @param inputs event handler input containing event and session information
      * @return response data, or null
+     * @since 0.1.7
      */
     public abstract Map<String, Object> handleInput(EventHandlerInput inputs);
 
     /**
      * Handle task interaction events.
-     *
+     * 
      * @param inputs event handler input containing event and session information
      * @return response data, or null
+     * @since 0.1.7
      */
     public abstract Map<String, Object> handleTaskInteraction(EventHandlerInput inputs);
 
     /**
      * Handle task completion events.
-     *
+     * 
      * @param inputs event handler input containing event and session information
      * @return response data, or null
+     * @since 0.1.7
      */
     public abstract Map<String, Object> handleTaskCompletion(EventHandlerInput inputs);
 
     /**
      * Handle task failure events.
-     *
+     * 
      * @param inputs event handler input containing event and session information
      * @return response data, or null
+     * @since 0.1.7
      */
     public abstract Map<String, Object> handleTaskFailed(EventHandlerInput inputs);
 }

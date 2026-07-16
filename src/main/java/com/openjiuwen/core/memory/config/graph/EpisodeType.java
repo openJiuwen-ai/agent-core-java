@@ -6,6 +6,8 @@ package com.openjiuwen.core.memory.config.graph;
 
 /**
  * Type of possible sources (conversation/document/json).
+ * 
+ * @since 0.1.7
  */
 public enum EpisodeType {
     CONVERSATION(0),
@@ -19,7 +21,10 @@ public enum EpisodeType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getValue() {
         return value;

@@ -28,86 +28,129 @@ import java.util.UUID;
 
 /**
  * Abstract knowledge base.
+ * 
+ * @since 0.1.7
  */
 public abstract class KnowledgeBase implements AutoCloseable {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @since 0.1.7
      */
     protected final KnowledgeBaseConfig config;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * vectorStore.
+     * 
+     * @since 0.1.7
      */
     protected VectorStore vectorStore;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * embedModel.
+     * 
+     * @since 0.1.7
      */
     protected Embedding embedModel;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * parser.
+     * 
+     * @since 0.1.7
      */
     protected Parser parser;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * chunker.
+     * 
+     * @since 0.1.7
      */
     protected Chunker chunker;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * extractor.
+     * 
+     * @since 0.1.7
      */
     protected Extractor extractor;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * indexManager.
+     * 
+     * @since 0.1.7
      */
     protected Indexer indexManager;
     private boolean autoResolvedIndexManager;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * llmClient.
+     * 
+     * @since 0.1.7
      */
     protected BaseModelClient llmClient;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * retriever.
+     * 
+     * @since 0.1.7
      */
     protected Retriever retriever;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * strictValidation.
+     * 
+     * @since 0.1.7
      */
     protected boolean strictValidation = true;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * KnowledgeBase.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     protected KnowledgeBase(KnowledgeBaseConfig config) {
         this(config, null, null, null, null, null, null, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * KnowledgeBase.
+     * 
+     * @param config config
+     * @param vectorStore vectorStore
+     * @param embedModel embedModel
+     * @param parser parser
+     * @param chunker chunker
+     * @param extractor extractor
+     * @param indexManager indexManager
+     * @param llmClient llmClient
+     * @param retriever retriever
+     * @since 0.1.7
      */
-    protected KnowledgeBase(KnowledgeBaseConfig config,
-                            VectorStore vectorStore,
-                            Embedding embedModel,
-                            Parser parser,
-                            Chunker chunker,
-                            Extractor extractor,
-                            Indexer indexManager,
-                            BaseModelClient llmClient,
-                            Retriever retriever) {
+    protected KnowledgeBase(KnowledgeBaseConfig config, VectorStore vectorStore, Embedding embedModel, Parser parser,
+            Chunker chunker, Extractor extractor, Indexer indexManager, BaseModelClient llmClient,
+            Retriever retriever) {
         this(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient, retriever, true);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * KnowledgeBase.
+     * 
+     * @param config config
+     * @param vectorStore vectorStore
+     * @param embedModel embedModel
+     * @param parser parser
+     * @param chunker chunker
+     * @param extractor extractor
+     * @param indexManager indexManager
+     * @param llmClient llmClient
+     * @param retriever retriever
+     * @param strictValidation strictValidation
+     * @since 0.1.7
      */
-    protected KnowledgeBase(KnowledgeBaseConfig config,
-                            VectorStore vectorStore,
-                            Embedding embedModel,
-                            Parser parser,
-                            Chunker chunker,
-                            Extractor extractor,
-                            Indexer indexManager,
-                            BaseModelClient llmClient,
-                            Retriever retriever,
-                            boolean strictValidation) {
+    protected KnowledgeBase(KnowledgeBaseConfig config, VectorStore vectorStore, Embedding embedModel, Parser parser,
+            Chunker chunker, Extractor extractor, Indexer indexManager, BaseModelClient llmClient, Retriever retriever,
+            boolean strictValidation) {
         if (config == null) {
             throw RetrievalExceptions.validation("KnowledgeBaseConfig is required");
         }
@@ -126,21 +169,30 @@ public abstract class KnowledgeBase implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public KnowledgeBaseConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getVectorStore.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public VectorStore getVectorStore() {
         return vectorStore;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setVectorStore.
+     * 
+     * @param vectorStore vectorStore
+     * @since 0.1.7
      */
     public void setVectorStore(VectorStore vectorStore) {
         if (autoResolvedIndexManager) {
@@ -152,70 +204,100 @@ public abstract class KnowledgeBase implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEmbedModel.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Embedding getEmbedModel() {
         return embedModel;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEmbedModel.
+     * 
+     * @param embedModel embedModel
+     * @since 0.1.7
      */
     public void setEmbedModel(Embedding embedModel) {
         this.embedModel = embedModel;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getParser.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Parser getParser() {
         return parser;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setParser.
+     * 
+     * @param parser parser
+     * @since 0.1.7
      */
     public void setParser(Parser parser) {
         this.parser = parser;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getChunker.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Chunker getChunker() {
         return chunker;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setChunker.
+     * 
+     * @param chunker chunker
+     * @since 0.1.7
      */
     public void setChunker(Chunker chunker) {
         this.chunker = chunker;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtractor.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Extractor getExtractor() {
         return extractor;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setExtractor.
+     * 
+     * @param extractor extractor
+     * @since 0.1.7
      */
     public void setExtractor(Extractor extractor) {
         this.extractor = extractor;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getIndexManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Indexer getIndexManager() {
         return resolveIndexManager();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setIndexManager.
+     * 
+     * @param indexManager indexManager
+     * @since 0.1.7
      */
     public void setIndexManager(Indexer indexManager) {
         this.indexManager = indexManager;
@@ -224,42 +306,63 @@ public abstract class KnowledgeBase implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLlmClient.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public BaseModelClient getLlmClient() {
         return llmClient;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLlmClient.
+     * 
+     * @param llmClient llmClient
+     * @since 0.1.7
      */
     public void setLlmClient(BaseModelClient llmClient) {
         this.llmClient = llmClient;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRetriever.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Retriever getRetriever() {
         return retriever;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setRetriever.
+     * 
+     * @param retriever retriever
+     * @since 0.1.7
      */
     public void setRetriever(Retriever retriever) {
         this.retriever = retriever;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseFiles.
+     * 
+     * @param filePaths filePaths
+     * @return the result
+     * @since 0.1.7
      */
     public List<Document> parseFiles(List<String> filePaths) {
         return parseFiles(filePaths, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseFiles.
+     * 
+     * @param filePaths filePaths
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public List<Document> parseFiles(List<String> filePaths, Map<String, Object> options) {
         if (parser == null) {
@@ -279,20 +382,31 @@ public abstract class KnowledgeBase implements AutoCloseable {
                 parseOptions.putIfAbsent("file_name", fileName);
                 documents.addAll(parser.parse(filePath, UUID.randomUUID().toString(), llmClient, parseOptions));
             } catch (Exception ignored) {
+
+                // Ignore.
             }
         }
         return documents;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseUrls.
+     * 
+     * @param urls urls
+     * @return the result
+     * @since 0.1.7
      */
     public List<Document> parseUrls(List<String> urls) {
         return parseUrls(urls, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseUrls.
+     * 
+     * @param urls urls
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     public List<Document> parseUrls(List<String> urls, Map<String, Object> options) {
         if (parser == null) {
@@ -307,26 +421,31 @@ public abstract class KnowledgeBase implements AutoCloseable {
                 if (!parser.supports(url)) {
                     continue;
                 }
-                documents.addAll(parser.parse(
-                        url,
-                        UUID.randomUUID().toString(),
-                        llmClient,
+                documents.addAll(parser.parse(url, UUID.randomUUID().toString(), llmClient,
                         options == null ? Map.of() : options));
             } catch (Exception ignored) {
+
+                // Ignore.
             }
         }
         return documents;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isStrictValidation.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isStrictValidation() {
         return strictValidation;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStrictValidation.
+     * 
+     * @param strictValidation strictValidation
+     * @since 0.1.7
      */
     public void setStrictValidation(boolean strictValidation) {
         this.strictValidation = strictValidation;
@@ -334,45 +453,69 @@ public abstract class KnowledgeBase implements AutoCloseable {
 
     /**
      * Delete a collection from current database.
+     * 
+     * @param collection collection
+     * @since 0.1.7
      */
     public void deleteCollection(String collection) {
         if (vectorStore == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_VECTOR_STORE_NOT_FOUND,
                     "vector_store is required for delete_collection");
         }
         vectorStore.deleteTable(collection);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * addDocuments.
+     * 
+     * @param documents documents
+     * @return the result
+     * @since 0.1.7
      */
     public abstract List<String> addDocuments(List<Document> documents);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieve.
+     * 
+     * @param query query
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public abstract List<RetrievalResult> retrieve(String query, RetrievalConfig config);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteDocuments.
+     * 
+     * @param docIds docIds
+     * @return the result
+     * @since 0.1.7
      */
     public abstract boolean deleteDocuments(List<String> docIds);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateDocuments.
+     * 
+     * @param documents documents
+     * @return the result
+     * @since 0.1.7
      */
     public abstract List<String> updateDocuments(List<Document> documents);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStatistics.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public abstract Map<String, Object> getStatistics();
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void close() {
         closeQuietly(retriever);
         closeQuietly(vectorStore);
@@ -380,48 +523,26 @@ public abstract class KnowledgeBase implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validateIndex.
+     * 
+     * @since 0.1.7
      */
     protected void validateIndex() {
         if (vectorStore == null || indexManager == null) {
             return;
         }
-        compareConfig(
-                "database_name",
-                vectorStore.getDatabaseName(),
-                indexManager.getDatabaseName(),
-                vectorStore,
+        compareConfig("database_name", vectorStore.getDatabaseName(), indexManager.getDatabaseName(), vectorStore,
                 indexManager);
-        compareConfig(
-                "distance_metric",
-                vectorStore.getDistanceMetric(),
-                indexManager.getDistanceMetric(),
-                vectorStore,
+        compareConfig("distance_metric", vectorStore.getDistanceMetric(), indexManager.getDistanceMetric(), vectorStore,
                 indexManager);
         compareConfig("text_field", vectorStore.getTextField(), indexManager.getTextField(), vectorStore, indexManager);
-        compareConfig(
-                "vector_field",
-                vectorStore.getVectorField(),
-                indexManager.getVectorField(),
-                vectorStore,
+        compareConfig("vector_field", vectorStore.getVectorField(), indexManager.getVectorField(), vectorStore,
                 indexManager);
-        compareConfig(
-                "sparse_vector_field",
-                vectorStore.getSparseVectorField(),
-                indexManager.getSparseVectorField(),
-                vectorStore,
+        compareConfig("sparse_vector_field", vectorStore.getSparseVectorField(), indexManager.getSparseVectorField(),
+                vectorStore, indexManager);
+        compareConfig("metadata_field", vectorStore.getMetadataField(), indexManager.getMetadataField(), vectorStore,
                 indexManager);
-        compareConfig(
-                "metadata_field",
-                vectorStore.getMetadataField(),
-                indexManager.getMetadataField(),
-                vectorStore,
-                indexManager);
-        compareConfig(
-                "doc_id_field",
-                vectorStore.getDocIdField(),
-                indexManager.getDocIdField(),
-                vectorStore,
+        compareConfig("doc_id_field", vectorStore.getDocIdField(), indexManager.getDocIdField(), vectorStore,
                 indexManager);
         if (strictValidation && vectorStore != null) {
             vectorStore.checkVectorField();
@@ -429,27 +550,32 @@ public abstract class KnowledgeBase implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * compareConfig.
+     * 
+     * @param field field
+     * @param left left
+     * @param right right
+     * @param leftOwner leftOwner
+     * @param rightOwner rightOwner
+     * @since 0.1.7
      */
-    protected static void compareConfig(String field,
-                                        Object left,
-                                        Object right,
-                                        IndexBackendConfig leftOwner,
-                                        IndexBackendConfig rightOwner) {
+    protected static void compareConfig(String field, Object left, Object right, IndexBackendConfig leftOwner,
+            IndexBackendConfig rightOwner) {
         if (left == null && right == null) {
             return;
         }
         if (left == null || right == null || !left.equals(right)) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
-                    "incompatible " + field + " configs between "
-                            + leftOwner.getClass().getSimpleName() + "=" + left
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_DATABASE_CONFIG_INVALID,
+                    "incompatible " + field + " configs between " + leftOwner.getClass().getSimpleName() + "=" + left
                             + " and " + rightOwner.getClass().getSimpleName() + "=" + right);
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveIndexManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected Indexer resolveIndexManager() {
         if (indexManager != null || vectorStore == null) {
@@ -462,20 +588,25 @@ public abstract class KnowledgeBase implements AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * requireIndexManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     protected Indexer requireIndexManager() {
         Indexer activeIndexManager = resolveIndexManager();
         if (activeIndexManager == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_INDEX_MANAGER_NOT_FOUND,
                     "index_manager is required");
         }
         return activeIndexManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * closeQuietly.
+     * 
+     * @param closeable closeable
+     * @since 0.1.7
      */
     protected static void closeQuietly(AutoCloseable closeable) {
         if (closeable == null) {
@@ -484,6 +615,8 @@ public abstract class KnowledgeBase implements AutoCloseable {
         try {
             closeable.close();
         } catch (Exception ignored) {
+
+            // Ignore.
         }
     }
 }

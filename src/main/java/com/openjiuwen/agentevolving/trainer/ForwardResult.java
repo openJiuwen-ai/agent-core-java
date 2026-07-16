@@ -11,11 +11,9 @@ import java.util.List;
 
 /**
  * Forward result: aggregate score, evaluated cases, extracted trajectories, and sessions.
+ * 
+ * @since 0.1.7
  */
-public record ForwardResult(
-        double score,
-        List<EvaluatedCase> evaluatedCases,
-        List<Trajectory> trajectories,
-        List<Object> sessions
-) {
+public record ForwardResult(double score, List<EvaluatedCase> evaluatedCases, List<Trajectory> trajectories,
+        List<Object> sessions) {
 }

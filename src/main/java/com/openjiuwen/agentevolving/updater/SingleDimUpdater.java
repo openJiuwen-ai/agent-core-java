@@ -15,28 +15,36 @@ import java.util.Map;
 
 /**
  * Single-dimension update updater.
- *
- * <p>Reuses BaseOptimizer (backward/step), Updates-first applied uniformly by Trainer.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.updater.single_dim.SingleDimUpdater}.
+ * <p>
+ * Reuses BaseOptimizer (backward/step), Updates-first applied uniformly by Trainer.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.updater.single_dim.SingleDimUpdater}.
+ * 
+ * @since 0.1.7
  */
 public class SingleDimUpdater implements Updater {
-
     private final BaseOptimizer optimizer;
 
     /**
      * Create with optimizer.
-     *
+     * 
      * @param optimizer Base optimizer instance
+     * @since 0.1.7
      */
     public SingleDimUpdater(BaseOptimizer optimizer) {
         this.optimizer = optimizer;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * bind.
+     * 
+     * @param operators operators
+     * @param targets targets
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public int bind(Map<String, Object> operators, List<String> targets, Map<String, Object> config) {
         List<String> effectiveTargets = targets;
         if (effectiveTargets == null && config != null) {
@@ -47,44 +55,57 @@ public class SingleDimUpdater implements Updater {
         return optimizer.bind(operators, effectiveTargets, config != null ? config : new HashMap<>());
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * requiresForwardData.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean requiresForwardData() {
         return optimizer.requiresForwardData();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * update.
+     * 
+     * @param trajectories trajectories
+     * @param evaluatedCases evaluatedCases
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Updates update(List<Trajectory> trajectories, List<Object> evaluatedCases, Map<String, Object> config) {
         for (Trajectory traj : trajectories != null ? trajectories : List.<Trajectory>of()) {
             optimizer.addTrajectory(traj);
         }
         List<EvaluatedCase> typedCases = (evaluatedCases != null ? evaluatedCases : List.of()).stream()
-                .filter(EvaluatedCase.class::isInstance)
-                .map(EvaluatedCase.class::cast)
-                .toList();
+                .filter(EvaluatedCase.class::isInstance).map(EvaluatedCase.class::cast).toList();
         optimizer.backward(typedCases);
         Updates updates = optimizer.step();
         return updates != null ? updates : new Updates();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> getState() {
         // Current: BaseOptimizer has no stable recoverable state
         return new HashMap<>();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * loadState.
+     * 
+     * @param state state
+     * @since 0.1.7
      */
+    @Override
     public void loadState(Map<String, Object> state) {
         // No-op: BaseOptimizer has no stable recoverable state
     }

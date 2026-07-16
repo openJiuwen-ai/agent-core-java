@@ -13,25 +13,43 @@ import java.util.List;
 
 /**
  * Public class EvolutionRail used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class EvolutionRail extends DeepAgentRail {
     private final EvolutionTriggerPoint evolutionTrigger;
     private final boolean isAccumulateTrajectory;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<String> toolTrace = new ArrayList<>();
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<Object> pendingApprovalEvents = new ArrayList<>();
     private boolean isEvolutionRunning;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EvolutionRail.
+     * 
+     * @since 0.1.7
      */
     public EvolutionRail() {
         this(EvolutionTriggerPoint.AFTER_INVOKE, false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EvolutionRail.
+     * 
+     * @param evolutionTrigger evolutionTrigger
+     * @param isAccumulateTrajectory isAccumulateTrajectory
+     * @since 0.1.7
      */
     public EvolutionRail(EvolutionTriggerPoint evolutionTrigger, boolean isAccumulateTrajectory) {
         this.evolutionTrigger = evolutionTrigger != null ? evolutionTrigger : EvolutionTriggerPoint.AFTER_INVOKE;
@@ -39,23 +57,23 @@ public class EvolutionRail extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * priority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int priority() {
         return 60;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * beforeInvoke.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void beforeInvoke(AgentCallbackContext ctx) {
         if (!isAccumulateTrajectory) {
             toolTrace.clear();
@@ -64,12 +82,12 @@ public class EvolutionRail extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterToolCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void afterToolCall(AgentCallbackContext ctx) {
         if (ctx != null && ctx.getInputs() instanceof ToolCallInputs inputs && inputs.getToolName() != null) {
             toolTrace.add(inputs.getToolName());
@@ -81,12 +99,12 @@ public class EvolutionRail extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterInvoke.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void afterInvoke(AgentCallbackContext ctx) {
         onAfterInvoke(ctx);
         if (evolutionTrigger == EvolutionTriggerPoint.AFTER_INVOKE) {
@@ -95,32 +113,47 @@ public class EvolutionRail extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * onBeforeInvoke.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     protected void onBeforeInvoke(AgentCallbackContext ctx) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * onAfterToolCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     protected void onAfterToolCall(AgentCallbackContext ctx) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * onAfterInvoke.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     protected void onAfterInvoke(AgentCallbackContext ctx) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runEvolution.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     protected void runEvolution(AgentCallbackContext ctx) {
         isEvolutionRunning = false;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * emitApprovalEvent.
+     * 
+     * @param event event
+     * @since 0.1.7
      */
     protected void emitApprovalEvent(Object event) {
         if (event != null) {
@@ -129,21 +162,30 @@ public class EvolutionRail extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * markEvolutionRunning.
+     * 
+     * @param isRunning isRunning
+     * @since 0.1.7
      */
     protected void markEvolutionRunning(boolean isRunning) {
         isEvolutionRunning = isRunning;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toolTrace.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> toolTrace() {
         return List.copyOf(toolTrace);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * recordToolCall.
+     * 
+     * @param toolName toolName
+     * @since 0.1.7
      */
     public void recordToolCall(String toolName) {
         if (toolName != null && !toolName.isBlank()) {
@@ -152,28 +194,40 @@ public class EvolutionRail extends DeepAgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEvolutionTrigger.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public EvolutionTriggerPoint getEvolutionTrigger() {
         return evolutionTrigger;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAccumulateTrajectory.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isAccumulateTrajectory() {
         return isAccumulateTrajectory;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isEvolutionRunning.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isEvolutionRunning() {
         return isEvolutionRunning;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * drainPendingApprovalEvents.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> drainPendingApprovalEvents() {
         List<Object> drained = new ArrayList<>(pendingApprovalEvents);

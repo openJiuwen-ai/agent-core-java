@@ -9,9 +9,10 @@ import java.util.Map;
 
 /**
  * Retrieval-time options.
+ * 
+ * @since 0.1.7
  */
 public class RetrievalConfig {
-
     private int topK = 5;
     private Double scoreThreshold;
     private Boolean useGraph;
@@ -20,35 +21,50 @@ public class RetrievalConfig {
     private Map<String, Object> filters;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RetrievalConfig.
+     * 
+     * @since 0.1.7
      */
     public RetrievalConfig() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTopK.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getTopK() {
         return topK;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTopK.
+     * 
+     * @param topK topK
+     * @since 0.1.7
      */
     public void setTopK(int topK) {
-        RetrievalValidation.requirePositive(topK, "RetrievalConfig.topK", com.openjiuwen.core.common.exception.StatusCode.RETRIEVAL_RETRIEVER_TOP_K_NOT_FOUND);
+        RetrievalValidation.requirePositive(topK, "RetrievalConfig.topK",
+                com.openjiuwen.core.common.exception.StatusCode.RETRIEVAL_RETRIEVER_TOP_K_NOT_FOUND);
         this.topK = topK;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getScoreThreshold.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Double getScoreThreshold() {
         return scoreThreshold;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setScoreThreshold.
+     * 
+     * @param scoreThreshold scoreThreshold
+     * @since 0.1.7
      */
     public void setScoreThreshold(Double scoreThreshold) {
         if (scoreThreshold != null && (scoreThreshold.isNaN() || scoreThreshold.isInfinite())) {
@@ -58,56 +74,80 @@ public class RetrievalConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUseGraph.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Boolean getUseGraph() {
         return useGraph;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setUseGraph.
+     * 
+     * @param useGraph useGraph
+     * @since 0.1.7
      */
     public void setUseGraph(Boolean useGraph) {
         this.useGraph = useGraph;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAgentic.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isAgentic() {
         return agentic;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setAgentic.
+     * 
+     * @param agentic agentic
+     * @since 0.1.7
      */
     public void setAgentic(boolean agentic) {
         this.agentic = agentic;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isGraphExpansion.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isGraphExpansion() {
         return graphExpansion;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setGraphExpansion.
+     * 
+     * @param graphExpansion graphExpansion
+     * @since 0.1.7
      */
     public void setGraphExpansion(boolean graphExpansion) {
         this.graphExpansion = graphExpansion;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFilters.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getFilters() {
         return filters == null ? null : new LinkedHashMap<>(filters);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setFilters.
+     * 
+     * @param filters filters
+     * @since 0.1.7
      */
     public void setFilters(Map<String, Object> filters) {
         this.filters = filters == null ? null : new LinkedHashMap<>(filters);

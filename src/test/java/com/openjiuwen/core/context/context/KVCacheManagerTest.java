@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.context.context;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.context.ContextStats;
 import com.openjiuwen.core.context.ContextWindow;
@@ -17,34 +20,25 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for {@link KVCacheManager}.
  * <p>
  * Ported from Python's {@code test_kv_cache_manager.py}.
  */
 class KVCacheManagerTest {
-
-    private ContextWindow buildWindow(List<BaseMessage> systemMessages,
-                                      List<BaseMessage> contextMessages,
-                                      List<ToolInfo> tools) {
-        return ContextWindow.builder()
-                .systemMessages(systemMessages != null ? systemMessages : new ArrayList<>())
+    private ContextWindow buildWindow(List<BaseMessage> systemMessages, List<BaseMessage> contextMessages,
+            List<ToolInfo> tools) {
+        return ContextWindow.builder().systemMessages(systemMessages != null ? systemMessages : new ArrayList<>())
                 .contextMessages(contextMessages != null ? contextMessages : new ArrayList<>())
-                .tools(tools != null ? tools : new ArrayList<>())
-                .statistic(new ContextStats())
-                .build();
+                .tools(tools != null ? tools : new ArrayList<>()).statistic(new ContextStats()).build();
     }
 
     @Test
     @DisplayName("first call stores window without release")
     void testFirstCallNoRelease() {
         KVCacheManager manager = new KVCacheManager("session-1");
-        ContextWindow window = buildWindow(
-                List.of(new SystemMessage("sys")),
-                List.of(new UserMessage("hello")),
-                List.of());
+        ContextWindow window =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
         // Should not throw
         manager.release(window);
     }
@@ -69,17 +63,12 @@ class KVCacheManagerTest {
     void testModifiedMessagesTriggerRelease() {
         KVCacheManager manager = new KVCacheManager("session-1");
 
-        ContextWindow w1 = buildWindow(
-                List.of(new SystemMessage("sys")),
-                List.of(new UserMessage("hello")),
-                List.of());
+        ContextWindow w1 = buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
         manager.release(w1);
 
         // Change content in second window
-        ContextWindow w2 = buildWindow(
-                List.of(new SystemMessage("sys")),
-                List.of(new UserMessage("modified")),
-                List.of());
+        ContextWindow w2 =
+            buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("modified")), List.of());
         // Should not throw (just log)
         manager.release(w2);
     }
@@ -89,10 +78,8 @@ class KVCacheManagerTest {
     void testModifiedToolsTriggerRelease() {
         KVCacheManager manager = new KVCacheManager("session-1");
 
-        List<ToolInfo> tools1 = List.of(
-                ToolInfo.builder().name("tool1").description("desc1").build());
-        List<ToolInfo> tools2 = List.of(
-                ToolInfo.builder().name("tool1").description("modified desc").build());
+        List<ToolInfo> tools1 = List.of(ToolInfo.builder().name("tool1").description("desc1").build());
+        List<ToolInfo> tools2 = List.of(ToolInfo.builder().name("tool1").description("modified desc").build());
 
         ContextWindow w1 = buildWindow(List.of(), List.of(new UserMessage("u")), tools1);
         manager.release(w1);
@@ -107,10 +94,8 @@ class KVCacheManagerTest {
         KVCacheManager manager = new KVCacheManager("session-1");
 
         for (int i = 0; i < 5; i++) {
-            ContextWindow w = buildWindow(
-                    List.of(new SystemMessage("sys")),
-                    List.of(new UserMessage("msg-" + i)),
-                    List.of());
+            ContextWindow w =
+                buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("msg-" + i)), List.of());
             manager.release(w);
         }
     }
@@ -123,10 +108,7 @@ class KVCacheManagerTest {
         ContextWindow w1 = buildWindow(List.of(), List.of(), List.of());
         manager.release(w1);
 
-        ContextWindow w2 = buildWindow(
-                List.of(new SystemMessage("sys")),
-                List.of(new UserMessage("hello")),
-                List.of());
+        ContextWindow w2 = buildWindow(List.of(new SystemMessage("sys")), List.of(new UserMessage("hello")), List.of());
         manager.release(w2);
     }
 }

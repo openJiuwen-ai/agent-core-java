@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
@@ -13,10 +16,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Comprehensive tests for WorkflowSession and NodeSession basic operations.
@@ -24,11 +24,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * Ported from Python's {@code test_session.py::TestSession::test_basic}.
  */
 class SessionBasicTest {
-
     @Nested
     @DisplayName("WorkflowSession + NodeSession basic state ops")
     class BasicOps {
-
         @Test
         @DisplayName("workflow context global state access via commit_user_inputs")
         void testWorkflowContextGlobalState() {

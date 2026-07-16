@@ -10,22 +10,24 @@ import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
 /**
  * SPI contract interface for AIO providers. Defines the shared contract
  * that all AIO provider implementations must satisfy via Java SPI.
- *
- * @since 2026-01-01
+ * 
  * @version 1.0
+ * @since 0.1.7
  */
 public interface BaseAioProviderMixin {
     /**
-     * Returns the sandbox endpoint associated with this AIO provider.
-     *
-     * @return the sandbox endpoint
+     * getEndpoint.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     SandboxEndpoint getEndpoint();
 
     /**
      * Returns the sandbox gateway configuration associated with this AIO provider.
-     *
+     * 
      * @return the sandbox gateway configuration
+     * @since 0.1.7
      */
     SandboxGatewayConfig getConfig();
 }

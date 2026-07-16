@@ -18,9 +18,10 @@ import java.util.concurrent.TimeUnit;
 /**
  * In-memory subscription using a blocking queue and Virtual Thread consumer.
  * Mirrors Python's {@code SubscriptionInMemory} in {@code message_queue_inmemory.py}.
+ * 
+ * @since 0.1.7
  */
 public class SubscriptionInMemory extends SubscriptionBase {
-
     private static final Logger logger = LoggerFactory.getLogger(SubscriptionInMemory.class);
 
     private final int queueMaxSize;
@@ -31,7 +32,11 @@ public class SubscriptionInMemory extends SubscriptionBase {
     private ExecutorService consumerExecutor;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SubscriptionInMemory.
+     * 
+     * @param maxSize maxSize
+     * @param timeoutMs timeoutMs
+     * @since 0.1.7
      */
     public SubscriptionInMemory(int maxSize, long timeoutMs) {
         this.queueMaxSize = maxSize;
@@ -41,41 +46,50 @@ public class SubscriptionInMemory extends SubscriptionBase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SubscriptionInMemory.
+     * 
+     * @since 0.1.7
      */
     public SubscriptionInMemory() {
         this(10000, 120_000L);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * setMessageHandler.
+     * 
+     * @param handler handler
+     * @since 0.1.7
      */
+    @Override
     public void setMessageHandler(AsyncMessageHandler<Object, Object> handler) {
         this.handler = handler;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * activate.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void activate() {
         if (!active) {
             active = true;
-            consumerExecutor = Executors.newSingleThreadExecutor(
-                    r -> {
-                        Thread thread = new Thread(r, "sub-inmemory-0");
-                        thread.setDaemon(true);
-                        return thread;
-                    });
+            consumerExecutor = Executors.newSingleThreadExecutor(r -> {
+                Thread thread = new Thread(r, "sub-inmemory-0");
+                thread.setDaemon(true);
+                thread.setUncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception in " + t.getName(), e));
+                return thread;
+            });
             consumerExecutor.submit(this::consumeMessages);
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * deactivate.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void deactivate() {
         if (active) {
             active = false;
@@ -87,16 +101,22 @@ public class SubscriptionInMemory extends SubscriptionBase {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * isActive.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean isActive() {
         return active;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * pushMessage.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     public void pushMessage(QueueMessage message) {
         if (message.getMessageId() == null || message.getMessageId().isEmpty()) {
@@ -109,6 +129,11 @@ public class SubscriptionInMemory extends SubscriptionBase {
         }
     }
 
+    /**
+     * consumeMessages.
+     * 
+     * @since 0.1.7
+     */
     private void consumeMessages() {
         while (active && handler != null) {
             try {
@@ -149,6 +174,13 @@ public class SubscriptionInMemory extends SubscriptionBase {
         }
     }
 
+    /**
+     * handleResponse.
+     * 
+     * @param message message
+     * @param response response
+     * @since 0.1.7
+     */
     private void handleResponse(QueueMessage message, Object response) {
         if (message instanceof InvokeQueueMessage iqm) {
             iqm.getResponse().complete(response);
@@ -156,6 +188,8 @@ public class SubscriptionInMemory extends SubscriptionBase {
             @SuppressWarnings("unchecked")
             var iter = (java.util.Iterator<Object>) response;
             sqm.getResponse().complete(iter);
+        } else {
+            // no-op
         }
     }
 }

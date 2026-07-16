@@ -10,42 +10,59 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Base callback for indexing and embedding progress.
+ * 
+ * @since 0.1.7
  */
 public class BaseCallback {
-
     private final AtomicInteger callCounter = new AtomicInteger();
     private final int total;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseCallback.
+     * 
+     * @since 0.1.7
      */
     public BaseCallback() {
         this.total = 0;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseCallback.
+     * 
+     * @param sequence sequence
+     * @since 0.1.7
      */
     public BaseCallback(Collection<?> sequence) {
         this.total = sequence == null ? 0 : sequence.size();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * onBatch.
+     * 
+     * @param startIdx startIdx
+     * @param endIdx endIdx
+     * @param batch batch
+     * @since 0.1.7
      */
     public void onBatch(int startIdx, int endIdx, List<String> batch) {
         callCounter.incrementAndGet();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCallCounter.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getCallCounter() {
         return callCounter.get();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTotal.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getTotal() {
         return total;

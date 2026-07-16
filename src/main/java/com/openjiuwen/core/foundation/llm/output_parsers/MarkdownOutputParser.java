@@ -6,6 +6,7 @@ package com.openjiuwen.core.foundation.llm.output_parsers;
 
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,22 +21,69 @@ import java.util.regex.Pattern;
 
 /**
  * Markdown output parser that extracts structured elements from LLM output.
+ * 
+ * @since 0.1.7
  */
 public class MarkdownOutputParser extends BaseOutputParser {
-
     private static final Logger LOG = LoggerFactory.getLogger(MarkdownOutputParser.class);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern HEADER_PATTERN = Pattern.compile("^(#{1,6})\\s+(.+)$", Pattern.MULTILINE);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern CODE_BLOCK_PATTERN = Pattern.compile("```(\\w*)\\n(.*?)\\n```", Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern INLINE_CODE_PATTERN = Pattern.compile("`([^`\\n]+)`");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern IMAGE_PATTERN = Pattern.compile("!\\[([^\\]]*)\\]\\(([^)]+)\\)");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern LINK_PATTERN = Pattern.compile("(?<!\\!)\\[([^\\]]+)\\]\\(([^)]+)\\)");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern UNORDERED_LIST_PATTERN = Pattern.compile("^\\s*[-*+]\\s+.*$");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern ORDERED_LIST_PATTERN = Pattern.compile("^\\s*\\d+\\.\\s+.*$");
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parse.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object parse(Object inputs) {
         String text;
 
@@ -61,14 +109,25 @@ public class MarkdownOutputParser extends BaseOutputParser {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * streamParse.
+     * 
+     * @param streamingInputs streamingInputs
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Iterator<Object> streamParse(Iterator<?> streamingInputs) {
         return new MarkdownStreamIterator(streamingInputs);
     }
 
+    /**
+     * parseMarkdown.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     private MarkdownContent parseMarkdown(String text) {
         MarkdownContent markdownContent = new MarkdownContent(text);
         extractAllElements(text, markdownContent);
@@ -76,72 +135,53 @@ public class MarkdownOutputParser extends BaseOutputParser {
         return markdownContent;
     }
 
+    /**
+     * extractAllElements.
+     * 
+     * @param text text
+     * @param markdownContent markdownContent
+     * @since 0.1.7
+     */
     private void extractAllElements(String text, MarkdownContent markdownContent) {
         List<MarkdownElement> elements = new ArrayList<>();
 
         Matcher headerMatcher = HEADER_PATTERN.matcher(text);
         while (headerMatcher.find()) {
-            elements.add(MarkdownElement.builder()
-                    .type(MarkdownElementType.HEADER)
-                    .content(Map.of(
-                            "level", headerMatcher.group(1).length(),
-                            "title", headerMatcher.group(2).trim()))
-                    .startPos(headerMatcher.start())
-                    .endPos(headerMatcher.end())
-                    .raw(headerMatcher.group(0))
-                    .build());
+            elements.add(MarkdownElement.builder().type(MarkdownElementType.HEADER)
+                    .content(Map.of("level", headerMatcher.group(1).length(), "title", headerMatcher.group(2).trim()))
+                    .startPos(headerMatcher.start()).endPos(headerMatcher.end()).raw(headerMatcher.group(0)).build());
         }
 
         Matcher codeBlockMatcher = CODE_BLOCK_PATTERN.matcher(text);
         while (codeBlockMatcher.find()) {
             String language = codeBlockMatcher.group(1) == null || codeBlockMatcher.group(1).isBlank()
-                    ? "text" : codeBlockMatcher.group(1);
-            elements.add(MarkdownElement.builder()
-                    .type(MarkdownElementType.CODE_BLOCK)
-                    .content(Map.of(
-                            "language", language,
-                            "code", codeBlockMatcher.group(2)))
-                    .startPos(codeBlockMatcher.start())
-                    .endPos(codeBlockMatcher.end())
-                    .raw(codeBlockMatcher.group(0))
+                    ? "text"
+                    : codeBlockMatcher.group(1);
+            elements.add(MarkdownElement.builder().type(MarkdownElementType.CODE_BLOCK)
+                    .content(Map.of("language", language, "code", codeBlockMatcher.group(2)))
+                    .startPos(codeBlockMatcher.start()).endPos(codeBlockMatcher.end()).raw(codeBlockMatcher.group(0))
                     .build());
         }
 
         Matcher inlineCodeMatcher = INLINE_CODE_PATTERN.matcher(text);
         while (inlineCodeMatcher.find()) {
-            elements.add(MarkdownElement.builder()
-                    .type(MarkdownElementType.INLINE_CODE)
-                    .content(Map.of("code", inlineCodeMatcher.group(1)))
-                    .startPos(inlineCodeMatcher.start())
-                    .endPos(inlineCodeMatcher.end())
-                    .raw(inlineCodeMatcher.group(0))
-                    .build());
+            elements.add(MarkdownElement.builder().type(MarkdownElementType.INLINE_CODE)
+                    .content(Map.of("code", inlineCodeMatcher.group(1))).startPos(inlineCodeMatcher.start())
+                    .endPos(inlineCodeMatcher.end()).raw(inlineCodeMatcher.group(0)).build());
         }
 
         Matcher imageMatcher = IMAGE_PATTERN.matcher(text);
         while (imageMatcher.find()) {
-            elements.add(MarkdownElement.builder()
-                    .type(MarkdownElementType.IMAGE)
-                    .content(Map.of(
-                            "alt", imageMatcher.group(1),
-                            "url", imageMatcher.group(2)))
-                    .startPos(imageMatcher.start())
-                    .endPos(imageMatcher.end())
-                    .raw(imageMatcher.group(0))
-                    .build());
+            elements.add(MarkdownElement.builder().type(MarkdownElementType.IMAGE)
+                    .content(Map.of("alt", imageMatcher.group(1), "url", imageMatcher.group(2)))
+                    .startPos(imageMatcher.start()).endPos(imageMatcher.end()).raw(imageMatcher.group(0)).build());
         }
 
         Matcher linkMatcher = LINK_PATTERN.matcher(text);
         while (linkMatcher.find()) {
-            elements.add(MarkdownElement.builder()
-                    .type(MarkdownElementType.LINK)
-                    .content(Map.of(
-                            "text", linkMatcher.group(1),
-                            "url", linkMatcher.group(2)))
-                    .startPos(linkMatcher.start())
-                    .endPos(linkMatcher.end())
-                    .raw(linkMatcher.group(0))
-                    .build());
+            elements.add(MarkdownElement.builder().type(MarkdownElementType.LINK)
+                    .content(Map.of("text", linkMatcher.group(1), "url", linkMatcher.group(2)))
+                    .startPos(linkMatcher.start()).endPos(linkMatcher.end()).raw(linkMatcher.group(0)).build());
         }
 
         extractMultilineElements(text, elements);
@@ -150,6 +190,13 @@ public class MarkdownOutputParser extends BaseOutputParser {
         markdownContent.setElements(elements);
     }
 
+    /**
+     * extractMultilineElements.
+     * 
+     * @param text text
+     * @param elements elements
+     * @since 0.1.7
+     */
     private void extractMultilineElements(String text, List<MarkdownElement> elements) {
         String[] lines = text.split("\\n", -1);
         int currentPos = 0;
@@ -172,18 +219,14 @@ public class MarkdownOutputParser extends BaseOutputParser {
                 tableLines.add(line);
             } else if (!tableLines.isEmpty()) {
                 String tableContent = String.join("\n", tableLines);
-                elements.add(MarkdownElement.builder()
-                        .type(MarkdownElementType.TABLE)
-                        .content(Map.of("table", tableContent))
-                        .startPos(tableStartPos)
-                        .endPos(Math.max(tableStartPos, lineStartPos - 1))
-                        .raw(tableContent)
-                        .build());
+                elements.add(MarkdownElement.builder().type(MarkdownElementType.TABLE)
+                        .content(Map.of("table", tableContent)).startPos(tableStartPos)
+                        .endPos(Math.max(tableStartPos, lineStartPos - 1)).raw(tableContent).build());
                 tableLines = new ArrayList<>();
             }
 
-            boolean isListLine = UNORDERED_LIST_PATTERN.matcher(line).matches()
-                    || ORDERED_LIST_PATTERN.matcher(line).matches();
+            boolean isListLine =
+                UNORDERED_LIST_PATTERN.matcher(line).matches() || ORDERED_LIST_PATTERN.matcher(line).matches();
             if (isListLine) {
                 if (listLines.isEmpty()) {
                     listStartPos = lineStartPos;
@@ -194,75 +237,61 @@ public class MarkdownOutputParser extends BaseOutputParser {
             } else if (!listLines.isEmpty()) {
                 String listContent = String.join("\n", listLines).strip();
                 if (!listContent.isEmpty()) {
-                    elements.add(MarkdownElement.builder()
-                            .type(MarkdownElementType.LIST)
-                            .content(Map.of("list", listContent))
-                            .startPos(listStartPos)
-                            .endPos(Math.max(listStartPos, lineStartPos - 1))
-                            .raw(listContent)
-                            .build());
+                    elements.add(MarkdownElement.builder().type(MarkdownElementType.LIST)
+                            .content(Map.of("list", listContent)).startPos(listStartPos)
+                            .endPos(Math.max(listStartPos, lineStartPos - 1)).raw(listContent).build());
                 }
                 listLines = new ArrayList<>();
+            } else {
+                // no-op
             }
         }
 
         if (!tableLines.isEmpty()) {
             String tableContent = String.join("\n", tableLines);
-            elements.add(MarkdownElement.builder()
-                    .type(MarkdownElementType.TABLE)
-                    .content(Map.of("table", tableContent))
-                    .startPos(tableStartPos)
-                    .endPos(text.length())
-                    .raw(tableContent)
-                    .build());
+            elements.add(
+                    MarkdownElement.builder().type(MarkdownElementType.TABLE).content(Map.of("table", tableContent))
+                            .startPos(tableStartPos).endPos(text.length()).raw(tableContent).build());
         }
 
         if (!listLines.isEmpty()) {
             String listContent = String.join("\n", listLines).strip();
             if (!listContent.isEmpty()) {
-                elements.add(MarkdownElement.builder()
-                        .type(MarkdownElementType.LIST)
-                        .content(Map.of("list", listContent))
-                        .startPos(listStartPos)
-                        .endPos(text.length())
-                        .raw(listContent)
-                        .build());
+                elements.add(
+                        MarkdownElement.builder().type(MarkdownElementType.LIST).content(Map.of("list", listContent))
+                                .startPos(listStartPos).endPos(text.length()).raw(listContent).build());
             }
         }
     }
 
+    /**
+     * populateCategorizedLists.
+     * 
+     * @param markdownContent markdownContent
+     * @since 0.1.7
+     */
     private void populateCategorizedLists(MarkdownContent markdownContent) {
         for (MarkdownElement element : markdownContent.getElements()) {
             switch (element.getType()) {
-                case MarkdownElementType.HEADER -> markdownContent.getHeaders().add(newLinkedMap(new Object[] {
-                        "level", String.valueOf(element.getContent().get("level")),
-                        "title", String.valueOf(element.getContent().get("title")),
-                        "raw", element.getRaw()
-                }));
-                case MarkdownElementType.CODE_BLOCK -> markdownContent.getCodeBlocks().add(newLinkedMap(new Object[] {
-                        "language", String.valueOf(element.getContent().get("language")),
-                        "code", String.valueOf(element.getContent().get("code")),
-                        "raw", element.getRaw()
-                }));
-                case MarkdownElementType.INLINE_CODE -> markdownContent.getCodeBlocks().add(newLinkedMap(new Object[] {
-                        "language", "inline",
-                        "code", String.valueOf(element.getContent().get("code")),
-                        "raw", element.getRaw()
-                }));
-                case MarkdownElementType.LINK -> markdownContent.getLinks().add(newLinkedMap(new Object[] {
-                        "text", String.valueOf(element.getContent().get("text")),
-                        "url", String.valueOf(element.getContent().get("url")),
-                        "raw", element.getRaw()
-                }));
-                case MarkdownElementType.IMAGE -> markdownContent.getImages().add(newLinkedMap(new Object[] {
-                        "alt", String.valueOf(element.getContent().get("alt")),
-                        "url", String.valueOf(element.getContent().get("url")),
-                        "raw", element.getRaw()
-                }));
-                case MarkdownElementType.TABLE -> markdownContent.getTables().add(
-                        String.valueOf(element.getContent().get("table")));
-                case MarkdownElementType.LIST -> markdownContent.getLists().add(
-                        String.valueOf(element.getContent().get("list")));
+                case MarkdownElementType.HEADER -> markdownContent.getHeaders()
+                        .add(newLinkedMap(new Object[]{"level", String.valueOf(element.getContent().get("level")),
+                                "title", String.valueOf(element.getContent().get("title")), "raw", element.getRaw()}));
+                case MarkdownElementType.CODE_BLOCK -> markdownContent.getCodeBlocks()
+                        .add(newLinkedMap(new Object[]{"language", String.valueOf(element.getContent().get("language")),
+                                "code", String.valueOf(element.getContent().get("code")), "raw", element.getRaw()}));
+                case MarkdownElementType.INLINE_CODE ->
+                    markdownContent.getCodeBlocks().add(newLinkedMap(new Object[]{"language", "inline", "code",
+                            String.valueOf(element.getContent().get("code")), "raw", element.getRaw()}));
+                case MarkdownElementType.LINK -> markdownContent.getLinks()
+                        .add(newLinkedMap(new Object[]{"text", String.valueOf(element.getContent().get("text")), "url",
+                                String.valueOf(element.getContent().get("url")), "raw", element.getRaw()}));
+                case MarkdownElementType.IMAGE -> markdownContent.getImages()
+                        .add(newLinkedMap(new Object[]{"alt", String.valueOf(element.getContent().get("alt")), "url",
+                                String.valueOf(element.getContent().get("url")), "raw", element.getRaw()}));
+                case MarkdownElementType.TABLE ->
+                    markdownContent.getTables().add(String.valueOf(element.getContent().get("table")));
+                case MarkdownElementType.LIST ->
+                    markdownContent.getLists().add(String.valueOf(element.getContent().get("list")));
                 default -> {
                     // Ignore unknown element types.
                 }
@@ -270,6 +299,13 @@ public class MarkdownOutputParser extends BaseOutputParser {
         }
     }
 
+    /**
+     * newLinkedMap.
+     * 
+     * @param values values
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, Object> newLinkedMap(Object[] values) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (int index = 0; index < values.length; index += 2) {
@@ -279,21 +315,41 @@ public class MarkdownOutputParser extends BaseOutputParser {
     }
 
     private final class MarkdownStreamIterator implements Iterator<Object> {
-
         private final Iterator<?> source;
+
+        /**
+         * StringBuilder.
+         * 
+         * @since 0.1.7
+         */
         private final StringBuilder buffer = new StringBuilder();
+
+        /**
+         * ArrayList<>.
+         * 
+         * @since 0.1.7
+         */
         private final List<Object> pending = new ArrayList<>();
         private int lastParsedLength;
         private boolean finished;
 
+        /**
+         * MarkdownStreamIterator.
+         * 
+         * @param source source
+         * @since 0.1.7
+         */
         private MarkdownStreamIterator(Iterator<?> source) {
             this.source = source;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * hasNext.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public boolean hasNext() {
             if (!pending.isEmpty()) {
                 return true;
@@ -320,10 +376,13 @@ public class MarkdownOutputParser extends BaseOutputParser {
             return !pending.isEmpty();
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * next.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
+        @Override
         public Object next() {
             if (!hasNext()) {
                 throw new NoSuchElementException();
@@ -331,6 +390,13 @@ public class MarkdownOutputParser extends BaseOutputParser {
             return pending.remove(0);
         }
 
+        /**
+         * toChunkText.
+         * 
+         * @param chunk chunk
+         * @return the result
+         * @since 0.1.7
+         */
         private String toChunkText(Object chunk) {
             if (chunk instanceof AssistantMessageChunk amc) {
                 return amc.getContentAsString();

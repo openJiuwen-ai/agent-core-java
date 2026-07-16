@@ -6,8 +6,8 @@ package com.openjiuwen.harness.rails.evolution;
 
 /**
  * Public enum EvolutionTriggerPoint used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public enum EvolutionTriggerPoint {
     AFTER_INVOKE("after_invoke"),
@@ -23,7 +23,10 @@ public enum EvolutionTriggerPoint {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * value.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String value() {
         return value;

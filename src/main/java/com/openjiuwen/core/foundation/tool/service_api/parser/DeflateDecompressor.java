@@ -14,21 +14,31 @@ import java.util.zip.InflaterInputStream;
  * Deflate decompressor.
  * <p>
  * Mirrors Python's {@code DeflateDecompressor}.
+ * 
+ * @since 0.1.7
  */
 public class DeflateDecompressor extends BaseResponseDecompressor {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * canDecompress.
+     * 
+     * @param encoding encoding
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean canDecompress(String encoding) {
         return encoding != null && "deflate".equalsIgnoreCase(encoding);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * decompress.
+     * 
+     * @param responseData responseData
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
+    @Override
     public byte[] decompress(byte[] responseData) throws IOException {
         try {
             return inflateData(responseData, false);
@@ -42,11 +52,20 @@ public class DeflateDecompressor extends BaseResponseDecompressor {
         }
     }
 
+    /**
+     * inflateData.
+     * 
+     * @param data data
+     * @param nowrap nowrap
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private byte[] inflateData(byte[] data, boolean nowrap) throws IOException {
         Inflater inflater = new Inflater(nowrap);
         try (var bais = new ByteArrayInputStream(data);
-             var iis = new InflaterInputStream(bais, inflater);
-             var baos = new ByteArrayOutputStream()) {
+                var iis = new InflaterInputStream(bais, inflater);
+                var baos = new ByteArrayOutputStream()) {
             iis.transferTo(baos);
             return baos.toByteArray();
         } finally {

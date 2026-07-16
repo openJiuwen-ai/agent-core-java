@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Describes a field to be extracted by the Questioner component.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

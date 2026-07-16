@@ -18,9 +18,10 @@ import java.util.Set;
  * Task manager state for serialization and restoration.
  * <p>
  * Mirrors Python's {@code TaskManagerState(BaseModel)}.
+ * 
+ * @since 0.1.7
  */
 public class TaskManagerState {
-
     private Map<String, Task> tasks;
     private Map<Integer, List<String>> priorityIndex;
     private Map<String, Set<String>> parentToChildren;
@@ -28,7 +29,9 @@ public class TaskManagerState {
     private Set<String> rootTasks;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskManagerState.
+     * 
+     * @since 0.1.7
      */
     public TaskManagerState() {
         this.tasks = new HashMap<>();
@@ -39,13 +42,17 @@ public class TaskManagerState {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskManagerState.
+     * 
+     * @param tasks tasks
+     * @param priorityIndex priorityIndex
+     * @param parentToChildren parentToChildren
+     * @param childrenToParent childrenToParent
+     * @param rootTasks rootTasks
+     * @since 0.1.7
      */
-    public TaskManagerState(Map<String, Task> tasks,
-                            Map<Integer, List<String>> priorityIndex,
-                            Map<String, Set<String>> parentToChildren,
-                            Map<String, String> childrenToParent,
-                            Set<String> rootTasks) {
+    public TaskManagerState(Map<String, Task> tasks, Map<Integer, List<String>> priorityIndex,
+            Map<String, Set<String>> parentToChildren, Map<String, String> childrenToParent, Set<String> rootTasks) {
         this.tasks = tasks;
         this.priorityIndex = priorityIndex;
         this.parentToChildren = parentToChildren;
@@ -54,70 +61,100 @@ public class TaskManagerState {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTasks.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Task> getTasks() {
         return tasks;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTasks.
+     * 
+     * @param tasks tasks
+     * @since 0.1.7
      */
     public void setTasks(Map<String, Task> tasks) {
         this.tasks = tasks;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPriorityIndex.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<Integer, List<String>> getPriorityIndex() {
         return priorityIndex;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setPriorityIndex.
+     * 
+     * @param priorityIndex priorityIndex
+     * @since 0.1.7
      */
     public void setPriorityIndex(Map<Integer, List<String>> priorityIndex) {
         this.priorityIndex = priorityIndex;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getParentToChildren.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Set<String>> getParentToChildren() {
         return parentToChildren;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setParentToChildren.
+     * 
+     * @param parentToChildren parentToChildren
+     * @since 0.1.7
      */
     public void setParentToChildren(Map<String, Set<String>> parentToChildren) {
         this.parentToChildren = parentToChildren;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getChildrenToParent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, String> getChildrenToParent() {
         return childrenToParent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setChildrenToParent.
+     * 
+     * @param childrenToParent childrenToParent
+     * @since 0.1.7
      */
     public void setChildrenToParent(Map<String, String> childrenToParent) {
         this.childrenToParent = childrenToParent;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRootTasks.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Set<String> getRootTasks() {
         return rootTasks;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setRootTasks.
+     * 
+     * @param rootTasks rootTasks
+     * @since 0.1.7
      */
     public void setRootTasks(Set<String> rootTasks) {
         this.rootTasks = rootTasks;
@@ -125,6 +162,9 @@ public class TaskManagerState {
 
     /**
      * Serialize state to a plain map for persistence.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> map = new LinkedHashMap<>();
@@ -141,12 +181,13 @@ public class TaskManagerState {
     }
 
     /**
-     * Deserialize state from a plain map.
+     * fromMap.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static TaskManagerState fromMap(Map<String, Object> map) {
         TaskManagerState state = new TaskManagerState();
 

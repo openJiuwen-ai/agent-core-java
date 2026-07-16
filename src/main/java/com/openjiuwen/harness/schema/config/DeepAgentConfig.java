@@ -8,6 +8,7 @@ import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,14 +19,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Public class DeepAgentConfig used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class DeepAgentConfig used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class DeepAgentConfig {
     @Builder.Default
@@ -44,18 +45,53 @@ public class DeepAgentConfig {
     private String workspacePath = "./";
     private Double completionTimeout;
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> permissions = new LinkedHashMap<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Object> tools = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Object> rails = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<McpServerConfig> mcps = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Object> subagents = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<Map<String, Object>> extraPromptSections = new ArrayList<>();
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> skillDirectories = new ArrayList<>();
     @Builder.Default
     private String skillMode = "all";
@@ -63,10 +99,20 @@ public class DeepAgentConfig {
     private Object backend;
     private String promptMode;
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<String> skills = new ArrayList<>();
     @Builder.Default
     private boolean enableSkillDiscovery = false;
     @Builder.Default
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> factoryKwargs = new LinkedHashMap<>();
     @Builder.Default
     private boolean isAsyncSubagentEnabled = false;
@@ -78,46 +124,72 @@ public class DeepAgentConfig {
     private ToolPermissionHost permissionHost;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DeepAgentConfigBuilder.
+     * 
+     * @since 0.1.7
      */
     public static class DeepAgentConfigBuilder {
         /**
-         * Auto-generated for codecheck compliance.
+         * enableTaskLoop.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
          */
         public DeepAgentConfigBuilder enableTaskLoop(boolean isEnabled) {
             return this.isTaskLoopEnabled(isEnabled);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * enableTaskPlanning.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
          */
         public DeepAgentConfigBuilder enableTaskPlanning(boolean isEnabled) {
             return this.isTaskPlanningEnabled(isEnabled);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * enableAsyncSubagent.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
          */
         public DeepAgentConfigBuilder enableAsyncSubagent(boolean isEnabled) {
             return this.isAsyncSubagentEnabled(isEnabled);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * isRestrictToWorkDir.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
          */
         public DeepAgentConfigBuilder isRestrictToWorkDir(boolean isEnabled) {
             return this.isRestrictToWorkDirEnabled(isEnabled);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * restrictToWorkDir.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
          */
         public DeepAgentConfigBuilder restrictToWorkDir(boolean isEnabled) {
             return this.isRestrictToWorkDirEnabled(isEnabled);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * addGeneralPurposeAgent.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
          */
         public DeepAgentConfigBuilder addGeneralPurposeAgent(boolean isEnabled) {
             return this.isGeneralPurposeAgentEnabled(isEnabled);
@@ -125,35 +197,50 @@ public class DeepAgentConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isEnableTaskLoop.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isEnableTaskLoop() {
         return isTaskLoopEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isEnableTaskPlanning.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isEnableTaskPlanning() {
         return isTaskPlanningEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isEnableAsyncSubagent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isEnableAsyncSubagent() {
         return isAsyncSubagentEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAddGeneralPurposeAgent.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isAddGeneralPurposeAgent() {
         return isGeneralPurposeAgentEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isRestrictToWorkDir.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isRestrictToWorkDir() {
         return isRestrictToWorkDirEnabled;

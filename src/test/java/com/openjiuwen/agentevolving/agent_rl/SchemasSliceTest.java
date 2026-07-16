@@ -1,17 +1,5 @@
+
 package com.openjiuwen.agentevolving.agent_rl;
-
-import com.openjiuwen.agentevolving.trajectory.LLMCallDetail;
-import com.openjiuwen.agentevolving.trajectory.StepKind;
-import com.openjiuwen.agentevolving.trajectory.Trajectory;
-import com.openjiuwen.agentevolving.trajectory.TrajectoryStep;
-import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
-import com.openjiuwen.core.foundation.llm.schema.UserMessage;
-import org.junit.jupiter.api.Test;
-
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
@@ -19,8 +7,21 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class SchemasSliceTest {
+import com.openjiuwen.agentevolving.trajectory.LLMCallDetail;
+import com.openjiuwen.agentevolving.trajectory.StepKind;
+import com.openjiuwen.agentevolving.trajectory.Trajectory;
+import com.openjiuwen.agentevolving.trajectory.TrajectoryStep;
+import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
+import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+class SchemasSliceTest {
     @Test
     void rolloutMessageDefaultsUseIndependentMutableLists() {
         RolloutMessage first = new RolloutMessage();
@@ -74,7 +75,8 @@ class SchemasSliceTest {
         outputResponse.put("role", "assistant");
         outputResponse.put("content", "hello");
 
-        Rollout rollout = new Rollout(0, inputPrompt, outputResponse, Map.of("temperature", 0.7), List.of(10, 11), List.of(12));
+        Rollout rollout =
+            new Rollout(0, inputPrompt, outputResponse, Map.of("temperature", 0.7), List.of(10, 11), List.of(12));
 
         assertEquals("assistant", rollout.getOutput_response().get("role"));
         assertEquals("hello", rollout.getOutput_response().get("content"));
@@ -84,21 +86,10 @@ class SchemasSliceTest {
 
     @Test
     void trajectoryToRolloutsConvertsAssistantMessageResponse() {
-        Trajectory trajectory = Trajectory.builder()
-                .executionId("e1")
-                .steps(List.of(
-                        TrajectoryStep.builder()
-                                .kind(StepKind.LLM)
-                                .detail(new LLMCallDetail(
-                                        "test-model",
-                                        List.<Object>of(new UserMessage("hi")),
-                                        new AssistantMessage("hello"),
-                                        null,
-                                        null,
-                                        null
-                                ))
-                                .build()
-                ))
+        Trajectory trajectory = Trajectory.builder().executionId("e1")
+                .steps(List.of(TrajectoryStep.builder().kind(StepKind.LLM).detail(new LLMCallDetail("test-model",
+                        List.<Object>of(new UserMessage("hi")), new AssistantMessage("hello"), null, null, null))
+                        .build()))
                 .build();
 
         List<Rollout> rollouts = AgentRlSchemas.trajectoryToRollouts(trajectory);
@@ -107,38 +98,24 @@ class SchemasSliceTest {
         assertEquals("assistant", rollouts.get(0).getOutput_response().get("role"));
         assertEquals("hello", rollouts.get(0).getOutput_response().get("content"));
         @SuppressWarnings("unchecked")
-        List<Map<String, Object>> messages = (List<Map<String, Object>>) rollouts.get(0).getInput_prompt().get("message");
+        List<Map<String, Object>> messages =
+            (List<Map<String, Object>>) rollouts.get(0).getInput_prompt().get("message");
         assertEquals("user", messages.get(0).get("role"));
         assertEquals("hi", messages.get(0).get("content"));
     }
 
     @Test
     void trajectoryToRolloutsKeepsDictResponseAndPassesTokenIdsAndConfig() {
-        Trajectory trajectory = Trajectory.builder()
-                .executionId("e2")
+        Trajectory trajectory = Trajectory.builder().executionId("e2")
                 .steps(List.of(
-                        TrajectoryStep.builder()
-                                .kind("llm")
-                                .detail(new LLMCallDetail(
-                                        "m",
-                                        List.of(Map.of("role", "user", "content", "hi")),
-                                        Map.of("role", "assistant", "content", "ok"),
-                                        List.of(Map.of("name", "lookup")),
-                                        null,
-                                        null
-                                ))
-                                .promptTokenIds(List.of(10, 11))
-                                .completionTokenIds(List.of(12))
-                                .meta(Map.of("llm_config", Map.of("temperature", 0.7)))
-                                .build(),
-                        TrajectoryStep.builder()
-                                .kind(StepKind.TOOL)
-                                .build(),
-                        TrajectoryStep.builder()
-                                .kind(StepKind.LLM)
-                                .detail(null)
-                                .build()
-                ))
+                        TrajectoryStep.builder().kind("llm")
+                                .detail(new LLMCallDetail("m", List.of(Map.of("role", "user", "content", "hi")),
+                                        Map.of("role", "assistant", "content", "ok"), List.of(Map.of("name", "lookup")),
+                                        null, null))
+                                .promptTokenIds(List.of(10, 11)).completionTokenIds(List.of(12))
+                                .meta(Map.of("llm_config", Map.of("temperature", 0.7))).build(),
+                        TrajectoryStep.builder().kind(StepKind.TOOL).build(),
+                        TrajectoryStep.builder().kind(StepKind.LLM).detail(null).build()))
                 .build();
 
         List<Rollout> rollouts = AgentRlSchemas.trajectoryToRollouts(trajectory);
@@ -153,24 +130,13 @@ class SchemasSliceTest {
 
     @Test
     void trajectoryToRolloutsWrapsStringResponsesAndNormalizesEmptyTokenListsToNull() {
-        Trajectory trajectory = Trajectory.builder()
-                .executionId("e3")
-                .steps(List.of(
-                        TrajectoryStep.builder()
-                                .kind(StepKind.LLM)
-                                .detail(new LLMCallDetail(
-                                        "m",
-                                        List.<Object>of(new UserMessage("prompt")),
-                                        "plain text",
-                                        null,
-                                        null,
-                                        null
-                                ))
-                                .promptTokenIds(List.of())
-                                .completionTokenIds(List.of())
-                                .build()
-                ))
-                .build();
+        Trajectory trajectory =
+            Trajectory.builder().executionId("e3")
+                    .steps(List.of(TrajectoryStep.builder().kind(StepKind.LLM)
+                            .detail(new LLMCallDetail("m", List.<Object>of(new UserMessage("prompt")), "plain text",
+                                    null, null, null))
+                            .promptTokenIds(List.of()).completionTokenIds(List.of()).build()))
+                    .build();
 
         List<Rollout> rollouts = AgentRlSchemas.trajectoryToRollouts(trajectory);
 

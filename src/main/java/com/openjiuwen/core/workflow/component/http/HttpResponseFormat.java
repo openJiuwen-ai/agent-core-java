@@ -8,8 +8,8 @@ package com.openjiuwen.core.workflow.component.http;
  * HTTP response format enum.
  * <p>
  * Mirrors Python's {@code HttpResponseFormat}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 public enum HttpResponseFormat {
     AUTODETECT("autodetect"),
@@ -24,15 +24,22 @@ public enum HttpResponseFormat {
         this.value = value;
     }
 
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }
 
     /**
      * Convert a string value to the corresponding HttpResponseFormat enum.
-     *
+     * 
      * @param value the string value to convert
      * @return the corresponding HttpResponseFormat, or AUTODETECT if not found
+     * @since 0.1.7
      */
     public static HttpResponseFormat fromValue(String value) {
         for (HttpResponseFormat format : values()) {

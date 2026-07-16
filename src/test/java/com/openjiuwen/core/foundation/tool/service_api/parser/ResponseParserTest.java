@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.foundation.tool.service_api.parser;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -14,21 +17,16 @@ import java.util.Map;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.GZIPOutputStream;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for response parsers, decompressors, and ParserRegistry.
  * Ported from Python: tests/unit_tests/core/foundation/tool/test_restfulapi.py
  * (response parsing and decompression validation)
  */
 class ResponseParserTest {
-
     // ============================== JsonResponseParser tests ==============================
-
     @Nested
     @DisplayName("JsonResponseParser tests")
     class JsonResponseParserTests {
-
         private final JsonResponseParser parser = new JsonResponseParser();
 
         @Test
@@ -118,8 +116,7 @@ class ResponseParserTest {
         @DisplayName("Parse invalid JSON throws exception")
         void testParseInvalidJsonThrows() {
             byte[] invalid = "{invalid: json, missing: quotes}".getBytes(StandardCharsets.UTF_8);
-            assertThrows(IllegalArgumentException.class,
-                    () -> parser.parse(invalid, "application/json"));
+            assertThrows(IllegalArgumentException.class, () -> parser.parse(invalid, "application/json"));
         }
     }
 
@@ -128,7 +125,6 @@ class ResponseParserTest {
     @Nested
     @DisplayName("TextResponseParser tests")
     class TextResponseParserTests {
-
         private final TextResponseParser parser = new TextResponseParser();
 
         @Test
@@ -214,7 +210,6 @@ class ResponseParserTest {
     @Nested
     @DisplayName("GzipDecompressor tests")
     class GzipDecompressorTests {
-
         private final GzipDecompressor decompressor = new GzipDecompressor();
 
         @Test
@@ -271,7 +266,6 @@ class ResponseParserTest {
     @Nested
     @DisplayName("DeflateDecompressor tests")
     class DeflateDecompressorTests {
-
         private final DeflateDecompressor decompressor = new DeflateDecompressor();
 
         @Test
@@ -315,7 +309,6 @@ class ResponseParserTest {
     @Nested
     @DisplayName("ParserRegistry tests")
     class ParserRegistryTests {
-
         @Test
         @DisplayName("getInstance returns singleton")
         void testSingleton() {
@@ -364,10 +357,7 @@ class ResponseParserTest {
             String json = "{\"compressed\": true}";
             byte[] compressed = gzipCompress(json.getBytes(StandardCharsets.UTF_8));
 
-            Map<String, String> headers = Map.of(
-                    "Content-Type", "application/json",
-                    "Content-Encoding", "gzip"
-            );
+            Map<String, String> headers = Map.of("Content-Type", "application/json", "Content-Encoding", "gzip");
 
             Object result = ParserRegistry.getInstance().parse(headers, compressed, 200);
             assertInstanceOf(Map.class, result);
@@ -401,7 +391,6 @@ class ResponseParserTest {
     @Nested
     @DisplayName("BaseResponseParser utility tests")
     class BaseResponseParserUtilityTests {
-
         @Test
         @DisplayName("decodeBytes with UTF-8 charset in Content-Type")
         void testDecodeBytesUtf8() {

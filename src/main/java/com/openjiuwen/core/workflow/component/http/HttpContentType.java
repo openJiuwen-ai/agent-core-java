@@ -8,8 +8,8 @@ package com.openjiuwen.core.workflow.component.http;
  * HTTP request body content type enum.
  * <p>
  * Mirrors Python's {@code HttpContentType}.
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 public enum HttpContentType {
     JSON("json"),
@@ -25,15 +25,22 @@ public enum HttpContentType {
         this.value = value;
     }
 
+    /**
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getValue() {
         return value;
     }
 
     /**
      * Convert a string value to the corresponding HttpContentType enum.
-     *
+     * 
      * @param value the string value to convert
      * @return the corresponding HttpContentType, or JSON if not found
+     * @since 0.1.7
      */
     public static HttpContentType fromValue(String value) {
         for (HttpContentType type : values()) {

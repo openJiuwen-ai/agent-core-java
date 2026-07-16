@@ -6,6 +6,8 @@ package com.openjiuwen.agentteams.schema.status;
 
 /**
  * Detailed execution lifecycle states for the narrow Java stream-controller slice.
+ * 
+ * @since 0.1.7
  */
 public enum ExecutionStatus {
     IDLE("idle"),
@@ -26,14 +28,21 @@ public enum ExecutionStatus {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * value.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String value() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * canTransitionTo.
+     * 
+     * @param next next
+     * @return the result
+     * @since 0.1.7
      */
     public boolean canTransitionTo(ExecutionStatus next) {
         if (next == null) {
@@ -41,20 +50,11 @@ public enum ExecutionStatus {
         }
         return switch (this) {
             case IDLE -> next == STARTING;
-            case STARTING -> next == RUNNING
-                    || next == CANCEL_REQUESTED
-                    || next == CANCELLING
-                    || next == FAILED
+            case STARTING -> next == RUNNING || next == CANCEL_REQUESTED || next == CANCELLING || next == FAILED
                     || next == TIMED_OUT;
-            case RUNNING -> next == CANCEL_REQUESTED
-                    || next == CANCELLING
-                    || next == COMPLETING
-                    || next == FAILED
+            case RUNNING -> next == CANCEL_REQUESTED || next == CANCELLING || next == COMPLETING || next == FAILED
                     || next == TIMED_OUT;
-            case CANCEL_REQUESTED -> next == CANCELLING
-                    || next == CANCELLED
-                    || next == FAILED
-                    || next == TIMED_OUT;
+            case CANCEL_REQUESTED -> next == CANCELLING || next == CANCELLED || next == FAILED || next == TIMED_OUT;
             case CANCELLING -> next == CANCELLED || next == FAILED || next == TIMED_OUT;
             case CANCELLED, COMPLETED, FAILED, TIMED_OUT -> next == IDLE;
             case COMPLETING -> next == COMPLETED || next == FAILED || next == TIMED_OUT;
@@ -62,7 +62,11 @@ public enum ExecutionStatus {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static ExecutionStatus fromValue(String value) {
         if (value == null || value.isBlank()) {

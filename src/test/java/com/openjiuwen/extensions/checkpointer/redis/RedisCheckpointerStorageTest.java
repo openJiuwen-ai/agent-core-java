@@ -1,4 +1,11 @@
+
 package com.openjiuwen.extensions.checkpointer.redis;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.common.constants.Constant;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
@@ -11,6 +18,7 @@ import com.openjiuwen.core.session.internal.NodeSession;
 import com.openjiuwen.core.session.internal.WorkflowSession;
 import com.openjiuwen.core.session.state.InMemoryState;
 import com.openjiuwen.core.session.state.WorkflowCommitState;
+
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -19,20 +27,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class RedisCheckpointerStorageTest {
-
     @Test
     void preAgentExecuteRestoresStateQueuesInputsAndRefreshesTtl() throws Exception {
         FakeRedisClient redisClient = new FakeRedisClient();
-        RedisCheckpointer checkpointer = new RedisCheckpointer(
-                new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
-                Map.of("default_ttl", 1, "refresh_on_read", true));
+        RedisCheckpointer checkpointer =
+            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
+                    Map.of("default_ttl", 1, "refresh_on_read", true));
 
         Config config = new Config();
         config.setAgentConfig(new Config.MetadataLike("agent-1", "agent", "invoke"));
@@ -56,9 +57,9 @@ class RedisCheckpointerStorageTest {
     @Test
     void workflowLifecycleRestoresStateUpdatesAndClearsOnCompletion() {
         FakeRedisClient redisClient = new FakeRedisClient();
-        RedisCheckpointer checkpointer = new RedisCheckpointer(
-                new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
-                Map.of("default_ttl", 1, "refresh_on_read", true));
+        RedisCheckpointer checkpointer =
+            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
+                    Map.of("default_ttl", 1, "refresh_on_read", true));
 
         WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
         checkpointer.preWorkflowExecute(session, null);
@@ -68,9 +69,7 @@ class RedisCheckpointerStorageTest {
         state.update(Map.of("ask", "pending"));
         state.commit();
         state.update(Map.of("afterCommit", "still-pending"));
-        checkpointer.graphStore().save(
-                "session-1",
-                "workflow-1:sub:1",
+        checkpointer.graphStore().save("session-1", "workflow-1:sub:1",
                 GraphStoreState.create("workflow-1:sub:1", 1, Map.of("k", "v"), List.of(), Map.of(), Map.of()));
 
         checkpointer.postWorkflowExecute(session, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
@@ -98,9 +97,8 @@ class RedisCheckpointerStorageTest {
     @Test
     void forceDeleteWorkflowStateClearsGraphAndWorkflowCheckpoint() {
         FakeRedisClient redisClient = new FakeRedisClient();
-        RedisCheckpointer checkpointer = new RedisCheckpointer(
-                new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
-                null);
+        RedisCheckpointer checkpointer =
+            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
 
         WorkflowSession initial = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
         checkpointer.preWorkflowExecute(initial, null);
@@ -108,9 +106,7 @@ class RedisCheckpointerStorageTest {
         state.updateGlobal(Map.of("persisted", "value"));
         state.commit();
         checkpointer.postWorkflowExecute(initial, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
-        checkpointer.graphStore().save(
-                "session-1",
-                "workflow-1",
+        checkpointer.graphStore().save("session-1", "workflow-1",
                 GraphStoreState.create("workflow-1", 1, Map.of(), List.of(), Map.of(), Map.of()));
 
         WorkflowSession fresh = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
@@ -125,9 +121,8 @@ class RedisCheckpointerStorageTest {
     @Test
     void preWorkflowExecuteWithoutInteractiveInputRejectsExistingStateWhenCleanupDisabled() {
         FakeRedisClient redisClient = new FakeRedisClient();
-        RedisCheckpointer checkpointer = new RedisCheckpointer(
-                new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
-                null);
+        RedisCheckpointer checkpointer =
+            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient), null);
 
         WorkflowSession session = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
         checkpointer.preWorkflowExecute(session, null);
@@ -137,24 +132,22 @@ class RedisCheckpointerStorageTest {
         checkpointer.postWorkflowExecute(session, Map.of(PregelConstants.TASK_STATUS_INTERRUPT, true), null);
 
         WorkflowSession resumed = new WorkflowSession("workflow-1", null, "session-1", InMemoryState.create(), null);
-        RuntimeException error = assertThrows(RuntimeException.class,
-                () -> checkpointer.preWorkflowExecute(resumed, null));
+        RuntimeException error =
+            assertThrows(RuntimeException.class, () -> checkpointer.preWorkflowExecute(resumed, null));
         assertTrue(error.getMessage().contains("workflow state exists"));
     }
 
     @Test
     void graphStoreDeletesNamespacePrefixesAndRefreshesTtl() throws Exception {
         FakeRedisClient redisClient = new FakeRedisClient();
-        RedisCheckpointer checkpointer = new RedisCheckpointer(
-                new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
-                Map.of("default_ttl", 1, "refresh_on_read", true));
+        RedisCheckpointer checkpointer =
+            new RedisCheckpointer(new com.openjiuwen.extensions.store.kv.RedisStore(redisClient),
+                    Map.of("default_ttl", 1, "refresh_on_read", true));
 
-        GraphStoreState parent = GraphStoreState.create(
-                "workflow-1", 1, Map.of("a", 1), List.of(), Map.of(), Map.of());
-        GraphStoreState child = GraphStoreState.create(
-                "workflow-1:sub:1", 2, Map.of("b", 2), List.of(), Map.of(), Map.of());
-        GraphStoreState other = GraphStoreState.create(
-                "workflow-2", 3, Map.of("c", 3), List.of(), Map.of(), Map.of());
+        GraphStoreState parent = GraphStoreState.create("workflow-1", 1, Map.of("a", 1), List.of(), Map.of(), Map.of());
+        GraphStoreState child =
+            GraphStoreState.create("workflow-1:sub:1", 2, Map.of("b", 2), List.of(), Map.of(), Map.of());
+        GraphStoreState other = GraphStoreState.create("workflow-2", 3, Map.of("c", 3), List.of(), Map.of(), Map.of());
 
         checkpointer.graphStore().save("session-1", "workflow-1", parent);
         checkpointer.graphStore().save("session-1", "workflow-1:sub:1", child);

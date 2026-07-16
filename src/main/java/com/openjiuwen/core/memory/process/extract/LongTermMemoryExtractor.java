@@ -4,8 +4,6 @@
 
 package com.openjiuwen.core.memory.process.extract;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -16,6 +14,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.memory.prompt.PromptApplier;
+
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -23,27 +22,39 @@ import java.util.Map;
 
 /**
  * Extracts long-term memory (fragment memories) from conversation using LLM.
+ * 
+ * @since 0.1.7
  */
 public class LongTermMemoryExtractor {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
+    /**
+     * LongTermMemoryExtractor.
+     * 
+     * @since 0.1.7
+     */
     private LongTermMemoryExtractor() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extractLongTermMemory.
+     * 
+     * @param params params
+     * @param timestamp timestamp
+     * @param retries retries
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public static Map<String, List<Object>> extractLongTermMemory(
-            ExtractMemoryParams params,
-            String timestamp,
+    public static Map<String, List<Object>> extractLongTermMemory(ExtractMemoryParams params, String timestamp,
             int retries) {
-
         StringBuilder referenceStr = new StringBuilder();
         StringBuilder inputMsgStr = new StringBuilder();
 
@@ -75,8 +86,8 @@ public class LongTermMemoryExtractor {
 
         for (int attempt = 0; attempt < retries; attempt++) {
             try {
-                AssistantMessage response = modelClient.invoke(
-                        modelInput, null, null, null, modelName, null, null, null, null, null);
+                AssistantMessage response =
+                    modelClient.invoke(modelInput, null, null, null, modelName, null, null, null, null, null);
                 Object result = parser.parse(response.getContentAsString());
                 if (result instanceof Map) {
                     Map<String, List<Object>> normalized = new HashMap<>();
@@ -104,11 +115,14 @@ public class LongTermMemoryExtractor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extractLongTermMemory.
+     * 
+     * @param params params
+     * @param timestamp timestamp
+     * @return the result
+     * @since 0.1.7
      */
-    public static Map<String, List<Object>> extractLongTermMemory(
-            ExtractMemoryParams params,
-            String timestamp) {
+    public static Map<String, List<Object>> extractLongTermMemory(ExtractMemoryParams params, String timestamp) {
         return extractLongTermMemory(params, timestamp, 3);
     }
 }

@@ -36,57 +36,84 @@ import java.util.Map;
  * generation APIs (image, speech, video).
  * For chat completions, inherits all functionality from OpenAiCompatibleModelClient
  * since DashScope provides OpenAI-compatible chat API endpoints.
+ * 
+ * @since 0.1.7
  */
 public class DashScopeModelClient extends OpenAiCompatibleModelClient {
-
     private static final Logger LOG = LoggerFactory.getLogger(DashScopeModelClient.class);
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static final List<String> DASHSCOPE_VOICES = Arrays.asList(
-            "Cherry", "Serena", "Ethan", "Chelsie", "Momo", "Vivian", "Moon", "Maia", "Kai", "Nofish",
-            "Bella", "Jennifer", "Ryan", "Katerina", "Aiden", "Eldric Sage", "Mia", "Mochi", "Bellona",
-            "Vincent", "Bunny", "Neil", "Elias", "Arthur", "Nini", "Ebona", "Seren", "Pip", "Stella",
-            "Bodega", "Sonrisa", "Alek", "Dolce", "Sohee", "Ono Anna", "Lenn", "Emilien", "Andre",
-            "Radio Gol", "Jada", "Dylan", "Li", "Marcus", "Roy", "Peter", "Sunny", "Eric", "Rocky", "Kiki"
-    );
+    /**
+     * Arrays.asList.
+     * 
+     * @param Sage" Sage"
+     * @param Anna" Anna"
+     * @param Gol" Gol"
+     * @since 0.1.7
+     */
+    private static final List<String> DASHSCOPE_VOICES = Arrays.asList("Cherry", "Serena", "Ethan", "Chelsie", "Momo",
+            "Vivian", "Moon", "Maia", "Kai", "Nofish", "Bella", "Jennifer", "Ryan", "Katerina", "Aiden", "Eldric Sage",
+            "Mia", "Mochi", "Bellona", "Vincent", "Bunny", "Neil", "Elias", "Arthur", "Nini", "Ebona", "Seren", "Pip",
+            "Stella", "Bodega", "Sonrisa", "Alek", "Dolce", "Sohee", "Ono Anna", "Lenn", "Emilien", "Andre",
+            "Radio Gol", "Jada", "Dylan", "Li", "Marcus", "Roy", "Peter", "Sunny", "Eric", "Rocky", "Kiki");
 
     private final HttpClient multiModalHttpClient;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DashScopeModelClient.
+     * 
+     * @param modelConfig modelConfig
+     * @param modelClientConfig modelClientConfig
+     * @since 0.1.7
      */
     public DashScopeModelClient(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         super(modelConfig, modelClientConfig);
         this.multiModalHttpClient = buildHttpClient(Math.max(30, modelClientConfig.getTimeout()));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getClientName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected String getClientName() {
         return "DashScope client";
     }
 
+    /**
+     * generateImage.
+     * 
+     * @param messages messages
+     * @param model model
+     * @param size size
+     * @param negativePrompt negativePrompt
+     * @param n n
+     * @param promptExtend promptExtend
+     * @param watermark watermark
+     * @param seed seed
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public ImageGenerationResponse generateImage(List<UserMessage> messages,
-                                                 String model,
-                                                 String size,
-                                                 String negativePrompt,
-                                                 int n,
-                                                 boolean promptExtend,
-                                                 boolean watermark,
-                                                 int seed,
-                                                 Map<String, Object> kwargs) throws Exception {
+    public ImageGenerationResponse generateImage(List<UserMessage> messages, String model, String size,
+            String negativePrompt, int n, boolean promptExtend, boolean watermark, int seed, Map<String, Object> kwargs)
+            throws Exception {
         // Validate messages
         if (messages == null || messages.size() != 1) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                    "error_msg", "Image generation requires exactly one message, but got "
-                            + (messages == null ? 0 : messages.size()) + ".");
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                    "Image generation requires exactly one message, but got " + (messages == null ? 0 : messages.size())
+                            + ".");
         }
         UserMessage msg = messages.get(0);
 
@@ -112,26 +139,26 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
                         contentList.add(Map.of("image", map.get("image")));
                         imageCount++;
                     } else {
-                        throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                                "error_msg", "Content dict must contain 'text' or 'image' key.");
+                        throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                                "Content dict must contain 'text' or 'image' key.");
                     }
                 } else {
-                    throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                            "error_msg", "Content item must be string or map.");
+                    throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                            "Content item must be string or map.");
                 }
             }
         } else {
-            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                    "error_msg", "Message content must be string or list.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                    "Message content must be string or list.");
         }
 
         if (textCount == 0) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                    "error_msg", "Image generation requires at least one text prompt.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                    "Image generation requires at least one text prompt.");
         }
         if (imageCount > 3) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                    "error_msg", "Image generation supports at most 3 input images, but got " + imageCount + ".");
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                    "Image generation supports at most 3 input images, but got " + imageCount + ".");
         }
 
         String resolvedModel = model != null ? model : modelConfig.getModelName();
@@ -156,7 +183,8 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
             apiParams.putAll(kwargs);
         }
 
-        LOG.info("Calling DashScope image generation API with model: {}, size: {}", resolvedModel, apiParams.get("size"));
+        LOG.info("Calling DashScope image generation API with model: {}, size: {}", resolvedModel,
+                apiParams.get("size"));
 
         Map<String, Object> responseMap = callDashScopeApi(apiParams);
 
@@ -183,38 +211,41 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
         }
 
         if (imageUrls.isEmpty()) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED,
-                    "error_msg", "No images returned from DashScope API.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED, "error_msg",
+                    "No images returned from DashScope API.");
         }
 
         LOG.info("DashScope image generation succeeded. Generated {} image(s).", imageUrls.size());
 
-        return ImageGenerationResponse.builder()
-                .model(resolvedModel)
-                .images(imageUrls)
-                .build();
+        return ImageGenerationResponse.builder().model(resolvedModel).images(imageUrls).build();
     }
 
+    /**
+     * generateSpeech.
+     * 
+     * @param messages messages
+     * @param model model
+     * @param voice voice
+     * @param languageType languageType
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public AudioGenerationResponse generateSpeech(List<UserMessage> messages,
-                                                  String model,
-                                                  String voice,
-                                                  String languageType,
-                                                  Map<String, Object> kwargs) throws Exception {
+    public AudioGenerationResponse generateSpeech(List<UserMessage> messages, String model, String voice,
+            String languageType, Map<String, Object> kwargs) throws Exception {
         if (messages == null || messages.isEmpty() || messages.size() > 1) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                    "error_msg", "Speech generation requires exactly one message.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                    "Speech generation requires exactly one message.");
         }
 
         UserMessage msg = messages.get(0);
         Object content = msg.getContent();
         if (!(content instanceof String text) || text.isBlank()) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                    "error_msg", "Speech generation requires non-empty text content.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                    "Speech generation requires non-empty text content.");
         }
 
         String resolvedModel = model != null ? model : modelConfig.getModelName();
@@ -230,8 +261,8 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
             apiParams.putAll(kwargs);
         }
 
-        LOG.info("Calling DashScope speech generation API with model: {}, voice: {}, language: {}",
-                resolvedModel, resolvedVoice, resolvedLanguage);
+        LOG.info("Calling DashScope speech generation API with model: {}, voice: {}, language: {}", resolvedModel,
+                resolvedVoice, resolvedLanguage);
 
         Map<String, Object> responseMap = callDashScopeApi(apiParams);
 
@@ -258,55 +289,60 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
                         audioFormat = "mp3";
                     } else if (audioUrl.endsWith(".pcm")) {
                         audioFormat = "pcm";
+                    } else {
+                        // no-op
                     }
                 }
             }
         }
 
         if (audioUrl == null && audioData == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED,
-                    "error_msg", "No audio URL or data returned from DashScope API.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED, "error_msg",
+                    "No audio URL or data returned from DashScope API.");
         }
 
         LOG.info("DashScope speech generation succeeded. Audio format: {}, URL present: {}, Data present: {}",
                 audioFormat != null ? audioFormat : "unknown", audioUrl != null, audioData != null);
 
-        return AudioGenerationResponse.builder()
-                .model(resolvedModel)
-                .audioUrl(audioUrl)
-                .audioData(audioData)
-                .format(audioFormat)
-                .build();
+        return AudioGenerationResponse.builder().model(resolvedModel).audioUrl(audioUrl).audioData(audioData)
+                .format(audioFormat).build();
     }
 
+    /**
+     * generateVideo.
+     * 
+     * @param messages messages
+     * @param imgUrl imgUrl
+     * @param audioUrl audioUrl
+     * @param model model
+     * @param size size
+     * @param resolution resolution
+     * @param duration duration
+     * @param promptExtend promptExtend
+     * @param watermark watermark
+     * @param negativePrompt negativePrompt
+     * @param seed seed
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public VideoGenerationResponse generateVideo(List<UserMessage> messages,
-                                                 String imgUrl,
-                                                 String audioUrl,
-                                                 String model,
-                                                 String size,
-                                                 String resolution,
-                                                 int duration,
-                                                 boolean promptExtend,
-                                                 boolean watermark,
-                                                 String negativePrompt,
-                                                 Integer seed,
-                                                 Map<String, Object> kwargs) throws Exception {
+    public VideoGenerationResponse generateVideo(List<UserMessage> messages, String imgUrl, String audioUrl,
+            String model, String size, String resolution, int duration, boolean promptExtend, boolean watermark,
+            String negativePrompt, Integer seed, Map<String, Object> kwargs) throws Exception {
         if (messages == null || messages.size() != 1) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                    "error_msg", "Video generation requires exactly one message, but got "
-                            + (messages == null ? 0 : messages.size()) + ".");
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                    "Video generation requires exactly one message, but got " + (messages == null ? 0 : messages.size())
+                            + ".");
         }
 
         UserMessage msg = messages.get(0);
         Object content = msg.getContent();
         if (!(content instanceof String prompt) || prompt.isBlank()) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR,
-                    "error_msg", "Video generation requires non-empty text content.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_INVOKE_PARAM_ERROR, "error_msg",
+                    "Video generation requires non-empty text content.");
         }
 
         String resolvedModel = model != null ? model : modelConfig.getModelName();
@@ -376,51 +412,52 @@ public class DashScopeModelClient extends OpenAiCompatibleModelClient {
         }
 
         if (videoUrl == null) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED,
-                    "error_msg", "No video URL returned from DashScope API.");
+            throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED, "error_msg",
+                    "No video URL returned from DashScope API.");
         }
 
         LOG.info("DashScope video generation succeeded.");
 
-        return VideoGenerationResponse.builder()
-                .model(resolvedModel)
-                .videoUrl(videoUrl)
-                .duration(videoDuration)
-                .resolution(videoResolution)
-                .format("mp4")
-                .build();
+        return VideoGenerationResponse.builder().model(resolvedModel).videoUrl(videoUrl).duration(videoDuration)
+                .resolution(videoResolution).format("mp4").build();
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * callDashScopeApi.
+     * 
+     * @param apiParams apiParams
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private Map<String, Object> callDashScopeApi(Map<String, Object> apiParams) throws Exception {
         String body = MAPPER.writeValueAsString(apiParams);
         String apiBase = modelClientConfig.getApiBase().replaceAll("/+$", "");
 
-        HttpRequest.Builder request = HttpRequest.newBuilder()
-                .uri(URI.create(apiBase + "/services/aigc/multimodal-generation/generation"))
-                .timeout(Duration.ofSeconds(120));
+        HttpRequest.Builder request =
+            HttpRequest.newBuilder().uri(URI.create(apiBase + "/services/aigc/multimodal-generation/generation"))
+                    .timeout(Duration.ofSeconds(120));
         applyConfiguredHeaders(request, true);
         request.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
 
-        HttpResponse<String> response = multiModalHttpClient.send(request.build(),
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        HttpResponse<String> response =
+            multiModalHttpClient.send(request.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
         Map<String, Object> responseMap = MAPPER.readValue(response.body(), Map.class);
 
         // Check for error in response
         Object statusCode = responseMap.get("status_code");
         if (statusCode instanceof Number num && num.intValue() != 200) {
-            String errorMsg = "DashScope API failed. HTTP status: " + num.intValue()
-                    + ", Error code: " + responseMap.get("code")
-                    + ", Error message: " + responseMap.get("message");
+            String errorMsg = "DashScope API failed. HTTP status: " + num.intValue() + ", Error code: "
+                    + responseMap.get("code") + ", Error message: " + responseMap.get("message");
             LOG.error(errorMsg);
-            throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED,
-                    "error_msg", errorMsg);
+            throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED, "error_msg", errorMsg);
         }
 
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED,
-                    "error_msg", "DashScope API HTTP error: " + response.statusCode() + " - " + response.body());
+            throw ErrorHelper.buildError(StatusCode.MODEL_CALL_FAILED, "error_msg",
+                    "DashScope API HTTP error: " + response.statusCode() + " - " + response.body());
         }
 
         return responseMap;

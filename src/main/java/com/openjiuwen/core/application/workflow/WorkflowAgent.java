@@ -35,23 +35,22 @@ import java.util.NoSuchElementException;
 
 /**
  * Workflow-based Agent - Executes predefined workflows with multi-workflow controller.
- *
- * <p>Implemented using ControllerAgent with WorkflowEventHandler for
+ * Implemented using ControllerAgent with WorkflowEventHandler for
  * workflow-specific execution logic including intent detection and
- * interruption handling.</p>
- *
- * <p>Mirrors Python's {@code WorkflowAgent} in {@code openjiuwen.core.application.workflow_agent}.</p>
+ * interruption handling.
+ * 
+ * @since 0.1.7
  */
 public class WorkflowAgent extends ControllerAgent {
-
     private static final String CALL_MODE_STATE_KEY = "__workflow_agent_call_mode";
 
     private final WorkflowAgentConfig agentConfig;
 
     /**
      * Create WorkflowAgent with the given configuration.
-     *
+     * 
      * @param agentConfig the workflow agent configuration
+     * @since 0.1.7
      */
     public WorkflowAgent(WorkflowAgentConfig agentConfig) {
         super(buildAgentCard(agentConfig), new Controller(), buildControllerConfig(),
@@ -59,8 +58,7 @@ public class WorkflowAgent extends ControllerAgent {
         if (agentConfig.getControllerType() != null
                 && agentConfig.getControllerType() != ControllerType.WORKFLOW_CONTROLLER) {
             throw new UnsupportedOperationException(
-                    "WorkflowAgent requires WORKFLOW_CONTROLLER, got " + agentConfig.getControllerType()
-            );
+                    "WorkflowAgent requires WORKFLOW_CONTROLLER, got " + agentConfig.getControllerType());
         }
         this.agentConfig = agentConfig;
 
@@ -69,10 +67,15 @@ public class WorkflowAgent extends ControllerAgent {
         getController().setEventHandler(eventHandler);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public ControllerOutput invoke(Object inputs, Session session) {
         AgentSessionApi managedSession = session == null ? createManagedSession(inputs) : null;
         Session effectiveSession = managedSession != null ? managedSession : session;
@@ -91,10 +94,16 @@ public class WorkflowAgent extends ControllerAgent {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param streamModes streamModes
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Iterator<Object> stream(Object inputs, Session session, List<StreamMode> streamModes) {
         AgentSessionApi managedSession = session == null ? createManagedSession(inputs, streamModes) : null;
         Session effectiveSession = managedSession != null ? managedSession : session;
@@ -106,11 +115,7 @@ public class WorkflowAgent extends ControllerAgent {
         Iterator<Object> delegate = super.stream(inputs, effectiveSession, streamModes);
         return new Iterator<>() {
             private boolean finalized;
-
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public boolean hasNext() {
                 boolean hasNext = delegate.hasNext();
                 if (!hasNext) {
@@ -120,9 +125,6 @@ public class WorkflowAgent extends ControllerAgent {
             }
 
             @Override
-            /**
-             * Auto-generated for codecheck compliance.
-             */
             public Object next() {
                 try {
                     return delegate.next();
@@ -146,7 +148,10 @@ public class WorkflowAgent extends ControllerAgent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public WorkflowAgentConfig getAgentConfig() {
         return agentConfig;
@@ -154,6 +159,9 @@ public class WorkflowAgent extends ControllerAgent {
 
     /**
      * Set prompt template and keep it on the application config for Python compatibility.
+     * 
+     * @param promptTemplate promptTemplate
+     * @since 0.1.7
      */
     public void setPromptTemplate(List<Map<String, String>> promptTemplate) {
         agentConfig.setPromptTemplate(promptTemplate != null ? promptTemplate : new ArrayList<>());
@@ -161,6 +169,9 @@ public class WorkflowAgent extends ControllerAgent {
 
     /**
      * Append prompt template entries, mirroring Python's {@code add_prompt()}.
+     * 
+     * @param promptTemplate promptTemplate
+     * @since 0.1.7
      */
     public void addPrompt(List<Map<String, String>> promptTemplate) {
         if (promptTemplate == null || promptTemplate.isEmpty()) {
@@ -176,6 +187,9 @@ public class WorkflowAgent extends ControllerAgent {
     /**
      * Add tools to this agent (update config, ability manager, and resource manager).
      * Mirrors Python's {@code BaseAgent.add_tools()} behavior used by workflow-agent tests.
+     * 
+     * @param tools tools
+     * @since 0.1.7
      */
     public void addTools(List<Tool> tools) {
         if (tools == null || tools.isEmpty()) {
@@ -194,13 +208,12 @@ public class WorkflowAgent extends ControllerAgent {
     }
 
     /**
-     * Add workflows to this agent (update config and resource manager).
-     * Mirrors Python's {@code BaseAgent.add_workflows()}.
+     * addWorkflows.
+     * 
+     * @param workflows workflows
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void addWorkflows(List<Workflow> workflows) {
         if (workflows == null || workflows.isEmpty()) {
             return;
@@ -210,22 +223,17 @@ public class WorkflowAgent extends ControllerAgent {
         for (Workflow workflow : workflows) {
             WorkflowCard card = workflow.getCard();
             getAbilityManager().add(card);
-            agentConfig.getWorkflows().add(WorkflowSchema.builder()
-                    .id(card.getId())
-                    .name(card.getName())
-                    .version(card.getVersion())
-                    .description(card.getDescription())
-                    .inputParams(card.getInputParams() instanceof Map
-                            ? (Map<String, Object>) card.getInputParams() : Map.of())
-                    .build());
+            agentConfig.getWorkflows()
+                    .add(WorkflowSchema.builder().id(card.getId()).name(card.getName()).version(card.getVersion())
+                            .description(card.getDescription())
+                            .inputParams(card.getInputParams() instanceof Map
+                                    ? (Map<String, Object>) card.getInputParams()
+                                    : Map.of())
+                            .build());
             String workflowResourceId = WorkflowUtils.generateWorkflowKey(card.getId(), card.getVersion());
-            WorkflowCard resourceCard = WorkflowCard.builder()
-                    .id(workflowResourceId)
-                    .name(card.getName())
-                    .version(card.getVersion())
-                    .description(card.getDescription())
-                    .inputParams(card.getInputParams())
-                    .build();
+            WorkflowCard resourceCard =
+                WorkflowCard.builder().id(workflowResourceId).name(card.getName()).version(card.getVersion())
+                        .description(card.getDescription()).inputParams(card.getInputParams()).build();
             if (canRegisterWorkflowResource) {
                 Runner.resourceMgr().addWorkflow(resourceCard, () -> workflow, agentId);
             }
@@ -234,35 +242,64 @@ public class WorkflowAgent extends ControllerAgent {
 
     // ==================== Private Helpers ====================
 
+    /**
+     * buildAgentCard.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     private static AgentCard buildAgentCard(WorkflowAgentConfig config) {
-        return AgentCard.builder()
-                .id(config.getId())
-                .name(config.getId())
-                .description(config.getDescription())
-                .build();
+        return AgentCard.builder().id(config.getId()).name(config.getId()).description(config.getDescription()).build();
     }
 
+    /**
+     * buildControllerConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private static ControllerConfig buildControllerConfig() {
         ControllerConfig cc = new ControllerConfig();
         cc.setMaxConcurrentTasks(1);
         return cc;
     }
 
+    /**
+     * buildContextEngineConfig.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     private static ContextEngineConfig buildContextEngineConfig(WorkflowAgentConfig config) {
         if (config.getContextEngineConfig() != null) {
             return config.getContextEngineConfig();
         }
         int maxRounds = config.getConstrain() != null ? config.getConstrain().getReservedMaxChatRounds() : 10;
-        return ContextEngineConfig.builder()
-                .maxContextMessageNum(maxRounds * 2)
-                .defaultWindowRoundNum(maxRounds)
+        return ContextEngineConfig.builder().maxContextMessageNum(maxRounds * 2).defaultWindowRoundNum(maxRounds)
                 .build();
     }
 
+    /**
+     * createManagedSession.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private AgentSessionApi createManagedSession(Object inputs) {
         return createManagedSession(inputs, null);
     }
 
+    /**
+     * createManagedSession.
+     * 
+     * @param inputs inputs
+     * @param streamModes streamModes
+     * @return the result
+     * @since 0.1.7
+     */
     private AgentSessionApi createManagedSession(Object inputs, List<StreamMode> streamModes) {
         String sessionId = "default_session";
         if (inputs instanceof Map<?, ?> inputMap) {
@@ -274,6 +311,13 @@ public class WorkflowAgent extends ControllerAgent {
         return AgentSessionApi.create(sessionId, null, getCard(), streamModes);
     }
 
+    /**
+     * normalizeInvokeOutput.
+     * 
+     * @param result result
+     * @return the result
+     * @since 0.1.7
+     */
     private ControllerOutput normalizeInvokeOutput(ControllerOutput result) {
         if (result == null) {
             return null;
@@ -283,12 +327,9 @@ public class WorkflowAgent extends ControllerAgent {
             return result;
         }
 
-        List<Object> interactionOutputs = outputs.stream()
-                .filter(OutputSchema.class::isInstance)
-                .map(OutputSchema.class::cast)
-                .filter(os -> "__interaction__".equals(os.getType()))
-                .map(Object.class::cast)
-                .toList();
+        List<Object> interactionOutputs =
+            outputs.stream().filter(OutputSchema.class::isInstance).map(OutputSchema.class::cast)
+                    .filter(os -> "__interaction__".equals(os.getType())).map(Object.class::cast).toList();
         if (!interactionOutputs.isEmpty()) {
             return new ControllerOutput(result.getType(), interactionOutputs);
         }
@@ -322,6 +363,13 @@ public class WorkflowAgent extends ControllerAgent {
         return new ControllerOutput(result.getType(), normalized);
     }
 
+    /**
+     * flattenControllerOutputs.
+     * 
+     * @param rawData rawData
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> flattenControllerOutputs(Object rawData) {
         if (!(rawData instanceof List<?> rawList)) {
             return List.of();
@@ -340,12 +388,25 @@ public class WorkflowAgent extends ControllerAgent {
         return flattened;
     }
 
+    /**
+     * setCallMode.
+     * 
+     * @param session session
+     * @param mode mode
+     * @since 0.1.7
+     */
     private void setCallMode(Session session, String mode) {
         if (session instanceof AgentSessionApi agentSession) {
             agentSession.updateState(Map.of(CALL_MODE_STATE_KEY, mode));
         }
     }
 
+    /**
+     * clearCallMode.
+     * 
+     * @param session session
+     * @since 0.1.7
+     */
     private void clearCallMode(Session session) {
         if (session instanceof AgentSessionApi agentSession) {
             Map<String, Object> stateUpdate = new LinkedHashMap<>();

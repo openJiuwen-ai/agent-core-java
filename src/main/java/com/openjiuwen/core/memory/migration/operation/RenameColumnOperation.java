@@ -6,6 +6,8 @@ package com.openjiuwen.core.memory.migration.operation;
 
 /**
  * Rename a column in a table.
+ * 
+ * @since 0.1.7
  */
 public class RenameColumnOperation extends BaseOperation {
     private final String table;
@@ -13,10 +15,15 @@ public class RenameColumnOperation extends BaseOperation {
     private final String newColumnName;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RenameColumnOperation.
+     * 
+     * @param metadata metadata
+     * @param table table
+     * @param oldColumnName oldColumnName
+     * @param newColumnName newColumnName
+     * @since 0.1.7
      */
-    public RenameColumnOperation(OperationMetadata metadata, String table,
-                                 String oldColumnName, String newColumnName) {
+    public RenameColumnOperation(OperationMetadata metadata, String table, String oldColumnName, String newColumnName) {
         super(metadata);
         this.table = table;
         this.oldColumnName = oldColumnName;
@@ -24,21 +31,30 @@ public class RenameColumnOperation extends BaseOperation {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTable() {
         return table;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOldColumnName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getOldColumnName() {
         return oldColumnName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNewColumnName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getNewColumnName() {
         return newColumnName;

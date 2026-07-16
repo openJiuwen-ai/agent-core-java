@@ -12,21 +12,30 @@ import com.openjiuwen.core.foundation.llm.output_parsers.JsonOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.memory.prompt.PromptApplier;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
  * Memory update checker for detecting redundancy and conflicts between memories.
  * Uses LLM with a prompt template to analyze whether new memories are redundant,
  * conflicting, or can coexist with existing memories.
+ * 
+ * @since 0.1.7
  */
 public class MemUpdateChecker {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
     private final PromptApplier promptApplier;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MemUpdateChecker.
+     * 
+     * @since 0.1.7
      */
     public MemUpdateChecker() {
         this.promptApplier = PromptApplier.getInstance();
@@ -34,31 +43,34 @@ public class MemUpdateChecker {
 
     /**
      * Check for redundancy and conflicts between new and old memories.
-     *
-     * @param newMemories    dictionary of new memories {id: content}
-     * @param oldMemories    dictionary of existing memories {id: content}
-     * @param baseChatModel  pair of (modelName, modelClient), nullable
+     * 
+     * @param newMemories dictionary of new memories {id: content}
+     * @param oldMemories dictionary of existing memories {id: content}
+     * @param baseChatModel pair of (modelName, modelClient), nullable
      * @return list of action items
+     * @since 0.1.7
      */
-    public List<MemoryActionItem> check(Map<String, String> newMemories,
-                                         Map<String, String> oldMemories,
-                                         Map.Entry<String, Model> baseChatModel) {
+    public List<MemoryActionItem> check(Map<String, String> newMemories, Map<String, String> oldMemories,
+            Map.Entry<String, Model> baseChatModel) {
         return check(newMemories, oldMemories, baseChatModel, 3);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * check.
+     * 
+     * @param newMemories newMemories
+     * @param oldMemories oldMemories
+     * @param baseChatModel baseChatModel
+     * @param retries retries
+     * @return the result
+     * @since 0.1.7
      */
-    public List<MemoryActionItem> check(Map<String, String> newMemories,
-                                         Map<String, String> oldMemories,
-                                         Map.Entry<String, Model> baseChatModel,
-                                         int retries) {
+    public List<MemoryActionItem> check(Map<String, String> newMemories, Map<String, String> oldMemories,
+            Map.Entry<String, Model> baseChatModel, int retries) {
         // Skip checking if no old memories or no model
         if (oldMemories == null || oldMemories.isEmpty() || baseChatModel == null) {
-            return newMemories.entrySet().stream()
-                    .map(e -> MemoryActionItem.builder()
-                            .id(e.getKey()).content(e.getValue()).status(MemoryStatus.ADD).build())
-                    .collect(Collectors.toList());
+            return newMemories.entrySet().stream().map(e -> MemoryActionItem.builder().id(e.getKey())
+                    .content(e.getValue()).status(MemoryStatus.ADD).build()).collect(Collectors.toList());
         }
 
         // Format input for prompt
@@ -78,8 +90,8 @@ public class MemUpdateChecker {
 
         for (int attempt = 0; attempt < retries; attempt++) {
             try {
-                AssistantMessage response = modelClient.invoke(messages, null, null, null,
-                        modelName, null, null, null, null, null);
+                AssistantMessage response =
+                    modelClient.invoke(messages, null, null, null, modelName, null, null, null, null, null);
                 Object parsed = parser.parse(response.getContentAsString());
 
                 List<Map<String, Object>> parsedList;
@@ -103,11 +115,11 @@ public class MemUpdateChecker {
                     MEMORY_LOGGER.warn("[{}] Memory check parse error, retrying ({}/{}): {}",
                             LogEventType.MEMORY_PROCESS, attempt + 1, retries, e.getMessage());
                 } else {
-                    MEMORY_LOGGER.error("[{}] Memory check failed after retries: {}",
-                            LogEventType.MEMORY_PROCESS, e.getMessage());
-                    return newMemories.entrySet().stream()
-                            .map(en -> MemoryActionItem.builder()
-                                    .id(en.getKey()).content(en.getValue()).status(MemoryStatus.ADD).build())
+                    MEMORY_LOGGER.error("[{}] Memory check failed after retries: {}", LogEventType.MEMORY_PROCESS,
+                            e.getMessage());
+                    return newMemories
+                            .entrySet().stream().map(en -> MemoryActionItem.builder().id(en.getKey())
+                                    .content(en.getValue()).status(MemoryStatus.ADD).build())
                             .collect(Collectors.toList());
                 }
             }
@@ -125,27 +137,26 @@ public class MemUpdateChecker {
                 continue;
             } else if (checkItem.getResult() == CheckResult.CONFLICTING) {
                 String newContent = newMemories.getOrDefault(newId, checkItem.getInfoText());
-                actionItems.add(MemoryActionItem.builder()
-                        .id(newId).content(newContent).status(MemoryStatus.ADD).build());
+                actionItems
+                        .add(MemoryActionItem.builder().id(newId).content(newContent).status(MemoryStatus.ADD).build());
                 for (Map.Entry<String, String> relEntry : checkItem.getRelatedInfos().entrySet()) {
                     if (oldMemories.containsKey(relEntry.getKey())) {
-                        actionItems.add(MemoryActionItem.builder()
-                                .id(relEntry.getKey()).content(relEntry.getValue())
+                        actionItems.add(MemoryActionItem.builder().id(relEntry.getKey()).content(relEntry.getValue())
                                 .status(MemoryStatus.DELETE).build());
                     }
                 }
             } else {
                 String newContent = newMemories.getOrDefault(newId, checkItem.getInfoText());
-                actionItems.add(MemoryActionItem.builder()
-                        .id(newId).content(newContent).status(MemoryStatus.ADD).build());
+                actionItems
+                        .add(MemoryActionItem.builder().id(newId).content(newContent).status(MemoryStatus.ADD).build());
             }
         }
 
         // Add unprocessed new memories
         for (Map.Entry<String, String> e : newMemories.entrySet()) {
             if (!processedNewIds.contains(e.getKey())) {
-                actionItems.add(MemoryActionItem.builder()
-                        .id(e.getKey()).content(e.getValue()).status(MemoryStatus.ADD).build());
+                actionItems.add(MemoryActionItem.builder().id(e.getKey()).content(e.getValue()).status(MemoryStatus.ADD)
+                        .build());
             }
         }
 
@@ -156,6 +167,13 @@ public class MemUpdateChecker {
         return new String[]{formatMemoriesInReverseOrder(newMemories), formatMemories(oldMemories)};
     }
 
+    /**
+     * formatMemoriesInReverseOrder.
+     * 
+     * @param memories memories
+     * @return the result
+     * @since 0.1.7
+     */
     private static String formatMemoriesInReverseOrder(Map<String, String> memories) {
         List<Map.Entry<String, String>> entries = new ArrayList<>(memories.entrySet());
         Collections.reverse(entries);
@@ -170,6 +188,13 @@ public class MemUpdateChecker {
         return sb.toString();
     }
 
+    /**
+     * formatMemories.
+     * 
+     * @param memories memories
+     * @return the result
+     * @since 0.1.7
+     */
     private static String formatMemories(Map<String, String> memories) {
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<String, String> e : memories.entrySet()) {
@@ -182,11 +207,25 @@ public class MemUpdateChecker {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * asMap.
+     * 
+     * @param obj obj
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> asMap(Object obj) {
         return (Map<String, Object>) obj;
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * parseCheckItem.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
+     */
     private MemCheckItem parseCheckItem(Map<String, Object> item) {
         String infoId = String.valueOf(item.getOrDefault("info_id", ""));
         String infoText = String.valueOf(item.getOrDefault("info_text", ""));
@@ -200,11 +239,7 @@ public class MemUpdateChecker {
                 relatedInfos.put(e.getKey(), String.valueOf(e.getValue()));
             }
         }
-        return MemCheckItem.builder()
-                .infoId(infoId)
-                .infoText(infoText)
-                .result(result)
-                .relatedInfos(relatedInfos)
+        return MemCheckItem.builder().infoId(infoId).infoText(infoText).result(result).relatedInfos(relatedInfos)
                 .build();
     }
 }

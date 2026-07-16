@@ -12,16 +12,24 @@ import com.openjiuwen.spi.store.query.QueryLanguageRegistry;
  * Call {@link #ensureRegistered()} once during application startup to register
  * the built-in query dialects. This mirrors Python's auto-registration in
  * {@code store/query/__init__.py}.
+ * 
+ * @since 0.1.7
  */
 public final class QueryDialectRegistration {
-
     private static volatile boolean registered = false;
 
+    /**
+     * QueryDialectRegistration.
+     * 
+     * @since 0.1.7
+     */
     private QueryDialectRegistration() {
     }
 
     /**
      * Register built-in query dialect implementations (idempotent).
+     * 
+     * @since 0.1.7
      */
     public static void ensureRegistered() {
         if (!registered) {

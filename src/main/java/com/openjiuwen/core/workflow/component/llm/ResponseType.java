@@ -6,6 +6,8 @@ package com.openjiuwen.core.workflow.component.llm;
 
 /**
  * Questioner response type.
+ * 
+ * @since 0.1.7
  */
 public enum ResponseType {
     REPLY_DIRECTLY("reply_directly");
@@ -17,14 +19,21 @@ public enum ResponseType {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isValid.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isValid(String value) {
         for (ResponseType t : values()) {

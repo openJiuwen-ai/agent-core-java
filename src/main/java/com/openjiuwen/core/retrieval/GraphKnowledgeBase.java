@@ -36,9 +36,10 @@ import java.util.UUID;
 
 /**
  * Knowledge base with optional graph index.
+ * 
+ * @since 0.1.7
  */
 public class GraphKnowledgeBase extends KnowledgeBase {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Retriever chunkRetriever;
@@ -46,34 +47,46 @@ public class GraphKnowledgeBase extends KnowledgeBase {
     private GraphRetriever graphRetriever;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GraphKnowledgeBase.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public GraphKnowledgeBase(KnowledgeBaseConfig config) {
         this(config, null, null, null, null, null, null, null, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GraphKnowledgeBase.
+     * 
+     * @param config config
+     * @param vectorStore vectorStore
+     * @param embedModel embedModel
+     * @param parser parser
+     * @param chunker chunker
+     * @param extractor extractor
+     * @param indexManager indexManager
+     * @param llmClient llmClient
+     * @param chunkRetriever chunkRetriever
+     * @param tripleRetriever tripleRetriever
+     * @since 0.1.7
      */
-    public GraphKnowledgeBase(KnowledgeBaseConfig config,
-                              VectorStore vectorStore,
-                              Embedding embedModel,
-                              Parser parser,
-                              Chunker chunker,
-                              Extractor extractor,
-                              Indexer indexManager,
-                              BaseModelClient llmClient,
-                              Retriever chunkRetriever,
-                              Retriever tripleRetriever) {
+    public GraphKnowledgeBase(KnowledgeBaseConfig config, VectorStore vectorStore, Embedding embedModel, Parser parser,
+            Chunker chunker, Extractor extractor, Indexer indexManager, BaseModelClient llmClient,
+            Retriever chunkRetriever, Retriever tripleRetriever) {
         super(config, vectorStore, embedModel, parser, chunker, extractor, indexManager, llmClient, null);
         this.chunkRetriever = chunkRetriever;
         this.tripleRetriever = tripleRetriever;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addDocuments.
+     * 
+     * @param documents documents
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<String> addDocuments(List<Document> documents) {
         if (chunker == null) {
             throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNKER_NOT_FOUND, "chunker is required");
@@ -92,14 +105,10 @@ public class GraphKnowledgeBase extends KnowledgeBase {
             docIds.add(docId);
         }
         List<TextChunk> chunks = chunker.chunkDocuments(normalized);
-        boolean isChunkBuilt = activeIndexManager.buildIndex(
-                chunks,
-                new IndexConfig(chunkIndexName(), config.getIndexType()),
-                embedModel,
-                Map.of());
+        boolean isChunkBuilt = activeIndexManager.buildIndex(chunks,
+                new IndexConfig(chunkIndexName(), config.getIndexType()), embedModel, Map.of());
         if (!isChunkBuilt) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_KB_CHUNK_INDEX_BUILD_EXECUTION_ERROR,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_CHUNK_INDEX_BUILD_EXECUTION_ERROR,
                     "Failed to build chunk index");
         }
         if (config.isUseGraph()) {
@@ -108,77 +117,65 @@ public class GraphKnowledgeBase extends KnowledgeBase {
                 activeExtractor = new LLMTripleExtractor(llmClient, null);
             }
             if (activeExtractor == null) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_TRIPLE_EXTRACTION_PROCESS_ERROR,
                         "extractor is required when use_graph is enabled");
             }
             List<Triple> triples = activeExtractor.extract(chunks, Map.of());
-            boolean tripleBuilt = activeIndexManager.buildIndex(
-                    tripleChunks(triples),
-                    new IndexConfig(tripleIndexName(), config.getIndexType()),
-                    embedModel,
-                    Map.of());
+            boolean tripleBuilt = activeIndexManager.buildIndex(tripleChunks(triples),
+                    new IndexConfig(tripleIndexName(), config.getIndexType()), embedModel, Map.of());
             if (!tripleBuilt) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_KB_TRIPLE_INDEX_BUILD_EXECUTION_ERROR,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_KB_TRIPLE_INDEX_BUILD_EXECUTION_ERROR,
                         "Failed to build triple index");
             }
         }
         return docIds;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieve.
+     * 
+     * @param query query
+     * @param retrievalConfig retrievalConfig
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<RetrievalResult> retrieve(String query, RetrievalConfig retrievalConfig) {
         RetrievalConfig config = retrievalConfig == null ? new RetrievalConfig() : retrievalConfig;
         boolean useGraph = config.getUseGraph() != null ? config.getUseGraph() : this.config.isUseGraph();
         if (!useGraph) {
-            SimpleKnowledgeBase delegate = new SimpleKnowledgeBase(
-                    this.config,
-                    vectorStore,
-                    embedModel,
-                    parser,
-                    chunker,
-                    indexManager,
-                    llmClient,
-                    chunkRetriever);
+            SimpleKnowledgeBase delegate = new SimpleKnowledgeBase(this.config, vectorStore, embedModel, parser,
+                    chunker, indexManager, llmClient, chunkRetriever);
             return delegate.retrieve(query, config);
         }
-        GraphRetriever graph = graphRetriever != null ? graphRetriever : new GraphRetriever(
-                chunkRetriever,
-                tripleRetriever,
-                vectorStore,
-                embedModel,
-                chunkIndexName(),
-                tripleIndexName());
+        GraphRetriever graph = graphRetriever != null
+                ? graphRetriever
+                : new GraphRetriever(chunkRetriever, tripleRetriever, vectorStore, embedModel, chunkIndexName(),
+                        tripleIndexName());
         graph.setIndexType(this.config.getIndexType());
         graphRetriever = graph;
-        Retriever activeRetriever = config.isAgentic()
-                ? new AgenticRetriever(graph, llmClient)
-                : graph;
+        Retriever activeRetriever = config.isAgentic() ? new AgenticRetriever(graph, llmClient) : graph;
         Map<String, Object> options = new LinkedHashMap<>();
         if (config.getFilters() != null) {
             options.put("filters", config.getFilters());
         }
         options.put("graph_expansion", config.isGraphExpansion());
-        return activeRetriever.retrieve(
-                query,
-                config.getTopK(),
-                config.getScoreThreshold(),
+        return activeRetriever.retrieve(query, config.getTopK(), config.getScoreThreshold(),
                 switch (this.config.getIndexType()) {
                     case "vector" -> "vector";
                     case "bm25" -> "sparse";
                     default -> "hybrid";
-                },
-                options);
+                }, options);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * deleteDocuments.
+     * 
+     * @param docIds docIds
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean deleteDocuments(List<String> docIds) {
         Indexer activeIndexManager = requireIndexManager();
         if (strictValidation && vectorStore != null) {
@@ -194,10 +191,14 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         return deleted;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * updateDocuments.
+     * 
+     * @param documents documents
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<String> updateDocuments(List<Document> documents) {
         if (strictValidation && vectorStore != null) {
             vectorStore.checkVectorField();
@@ -214,10 +215,13 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         return docIds;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getStatistics.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Map<String, Object> getStatistics() {
         Map<String, Object> stats = new LinkedHashMap<>();
         stats.put("kb_id", config.getKbId());
@@ -234,10 +238,12 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         return stats;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void close() {
         closeQuietly(graphRetriever);
         closeQuietly(chunkRetriever);
@@ -245,14 +251,33 @@ public class GraphKnowledgeBase extends KnowledgeBase {
         super.close();
     }
 
+    /**
+     * chunkIndexName.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String chunkIndexName() {
         return "kb_" + config.getKbId() + "_chunks";
     }
 
+    /**
+     * tripleIndexName.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String tripleIndexName() {
         return "kb_" + config.getKbId() + "_triples";
     }
 
+    /**
+     * tripleChunks.
+     * 
+     * @param triples triples
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<TextChunk> tripleChunks(List<Triple> triples) {
         List<TextChunk> chunks = new ArrayList<>();
         for (Triple triple : triples) {
@@ -261,16 +286,19 @@ public class GraphKnowledgeBase extends KnowledgeBase {
             metadata.putIfAbsent("doc_id", metadata.get("doc_id"));
             metadata.putIfAbsent("chunk_id", metadata.get("chunk_id"));
             metadata.put("triple", serializeTriple(triple));
-            chunks.add(new TextChunk(
-                    UUID.randomUUID().toString(),
-                    text,
-                    metadata.get("doc_id") == null ? "" : String.valueOf(metadata.get("doc_id")),
-                    metadata,
-                    null));
+            chunks.add(new TextChunk(UUID.randomUUID().toString(), text,
+                    metadata.get("doc_id") == null ? "" : String.valueOf(metadata.get("doc_id")), metadata, null));
         }
         return chunks;
     }
 
+    /**
+     * serializeTriple.
+     * 
+     * @param triple triple
+     * @return the result
+     * @since 0.1.7
+     */
     private static String serializeTriple(Triple triple) {
         try {
             return MAPPER.writeValueAsString(List.of(triple.getSubject(), triple.getPredicate(), triple.getObject()));
@@ -283,22 +311,31 @@ public class GraphKnowledgeBase extends KnowledgeBase {
 
     /**
      * Perform retrieval on multiple graph knowledge bases, returns text list.
+     * 
+     * @param knowledgeBases knowledgeBases
+     * @param query query
+     * @param config config
+     * @param topK topK
+     * @return the result
+     * @since 0.1.7
      */
-    public static List<String> retrieveMultiGraphKb(List<? extends KnowledgeBase> knowledgeBases,
-                                                     String query,
-                                                     RetrievalConfig config,
-                                                     Integer topK) {
+    public static List<String> retrieveMultiGraphKb(List<? extends KnowledgeBase> knowledgeBases, String query,
+            RetrievalConfig config, Integer topK) {
         return SimpleKnowledgeBase.retrieveMultiKb(knowledgeBases, query, config, topK);
     }
 
     /**
      * Perform retrieval on multiple graph knowledge bases, includes source information.
+     * 
+     * @param knowledgeBases knowledgeBases
+     * @param query query
+     * @param config config
+     * @param topK topK
+     * @return the result
+     * @since 0.1.7
      */
     public static List<MultiKBRetrievalResult> retrieveMultiGraphKbWithSource(
-            List<? extends KnowledgeBase> knowledgeBases,
-            String query,
-            RetrievalConfig config,
-            Integer topK) {
+            List<? extends KnowledgeBase> knowledgeBases, String query, RetrievalConfig config, Integer topK) {
         return SimpleKnowledgeBase.retrieveMultiKbWithSource(knowledgeBases, query, config, topK);
     }
 }

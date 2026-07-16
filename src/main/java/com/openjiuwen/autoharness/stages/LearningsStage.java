@@ -14,6 +14,7 @@ import com.openjiuwen.autoharness.schema.Experience;
 import com.openjiuwen.autoharness.schema.ExperienceType;
 import com.openjiuwen.autoharness.schema.SessionResultsArtifact;
 import com.openjiuwen.autoharness.schema.StageResult;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,63 +27,64 @@ import java.util.Map;
 
 /**
  * Public class LearningsStage used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class LearningsStage extends SessionStage {
     private static final Logger LOG = LoggerFactory.getLogger(LearningsStage.class);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String name() {
         return "learnings";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * description.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String description() {
         return "Record learnings after a session.";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * consumes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<String> consumes() {
         return List.of("session_results");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * produces.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<String> produces() {
         return List.of("session_results");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * run.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public StageResult run(BaseExecutionContext ctx) {
         List<Object> events = stream(ctx);
         for (int index = events.size() - 1; index >= 0; index--) {
@@ -90,19 +92,17 @@ public class LearningsStage extends SessionStage {
                 return result;
             }
         }
-        return StageResult.builder()
-                .status("failed")
-                .error("learnings stage did not return StageResult")
-                .build();
+        return StageResult.builder().status("failed").error("learnings stage did not return StageResult").build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Object> stream(BaseExecutionContext ctx) {
         List<CycleResult> results = sessionResults(ctx);
         List<Object> events = new ArrayList<>();
@@ -110,15 +110,17 @@ public class LearningsStage extends SessionStage {
             events.addAll(runLearningsInternal(sessionContext, results));
         }
         events.add(StageResult.builder()
-                .artifacts(Map.of("session_results", SessionResultsArtifact.builder()
-                        .results(results)
-                        .build()))
+                .artifacts(Map.of("session_results", SessionResultsArtifact.builder().results(results).build()))
                 .build());
         return events;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildResultsText.
+     * 
+     * @param results results
+     * @return the result
+     * @since 0.1.7
      */
     public static String buildResultsText(List<CycleResult> results) {
         if (results == null || results.isEmpty()) {
@@ -133,7 +135,11 @@ public class LearningsStage extends SessionStage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildExistingMemoriesText.
+     * 
+     * @param recent recent
+     * @return the result
+     * @since 0.1.7
      */
     public static String buildExistingMemoriesText(List<Experience> recent) {
         if (recent == null || recent.isEmpty()) {
@@ -148,33 +154,46 @@ public class LearningsStage extends SessionStage {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildQuery.
+     * 
+     * @param resultsText resultsText
+     * @param existingText existingText
+     * @return the result
+     * @since 0.1.7
      */
     public static String buildQuery(String resultsText, String existingText) {
-        return "本次 session 结果:\n" + value(resultsText) + "\n\n"
-                + "已有经验:\n" + value(existingText) + "\n";
+        return "本次 session 结果:\n" + value(resultsText) + "\n\n" + "已有经验:\n" + value(existingText) + "\n";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * recordLearnings.
+     * 
+     * @param output output
+     * @param store store
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public static int recordLearnings(String output, ExperienceStore store) throws IOException {
         int count = 0;
         for (Map<String, Object> learning : Parsers.parseLearnings(output)) {
             String type = String.valueOf(learning.getOrDefault("type", "insight"));
-            store.record(Experience.builder()
-                    .type(parseExperienceType(type))
+            store.record(Experience.builder().type(parseExperienceType(type))
                     .topic(String.valueOf(learning.getOrDefault("topic", "")))
                     .summary(String.valueOf(learning.getOrDefault("summary", "")))
-                    .details(String.valueOf(learning.getOrDefault("details", "")))
-                    .build());
+                    .details(String.valueOf(learning.getOrDefault("details", ""))).build());
             count++;
         }
         return count;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runLearnings.
+     * 
+     * @param ctx ctx
+     * @param results results
+     * @return the result
+     * @since 0.1.7
      */
     public static List<Object> runLearnings(SessionContext ctx, List<CycleResult> results) {
         if (ctx == null || results == null || results.isEmpty()) {
@@ -184,15 +203,20 @@ public class LearningsStage extends SessionStage {
         return stage.runLearningsInternal(ctx, results);
     }
 
+    /**
+     * runLearningsInternal.
+     * 
+     * @param ctx ctx
+     * @param results results
+     * @return the result
+     * @since 0.1.7
+     */
     private List<Object> runLearningsInternal(SessionContext ctx, List<CycleResult> results) {
         try {
             String resultsText = buildResultsText(results);
             String existingText = buildExistingMemoriesText(ctx.getOrchestrator().getExperienceStore().listRecent(10));
-            Object agent = AutoHarnessFactory.createLearningsAgent(
-                    ctx.getOrchestrator().getConfig(),
-                    resultsText,
-                    existingText
-            );
+            Object agent =
+                AutoHarnessFactory.createLearningsAgent(ctx.getOrchestrator().getConfig(), resultsText, existingText);
             String query = buildQuery(resultsText, existingText);
             List<Object> events = new ArrayList<>();
             String output = "";
@@ -209,6 +233,13 @@ public class LearningsStage extends SessionStage {
         }
     }
 
+    /**
+     * sessionResults.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<CycleResult> sessionResults(BaseExecutionContext ctx) {
         if (ctx == null) {
             return List.of();
@@ -223,6 +254,13 @@ public class LearningsStage extends SessionStage {
         return List.of();
     }
 
+    /**
+     * parseExperienceType.
+     * 
+     * @param type type
+     * @return the result
+     * @since 0.1.7
+     */
     private static ExperienceType parseExperienceType(String type) {
         if (type == null || type.isBlank()) {
             return ExperienceType.INSIGHT;
@@ -234,10 +272,26 @@ public class LearningsStage extends SessionStage {
         }
     }
 
+    /**
+     * typeValue.
+     * 
+     * @param type type
+     * @return the result
+     * @since 0.1.7
+     */
     private static String typeValue(ExperienceType type) {
         return type == null ? "insight" : type.name().toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * firstText.
+     * 
+     * @param first first
+     * @param second second
+     * @param fallback fallback
+     * @return the result
+     * @since 0.1.7
+     */
     private static String firstText(String first, String second, String fallback) {
         if (first != null && !first.isBlank()) {
             return first;
@@ -248,18 +302,31 @@ public class LearningsStage extends SessionStage {
         return fallback;
     }
 
+    /**
+     * value.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String value(String value) {
         return value == null ? "" : value;
     }
 
+    /**
+     * streamAgent.
+     * 
+     * @param agent agent
+     * @param query query
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Object> streamAgent(Object agent, String query) {
         if (agent == null) {
             return List.of();
         }
         try {
-            Object stream = agent.getClass()
-                    .getMethod("stream", Map.class)
-                    .invoke(agent, Map.of("query", query));
+            Object stream = agent.getClass().getMethod("stream", Map.class).invoke(agent, Map.of("query", query));
             if (stream instanceof Iterator<?> iterator) {
                 List<Object> events = new ArrayList<>();
                 while (iterator.hasNext()) {

@@ -22,25 +22,33 @@ import java.util.Map;
  * <p>
  * Design principles (aligned with BaseAgent):
  * <ul>
- *   <li>Card is required (defines what the Group is)</li>
- *   <li>Config is optional (defines how the Group runs)</li>
- *   <li>All configuration methods support chaining</li>
+ * <li>Card is required (defines what the Group is)</li>
+ * <li>Config is optional (defines how the Group runs)</li>
+ * <li>All configuration methods support chaining</li>
  * </ul>
  * <p>
  * Mirrors Python's {@code BaseGroup} in {@code multi_agent/group.py}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseGroup {
-
     private final GroupCard card;
     private GroupConfig config;
     private final String groupId;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, BaseAgent> agents = new LinkedHashMap<>();
 
     /**
      * Initialize the agent group.
-     *
-     * @param card   GroupCard defining group identity (required)
+     * 
+     * @param card GroupCard defining group identity (required)
      * @param config GroupConfig for runtime settings (optional)
+     * @since 0.1.7
      */
     protected BaseGroup(GroupCard card, GroupConfig config) {
         this.card = card;
@@ -49,23 +57,31 @@ public abstract class BaseGroup {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseGroup.
+     * 
+     * @param card card
+     * @since 0.1.7
      */
     protected BaseGroup(GroupCard card) {
         this(card, null);
     }
 
+    /**
+     * createDefaultConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private GroupConfig createDefaultConfig() {
         return new GroupConfig();
     }
 
-    // ========== Configuration ==========
-
     /**
      * Set configuration (supports chaining).
-     *
+     * 
      * @param config GroupConfig instance
      * @return this group
+     * @since 0.1.7
      */
     public BaseGroup configure(GroupConfig config) {
         this.config = config;
@@ -76,36 +92,30 @@ public abstract class BaseGroup {
 
     /**
      * Register agent to group (supports chaining).
-     *
-     * @param agent   Agent instance (must have card with name)
+     * 
+     * @param agent Agent instance (must have card with name)
      * @param agentId optional custom ID (defaults to agent.card.name)
      * @return this group
-     * @throws com.openjiuwen.core.common.exception.BaseError if agent ID already exists or max reached
+     * @since 0.1.7
      */
     public BaseGroup addAgent(BaseAgent agent, String agentId) {
         if (agentId == null) {
             if (agent.getCard() != null && agent.getCard().getName() != null) {
                 agentId = agent.getCard().getName();
             } else {
-                throw ErrorHelper.buildError(
-                        StatusCode.AGENT_GROUP_ADD_RUNTIME_ERROR,
-                        "error_msg", "Agent must have card.name or provide agentId"
-                );
+                throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_ADD_RUNTIME_ERROR, "error_msg",
+                        "Agent must have card.name or provide agentId");
             }
         }
 
         if (agents.containsKey(agentId)) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_GROUP_ADD_RUNTIME_ERROR,
-                    "error_msg", "Agent ID '" + agentId + "' already exists"
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_ADD_RUNTIME_ERROR, "error_msg",
+                    "Agent ID '" + agentId + "' already exists");
         }
 
         if (getAgentCount() >= config.getMaxAgents()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_GROUP_ADD_RUNTIME_ERROR,
-                    "error_msg", "Agent count exceeds max_agents (" + config.getMaxAgents() + ")"
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_ADD_RUNTIME_ERROR, "error_msg",
+                    "Agent count exceeds max_agents (" + config.getMaxAgents() + ")");
         }
 
         agents.put(agentId, agent);
@@ -120,16 +130,12 @@ public abstract class BaseGroup {
             if (controller != null) {
                 var setGroupMethod = controller.getClass().getMethod("setGroup", BaseGroup.class);
                 setGroupMethod.invoke(controller, this);
-                Loggers.MULTI_AGENT.debug(
-                        "BaseGroup: Auto-injected group reference to agent '{}' controller", agentId
-                );
+                Loggers.MULTI_AGENT.debug("BaseGroup: Auto-injected group reference to agent '{}' controller", agentId);
             }
         } catch (NoSuchMethodException e) {
             // Controller doesn't have setGroup — that's fine
         } catch (Exception e) {
-            Loggers.MULTI_AGENT.debug(
-                    "BaseGroup: Could not auto-inject group reference for agent '{}'", agentId
-            );
+            Loggers.MULTI_AGENT.debug("BaseGroup: Could not auto-inject group reference for agent '{}'", agentId);
         }
 
         return this;
@@ -137,9 +143,10 @@ public abstract class BaseGroup {
 
     /**
      * Register agent to group using agent's card name as ID.
-     *
+     * 
      * @param agent Agent instance
      * @return this group
+     * @since 0.1.7
      */
     public BaseGroup addAgent(BaseAgent agent) {
         return addAgent(agent, null);
@@ -147,9 +154,10 @@ public abstract class BaseGroup {
 
     /**
      * Remove agent from group (supports chaining).
-     *
+     * 
      * @param agentId Agent ID string
      * @return this group
+     * @since 0.1.7
      */
     public BaseGroup removeAgent(String agentId) {
         BaseAgent agent = agents.remove(agentId);
@@ -162,9 +170,10 @@ public abstract class BaseGroup {
 
     /**
      * Remove agent from group by instance (supports chaining).
-     *
+     * 
      * @param agent Agent instance
      * @return this group
+     * @since 0.1.7
      */
     public BaseGroup removeAgent(BaseAgent agent) {
         if (agent.getCard() != null && agent.getCard().getName() != null) {
@@ -176,9 +185,10 @@ public abstract class BaseGroup {
 
     /**
      * Get agent by ID.
-     *
+     * 
      * @param agentId Agent ID
      * @return Agent instance or null if not found
+     * @since 0.1.7
      */
     public BaseAgent getAgent(String agentId) {
         return agents.get(agentId);
@@ -186,8 +196,9 @@ public abstract class BaseGroup {
 
     /**
      * Get the number of agents in the group.
-     *
+     * 
      * @return agent count
+     * @since 0.1.7
      */
     public int getAgentCount() {
         return agents.size();
@@ -195,38 +206,49 @@ public abstract class BaseGroup {
 
     /**
      * List all agent IDs.
-     *
+     * 
      * @return list of agent IDs
+     * @since 0.1.7
      */
     public List<String> listAgents() {
         return new ArrayList<>(agents.keySet());
     }
 
-    // ========== Accessors ==========
-
     /**
-     * Auto-generated for codecheck compliance.
+     * getCard.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public GroupCard getCard() {
         return card;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public GroupConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getGroupId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getGroupId() {
         return groupId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgents.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, BaseAgent> getAgents() {
         return agents;
@@ -236,19 +258,21 @@ public abstract class BaseGroup {
 
     /**
      * Execute synchronous operation on the agent group.
-     *
+     * 
      * @param message message object or map
      * @param session agent group session (nullable)
      * @return the collective output from the agent group
+     * @since 0.1.7
      */
     public abstract Object invoke(Object message, AgentGroupSessionApi session);
 
     /**
      * Execute streaming operation on the agent group.
-     *
+     * 
      * @param message message object or map
      * @param session agent group session (nullable)
      * @return iterator of streaming output
+     * @since 0.1.7
      */
     public abstract Iterator<Object> stream(Object message, AgentGroupSessionApi session);
 }

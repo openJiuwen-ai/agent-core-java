@@ -18,12 +18,13 @@ import java.util.Optional;
 
 /**
  * Default evaluator using an LLM to judge predictions.
- *
- * <p>Mirrors Python's {@code DefaultEvaluator} in
+ * <p>
+ * Mirrors Python's {@code DefaultEvaluator} in
  * {@code openjiuwen.dev_tools.tune.evaluator.evaluator}.
+ * 
+ * @since 0.1.7
  */
 public class DefaultEvaluator extends BaseEvaluator {
-
     private final Model model;
     private final PromptTemplate metricTemplate;
     private final ModelRequestConfig modelConfig;
@@ -31,11 +32,14 @@ public class DefaultEvaluator extends BaseEvaluator {
     private final String metric;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DefaultEvaluator.
+     * 
+     * @param modelConfig modelConfig
+     * @param modelClientConfig modelClientConfig
+     * @param metric metric
+     * @since 0.1.7
      */
-    public DefaultEvaluator(ModelRequestConfig modelConfig,
-                            ModelClientConfig modelClientConfig,
-                            String metric) {
+    public DefaultEvaluator(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig, String metric) {
         this.modelConfig = modelConfig;
         this.modelClientConfig = modelClientConfig;
         this.metric = metric != null ? metric : "";
@@ -44,55 +48,68 @@ public class DefaultEvaluator extends BaseEvaluator {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * DefaultEvaluator.
+     * 
+     * @param modelConfig modelConfig
+     * @param modelClientConfig modelClientConfig
+     * @since 0.1.7
      */
     public DefaultEvaluator(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig) {
         this(modelConfig, modelClientConfig, "");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ModelRequestConfig getModelConfig() {
         return modelConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelClientConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ModelClientConfig getModelClientConfig() {
         return modelClientConfig;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetric.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getMetric() {
         return metric;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * evaluate.
+     * 
+     * @param case_ case_
+     * @param predict predict
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public EvaluatedCase evaluate(Case case_, Map<String, Object> predict) {
-        EvaluatedCase evaluatedCase = EvaluatedCase.builder()
-                .case_(case_)
-                .answer(predict)
-                .score(0.0f)
-                .reason("")
-                .build();
+        EvaluatedCase evaluatedCase =
+            EvaluatedCase.builder().case_(case_).answer(predict).score(0.0f).reason("").build();
 
         try {
-            var messages = metricTemplate.format(Map.of(
-                    "question", String.valueOf(case_.getInputs()),
-                    "expected_answer", String.valueOf(case_.getLabel()),
-                    "model_answer", String.valueOf(predict)
-            )).toMessages();
+            var messages =
+                metricTemplate
+                        .format(Map.of("question", String.valueOf(case_.getInputs()), "expected_answer",
+                                String.valueOf(case_.getLabel()), "model_answer", String.valueOf(predict)))
+                        .toMessages();
             AssistantMessage response = model.invoke(messages, null, null, null, null, null, null, null, null, null);
-            Optional<Map<String, Object>> evaluatedResult = TuneUtils.parseJsonFromLlmResponse(
-                    response != null ? response.getContentAsString() : ""
-            );
+            Optional<Map<String, Object>> evaluatedResult =
+                TuneUtils.parseJsonFromLlmResponse(response != null ? response.getContentAsString() : "");
 
             if (evaluatedResult.isEmpty()) {
                 evaluatedCase.setReason("Failed to evaluate case due to parsing error");
@@ -112,10 +129,15 @@ public class DefaultEvaluator extends BaseEvaluator {
         return evaluatedCase;
     }
 
+    /**
+     * buildMetricTemplate.
+     * 
+     * @param metric metric
+     * @return the result
+     * @since 0.1.7
+     */
     private PromptTemplate buildMetricTemplate(String metric) {
-        return PromptTemplate.builder()
-                .content(METRIC_TEMPLATE.formatted(metric))
-                .build();
+        return PromptTemplate.builder().content(METRIC_TEMPLATE.formatted(metric)).build();
     }
 
     private static final String METRIC_TEMPLATE = """

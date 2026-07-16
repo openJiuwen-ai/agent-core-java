@@ -7,26 +7,32 @@ package com.openjiuwen.agentevolving.evaluator;
 import com.openjiuwen.agentevolving.dataset.Case;
 import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
 import com.openjiuwen.agentevolving.evaluator.metrics.Metric;
-import com.openjiuwen.agentevolving.TuneUtils;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Evaluates using one or more Metrics with aggregation.
- *
- * <p>Supports per-metric breakdown and configurable aggregation (mean, first).
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.evaluator.evaluator.MetricEvaluator}.
+ * <p>
+ * Supports per-metric breakdown and configurable aggregation (mean, first).
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.evaluator.evaluator.MetricEvaluator}.
+ * 
+ * @since 0.1.7
  */
 public class MetricEvaluator extends BaseEvaluator {
-
     private final List<Metric> metrics;
     private final String aggregate;
 
     /**
      * Create with single metric.
-     *
+     * 
      * @param metric Metric instance
+     * @since 0.1.7
      */
     public MetricEvaluator(Metric metric) {
         this(Collections.singletonList(metric), "mean");
@@ -34,24 +40,27 @@ public class MetricEvaluator extends BaseEvaluator {
 
     /**
      * Create with multiple metrics.
-     *
-     * @param metrics   List of metrics
+     * 
+     * @param metrics List of metrics
      * @param aggregate Aggregation method ("mean" or "first")
+     * @since 0.1.7
      */
     public MetricEvaluator(List<Metric> metrics, String aggregate) {
         this.metrics = metrics != null ? metrics : new ArrayList<>();
         this.aggregate = aggregate != null ? aggregate : "mean";
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * evaluate.
+     * 
+     * @param caseData caseData
+     * @param predict predict
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public EvaluatedCase evaluate(Case caseData, Map<String, Object> predict) {
-        EvaluatedCase evaluated = EvaluatedCase.builder()
-                .caseData(caseData)
-                .answer(predict)
-                .build();
+        EvaluatedCase evaluated = EvaluatedCase.builder().caseData(caseData).answer(predict).build();
 
         Map<String, Double> perMetric = new LinkedHashMap<>();
         List<Double> scores = new ArrayList<>();
@@ -83,19 +92,34 @@ public class MetricEvaluator extends BaseEvaluator {
         return evaluated;
     }
 
+    /**
+     * safeConvert.
+     * 
+     * @param num num
+     * @return the result
+     * @since 0.1.7
+     */
     private double safeConvert(Object num) {
         if (num instanceof Number) {
             return ((Number) num).doubleValue();
         }
         try {
             return Double.parseDouble(String.valueOf(num));
-        } catch (Exception e) {
+        } catch (NumberFormatException e) {
             java.util.logging.Logger.getLogger(MetricEvaluator.class.getName())
                     .warning("Could not convert metric value " + num + " to double");
             return 0.0;
         }
     }
 
+    /**
+     * aggScore.
+     * 
+     * @param results results
+     * @param aggregate aggregate
+     * @return the result
+     * @since 0.1.7
+     */
     private double aggScore(List<Double> results, String aggregate) {
         if (results == null || results.isEmpty()) {
             return 0.0;

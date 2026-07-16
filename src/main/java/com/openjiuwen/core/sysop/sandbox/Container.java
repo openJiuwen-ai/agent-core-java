@@ -11,17 +11,18 @@ import lombok.NoArgsConstructor;
 
 /**
  * Durable descriptor for a Java fallback sandbox instance.
- *
- * <p>Mirrors the role of Python's launched-sandbox descriptor: a stable handle
+ * <p>
+ * Mirrors the role of Python's launched-sandbox descriptor: a stable handle
  * that higher layers can persist and use for pause/resume/delete style flows
  * once deeper lifecycle management is added.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class Container {
-    /** Stable logical key used by the manager cache. */
     private String key;
 
     /** Sandbox root or base URL, depending on the runtime model. */

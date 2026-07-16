@@ -22,9 +22,10 @@ import java.util.Set;
  * synchronous rendering and streaming output.
  * <p>
  * Mirrors Python's {@code TemplateProcessor} from {@code end_comp.py}.
+ * 
+ * @since 0.1.7
  */
 public class TemplateProcessor {
-
     private final String template;
     private final List<String> segments;
     private final Set<Integer> variablePositions;
@@ -34,7 +35,10 @@ public class TemplateProcessor {
     private int count;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TemplateProcessor.
+     * 
+     * @param template template
+     * @since 0.1.7
      */
     public TemplateProcessor(String template) {
         this.template = template;
@@ -55,7 +59,10 @@ public class TemplateProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDataSourceCount.
+     * 
+     * @param dataSourceCount dataSourceCount
+     * @since 0.1.7
      */
     public void setDataSourceCount(int dataSourceCount) {
         this.dataSourceCount = dataSourceCount;
@@ -63,19 +70,32 @@ public class TemplateProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * currentPosition.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int currentPosition() {
         return currentPosition;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCurrentSegment.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCurrentSegment() {
         return getSegment(currentPosition);
     }
 
+    /**
+     * getSegment.
+     * 
+     * @param pos pos
+     * @return the result
+     * @since 0.1.7
+     */
     private String getSegment(int pos) {
         if (pos >= segments.size()) {
             return "";
@@ -84,14 +104,20 @@ public class TemplateProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * shouldRender.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean shouldRender() {
         return variablePositions.contains(currentPosition);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * advancePosition.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int advancePosition() {
         currentPosition++;
@@ -100,6 +126,10 @@ public class TemplateProcessor {
 
     /**
      * Render the entire template with the given inputs (synchronous).
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     public String render(Map<String, Object> inputs) {
         return TemplateUtils.renderTemplate(template, inputs);
@@ -107,6 +137,8 @@ public class TemplateProcessor {
 
     /**
      * Reset position and counters.
+     * 
+     * @since 0.1.7
      */
     public void reset() {
         if (currentPosition != 0) {
@@ -117,7 +149,10 @@ public class TemplateProcessor {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isFinished.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isFinished() {
         return currentPosition >= segments.size();
@@ -129,6 +164,11 @@ public class TemplateProcessor {
      * <p>
      * Mirrors Python's {@code TemplateProcessor.render_stream(inputs, session, timeout)}.
      * In Java the iteration is synchronous via an {@link Iterator}.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     public Iterator<Map<String, Object>> renderStream(Map<String, Object> inputs, NodeSessionApi session) {
         List<Map<String, Object>> frames = new ArrayList<>();
@@ -175,6 +215,13 @@ public class TemplateProcessor {
         return frames.iterator();
     }
 
+    /**
+     * needRender.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean needRender(Object inputs) {
         if (!(inputs instanceof Map)) {
             return false;

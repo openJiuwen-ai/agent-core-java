@@ -16,7 +16,7 @@ import java.util.Map;
 
 /**
  * Request payload describing a pending tool interruption.
- *
+ * 
  * @since 0.1.7
  */
 @Data
@@ -30,9 +30,21 @@ public class InterruptRequest implements Serializable {
     private String message;
 
     @Builder.Default
+    /**
+     * Object>.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> context = new LinkedHashMap<String, Object>();
 
     @Builder.Default
+    /**
+     * Object>.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> payloadSchema = new LinkedHashMap<String, Object>();
 
     private String autoConfirmKey;

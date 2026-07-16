@@ -29,17 +29,36 @@ import java.util.function.Function;
 
 /**
  * MQ-based server adapter for distributed-runner requests.
+ * 
+ * @since 0.1.7
  */
 public class MqServerAdapter {
-
     private static final Logger logger = LoggerFactory.getLogger(MqServerAdapter.class);
 
     private final String adapterId;
     private final String topic;
     private final Function<Map<String, Object>, Object> invokeHandler;
     private final Function<Map<String, Object>, Iterator<Object>> streamHandler;
+
+    /**
+     * Executors.newCachedThreadPool.
+     * 
+     * @since 0.1.7
+     */
     private final ExecutorService executor = Executors.newCachedThreadPool();
+
+    /**
+     * Executors.newSingleThreadScheduledExecutor.
+     * 
+     * @since 0.1.7
+     */
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, MessageTask> runningTasks = new ConcurrentHashMap<>();
 
     private MessageQueueBase mq;
@@ -47,12 +66,16 @@ public class MqServerAdapter {
     private boolean active;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * MqServerAdapter.
+     * 
+     * @param adapterId adapterId
+     * @param topic topic
+     * @param invokeHandler invokeHandler
+     * @param streamHandler streamHandler
+     * @since 0.1.7
      */
-    public MqServerAdapter(String adapterId,
-                           String topic,
-                           Function<Map<String, Object>, Object> invokeHandler,
-                           Function<Map<String, Object>, Iterator<Object>> streamHandler) {
+    public MqServerAdapter(String adapterId, String topic, Function<Map<String, Object>, Object> invokeHandler,
+            Function<Map<String, Object>, Iterator<Object>> streamHandler) {
         this.adapterId = adapterId;
         this.topic = topic;
         this.invokeHandler = invokeHandler;
@@ -60,7 +83,9 @@ public class MqServerAdapter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * start.
+     * 
+     * @since 0.1.7
      */
     public void start() {
         if (active) {
@@ -81,7 +106,9 @@ public class MqServerAdapter {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stop.
+     * 
+     * @since 0.1.7
      */
     public void stop() {
         logger.info("[{}] Stopping adapter...", adapterId);
@@ -106,6 +133,12 @@ public class MqServerAdapter {
         logger.info("[{}] Adapter stopped", adapterId);
     }
 
+    /**
+     * handleMessage.
+     * 
+     * @param message message
+     * @since 0.1.7
+     */
     private void handleMessage(DmqRequestMessage message) {
         String msgId = message.getMessageId();
         logger.info("[{}] Received message {}, type={}", adapterId, msgId, message.getType());
@@ -136,19 +169,23 @@ public class MqServerAdapter {
         if (message.getExpireAt() != null) {
             double delay = message.getExpireAt() - (System.currentTimeMillis() / 1000.0);
             if (delay > 0) {
-                scheduler.schedule(() -> timeoutCancel(msgId),
-                        (long) (delay * 1000), TimeUnit.MILLISECONDS);
+                scheduler.schedule(() -> timeoutCancel(msgId), (long) (delay * 1000), TimeUnit.MILLISECONDS);
             }
         }
         logger.info("[{}] Submitted task message_id={}", adapterId, msgId);
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * processMessage.
+     * 
+     * @param message message
+     * @since 0.1.7
+     */
     private void processMessage(DmqRequestMessage message) {
         try {
-            Map<String, Object> payload = message.getBody() instanceof Map<?, ?> map
-                    ? (Map<String, Object>) map
-                    : java.util.Map.of();
+            Map<String, Object> payload =
+                message.getBody() instanceof Map<?, ?> map ? (Map<String, Object>) map : java.util.Map.of();
             if (message.isEnableStream()) {
                 int seq = 0;
                 Iterator<Object> iterator = streamHandler.apply(payload);
@@ -156,8 +193,7 @@ public class MqServerAdapter {
                     mq.produceMessage(message.getReplyTopic(),
                             MqMessageUtils.buildStreamResponse(message, adapterId, iterator.next(), seq++, false));
                 }
-                mq.produceMessage(message.getReplyTopic(),
-                        MqMessageUtils.buildFinalResponse(message, adapterId, seq));
+                mq.produceMessage(message.getReplyTopic(), MqMessageUtils.buildFinalResponse(message, adapterId, seq));
             } else {
                 Object result = invokeHandler.apply(payload);
                 mq.produceMessage(message.getReplyTopic(),
@@ -168,17 +204,22 @@ public class MqServerAdapter {
         } catch (Exception e) {
             logger.error("[{}] Task {} error: {}", adapterId, message.getMessageId(), e.getMessage(), e);
             try {
-                mq.produceMessage(message.getReplyTopic(),
-                        MqMessageUtils.buildErrorResponse(message, adapterId, e));
+                mq.produceMessage(message.getReplyTopic(), MqMessageUtils.buildErrorResponse(message, adapterId, e));
             } catch (Exception ex) {
-                logger.error("[{}] Failed to send error response for {}: {}",
-                        adapterId, message.getMessageId(), ex.getMessage());
+                logger.error("[{}] Failed to send error response for {}: {}", adapterId, message.getMessageId(),
+                        ex.getMessage());
             }
         } finally {
             runningTasks.remove(message.getMessageId());
         }
     }
 
+    /**
+     * timeoutCancel.
+     * 
+     * @param msgId msgId
+     * @since 0.1.7
+     */
     private void timeoutCancel(String msgId) {
         MessageTask msgTask = runningTasks.get(msgId);
         if (msgTask == null) {
@@ -193,6 +234,10 @@ public class MqServerAdapter {
     /**
      * Cancel a running task. If innerCancel is true, sends an error response
      * back to the client indicating the task was cancelled by the adapter.
+     * 
+     * @param msgId msgId
+     * @param innerCancel innerCancel
+     * @since 0.1.7
      */
     private void cancelTask(String msgId, boolean innerCancel) {
         MessageTask msgTask = runningTasks.remove(msgId);
@@ -206,15 +251,13 @@ public class MqServerAdapter {
         if (innerCancel) {
             logger.info("[{}] Sending cancellation error response for task {}", adapterId, msgId);
             try {
-                Exception err = ErrorHelper.buildError(
-                        StatusCode.MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR,
+                Exception err = ErrorHelper.buildError(StatusCode.MESSAGE_QUEUE_MESSAGE_PROCESS_EXECUTION_ERROR,
                         "reason", "Task cancelled by adapter stop (" + adapterId + ")");
                 mq.produceMessage(msgTask.getMessage().getReplyTopic(),
                         MqMessageUtils.buildErrorResponse(msgTask.getMessage(), adapterId, err));
                 logger.info("[{}] Sent cancellation error response for task {}", adapterId, msgId);
             } catch (Exception e) {
-                logger.warn("[{}] Failed to send cancel error for task {}: {}",
-                        adapterId, msgId, e.getMessage());
+                logger.warn("[{}] Failed to send cancel error for task {}: {}", adapterId, msgId, e.getMessage());
             }
         }
     }

@@ -10,48 +10,74 @@ import com.openjiuwen.autoharness.schema.StageResult;
 import java.util.List;
 
 /**
- * Auto-generated for codecheck compliance.
+ * BaseStage.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseStage {
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public abstract String name();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * description.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public abstract String description();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * consumes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> consumes() {
         return List.of();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * produces.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> produces() {
         return List.of();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * scope.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String scope() {
         return "session";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * run.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     public StageResult run(BaseExecutionContext ctx) {
         return StageResult.builder().build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * stream.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> stream(BaseExecutionContext ctx) {
         return List.of(run(ctx));

@@ -1,7 +1,10 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.session.tracer;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -12,8 +15,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for tracer subsystem: {@link Tracer}, {@link SpanManager}, {@link Span},
  * {@link TraceAgentSpan}, {@link TraceWorkflowSpan}.
@@ -21,13 +22,10 @@ import static org.junit.jupiter.api.Assertions.*;
  * Ported from Python's tracer test files.
  */
 class TracerTest {
-
     // ---------- Span tests ----------
-
     @Nested
     @DisplayName("Span")
     class SpanTests {
-
         @Test
         @DisplayName("span basic construction")
         void testSpanConstruction() {
@@ -42,11 +40,7 @@ class TracerTest {
         void testSpanUpdate() {
             Span span = new Span("trace-1", "invoke-1", null);
             LocalDateTime now = LocalDateTime.now();
-            span.update(Map.of(
-                    "startTime", now,
-                    "status", "running",
-                    "inputs", Map.of("key", "value")
-            ));
+            span.update(Map.of("startTime", now, "status", "running", "inputs", Map.of("key", "value")));
             assertEquals(now, span.getStartTime());
             assertEquals("running", span.getStatus());
             assertEquals(Map.of("key", "value"), span.getInputs());
@@ -85,7 +79,6 @@ class TracerTest {
     @Nested
     @DisplayName("TraceAgentSpan")
     class AgentSpanTests {
-
         @Test
         @DisplayName("agent span construction with parent")
         void testAgentSpanConstruction() {
@@ -134,7 +127,6 @@ class TracerTest {
     @Nested
     @DisplayName("TraceWorkflowSpan")
     class WorkflowSpanTests {
-
         @Test
         @DisplayName("workflow span construction")
         void testWorkflowSpanConstruction() {
@@ -158,11 +150,7 @@ class TracerTest {
         @DisplayName("workflow span setField - workflowId, version, name")
         void testWorkflowSpanWorkflowInfo() {
             TraceWorkflowSpan span = new TraceWorkflowSpan();
-            span.update(Map.of(
-                    "workflowId", "wf-1",
-                    "workflowVersion", "1.0",
-                    "workflowName", "test workflow"
-            ));
+            span.update(Map.of("workflowId", "wf-1", "workflowVersion", "1.0", "workflowName", "test workflow"));
             assertEquals("wf-1", span.getWorkflowId());
             assertEquals("1.0", span.getWorkflowVersion());
             assertEquals("test workflow", span.getWorkflowName());
@@ -210,7 +198,6 @@ class TracerTest {
     @Nested
     @DisplayName("SpanManager")
     class SpanManagerTests {
-
         private SpanManager manager;
 
         @BeforeEach
@@ -309,7 +296,6 @@ class TracerTest {
     @Nested
     @DisplayName("Tracer")
     class TracerTests {
-
         @Test
         @DisplayName("tracer initialization")
         void testTracerInit() {
@@ -341,11 +327,11 @@ class TracerTest {
         void testRegisterWorkflowSpanManager() {
             Tracer tracer = new Tracer();
             com.openjiuwen.core.session.stream.StreamEmitter emitter =
-                    new com.openjiuwen.core.session.stream.StreamEmitter();
+                new com.openjiuwen.core.session.stream.StreamEmitter();
             com.openjiuwen.core.session.stream.StreamWriterManager swm =
-                    new com.openjiuwen.core.session.stream.StreamWriterManager(emitter);
+                new com.openjiuwen.core.session.stream.StreamWriterManager(emitter);
             com.openjiuwen.core.session.callback.CallbackManager cbm =
-                    new com.openjiuwen.core.session.callback.CallbackManager();
+                new com.openjiuwen.core.session.callback.CallbackManager();
             tracer.init(swm, cbm);
 
             tracer.registerWorkflowSpanManager("parent-node-1");

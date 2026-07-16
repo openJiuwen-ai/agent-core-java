@@ -13,7 +13,6 @@ import java.util.Map;
  * Mirrors Python tools/locales/en.py.
  */
 final class ToolStringsEn {
-
     static final Map<String, String> STRINGS;
 
     static {
@@ -61,12 +60,18 @@ final class ToolStringsEn {
         s.put("send_message.summary", "Message summary (optional)");
         s.put("enter_worktree.name", "Worktree name/tag (alphanumeric with separators, length<=64)");
         s.put("exit_worktree.action", "keep (retain worktree for later) or remove (delete worktree and branch)");
-        s.put("exit_worktree.discard_changes", "Only when action=remove: true=discard uncommitted changes and force delete");
+        s.put("exit_worktree.discard_changes",
+                "Only when action=remove: true=discard uncommitted changes and force delete");
         s.put("workspace_meta.action", "Action type (list/review/stats etc.)");
         s.put("workspace_meta.path", "Relative path to file/directory");
         STRINGS = Collections.unmodifiableMap(s);
     }
 
+    /**
+     * ToolStringsEn.
+     * 
+     * @since 0.1.7
+     */
     private ToolStringsEn() {
     }
 }

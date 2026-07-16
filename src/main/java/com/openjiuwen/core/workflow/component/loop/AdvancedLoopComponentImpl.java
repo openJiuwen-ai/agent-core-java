@@ -36,9 +36,11 @@ import java.util.function.Function;
  * and graph router in the loop graph.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.flow.loop.loop_comp.AdvancedLoopComponent}.
+ * 
+ * @since 0.1.7
  */
-public class AdvancedLoopComponentImpl extends Executable<Object, Object> implements LoopController, AdvancedLoopComponent {
-
+public class AdvancedLoopComponentImpl extends Executable<Object, Object>
+        implements LoopController, AdvancedLoopComponent {
     private static final String BROKEN = "_broken";
     private static final String FIRST_IN_LOOP = "_first_in_loop";
     private static final String CONDITION_NODE_ID = "condition";
@@ -55,16 +57,18 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
     private final List<String> outLoop;
     private NodeSession nodeSession;
 
-    @SuppressWarnings("unchecked")
     /**
-     * Auto-generated for codecheck compliance.
+     * AdvancedLoopComponentImpl.
+     * 
+     * @param body body
+     * @param conditionParam conditionParam
+     * @param breakNodes breakNodes
+     * @param callbacks callbacks
+     * @since 0.1.7
      */
-    public AdvancedLoopComponentImpl(
-            Object body,
-            Object conditionParam,
-            List<? extends LoopBreakComponent> breakNodes,
+    @SuppressWarnings("unchecked")
+    public AdvancedLoopComponentImpl(Object body, Object conditionParam, List<? extends LoopBreakComponent> breakNodes,
             List<LoopCallback> callbacks) {
-
         // Wrap body: if it's already an Executable, use directly; if LoopGroup, wrap in delegate
         if (body instanceof Executable) {
             this.body = (Executable<Object, Object>) body;
@@ -72,25 +76,16 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
             LoopGroup loopGroup = (LoopGroup) body;
             this.body = new Executable<Object, Object>() {
                 @Override
-                /**
-                 * Auto-generated for codecheck compliance.
-                 */
                 public Object onInvoke(Object inputs, BaseSession session, Object... kw) {
                     return loopGroup.onInvoke(inputs, session, kw);
                 }
 
                 @Override
-                /**
-                 * Auto-generated for codecheck compliance.
-                 */
                 public boolean graphInvoker() {
                     return true;
                 }
 
                 @Override
-                /**
-                 * Auto-generated for codecheck compliance.
-                 */
                 public boolean skipTrace() {
                     return true;
                 }
@@ -143,6 +138,9 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
 
     /**
      * Route function called by the graph when evaluating the condition node.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     private List<String> routeLoop() {
         Map<String, Object> kwargs = Map.of("session", nodeSession);
@@ -151,6 +149,13 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * doConditionInvoke.
+     * 
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> doConditionInvoke(Map<String, Object> kwargs) {
         try {
             return conditionInvoke();
@@ -158,13 +163,18 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
             if (e instanceof com.openjiuwen.core.common.exception.BaseError) {
                 throw (RuntimeException) e;
             }
-            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_CONDITION_EXECUTION_ERROR,
-                    "reason", e.getMessage(),
+            throw ErrorHelper.buildError(StatusCode.COMPONENT_LOOP_CONDITION_EXECUTION_ERROR, "reason", e.getMessage(),
                     "comp", nodeId != null ? nodeId : "unknown");
         }
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * conditionInvoke.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private List<String> conditionInvoke() {
         if (!(nodeSession.state() instanceof WorkflowStateCollection)) {
             return outLoop;
@@ -232,10 +242,13 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
         return continueLoop ? inLoop : outLoop;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * isBroken.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean isBroken() {
         if (nodeSession == null || !(nodeSession.state() instanceof WorkflowStateCollection)) {
             return false;
@@ -244,21 +257,29 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
         return broken instanceof Boolean && (Boolean) broken;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * breakLoop.
+     * 
+     * @since 0.1.7
      */
+    @Override
     public void breakLoop() {
         if (nodeSession != null && nodeSession.state() instanceof WorkflowStateCollection) {
             ((WorkflowStateCollection) nodeSession.state()).update(Map.of(BROKEN, true));
         }
     }
 
+    /**
+     * onInvoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object onInvoke(Object inputs, BaseSession session, Object... kwargs) {
         BaseSession loopSession = session;
         if (loopSession instanceof NodeSession) {
@@ -298,26 +319,35 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * graphInvoker.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean graphInvoker() {
         return true;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * skipTrace.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean skipTrace() {
         return false;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * getBody.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public HasDrawable getBody() {
         if (body instanceof HasDrawable) {
             return (HasDrawable) body;
@@ -326,16 +356,22 @@ public class AdvancedLoopComponentImpl extends Executable<Object, Object> implem
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getBodyExecutable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Executable<Object, Object> getBodyExecutable() {
         return body;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * registerCallback.
+     * 
+     * @param callback callback
+     * @since 0.1.7
      */
+    @Override
     public void registerCallback(LoopCallback callback) {
         if (callback != null) {
             callbacks.add(callback);

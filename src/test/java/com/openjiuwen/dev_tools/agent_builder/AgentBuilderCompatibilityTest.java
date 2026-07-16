@@ -1,9 +1,13 @@
+
 package com.openjiuwen.dev_tools.agent_builder;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.dev_tools.agent_builder.executor.HistoryManager;
 import com.openjiuwen.dev_tools.agent_builder.utils.ProgressStage;
 import com.openjiuwen.dev_tools.agent_builder.utils.ProgressStatus;
 import com.openjiuwen.dev_tools.agent_builder.utils.ProgressStep;
+
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -11,10 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class AgentBuilderCompatibilityTest {
-
     @Test
     void builderCreationRetainsModelInfoAndSharedMaps() {
         Map<String, Object> modelInfo = Map.of("model_provider", "openai", "model_name", "gpt-4");
@@ -32,7 +33,8 @@ class AgentBuilderCompatibilityTest {
     void buildAgentShouldParseDslJsonResponsesIntoCompletedResult() {
         AgentBuilder builder = new AgentBuilder(Map.of("model_name", "gpt-4"));
 
-        Map<String, Object> result = builder.buildAgent("{\"agent_id\":\"123\",\"name\":\"Test\"}", "session_001", "llm_agent");
+        Map<String, Object> result =
+            builder.buildAgent("{\"agent_id\":\"123\",\"name\":\"Test\"}", "session_001", "llm_agent");
 
         assertThat(result).containsEntry("session_id", "session_001");
         assertThat(result).containsEntry("agent_type", "llm_agent");
@@ -80,7 +82,8 @@ class AgentBuilderCompatibilityTest {
     @Test
     void getProgressShouldReturnProgressMapWhenSessionExists() {
         AgentBuilder builder = new AgentBuilder();
-        builder.buildWorkflow("Create a workflow with explicit steps for onboarding review and approval.", "session_004");
+        builder.buildWorkflow("Create a workflow with explicit steps for onboarding review and approval.",
+                "session_004");
 
         Map<String, Object> progress = AgentBuilder.getProgress("session_004");
         assertThat(progress).isNotNull();
@@ -99,14 +102,9 @@ class AgentBuilderCompatibilityTest {
 
     @Test
     void progressStepShouldSerializeEnumsAndDetails() {
-        ProgressStep step = ProgressStep.builder()
-                .stage(ProgressStage.INITIALIZING)
-                .status(ProgressStatus.RUNNING)
-                .message("Starting")
-                .details(new LinkedHashMap<>(Map.of("count", 1)))
-                .duration(1.5)
-                .timestamp(Instant.parse("2026-01-01T00:00:00Z"))
-                .build();
+        ProgressStep step = ProgressStep.builder().stage(ProgressStage.INITIALIZING).status(ProgressStatus.RUNNING)
+                .message("Starting").details(new LinkedHashMap<>(Map.of("count", 1))).duration(1.5)
+                .timestamp(Instant.parse("2026-01-01T00:00:00Z")).build();
 
         Map<String, Object> result = step.toMap();
         assertThat(result).containsEntry("stage", "initializing");

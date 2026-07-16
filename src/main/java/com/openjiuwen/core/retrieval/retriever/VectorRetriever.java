@@ -17,33 +17,41 @@ import java.util.Map;
 
 /**
  * Pure vector retriever.
+ * 
+ * @since 0.1.7
  */
 public class VectorRetriever extends AbstractStoreBackedRetriever {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * VectorRetriever.
+     * 
+     * @param vectorStore vectorStore
+     * @param embedModel embedModel
+     * @since 0.1.7
      */
     public VectorRetriever(VectorStore vectorStore, Embedding embedModel) {
         super(vectorStore, embedModel);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieve.
+     * 
+     * @param query query
+     * @param topK topK
+     * @param scoreThreshold scoreThreshold
+     * @param mode mode
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public List<RetrievalResult> retrieve(String query,
-                                          int topK,
-                                          Double scoreThreshold,
-                                          String mode,
-                                          Map<String, Object> options) {
+    @Override
+    public List<RetrievalResult> retrieve(String query, int topK, Double scoreThreshold, String mode,
+            Map<String, Object> options) {
         if (!"vector".equals(mode)) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,
                     "VectorRetriever only supports 'vector' mode, got " + mode);
         }
         if (embedModel == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
                     "embed_model is required for vector search");
         }
         List<Float> queryVector = embedModel.embedQuery(query);
@@ -55,14 +63,20 @@ public class VectorRetriever extends AbstractStoreBackedRetriever {
         return toRetrievalResults(searchResults, scoreThreshold);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieveSearchResults.
+     * 
+     * @param query query
+     * @param topK topK
+     * @param mode mode
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<SearchResult> retrieveSearchResults(String query, int topK, String mode, Map<String, Object> options) {
         if (embedModel == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
                     "embed_model is required for vector search");
         }
         Map<String, Object> filters = options == null ? null : castMap(options.get("filters"));
@@ -73,10 +87,14 @@ public class VectorRetriever extends AbstractStoreBackedRetriever {
         return searchResults;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * supportsMode.
+     * 
+     * @param mode mode
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean supportsMode(String mode) {
         return "vector".equals(mode);
     }
@@ -88,10 +106,7 @@ public class VectorRetriever extends AbstractStoreBackedRetriever {
                 continue;
             }
             Map<String, Object> metadata = result.getMetadata();
-            results.add(new RetrievalResult(
-                    result.getText(),
-                    result.getScore(),
-                    metadata,
+            results.add(new RetrievalResult(result.getText(), result.getScore(), metadata,
                     metadata == null ? null : stringValue(metadata.get("doc_id")),
                     metadata == null ? null : stringValue(metadata.get("chunk_id"))));
         }

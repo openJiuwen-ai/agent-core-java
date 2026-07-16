@@ -8,21 +8,43 @@ package com.openjiuwen.core.runner.base;
  * Tag type constants for categorizing and filtering resources.
  * <p>
  * Mirrors Python's Tag type alias and special tag constants.
+ * 
+ * @since 0.1.7
  */
 public final class Tag {
-
-    /** Special tag matching all resources. */
+    /**
+     * ALL.
+     * 
+     * @since 0.1.7
+     */
     public static final String ALL = "*";
 
-    /** Default tag for untagged resources. */
+    /**
+     * GLOBAL.
+     * 
+     * @since 0.1.7
+     */
     public static final String GLOBAL = "__global__";
 
-    /** Active state tag. */
+    /**
+     * ACTIVE.
+     * 
+     * @since 0.1.7
+     */
     public static final String ACTIVE = "__active__";
 
-    /** Inactive state tag. */
+    /**
+     * INACTIVE.
+     * 
+     * @since 0.1.7
+     */
     public static final String INACTIVE = "__inactive__";
 
+    /**
+     * Tag.
+     * 
+     * @since 0.1.7
+     */
     private Tag() {
     }
 }

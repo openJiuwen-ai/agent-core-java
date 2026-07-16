@@ -8,15 +8,21 @@ package com.openjiuwen.core.foundation.store.base_embedding;
  * Embedding model configuration.
  * <p>
  * Mirrors Python's {@code EmbeddingConfig} Pydantic model.
+ * 
+ * @since 0.1.7
  */
 public class EmbeddingConfig {
-
     private final String modelName;
     private final String baseUrl;
     private final String apiKey;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EmbeddingConfig.
+     * 
+     * @param modelName modelName
+     * @param baseUrl baseUrl
+     * @param apiKey apiKey
+     * @since 0.1.7
      */
     public EmbeddingConfig(String modelName, String baseUrl, String apiKey) {
         if (modelName == null || modelName.isBlank()) {
@@ -31,28 +37,41 @@ public class EmbeddingConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EmbeddingConfig.
+     * 
+     * @param modelName modelName
+     * @param baseUrl baseUrl
+     * @since 0.1.7
      */
     public EmbeddingConfig(String modelName, String baseUrl) {
         this(modelName, baseUrl, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getModelName() {
         return modelName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getBaseUrl.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getBaseUrl() {
         return baseUrl;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getApiKey.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getApiKey() {
         return apiKey;

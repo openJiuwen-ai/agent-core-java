@@ -9,15 +9,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Message record projection for monitor APIs, including sender, target and read/broadcast flags.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-/**
- * Message record projection for monitor APIs, including sender, target and read/broadcast flags.
- *
- * @since 1.0
- */
 public class MessageInfo {
     private String messageId;
     private String teamId;

@@ -15,16 +15,27 @@ import java.util.regex.Pattern;
  * Utility methods for the Questioner component.
  * <p>
  * Mirrors Python's {@code QuestionerUtils}.
+ * 
+ * @since 0.1.7
  */
 public final class QuestionerUtils {
-
     private static final Pattern SUB_PLACEHOLDER_PATTERN = Pattern.compile("\\{\\{([^}]*)\\}\\}");
 
+    /**
+     * QuestionerUtils.
+     * 
+     * @since 0.1.7
+     */
     private QuestionerUtils() {
     }
 
     /**
      * Format a template string replacing {{key}} placeholders with values from userFields.
+     * 
+     * @param template template
+     * @param userFields userFields
+     * @return the result
+     * @since 0.1.7
      */
     public static String formatTemplate(String template, Map<String, Object> userFields) {
         if (template == null || userFields == null) {
@@ -47,12 +58,18 @@ public final class QuestionerUtils {
 
     /**
      * Build the "continue asking" question text for non-extracted required fields.
+     * 
+     * @param nonExtractedKeyFields nonExtractedKeyFields
+     * @param acceptLanguage acceptLanguage
+     * @return the result
+     * @since 0.1.7
      */
     public static String formatContinueAskQuestion(List<FieldInfo> nonExtractedKeyFields, String acceptLanguage) {
         List<String> names = new ArrayList<>();
         for (FieldInfo param : nonExtractedKeyFields) {
             String name = (param.getCnFieldName() != null && !param.getCnFieldName().isEmpty())
-                    ? param.getCnFieldName() : param.getDescription();
+                    ? param.getCnFieldName()
+                    : param.getDescription();
             names.add(name);
         }
         String joined = String.join(", ", names);
@@ -64,6 +81,10 @@ public final class QuestionerUtils {
 
     /**
      * Build the questioner output map from an OutputCache.
+     * 
+     * @param outputCache outputCache
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, Object> formatQuestionerOutput(OutputCache outputCache) {
         QuestionerOutput output = QuestionerOutput.fromFields(outputCache.getKeyFields());
@@ -73,12 +94,13 @@ public final class QuestionerUtils {
     }
 
     /**
-     * Validate inputs into a QuestionerInput.
+     * validateInputs.
+     * 
+     * @param inputs inputs
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static QuestionerInput validateInputs(Object inputs) {
         if (inputs instanceof Map) {
             return QuestionerInput.fromMap((Map<String, Object>) inputs);
@@ -88,6 +110,10 @@ public final class QuestionerUtils {
 
     /**
      * Check if a value is considered "valid" (non-null, non-empty, not "null"/"none").
+     * 
+     * @param inputValue inputValue
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isValidValue(Object inputValue) {
         if (inputValue == null) {
@@ -106,8 +132,11 @@ public final class QuestionerUtils {
 
     /**
      * Validate and convert a value to the expected field type.
-     *
+     * 
+     * @param value value
+     * @param expectedType expectedType
      * @return a two-element Object array: [convertedValue, Boolean isValid]
+     * @since 0.1.7
      */
     public static Object[] validateAndConvertType(Object value, String expectedType) {
         if (value == null) {
@@ -126,6 +155,13 @@ public final class QuestionerUtils {
         }
     }
 
+    /**
+     * convertToInteger.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object[] convertToInteger(Object value) {
         if (value instanceof Boolean) {
             return new Object[]{null, false};
@@ -148,6 +184,13 @@ public final class QuestionerUtils {
         return new Object[]{null, false};
     }
 
+    /**
+     * convertToNumber.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object[] convertToNumber(Object value) {
         if (value instanceof Boolean) {
             return new Object[]{null, false};
@@ -161,6 +204,13 @@ public final class QuestionerUtils {
         return new Object[]{null, false};
     }
 
+    /**
+     * convertToBoolean.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object[] convertToBoolean(Object value) {
         if (value instanceof Boolean) {
             return new Object[]{value, true};

@@ -1,4 +1,7 @@
+
 package com.openjiuwen.agentteams.agent;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
@@ -9,13 +12,12 @@ import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptEntry;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 @Tag("agent-teams-team-rail-slice")
 class TeamRailCompatibilityTest {
@@ -32,86 +34,47 @@ class TeamRailCompatibilityTest {
 
     @Test
     void hittSectionShouldFollowPythonRoleSpecificHumanAgentPromptShape() {
-        var leaderSection = TeamRail.buildTeamHittSection(
-                TeamRole.LEADER,
-                List.of("human_pm", "human_designer"),
-                "cn",
-                "lead"
-        );
-        var humanSection = TeamRail.buildTeamHittSection(
-                TeamRole.HUMAN_AGENT,
-                List.of("human_pm", "human_designer"),
-                "en",
-                "human_pm"
-        );
+        var leaderSection =
+            TeamRail.buildTeamHittSection(TeamRole.LEADER, List.of("human_pm", "human_designer"), "cn", "lead");
+        var humanSection = TeamRail.buildTeamHittSection(TeamRole.HUMAN_AGENT, List.of("human_pm", "human_designer"),
+                "en", "human_pm");
 
         assertThat(leaderSection.getName()).isEqualTo(TeamRail.HITT);
         assertThat(leaderSection.getPriority()).isEqualTo(12);
-        assertThat(leaderSection.render("cn"))
-                .contains("HITT", "`human_designer`, `human_pm`", "send_message", "shutdown_member");
-        assertThat(humanSection.render("en"))
-                .contains("You are a human member", "Your member_name is `human_pm`", "send_message");
+        assertThat(leaderSection.render("cn")).contains("HITT", "`human_designer`, `human_pm`", "send_message",
+                "shutdown_member");
+        assertThat(humanSection.render("en")).contains("You are a human member", "Your member_name is `human_pm`",
+                "send_message");
     }
 
     @Test
     void teammateShouldOnlyReceiveRolePersonaAndExtraStaticSections() {
-        TeamRail rail = new TeamRail(
-                TeamRole.MEMBER,
-                "Backend specialist",
-                "dev1",
-                "temporary",
-                "plan_mode",
-                "en",
-                "default",
-                "Be precise",
-                null,
-                null,
-                List.of()
-        );
+        TeamRail rail = new TeamRail(TeamRole.MEMBER, "Backend specialist", "dev1", "temporary", "plan_mode", "en",
+                "default", "Be precise", null, null, List.of());
 
-        assertThat(rail.getStaticSections())
-                .extracting(section -> section.getName())
-                .containsExactly(TeamRail.ROLE, TeamRail.PERSONA, TeamRail.EXTRA);
-        assertThat(rail.getStaticSections().get(0).render("en"))
-                .contains("# Team Role", "Your member_name: dev1", "view_task", "plan_mode");
+        assertThat(rail.getStaticSections()).extracting(section -> section.getName()).containsExactly(TeamRail.ROLE,
+                TeamRail.PERSONA, TeamRail.EXTRA);
+        assertThat(rail.getStaticSections().get(0).render("en")).contains("# Team Role", "Your member_name: dev1",
+                "view_task", "plan_mode");
     }
 
     @Test
     void teamAgentShouldRegisterTeamRailAndInjectSectionsBeforeModelCallLikePythonTeamAgent() {
         TeamAgent agent = new TeamAgent().configure(
-                TeamAgentSpec.builder()
-                        .name("delivery")
-                        .language("cn")
-                        .lifecycle("persistent")
-                        .humanAgentEnabled(true)
+                TeamAgentSpec.builder().name("delivery").language("cn").lifecycle("persistent").humanAgentEnabled(true)
                         .members(List.of(
-                                TeamMemberSpec.builder()
-                                        .name("lead")
-                                        .role(TeamRole.LEADER)
-                                        .description("PM Expert")
+                                TeamMemberSpec.builder().name("lead").role(TeamRole.LEADER).description("PM Expert")
                                         .build(),
-                                TeamMemberSpec.builder()
-                                        .name("human_pm")
-                                        .role(TeamRole.HUMAN_AGENT)
-                                        .build()))
+                                TeamMemberSpec.builder().name("human_pm").role(TeamRole.HUMAN_AGENT).build()))
                         .build(),
-                TeamRuntimeContext.builder()
-                        .teamId("delivery")
-                        .memberName("lead")
-                        .role(TeamRole.LEADER)
-                        .metadata(Map.of(
-                                "persona", "PM Expert",
-                                "teamworkspace_mount", ".team/delivery/",
-                                "teamworkspace_path", "./team-workspace"
-                        ))
-                        .build()
-        );
+                TeamRuntimeContext.builder().teamId("delivery").memberName("lead").role(TeamRole.LEADER)
+                        .metadata(Map.of("persona", "PM Expert", "teamworkspace_mount", ".team/delivery/",
+                                "teamworkspace_path", "./team-workspace"))
+                        .build());
 
         assertThat(agent.getDeepAgent().getConfig().getSystemPrompt()).isEmpty();
-        TeamRail rail = (TeamRail) agent.getDeepAgent().getRegisteredRails().stream()
-                .filter(TeamRail.class::isInstance)
-                .findFirst()
-                .orElseThrow();
+        TeamRail rail = (TeamRail) agent.getDeepAgent().getRegisteredRails().stream().filter(TeamRail.class::isInstance)
+                .findFirst().orElseThrow();
 
         rail.beforeModelCall(AgentCallbackContext.builder().build());
 
@@ -127,143 +90,83 @@ class TeamRailCompatibilityTest {
         assertThat(builder.getSection(TeamRail.HITT).render("cn")).contains("human_pm", "send_message");
         assertThat(builder.getSection(TeamRail.PERSONA).render("cn")).contains("PM Expert");
         assertThat(builder.getSection(TeamRail.INFO).render("cn")).contains("# 团队信息", "delivery");
-        assertThat(builder.getSection(TeamRail.INFO).render("cn"))
-                .contains("`.team/delivery/`", "`./team-workspace`");
-        assertThat(builder.getSection(TeamRail.MEMBERS).render("cn"))
-                .contains("# 成员关系", "human_pm")
+        assertThat(builder.getSection(TeamRail.INFO).render("cn")).contains("`.team/delivery/`", "`./team-workspace`");
+        assertThat(builder.getSection(TeamRail.MEMBERS).render("cn")).contains("# 成员关系", "human_pm")
                 .doesNotContain("member_name=lead");
     }
 
     @Test
     void teamRailShouldRefreshDynamicMembersWhenBackendMtimeChangesLikePythonCache() {
         TeamAgent agent = new TeamAgent().configure(
-                TeamAgentSpec.builder()
-                        .name("dynamic-rail")
-                        .language("en")
-                        .members(List.of(
-                                TeamMemberSpec.builder()
-                                        .name("lead")
-                                        .role(TeamRole.LEADER)
-                                        .description("Leader")
-                                        .build(),
-                                TeamMemberSpec.builder()
-                                        .name("dev1")
-                                        .role(TeamRole.MEMBER)
-                                        .description("Coder")
-                                        .build()))
+                TeamAgentSpec.builder().name("dynamic-rail").language("en").members(List.of(
+                        TeamMemberSpec.builder().name("lead").role(TeamRole.LEADER).description("Leader").build(),
+                        TeamMemberSpec.builder().name("dev1").role(TeamRole.MEMBER).description("Coder").build()))
                         .build(),
-                TeamRuntimeContext.builder()
-                        .teamId("dynamic-rail")
-                        .memberName("lead")
-                        .role(TeamRole.LEADER)
-                        .metadata(Map.of(
-                                "teamworkspace_mount", ".team/dynamic-rail/",
-                                "teamworkspace_path", "./team-workspace"
-                        ))
-                        .build()
-        );
-        TeamRail rail = (TeamRail) agent.getDeepAgent().getRegisteredRails().stream()
-                .filter(TeamRail.class::isInstance)
-                .findFirst()
-                .orElseThrow();
+                TeamRuntimeContext.builder().teamId("dynamic-rail").memberName("lead").role(TeamRole.LEADER).metadata(
+                        Map.of("teamworkspace_mount", ".team/dynamic-rail/", "teamworkspace_path", "./team-workspace"))
+                        .build());
+        TeamRail rail = (TeamRail) agent.getDeepAgent().getRegisteredRails().stream().filter(TeamRail.class::isInstance)
+                .findFirst().orElseThrow();
 
         rail.beforeModelCall(AgentCallbackContext.builder().build());
         var builder = agent.getDeepAgent().getAgent().getPromptBuilder();
         String firstMembers = builder.getSection(TeamRail.MEMBERS).render("en");
-        assertThat(firstMembers)
-                .contains("# Relationships", "member_name=dev1", "Coder")
-                .doesNotContain("Newbie")
+        assertThat(firstMembers).contains("# Relationships", "member_name=dev1", "Coder").doesNotContain("Newbie")
                 .doesNotContain("member_name=lead");
 
         agent.getTeamBackend().spawnMember("dev2", "Newbie", null).join();
         rail.beforeModelCall(AgentCallbackContext.builder().build());
 
         assertThat(builder.getSection(TeamRail.MEMBERS).render("en"))
-                .contains("member_name=dev1", "member_name=dev2", "Newbie")
-                .doesNotContain("member_name=lead");
+                .contains("member_name=dev1", "member_name=dev2", "Newbie").doesNotContain("member_name=lead");
     }
 
     @Test
     void teamBackendListMembersShouldExcludeCurrentMemberLikePythonTeamBackend() {
         TeamAgent agent = new TeamAgent().configure(
-                TeamAgentSpec.builder()
-                        .name("roster-team")
-                        .language("en")
-                        .members(List.of(
-                                TeamMemberSpec.builder()
-                                        .name("lead")
-                                        .role(TeamRole.LEADER)
-                                        .description("Leader")
-                                        .build(),
-                                TeamMemberSpec.builder()
-                                        .name("dev1")
-                                        .role(TeamRole.MEMBER)
-                                        .description("Coder")
-                                        .build()))
+                TeamAgentSpec.builder().name("roster-team").language("en").members(List.of(
+                        TeamMemberSpec.builder().name("lead").role(TeamRole.LEADER).description("Leader").build(),
+                        TeamMemberSpec.builder().name("dev1").role(TeamRole.MEMBER).description("Coder").build()))
                         .build(),
-                TeamRuntimeContext.builder()
-                        .teamId("roster-team")
-                        .memberName("lead")
-                        .role(TeamRole.LEADER)
-                        .metadata(Map.of(
-                                "teamworkspace_mount", ".team/roster-team/",
-                                "teamworkspace_path", "./team-workspace"
-                        ))
-                        .build()
-        );
+                TeamRuntimeContext.builder().teamId("roster-team").memberName("lead").role(TeamRole.LEADER).metadata(
+                        Map.of("teamworkspace_mount", ".team/roster-team/", "teamworkspace_path", "./team-workspace"))
+                        .build());
 
-        assertThat(agent.getTeamBackend().listMembers())
-                .extracting(member -> member.getMemberName())
+        assertThat(agent.getTeamBackend().listMembers()).extracting(member -> member.getMemberName())
                 .containsExactly("dev1");
     }
 
     @Test
     void teamRailShouldKeepInfoAndMembersSectionsAfterIndependentProbeChanges() {
         TeamAgent agent = new TeamAgent().configure(
-                TeamAgentSpec.builder()
-                        .name("probe-team")
-                        .language("en")
-                        .members(List.of(
-                                TeamMemberSpec.builder()
-                                        .name("lead")
-                                        .role(TeamRole.LEADER)
-                                        .description("Leader")
-                                        .build(),
-                                TeamMemberSpec.builder()
-                                        .name("dev1")
-                                        .role(TeamRole.MEMBER)
-                                        .description("Coder")
-                                        .build()))
+                TeamAgentSpec.builder().name("probe-team").language("en").members(List.of(
+                        TeamMemberSpec.builder().name("lead").role(TeamRole.LEADER).description("Leader").build(),
+                        TeamMemberSpec.builder().name("dev1").role(TeamRole.MEMBER).description("Coder").build()))
                         .build(),
-                TeamRuntimeContext.builder()
-                        .teamId("probe-team")
-                        .memberName("lead")
-                        .role(TeamRole.LEADER)
-                        .metadata(Map.of(
-                                "teamworkspace_mount", ".team/probe-team/",
-                                "teamworkspace_path", "./team-workspace"
-                        ))
-                        .build()
-        );
-        TeamRail rail = (TeamRail) agent.getDeepAgent().getRegisteredRails().stream()
-                .filter(TeamRail.class::isInstance)
-                .findFirst()
-                .orElseThrow();
+                TeamRuntimeContext.builder().teamId("probe-team").memberName("lead").role(TeamRole.LEADER).metadata(
+                        Map.of("teamworkspace_mount", ".team/probe-team/", "teamworkspace_path", "./team-workspace"))
+                        .build());
+        TeamRail rail = (TeamRail) agent.getDeepAgent().getRegisteredRails().stream().filter(TeamRail.class::isInstance)
+                .findFirst().orElseThrow();
 
         rail.beforeModelCall(AgentCallbackContext.builder().build());
         String initialInfo = agent.getDeepAgent().getAgent().getPromptBuilder().getSection(TeamRail.INFO).render("en");
-        String initialMembers = agent.getDeepAgent().getAgent().getPromptBuilder().getSection(TeamRail.MEMBERS).render("en");
+        String initialMembers =
+            agent.getDeepAgent().getAgent().getPromptBuilder().getSection(TeamRail.MEMBERS).render("en");
 
         agent.getTeamBackend().spawnMember("dev2", "Newbie", null).join();
         rail.beforeModelCall(AgentCallbackContext.builder().build());
 
-        String refreshedInfo = agent.getDeepAgent().getAgent().getPromptBuilder().getSection(TeamRail.INFO).render("en");
-        String refreshedMembers = agent.getDeepAgent().getAgent().getPromptBuilder().getSection(TeamRail.MEMBERS).render("en");
+        String refreshedInfo =
+            agent.getDeepAgent().getAgent().getPromptBuilder().getSection(TeamRail.INFO).render("en");
+        String refreshedMembers =
+            agent.getDeepAgent().getAgent().getPromptBuilder().getSection(TeamRail.MEMBERS).render("en");
 
         assertThat(initialInfo).contains("`.team/probe-team/`", "`./team-workspace`");
         assertThat(refreshedInfo).contains("`.team/probe-team/`", "`./team-workspace`");
         assertThat(initialMembers).contains("member_name=dev1").doesNotContain("member_name=lead");
-        assertThat(refreshedMembers).contains("member_name=dev1", "member_name=dev2").doesNotContain("member_name=lead");
+        assertThat(refreshedMembers).contains("member_name=dev1", "member_name=dev2")
+                .doesNotContain("member_name=lead");
     }
 
     @Test
@@ -273,39 +176,20 @@ class TeamRailCompatibilityTest {
         assertThat(section).isNotNull();
         assertThat(section.getName()).isEqualTo(TeamRail.INFO);
         assertThat(section.getPriority()).isEqualTo(65);
-        assertThat(section.render("en"))
-                .contains("# Team Info", "Team Shared Workspace", "`.team/solo/`");
+        assertThat(section.render("en")).contains("# Team Info", "Team Shared Workspace", "`.team/solo/`");
     }
 
     @Test
     void teamRailUninitShouldRemoveStaticAndDynamicSectionsLikePython() {
         TeamAgent agent = new TeamAgent().configure(
-                TeamAgentSpec.builder()
-                        .name("uninit-rail")
-                        .language("en")
-                        .members(List.of(
-                                TeamMemberSpec.builder()
-                                        .name("lead")
-                                        .role(TeamRole.LEADER)
-                                        .description("Leader")
-                                        .build(),
-                                TeamMemberSpec.builder()
-                                        .name("dev1")
-                                        .role(TeamRole.MEMBER)
-                                        .description("Coder")
-                                        .build()))
+                TeamAgentSpec.builder().name("uninit-rail").language("en").members(List.of(
+                        TeamMemberSpec.builder().name("lead").role(TeamRole.LEADER).description("Leader").build(),
+                        TeamMemberSpec.builder().name("dev1").role(TeamRole.MEMBER).description("Coder").build()))
                         .build(),
-                TeamRuntimeContext.builder()
-                        .teamId("uninit-rail")
-                        .memberName("lead")
-                        .role(TeamRole.LEADER)
-                        .metadata(Map.of("persona", "PM"))
-                        .build()
-        );
-        TeamRail rail = (TeamRail) agent.getDeepAgent().getRegisteredRails().stream()
-                .filter(TeamRail.class::isInstance)
-                .findFirst()
-                .orElseThrow();
+                TeamRuntimeContext.builder().teamId("uninit-rail").memberName("lead").role(TeamRole.LEADER)
+                        .metadata(Map.of("persona", "PM")).build());
+        TeamRail rail = (TeamRail) agent.getDeepAgent().getRegisteredRails().stream().filter(TeamRail.class::isInstance)
+                .findFirst().orElseThrow();
 
         rail.beforeModelCall(AgentCallbackContext.builder().build());
         var builder = agent.getDeepAgent().getAgent().getPromptBuilder();
@@ -325,21 +209,15 @@ class TeamRailCompatibilityTest {
 
     @Test
     void teamAgentShouldExposeSessionAndEventListenerStateLikePython() {
-        TeamAgent agent = new TeamAgent().configure(
-                TeamAgentSpec.builder()
-                        .name("state-team")
-                        .members(List.of(
-                                TeamMemberSpec.builder()
-                                        .name("lead")
-                                        .role(TeamRole.LEADER)
-                                        .build()))
-                        .build(),
-                TeamRuntimeContext.builder()
-                        .teamId("state-team")
-                        .memberName("lead")
-                        .role(TeamRole.LEADER)
-                        .build()
-        );
+        TeamAgent agent =
+            new TeamAgent()
+                    .configure(
+                            TeamAgentSpec.builder().name("state-team")
+                                    .members(List
+                                            .of(TeamMemberSpec.builder().name("lead").role(TeamRole.LEADER).build()))
+                                    .build(),
+                            TeamRuntimeContext.builder().teamId("state-team").memberName("lead").role(TeamRole.LEADER)
+                                    .build());
 
         Object listener = new Object();
         agent.addEventListener(listener);
@@ -348,11 +226,12 @@ class TeamRailCompatibilityTest {
         agent.persistAllocatorState();
         InteractiveInput resumeInput = new InteractiveInput();
         resumeInput.setUserInputs(Map.of("resume", "ok"));
-        agent.getAgentSession().updateState(Map.of(ToolInterruptionState.INTERRUPTION_KEY, ToolInterruptionState.builder()
-                .interruptedTools(List.of(ToolInterruptEntry.builder()
-                        .request(InterruptRequest.builder().interruptId("resume").build())
-                        .build()))
-                .build()));
+        agent.getAgentSession()
+                .updateState(Map.of(ToolInterruptionState.INTERRUPTION_KEY,
+                        ToolInterruptionState.builder()
+                                .interruptedTools(List.of(ToolInterruptEntry.builder()
+                                        .request(InterruptRequest.builder().interruptId("resume").build()).build()))
+                                .build()));
         agent.setInFlightRound(true);
         agent.resumeInterrupt(resumeInput);
         agent.removeEventListener(listener);

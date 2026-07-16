@@ -7,6 +7,7 @@ package com.openjiuwen.autoharness.experience;
 import com.openjiuwen.autoharness.schema.Experience;
 import com.openjiuwen.core.common.exception.ExecutionError;
 import com.openjiuwen.core.common.security.JsonUtils;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,8 +22,8 @@ import java.util.Locale;
 
 /**
  * Public class ExperienceStore used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class ExperienceStore {
     private static final Logger LOG = LoggerFactory.getLogger(ExperienceStore.class);
@@ -31,7 +32,10 @@ public class ExperienceStore {
     private final Path path;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ExperienceStore.
+     * 
+     * @param experienceDir experienceDir
+     * @since 0.1.7
      */
     public ExperienceStore(String experienceDir) {
         Path dir = Path.of(experienceDir);
@@ -44,20 +48,19 @@ public class ExperienceStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * record.
+     * 
+     * @param experience experience
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public String record(Experience experience) throws IOException {
         Experience persisted = experience.getId() == null || experience.getId().isBlank()
-                ? Experience.builder()
-                    .type(experience.getType())
-                    .topic(experience.getTopic())
-                    .summary(experience.getSummary())
-                    .outcome(experience.getOutcome())
-                    .details(experience.getDetails())
-                    .prUrl(experience.getPrUrl())
-                    .filesChanged(experience.getFilesChanged())
-                    .timestamp(experience.getTimestamp())
-                    .build()
+                ? Experience.builder().type(experience.getType()).topic(experience.getTopic())
+                        .summary(experience.getSummary()).outcome(experience.getOutcome())
+                        .details(experience.getDetails()).prUrl(experience.getPrUrl())
+                        .filesChanged(experience.getFilesChanged()).timestamp(experience.getTimestamp()).build()
                 : experience;
         if (isDuplicate(persisted)) {
             LOG.debug("Experience rejected (dup): type={} topic={}", persisted.getType(), persisted.getTopic());
@@ -69,7 +72,12 @@ public class ExperienceStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listRecent.
+     * 
+     * @param limit limit
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public List<Experience> listRecent(int limit) throws IOException {
         List<Experience> all = loadAll();
@@ -78,14 +86,25 @@ public class ExperienceStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * get.
+     * 
+     * @param experienceId experienceId
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public Experience get(String experienceId) throws IOException {
         return loadAll().stream().filter(exp -> experienceId.equals(exp.getId())).findFirst().orElse(null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * search.
+     * 
+     * @param query query
+     * @param topK topK
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public List<Experience> search(String query, int topK) throws IOException {
         List<String> keywords = tokenize(query);
@@ -105,6 +124,13 @@ public class ExperienceStore {
         return scored.stream().limit(topK).map(ScoredExperience::experience).toList();
     }
 
+    /**
+     * loadAll.
+     * 
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private List<Experience> loadAll() throws IOException {
         List<Experience> result = new ArrayList<>();
         if (!Files.exists(path)) {
@@ -126,11 +152,18 @@ public class ExperienceStore {
         return result;
     }
 
+    /**
+     * isDuplicate.
+     * 
+     * @param experience experience
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     private boolean isDuplicate(Experience experience) throws IOException {
         long cutoff = System.currentTimeMillis() / 1000 - DEDUP_WINDOW_SECS;
         for (Experience existing : loadAll()) {
-            if (existing.getTimestamp() >= cutoff
-                    && safeEquals(existing.getTopic(), experience.getTopic())
+            if (existing.getTimestamp() >= cutoff && safeEquals(existing.getTopic(), experience.getTopic())
                     && existing.getType() == experience.getType()) {
                 return true;
             }
@@ -139,7 +172,11 @@ public class ExperienceStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * tokenize.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     public static List<String> tokenize(String text) {
         if (text == null || text.isBlank()) {
@@ -156,7 +193,12 @@ public class ExperienceStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * countHits.
+     * 
+     * @param keywords keywords
+     * @param exp exp
+     * @return the result
+     * @since 0.1.7
      */
     public static int countHits(List<String> keywords, Experience exp) {
         if (keywords == null || keywords.isEmpty() || exp == null) {
@@ -174,7 +216,12 @@ public class ExperienceStore {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * recencyScore.
+     * 
+     * @param timestamp timestamp
+     * @param now now
+     * @return the result
+     * @since 0.1.7
      */
     public static double recencyScore(long timestamp, long now) {
         long age = Math.max(now - timestamp, 0L);
@@ -185,14 +232,36 @@ public class ExperienceStore {
         return 1.0 - ((double) age / (double) maxAge);
     }
 
+    /**
+     * safe.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String safe(String value) {
         return value == null ? "" : value;
     }
 
+    /**
+     * safeEquals.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean safeEquals(String left, String right) {
         return safe(left).equals(safe(right));
     }
 
+    /**
+     * ScoredExperience.
+     * 
+     * @param score score
+     * @param experience experience
+     * @since 0.1.7
+     */
     private record ScoredExperience(double score, Experience experience) {
     }
 }

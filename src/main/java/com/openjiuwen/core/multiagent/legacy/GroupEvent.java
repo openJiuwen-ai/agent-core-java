@@ -16,12 +16,12 @@ import java.util.UUID;
  * <p>
  * This is a simplified event tailored for group routing; it does not isReplace
  * the controller module's {@link com.openjiuwen.core.controller.schema.Event}.
- *
+ * 
  * @deprecated Legacy event for backward compatibility with ControllerGroup pattern.
+ * @since 0.1.7
  */
 @Deprecated
 public class GroupEvent {
-
     private String eventId;
     private String query;
     private Object queryPayload;
@@ -32,7 +32,9 @@ public class GroupEvent {
     private Map<String, Object> metadata;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * GroupEvent.
+     * 
+     * @since 0.1.7
      */
     public GroupEvent() {
         this.eventId = UUID.randomUUID().toString();
@@ -43,10 +45,11 @@ public class GroupEvent {
 
     /**
      * Create a user event from content string.
-     *
-     * @param content        text content
+     * 
+     * @param content text content
      * @param conversationId conversation ID
      * @return GroupEvent instance
+     * @since 0.1.7
      */
     public static GroupEvent createUserEvent(String content, String conversationId) {
         return createUserEvent(content, conversationId, null);
@@ -54,11 +57,12 @@ public class GroupEvent {
 
     /**
      * Create a user event from content string with user ID.
-     *
-     * @param content        text content
+     * 
+     * @param content text content
      * @param conversationId conversation ID
-     * @param userId         user ID (nullable)
+     * @param userId user ID (nullable)
      * @return GroupEvent instance
+     * @since 0.1.7
      */
     public static GroupEvent createUserEvent(String content, String conversationId, String userId) {
         GroupEvent event = new GroupEvent();
@@ -70,15 +74,13 @@ public class GroupEvent {
     }
 
     /**
-     * Create a GroupEvent from a Map (backward compatibility).
-     *
-     * @param map input map with "content"/"query", "conversation_id", "user_id" keys
-     * @return GroupEvent instance
+     * fromMap.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static GroupEvent fromMap(Map<String, Object> map) {
         GroupEvent event = new GroupEvent();
         Object content = map.get("content");
@@ -99,31 +101,41 @@ public class GroupEvent {
         return event;
     }
 
-    // ========== Accessors ==========
-
     /**
-     * Auto-generated for codecheck compliance.
+     * getEventId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getEventId() {
         return eventId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEventId.
+     * 
+     * @param eventId eventId
+     * @since 0.1.7
      */
     public void setEventId(String eventId) {
         this.eventId = eventId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getQuery.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getQuery() {
         return query;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setQuery.
+     * 
+     * @param query query
+     * @since 0.1.7
      */
     public void setQuery(String query) {
         this.query = query;
@@ -131,14 +143,20 @@ public class GroupEvent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getQueryPayload.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getQueryPayload() {
         return queryPayload;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setQueryPayload.
+     * 
+     * @param queryPayload queryPayload
+     * @since 0.1.7
      */
     public void setQueryPayload(Object queryPayload) {
         this.queryPayload = queryPayload;
@@ -146,70 +164,100 @@ public class GroupEvent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConversationId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getConversationId() {
         return conversationId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setConversationId.
+     * 
+     * @param conversationId conversationId
+     * @since 0.1.7
      */
     public void setConversationId(String conversationId) {
         this.conversationId = conversationId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getUserId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getUserId() {
         return userId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setUserId.
+     * 
+     * @param userId userId
+     * @since 0.1.7
      */
     public void setUserId(String userId) {
         this.userId = userId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReceiverId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getReceiverId() {
         return receiverId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setReceiverId.
+     * 
+     * @param receiverId receiverId
+     * @since 0.1.7
      */
     public void setReceiverId(String receiverId) {
         this.receiverId = receiverId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCustomEventType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCustomEventType() {
         return customEventType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCustomEventType.
+     * 
+     * @param customEventType customEventType
+     * @since 0.1.7
      */
     public void setCustomEventType(String customEventType) {
         this.customEventType = customEventType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMetadata() {
         return metadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMetadata.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata != null ? metadata : new HashMap<>();

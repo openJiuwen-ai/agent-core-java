@@ -6,6 +6,8 @@ package com.openjiuwen.core.memory.lite;
 
 /**
  * Write operation mode.
+ * 
+ * @since 0.1.7
  */
 public enum WriteMode {
     CREATE,

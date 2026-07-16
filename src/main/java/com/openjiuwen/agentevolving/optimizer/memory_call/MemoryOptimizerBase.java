@@ -11,29 +11,30 @@ import java.util.List;
 
 /**
  * Memory dimension optimizer base class.
- *
- * <p>Optimizes tunables exposed by MemoryCallOperator.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.memory_call.base.MemoryOptimizerBase}.
+ * <p>
+ * Optimizes tunables exposed by MemoryCallOperator.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.memory_call.base.MemoryOptimizerBase}.
+ * 
+ * @since 0.1.7
  */
 public abstract class MemoryOptimizerBase extends BaseOptimizer {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * MemoryOptimizerBase.
+     * 
+     * @since 0.1.7
      */
     protected MemoryOptimizerBase() {
         this.domain = "memory";
     }
 
     /**
-     * Default targets for memory optimizers.
-     *
-     * @return List of default targets
+     * defaultTargets.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<String> defaultTargets() {
         return Arrays.asList("enabled", "max_retries");
     }

@@ -20,74 +20,88 @@ import java.util.Map;
 
 /**
  * Chat-completion-based reranker aligned with Python's ChatReranker behavior.
+ * 
+ * @since 0.1.7
  */
 public class ChatReranker extends StandardReranker {
-
     private static final float EPSILON = 1e-6f;
     private static final String CHAT_ENDPOINT = "/chat/completions";
     private static final String DOC_TEMPLATE = "<Document>: %s";
     private static final String SYSTEM_INSTRUCT =
-            "Judge whether the Document meets the requirements based on the Query and the Instruct provided. "
-                    + "Note that the answer can only be \"yes\" or \"no\".";
+        "Judge whether the Document meets the requirements based on the Query and the Instruct provided. "
+                + "Note that the answer can only be \"yes\" or \"no\".";
 
     private final List<Integer> yesNoIds;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ChatReranker.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public ChatReranker(RerankerConfig config) {
         this(config, 3, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ChatReranker.
+     * 
+     * @param config config
+     * @param maxRetries maxRetries
+     * @param extraHeaders extraHeaders
+     * @param httpClient httpClient
+     * @since 0.1.7
      */
-    public ChatReranker(RerankerConfig config,
-                        int maxRetries,
-                        Map<String, String> extraHeaders,
-                        HttpClient httpClient) {
+    public ChatReranker(RerankerConfig config, int maxRetries, Map<String, String> extraHeaders,
+            HttpClient httpClient) {
         super(config, maxRetries, extraHeaders, httpClient);
         List<Integer> ids = config.getYesNoIds();
         if (ids == null || ids.size() != 2) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RERANKER_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RERANKER_INPUT_INVALID,
                     "chat reranker require yes_no_ids to be specified in RerankerConfig");
         }
         this.yesNoIds = ids;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * rerankOrderedScores.
+     * 
+     * @param query query
+     * @param documents documents
+     * @param instruct instruct
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    protected List<Double> rerankOrderedScores(String query,
-                                               List<String> documents,
-                                               Object instruct,
-                                               Map<String, Object> options) {
+    @Override
+    protected List<Double> rerankOrderedScores(String query, List<String> documents, Object instruct,
+            Map<String, Object> options) {
         List<Double> scores = new ArrayList<>();
         for (String document : documents) {
-            JsonNode response = ApiRequestUtils.postJsonWithRetry(
-                    httpClient,
-                    apiUrl + CHAT_ENDPOINT,
-                    buildChatPayload(query, document, instruct, options),
-                    headers,
-                    Duration.ofMillis(Math.round(config.getTimeout() * 1000)),
-                    maxRetries,
-                    StatusCode.RETRIEVAL_RERANKER_REQUEST_CALL_FAILED,
-                    "ChatReranker");
+            JsonNode response = ApiRequestUtils.postJsonWithRetry(httpClient, apiUrl + CHAT_ENDPOINT,
+                    buildChatPayload(query, document, instruct, options), headers,
+                    Duration.ofMillis(Math.round(config.getTimeout() * 1000)), maxRetries,
+                    StatusCode.RETRIEVAL_RERANKER_REQUEST_CALL_FAILED, "ChatReranker");
             scores.add(parseChatScore(response));
         }
         return scores;
     }
 
-    private Map<String, Object> buildChatPayload(String query,
-                                                 String document,
-                                                 Object instruct,
-                                                 Map<String, Object> options) {
+    /**
+     * buildChatPayload.
+     * 
+     * @param query query
+     * @param document document
+     * @param instruct instruct
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, Object> buildChatPayload(String query, String document, Object instruct,
+            Map<String, Object> options) {
         String content = buildQuery(query, instruct) + DOC_TEMPLATE.formatted(document);
-        List<Map<String, Object>> messages = List.of(
-                Map.of("role", "system", "content", SYSTEM_INSTRUCT),
-                Map.of("role", "user", "content", content));
+        List<Map<String, Object>> messages =
+            List.of(Map.of("role", "system", "content", SYSTEM_INSTRUCT), Map.of("role", "user", "content", content));
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("model", modelName);
         payload.put("messages", messages);
@@ -107,13 +121,19 @@ public class ChatReranker extends StandardReranker {
         return payload;
     }
 
+    /**
+     * parseChatScore.
+     * 
+     * @param response response
+     * @return the result
+     * @since 0.1.7
+     */
     private static double parseChatScore(JsonNode response) {
         JsonNode choice = response.path("choices").isArray() && response.path("choices").size() > 0
                 ? response.path("choices").get(0)
                 : null;
         if (choice == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RERANKER_REQUEST_CALL_FAILED,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RERANKER_REQUEST_CALL_FAILED,
                     "chat reranker response missing choices");
         }
         JsonNode logprobs = choice.path("logprobs");
@@ -124,8 +144,7 @@ public class ChatReranker extends StandardReranker {
             topLogProbs = logprobs.get(0).path("top_logprobs");
         }
         if (topLogProbs == null || !topLogProbs.isArray()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RERANKER_REQUEST_CALL_FAILED,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RERANKER_REQUEST_CALL_FAILED,
                     "the service does not support logprobs for chat reranker to function");
         }
 
@@ -138,6 +157,8 @@ public class ChatReranker extends StandardReranker {
                 yesScore = Math.max(yesScore, probability);
             } else if (text.startsWith("no")) {
                 noScore = Math.max(noScore, probability);
+            } else {
+                // no-op
             }
         }
         double total = yesScore + noScore;

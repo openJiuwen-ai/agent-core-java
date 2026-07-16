@@ -11,15 +11,22 @@ import com.openjiuwen.core.session.BaseSession;
  * Sub-workflow session used when a workflow is nested inside another workflow.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.internal.workflow.SubWorkflowSession}.
+ * 
+ * @since 0.1.7
  */
 public class SubWorkflowSession extends NodeSession {
-
     private final String subWorkflowId;
     private final int subWorkflowNestingDepth;
     private ActorManager actorManager;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SubWorkflowSession.
+     * 
+     * @param session session
+     * @param nodeId nodeId
+     * @param nodeType nodeType
+     * @param workflowId workflowId
+     * @since 0.1.7
      */
     public SubWorkflowSession(BaseSession session, String nodeId, String nodeType, String workflowId) {
         super(resolveParentSession(session), nodeId, nodeType);
@@ -36,56 +43,79 @@ public class SubWorkflowSession extends NodeSession {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SubWorkflowSession.
+     * 
+     * @param session session
+     * @param nodeId nodeId
+     * @param workflowId workflowId
+     * @since 0.1.7
      */
     public SubWorkflowSession(BaseSession session, String nodeId, String workflowId) {
         this(session, nodeId, null, workflowId);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * workflowId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String workflowId() {
         return subWorkflowId;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * workflowNestingDepth.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public int workflowNestingDepth() {
         return subWorkflowNestingDepth;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * actorManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public ActorManager actorManager() {
         return actorManager;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setActorManager.
+     * 
+     * @param actorManager actorManager
+     * @since 0.1.7
      */
     public void setActorManager(ActorManager actorManager) {
         this.actorManager = actorManager;
     }
 
     /**
-     * Close the sub-workflow session by shutting down its actor manager.
-     * Mirrors Python's {@code SubWorkflowSession.close()}.
+     * close.
+     * 
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void close() {
         if (actorManager != null) {
             actorManager.shutdown();
         }
     }
 
+    /**
+     * resolveParentSession.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static BaseSession resolveParentSession(BaseSession session) {
         if (session instanceof NodeSession nodeSession && nodeSession.parent() != null) {
             return nodeSession.parent();

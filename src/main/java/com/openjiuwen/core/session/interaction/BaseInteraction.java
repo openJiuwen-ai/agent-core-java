@@ -13,28 +13,44 @@ import java.util.List;
  * Base class for interaction handling, managing interactive input queue.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.interaction.base.BaseInteraction}.
+ * 
+ * @since 0.1.7
  */
 public abstract class BaseInteraction {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * interactiveInputs.
+     * 
+     * @since 0.1.7
      */
     protected List<Object> interactiveInputs;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * latestInteractiveInputs.
+     * 
+     * @since 0.1.7
      */
     protected Object latestInteractiveInputs;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * idx.
+     * 
+     * @since 0.1.7
      */
     protected int idx;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * session.
+     * 
+     * @since 0.1.7
      */
     protected final BaseSession session;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseInteraction.
+     * 
+     * @param session session
+     * @param defaultInput defaultInput
+     * @since 0.1.7
      */
     protected BaseInteraction(BaseSession session, Object defaultInput) {
         this.session = session;
@@ -52,13 +68,21 @@ public abstract class BaseInteraction {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BaseInteraction.
+     * 
+     * @param session session
+     * @since 0.1.7
      */
     protected BaseInteraction(BaseSession session) {
         this(session, null);
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * initInteractiveInputs.
+     * 
+     * @since 0.1.7
+     */
     private void initInteractiveInputs() {
         Object inputs = session.state().get(Constant.INTERACTIVE_INPUT);
         if (inputs instanceof List) {
@@ -81,8 +105,9 @@ public abstract class BaseInteraction {
 
     /**
      * Get the next interactive input from the queue.
-     *
+     * 
      * @return next input or null if exhausted
+     * @since 0.1.7
      */
     protected Object getNextInteractiveInput() {
         if (interactiveInputs != null && idx < interactiveInputs.size()) {
@@ -95,17 +120,19 @@ public abstract class BaseInteraction {
 
     /**
      * Wait for user inputs, blocking until input is available.
-     *
+     * 
      * @param value the prompt/schema to present
      * @return the user input
+     * @since 0.1.7
      */
     public abstract Object waitUserInputs(Object value);
 
     /**
      * Get the latest user input.
-     *
+     * 
      * @param value the prompt
      * @return the latest input
+     * @since 0.1.7
      */
     public Object userLatestInput(Object value) {
         return null;

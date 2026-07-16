@@ -12,28 +12,44 @@ import java.util.Set;
 
 /**
  * Deduplicated triple memory.
+ * 
+ * @since 0.1.7
  */
 public class TripleMemory {
-
     private final Set<String> includedTriples = new HashSet<>();
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private final List<List<String>> memory = new ArrayList<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * size.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int size() {
         return memory.size();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMemory.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<List<String>> getMemory() {
         return new ArrayList<>(memory);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTriplesStr.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTriplesStr() {
         List<String> formatted = new ArrayList<>();
@@ -44,7 +60,10 @@ public class TripleMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extendMemory.
+     * 
+     * @param triple triple
+     * @since 0.1.7
      */
     public void extendMemory(List<String> triple) {
         String normalized = tupleToString(triple);
@@ -54,7 +73,10 @@ public class TripleMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * batchExtendMemory.
+     * 
+     * @param triples triples
+     * @since 0.1.7
      */
     public void batchExtendMemory(List<List<String>> triples) {
         for (List<String> triple : triples) {
@@ -62,6 +84,13 @@ public class TripleMemory {
         }
     }
 
+    /**
+     * tupleToString.
+     * 
+     * @param triple triple
+     * @return the result
+     * @since 0.1.7
+     */
     private static String tupleToString(List<String> triple) {
         List<String> normalized = new ArrayList<>();
         for (String item : triple) {

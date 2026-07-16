@@ -1,12 +1,16 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.singleagent.agents.ReActAgent;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.singleagent.agents.ReActAgent;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,13 +18,10 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Unit tests for {@link AgentCallbackManager}.
  */
 class AgentCallbackManagerTest {
-
     private AgentCallbackManager manager;
     private static final String TEST_AGENT_ID = "test-agent-cbm";
 
@@ -38,7 +39,8 @@ class AgentCallbackManagerTest {
     void testRegisterCallbackAndHasHooks() {
         assertThat(manager.hasHooks(AgentCallbackEvent.BEFORE_INVOKE)).isFalse();
 
-        manager.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> {});
+        manager.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> {
+        });
 
         assertThat(manager.hasHooks(AgentCallbackEvent.BEFORE_INVOKE)).isTrue();
     }
@@ -78,8 +80,10 @@ class AgentCallbackManagerTest {
 
     @Test
     void testClearSpecificEvent() {
-        manager.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> {});
-        manager.registerCallback(AgentCallbackEvent.AFTER_INVOKE, ctx -> {});
+        manager.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> {
+        });
+        manager.registerCallback(AgentCallbackEvent.AFTER_INVOKE, ctx -> {
+        });
 
         manager.clear(AgentCallbackEvent.BEFORE_INVOKE);
 
@@ -89,9 +93,12 @@ class AgentCallbackManagerTest {
 
     @Test
     void testClearAllEvents() {
-        manager.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> {});
-        manager.registerCallback(AgentCallbackEvent.AFTER_INVOKE, ctx -> {});
-        manager.registerCallback(AgentCallbackEvent.BEFORE_MODEL_CALL, ctx -> {});
+        manager.registerCallback(AgentCallbackEvent.BEFORE_INVOKE, ctx -> {
+        });
+        manager.registerCallback(AgentCallbackEvent.AFTER_INVOKE, ctx -> {
+        });
+        manager.registerCallback(AgentCallbackEvent.BEFORE_MODEL_CALL, ctx -> {
+        });
 
         manager.clear(null);
 
@@ -104,13 +111,16 @@ class AgentCallbackManagerTest {
     void testRegisterRailRegistersOverriddenHooks() {
         AgentRail rail = new AgentRail() {
             @Override
-            public void beforeInvoke(AgentCallbackContext ctx) {}
+            public void beforeInvoke(AgentCallbackContext ctx) {
+            }
 
             @Override
-            public void afterInvoke(AgentCallbackContext ctx) {}
+            public void afterInvoke(AgentCallbackContext ctx) {
+            }
 
             @Override
-            public void beforeModelCall(AgentCallbackContext ctx) {}
+            public void beforeModelCall(AgentCallbackContext ctx) {
+            }
         };
 
         manager.registerRail(rail, null);
@@ -144,7 +154,8 @@ class AgentCallbackManagerTest {
         ToolCard toolCard = ToolCard.builder().name("railTool").description("a tool").build();
         AgentRail rail = new AgentRail(List.of(toolCard)) {
             @Override
-            public void beforeInvoke(AgentCallbackContext ctx) {}
+            public void beforeInvoke(AgentCallbackContext ctx) {
+            }
         };
 
         agent.getAgentCallbackManager().registerRail(rail, agent);
@@ -169,7 +180,8 @@ class AgentCallbackManagerTest {
         ToolCard toolCard = ToolCard.builder().name("railTool2").description("a tool").build();
         AgentRail rail = new AgentRail(List.of(toolCard)) {
             @Override
-            public void beforeInvoke(AgentCallbackContext ctx) {}
+            public void beforeInvoke(AgentCallbackContext ctx) {
+            }
         };
 
         agent.getAgentCallbackManager().registerRail(rail, agent);

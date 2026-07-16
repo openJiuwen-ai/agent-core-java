@@ -21,36 +21,36 @@ import java.util.function.Function;
  * <p>
  * Mirrors Python's {@code LocalFunction} class. The wrapped function
  * receives input as a {@code Map<String, Object>} and returns the result.
- *
- * <p>Usage:
+ * <p>
+ * Usage:
+ * 
  * <pre>
- *   ToolCard card = ToolCard.builder().name("add").description("Add two numbers").build();
- *   LocalFunction tool = new LocalFunction(card, inputs -> {
- *       int a = (int) inputs.get("a");
- *       int b = (int) inputs.get("b");
- *       return a + b;
- *   });
- *   Object result = tool.invoke(Map.of("a", 1, "b", 2));
+ * ToolCard card = ToolCard.builder().name("add").description("Add two numbers").build();
+ * LocalFunction tool = new LocalFunction(card, inputs -> {
+ *     int a = (int) inputs.get("a");
+ *     int b = (int) inputs.get("b");
+ *     return a + b;
+ * });
+ * Object result = tool.invoke(Map.of("a", 1, "b", 2));
  * </pre>
- *
+ * 
  * @since 0.1.7
  */
 public class LocalFunction extends Tool {
-
     private final Function<Map<String, Object>, Object> func;
     private final ContextFunction contextFunc;
 
     /**
      * Create a local function tool.
-     *
+     * 
      * @param card the tool card configuration
      * @param func the function to wrap; must not be null
+     * @since 0.1.7
      */
     public LocalFunction(ToolCard card, Function<Map<String, Object>, Object> func) {
         super(card);
         if (func == null) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_LOCAL_FUNCTION_FUNC_NOT_SUPPORTED,
-                    "card", card.toString());
+            throw ErrorHelper.buildError(StatusCode.TOOL_LOCAL_FUNCTION_FUNC_NOT_SUPPORTED, "card", card.toString());
         }
         this.func = func;
         this.contextFunc = null;
@@ -58,49 +58,45 @@ public class LocalFunction extends Tool {
 
     /**
      * Create a local function tool that can access execution kwargs such as {@code session}.
-     *
-     * @param card        the tool card configuration
+     * 
+     * @param card the tool card configuration
      * @param contextFunc the context-aware function to wrap
+     * @since 0.1.7
      */
     public LocalFunction(ToolCard card, ContextFunction contextFunc) {
         super(card);
         if (contextFunc == null) {
-            throw ErrorHelper.buildError(StatusCode.TOOL_LOCAL_FUNCTION_FUNC_NOT_SUPPORTED,
-                    "card", card.toString());
+            throw ErrorHelper.buildError(StatusCode.TOOL_LOCAL_FUNCTION_FUNC_NOT_SUPPORTED, "card", card.toString());
         }
         this.func = null;
         this.contextFunc = contextFunc;
     }
 
     /**
-     * Invoke the wrapped function once with validated inputs.
-     *
-     * @param inputs tool inputs
-     * @param kwargs runtime keyword arguments
-     * @return tool result
-     * @throws Exception when tool execution fails
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
         Map<String, Object> validatedInputs = validateInputs(inputs, kwargs);
         return invokeFunction(validatedInputs, kwargs);
     }
 
     /**
-     * Invoke the wrapped streaming function.
-     *
-     * @param inputs tool inputs
-     * @param kwargs runtime keyword arguments
-     * @return streaming iterator
-     * @throws Exception when the wrapped function is not stream-capable
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Iterator<Object> stream(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
         Map<String, Object> validatedInputs = validateInputs(inputs, kwargs);
         Object result = invokeFunction(validatedInputs, kwargs);
@@ -120,15 +116,15 @@ public class LocalFunction extends Tool {
         }
 
         // Non-streaming function: throw error instead of silently wrapping
-        throw ErrorHelper.buildError(StatusCode.TOOL_LOCAL_FUNCTION_EXECUTION_ERROR,
-                "method", "stream", "reason", "func is not a streaming function (must return Iterator or Iterable)",
-                "card", getCard().toString());
+        throw ErrorHelper.buildError(StatusCode.TOOL_LOCAL_FUNCTION_EXECUTION_ERROR, "method", "stream", "reason",
+                "func is not a streaming function (must return Iterator or Iterable)", "card", getCard().toString());
     }
 
     /**
      * Get the underlying function.
-     *
+     * 
      * @return plain function implementation
+     * @since 0.1.7
      */
     public Function<Map<String, Object>, Object> getFunc() {
         return func;
@@ -136,8 +132,9 @@ public class LocalFunction extends Tool {
 
     /**
      * Get the context-aware function variant.
-     *
+     * 
      * @return context-aware function implementation
+     * @since 0.1.7
      */
     public ContextFunction getContextFunc() {
         return contextFunc;
@@ -145,6 +142,11 @@ public class LocalFunction extends Tool {
 
     /**
      * Validate and format inputs against the tool card's input schema.
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     private Map<String, Object> validateInputs(Map<String, Object> inputs, Map<String, Object> kwargs) {
         Map<String, Object> inputParams = getCard().getInputParams();
@@ -156,6 +158,14 @@ public class LocalFunction extends Tool {
         return inputs;
     }
 
+    /**
+     * invokeFunction.
+     * 
+     * @param inputs inputs
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
+     */
     private Object invokeFunction(Map<String, Object> inputs, Map<String, Object> kwargs) {
         Object session = kwargs != null ? kwargs.get("session") : null;
         try {
@@ -173,7 +183,7 @@ public class LocalFunction extends Tool {
 
     /**
      * Context-aware local function signature.
-     *
+     * 
      * @since 0.1.7
      */
     @FunctionalInterface

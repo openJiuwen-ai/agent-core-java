@@ -1,12 +1,13 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.runner.callback;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for callback framework data models.
@@ -14,9 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @DisplayName("Callback Models Tests")
 class CallbackModelsTest {
-
     // ========== CallbackMetrics ==========
-
     @Test
     @DisplayName("CallbackMetrics default values")
     void testCallbackMetricsDefaultValues() {
@@ -143,8 +142,7 @@ class CallbackModelsTest {
     @Test
     @DisplayName("ChainContext default initialization")
     void testChainContextDefaultInit() {
-        ChainContext context = new ChainContext("test_event",
-                new Object[]{"arg1"}, Map.of("key", "value"));
+        ChainContext context = new ChainContext("test_event", new Object[]{"arg1"}, Map.of("key", "value"));
         assertEquals("test_event", context.getEvent());
         assertArrayEquals(new Object[]{"arg1"}, context.getInitialArgs());
         assertEquals("value", context.getInitialKwargs().get("key"));
@@ -209,10 +207,7 @@ class CallbackModelsTest {
     @Test
     @DisplayName("ChainResult continue")
     void testChainResultContinue() {
-        ChainResult result = ChainResult.builder()
-                .action(ChainAction.CONTINUE)
-                .result("success")
-                .build();
+        ChainResult result = ChainResult.builder().action(ChainAction.CONTINUE).result("success").build();
         assertEquals(ChainAction.CONTINUE, result.getAction());
         assertEquals("success", result.getResult());
         assertNull(result.getContext());
@@ -224,11 +219,7 @@ class CallbackModelsTest {
     void testChainResultRollbackWithError() {
         Exception error = new RuntimeException("Something went wrong");
         ChainContext ctx = new ChainContext("test", new Object[0], Map.of());
-        ChainResult result = ChainResult.builder()
-                .action(ChainAction.ROLLBACK)
-                .context(ctx)
-                .error(error)
-                .build();
+        ChainResult result = ChainResult.builder().action(ChainAction.ROLLBACK).context(ctx).error(error).build();
         assertEquals(ChainAction.ROLLBACK, result.getAction());
         assertSame(ctx, result.getContext());
         assertSame(error, result.getError());
@@ -237,10 +228,7 @@ class CallbackModelsTest {
     @Test
     @DisplayName("ChainResult break")
     void testChainResultBreak() {
-        ChainResult result = ChainResult.builder()
-                .action(ChainAction.BREAK)
-                .result(Map.of("data", "value"))
-                .build();
+        ChainResult result = ChainResult.builder().action(ChainAction.BREAK).result(Map.of("data", "value")).build();
         assertEquals(ChainAction.BREAK, result.getAction());
         assertEquals(Map.of("data", "value"), result.getResult());
     }
@@ -250,10 +238,7 @@ class CallbackModelsTest {
     @Test
     @DisplayName("CallbackInfo default initialization")
     void testCallbackInfoDefaultInit() {
-        CallbackInfo info = CallbackInfo.builder()
-                .callback(kwargs -> null)
-                .priority(0)
-                .build();
+        CallbackInfo info = CallbackInfo.builder().callback(kwargs -> null).priority(0).build();
         assertNotNull(info.getCallback());
         assertEquals(0, info.getPriority());
         assertFalse(info.isOnce());
@@ -269,17 +254,9 @@ class CallbackModelsTest {
     @Test
     @DisplayName("CallbackInfo full initialization")
     void testCallbackInfoFullInit() {
-        CallbackInfo info = CallbackInfo.builder()
-                .callback(kwargs -> null)
-                .priority(10)
-                .once(true)
-                .enabled(false)
-                .namespace("custom")
-                .tags(java.util.Set.of("tag1", "tag2"))
-                .maxRetries(3)
-                .retryDelay(1.0)
-                .timeout(30.0)
-                .build();
+        CallbackInfo info =
+            CallbackInfo.builder().callback(kwargs -> null).priority(10).once(true).enabled(false).namespace("custom")
+                    .tags(java.util.Set.of("tag1", "tag2")).maxRetries(3).retryDelay(1.0).timeout(30.0).build();
         assertEquals(10, info.getPriority());
         assertTrue(info.isOnce());
         assertFalse(info.isEnabled());

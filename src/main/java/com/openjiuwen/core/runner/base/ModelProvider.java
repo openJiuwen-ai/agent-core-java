@@ -11,6 +11,8 @@ import java.util.function.Supplier;
 /**
  * Provider functional interface for creating Model instances.
  * Mirrors Python's {@code ModelProvider = Callable[..., Model]}.
+ * 
+ * @since 0.1.7
  */
 @FunctionalInterface
 public interface ModelProvider extends Supplier<Model> {

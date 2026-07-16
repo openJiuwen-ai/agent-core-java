@@ -19,46 +19,29 @@ import java.util.Map;
 
 /**
  * External memory provider based on LongTermMemory.
+ * 
+ * @since 0.1.7
  */
 public class OpenJiuwenMemoryProvider implements MemoryProvider {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int DEFAULT_RECALL_USER_MEM_NUM = 5;
     private static final int DEFAULT_RECALL_HISTORY_MEM_NUM = 3;
 
-    private static final Map<String, Object> LTM_SEARCH_SCHEMA = Map.of(
-            "name", "ltm_search",
-            "description", "在长期记忆中搜索相关信息。",
-            "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "query", Map.of("type", "string", "description", "搜索查询内容"),
-                            "num", Map.of(
-                                    "type", "integer",
-                                    "description", "最大返回结果数量",
-                                    "default", DEFAULT_RECALL_USER_MEM_NUM
-                            ),
-                            "threshold", Map.of("type", "number", "description", "最小相关性阈值 (0-1)", "default", 0.3)
-                    ),
-                    "required", List.of("query")
-            )
-    );
+    private static final Map<String, Object> LTM_SEARCH_SCHEMA =
+        Map.of("name", "ltm_search", "description", "在长期记忆中搜索相关信息。", "parameters",
+                Map.of("type", "object", "properties",
+                        Map.of("query", Map.of("type", "string", "description", "搜索查询内容"), "num",
+                                Map.of("type", "integer", "description", "最大返回结果数量", "default",
+                                        DEFAULT_RECALL_USER_MEM_NUM),
+                                "threshold", Map.of("type", "number", "description", "最小相关性阈值 (0-1)", "default", 0.3)),
+                        "required", List.of("query")));
 
-    private static final Map<String, Object> LTM_SEARCH_SUMMARY_SCHEMA = Map.of(
-            "name", "ltm_search_summary",
-            "description", "在长期记忆中搜索历史会话摘要。",
-            "parameters", Map.of(
-                    "type", "object",
-                    "properties", Map.of(
-                            "query", Map.of("type", "string", "description", "搜索查询内容"),
-                            "num", Map.of(
-                                    "type", "integer",
-                                    "description", "最大返回结果数量",
-                                    "default", DEFAULT_RECALL_HISTORY_MEM_NUM
-                            )
-                    ),
-                    "required", List.of("query")
-            )
-    );
+    private static final Map<String, Object> LTM_SEARCH_SUMMARY_SCHEMA =
+        Map.of("name", "ltm_search_summary", "description", "在长期记忆中搜索历史会话摘要。", "parameters",
+                Map.of("type", "object", "properties",
+                        Map.of("query", Map.of("type", "string", "description", "搜索查询内容"), "num", Map.of("type",
+                                "integer", "description", "最大返回结果数量", "default", DEFAULT_RECALL_HISTORY_MEM_NUM)),
+                        "required", List.of("query")));
 
     private final Map<String, Object> config;
     private final Backend backend;
@@ -69,34 +52,63 @@ public class OpenJiuwenMemoryProvider implements MemoryProvider {
     private String sessionId = "__default__";
 
     interface Backend {
+        /**
+         * searchUserMem.
+         * 
+         * @param query query
+         * @param num num
+         * @param userId userId
+         * @param scopeId scopeId
+         * @param threshold threshold
+         * @return the result
+         * @since 0.1.7
+         */
         List<MemResult> searchUserMem(String query, int num, String userId, String scopeId, double threshold);
 
-        List<MemResult> searchUserHistorySummary(
-                String query,
-                int num,
-                String userId,
-                String scopeId,
-                double threshold
-        );
+        /**
+         * searchUserHistorySummary.
+         * 
+         * @param query query
+         * @param num num
+         * @param userId userId
+         * @param scopeId scopeId
+         * @param threshold threshold
+         * @return the result
+         * @since 0.1.7
+         */
+        List<MemResult> searchUserHistorySummary(String query, int num, String userId, String scopeId,
+                double threshold);
 
-        void addMessages(
-                List<BaseMessage> messages,
-                AgentMemoryConfig config,
-                String userId,
-                String scopeId,
-                String sessionId
-        );
+        /**
+         * addMessages.
+         * 
+         * @param messages messages
+         * @param config config
+         * @param userId userId
+         * @param scopeId scopeId
+         * @param sessionId sessionId
+         * @since 0.1.7
+         */
+        void addMessages(List<BaseMessage> messages, AgentMemoryConfig config, String userId, String scopeId,
+                String sessionId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OpenJiuwenMemoryProvider.
+     * 
+     * @since 0.1.7
      */
     public OpenJiuwenMemoryProvider() {
         this(Map.of(), null, AgentMemoryConfig.builder().build());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * OpenJiuwenMemoryProvider.
+     * 
+     * @param config config
+     * @param backend backend
+     * @param agentMemoryConfig agentMemoryConfig
+     * @since 0.1.7
      */
     public OpenJiuwenMemoryProvider(Map<String, Object> config, Backend backend, AgentMemoryConfig agentMemoryConfig) {
         this.config = config != null ? new LinkedHashMap<>(config) : new LinkedHashMap<>();
@@ -105,34 +117,34 @@ public class OpenJiuwenMemoryProvider implements MemoryProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String getName() {
         return "openjiuwen";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isAvailable.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean isAvailable() {
         return backend != null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * initialize.
+     * 
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void initialize(Map<String, Object> kwargs) {
         if (kwargs != null) {
             if (kwargs.get("user_id") != null) {
@@ -149,23 +161,26 @@ public class OpenJiuwenMemoryProvider implements MemoryProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getToolSchemas.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Map<String, Object>> getToolSchemas() {
         return List.of(LTM_SEARCH_SCHEMA, LTM_SEARCH_SUMMARY_SCHEMA);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * handleToolCall.
+     * 
+     * @param toolName toolName
+     * @param args args
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String handleToolCall(String toolName, Map<String, Object> args) throws Exception {
         if (!isInitialized) {
             return MAPPER.writeValueAsString(Map.of("error", "Memory provider not initialized"));
@@ -180,36 +195,26 @@ public class OpenJiuwenMemoryProvider implements MemoryProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * prefetch.
+     * 
+     * @param query query
+     * @param kwargs kwargs
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String prefetch(String query, Map<String, Object> kwargs) {
         if (!isInitialized || query == null || query.isBlank()) {
             return "";
         }
-        String resolvedUserId = kwargs != null && kwargs.get("user_id") != null
-                ? String.valueOf(kwargs.get("user_id"))
-                : userId;
-        String resolvedScopeId = kwargs != null && kwargs.get("scope_id") != null
-                ? String.valueOf(kwargs.get("scope_id"))
-                : scopeId;
-        List<MemResult> memories = backend.searchUserMem(
-                query,
-                DEFAULT_RECALL_USER_MEM_NUM,
-                resolvedUserId,
-                resolvedScopeId,
-                0.3
-        );
-        List<MemResult> summaries = backend.searchUserHistorySummary(
-                query,
-                DEFAULT_RECALL_HISTORY_MEM_NUM,
-                resolvedUserId,
-                resolvedScopeId,
-                0.3
-        );
+        String resolvedUserId =
+            kwargs != null && kwargs.get("user_id") != null ? String.valueOf(kwargs.get("user_id")) : userId;
+        String resolvedScopeId =
+            kwargs != null && kwargs.get("scope_id") != null ? String.valueOf(kwargs.get("scope_id")) : scopeId;
+        List<MemResult> memories =
+            backend.searchUserMem(query, DEFAULT_RECALL_USER_MEM_NUM, resolvedUserId, resolvedScopeId, 0.3);
+        List<MemResult> summaries = backend.searchUserHistorySummary(query, DEFAULT_RECALL_HISTORY_MEM_NUM,
+                resolvedUserId, resolvedScopeId, 0.3);
         List<String> parts;
         if (!memories.isEmpty()) {
             parts = new ArrayList<>();
@@ -224,33 +229,32 @@ public class OpenJiuwenMemoryProvider implements MemoryProvider {
         if (!summaries.isEmpty()) {
             parts.add("## Related History Summaries");
             for (MemResult result : summaries) {
-                parts.add("- " + result.getMemInfo().getContent()
-                        + " (score: " + String.format(java.util.Locale.ROOT, "%.2f", result.getScore()) + ")");
+                parts.add("- " + result.getMemInfo().getContent() + " (score: "
+                        + String.format(java.util.Locale.ROOT, "%.2f", result.getScore()) + ")");
             }
         }
         return String.join("\n", parts);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * syncTurn.
+     * 
+     * @param userMsg userMsg
+     * @param assistantMsg assistantMsg
+     * @param kwargs kwargs
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void syncTurn(String userMsg, String assistantMsg, Map<String, Object> kwargs) {
         if (!isInitialized) {
             return;
         }
-        String resolvedUserId = kwargs != null && kwargs.get("user_id") != null
-                ? String.valueOf(kwargs.get("user_id"))
-                : userId;
-        String resolvedScopeId = kwargs != null && kwargs.get("scope_id") != null
-                ? String.valueOf(kwargs.get("scope_id"))
-                : scopeId;
-        String resolvedSessionId = kwargs != null && kwargs.get("session_id") != null
-                ? String.valueOf(kwargs.get("session_id"))
-                : sessionId;
+        String resolvedUserId =
+            kwargs != null && kwargs.get("user_id") != null ? String.valueOf(kwargs.get("user_id")) : userId;
+        String resolvedScopeId =
+            kwargs != null && kwargs.get("scope_id") != null ? String.valueOf(kwargs.get("scope_id")) : scopeId;
+        String resolvedSessionId =
+            kwargs != null && kwargs.get("session_id") != null ? String.valueOf(kwargs.get("session_id")) : sessionId;
         List<BaseMessage> messages = new ArrayList<>();
         if (userMsg != null && !userMsg.isBlank()) {
             messages.add(UserMessage.builder().content(userMsg).build());
@@ -264,28 +268,36 @@ public class OpenJiuwenMemoryProvider implements MemoryProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * systemPromptBlock.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String systemPromptBlock() {
         return "# Long-Term Memory System\n"
                 + "Use ltm_search to search long-term memory and ltm_search_summary to recall history summaries.";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isInitialized.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public boolean isInitialized() {
         return isInitialized;
     }
 
+    /**
+     * handleSearch.
+     * 
+     * @param args args
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private String handleSearch(Map<String, Object> args) throws Exception {
         String query = args != null && args.get("query") != null ? String.valueOf(args.get("query")) : "";
         int num = args != null && args.get("num") != null
@@ -298,6 +310,14 @@ public class OpenJiuwenMemoryProvider implements MemoryProvider {
         return MAPPER.writeValueAsString(Map.of("results", toJsonResults(results), "count", results.size()));
     }
 
+    /**
+     * handleSearchSummary.
+     * 
+     * @param args args
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private String handleSearchSummary(Map<String, Object> args) throws Exception {
         String query = args != null && args.get("query") != null ? String.valueOf(args.get("query")) : "";
         int num = args != null && args.get("num") != null
@@ -307,6 +327,13 @@ public class OpenJiuwenMemoryProvider implements MemoryProvider {
         return MAPPER.writeValueAsString(Map.of("results", toJsonResults(results), "count", results.size()));
     }
 
+    /**
+     * toJsonResults.
+     * 
+     * @param results results
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Map<String, Object>> toJsonResults(List<MemResult> results) {
         List<Map<String, Object>> data = new ArrayList<>();
         for (MemResult result : results) {
@@ -323,52 +350,62 @@ public class OpenJiuwenMemoryProvider implements MemoryProvider {
     private static final class DefaultBackend implements Backend {
         private final LongTermMemory ltm;
 
+        /**
+         * DefaultBackend.
+         * 
+         * @param ltm ltm
+         * @since 0.1.7
+         */
         private DefaultBackend(LongTermMemory ltm) {
             this.ltm = ltm;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * searchUserMem.
+         * 
+         * @param query query
+         * @param num num
+         * @param userId userId
+         * @param scopeId scopeId
+         * @param threshold threshold
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
         public List<MemResult> searchUserMem(String query, int num, String userId, String scopeId, double threshold) {
             return ltm.searchUserMem(query, num, userId, scopeId, threshold);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * searchUserHistorySummary.
+         * 
+         * @param query query
+         * @param num num
+         * @param userId userId
+         * @param scopeId scopeId
+         * @param threshold threshold
+         * @return the result
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public List<MemResult> searchUserHistorySummary(
-                String query,
-                int num,
-                String userId,
-                String scopeId,
-                double threshold
-        ) {
+        public List<MemResult> searchUserHistorySummary(String query, int num, String userId, String scopeId,
+                double threshold) {
             return ltm.searchUserHistorySummary(query, num, userId, scopeId, threshold);
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * addMessages.
+         * 
+         * @param messages messages
+         * @param config config
+         * @param userId userId
+         * @param scopeId scopeId
+         * @param sessionId sessionId
+         * @since 0.1.7
          */
         @Override
-        /**
-         * Auto-generated for codecheck compliance.
-         */
-        public void addMessages(
-                List<BaseMessage> messages,
-                AgentMemoryConfig config,
-                String userId,
-                String scopeId,
-                String sessionId
-        ) {
+        public void addMessages(List<BaseMessage> messages, AgentMemoryConfig config, String userId, String scopeId,
+                String sessionId) {
             ltm.addMessages(messages, config, userId, scopeId, sessionId);
         }
     }

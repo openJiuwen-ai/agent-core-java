@@ -16,38 +16,52 @@ import java.util.Map;
 
 /**
  * Hybrid retriever combining sparse and dense retrieval.
+ * 
+ * @since 0.1.7
  */
 public class HybridRetriever extends AbstractStoreBackedRetriever {
-
     private final double alpha;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HybridRetriever.
+     * 
+     * @param vectorStore vectorStore
+     * @param embedModel embedModel
+     * @since 0.1.7
      */
     public HybridRetriever(VectorStore vectorStore, Embedding embedModel) {
         this(vectorStore, embedModel, 0.5);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * HybridRetriever.
+     * 
+     * @param vectorStore vectorStore
+     * @param embedModel embedModel
+     * @param alpha alpha
+     * @since 0.1.7
      */
     public HybridRetriever(VectorStore vectorStore, Embedding embedModel, double alpha) {
         super(vectorStore, embedModel);
         this.alpha = alpha;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieve.
+     * 
+     * @param query query
+     * @param topK topK
+     * @param scoreThreshold scoreThreshold
+     * @param mode mode
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
-    public List<RetrievalResult> retrieve(String query,
-                                          int topK,
-                                          Double scoreThreshold,
-                                          String mode,
-                                          Map<String, Object> options) {
+    @Override
+    public List<RetrievalResult> retrieve(String query, int topK, Double scoreThreshold, String mode,
+            Map<String, Object> options) {
         if (scoreThreshold != null && !"vector".equals(mode)) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_SCORE_THRESHOLD_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_SCORE_THRESHOLD_INVALID,
                     "score_threshold is only supported when mode='vector'");
         }
         List<SearchResult> searchResults;
@@ -58,8 +72,7 @@ public class HybridRetriever extends AbstractStoreBackedRetriever {
             searchResults = vectorStore.hybridSearch(query, queryVector, topK, alphaValue, filters, options);
         } else if ("vector".equals(mode)) {
             if (embedModel == null) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
                         "embed_model is required for vector search");
             }
             searchResults = vectorStore.search(embedModel.embedQuery(query), topK, filters, options);
@@ -69,30 +82,32 @@ public class HybridRetriever extends AbstractStoreBackedRetriever {
         } else if ("sparse".equals(mode)) {
             searchResults = vectorStore.sparseSearch(query, topK, filters, options);
         } else {
-            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT, "Unsupported mode: " + mode);
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT,
+                    "Unsupported mode: " + mode);
         }
         return VectorRetriever.toRetrievalResults(searchResults, "vector".equals(mode) ? scoreThreshold : null);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * retrieveSearchResults.
+     * 
+     * @param query query
+     * @param topK topK
+     * @param mode mode
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<SearchResult> retrieveSearchResults(String query, int topK, String mode, Map<String, Object> options) {
         Map<String, Object> filters = VectorRetriever.castMap(options == null ? null : options.get("filters"));
         if ("hybrid".equals(mode)) {
-            return vectorStore.hybridSearch(
-                    query,
-                    embedModel == null ? null : embedModel.embedQuery(query),
-                    topK,
-                    resolveAlpha(options),
-                    filters,
-                    options);
+            return vectorStore.hybridSearch(query, embedModel == null ? null : embedModel.embedQuery(query), topK,
+                    resolveAlpha(options), filters, options);
         }
         if ("vector".equals(mode)) {
             if (embedModel == null) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
                         "embed_model is required for vector search");
             }
             List<SearchResult> results = vectorStore.search(embedModel.embedQuery(query), topK, filters, options);
@@ -104,14 +119,25 @@ public class HybridRetriever extends AbstractStoreBackedRetriever {
         throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_MODE_NOT_SUPPORT, "Unsupported mode: " + mode);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * supportsMode.
+     * 
+     * @param mode mode
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean supportsMode(String mode) {
         return "hybrid".equals(mode) || "vector".equals(mode) || "sparse".equals(mode);
     }
 
+    /**
+     * resolveAlpha.
+     * 
+     * @param options options
+     * @return the result
+     * @since 0.1.7
+     */
     private double resolveAlpha(Map<String, Object> options) {
         if (options != null && options.get("alpha") instanceof Number number) {
             return number.doubleValue();

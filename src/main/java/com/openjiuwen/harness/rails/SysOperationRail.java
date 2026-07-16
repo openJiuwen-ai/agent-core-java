@@ -6,23 +6,26 @@ package com.openjiuwen.harness.rails;
 
 /**
  * Public class SysOperationRail used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class SysOperationRail extends DeepAgentRail {
     /**
-     * Auto-generated for codecheck compliance.
+     * priority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int priority() {
         return 60;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * describe.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String describe() {
         return "Expose sys_operation tools";

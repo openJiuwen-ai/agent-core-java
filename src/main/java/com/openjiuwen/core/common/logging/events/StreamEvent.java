@@ -10,7 +10,11 @@ import lombok.experimental.SuperBuilder;
 
 import java.util.Map;
 
-/** Stream related event — base class for all streaming events. */
+/**
+ * Stream related event — base class for all streaming events.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @SuperBuilder
 @EqualsAndHashCode(callSuper = true)
@@ -21,16 +25,21 @@ public class StreamEvent extends BaseLogEvent {
     private String streamId;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * StreamEvent.
+     * 
+     * @since 0.1.7
      */
     public StreamEvent() {
         super();
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * addFieldsToMap.
+     * 
+     * @param map map
+     * @since 0.1.7
      */
+    @Override
     protected void addFieldsToMap(Map<String, Object> map) {
         putIfNotNull(map, "stream_type", streamType);
         putIfNotNull(map, "chunk_index", chunkIndex);

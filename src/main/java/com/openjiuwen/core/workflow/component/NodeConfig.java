@@ -11,15 +11,18 @@ import java.util.List;
  * Stub for node configuration in a workflow.
  * <p>
  * Mirrors Python's node config with abilities, io_configs, and stream_io_configs.
+ * 
+ * @since 0.1.7
  */
 public class NodeConfig {
-
     private List<ComponentAbility> abilities;
     private IOConfig ioConfigs;
     private IOConfig streamIoConfigs;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * NodeConfig.
+     * 
+     * @since 0.1.7
      */
     public NodeConfig() {
         this.abilities = new ArrayList<>();
@@ -27,7 +30,12 @@ public class NodeConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * NodeConfig.
+     * 
+     * @param abilities abilities
+     * @param ioConfigs ioConfigs
+     * @param streamIoConfigs streamIoConfigs
+     * @since 0.1.7
      */
     public NodeConfig(List<ComponentAbility> abilities, IOConfig ioConfigs, IOConfig streamIoConfigs) {
         this.abilities = abilities != null ? abilities : new ArrayList<>();
@@ -36,42 +44,60 @@ public class NodeConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAbilities.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<ComponentAbility> getAbilities() {
         return abilities;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setAbilities.
+     * 
+     * @param abilities abilities
+     * @since 0.1.7
      */
     public void setAbilities(List<ComponentAbility> abilities) {
         this.abilities = abilities;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getIoConfigs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public IOConfig getIoConfigs() {
         return ioConfigs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setIoConfigs.
+     * 
+     * @param ioConfigs ioConfigs
+     * @since 0.1.7
      */
     public void setIoConfigs(IOConfig ioConfigs) {
         this.ioConfigs = ioConfigs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStreamIoConfigs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public IOConfig getStreamIoConfigs() {
         return streamIoConfigs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStreamIoConfigs.
+     * 
+     * @param streamIoConfigs streamIoConfigs
+     * @since 0.1.7
      */
     public void setStreamIoConfigs(IOConfig streamIoConfigs) {
         this.streamIoConfigs = streamIoConfigs;

@@ -18,32 +18,50 @@ import java.util.Iterator;
  * should implement their own specialized {@code TaskExecutor} subclasses.
  * <p>
  * Mirrors Python's {@code TaskExecutor(ABC)}.
+ * 
+ * @since 0.1.7
  */
 public abstract class TaskExecutor {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @since 0.1.7
      */
     protected final ControllerConfig config;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * abilityManager.
+     * 
+     * @since 0.1.7
      */
     protected final Object abilityManager;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * contextEngine.
+     * 
+     * @since 0.1.7
      */
     protected final ContextEngine contextEngine;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * taskManager.
+     * 
+     * @since 0.1.7
      */
     protected final TaskManager taskManager;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * eventQueue.
+     * 
+     * @since 0.1.7
      */
     protected final EventQueue eventQueue;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TaskExecutor.
+     * 
+     * @param dependencies dependencies
+     * @since 0.1.7
      */
     public TaskExecutor(TaskExecutorDependencies dependencies) {
         this.config = dependencies.getConfig();
@@ -55,56 +73,67 @@ public abstract class TaskExecutor {
 
     /**
      * Execute a task and return output chunks.
-     *
-     * @param taskId  task identifier
+     * 
+     * @param taskId task identifier
      * @param session session object
      * @return iterator of output chunks produced during execution
+     * @since 0.1.7
      */
     public abstract Iterator<ControllerOutputChunk> executeAbility(String taskId, AgentSessionApi session);
 
     /**
      * Check whether the task can be paused.
-     *
-     * @param taskId  task identifier
+     * 
+     * @param taskId task identifier
      * @param session session object
      * @return a two-element result: [canPause, reasonIfNot]
+     * @since 0.1.7
      */
     public abstract PauseCheckResult canPause(String taskId, AgentSessionApi session);
 
     /**
      * Pause the given task.
-     *
-     * @param taskId  task identifier
+     * 
+     * @param taskId task identifier
      * @param session session object
      * @return whether the pause operation succeeded
+     * @since 0.1.7
      */
     public abstract boolean pause(String taskId, AgentSessionApi session);
 
     /**
      * Check whether the task can be canceled.
-     *
-     * @param taskId  task identifier
+     * 
+     * @param taskId task identifier
      * @param session session object
      * @return a two-element result: [canCancel, reasonIfNot]
+     * @since 0.1.7
      */
     public abstract CancelCheckResult canCancel(String taskId, AgentSessionApi session);
 
     /**
      * Cancel the given task.
-     *
-     * @param taskId  task identifier
+     * 
+     * @param taskId task identifier
      * @param session session object
      * @return whether the cancel operation succeeded
+     * @since 0.1.7
      */
     public abstract boolean cancel(String taskId, AgentSessionApi session);
 
     /**
      * Result of a pause-ability check.
+     * 
+     * @since 0.1.7
      */
-    public record PauseCheckResult(boolean canPause, String reason) {}
+    public record PauseCheckResult(boolean canPause, String reason) {
+    }
 
     /**
      * Result of a cancel-ability check.
+     * 
+     * @since 0.1.7
      */
-    public record CancelCheckResult(boolean canCancel, String reason) {}
+    public record CancelCheckResult(boolean canCancel, String reason) {
+    }
 }

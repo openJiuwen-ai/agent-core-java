@@ -1,4 +1,12 @@
+
 package com.openjiuwen.agentevolving.agent_rl;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -11,20 +19,13 @@ import com.openjiuwen.agentevolving.agent_rl.config.offlineconfig.TrainingConfig
 import com.openjiuwen.agentevolving.agent_rl.config.offlineconfig.VerlActorRolloutRefHydraOverlay;
 import com.openjiuwen.agentevolving.agent_rl.config.offlineconfig.VerlDataHydraOverlay;
 import com.openjiuwen.agentevolving.agent_rl.config.offlineconfig.VerlHydraOverlay;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 class OfflineConfigSliceTest {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
@@ -112,11 +113,9 @@ class OfflineConfigSliceTest {
         config.getTraining().setTrain_files("/tmp/train.jsonl");
         config.getTraining().setVal_files("/tmp/val.jsonl");
 
-        Map<String, Object> encoded = OBJECT_MAPPER.readValue(
-                OBJECT_MAPPER.writeValueAsBytes(config),
-                new TypeReference<>() {
-                }
-        );
+        Map<String, Object> encoded =
+            OBJECT_MAPPER.readValue(OBJECT_MAPPER.writeValueAsBytes(config), new TypeReference<>() {
+            });
 
         @SuppressWarnings("unchecked")
         Map<String, Object> training = (Map<String, Object>) encoded.get("training");
@@ -166,11 +165,9 @@ class OfflineConfigSliceTest {
     void verlHydraOverlaySerializesNestedPythonFieldNames() throws Exception {
         VerlHydraOverlay overlay = new VerlHydraOverlay();
 
-        Map<String, Object> encoded = OBJECT_MAPPER.readValue(
-                OBJECT_MAPPER.writeValueAsBytes(overlay),
-                new TypeReference<>() {
-                }
-        );
+        Map<String, Object> encoded =
+            OBJECT_MAPPER.readValue(OBJECT_MAPPER.writeValueAsBytes(overlay), new TypeReference<>() {
+            });
 
         @SuppressWarnings("unchecked")
         Map<String, Object> actorRolloutRef = (Map<String, Object>) encoded.get("actor_rollout_ref");

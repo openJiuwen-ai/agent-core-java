@@ -13,23 +13,47 @@ import java.security.SecureRandom;
 
 /**
  * AES-256-GCM encryption/decryption utilities for memory content.
+ * 
+ * @since 0.1.7
  */
 public final class MemoryCrypto {
-
+    /**
+     * NONCE_LENGTH.
+     * 
+     * @since 0.1.7
+     */
     public static final int NONCE_LENGTH = 12;
+
+    /**
+     * TAG_LENGTH.
+     * 
+     * @since 0.1.7
+     */
     public static final int TAG_LENGTH = 16;
+
+    /**
+     * AES_KEY_LENGTH.
+     * 
+     * @since 0.1.7
+     */
     public static final int AES_KEY_LENGTH = 32;
     private static final int BIT_LENGTH = 128; // Tag length in bits
 
+    /**
+     * MemoryCrypto.
+     * 
+     * @since 0.1.7
+     */
     private MemoryCrypto() {
     }
 
     /**
      * Encrypt plaintext using AES-256-GCM.
-     *
-     * @param key       AES key, must be 32 bytes
+     * 
+     * @param key AES key, must be 32 bytes
      * @param plaintext text to encrypt
      * @return String array: [ciphertextHex, nonceHex, tagHex]
+     * @since 0.1.7
      */
     public static String[] encrypt(byte[] key, String plaintext) {
         if (key.length != AES_KEY_LENGTH) {
@@ -65,12 +89,13 @@ public final class MemoryCrypto {
 
     /**
      * Decrypt ciphertext using AES-256-GCM.
-     *
-     * @param key        AES key, must be 32 bytes
+     * 
+     * @param key AES key, must be 32 bytes
      * @param ciphertext hex-encoded ciphertext
-     * @param nonce      hex-encoded nonce
-     * @param tag        hex-encoded authentication tag
+     * @param nonce hex-encoded nonce
+     * @param tag hex-encoded authentication tag
      * @return decrypted plaintext
+     * @since 0.1.7
      */
     public static String decrypt(byte[] key, String ciphertext, String nonce, String tag) {
         byte[] ciphertextBytes = hexToBytes(ciphertext);
@@ -107,6 +132,13 @@ public final class MemoryCrypto {
         }
     }
 
+    /**
+     * bytesToHex.
+     * 
+     * @param bytes bytes
+     * @return the result
+     * @since 0.1.7
+     */
     private static String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder(bytes.length * 2);
         for (byte b : bytes) {
@@ -115,12 +147,18 @@ public final class MemoryCrypto {
         return sb.toString();
     }
 
+    /**
+     * hexToBytes.
+     * 
+     * @param hex hex
+     * @return the result
+     * @since 0.1.7
+     */
     private static byte[] hexToBytes(String hex) {
         int len = hex.length();
         byte[] data = new byte[len / 2];
         for (int i = 0; i < len; i += 2) {
-            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
-                    + Character.digit(hex.charAt(i + 1), 16));
+            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4) + Character.digit(hex.charAt(i + 1), 16));
         }
         return data;
     }

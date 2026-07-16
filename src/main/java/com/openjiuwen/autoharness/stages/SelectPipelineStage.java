@@ -21,104 +21,95 @@ import java.util.Map;
 
 /**
  * Public class SelectPipelineStage used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class SelectPipelineStage extends TaskStage {
     /**
-     * Auto-generated for codecheck compliance.
+     * name.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String name() {
         return "select_pipeline";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * description.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String description() {
         return "Select the best pipeline for a task.";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * consumes.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<String> consumes() {
         return List.of("assessment");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * produces.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<String> produces() {
         return List.of("pipeline_selection");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * run.
+     * 
+     * @param ctx ctx
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public StageResult run(BaseExecutionContext ctx) {
         if (!(ctx instanceof TaskContext taskContext)) {
-            return StageResult.builder()
-                    .status("failed")
-                    .error("select_pipeline requires TaskContext")
-                    .build();
+            return StageResult.builder().status("failed").error("select_pipeline requires TaskContext").build();
         }
         String assessment = String.valueOf(taskContext.getArtifact("assessment", ""));
-        PipelineSelectionArtifact selection = runSelectPipeline(
-                taskContext.getOrchestrator().getConfig(),
-                taskContext.getTask(),
-                assessment,
-                List.of(MetaEvolvePipeline.NAME)
-        );
-        return StageResult.builder()
-                .artifacts(Map.of("pipeline_selection", selection))
-                .build();
+        PipelineSelectionArtifact selection = runSelectPipeline(taskContext.getOrchestrator().getConfig(),
+                taskContext.getTask(), assessment, List.of(MetaEvolvePipeline.NAME));
+        return StageResult.builder().artifacts(Map.of("pipeline_selection", selection)).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runSelectPipeline.
+     * 
+     * @param config config
+     * @param task task
+     * @param assessment assessment
+     * @param availablePipelines availablePipelines
+     * @return the result
+     * @since 0.1.7
      */
     public static PipelineSelectionArtifact runSelectPipeline(AutoHarnessConfig config, OptimizationTask task,
-                                                              String assessment,
-                                                              List<String> availablePipelines) {
+            String assessment, List<String> availablePipelines) {
         if (task != null && hasText(task.getPipelineName())) {
             String pipelineName = normalizePipelineName(task.getPipelineName());
-            return PipelineSelectionArtifact.builder()
-                    .pipelineName(pipelineName)
-                    .reason("task requested explicit pipeline")
-                    .alternatives(List.of())
-                    .confidence(1.0)
-                    .fallbackPipeline(pipelineName)
-                    .build();
+            return PipelineSelectionArtifact.builder().pipelineName(pipelineName)
+                    .reason("task requested explicit pipeline").alternatives(List.of()).confidence(1.0)
+                    .fallbackPipeline(pipelineName).build();
         }
         if (config == null || config.getModel() == null) {
-            return PipelineSelectionArtifact.builder()
-                    .pipelineName(MetaEvolvePipeline.NAME)
+            return PipelineSelectionArtifact.builder().pipelineName(MetaEvolvePipeline.NAME)
                     .reason("no model configured, fallback to " + MetaEvolvePipeline.NAME)
-                    .alternatives(List.of(ExtendedEvolvePipeline.NAME))
-                    .confidence(0.0)
-                    .fallbackPipeline(MetaEvolvePipeline.NAME)
-                    .build();
+                    .alternatives(List.of(ExtendedEvolvePipeline.NAME)).confidence(0.0)
+                    .fallbackPipeline(MetaEvolvePipeline.NAME).build();
         }
         DeepAgent agent = AutoHarnessFactory.createSelectPipelineAgent(config);
         String query = buildQuery(task, assessment, availablePipelines);
@@ -128,17 +119,19 @@ public class SelectPipelineStage extends TaskStage {
         if (parsed != null) {
             return parsed;
         }
-        return PipelineSelectionArtifact.builder()
-                .pipelineName(MetaEvolvePipeline.NAME)
-                .reason("selector fallback to default pipeline")
-                .alternatives(List.of(ExtendedEvolvePipeline.NAME))
-                .confidence(0.0)
-                .fallbackPipeline(MetaEvolvePipeline.NAME)
-                .build();
+        return PipelineSelectionArtifact.builder().pipelineName(MetaEvolvePipeline.NAME)
+                .reason("selector fallback to default pipeline").alternatives(List.of(ExtendedEvolvePipeline.NAME))
+                .confidence(0.0).fallbackPipeline(MetaEvolvePipeline.NAME).build();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildQuery.
+     * 
+     * @param task task
+     * @param assessment assessment
+     * @param availablePipelines availablePipelines
+     * @return the result
+     * @since 0.1.7
      */
     public static String buildQuery(OptimizationTask task, String assessment, List<String> availablePipelines) {
         String summary = assessment == null ? "" : assessment.strip();
@@ -149,14 +142,20 @@ public class SelectPipelineStage extends TaskStage {
         List<String> pipelines = availablePipelines != null && !availablePipelines.isEmpty()
                 ? availablePipelines
                 : List.of(MetaEvolvePipeline.NAME);
-        return "任务主题: " + value(task != null ? task.getTopic() : "") + "\n"
-                + "任务描述: " + valueOrDefault(task != null ? task.getDescription() : "", "无") + "\n"
-                + "目标文件: " + (files.isEmpty() ? "未指定" : String.join(", ", files)) + "\n"
-                + "评估摘要:\n" + (summary.isBlank() ? "无" : summary) + "\n\n"
-                + "可选 pipeline:\n"
+        return "任务主题: " + value(task != null ? task.getTopic() : "") + "\n" + "任务描述: "
+                + valueOrDefault(task != null ? task.getDescription() : "", "无") + "\n" + "目标文件: "
+                + (files.isEmpty() ? "未指定" : String.join(", ", files)) + "\n" + "评估摘要:\n"
+                + (summary.isBlank() ? "无" : summary) + "\n\n" + "可选 pipeline:\n"
                 + String.join("\n", pipelines.stream().map(name -> "- " + name).toList());
     }
 
+    /**
+     * normalizePipelineName.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalizePipelineName(String name) {
         if (!hasText(name)) {
             return "";
@@ -168,14 +167,36 @@ public class SelectPipelineStage extends TaskStage {
         };
     }
 
+    /**
+     * hasText.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
     }
 
+    /**
+     * value.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private static String value(String value) {
         return value == null ? "" : value;
     }
 
+    /**
+     * valueOrDefault.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static String valueOrDefault(String value, String defaultValue) {
         return hasText(value) ? value : defaultValue;
     }

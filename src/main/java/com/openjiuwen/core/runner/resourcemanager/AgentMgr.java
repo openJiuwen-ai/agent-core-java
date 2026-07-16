@@ -12,27 +12,38 @@ import java.util.function.Supplier;
  * Mirrors Python's {@code AgentMgr} in {@code resources_manager/agent_manager.py}.
  * Note: RemoteAgent / distributed mode support is omitted here since those classes
  * (drunner package) are not yet implemented in Java.
- *
- * @param <T> the agent base type
+ * 
+ * @since 0.1.7
  */
 public class AgentMgr<T> extends AbstractManager<T> {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * addAgent.
+     * 
+     * @param agentId agentId
+     * @param agent agent
+     * @since 0.1.7
      */
     public void addAgent(String agentId, Supplier<? extends T> agent) {
         registerResourceProvider(agentId, agent);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgent.
+     * 
+     * @param agentId agentId
+     * @return the result
+     * @since 0.1.7
      */
     public T getAgent(String agentId) {
         return getResource(agentId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * removeAgent.
+     * 
+     * @param agentId agentId
+     * @return the result
+     * @since 0.1.7
      */
     public Supplier<? extends T> removeAgent(String agentId) {
         return unregisterResourceProvider(agentId);

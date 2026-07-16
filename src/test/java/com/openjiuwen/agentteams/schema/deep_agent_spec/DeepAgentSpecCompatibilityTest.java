@@ -1,14 +1,14 @@
+
 package com.openjiuwen.agentteams.schema.deep_agent_spec;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class DeepAgentSpecCompatibilityTest {
-
     @Test
     void shouldCreateVisionModelSpecWithDefaults() {
         VisionModelSpec spec = VisionModelSpec.builder().build();
@@ -18,12 +18,8 @@ class DeepAgentSpecCompatibilityTest {
 
     @Test
     void shouldCreateVisionModelSpecWithCustomValues() {
-        VisionModelSpec spec = VisionModelSpec.builder()
-                .apiKey("sk-test")
-                .baseUrl("https://custom.api")
-                .model("gpt-4-vision")
-                .maxRetries(5)
-                .build();
+        VisionModelSpec spec = VisionModelSpec.builder().apiKey("sk-test").baseUrl("https://custom.api")
+                .model("gpt-4-vision").maxRetries(5).build();
         assertThat(spec.getApiKey()).isEqualTo("sk-test");
         assertThat(spec.getModel()).isEqualTo("gpt-4-vision");
         assertThat(spec.getMaxRetries()).isEqualTo(5);
@@ -38,11 +34,7 @@ class DeepAgentSpecCompatibilityTest {
 
     @Test
     void shouldCreateWorkspaceSpec() {
-        WorkspaceSpec spec = WorkspaceSpec.builder()
-                .rootPath("/tmp/ws")
-                .language("en")
-                .stableBase(true)
-                .build();
+        WorkspaceSpec spec = WorkspaceSpec.builder().rootPath("/tmp/ws").language("en").stableBase(true).build();
         assertThat(spec.getRootPath()).isEqualTo("/tmp/ws");
         assertThat(spec.getLanguage()).isEqualTo("en");
         assertThat(spec.isStableBase()).isTrue();
@@ -50,37 +42,27 @@ class DeepAgentSpecCompatibilityTest {
 
     @Test
     void shouldCreateSysOperationSpec() {
-        SysOperationSpec spec = SysOperationSpec.builder()
-                .id("test.sys")
-                .build();
+        SysOperationSpec spec = SysOperationSpec.builder().id("test.sys").build();
         assertThat(spec.getId()).isEqualTo("test.sys");
     }
 
     @Test
     void shouldCreateRailSpec() {
-        RailSpec spec = RailSpec.builder()
-                .type("task_planning")
-                .params(Map.of("enabled", true))
-                .build();
+        RailSpec spec = RailSpec.builder().type("task_planning").params(Map.of("enabled", true)).build();
         assertThat(spec.getType()).isEqualTo("task_planning");
         assertThat(spec.getParams()).containsKey("enabled");
     }
 
     @Test
     void shouldCreateBuiltinToolSpec() {
-        BuiltinToolSpec spec = BuiltinToolSpec.builder()
-                .type("web_search")
-                .build();
+        BuiltinToolSpec spec = BuiltinToolSpec.builder().type("web_search").build();
         assertThat(spec.getType()).isEqualTo("web_search");
     }
 
     @Test
     void shouldCreateProgressiveToolSpec() {
-        ProgressiveToolSpec spec = ProgressiveToolSpec.builder()
-                .enabled(true)
-                .maxLoadedTools(10)
-                .alwaysVisibleTools(List.of("read_file"))
-                .build();
+        ProgressiveToolSpec spec = ProgressiveToolSpec.builder().enabled(true).maxLoadedTools(10)
+                .alwaysVisibleTools(List.of("read_file")).build();
         assertThat(spec.isEnabled()).isTrue();
         assertThat(spec.getMaxLoadedTools()).isEqualTo(10);
         assertThat(spec.getAlwaysVisibleTools()).contains("read_file");
@@ -88,11 +70,8 @@ class DeepAgentSpecCompatibilityTest {
 
     @Test
     void shouldCreateDeepAgentSpec() {
-        DeepAgentSpec spec = DeepAgentSpec.builder()
-                .systemPrompt("You are a helpful assistant")
-                .maxIterations(20)
-                .enableTaskLoop(true)
-                .build();
+        DeepAgentSpec spec = DeepAgentSpec.builder().systemPrompt("You are a helpful assistant").maxIterations(20)
+                .enableTaskLoop(true).build();
         assertThat(spec.getSystemPrompt()).isEqualTo("You are a helpful assistant");
         assertThat(spec.getMaxIterations()).isEqualTo(20);
         assertThat(spec.isEnableTaskLoop()).isTrue();

@@ -9,14 +9,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Public class TeamMessage used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class TeamMessage used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class TeamMessage {
     private String messageId;
@@ -31,11 +31,17 @@ public class TeamMessage {
     private boolean isRead = false;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamMessageBuilder.
+     * 
+     * @since 0.1.7
      */
     public static class TeamMessageBuilder {
         /**
-         * Auto-generated for codecheck compliance.
+         * broadcast.
+         * 
+         * @param value value
+         * @return the result
+         * @since 0.1.7
          */
         public TeamMessageBuilder broadcast(boolean value) {
             return this.isBroadcast(value);

@@ -22,9 +22,10 @@ import java.util.Map;
  * A compiled graph that wraps a Pregel engine and a Checkpointer for execution.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.graph.CompiledGraph}.
+ * 
+ * @since 0.1.7
  */
 public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> {
-
     private static final LoggerProtocol logger = Loggers.GRAPH;
 
     private final Pregel pregel;
@@ -32,20 +33,27 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
 
     /**
      * Creates a CompiledGraph with the given Pregel engine and checkpointer.
-     *
-     * @param pregel      the Pregel execution engine
+     * 
+     * @param pregel the Pregel execution engine
      * @param checkpointer the checkpointer for state persistence
+     * @since 0.1.7
      */
     public CompiledGraph(Pregel pregel, Checkpointer checkpointer) {
         this.pregel = pregel;
         this.checkpointer = checkpointer;
     }
 
+    /**
+     * doInvoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @param config config
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected Map<String, Object> doInvoke(Object inputs, BaseSession session, Object config) {
         boolean isMain = session instanceof WorkflowSession;
         String sessionId = session.sessionId();
@@ -111,30 +119,26 @@ public class CompiledGraph extends ExecutableGraph<Object, Map<String, Object>> 
     }
 
     /**
-     * Stream execution results.
-     *
-     * @param inputs  the input data
-     * @param session the execution session
-     * @return an iterator over stream results
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Iterator<Map<String, Object>> stream(Object inputs, BaseSession session) {
         // Stream not yet implemented
         return null;
     }
 
     /**
-     * Interrupt the graph execution with a message.
-     *
-     * @param message the interrupt message
+     * interrupt.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void interrupt(Map<String, Object> message) {
         // No-op
     }

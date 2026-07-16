@@ -4,6 +4,7 @@
 
 package com.openjiuwen.agentevolving.optimizer.tool_call.utils;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.logging.Loggers;
 
@@ -16,11 +17,10 @@ import java.util.function.Function;
 
 /**
  * Public class APICallToExampleMethod used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class APICallToExampleMethod extends BaseMethod {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final Object runToolWithApiCall;
@@ -29,15 +29,17 @@ public class APICallToExampleMethod extends BaseMethod {
     private final List<String> nonOptParams;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * APICallToExampleMethod.
+     * 
+     * @param config config
+     * @param apiCallFn apiCallFn
+     * @param evalFn evalFn
+     * @param apiKeys apiKeys
+     * @param nonOptParams nonOptParams
+     * @since 0.1.7
      */
-    public APICallToExampleMethod(
-            Map<String, Object> config,
-            Object apiCallFn,
-            Object evalFn,
-            List<String> apiKeys,
-            List<String> nonOptParams
-    ) {
+    public APICallToExampleMethod(Map<String, Object> config, Object apiCallFn, Object evalFn, List<String> apiKeys,
+            List<String> nonOptParams) {
         super(config);
         this.runToolWithApiCall = apiCallFn;
         this.evalFn = evalFn;
@@ -46,7 +48,13 @@ public class APICallToExampleMethod extends BaseMethod {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * step.
+     * 
+     * @param tool tool
+     * @param prevOutputs prevOutputs
+     * @param it it
+     * @return the result
+     * @since 0.1.7
      */
     public StepResult step(Map<String, Object> tool, List<Object> prevOutputs, int it) {
         List<Object> history = prevOutputs != null ? new ArrayList<>(prevOutputs) : new ArrayList<>();
@@ -101,12 +109,8 @@ public class APICallToExampleMethod extends BaseMethod {
             List<String> lastInstructions = tail(instructions, getInt("num_feedback_steps", 2));
             List<Double> lastScores = tail(scores, getInt("num_feedback_steps", 2));
             List<String> lastAnalyses = tail(analyses, getInt("num_feedback_steps", 2));
-            String reflection = batchReflectionWithScores(
-                    toolForOpt,
-                    fnCall,
-                    lastInstructions,
-                    lastScores,
-                    lastAnalyses);
+            String reflection =
+                batchReflectionWithScores(toolForOpt, fnCall, lastInstructions, lastScores, lastAnalyses);
             reflections.add(reflection);
 
             instOutput = new LinkedHashMap<>();
@@ -121,12 +125,8 @@ public class APICallToExampleMethod extends BaseMethod {
         double evalScore = 1.0d;
         double weight = getDouble("score_eval_weight", 0.0d);
         if (weight > 0.0d && !instructions.isEmpty() && !answers.isEmpty()) {
-            List<Object> examples = List.of(new Object[]{
-                    instructions.get(instructions.size() - 1).trim(),
-                    fnCall,
-                    toolRes,
-                    answers.get(answers.size() - 1).trim()
-            });
+            List<Object> examples = List.of(new Object[]{instructions.get(instructions.size() - 1).trim(), fnCall,
+                    toolRes, answers.get(answers.size() - 1).trim()});
             Map<String, Object> eval = invokeEval(tool, description, examples, 1);
             evalScore = getDouble(eval, "score_avg", 100.0d) / 100.0d;
         }
@@ -142,25 +142,31 @@ public class APICallToExampleMethod extends BaseMethod {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateApiCallFromDescription.
+     * 
+     * @param tool tool
+     * @param numGen numGen
+     * @param prevOutputs prevOutputs
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Object> generateApiCallFromDescription(
-            Map<String, Object> tool,
-            int numGen,
-            List<Object> prevOutputs
-    ) {
+    public Map<String, Object> generateApiCallFromDescription(Map<String, Object> tool, int numGen,
+            List<Object> prevOutputs) {
         return generateApiCallFromDescription(tool, null, numGen, prevOutputs);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateApiCallFromDescription.
+     * 
+     * @param tool tool
+     * @param exampleCalls exampleCalls
+     * @param numGen numGen
+     * @param prevOutputs prevOutputs
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Object> generateApiCallFromDescription(
-            Map<String, Object> tool,
-            List<String> exampleCalls,
-            int numGen,
-            List<Object> prevOutputs
-    ) {
+    public Map<String, Object> generateApiCallFromDescription(Map<String, Object> tool, List<String> exampleCalls,
+            int numGen, List<Object> prevOutputs) {
         String functionName = String.valueOf(tool.getOrDefault("name", ""));
         StringBuilder prompt = new StringBuilder();
         prompt.append("Documentation:\n").append(toJson(tool)).append("\n");
@@ -181,9 +187,9 @@ public class APICallToExampleMethod extends BaseMethod {
             if (output == null) {
                 continue;
             }
-            prompt.append("Previous fn_call=").append(toJson(output.get("fn_call")))
-                    .append(" status=").append(output.get("status_code"))
-                    .append(" reflection=").append(output.containsKey("api_reflection")
+            prompt.append("Previous fn_call=").append(toJson(output.get("fn_call"))).append(" status=")
+                    .append(output.get("status_code")).append(" reflection=")
+                    .append(output.containsKey("api_reflection")
                             ? String.valueOf(output.get("api_reflection"))
                             : "good call, avoid duplicates if possible")
                     .append("\n");
@@ -206,30 +212,29 @@ public class APICallToExampleMethod extends BaseMethod {
             }
             return result;
         };
-        return ensureMap(invokeRitsResponse(
-                String.valueOf(config.getOrDefault("gen_model_id", "")),
+        return ensureMap(invokeRitsResponse(String.valueOf(config.getOrDefault("gen_model_id", "")),
                 FormatUtils.formatPromptLlama("", prompt.toString()),
-                String.valueOf(config.getOrDefault("llm_api_key", "")),
-                verify,
-                Map.of("max_attempts", 15, "include_stop_sequence", false,
-                        "stop_sequences", List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>"))
-        ));
+                String.valueOf(config.getOrDefault("llm_api_key", "")), verify,
+                Map.of("max_attempts", 15, "include_stop_sequence", false, "stop_sequences",
+                        List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>"))));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * critiqueApiCall.
+     * 
+     * @param tool tool
+     * @param fnCall fnCall
+     * @param fnResponse fnResponse
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Object> critiqueApiCall(
-            Map<String, Object> tool,
-            Map<String, Object> fnCall,
-            String fnResponse
-    ) {
+    public Map<String, Object> critiqueApiCall(Map<String, Object> tool, Map<String, Object> fnCall,
+            String fnResponse) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("Documentation:\n").append(toJson(tool)).append("\n");
         prompt.append("Function call: ").append(toJson(fnCall)).append("\n");
-        String truncatedResponse = fnResponse != null && fnResponse.length() > 2048
-                ? fnResponse.substring(0, 2048)
-                : fnResponse;
+        String truncatedResponse =
+            fnResponse != null && fnResponse.length() > 2048 ? fnResponse.substring(0, 2048) : fnResponse;
         prompt.append("Execution result: ").append(truncatedResponse).append("\n");
         prompt.append("Return JSON only: {\"analysis\": ..., \"err_code\": -1|0}");
 
@@ -246,25 +251,25 @@ public class APICallToExampleMethod extends BaseMethod {
             result.put("err_code", toInt(result.get("err_code"), 0));
             return result;
         };
-        return ensureMap(invokeRitsResponse(
-                String.valueOf(config.getOrDefault("eval_model_id", "")),
+        return ensureMap(invokeRitsResponse(String.valueOf(config.getOrDefault("eval_model_id", "")),
                 FormatUtils.formatPromptLlama("", prompt.toString()),
-                String.valueOf(config.getOrDefault("llm_api_key", "")),
-                verify,
-                Map.of("max_attempts", 15, "include_stop_sequence", false,
-                        "stop_sequences", List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>"))
-        ));
+                String.valueOf(config.getOrDefault("llm_api_key", "")), verify,
+                Map.of("max_attempts", 15, "include_stop_sequence", false, "stop_sequences",
+                        List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>"))));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * generateInstructionFromApiCall.
+     * 
+     * @param tool tool
+     * @param fnCall fnCall
+     * @param fnResponse fnResponse
+     * @param prevOutput prevOutput
+     * @return the result
+     * @since 0.1.7
      */
-    public String generateInstructionFromApiCall(
-            Map<String, Object> tool,
-            Map<String, Object> fnCall,
-            String fnResponse,
-            Map<String, Object> prevOutput
-    ) {
+    public String generateInstructionFromApiCall(Map<String, Object> tool, Map<String, Object> fnCall,
+            String fnResponse, Map<String, Object> prevOutput) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("Documentation:\n").append(toJson(tool)).append("\n");
         prompt.append("Function call: ").append(toJson(fnCall)).append("\n");
@@ -280,14 +285,10 @@ public class APICallToExampleMethod extends BaseMethod {
             List<?> previousScores = prevOutput.get("scores") instanceof List<?> list ? list : List.of();
             int limit = Math.min(previousInstructions.size(), previousScores.size());
             for (int i = 0; i < limit; i++) {
-                prompt.append(i + 1).append(". instruction=\"")
-                        .append(previousInstructions.get(i))
-                        .append("\" score=")
-                        .append(previousScores.get(i))
-                        .append("\n");
+                prompt.append(i + 1).append(". instruction=\"").append(previousInstructions.get(i)).append("\" score=")
+                        .append(previousScores.get(i)).append("\n");
             }
-            prompt.append("Reflection: ")
-                    .append(String.valueOf(prevOutput.getOrDefault("batch_reflection", "")))
+            prompt.append("Reflection: ").append(String.valueOf(prevOutput.getOrDefault("batch_reflection", "")))
                     .append("\n");
         }
 
@@ -302,27 +303,27 @@ public class APICallToExampleMethod extends BaseMethod {
             }
             return String.valueOf(result.get("instruction")).trim();
         };
-        Object output = invokeRitsResponse(
-                String.valueOf(config.getOrDefault("eval_model_id", "")),
+        Object output = invokeRitsResponse(String.valueOf(config.getOrDefault("eval_model_id", "")),
                 FormatUtils.formatPromptLlama("", prompt.toString()),
-                String.valueOf(config.getOrDefault("llm_api_key", "")),
-                verify,
-                Map.of("max_attempts", 15, "include_stop_sequence", false,
-                        "stop_sequences", List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>"))
-        );
+                String.valueOf(config.getOrDefault("llm_api_key", "")), verify,
+                Map.of("max_attempts", 15, "include_stop_sequence", false, "stop_sequences",
+                        List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>")));
         return String.valueOf(output);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * critiqueInstruction.
+     * 
+     * @param tool tool
+     * @param instruction instruction
+     * @param fnCall fnCall
+     * @param fnResponse fnResponse
+     * @param answer answer
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Object> critiqueInstruction(
-            Map<String, Object> tool,
-            String instruction,
-            Map<String, Object> fnCall,
-            String fnResponse,
-            String answer
-    ) {
+    public Map<String, Object> critiqueInstruction(Map<String, Object> tool, String instruction,
+            Map<String, Object> fnCall, String fnResponse, String answer) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("Instruction: ").append(instruction).append("\n");
         prompt.append("Function call: ").append(toJson(fnCall)).append("\n");
@@ -343,51 +344,48 @@ public class APICallToExampleMethod extends BaseMethod {
             result.put("score", toInt(result.get("score"), 0));
             return result;
         };
-        return ensureMap(invokeRitsResponse(
-                String.valueOf(config.getOrDefault("eval_model_id", "")),
+        return ensureMap(invokeRitsResponse(String.valueOf(config.getOrDefault("eval_model_id", "")),
                 FormatUtils.formatPromptLlama("", prompt.toString()),
-                String.valueOf(config.getOrDefault("llm_api_key", "")),
-                verify,
-                Map.of("max_attempts", 15, "include_stop_sequence", false,
-                        "stop_sequences", List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>"))
-        ));
+                String.valueOf(config.getOrDefault("llm_api_key", "")), verify,
+                Map.of("max_attempts", 15, "include_stop_sequence", false, "stop_sequences",
+                        List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>"))));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * batchReflectionWithScores.
+     * 
+     * @param tool tool
+     * @param fnCall fnCall
+     * @param instructions instructions
+     * @param scores scores
+     * @param analyses analyses
+     * @return the result
+     * @since 0.1.7
      */
-    public String batchReflectionWithScores(
-            Map<String, Object> tool,
-            Map<String, Object> fnCall,
-            List<String> instructions,
-            List<Double> scores,
-            List<String> analyses
-    ) {
+    public String batchReflectionWithScores(Map<String, Object> tool, Map<String, Object> fnCall,
+            List<String> instructions, List<Double> scores, List<String> analyses) {
         StringBuilder prompt = new StringBuilder();
         prompt.append("Documentation:\n").append(toJson(tool)).append("\n");
         prompt.append("Function call: ").append(toJson(fnCall)).append("\n");
         for (int i = 0; i < Math.min(instructions.size(), Math.min(scores.size(), analyses.size())); i++) {
-            prompt.append(i + 1)
-                    .append(". instruction=\"")
-                    .append(instructions.get(i))
-                    .append("\" score=")
-                    .append(scores.get(i))
-                    .append(" analysis=\"").append(analyses.get(i)).append("\"\n");
+            prompt.append(i + 1).append(". instruction=\"").append(instructions.get(i)).append("\" score=")
+                    .append(scores.get(i)).append(" analysis=\"").append(analyses.get(i)).append("\"\n");
         }
         prompt.append("Summarize the pattern and how to improve future instructions in under 500 characters.");
-        Object output = invokeRitsResponse(
-                String.valueOf(config.getOrDefault("eval_model_id", "")),
+        Object output = invokeRitsResponse(String.valueOf(config.getOrDefault("eval_model_id", "")),
                 FormatUtils.formatPromptLlama("", prompt.toString()),
-                String.valueOf(config.getOrDefault("llm_api_key", "")),
-                text -> text == null ? "" : text.trim(),
-                Map.of("max_attempts", 15, "include_stop_sequence", false,
-                        "stop_sequences", List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>"))
-        );
+                String.valueOf(config.getOrDefault("llm_api_key", "")), text -> text == null ? "" : text.trim(),
+                Map.of("max_attempts", 15, "include_stop_sequence", false, "stop_sequences",
+                        List.of("<|eot_id|>", "<|end_of_text|>", "<|eom_id|>")));
         return String.valueOf(output).trim();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOriginalDescription.
+     * 
+     * @param tool tool
+     * @return the result
+     * @since 0.1.7
      */
     public String getOriginalDescription(Map<String, Object> tool) {
         String description = String.valueOf(tool.getOrDefault("description", ""));
@@ -399,24 +397,39 @@ public class APICallToExampleMethod extends BaseMethod {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * StepResult.
+     * 
+     * @since 0.1.7
      */
     public static class StepResult {
         /**
-         * Auto-generated for codecheck compliance.
+         * data.
+         * 
+         * @since 0.1.7
          */
         public final Object data;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * score.
+         * 
+         * @since 0.1.7
          */
         public final double score;
+
         /**
-         * Auto-generated for codecheck compliance.
+         * results.
+         * 
+         * @since 0.1.7
          */
         public final Object results;
 
         /**
-         * Auto-generated for codecheck compliance.
+         * StepResult.
+         * 
+         * @param data data
+         * @param score score
+         * @param results results
+         * @since 0.1.7
          */
         public StepResult(Object data, double score, Object results) {
             this.data = data;
@@ -425,6 +438,14 @@ public class APICallToExampleMethod extends BaseMethod {
         }
     }
 
+    /**
+     * executeToolCall.
+     * 
+     * @param tool tool
+     * @param fnCall fnCall
+     * @return the result
+     * @since 0.1.7
+     */
     private Object[] executeToolCall(Map<String, Object> tool, Map<String, Object> fnCall) {
         try {
             if (runToolWithApiCall instanceof SimpleApiWrapper wrapper) {
@@ -432,20 +453,25 @@ public class APICallToExampleMethod extends BaseMethod {
             }
             if (runToolWithApiCall instanceof BiFunction<?, ?, ?> biFunction) {
                 @SuppressWarnings("unchecked")
-                Object raw = ((BiFunction<Map<String, Object>, Map<String, Object>, Object>) biFunction)
-                        .apply(tool, fnCall);
+                Object raw =
+                    ((BiFunction<Map<String, Object>, Map<String, Object>, Object>) biFunction).apply(tool, fnCall);
                 return normalizeExecution(raw);
             }
-            Object raw = invokeCallable(
-                    runToolWithApiCall,
-                    List.of("call", "apply", "invoke"),
-                    new Object[]{tool, fnCall});
+            Object raw =
+                invokeCallable(runToolWithApiCall, List.of("call", "apply", "invoke"), new Object[]{tool, fnCall});
             return normalizeExecution(raw);
         } catch (Exception e) {
             return new Object[]{"{\"error\":\"" + e.getMessage() + "\"}", 12};
         }
     }
 
+    /**
+     * normalizeExecution.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private Object[] normalizeExecution(Object raw) {
         if (raw instanceof Object[] array) {
             return array;
@@ -459,12 +485,18 @@ public class APICallToExampleMethod extends BaseMethod {
         return new Object[]{String.valueOf(raw), 0};
     }
 
-    private Map<String, Object> invokeEval(
-            Map<String, Object> tool,
-            String description,
-            List<Object> examples,
-            int runs
-    ) {
+    /**
+     * invokeEval.
+     * 
+     * @param tool tool
+     * @param description description
+     * @param examples examples
+     * @param runs runs
+     * @return the result
+     * @since 0.1.7
+     */
+    private Map<String, Object> invokeEval(Map<String, Object> tool, String description, List<Object> examples,
+            int runs) {
         if (evalFn == null) {
             return new LinkedHashMap<>();
         }
@@ -477,6 +509,16 @@ public class APICallToExampleMethod extends BaseMethod {
         }
     }
 
+    /**
+     * invokeCallable.
+     * 
+     * @param target target
+     * @param names names
+     * @param args args
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private Object invokeCallable(Object target, List<String> names, Object[] args) throws Exception {
         if (target == null) {
             throw new IllegalStateException("Missing callable");
@@ -491,19 +533,48 @@ public class APICallToExampleMethod extends BaseMethod {
         throw new NoSuchMethodException("Unsupported callable type: " + target.getClass().getName());
     }
 
+    /**
+     * tail.
+     * 
+     * @param list list
+     * @param limit limit
+     * @return the result
+     * @since 0.1.7
+     */
     private <T> List<T> tail(List<T> list, int limit) {
         int from = Math.max(0, list.size() - Math.max(limit, 0));
         return new ArrayList<>(list.subList(from, list.size()));
     }
 
+    /**
+     * ensureMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> ensureMap(Object value) {
         return value instanceof Map<?, ?> raw ? toMap(raw) : new LinkedHashMap<>();
     }
 
+    /**
+     * asMap.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> asMap(Object value) {
         return value instanceof Map<?, ?> raw ? toMap(raw) : null;
     }
 
+    /**
+     * toMap.
+     * 
+     * @param raw raw
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> toMap(Map<?, ?> raw) {
         Map<String, Object> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : raw.entrySet()) {
@@ -514,26 +585,66 @@ public class APICallToExampleMethod extends BaseMethod {
         return result;
     }
 
+    /**
+     * toJson.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
+     */
     private String toJson(Object value) {
         try {
             return OBJECT_MAPPER.writeValueAsString(value);
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             return String.valueOf(value);
         }
     }
 
+    /**
+     * getInt.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private int getInt(String key, int defaultValue) {
         return toInt(config.get(key), defaultValue);
     }
 
+    /**
+     * getDouble.
+     * 
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private double getDouble(String key, double defaultValue) {
         return toDouble(config.get(key), defaultValue);
     }
 
+    /**
+     * getDouble.
+     * 
+     * @param map map
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private double getDouble(Map<String, Object> map, String key, double defaultValue) {
         return toDouble(map.get(key), defaultValue);
     }
 
+    /**
+     * toInt.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private int toInt(Object value, int defaultValue) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -545,6 +656,14 @@ public class APICallToExampleMethod extends BaseMethod {
         }
     }
 
+    /**
+     * toDouble.
+     * 
+     * @param value value
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private double toDouble(Object value, double defaultValue) {
         if (value instanceof Number number) {
             return number.doubleValue();

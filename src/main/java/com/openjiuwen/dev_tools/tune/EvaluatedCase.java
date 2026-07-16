@@ -11,30 +11,43 @@ import java.util.Map;
 
 /**
  * Mirrors Python's openjiuwen.dev_tools.tune.base.EvaluatedCase.
+ * 
+ * @since 0.1.7
  */
 public class EvaluatedCase {
-
     private Case caseData;
     private Map<String, Object> answer;
     private float score;
     private String reason;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EvaluatedCase.
+     * 
+     * @since 0.1.7
      */
     public EvaluatedCase() {
         this(null, null, 0.0f, "");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EvaluatedCase.
+     * 
+     * @param caseData caseData
+     * @param answer answer
+     * @since 0.1.7
      */
     public EvaluatedCase(Case caseData, Map<String, Object> answer) {
         this(caseData, answer, 0.0f, "");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EvaluatedCase.
+     * 
+     * @param caseData caseData
+     * @param answer answer
+     * @param score score
+     * @param reason reason
+     * @since 0.1.7
      */
     public EvaluatedCase(Case caseData, Map<String, Object> answer, float score, String reason) {
         this.caseData = caseData;
@@ -44,130 +57,190 @@ public class EvaluatedCase {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCase.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Case getCase() {
         return caseData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCase.
+     * 
+     * @param caseData caseData
+     * @since 0.1.7
      */
     public void setCase(Case caseData) {
         this.caseData = caseData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCaseData.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Case getCaseData() {
         return caseData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCaseData.
+     * 
+     * @param caseData caseData
+     * @since 0.1.7
      */
     public void setCaseData(Case caseData) {
         this.caseData = caseData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCase_.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Case getCase_() {
         return caseData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setCase_.
+     * 
+     * @param caseData caseData
+     * @since 0.1.7
      */
     public void setCase_(Case caseData) {
         this.caseData = caseData;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAnswer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getAnswer() {
         return answer;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setAnswer.
+     * 
+     * @param answer answer
+     * @since 0.1.7
      */
     public void setAnswer(Map<String, Object> answer) {
         this.answer = answer;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getScore.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public float getScore() {
         return score;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setScore.
+     * 
+     * @param score score
+     * @since 0.1.7
      */
     public void setScore(float score) {
         this.score = clampScore(score);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReason.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getReason() {
         return reason;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setReason.
+     * 
+     * @param reason reason
+     * @since 0.1.7
      */
     public void setReason(String reason) {
         this.reason = reason != null ? reason : "";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getInputs() {
         return caseData != null ? caseData.getInputs() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLabel.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getLabel() {
         return caseData != null ? caseData.getLabel() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTools.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<ToolInfo> getTools() {
         return caseData != null ? caseData.getTools() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCaseId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getCaseId() {
         return caseData != null ? caseData.getCaseId() : null;
     }
 
+    /**
+     * clampScore.
+     * 
+     * @param score score
+     * @return the result
+     * @since 0.1.7
+     */
     private static float clampScore(float score) {
         return Math.max(0.0f, Math.min(1.0f, score));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static final class Builder {
         private Case caseData;
@@ -175,11 +248,20 @@ public class EvaluatedCase {
         private float score = 0.0f;
         private String reason = "";
 
+        /**
+         * Builder.
+         * 
+         * @since 0.1.7
+         */
         private Builder() {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * caseData.
+         * 
+         * @param caseData caseData
+         * @return the result
+         * @since 0.1.7
          */
         public Builder caseData(Case caseData) {
             this.caseData = caseData;
@@ -187,7 +269,11 @@ public class EvaluatedCase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * case_.
+         * 
+         * @param caseData caseData
+         * @return the result
+         * @since 0.1.7
          */
         public Builder case_(Case caseData) {
             this.caseData = caseData;
@@ -195,7 +281,11 @@ public class EvaluatedCase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * answer.
+         * 
+         * @param answer answer
+         * @return the result
+         * @since 0.1.7
          */
         public Builder answer(Map<String, Object> answer) {
             this.answer = answer;
@@ -203,7 +293,11 @@ public class EvaluatedCase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * score.
+         * 
+         * @param score score
+         * @return the result
+         * @since 0.1.7
          */
         public Builder score(float score) {
             this.score = score;
@@ -211,7 +305,11 @@ public class EvaluatedCase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * reason.
+         * 
+         * @param reason reason
+         * @return the result
+         * @since 0.1.7
          */
         public Builder reason(String reason) {
             this.reason = reason;
@@ -219,7 +317,10 @@ public class EvaluatedCase {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public EvaluatedCase build() {
             return new EvaluatedCase(caseData, answer, score, reason);

@@ -14,14 +14,21 @@ import java.util.List;
 
 /**
  * Read/write team-level TEAM_MEMORY.md under team-memory/.
+ * 
+ * @since 0.1.7
  */
 public class SharedMemoryManager {
     /**
-     * Auto-generated for codecheck compliance.
+     * TEAM_MEMORY_FILENAME.
+     * 
+     * @since 0.1.7
      */
     public static final String TEAM_MEMORY_FILENAME = "TEAM_MEMORY.md";
+
     /**
-     * Auto-generated for codecheck compliance.
+     * TEAM_MEMORY_MAX_READ_LINES.
+     * 
+     * @since 0.1.7
      */
     public static final int TEAM_MEMORY_MAX_READ_LINES = 200;
 
@@ -29,7 +36,11 @@ public class SharedMemoryManager {
     private final Object sysOperation;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * SharedMemoryManager.
+     * 
+     * @param teamMemoryDir teamMemoryDir
+     * @param sysOperation sysOperation
+     * @since 0.1.7
      */
     public SharedMemoryManager(String teamMemoryDir, Object sysOperation) {
         this.teamMemoryDir = Path.of(teamMemoryDir).toAbsolutePath().normalize();
@@ -37,14 +48,21 @@ public class SharedMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ensureDir.
+     * 
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public void ensureDir() throws IOException {
         Files.createDirectories(teamMemoryDir);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * readTeamSummary.
+     * 
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public String readTeamSummary() throws IOException {
         Path file = teamMemoryDir.resolve(TEAM_MEMORY_FILENAME);
@@ -59,7 +77,11 @@ public class SharedMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * writeTeamSummary.
+     * 
+     * @param content content
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public void writeTeamSummary(String content) throws IOException {
         ensureDir();
@@ -75,7 +97,11 @@ public class SharedMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * appendEntry.
+     * 
+     * @param entry entry
+     * @throws IOException IOException
+     * @since 0.1.7
      */
     public void appendEntry(String entry) throws IOException {
         String existing = readTeamSummary();
@@ -84,14 +110,20 @@ public class SharedMemoryManager {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTeamMemoryDir.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Path getTeamMemoryDir() {
         return teamMemoryDir;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSysOperation.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getSysOperation() {
         return sysOperation;

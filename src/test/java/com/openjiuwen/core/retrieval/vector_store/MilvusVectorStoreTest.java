@@ -1,13 +1,23 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.retrieval.vector_store;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import com.google.gson.JsonObject;
-import com.openjiuwen.core.retrieval.common.SearchResult;
-import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.memory.migration.operation.AddScalarFieldOperation;
 import com.openjiuwen.core.memory.migration.operation.OperationMetadata;
+import com.openjiuwen.core.retrieval.common.SearchResult;
+import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
+
 import io.milvus.orm.iterator.QueryIterator;
 import io.milvus.response.QueryResultsWrapper;
 import io.milvus.v2.client.MilvusClientV2;
@@ -26,6 +36,7 @@ import io.milvus.v2.service.vector.request.SearchReq;
 import io.milvus.v2.service.vector.response.DeleteResp;
 import io.milvus.v2.service.vector.response.QueryResp;
 import io.milvus.v2.service.vector.response.SearchResp;
+
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -33,30 +44,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 class MilvusVectorStoreTest {
-
     @Test
     void searchNormalizesCosineScoresAndMapsMetadata() {
         MilvusClientV2 client = mock(MilvusClientV2.class);
         when(client.hasCollection(any())).thenReturn(true);
         when(client.search(any())).thenReturn(SearchResp.builder()
                 .searchResults(List.of(List.of(SearchResp.SearchResult.builder()
-                        .entity(new LinkedHashMap<>(Map.of(
-                                "chunk_id", "chunk-1",
-                                "text", "hello world",
-                                "doc_id", "doc-1",
-                                "metadata", new LinkedHashMap<>(Map.of("source", "web")))))
-                        .score(0.8f)
-                        .primaryKey("1")
-                        .build())))
+                        .entity(new LinkedHashMap<>(Map.of("chunk_id", "chunk-1", "text", "hello world", "doc_id",
+                                "doc-1", "metadata", new LinkedHashMap<>(Map.of("source", "web")))))
+                        .score(0.8f).primaryKey("1").build())))
                 .build());
 
         MilvusVectorStore store = new MilvusVectorStore(client, new VectorStoreConfig("milvus", "kb_chunks"), "vector");
@@ -84,44 +81,30 @@ class MilvusVectorStoreTest {
                 SearchResp.builder()
                         .searchResults(List.of(List.of(
                                 SearchResp.SearchResult.builder()
-                                        .entity(Map.of(
-                                                "chunk_id", "chunk-1",
-                                                "text", "dense doc",
-                                                "doc_id", "doc-1",
+                                        .entity(Map.of("chunk_id", "chunk-1", "text", "dense doc", "doc_id", "doc-1",
                                                 "metadata", Map.of("doc_id", "doc-1")))
-                                        .score(0.8f)
-                                        .build(),
+                                        .score(0.8f).build(),
                                 SearchResp.SearchResult.builder()
-                                        .entity(Map.of(
-                                                "chunk_id", "chunk-2",
-                                                "text", "other doc",
-                                                "doc_id", "doc-2",
+                                        .entity(Map.of("chunk_id", "chunk-2", "text", "other doc", "doc_id", "doc-2",
                                                 "metadata", Map.of("doc_id", "doc-2")))
-                                        .score(-0.2f)
-                                        .build())))
+                                        .score(-0.2f).build())))
                         .build(),
                 SearchResp.builder()
-                        .searchResults(List.of(List.of(
-                                SearchResp.SearchResult.builder()
-                                        .entity(Map.of(
-                                                "chunk_id", "chunk-1",
-                                                "text", "dense doc",
-                                                "doc_id", "doc-1",
-                                                "metadata", Map.of("doc_id", "doc-1")))
-                                        .score(3.0f)
-                                        .build(),
-                                SearchResp.SearchResult.builder()
-                                        .entity(Map.of(
-                                                "chunk_id", "chunk-2",
-                                                "text", "other doc",
-                                                "doc_id", "doc-2",
-                                                "metadata", Map.of("doc_id", "doc-2")))
-                                        .score(0.1f)
-                                        .build())))
+                        .searchResults(
+                                List.of(List.of(
+                                        SearchResp.SearchResult.builder()
+                                                .entity(Map.of("chunk_id", "chunk-1", "text", "dense doc", "doc_id",
+                                                        "doc-1", "metadata", Map.of("doc_id", "doc-1")))
+                                                .score(3.0f).build(),
+                                        SearchResp.SearchResult.builder()
+                                                .entity(Map.of("chunk_id", "chunk-2", "text", "other doc", "doc_id",
+                                                        "doc-2", "metadata", Map.of("doc_id", "doc-2")))
+                                                .score(0.1f).build())))
                         .build());
 
         MilvusVectorStore store = new MilvusVectorStore(client, new VectorStoreConfig("milvus", "kb_chunks"), "hybrid");
-        List<SearchResult> results = store.hybridSearch("apple", List.of(1.0f, 0.0f), 2, 0.75, Map.of("source", "web"), Map.of());
+        List<SearchResult> results =
+            store.hybridSearch("apple", List.of(1.0f, 0.0f), 2, 0.75, Map.of("source", "web"), Map.of());
 
         assertEquals(2, results.size());
         assertEquals("chunk-1", results.get(0).getId());
@@ -132,19 +115,18 @@ class MilvusVectorStoreTest {
     void queryByFiltersAndDeleteUseInExpressions() {
         MilvusClientV2 client = mock(MilvusClientV2.class);
         when(client.hasCollection(any())).thenReturn(true);
-        when(client.query(any())).thenReturn(QueryResp.builder()
-                .queryResults(List.of(QueryResp.QueryResult.builder()
-                        .entity(new LinkedHashMap<>(Map.of(
-                                "chunk_id", "chunk-1",
-                                "text", "hello",
-                                "doc_id", "doc-1",
-                                "metadata", new LinkedHashMap<>(Map.of("doc_id", "doc-1")))))
-                        .build()))
-                .build());
+        when(client.query(any()))
+                .thenReturn(QueryResp.builder()
+                        .queryResults(List.of(QueryResp.QueryResult.builder()
+                                .entity(new LinkedHashMap<>(Map.of("chunk_id", "chunk-1", "text", "hello", "doc_id",
+                                        "doc-1", "metadata", new LinkedHashMap<>(Map.of("doc_id", "doc-1")))))
+                                .build()))
+                        .build());
         when(client.delete(any())).thenReturn(DeleteResp.builder().deleteCnt(2).build());
 
         MilvusVectorStore store = new MilvusVectorStore(client, new VectorStoreConfig("milvus", "kb_chunks"), "hybrid");
-        List<SearchResult> results = store.queryByFilters(Map.of("chunk_id", List.of("chunk-1", "chunk-2"), "doc_id", "doc-1"), 5);
+        List<SearchResult> results =
+            store.queryByFilters(Map.of("chunk_id", List.of("chunk-1", "chunk-2"), "doc_id", "doc-1"), 5);
 
         assertEquals(1, results.size());
         assertEquals("chunk-1", results.get(0).getId());
@@ -171,10 +153,8 @@ class MilvusVectorStoreTest {
     @Test
     void metadataConvertsSchemaVersionAndUpdatesCollectionProperties() {
         MilvusClientV2 client = mock(MilvusClientV2.class);
-        when(client.describeCollection(any())).thenReturn(DescribeCollectionResp.builder()
-                .collectionName("kb_chunks")
-                .properties(Map.of("schema_version", "7", "owner", "memory"))
-                .build());
+        when(client.describeCollection(any())).thenReturn(DescribeCollectionResp.builder().collectionName("kb_chunks")
+                .properties(Map.of("schema_version", "7", "owner", "memory")).build());
 
         MilvusVectorStore store = new MilvusVectorStore(client, new VectorStoreConfig("milvus", "kb_chunks"), "vector");
         Map<String, Object> metadata = store.getCollectionMetadata("kb_chunks");
@@ -184,7 +164,7 @@ class MilvusVectorStoreTest {
         store.updateCollectionMetadata("kb_chunks", Map.of("schema_version", 8));
 
         ArgumentCaptor<AlterCollectionPropertiesReq> captor =
-                ArgumentCaptor.forClass(AlterCollectionPropertiesReq.class);
+            ArgumentCaptor.forClass(AlterCollectionPropertiesReq.class);
         verify(client).alterCollectionProperties(captor.capture());
         assertEquals("8", captor.getValue().getProperties().get("schema_version"));
         assertEquals(8, store.getCollectionMetadata("kb_chunks").get("schema_version"));
@@ -197,19 +177,17 @@ class MilvusVectorStoreTest {
         when(client.hasCollection(any())).thenReturn(true);
 
         CreateCollectionReq.CollectionSchema currentSchema = MilvusClientV2.CreateSchema();
-        currentSchema.addField(io.milvus.v2.service.collection.request.AddFieldReq.builder()
-                .fieldName("pk").dataType(DataType.Int64).isPrimaryKey(true).autoID(true).build());
-        currentSchema.addField(io.milvus.v2.service.collection.request.AddFieldReq.builder()
-                .fieldName("text").dataType(DataType.VarChar).maxLength(65535).build());
-        currentSchema.addField(io.milvus.v2.service.collection.request.AddFieldReq.builder()
-                .fieldName("vector").dataType(DataType.FloatVector).dimension(3).build());
-        currentSchema.addField(io.milvus.v2.service.collection.request.AddFieldReq.builder()
-                .fieldName("metadata").dataType(DataType.JSON).build());
-        when(client.describeCollection(any())).thenReturn(DescribeCollectionResp.builder()
-                .collectionName("kb_chunks")
-                .collectionSchema(currentSchema)
-                .properties(Map.of("schema_version", "1", "distance_metric", "COSINE"))
-                .build());
+        currentSchema.addField(io.milvus.v2.service.collection.request.AddFieldReq.builder().fieldName("pk")
+                .dataType(DataType.Int64).isPrimaryKey(true).autoID(true).build());
+        currentSchema.addField(io.milvus.v2.service.collection.request.AddFieldReq.builder().fieldName("text")
+                .dataType(DataType.VarChar).maxLength(65535).build());
+        currentSchema.addField(io.milvus.v2.service.collection.request.AddFieldReq.builder().fieldName("vector")
+                .dataType(DataType.FloatVector).dimension(3).build());
+        currentSchema.addField(io.milvus.v2.service.collection.request.AddFieldReq.builder().fieldName("metadata")
+                .dataType(DataType.JSON).build());
+        when(client.describeCollection(any()))
+                .thenReturn(DescribeCollectionResp.builder().collectionName("kb_chunks").collectionSchema(currentSchema)
+                        .properties(Map.of("schema_version", "1", "distance_metric", "COSINE")).build());
 
         QueryIterator iterator = mock(QueryIterator.class);
         QueryResultsWrapper.RowRecord row = new QueryResultsWrapper.RowRecord();
@@ -221,13 +199,8 @@ class MilvusVectorStoreTest {
         when(iterator.next()).thenReturn(List.of(row), List.of());
 
         MilvusVectorStore store = new MilvusVectorStore(client, new VectorStoreConfig("milvus", "kb_chunks"), "vector");
-        store.updateSchema("kb_chunks", List.of(new AddScalarFieldOperation(
-                new OperationMetadata(2, "add field"),
-                "user_profile",
-                "nickname",
-                "string",
-                "unknown"
-        )));
+        store.updateSchema("kb_chunks", List.of(new AddScalarFieldOperation(new OperationMetadata(2, "add field"),
+                "user_profile", "nickname", "string", "unknown")));
 
         ArgumentCaptor<CreateCollectionReq> createCaptor = ArgumentCaptor.forClass(CreateCollectionReq.class);
         verify(client).createCollection(createCaptor.capture());

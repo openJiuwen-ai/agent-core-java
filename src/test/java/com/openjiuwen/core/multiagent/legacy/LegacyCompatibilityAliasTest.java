@@ -1,22 +1,23 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.multiagent.legacy;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import com.openjiuwen.core.multiagent.legacy.schema.EventDrivenGroupCard;
 import com.openjiuwen.core.multiagent.legacy.schema.GroupCard;
 import com.openjiuwen.core.session.AgentGroupSessionApi;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-
 class LegacyCompatibilityAliasTest {
-
     @Test
     void legacyAgentGroupSessionKeepsSessionHelpers() {
         AgentGroupSession session = new AgentGroupSession("legacy-session", Map.of("mode", "legacy"));

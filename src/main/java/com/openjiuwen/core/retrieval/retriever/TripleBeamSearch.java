@@ -5,6 +5,7 @@
 package com.openjiuwen.core.retrieval.retriever;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
@@ -20,11 +21,17 @@ import java.util.Set;
 
 /**
  * Triple beam search used by graph retrieval.
+ * 
+ * @since 0.1.7
  */
 public class TripleBeamSearch {
-
     private static final float EPSILON = 1e-6f;
 
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private final Retriever retriever;
     private final int numBeams;
@@ -33,38 +40,51 @@ public class TripleBeamSearch {
     private final Embedding embedModel;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TripleBeamSearch.
+     * 
+     * @param retriever retriever
+     * @since 0.1.7
      */
     public TripleBeamSearch(Retriever retriever) {
         this(retriever, 10, 100, 2);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TripleBeamSearch.
+     * 
+     * @param retriever retriever
+     * @param numBeams numBeams
+     * @param numCandidatesPerBeam numCandidatesPerBeam
+     * @param maxLength maxLength
+     * @since 0.1.7
      */
     public TripleBeamSearch(Retriever retriever, int numBeams, int numCandidatesPerBeam, int maxLength) {
         if (maxLength < 1) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_MODE_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_MODE_INVALID,
                     "expect max_length >= 1; got max_length=" + maxLength);
         }
         this.retriever = retriever;
         this.numBeams = numBeams;
         this.numCandidatesPerBeam = numCandidatesPerBeam;
         this.maxLength = maxLength;
-        this.embedModel = retriever instanceof AbstractStoreBackedRetriever storeBacked ? storeBacked.getEmbedModel() : null;
+        this.embedModel =
+            retriever instanceof AbstractStoreBackedRetriever storeBacked ? storeBacked.getEmbedModel() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * beamSearch.
+     * 
+     * @param query query
+     * @param triples triples
+     * @return the result
+     * @since 0.1.7
      */
     public List<TripleBeam> beamSearch(String query, List<RetrievalResult> triples) {
         if (triples == null || triples.isEmpty()) {
             return List.of();
         }
         if (embedModel == null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_RETRIEVER_EMBED_MODEL_NOT_FOUND,
                     "embed_model is required for beam search");
         }
         List<String> texts = new ArrayList<>();
@@ -81,7 +101,17 @@ public class TripleBeamSearch {
         return beams;
     }
 
-    private List<TripleBeam> topBeams(List<RetrievalResult> triples, List<List<Float>> embeddings, List<Float> queryEmbedding) {
+    /**
+     * topBeams.
+     * 
+     * @param triples triples
+     * @param embeddings embeddings
+     * @param queryEmbedding queryEmbedding
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<TripleBeam> topBeams(List<RetrievalResult> triples, List<List<Float>> embeddings,
+            List<Float> queryEmbedding) {
         List<Integer> topIndices = topK(embeddings, queryEmbedding, numBeams);
         List<TripleBeam> beams = new ArrayList<>();
         for (Integer index : topIndices) {
@@ -90,6 +120,14 @@ public class TripleBeamSearch {
         return beams;
     }
 
+    /**
+     * expandBeams.
+     * 
+     * @param beams beams
+     * @param queryEmbedding queryEmbedding
+     * @return the result
+     * @since 0.1.7
+     */
     private List<TripleBeam> expandBeams(List<TripleBeam> beams, List<Float> queryEmbedding) {
         List<List<RetrievalResult>> candidatesPerBeam = new ArrayList<>();
         for (TripleBeam beam : beams) {
@@ -147,6 +185,13 @@ public class TripleBeamSearch {
         return expandedBeams;
     }
 
+    /**
+     * searchCandidates.
+     * 
+     * @param beam beam
+     * @return the result
+     * @since 0.1.7
+     */
     private List<RetrievalResult> searchCandidates(TripleBeam beam) {
         if (beam.size() < 1) {
             return List.of();
@@ -157,17 +202,14 @@ public class TripleBeamSearch {
             return List.of();
         }
         try {
-            List<String> triple = MAPPER.readValue(tripleJson, new TypeReference<>() {});
+            List<String> triple = MAPPER.readValue(tripleJson, new TypeReference<>() {
+            });
             if (triple.size() < 2) {
                 return List.of();
             }
             Set<String> entities = Set.of(triple.get(0), triple.get(triple.size() - 1));
-            List<RetrievalResult> nodes = retriever.retrieve(
-                    String.join(" ", entities),
-                    numCandidatesPerBeam,
-                    null,
-                    "vector",
-                    Map.of());
+            List<RetrievalResult> nodes =
+                retriever.retrieve(String.join(" ", entities), numCandidatesPerBeam, null, "vector", Map.of());
             List<RetrievalResult> result = new ArrayList<>();
             for (RetrievalResult node : nodes) {
                 if (beam.contains(node)) {
@@ -177,7 +219,8 @@ public class TripleBeamSearch {
                 if (!(metadataTriple instanceof String metadataTripleJson)) {
                     continue;
                 }
-                List<String> candidateTriple = MAPPER.readValue(metadataTripleJson, new TypeReference<>() {});
+                List<String> candidateTriple = MAPPER.readValue(metadataTripleJson, new TypeReference<>() {
+                });
                 if (candidateTriple.isEmpty()) {
                     continue;
                 }
@@ -187,11 +230,18 @@ public class TripleBeamSearch {
                 }
             }
             return result;
-        } catch (Exception e) {
+        } catch (JsonProcessingException e) {
             return List.of();
         }
     }
 
+    /**
+     * formatBeam.
+     * 
+     * @param triples triples
+     * @return the result
+     * @since 0.1.7
+     */
     private static String formatBeam(List<RetrievalResult> triples) {
         List<String> texts = new ArrayList<>();
         for (RetrievalResult triple : triples) {
@@ -200,6 +250,15 @@ public class TripleBeamSearch {
         return String.join("; ", texts);
     }
 
+    /**
+     * topK.
+     * 
+     * @param embeddings embeddings
+     * @param queryEmbedding queryEmbedding
+     * @param k k
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Integer> topK(List<List<Float>> embeddings, List<Float> queryEmbedding, int k) {
         List<Map.Entry<Integer, Double>> scored = new ArrayList<>();
         for (int i = 0; i < embeddings.size(); i++) {
@@ -213,6 +272,14 @@ public class TripleBeamSearch {
         return result;
     }
 
+    /**
+     * cosine.
+     * 
+     * @param left left
+     * @param right right
+     * @return the result
+     * @since 0.1.7
+     */
     private static double cosine(List<Float> left, List<Float> right) {
         double dot = 0.0;
         double leftNorm = 0.0;
@@ -229,6 +296,13 @@ public class TripleBeamSearch {
         return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
     }
 
+    /**
+     * BeamCandidate.
+     * 
+     * @param beam beam
+     * @param nextTriple nextTriple
+     * @since 0.1.7
+     */
     private record BeamCandidate(TripleBeam beam, RetrievalResult nextTriple) {
     }
 }

@@ -4,10 +4,15 @@
 
 package com.openjiuwen.core.common.reactive;
 
-import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+
+import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.Arrays;
@@ -20,21 +25,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * 验证 {@link ReactiveAdapters} 的核心契约：
  * <ul>
- *   <li>{@code fromCallable} 异常原样抛出，不被 Reactor 包装</li>
- *   <li>{@code fromIterator} 在 COMPLETE/ERROR/CANCEL 三种终态都触发 cleanup</li>
- *   <li>取消时立刻停止迭代，不继续消费迭代器</li>
- *   <li>{@code fromAutoCloseableIterator} 在三种终态都调用 {@code close()}</li>
+ * <li>{@code fromCallable} 异常原样抛出，不被 Reactor 包装</li>
+ * <li>{@code fromIterator} 在 COMPLETE/ERROR/CANCEL 三种终态都触发 cleanup</li>
+ * <li>取消时立刻停止迭代，不继续消费迭代器</li>
+ * <li>{@code fromAutoCloseableIterator} 在三种终态都调用 {@code close()}</li>
  * </ul>
  */
 class ReactiveAdaptersTest {
-
     /** Mono 正常发出值并 complete。 */
     @Test
     void fromCallableEmitsValueAndCompletes() {
@@ -93,8 +93,7 @@ class ReactiveAdaptersTest {
         });
         StepVerifier.create(flux).expectNext(1, 2, 3).verifyComplete();
         // doFinally 在 onComplete 之后异步触发，需要短暂等待。
-        assertTrue(cleanupFired.await(2, TimeUnit.SECONDS),
-                "cleanup must fire after COMPLETE (within timeout)");
+        assertTrue(cleanupFired.await(2, TimeUnit.SECONDS), "cleanup must fire after COMPLETE (within timeout)");
         assertEquals(1, cleanupCount.get(), "cleanup should fire exactly once on COMPLETE");
     }
 
@@ -123,12 +122,8 @@ class ReactiveAdaptersTest {
             cleanupCount.incrementAndGet();
             cleanupFired.countDown();
         });
-        StepVerifier.create(flux)
-                .expectNext(1, 2)
-                .expectErrorMessage("iterator boom")
-                .verify();
-        assertTrue(cleanupFired.await(2, TimeUnit.SECONDS),
-                "cleanup must fire after ERROR (within timeout)");
+        StepVerifier.create(flux).expectNext(1, 2).expectErrorMessage("iterator boom").verify();
+        assertTrue(cleanupFired.await(2, TimeUnit.SECONDS), "cleanup must fire after ERROR (within timeout)");
         assertEquals(1, cleanupCount.get(), "cleanup should fire exactly once on ERROR");
     }
 
@@ -155,10 +150,7 @@ class ReactiveAdaptersTest {
             cleanupFired.countDown();
         });
 
-        StepVerifier.create(flux, 3)
-                .expectNextCount(3)
-                .thenCancel()
-                .verify(Duration.ofSeconds(5));
+        StepVerifier.create(flux, 3).expectNextCount(3).thenCancel().verify(Duration.ofSeconds(5));
 
         assertTrue(cleanupFired.await(2, TimeUnit.SECONDS), "cleanup must run on CANCEL");
         assertEquals(1, cleanupCount.get(), "cleanup should fire exactly once on CANCEL");
@@ -182,10 +174,7 @@ class ReactiveAdaptersTest {
 
         Flux<Integer> flux = ReactiveAdapters.fromIterator(infinite, null);
 
-        StepVerifier.create(flux, 5)
-                .expectNextCount(5)
-                .thenCancel()
-                .verify(Duration.ofSeconds(5));
+        StepVerifier.create(flux, 5).expectNextCount(5).thenCancel().verify(Duration.ofSeconds(5));
 
         int countAtCancel = emitted.get();
         // 给迭代器线程留 200ms——若取消未生效，计数会持续攀升。
@@ -225,13 +214,9 @@ class ReactiveAdaptersTest {
     void fromAutoCloseableIterator_close_fires_on_complete() {
         BlockingIterator it = new BlockingIterator(3, false);
 
-        StepVerifier.create(ReactiveAdapters.fromAutoCloseableIterator(() -> it))
-                .expectNext(0, 1, 2)
-                .verifyComplete();
+        StepVerifier.create(ReactiveAdapters.fromAutoCloseableIterator(() -> it)).expectNext(0, 1, 2).verifyComplete();
 
-        assertThat(it.closed.get())
-                .as("close() must fire on natural completion of the stream")
-                .isTrue();
+        assertThat(it.closed.get()).as("close() must fire on natural completion of the stream").isTrue();
     }
 
     /** 下游取消时触发 close()，进而解开阻塞在 hasNext() 的 worker。 */
@@ -255,14 +240,10 @@ class ReactiveAdaptersTest {
         BlockingIterator it = new BlockingIterator(2, false);
         it.throwAfter = 1;
 
-        StepVerifier.create(ReactiveAdapters.fromAutoCloseableIterator(() -> it))
-                .expectNext(0)
-                .expectError(IllegalStateException.class)
-                .verify();
+        StepVerifier.create(ReactiveAdapters.fromAutoCloseableIterator(() -> it)).expectNext(0)
+                .expectError(IllegalStateException.class).verify();
 
-        assertThat(it.closed.get())
-                .as("close() must fire on error termination")
-                .isTrue();
+        assertThat(it.closed.get()).as("close() must fire on error termination").isTrue();
     }
 
     /** 传入普通 Iterator（非 AutoCloseable）时安全降级，不 NPE。 */
@@ -270,8 +251,7 @@ class ReactiveAdaptersTest {
     void fromAutoCloseableIterator_non_autocloseable_degrades_gracefully() {
         Iterator<Integer> plain = Arrays.asList(1, 2, 3).iterator();
 
-        StepVerifier.create(ReactiveAdapters.fromAutoCloseableIterator(() -> plain))
-                .expectNext(1, 2, 3)
+        StepVerifier.create(ReactiveAdapters.fromAutoCloseableIterator(() -> plain)).expectNext(1, 2, 3)
                 .verifyComplete();
     }
 
@@ -286,10 +266,7 @@ class ReactiveAdaptersTest {
         });
 
         for (int i = 0; i < 3; i++) {
-            StepVerifier.create(flux, 2)
-                    .expectNext(0, 1)
-                    .thenCancel()
-                    .verify(Duration.ofSeconds(5));
+            StepVerifier.create(flux, 2).expectNext(0, 1).thenCancel().verify(Duration.ofSeconds(5));
         }
 
         assertEquals(3, sourceCalls.get(), "each cancelled subscription should create a fresh iterator");
@@ -298,8 +275,8 @@ class ReactiveAdaptersTest {
     }
 
     /** 轮询条件直到 true 或超时，替代未引入的 awaitility。 */
-    private static void awaitTrue(BooleanSupplier condition,
-                                  Duration timeout, String message) throws InterruptedException {
+    private static void awaitTrue(BooleanSupplier condition, Duration timeout, String message)
+            throws InterruptedException {
         long deadline = System.nanoTime() + timeout.toNanos();
         while (System.nanoTime() < deadline) {
             if (condition.getAsBoolean()) {

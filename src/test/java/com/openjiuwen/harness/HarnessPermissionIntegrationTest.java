@@ -1,4 +1,7 @@
+
 package com.openjiuwen.harness;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
@@ -6,16 +9,14 @@ import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 import com.openjiuwen.harness.workspace.Workspace;
+
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessPermissionIntegrationTest {
-
     private static Map<String, Object> permissions() {
         Map<String, Object> config = new LinkedHashMap<>();
         config.put("enabled", true);
@@ -26,19 +27,12 @@ class HarnessPermissionIntegrationTest {
 
     @Test
     void deepAgentShouldMountSecurityAndPermissionRailsWhenConfigured() {
-        ToolPermissionHost host = ToolPermissionHost.builder()
-                .resolveWorkspaceDir(() -> Path.of(".").toAbsolutePath())
-                .build();
+        ToolPermissionHost host =
+            ToolPermissionHost.builder().resolveWorkspaceDir(() -> Path.of(".").toAbsolutePath()).build();
         DeepAgent agent = HarnessFactory.createDeepAgent(
                 AgentCard.builder().name("permission_demo").description("permission demo").build(),
-                DeepAgentConfig.builder()
-                        .workspacePath("./workspace")
-                        .language("cn")
-                        .build(),
-                Workspace.builder().rootPath("./workspace").language("cn").build(),
-                permissions(),
-                host
-        );
+                DeepAgentConfig.builder().workspacePath("./workspace").language("cn").build(),
+                Workspace.builder().rootPath("./workspace").language("cn").build(), permissions(), host);
 
         agent.ensureInitialized();
 
@@ -50,12 +44,8 @@ class HarnessPermissionIntegrationTest {
     void deepAgentInvokeShouldInitializePermissionRailsLazily() {
         DeepAgent agent = HarnessFactory.createDeepAgent(
                 AgentCard.builder().name("permission_demo").description("permission demo").build(),
-                DeepAgentConfig.builder()
-                        .workspacePath("./workspace")
-                        .permissions(permissions())
-                        .build(),
-                Workspace.builder().rootPath("./workspace").language("cn").build()
-        );
+                DeepAgentConfig.builder().workspacePath("./workspace").permissions(permissions()).build(),
+                Workspace.builder().rootPath("./workspace").language("cn").build());
 
         agent.invoke(Map.of("query", "read file"));
 

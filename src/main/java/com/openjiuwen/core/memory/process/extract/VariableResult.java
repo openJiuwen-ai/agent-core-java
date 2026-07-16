@@ -11,6 +11,8 @@ import lombok.NoArgsConstructor;
 
 /**
  * Result of variable extraction from memory analysis.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

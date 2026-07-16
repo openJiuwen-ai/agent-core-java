@@ -1,21 +1,8 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.memory.manage.mem_model;
-
-import com.google.gson.JsonObject;
-import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
-import com.openjiuwen.core.retrieval.embedding.Embedding;
-import com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore;
-import io.milvus.v2.client.MilvusClientV2;
-import io.milvus.v2.service.collection.request.CreateCollectionReq;
-import io.milvus.v2.service.utility.request.FlushReq;
-import io.milvus.v2.service.vector.request.InsertReq;
-import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
-
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -27,17 +14,31 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-class SemanticStoreMilvusTest {
+import com.google.gson.JsonObject;
+import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
+import com.openjiuwen.core.retrieval.embedding.Embedding;
+import com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore;
 
+import io.milvus.v2.client.MilvusClientV2;
+import io.milvus.v2.service.collection.request.CreateCollectionReq;
+import io.milvus.v2.service.utility.request.FlushReq;
+import io.milvus.v2.service.vector.request.InsertReq;
+
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+
+import java.util.List;
+import java.util.Map;
+
+class SemanticStoreMilvusTest {
     @Test
     void createCollectionUsesMilvusBootstrapWithoutEmptyInsert() {
         MilvusClientV2 client = mock(MilvusClientV2.class);
         when(client.hasCollection(any())).thenReturn(false);
         when(client.createSchema()).thenCallRealMethod();
 
-        SemanticStore semanticStore = new SemanticStore(
-                new MilvusVectorStore(client, new VectorStoreConfig("milvus", "memory_base"), "vector",
-                        Map.of("vector_field", "embedding")));
+        SemanticStore semanticStore = new SemanticStore(new MilvusVectorStore(client,
+                new VectorStoreConfig("milvus", "memory_base"), "vector", Map.of("vector_field", "embedding")));
 
         semanticStore.createCollection("memory_fragments", 3, Map.of());
 
@@ -56,10 +57,9 @@ class SemanticStoreMilvusTest {
         when(client.hasCollection(any())).thenReturn(false);
         when(client.createSchema()).thenCallRealMethod();
 
-        SemanticStore semanticStore = new SemanticStore(
-                new MilvusVectorStore(client, new VectorStoreConfig("milvus", "memory_base"), "vector",
-                        Map.of("vector_field", "embedding")),
-                new FixedEmbedding());
+        SemanticStore semanticStore =
+            new SemanticStore(new MilvusVectorStore(client, new VectorStoreConfig("milvus", "memory_base"), "vector",
+                    Map.of("vector_field", "embedding")), new FixedEmbedding());
 
         boolean stored = semanticStore.addDocs(List.of(Map.entry("mem-1", "remember this")), "memory_fragments");
 

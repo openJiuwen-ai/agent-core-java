@@ -17,36 +17,37 @@ import java.util.function.Function;
 
 /**
  * LLM response utilities using RITS API.
- *
- * <p>Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.rits}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.agent_evolving.optimizer.tool_call.utils.rits}.
+ * 
+ * @since 0.1.7
  */
 public class RitsUtils {
-
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    /**
+     * RitsUtils.
+     * 
+     * @since 0.1.7
+     */
     private RitsUtils() {
         // Utility class
     }
 
     /**
      * Get RITS response with error handling.
-     *
-     * @param modelId    Model identifier
-     * @param prompt     Prompt string
-     * @param llmApiKey  LLM API key
-     * @param verifyFn   Verification function
-     * @param verbose    Enable verbose logging
-     * @param kwargs     Additional parameters
+     * 
+     * @param modelId Model identifier
+     * @param prompt Prompt string
+     * @param llmApiKey LLM API key
+     * @param verifyFn Verification function
+     * @param verbose Enable verbose logging
+     * @param kwargs Additional parameters
      * @return Response object or error map
+     * @since 0.1.7
      */
-    public static Object getRitsResponse(
-            String modelId,
-            String prompt,
-            String llmApiKey,
-            Function<String, Object> verifyFn,
-            boolean verbose,
-            Map<String, Object> kwargs
-    ) {
+    public static Object getRitsResponse(String modelId, String prompt, String llmApiKey,
+            Function<String, Object> verifyFn, boolean verbose, Map<String, Object> kwargs) {
         try {
             return ritsResponse(modelId, prompt, llmApiKey, verifyFn, verbose, kwargs != null ? kwargs : Map.of());
         } catch (Exception e) {
@@ -57,11 +58,12 @@ public class RitsUtils {
 
     /**
      * Get RITS response with simplified parameters.
-     *
-     * @param modelId   Model identifier
-     * @param prompt    Prompt string
+     * 
+     * @param modelId Model identifier
+     * @param prompt Prompt string
      * @param llmApiKey LLM API key
      * @return Response string
+     * @since 0.1.7
      */
     public static String getRitsResponse(String modelId, String prompt, String llmApiKey) {
         try {
@@ -75,56 +77,36 @@ public class RitsUtils {
 
     /**
      * Execute RITS API call.
-     *
-     * @param modelId   Model identifier
-     * @param prompt    Prompt string
+     * 
+     * @param modelId Model identifier
+     * @param prompt Prompt string
      * @param llmApiKey LLM API key
-     * @param verifyFn  Verification function
-     * @param verbose   Enable verbose logging
-     * @param kwargs    Additional parameters
+     * @param verifyFn Verification function
+     * @param verbose Enable verbose logging
+     * @param kwargs Additional parameters
      * @return Response object
+     * @since 0.1.7
      */
-    public static Object ritsResponse(
-            String modelId,
-            String prompt,
-            String llmApiKey,
-            Function<String, Object> verifyFn,
-            boolean verbose,
-            Map<String, Object> kwargs
-    ) {
+    public static Object ritsResponse(String modelId, String prompt, String llmApiKey,
+            Function<String, Object> verifyFn, boolean verbose, Map<String, Object> kwargs) {
         RuntimeException lastFailure = null;
         int maxAttempts = getInt(kwargs, "max_attempts", 2);
         for (int attempt = 0; attempt < Math.max(1, maxAttempts); attempt++) {
             try {
-                ModelRequestConfig modelConfig = ModelRequestConfig.builder()
-                        .modelName(modelId)
-                        .temperature(getDouble(kwargs, "temperature", 1.0))
-                        .build();
+                ModelRequestConfig modelConfig = ModelRequestConfig.builder().modelName(modelId)
+                        .temperature(getDouble(kwargs, "temperature", 1.0)).build();
                 ModelClientConfig clientConfig = ModelClientConfig.builder()
                         .clientProvider(getString(kwargs, "client_provider", "OpenAI"))
                         .apiBase(getString(kwargs, "api_base", "https://api.openai.com/v1"))
-                        .apiKey(llmApiKey != null ? llmApiKey : "")
-                        .verifySsl(getBoolean(kwargs, "verify_ssl", false))
-                        .timeout(getDouble(kwargs, "timeout", 60.0))
-                        .maxRetries(getInt(kwargs, "max_retries", 1))
+                        .apiKey(llmApiKey != null ? llmApiKey : "").verifySsl(getBoolean(kwargs, "verify_ssl", false))
+                        .timeout(getDouble(kwargs, "timeout", 60.0)).maxRetries(getInt(kwargs, "max_retries", 1))
                         .build();
 
                 Model model = new Model(clientConfig, modelConfig);
                 AssistantMessage response = model.invoke(
-                        List.of(Map.of(
-                                "role", getString(kwargs, "role", "developer"),
-                                "content", prompt != null ? prompt : ""
-                        )),
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null,
-                        Map.of()
-                );
+                        List.of(Map.of("role", getString(kwargs, "role", "developer"), "content",
+                                prompt != null ? prompt : "")),
+                        null, null, null, null, null, null, null, null, Map.of());
 
                 String output = stringifyContent(response != null ? response.getContent() : null);
                 if (verifyFn != null) {
@@ -142,6 +124,14 @@ public class RitsUtils {
         throw new RuntimeException("RITS response failed: " + message, lastFailure);
     }
 
+    /**
+     * stringifyContent.
+     * 
+     * @param content content
+     * @return the result
+     * @throws Exception Exception
+     * @since 0.1.7
+     */
     private static String stringifyContent(Object content) throws Exception {
         if (content == null) {
             return "";
@@ -152,21 +142,57 @@ public class RitsUtils {
         return OBJECT_MAPPER.writeValueAsString(content);
     }
 
+    /**
+     * getString.
+     * 
+     * @param kwargs kwargs
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static String getString(Map<String, Object> kwargs, String key, String defaultValue) {
         Object value = kwargs != null ? kwargs.get(key) : null;
         return value instanceof String text && !text.isBlank() ? text : defaultValue;
     }
 
+    /**
+     * getInt.
+     * 
+     * @param kwargs kwargs
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static int getInt(Map<String, Object> kwargs, String key, int defaultValue) {
         Object value = kwargs != null ? kwargs.get(key) : null;
         return value instanceof Number number ? number.intValue() : defaultValue;
     }
 
+    /**
+     * getDouble.
+     * 
+     * @param kwargs kwargs
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static double getDouble(Map<String, Object> kwargs, String key, double defaultValue) {
         Object value = kwargs != null ? kwargs.get(key) : null;
         return value instanceof Number number ? number.doubleValue() : defaultValue;
     }
 
+    /**
+     * getBoolean.
+     * 
+     * @param kwargs kwargs
+     * @param key key
+     * @param defaultValue defaultValue
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean getBoolean(Map<String, Object> kwargs, String key, boolean defaultValue) {
         Object value = kwargs != null ? kwargs.get(key) : null;
         if (value instanceof Boolean bool) {

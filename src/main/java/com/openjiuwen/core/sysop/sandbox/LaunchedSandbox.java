@@ -11,9 +11,11 @@ import lombok.NoArgsConstructor;
 
 /**
  * Descriptor returned by {@link SandboxLauncher#launch}.
- *
- * <p>Mirrors Python's {@code LaunchedSandbox} in
+ * <p>
+ * Mirrors Python's {@code LaunchedSandbox} in
  * {@code sandbox/launchers/base.py}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

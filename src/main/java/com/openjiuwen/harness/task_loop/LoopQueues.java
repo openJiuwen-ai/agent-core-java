@@ -14,47 +14,65 @@ import java.util.Queue;
 
 /**
  * Public class LoopQueues used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class LoopQueues implements SteeringQueue {
     private final Queue<String> steering = new ArrayDeque<>();
+
+    /**
+     * ArrayDeque<>.
+     * 
+     * @since 0.1.7
+     */
     private final Queue<String> isFollowUp = new ArrayDeque<>();
+
+    /**
+     * PriorityQueue<>.
+     * 
+     * @since 0.1.7
+     */
     private final PriorityQueue<DeepLoopEvent> events = new PriorityQueue<>();
     private long sequence;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * pushSteer.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     public void pushSteer(String message) {
         steering.add(message);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * pushSteering.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void pushSteering(String message) {
         pushSteer(message);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * pushFollowUp.
+     * 
+     * @param message message
+     * @since 0.1.7
      */
     public void pushFollowUp(String message) {
         isFollowUp.add(message);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * drainSteering.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<String> drainSteering() {
         List<String> result = new ArrayList<>(steering);
         steering.clear();
@@ -62,14 +80,20 @@ public class LoopQueues implements SteeringQueue {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasFollowUp.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasFollowUp() {
         return !isFollowUp.isEmpty();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * drainFollowUp.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> drainFollowUp() {
         List<String> result = new ArrayList<>(isFollowUp);
@@ -78,7 +102,12 @@ public class LoopQueues implements SteeringQueue {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * pushEvent.
+     * 
+     * @param eventType eventType
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
     public DeepLoopEvent pushEvent(DeepLoopEventType eventType, String content) {
         DeepLoopEvent event = DeepLoopEvent.builder(++sequence, eventType, content).build();
@@ -92,14 +121,20 @@ public class LoopQueues implements SteeringQueue {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasEvents.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasEvents() {
         return !events.isEmpty();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * drainEvents.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<DeepLoopEvent> drainEvents() {
         List<DeepLoopEvent> result = new ArrayList<>();

@@ -13,6 +13,8 @@ import java.util.Map;
 
 /**
  * Part data model - represents a content part within an artifact.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

@@ -18,16 +18,14 @@ import java.util.List;
  * by trimming or offloading messages once thresholds are exceeded.
  * <p>
  * Mirrors Python's {@code MessageOffloaderConfig}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class MessageOffloaderConfig {
-
-    /**
-     * Maximum number of messages allowed before offloading is triggered.
-     */
     private Integer messagesThreshold;
 
     /**
@@ -44,12 +42,16 @@ public class MessageOffloaderConfig {
 
     /**
      * Roles eligible for offloading (e.g., "user", "assistant", "tool").
+     * 
+     * @since 0.1.7
      */
     @Builder.Default
     private List<String> offloadMessageType = List.of("tool");
 
     /**
      * Tool messages produced by these tools are never offloaded.
+     * 
+     * @since 0.1.7
      */
     @Builder.Default
     private List<String> protectedToolNames = List.of("reload_original_context_messages");
@@ -73,6 +75,8 @@ public class MessageOffloaderConfig {
 
     /**
      * Validate configuration constraints matching Python Pydantic {@code Field(gt=0)} rules.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         if (messagesThreshold != null && messagesThreshold <= 0) {

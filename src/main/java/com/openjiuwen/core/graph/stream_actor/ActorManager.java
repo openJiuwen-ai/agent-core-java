@@ -27,31 +27,42 @@ import java.util.function.Consumer;
  * Manages stream actors for inter-node stream communication in a graph.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.stream_actor.manager.ActorManager}.
+ * 
+ * @since 0.1.7
  */
 public class ActorManager {
-
     private static final LoggerProtocol logger = Loggers.GRAPH;
 
     private final Map<String, List<String>> streamEdges;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, StreamActor> streams = new LinkedHashMap<>();
+
+    /**
+     * StreamTransform.
+     * 
+     * @since 0.1.7
+     */
     private final StreamTransform streamsTransform = new StreamTransform();
     private final boolean subGraph;
     private final BlockingQueue<Object> subWorkflowStreamQueue;
 
     /**
      * Create an ActorManager.
-     *
+     * 
      * @param streamEdges map of producer→[consumer] stream edges
-     * @param graph       the stream graph with registered consumers
-     * @param subGraph    whether this is a sub-graph
-     * @param session     the session for configuration
+     * @param graph the stream graph with registered consumers
+     * @param subGraph whether this is a sub-graph
+     * @param session the session for configuration
      * @param compAbilitiesProvider function to get abilities for a component ID
+     * @since 0.1.7
      */
-    public ActorManager(Map<String, List<String>> streamEdges,
-                        StreamGraph graph,
-                        boolean subGraph,
-                        BaseSession session,
-                        java.util.function.Function<String, List<ComponentAbility>> compAbilitiesProvider) {
+    public ActorManager(Map<String, List<String>> streamEdges, StreamGraph graph, boolean subGraph, BaseSession session,
+            java.util.function.Function<String, List<ComponentAbility>> compAbilitiesProvider) {
         this.streamEdges = streamEdges != null ? streamEdges : new HashMap<>();
         this.subGraph = subGraph;
         this.subWorkflowStreamQueue = subGraph ? new LinkedBlockingQueue<>(10 * 1024) : null;
@@ -98,8 +109,7 @@ public class ActorManager {
 
             StreamConsumer consumer = graph.getNode(consumerId);
             if (consumer != null) {
-                streams.put(consumerId, new StreamActor(
-                        consumerId, consumer, consumerStreamAbility,
+                streams.put(consumerId, new StreamActor(consumerId, consumer, consumerStreamAbility,
                         new ArrayList<>(sources), streamGenTimeout));
             }
         }
@@ -107,19 +117,23 @@ public class ActorManager {
 
     /**
      * Get the sub-workflow stream queue.
-     *
+     * 
      * @return the sub-workflow blocking queue
+     * @since 0.1.7
      */
     public BlockingQueue<Object> subWorkflowStream() {
         if (!subGraph) {
-            throw ErrorHelper.buildError(StatusCode.GRAPH_STREAM_ACTOR_EXECUTION_ERROR,
-                    "reason", "only sub graph has sub_workflow_stream");
+            throw ErrorHelper.buildError(StatusCode.GRAPH_STREAM_ACTOR_EXECUTION_ERROR, "reason",
+                    "only sub graph has sub_workflow_stream");
         }
         return subWorkflowStreamQueue;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStreamTransform.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public StreamTransform getStreamTransform() {
         return streamsTransform;
@@ -127,14 +141,14 @@ public class ActorManager {
 
     /**
      * Produce a stream message from a producer node to its consumers.
-     *
-     * @param producerId     the producing node
+     * 
+     * @param producerId the producing node
      * @param messageContent the message content
-     * @param ability        the ability type (STREAM/TRANSFORM)
-     * @param firstFrame     whether this is the first frame
+     * @param ability the ability type (STREAM/TRANSFORM)
+     * @param firstFrame whether this is the first frame
+     * @since 0.1.7
      */
-    public void produce(String producerId, Object messageContent,
-                        ComponentAbility ability, boolean firstFrame) {
+    public void produce(String producerId, Object messageContent, ComponentAbility ability, boolean firstFrame) {
         List<String> consumerIds = streamEdges.get(producerId);
         if (consumerIds != null && !consumerIds.isEmpty()) {
             for (String consumerId : consumerIds) {
@@ -151,9 +165,10 @@ public class ActorManager {
 
     /**
      * Send an end message from a producer node.
-     *
+     * 
      * @param producerId the producing node
-     * @param ability    the ability type
+     * @param ability the ability type
+     * @since 0.1.7
      */
     public void endMessage(String producerId, ComponentAbility ability) {
         String endContent = "END_" + producerId;
@@ -161,20 +176,18 @@ public class ActorManager {
     }
 
     /**
-     * Consume stream data for a consumer node.
-     *
-     * @param consumerId     the consuming node
-     * @param ability        the ability type (COLLECT/TRANSFORM)
-     * @param schema         the input schema
-     * @param streamCallback callback for each consumed chunk
-     * @return a map of iterators matching the schema
+     * consume.
+     * 
+     * @param consumerId consumerId
+     * @param ability ability
+     * @param schema schema
+     * @param streamCallback streamCallback
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
-    public Map<String, Object> consume(String consumerId, ComponentAbility ability,
-                                        Object schema, Consumer<Object> streamCallback) {
+    public Map<String, Object> consume(String consumerId, ComponentAbility ability, Object schema,
+            Consumer<Object> streamCallback) {
         StreamActor actor = streams.get(consumerId);
         if (actor != null) {
             Map<String, Object> schemaMap = (schema instanceof Map) ? (Map<String, Object>) schema : null;
@@ -185,6 +198,8 @@ public class ActorManager {
 
     /**
      * Wait until all active stream actors finish processing their queued messages.
+     * 
+     * @since 0.1.7
      */
     public void awaitCompletion() {
         for (StreamActor actor : streams.values()) {
@@ -194,6 +209,8 @@ public class ActorManager {
 
     /**
      * Shutdown all stream actors.
+     * 
+     * @since 0.1.7
      */
     public void shutdown() {
         for (StreamActor actor : streams.values()) {
@@ -203,6 +220,13 @@ public class ActorManager {
 
     // ---- Helpers ----
 
+    /**
+     * buildReverseGraph.
+     * 
+     * @param graph graph
+     * @return the result
+     * @since 0.1.7
+     */
     private static Map<String, List<String>> buildReverseGraph(Map<String, List<String>> graph) {
         Map<String, List<String>> reverse = new HashMap<>();
         for (Map.Entry<String, List<String>> entry : graph.entrySet()) {

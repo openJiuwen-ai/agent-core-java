@@ -5,11 +5,9 @@
 package com.openjiuwen.core.session;
 
 import com.openjiuwen.core.session.stream.OutputSchema;
-import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.session.stream.StreamWriter;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -21,32 +19,45 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Extends {@link AgentSessionApi} so legacy multi-agent sessions inherit the
  * same state, streaming, and interaction helpers exposed by Python's
  * {@code AgentGroupSession(AgentSession)} implementation.
+ * 
+ * @since 0.1.7
  */
 public class AgentGroupSessionApi extends AgentSessionApi {
-
     private String teamId;
     private String currentAgentId;
+
+    /**
+     * AtomicInteger.
+     * 
+     * @since 0.1.7
+     */
     private final AtomicInteger chunkIndex = new AtomicInteger(0);
 
     /**
      * Create a new agent group session.
-     *
+     * 
      * @param sessionId session ID (nullable, auto-generated if absent)
-     * @param envs      environment variables (nullable)
+     * @param envs environment variables (nullable)
+     * @since 0.1.7
      */
     public AgentGroupSessionApi(String sessionId, Map<String, Object> envs) {
         super(sessionId, envs, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentGroupSessionApi.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public AgentGroupSessionApi(String sessionId) {
         this(sessionId, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentGroupSessionApi.
+     * 
+     * @since 0.1.7
      */
     public AgentGroupSessionApi() {
         this(null, null);
@@ -54,36 +65,67 @@ public class AgentGroupSessionApi extends AgentSessionApi {
 
     /**
      * Factory method to create an agent group session.
-     *
+     * 
      * @param sessionId session ID (nullable, auto-generated if absent)
-     * @param envs      environment variables (nullable)
+     * @param envs environment variables (nullable)
      * @return a new AgentGroupSessionApi
+     * @since 0.1.7
      */
     public static AgentGroupSessionApi create(String sessionId, Map<String, Object> envs) {
         return new AgentGroupSessionApi(sessionId, envs);
     }
 
+    /**
+     * getTeamId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getTeamId() {
         return teamId;
     }
 
+    /**
+     * setTeamId.
+     * 
+     * @param teamId teamId
+     * @since 0.1.7
+     */
     public void setTeamId(String teamId) {
         this.teamId = teamId;
     }
 
+    /**
+     * getCurrentAgentId.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     public String getCurrentAgentId() {
         return currentAgentId;
     }
 
+    /**
+     * setCurrentAgentId.
+     * 
+     * @param currentAgentId currentAgentId
+     * @since 0.1.7
+     */
     public void setCurrentAgentId(String currentAgentId) {
         this.currentAgentId = currentAgentId;
     }
 
+    /**
+     * writeStream.
+     * 
+     * @param data data
+     * @since 0.1.7
+     */
     @Override
     @SuppressWarnings({"unchecked", "rawtypes"})
     public void writeStream(Object data) {
         Object enrichedData = enrichWithTeamMetadata(data);
-        StreamWriter writer = (StreamWriter) getInner().streamWriterManager().getOutputWriter();
+        StreamWriter<?> writer = getInner().streamWriterManager().getOutputWriter();
         if (writer != null) {
             if (enrichedData instanceof OutputSchema) {
                 writer.write(enrichedData);
@@ -95,6 +137,13 @@ public class AgentGroupSessionApi extends AgentSessionApi {
     }
 
     @SuppressWarnings("unchecked")
+    /**
+     * enrichWithTeamMetadata.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
+     */
     private Object enrichWithTeamMetadata(Object data) {
         if (data instanceof Map) {
             Map<String, Object> map = new LinkedHashMap<>((Map<String, Object>) data);

@@ -14,19 +14,28 @@ import java.util.stream.Stream;
 
 /**
  * Minimal local filesystem tool surface aligned with the Python harness tool set.
+ * 
+ * @since 0.1.7
  */
 public class FilesystemTool {
     private final Path root;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * FilesystemTool.
+     * 
+     * @param rootPath rootPath
+     * @since 0.1.7
      */
     public FilesystemTool(String rootPath) {
         this.root = Path.of(rootPath).toAbsolutePath().normalize();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * readFile.
+     * 
+     * @param relativePath relativePath
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput readFile(String relativePath) {
         try {
@@ -38,7 +47,12 @@ public class FilesystemTool {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * writeFile.
+     * 
+     * @param relativePath relativePath
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput writeFile(String relativePath, String content) {
         try {
@@ -52,14 +66,16 @@ public class FilesystemTool {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listFiles.
+     * 
+     * @param relativeDir relativeDir
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput listFiles(String relativeDir) {
         try (Stream<Path> stream = Files.list(resolve(relativeDir))) {
-            List<String> files = stream
-                    .sorted(Comparator.comparing(Path::toString))
-                    .map(path -> root.relativize(path).toString())
-                    .toList();
+            List<String> files = stream.sorted(Comparator.comparing(Path::toString))
+                    .map(path -> root.relativize(path).toString()).toList();
             return ToolOutput.builder().success(true).data(files).build();
         } catch (IOException ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();
@@ -67,15 +83,17 @@ public class FilesystemTool {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * searchText.
+     * 
+     * @param relativeDir relativeDir
+     * @param needle needle
+     * @return the result
+     * @since 0.1.7
      */
     public ToolOutput searchText(String relativeDir, String needle) {
         try (Stream<Path> stream = Files.walk(resolve(relativeDir))) {
-            List<String> matches = stream
-                    .filter(Files::isRegularFile)
-                    .filter(path -> contains(path, needle))
-                    .sorted(Comparator.comparing(Path::toString))
-                    .map(path -> root.relativize(path).toString())
+            List<String> matches = stream.filter(Files::isRegularFile).filter(path -> contains(path, needle))
+                    .sorted(Comparator.comparing(Path::toString)).map(path -> root.relativize(path).toString())
                     .toList();
             return ToolOutput.builder().success(true).data(matches).build();
         } catch (IOException ex) {
@@ -83,6 +101,14 @@ public class FilesystemTool {
         }
     }
 
+    /**
+     * contains.
+     * 
+     * @param path path
+     * @param needle needle
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean contains(Path path, String needle) {
         try {
             return Files.readString(path).contains(needle);
@@ -91,6 +117,13 @@ public class FilesystemTool {
         }
     }
 
+    /**
+     * resolve.
+     * 
+     * @param relativePath relativePath
+     * @return the result
+     * @since 0.1.7
+     */
     private Path resolve(String relativePath) {
         return root.resolve(relativePath).normalize();
     }

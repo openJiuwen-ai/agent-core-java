@@ -1,24 +1,22 @@
+
 package com.openjiuwen.core.multiagent.runtime;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class SubscriptionManagerCompatibilityTest {
-
     @Test
     void shouldResolveExactAndWildcardSubscriptions() {
         SubscriptionManager manager = new SubscriptionManager();
         manager.subscribe("reviewer", "code_review");
         manager.subscribe("auditor", "code_*");
 
-        assertThat(manager.getSubscribers("code_review"))
-                .containsExactlyInAnyOrder("reviewer", "auditor");
-        assertThat(manager.getSubscribers("code_fix"))
-                .containsExactly("auditor");
+        assertThat(manager.getSubscribers("code_review")).containsExactlyInAnyOrder("reviewer", "auditor");
+        assertThat(manager.getSubscribers("code_fix")).containsExactly("auditor");
     }
 
     @Test

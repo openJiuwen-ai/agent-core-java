@@ -1,5 +1,11 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
@@ -11,8 +17,8 @@ import com.openjiuwen.core.controller.schema.ControllerOutput;
 import com.openjiuwen.core.controller.schema.InputEvent;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.Session;
-import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -20,26 +26,17 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-
 /**
  * Unit tests for {@link ControllerAgent}.
  */
 class ControllerAgentTest {
-
     private Controller mockController;
     private AgentCard card;
 
     @BeforeEach
     void setUp() {
         mockController = mock(Controller.class);
-        card = AgentCard.builder()
-                .name("ctrl-agent")
-                .description("Controller agent")
-                .build();
+        card = AgentCard.builder().name("ctrl-agent").description("Controller agent").build();
     }
 
     // ========== Construction ==========
@@ -114,8 +111,7 @@ class ControllerAgentTest {
     void testInvokeNullSessionThrows() {
         ControllerAgent agent = new ControllerAgent(card, mockController);
 
-        assertThatThrownBy(() -> agent.invoke("hello", null))
-                .isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> agent.invoke("hello", null)).isInstanceOf(RuntimeException.class);
     }
 
     @Test
@@ -125,8 +121,7 @@ class ControllerAgentTest {
         when(mockSession.getSessionId()).thenReturn("sess-1");
 
         ControllerOutput mockOutput = mock(ControllerOutput.class);
-        when(mockController.invoke(any(InputEvent.class), any(AgentSessionApi.class)))
-                .thenReturn(mockOutput);
+        when(mockController.invoke(any(InputEvent.class), any(AgentSessionApi.class))).thenReturn(mockOutput);
 
         Object result = agent.invoke("hello", mockSession);
 
@@ -143,8 +138,7 @@ class ControllerAgentTest {
         when(mockController.invoke(any(InputEvent.class), any(AgentSessionApi.class)))
                 .thenThrow(new RuntimeException("controller failed"));
 
-        assertThatThrownBy(() -> agent.invoke("hello", mockSession))
-                .isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> agent.invoke("hello", mockSession)).isInstanceOf(RuntimeException.class);
     }
 
     @Test
@@ -153,15 +147,10 @@ class ControllerAgentTest {
         Session mockSession = mock(Session.class);
         when(mockSession.getSessionId()).thenReturn("sess-base-error");
 
-        BaseError error = ErrorHelper.buildError(
-                StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR,
-                "error_msg", "base error"
-        );
-        when(mockController.invoke(any(InputEvent.class), any(AgentSessionApi.class)))
-                .thenThrow(error);
+        BaseError error = ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_RUNTIME_ERROR, "error_msg", "base error");
+        when(mockController.invoke(any(InputEvent.class), any(AgentSessionApi.class))).thenThrow(error);
 
-        assertThatThrownBy(() -> agent.invoke("hello", mockSession))
-                .isSameAs(error);
+        assertThatThrownBy(() -> agent.invoke("hello", mockSession)).isSameAs(error);
     }
 
     @Test
@@ -171,8 +160,7 @@ class ControllerAgentTest {
         when(mockSession.getSessionId()).thenReturn("sess-2");
 
         ControllerOutput mockOutput = mock(ControllerOutput.class);
-        when(mockController.invoke(any(InputEvent.class), any(AgentSessionApi.class)))
-                .thenReturn(mockOutput);
+        when(mockController.invoke(any(InputEvent.class), any(AgentSessionApi.class))).thenReturn(mockOutput);
 
         Object result = agent.invoke(Map.of("key", "val"), mockSession);
 
@@ -185,8 +173,7 @@ class ControllerAgentTest {
     void testStreamNullSessionThrows() {
         ControllerAgent agent = new ControllerAgent(card, mockController);
 
-        assertThatThrownBy(() -> agent.stream("hello", null, List.of()))
-                .isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> agent.stream("hello", null, List.of())).isInstanceOf(RuntimeException.class);
     }
 
     @Test
@@ -197,8 +184,7 @@ class ControllerAgentTest {
         when(mockSess.getSessionId()).thenReturn("sess-3");
 
         Iterator<Object> mockIter = mock(Iterator.class);
-        when(mockController.stream(any(InputEvent.class), any(AgentSessionApi.class), any()))
-                .thenReturn(mockIter);
+        when(mockController.stream(any(InputEvent.class), any(AgentSessionApi.class), any())).thenReturn(mockIter);
 
         Iterator<Object> result = agent.stream("hello", mockSess, List.of());
         assertThat(result).isSameAs(mockIter);
@@ -213,8 +199,7 @@ class ControllerAgentTest {
         when(mockController.stream(any(InputEvent.class), any(AgentSessionApi.class), any()))
                 .thenThrow(new RuntimeException("stream failed"));
 
-        assertThatThrownBy(() -> agent.stream("hello", mockSess, List.of()))
-                .isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> agent.stream("hello", mockSess, List.of())).isInstanceOf(RuntimeException.class);
     }
 
     // ========== Release Session ==========

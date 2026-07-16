@@ -13,29 +13,33 @@ import java.util.Map;
 
 /**
  * Foundation-store Chroma adapter.
+ * 
+ * @since 0.1.7
  */
 public class ChromaVectorStore extends AbstractRetrievalVectorStoreAdapter {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * ChromaVectorStore.
+     * 
+     * @param options options
+     * @since 0.1.7
      */
     public ChromaVectorStore(Map<String, Object> options) {
         super(new com.openjiuwen.core.retrieval.vector_store.ChromaVectorStore(
-                new VectorStoreConfig(
-                        "chroma",
+                new VectorStoreConfig("chroma",
                         InMemoryVectorStore.stringOption(options, "database_name", "databaseName", "default"),
-                        InMemoryVectorStore.stringOption(options, "collection_name", "collectionName", "default_collection"),
-                        InMemoryVectorStore.stringOption(options, "distance_metric", "distanceMetric", "cosine")
-                ),
-                InMemoryVectorStore.indexType(options)
-        ));
+                        InMemoryVectorStore.stringOption(options, "collection_name", "collectionName",
+                                "default_collection"),
+                        InMemoryVectorStore.stringOption(options, "distance_metric", "distanceMetric", "cosine")),
+                InMemoryVectorStore.indexType(options)));
     }
 
     /**
      * Retrieve all documents from a collection for migration purposes.
-     *
+     * 
      * @param collectionName name of the collection
      * @return list of documents as maps
+     * @throws Exception Exception
+     * @since 0.1.7
      */
     public List<Map<String, Object>> getAllDocuments(String collectionName) throws Exception {
         // Retrieve collection metadata to determine field mappings

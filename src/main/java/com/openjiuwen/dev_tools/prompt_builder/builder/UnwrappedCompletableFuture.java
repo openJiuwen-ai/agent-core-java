@@ -9,10 +9,18 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
 
+/**
+ * UnwrappedCompletableFuture
+ *
+ * @since 0.1.7
+ */
 final class UnwrappedCompletableFuture<T> extends CompletableFuture<T> {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * supplyAsync.
+     * 
+     * @param supplier supplier
+     * @return the result
+     * @since 0.1.7
      */
     public static <T> CompletableFuture<T> supplyAsync(Supplier<T> supplier) {
         UnwrappedCompletableFuture<T> future = new UnwrappedCompletableFuture<>();
@@ -26,10 +34,13 @@ final class UnwrappedCompletableFuture<T> extends CompletableFuture<T> {
         return future;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * join.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public T join() {
         try {
             return super.join();
@@ -38,17 +49,29 @@ final class UnwrappedCompletableFuture<T> extends CompletableFuture<T> {
         }
     }
 
+    /**
+     * unwrap.
+     * 
+     * @param throwable throwable
+     * @return the result
+     * @since 0.1.7
+     */
     private static Throwable unwrap(Throwable throwable) {
         Throwable current = throwable;
-        while (current.getCause() != null
-                && (current instanceof CompletionException
-                || current instanceof ExecutionException
-                || current.getClass().equals(RuntimeException.class))) {
+        while (current.getCause() != null && (current instanceof CompletionException
+                || current instanceof ExecutionException || current.getClass().equals(RuntimeException.class))) {
             current = current.getCause();
         }
         return current;
     }
 
+    /**
+     * propagate.
+     * 
+     * @param throwable throwable
+     * @return the result
+     * @since 0.1.7
+     */
     private static RuntimeException propagate(Throwable throwable) {
         if (throwable instanceof RuntimeException runtimeException) {
             return runtimeException;

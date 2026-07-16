@@ -4,12 +4,17 @@
 
 package com.openjiuwen.core.singleagent;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 
-import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
+
+import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.Iterator;
@@ -19,17 +24,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * 验证 {@link BaseAgent} 上 Mono/Flux 包装方法的契约：
  * 异常原样透传、streamModes 原值透传（{@code null} 不能被悄悄替换为空 List）、
  * 以及取消时能中止底层迭代。
  */
 class BaseAgentReactiveTest {
-
     private static AgentCard cardOf(String id) {
         return AgentCard.builder().id(id).name(id).description(id).build();
     }
@@ -48,14 +48,23 @@ class BaseAgentReactiveTest {
             super(cardOf(id));
         }
 
-        @Override public BaseAgent configure(Object config) { return this; }
-        @Override public Object getConfig() { return null; }
+        @Override
+        public BaseAgent configure(Object config) {
+            return this;
+        }
+
+        @Override
+        public Object getConfig() {
+            return null;
+        }
 
         @Override
         public Object invoke(Object inputs, Session session) {
             capturedInputs = inputs;
             capturedSession = session;
-            if (invokeError != null) throw invokeError;
+            if (invokeError != null) {
+                throw invokeError;
+            }
             return invokeResult;
         }
 
@@ -75,9 +84,7 @@ class BaseAgentReactiveTest {
         FakeAgent a = new FakeAgent("a1");
         a.invokeResult = "answer";
 
-        StepVerifier.create(a.invokeAsync("hi", null))
-                .expectNext("answer")
-                .verifyComplete();
+        StepVerifier.create(a.invokeAsync("hi", null)).expectNext("answer").verifyComplete();
         assertEquals("hi", a.capturedInputs);
     }
 
@@ -88,9 +95,7 @@ class BaseAgentReactiveTest {
         IllegalStateException boom = new IllegalStateException("agent boom");
         a.invokeError = boom;
 
-        StepVerifier.create(a.invokeAsync("x", null))
-                .expectErrorMatches(t -> t == boom)
-                .verify();
+        StepVerifier.create(a.invokeAsync("x", null)).expectErrorMatches(t -> t == boom).verify();
     }
 
     /** streamAsync 必须把 streamModes 原值透传——{@code null} 不能被替换为空 List，否则事件会被静默丢弃。 */
@@ -99,9 +104,7 @@ class BaseAgentReactiveTest {
         FakeAgent a = new FakeAgent("a3");
         a.streamItems = List.<Object>of("x", "y").iterator();
 
-        StepVerifier.create(a.streamAsync("inp", null, null))
-                .expectNext("x", "y")
-                .verifyComplete();
+        StepVerifier.create(a.streamAsync("inp", null, null)).expectNext("x", "y").verifyComplete();
         assertEquals(null, a.lastStreamModes.get(), "null streamModes must pass through unchanged");
 
         // 显式 list 也要原样透传（同一引用）
@@ -109,8 +112,7 @@ class BaseAgentReactiveTest {
         b.streamItems = List.<Object>of().iterator();
         List<StreamMode> modes = List.of(StreamMode.OUTPUT);
 
-        StepVerifier.create(b.streamAsync("inp", null, modes))
-                .verifyComplete();
+        StepVerifier.create(b.streamAsync("inp", null, modes)).verifyComplete();
         assertSame(modes, b.lastStreamModes.get(), "explicit streamModes list must pass through unchanged");
     }
 
@@ -120,13 +122,18 @@ class BaseAgentReactiveTest {
         AtomicInteger emitted = new AtomicInteger();
         FakeAgent a = new FakeAgent("a5");
         a.streamItems = new Iterator<>() {
-            @Override public boolean hasNext() { return true; }
-            @Override public Object next() { return emitted.incrementAndGet(); }
+            @Override
+            public boolean hasNext() {
+                return true;
+            }
+
+            @Override
+            public Object next() {
+                return emitted.incrementAndGet();
+            }
         };
 
-        StepVerifier.create(a.streamAsync("inp", null, List.of(StreamMode.OUTPUT)), 3)
-                .expectNextCount(3)
-                .thenCancel()
+        StepVerifier.create(a.streamAsync("inp", null, List.of(StreamMode.OUTPUT)), 3).expectNextCount(3).thenCancel()
                 .verify(Duration.ofSeconds(5));
 
         int afterCancel = emitted.get();
@@ -139,16 +146,25 @@ class BaseAgentReactiveTest {
     void streamFluxCancellationClosesAutoCloseableIterator() throws Exception {
         CountDownLatch closed = new CountDownLatch(1);
         class CloseableIterator implements Iterator<Object>, AutoCloseable {
-            @Override public boolean hasNext() { return true; }
-            @Override public Object next() { return "chunk"; }
-            @Override public void close() { closed.countDown(); }
+            @Override
+            public boolean hasNext() {
+                return true;
+            }
+
+            @Override
+            public Object next() {
+                return "chunk";
+            }
+
+            @Override
+            public void close() {
+                closed.countDown();
+            }
         }
         FakeAgent a = new FakeAgent("a6");
         a.streamItems = new CloseableIterator();
 
-        StepVerifier.create(a.streamAsync("inp", null, List.of(StreamMode.OUTPUT)), 1)
-                .expectNext("chunk")
-                .thenCancel()
+        StepVerifier.create(a.streamAsync("inp", null, List.of(StreamMode.OUTPUT)), 1).expectNext("chunk").thenCancel()
                 .verify(Duration.ofSeconds(5));
 
         assertTrue(closed.await(1, TimeUnit.SECONDS), "AutoCloseable iterator must be closed on cancel");

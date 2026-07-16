@@ -1,23 +1,24 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.context.context;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for {@link OffloadMessageBuffer}.
  */
 class OffloadMessageBufferTest {
-
     @Test
     @DisplayName("offload and reload messages")
     void testOffloadAndReload() {

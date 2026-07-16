@@ -9,13 +9,19 @@ import lombok.experimental.SuperBuilder;
 
 /**
  * Result type for code execution.
+ * 
+ * @since 0.1.7
  */
 @SuperBuilder
 @NoArgsConstructor
 public class ExecuteCodeResult extends BaseResult<ExecuteCodeData> {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * ExecuteCodeResult.
+     * 
+     * @param code code
+     * @param message message
+     * @param data data
+     * @since 0.1.7
      */
     public ExecuteCodeResult(int code, String message, ExecuteCodeData data) {
         super(code, message, data);

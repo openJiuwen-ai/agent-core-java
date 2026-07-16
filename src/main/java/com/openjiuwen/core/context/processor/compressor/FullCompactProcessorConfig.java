@@ -12,6 +12,8 @@ import java.util.List;
 
 /**
  * Configuration for {@link FullCompactProcessor}.
+ * 
+ * @since 0.1.7
  */
 public class FullCompactProcessorConfig {
     private int triggerTotalTokens = 180000;
@@ -23,10 +25,24 @@ public class FullCompactProcessorConfig {
     private boolean isKeepToolMessagePairs = true;
     private int stateSnapshotMaxChars = 4000;
     private int reinjectRecentSkills = 3;
-    private List<String> reinjectFileToolNames = new ArrayList<>(
-            List.of("read_file", "write_file", "edit_file", "glob", "grep"));
-    private List<String> reinjectToolResultHintNames = new ArrayList<>(
-            List.of("read_file", "write_file", "edit_file", "glob", "grep"));
+
+    /**
+     * ArrayList<>.
+     * 
+     * @param "grep" "grep"
+     * @since 0.1.7
+     */
+    private List<String> reinjectFileToolNames =
+        new ArrayList<>(List.of("read_file", "write_file", "edit_file", "glob", "grep"));
+
+    /**
+     * ArrayList<>.
+     * 
+     * @param "grep" "grep"
+     * @since 0.1.7
+     */
+    private List<String> reinjectToolResultHintNames =
+        new ArrayList<>(List.of("read_file", "write_file", "edit_file", "glob", "grep"));
     private String marker = FullCompactProcessor.FULL_COMPACT_BOUNDARY_MARKER;
     private String stateMarker = FullCompactProcessor.FULL_COMPACT_STATE_MARKER;
     private String syntheticUserMarker = FullCompactProcessor.FULL_COMPACT_SYNTHETIC_USER_MARKER;
@@ -36,133 +52,189 @@ public class FullCompactProcessorConfig {
     private String sessionMemoryIntro = FullCompactProcessor.SESSION_MEMORY_SUMMARY_INTRO;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTriggerTotalTokens.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getTriggerTotalTokens() {
         return triggerTotalTokens;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCompressionCallMaxTokens.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getCompressionCallMaxTokens() {
         return compressionCallMaxTokens;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMessagesToKeep.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getMessagesToKeep() {
         return messagesToKeep;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isSessionMemoryEnabled.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isSessionMemoryEnabled() {
-            return sessionMemoryEnabled;
+        return sessionMemoryEnabled;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModel.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ModelRequestConfig getModel() {
         return model;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getModelClient.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ModelClientConfig getModelClient() {
         return modelClient;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isKeepToolMessagePairs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isKeepToolMessagePairs() {
         return isKeepToolMessagePairs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStateSnapshotMaxChars.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getStateSnapshotMaxChars() {
         return stateSnapshotMaxChars;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReinjectRecentSkills.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getReinjectRecentSkills() {
         return reinjectRecentSkills;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReinjectFileToolNames.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getReinjectFileToolNames() {
         return reinjectFileToolNames;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReinjectToolResultHintNames.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> getReinjectToolResultHintNames() {
         return reinjectToolResultHintNames;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMarker.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getMarker() {
         return marker;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStateMarker.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getStateMarker() {
         return stateMarker;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSyntheticUserMarker.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSyntheticUserMarker() {
         return syntheticUserMarker;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSummaryIntro.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSummaryIntro() {
         return summaryIntro;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRecentMessagesNotice.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getRecentMessagesNotice() {
         return recentMessagesNotice;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSessionMemoryMarker.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSessionMemoryMarker() {
         return sessionMemoryMarker;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSessionMemoryIntro.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSessionMemoryIntro() {
         return sessionMemoryIntro;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validate.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         if (triggerTotalTokens <= 0) {
@@ -183,20 +255,29 @@ public class FullCompactProcessorConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * builder.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static Builder builder() {
         return new Builder();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Builder.
+     * 
+     * @since 0.1.7
      */
     public static class Builder {
         private final FullCompactProcessorConfig config = new FullCompactProcessorConfig();
 
         /**
-         * Auto-generated for codecheck compliance.
+         * triggerTotalTokens.
+         * 
+         * @param triggerTotalTokens triggerTotalTokens
+         * @return the result
+         * @since 0.1.7
          */
         public Builder triggerTotalTokens(int triggerTotalTokens) {
             config.triggerTotalTokens = triggerTotalTokens;
@@ -204,7 +285,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * compressionCallMaxTokens.
+         * 
+         * @param compressionCallMaxTokens compressionCallMaxTokens
+         * @return the result
+         * @since 0.1.7
          */
         public Builder compressionCallMaxTokens(int compressionCallMaxTokens) {
             config.compressionCallMaxTokens = compressionCallMaxTokens;
@@ -212,7 +297,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * messagesToKeep.
+         * 
+         * @param messagesToKeep messagesToKeep
+         * @return the result
+         * @since 0.1.7
          */
         public Builder messagesToKeep(int messagesToKeep) {
             config.messagesToKeep = messagesToKeep;
@@ -220,7 +309,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * sessionMemoryEnabled.
+         * 
+         * @param sessionMemoryEnabled sessionMemoryEnabled
+         * @return the result
+         * @since 0.1.7
          */
         public Builder sessionMemoryEnabled(boolean sessionMemoryEnabled) {
             config.sessionMemoryEnabled = sessionMemoryEnabled;
@@ -228,7 +321,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * model.
+         * 
+         * @param model model
+         * @return the result
+         * @since 0.1.7
          */
         public Builder model(ModelRequestConfig model) {
             config.model = model;
@@ -236,7 +333,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * modelClient.
+         * 
+         * @param modelClient modelClient
+         * @return the result
+         * @since 0.1.7
          */
         public Builder modelClient(ModelClientConfig modelClient) {
             config.modelClient = modelClient;
@@ -244,7 +345,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * isKeepToolMessagePairs.
+         * 
+         * @param isKeepToolMessagePairs isKeepToolMessagePairs
+         * @return the result
+         * @since 0.1.7
          */
         public Builder isKeepToolMessagePairs(boolean isKeepToolMessagePairs) {
             config.isKeepToolMessagePairs = isKeepToolMessagePairs;
@@ -252,7 +357,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * stateSnapshotMaxChars.
+         * 
+         * @param stateSnapshotMaxChars stateSnapshotMaxChars
+         * @return the result
+         * @since 0.1.7
          */
         public Builder stateSnapshotMaxChars(int stateSnapshotMaxChars) {
             config.stateSnapshotMaxChars = stateSnapshotMaxChars;
@@ -260,7 +369,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * reinjectRecentSkills.
+         * 
+         * @param reinjectRecentSkills reinjectRecentSkills
+         * @return the result
+         * @since 0.1.7
          */
         public Builder reinjectRecentSkills(int reinjectRecentSkills) {
             config.reinjectRecentSkills = reinjectRecentSkills;
@@ -268,27 +381,37 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * reinjectFileToolNames.
+         * 
+         * @param reinjectFileToolNames reinjectFileToolNames
+         * @return the result
+         * @since 0.1.7
          */
         public Builder reinjectFileToolNames(List<String> reinjectFileToolNames) {
-            config.reinjectFileToolNames = reinjectFileToolNames != null
-                    ? new ArrayList<>(reinjectFileToolNames)
-                    : new ArrayList<>();
+            config.reinjectFileToolNames =
+                reinjectFileToolNames != null ? new ArrayList<>(reinjectFileToolNames) : new ArrayList<>();
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * reinjectToolResultHintNames.
+         * 
+         * @param reinjectToolResultHintNames reinjectToolResultHintNames
+         * @return the result
+         * @since 0.1.7
          */
         public Builder reinjectToolResultHintNames(List<String> reinjectToolResultHintNames) {
-            config.reinjectToolResultHintNames = reinjectToolResultHintNames != null
-                    ? new ArrayList<>(reinjectToolResultHintNames)
-                    : new ArrayList<>();
+            config.reinjectToolResultHintNames =
+                reinjectToolResultHintNames != null ? new ArrayList<>(reinjectToolResultHintNames) : new ArrayList<>();
             return this;
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * marker.
+         * 
+         * @param marker marker
+         * @return the result
+         * @since 0.1.7
          */
         public Builder marker(String marker) {
             config.marker = marker;
@@ -296,7 +419,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * stateMarker.
+         * 
+         * @param stateMarker stateMarker
+         * @return the result
+         * @since 0.1.7
          */
         public Builder stateMarker(String stateMarker) {
             config.stateMarker = stateMarker;
@@ -304,7 +431,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * syntheticUserMarker.
+         * 
+         * @param syntheticUserMarker syntheticUserMarker
+         * @return the result
+         * @since 0.1.7
          */
         public Builder syntheticUserMarker(String syntheticUserMarker) {
             config.syntheticUserMarker = syntheticUserMarker;
@@ -312,7 +443,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * summaryIntro.
+         * 
+         * @param summaryIntro summaryIntro
+         * @return the result
+         * @since 0.1.7
          */
         public Builder summaryIntro(String summaryIntro) {
             config.summaryIntro = summaryIntro;
@@ -320,7 +455,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * recentMessagesNotice.
+         * 
+         * @param recentMessagesNotice recentMessagesNotice
+         * @return the result
+         * @since 0.1.7
          */
         public Builder recentMessagesNotice(String recentMessagesNotice) {
             config.recentMessagesNotice = recentMessagesNotice;
@@ -328,7 +467,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * sessionMemoryMarker.
+         * 
+         * @param sessionMemoryMarker sessionMemoryMarker
+         * @return the result
+         * @since 0.1.7
          */
         public Builder sessionMemoryMarker(String sessionMemoryMarker) {
             config.sessionMemoryMarker = sessionMemoryMarker;
@@ -336,7 +479,11 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * sessionMemoryIntro.
+         * 
+         * @param sessionMemoryIntro sessionMemoryIntro
+         * @return the result
+         * @since 0.1.7
          */
         public Builder sessionMemoryIntro(String sessionMemoryIntro) {
             config.sessionMemoryIntro = sessionMemoryIntro;
@@ -344,7 +491,10 @@ public class FullCompactProcessorConfig {
         }
 
         /**
-         * Auto-generated for codecheck compliance.
+         * build.
+         * 
+         * @return the result
+         * @since 0.1.7
          */
         public FullCompactProcessorConfig build() {
             config.validate();

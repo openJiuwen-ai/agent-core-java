@@ -17,19 +17,27 @@ import java.util.Map;
 
 /**
  * Manages a TeamMember's state — status transitions with event publishing.
- *
- * <p>Mirrors Python TeamMember (agent/member.py): manages member status
- * query, status change, and event publishing via messager.</p>
+ * <p>
+ * Mirrors Python TeamMember (agent/member.py): manages member status
+ * query, status change, and event publishing via messager.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class TeamMemberState {
-
     private final String memberName;
     private final String teamName;
     private final TeamDatabase db;
     private final Messager messager;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamMemberState.
+     * 
+     * @param memberName memberName
+     * @param teamName teamName
+     * @param db db
+     * @param messager messager
+     * @since 0.1.7
      */
     public TeamMemberState(String memberName, String teamName, TeamDatabase db, Messager messager) {
         this.memberName = memberName;
@@ -39,7 +47,10 @@ public class TeamMemberState {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * status.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public MemberStatus status() {
         MemberRecord record = db.member.getMember(memberName, teamName);
@@ -54,7 +65,10 @@ public class TeamMemberState {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * executionStatus.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ExecutionStatus executionStatus() {
         MemberRecord record = db.member.getMember(memberName, teamName);
@@ -69,7 +83,11 @@ public class TeamMemberState {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateStatus.
+     * 
+     * @param newStatus newStatus
+     * @return the result
+     * @since 0.1.7
      */
     public boolean updateStatus(MemberStatus newStatus) {
         MemberStatus oldStatus = status();
@@ -85,7 +103,11 @@ public class TeamMemberState {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateExecutionStatus.
+     * 
+     * @param newStatus newStatus
+     * @return the result
+     * @since 0.1.7
      */
     public boolean updateExecutionStatus(ExecutionStatus newStatus) {
         ExecutionStatus oldStatus = executionStatus();
@@ -93,25 +115,28 @@ public class TeamMemberState {
             return true;
         }
 
-        boolean updated = db.member.updateMemberExecutionStatus(
-                memberName, teamName, newStatus.name());
+        boolean updated = db.member.updateMemberExecutionStatus(memberName, teamName, newStatus.name());
         if (updated && messager != null) {
             publishExecutionChangedEvent(oldStatus, newStatus);
         }
         return updated;
     }
 
+    /**
+     * publishStatusChangedEvent.
+     * 
+     * @param oldStatus oldStatus
+     * @param newStatus newStatus
+     * @since 0.1.7
+     */
     private void publishStatusChangedEvent(MemberStatus oldStatus, MemberStatus newStatus) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("target_id", memberName);
         payload.put("old_status", oldStatus != null ? oldStatus.name() : "unknown");
         payload.put("new_status", newStatus.name());
 
-        EventMessage event = EventMessage.builder()
-                .eventType("member_status_changed")
-                .payload(payload)
-                .senderId(memberName)
-                .build();
+        EventMessage event =
+            EventMessage.builder().eventType("member_status_changed").payload(payload).senderId(memberName).build();
 
         try {
             messager.publish("team:" + teamName + ":team", event);
@@ -120,17 +145,21 @@ public class TeamMemberState {
         }
     }
 
+    /**
+     * publishExecutionChangedEvent.
+     * 
+     * @param oldStatus oldStatus
+     * @param newStatus newStatus
+     * @since 0.1.7
+     */
     private void publishExecutionChangedEvent(ExecutionStatus oldStatus, ExecutionStatus newStatus) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("target_id", memberName);
         payload.put("old_status", oldStatus != null ? oldStatus.name() : "unknown");
         payload.put("new_status", newStatus.name());
 
-        EventMessage event = EventMessage.builder()
-                .eventType("member_execution_changed")
-                .payload(payload)
-                .senderId(memberName)
-                .build();
+        EventMessage event =
+            EventMessage.builder().eventType("member_execution_changed").payload(payload).senderId(memberName).build();
 
         try {
             messager.publish("team:" + teamName + ":team", event);

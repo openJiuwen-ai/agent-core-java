@@ -14,46 +14,85 @@ import java.util.function.Function;
 
 /**
  * Public class BrowserActionController used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class BrowserActionController {
     private static final BrowserActionController DEFAULT = new BrowserActionController();
 
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, ActionHandler> actions = new ConcurrentHashMap<>();
+
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, Map<String, Object>> actionSpecs = new ConcurrentHashMap<>();
     private RuntimeRunner runtimeRunner;
     private Function<String, Map<String, Object>> codeExecutor;
 
     /**
- * Public interface ActionHandler used by the Java parity implementation.
- *
- * @since 1.0
- */
+     * Public interface ActionHandler used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
     @FunctionalInterface
-public interface ActionHandler {
+    public interface ActionHandler {
+        /**
+         * handle.
+         * 
+         * @param sessionId sessionId
+         * @param requestId requestId
+         * @param params params
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         Map<String, Object> handle(String sessionId, String requestId, Map<String, Object> params) throws Exception;
     }
 
     /**
- * Public interface RuntimeRunner used by the Java parity implementation.
- *
- * @since 1.0
- */
+     * Public interface RuntimeRunner used by the Java parity implementation.
+     * 
+     * @since 0.1.7
+     */
     @FunctionalInterface
-public interface RuntimeRunner {
+    public interface RuntimeRunner {
+        /**
+         * run.
+         * 
+         * @param task task
+         * @param sessionId sessionId
+         * @param requestId requestId
+         * @param timeoutS timeoutS
+         * @return the result
+         * @throws Exception Exception
+         * @since 0.1.7
+         */
         Map<String, Object> run(String task, String sessionId, String requestId, Integer timeoutS) throws Exception;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDefaultController.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public static BrowserActionController getDefaultController() {
         return DEFAULT;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerAction.
+     * 
+     * @param name name
+     * @param handler handler
+     * @since 0.1.7
      */
     public void registerAction(String name, ActionHandler handler) {
         String normalized = normalize(name);
@@ -62,28 +101,37 @@ public interface RuntimeRunner {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listActions.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> listActions() {
         return actions.keySet().stream().sorted().toList();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * describeActions.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Map<String, Object>> describeActions() {
         return new LinkedHashMap<>(actionSpecs);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * runAction.
+     * 
+     * @param action action
+     * @param sessionId sessionId
+     * @param requestId requestId
+     * @param params params
+     * @return the result
+     * @since 0.1.7
      */
-    public Map<String, Object> runAction(
-            String action,
-            String sessionId,
-            String requestId,
-            Map<String, Object> params
-    ) {
+    public Map<String, Object> runAction(String action, String sessionId, String requestId,
+            Map<String, Object> params) {
         String normalized = normalize(action);
         if ("browser_task".equals(normalized)) {
             if (runtimeRunner == null) {
@@ -91,9 +139,8 @@ public interface RuntimeRunner {
             }
             try {
                 String task = String.valueOf(params.getOrDefault("task", ""));
-                Integer timeout = params.get("timeout_s") != null
-                        ? Integer.parseInt(String.valueOf(params.get("timeout_s")))
-                        : null;
+                Integer timeout =
+                    params.get("timeout_s") != null ? Integer.parseInt(String.valueOf(params.get("timeout_s"))) : null;
                 return runtimeRunner.run(task, sessionId, requestId, timeout);
             } catch (Exception ex) {
                 return actionError(normalized, sessionId, requestId, ex.getMessage());
@@ -123,31 +170,37 @@ public interface RuntimeRunner {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * bindRuntimeRunner.
+     * 
+     * @param runtimeRunner runtimeRunner
+     * @since 0.1.7
      */
     public void bindRuntimeRunner(RuntimeRunner runtimeRunner) {
         this.runtimeRunner = runtimeRunner;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * bindCodeExecutor.
+     * 
+     * @param codeExecutor codeExecutor
+     * @since 0.1.7
      */
     public void bindCodeExecutor(Function<String, Map<String, Object>> codeExecutor) {
         this.codeExecutor = codeExecutor;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerExampleActions.
+     * 
+     * @since 0.1.7
      */
     public void registerExampleActions() {
         registerAction("browser_drag_and_drop",
                 (sessionId, requestId, params) -> Map.of("isOk", true, "summary", "dragged", "params", params));
         actionSpecs.put("browser_drag_and_drop",
-                Map.of("summary", "Drag and drop element",
-                        "params", Map.of("source", "string", "target", "string")));
+                Map.of("summary", "Drag and drop element", "params", Map.of("source", "string", "target", "string")));
         actions.putIfAbsent("browser_task", (sessionId, requestId, params) -> Map.of());
-        actionSpecs.putIfAbsent(
-                "browser_task",
+        actionSpecs.putIfAbsent("browser_task",
                 Map.of("summary", "Run browser task", "params", Map.of("task", "string")));
         registerAction("list_upload_files", (sessionId, requestId, params) -> {
             java.nio.file.Path root = resolveUploadRoot();
@@ -176,22 +229,29 @@ public interface RuntimeRunner {
             }
             return Map.of("isOk", true, "selector", selector, "paths", paths);
         });
-        actionSpecs.put(
-                "browser_set_input_files",
+        actionSpecs.put("browser_set_input_files",
                 Map.of("summary", "Set files on input", "params", Map.of("paths", "array")));
     }
 
+    /**
+     * actionError.
+     * 
+     * @param action action
+     * @param sessionId sessionId
+     * @param requestId requestId
+     * @param error error
+     * @return the result
+     * @since 0.1.7
+     */
     private Map<String, Object> actionError(String action, String sessionId, String requestId, String error) {
-        return Map.of(
-                "isOk", false,
-                "action", action,
-                "session_id", sessionId,
-                "request_id", requestId,
-                "error", error);
+        return Map.of("isOk", false, "action", action, "session_id", sessionId, "request_id", requestId, "error",
+                error);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveUploadRoot.
+     * 
+     * @since 0.1.7
      */
     public static java.nio.file.Path resolveUploadRoot() {
         String raw = System.getenv("BROWSER_UPLOAD_ROOT");
@@ -202,12 +262,15 @@ public interface RuntimeRunner {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listDirFiles.
+     * 
+     * @param root root
+     * @return the result
+     * @since 0.1.7
      */
     public static List<Map<String, Object>> listDirFiles(java.nio.file.Path root) {
         try (java.util.stream.Stream<java.nio.file.Path> stream = java.nio.file.Files.list(root)) {
-            return stream
-                    .filter(java.nio.file.Files::isRegularFile)
+            return stream.filter(java.nio.file.Files::isRegularFile)
                     .sorted(java.util.Comparator.comparing(java.nio.file.Path::getFileName))
                     .<Map<String, Object>>map(path -> {
                         try {
@@ -223,24 +286,42 @@ public interface RuntimeRunner {
                             payload.put("size_bytes", 0L);
                             return payload;
                         }
-                    })
-                    .toList();
+                    }).toList();
         } catch (IOException | SecurityException ex) {
             return List.of();
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * buildSetInputFilesScript.
+     * 
+     * @param selector selector
+     * @param paths paths
+     * @return the result
+     * @since 0.1.7
      */
     public static String buildSetInputFilesScript(String selector, List<String> paths) {
         return "const selector = " + quote(selector) + ";\nconst paths = " + quote(paths.toString()) + ";";
     }
 
+    /**
+     * quote.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
+     */
     private static String quote(String text) {
         return "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
+    /**
+     * normalize.
+     * 
+     * @param name name
+     * @return the result
+     * @since 0.1.7
+     */
     private static String normalize(String name) {
         return name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
     }

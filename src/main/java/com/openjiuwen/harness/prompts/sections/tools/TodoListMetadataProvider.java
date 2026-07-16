@@ -9,27 +9,30 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Auto-generated for codecheck compliance.
+ * TodoListMetadataProvider.
+ * 
+ * @since 0.1.7
  */
 public final class TodoListMetadataProvider implements ToolMetadataProvider {
     /**
-     * Auto-generated for codecheck compliance.
+     * getName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String getName() {
         return "todo_list";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDescription.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public String getDescription(String language) {
         if ("en".equalsIgnoreCase(language)) {
             return "Retrieve active todo items for the current session.";
@@ -38,23 +41,18 @@ public final class TodoListMetadataProvider implements ToolMetadataProvider {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputParams.
+     * 
+     * @param language language
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> getInputParams(String language) {
         boolean isEnglish = "en".equalsIgnoreCase(language);
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("session_id", Map.of(
-                "type", "string",
-                "description", isEnglish ? "Session id, defaults to current session" : "会话 ID，默认当前会话"
-        ));
-        return Map.of(
-                "type", "object",
-                "properties", properties,
-                "required", List.of()
-        );
+        properties.put("session_id", Map.of("type", "string", "description",
+                isEnglish ? "Session id, defaults to current session" : "会话 ID，默认当前会话"));
+        return Map.of("type", "object", "properties", properties, "required", List.of());
     }
 }

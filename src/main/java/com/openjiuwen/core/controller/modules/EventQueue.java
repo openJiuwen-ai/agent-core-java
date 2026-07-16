@@ -27,38 +27,62 @@ import java.util.function.Consumer;
  * Event topic format: {@code {agentId}_{sessionId}_{eventType}}
  * <p>
  * Mirrors Python's {@code EventQueue}.
+ * 
+ * @since 0.1.7
  */
 public class EventQueue {
-
     private ControllerConfig config;
     private EventHandler eventHandler;
 
+    /**
+     * ConcurrentHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, TopicSubscription> subscriptions = new ConcurrentHashMap<>();
+
+    /**
+     * AtomicBoolean.
+     * 
+     * @since 0.1.7
+     */
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     /**
-     * Auto-generated for codecheck compliance.
+     * EventQueue.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public EventQueue(ControllerConfig config) {
         this.config = config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getConfig.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ControllerConfig getConfig() {
         return config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setConfig.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public void setConfig(ControllerConfig config) {
         this.config = config;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEventHandler.
+     * 
+     * @param eventHandler eventHandler
+     * @since 0.1.7
      */
     public void setEventHandler(EventHandler eventHandler) {
         this.eventHandler = eventHandler;
@@ -66,6 +90,8 @@ public class EventQueue {
 
     /**
      * Start event queue processing.
+     * 
+     * @since 0.1.7
      */
     public void start() {
         running.set(true);
@@ -73,6 +99,8 @@ public class EventQueue {
 
     /**
      * Stop event queue processing and clear all subscriptions.
+     * 
+     * @since 0.1.7
      */
     public void stop() {
         running.set(false);
@@ -84,14 +112,14 @@ public class EventQueue {
 
     /**
      * Subscribe to all event types for a given agent/session pair.
-     *
-     * @param agentId   agent ID
+     * 
+     * @param agentId agent ID
      * @param sessionId session ID
+     * @since 0.1.7
      */
     public void subscribe(String agentId, String sessionId) {
         try {
-            subscribeEvent(buildTopic(agentId, sessionId, EventType.INPUT),
-                    input -> eventHandler.handleInput(input));
+            subscribeEvent(buildTopic(agentId, sessionId, EventType.INPUT), input -> eventHandler.handleInput(input));
             subscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_INTERACTION),
                     input -> eventHandler.handleTaskInteraction(input));
             subscribeEvent(buildTopic(agentId, sessionId, EventType.TASK_COMPLETION),
@@ -100,16 +128,16 @@ public class EventQueue {
                     input -> eventHandler.handleTaskFailed(input));
         } catch (Exception e) {
             Loggers.CONTROLLER.error("Event queue subscription failed: {}", e.getMessage());
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_EVENT_QUEUE_ERROR,
-                    "error_msg", e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_EVENT_QUEUE_ERROR, "error_msg", e.getMessage());
         }
     }
 
     /**
      * Unsubscribe from all event types for a given agent/session pair.
-     *
-     * @param agentId   agent ID
+     * 
+     * @param agentId agent ID
      * @param sessionId session ID
+     * @since 0.1.7
      */
     public void unsubscribe(String agentId, String sessionId) {
         unsubscribeEvent(buildTopic(agentId, sessionId, EventType.INPUT));
@@ -122,10 +150,11 @@ public class EventQueue {
      * Publish an event to the queue and wait until it is handled.
      * <p>
      * This ensures event processing order by blocking until the handler finishes.
-     *
+     * 
      * @param agentId agent ID
      * @param session session object
-     * @param event   event to publish
+     * @param event event to publish
+     * @since 0.1.7
      */
     public void publishEvent(String agentId, AgentSessionApi session, Event event) {
         String sessionId = session.getSessionId();
@@ -146,25 +175,37 @@ public class EventQueue {
             throw e;
         } catch (Exception e) {
             Loggers.CONTROLLER.error("Event handler failed for {}: {}", event.getEventType(), e.getMessage());
-            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_EVENT_HANDLER_ERROR,
-                    "error_msg", e.getMessage());
+            throw ErrorHelper.buildError(StatusCode.AGENT_CONTROLLER_EVENT_HANDLER_ERROR, "error_msg", e.getMessage());
         }
     }
 
     /**
      * Unsubscribe from all topics.
+     * 
+     * @since 0.1.7
      */
     public void unsubscribeAll() {
         stop();
     }
 
-    // ==================== Internal ====================
-
+    /**
+     * subscribeEvent.
+     * 
+     * @param topic topic
+     * @param handler handler
+     * @since 0.1.7
+     */
     private void subscribeEvent(String topic, Consumer<EventHandlerInput> handler) {
         TopicSubscription sub = new TopicSubscription(topic, handler);
         subscriptions.put(topic, sub);
     }
 
+    /**
+     * unsubscribeEvent.
+     * 
+     * @param topic topic
+     * @since 0.1.7
+     */
     private void unsubscribeEvent(String topic) {
         TopicSubscription sub = subscriptions.remove(topic);
         if (sub != null) {

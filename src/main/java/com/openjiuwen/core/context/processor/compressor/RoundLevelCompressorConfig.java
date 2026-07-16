@@ -4,23 +4,24 @@
 
 package com.openjiuwen.core.context.processor.compressor;
 
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-
 /**
  * Configuration for the {@link RoundLevelCompressor} ContextProcessor.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class RoundLevelCompressorConfig {
-
     @Builder.Default
     private int triggerTotalTokens = 230000;
 
@@ -56,7 +57,9 @@ public class RoundLevelCompressorConfig {
     private ModelClientConfig modelClient;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validate.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         if (triggerTotalTokens <= 0) {

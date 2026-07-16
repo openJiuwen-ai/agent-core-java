@@ -8,10 +8,10 @@ package com.openjiuwen.core.foundation.tool.service_api;
  * API parameter locations based on OpenAPI specification.
  * <p>
  * Mirrors Python's {@code APIParamLocation} enum.
+ * 
+ * @since 0.1.7
  */
 public enum ApiParamLocation {
-
-    /** Query parameters in URL (e.g., ?key=value). */
     QUERY("query"),
 
     /** Path parameters in URL (e.g., /users/{id}). */
@@ -30,7 +30,10 @@ public enum ApiParamLocation {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
@@ -38,6 +41,10 @@ public enum ApiParamLocation {
 
     /**
      * Parse a location string (case-insensitive).
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     public static ApiParamLocation fromString(String text) {
         for (ApiParamLocation loc : values()) {

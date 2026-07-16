@@ -8,20 +8,27 @@ package com.openjiuwen.core.workflow.component;
  * Stub for I/O configuration of a workflow component.
  * <p>
  * Mirrors Python's IO config with inputs_schema and outputs_schema.
+ * 
+ * @since 0.1.7
  */
 public class IOConfig {
-
     private Object inputsSchema;
     private Object outputsSchema;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * IOConfig.
+     * 
+     * @since 0.1.7
      */
     public IOConfig() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * IOConfig.
+     * 
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @since 0.1.7
      */
     public IOConfig(Object inputsSchema, Object outputsSchema) {
         this.inputsSchema = inputsSchema;
@@ -29,28 +36,40 @@ public class IOConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputsSchema.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getInputsSchema() {
         return inputsSchema;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInputsSchema.
+     * 
+     * @param inputsSchema inputsSchema
+     * @since 0.1.7
      */
     public void setInputsSchema(Object inputsSchema) {
         this.inputsSchema = inputsSchema;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOutputsSchema.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getOutputsSchema() {
         return outputsSchema;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setOutputsSchema.
+     * 
+     * @param outputsSchema outputsSchema
+     * @since 0.1.7
      */
     public void setOutputsSchema(Object outputsSchema) {
         this.outputsSchema = outputsSchema;

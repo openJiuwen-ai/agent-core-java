@@ -12,18 +12,31 @@ import java.util.Set;
 
 /**
  * Frontmatter utilities for coding memory.
+ * 
+ * @since 0.1.7
  */
 public final class FrontmatterUtils {
     /**
-     * Auto-generated for codecheck compliance.
+     * VALID_TYPES.
+     * 
+     * @since 0.1.7
      */
     public static final Set<String> VALID_TYPES = Set.of("user", "feedback", "project", "reference");
 
+    /**
+     * FrontmatterUtils.
+     * 
+     * @since 0.1.7
+     */
     private FrontmatterUtils() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseFrontmatter.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, String> parseFrontmatter(String content) {
         String normalized = content == null ? "" : content.trim();
@@ -45,7 +58,11 @@ public final class FrontmatterUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validateFrontmatter.
+     * 
+     * @param frontmatter frontmatter
+     * @return the result
+     * @since 0.1.7
      */
     public static Map.Entry<Boolean, String> validateFrontmatter(Map<String, String> frontmatter) {
         for (String field : List.of("name", "description", "type")) {
@@ -60,7 +77,12 @@ public final class FrontmatterUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * enrichFrontmatter.
+     * 
+     * @param frontmatter frontmatter
+     * @param isEdit isEdit
+     * @return the result
+     * @since 0.1.7
      */
     public static Map<String, String> enrichFrontmatter(Map<String, String> frontmatter, boolean isEdit) {
         Map<String, String> result = new LinkedHashMap<>(frontmatter);
@@ -73,7 +95,12 @@ public final class FrontmatterUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * rebuildContentWithFrontmatter.
+     * 
+     * @param content content
+     * @param frontmatter frontmatter
+     * @return the result
+     * @since 0.1.7
      */
     public static String rebuildContentWithFrontmatter(String content, Map<String, String> frontmatter) {
         String body = extractBody(content);
@@ -90,7 +117,11 @@ public final class FrontmatterUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extractBody.
+     * 
+     * @param content content
+     * @return the result
+     * @since 0.1.7
      */
     public static String extractBody(String content) {
         String normalized = content == null ? "" : content.trim();

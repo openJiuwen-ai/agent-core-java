@@ -10,6 +10,8 @@ import lombok.experimental.SuperBuilder;
 
 /**
  * Backward-compatible alias for {@link LlmAgentConfig}.
+ * 
+ * @since 0.1.7
  */
 @SuperBuilder
 @NoArgsConstructor

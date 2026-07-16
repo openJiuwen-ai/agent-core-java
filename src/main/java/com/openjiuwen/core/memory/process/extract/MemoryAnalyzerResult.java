@@ -14,6 +14,8 @@ import java.util.List;
 
 /**
  * Result of memory analysis containing key information flag, variables, and summary.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
@@ -23,6 +25,11 @@ public class MemoryAnalyzerResult {
     @Builder.Default
     private boolean hasKeyInformation = false;
     @Builder.Default
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<VariableResult> variables = new ArrayList<>();
     @Builder.Default
     private String summary = "";

@@ -18,16 +18,21 @@ import java.util.Map;
 
 /**
  * Orchestrates memory write operations across all memory type managers.
+ * 
+ * @since 0.1.7
  */
 public class WriteManager {
-
     private static final LoggerProtocol MEMORY_LOGGER = Loggers.MEMORY;
 
     private final Map<String, BaseMemoryManager> managers;
     private final UserMemStore memStore;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WriteManager.
+     * 
+     * @param managers managers
+     * @param memStore memStore
+     * @since 0.1.7
      */
     public WriteManager(Map<String, BaseMemoryManager> managers, UserMemStore memStore) {
         this.managers = managers;
@@ -36,11 +41,17 @@ public class WriteManager {
 
     /**
      * Add memories of different types in batch.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memories memories
+     * @param llm llm
+     * @param semanticStore semanticStore
+     * @since 0.1.7
      */
     public void addMemories(String userId, String scopeId,
-                             Map<String, ? extends List<? extends BaseMemoryUnit>> memories,
-                             Map.Entry<String, Model> llm,
-                             SemanticStore semanticStore) {
+            Map<String, ? extends List<? extends BaseMemoryUnit>> memories, Map.Entry<String, Model> llm,
+            SemanticStore semanticStore) {
         if (memories == null || memories.isEmpty()) {
             MEMORY_LOGGER.debug("[{}] No memory units to add", LogEventType.MEMORY_STORE);
             return;
@@ -57,8 +68,8 @@ public class WriteManager {
                     Map<String, Object> kwargs = Map.of("semantic_store", semanticStore);
                     managers.get(memType).addMemories(userId, scopeId, units, llm, kwargs);
                 } catch (Exception e) {
-                    MEMORY_LOGGER.error("[{}] Failed to add mem, type={}, error={}",
-                            LogEventType.MEMORY_STORE, memType, e.getMessage());
+                    MEMORY_LOGGER.error("[{}] Failed to add mem, type={}, error={}", LogEventType.MEMORY_STORE, memType,
+                            e.getMessage());
                     throw e;
                 }
             }
@@ -75,26 +86,31 @@ public class WriteManager {
                     Map<String, Object> kwargs = Map.of("semantic_store", semanticStore);
                     managers.get(memType).addMemories(userId, scopeId, units, llm, kwargs);
                 } catch (Exception e) {
-                    MEMORY_LOGGER.error("[{}] Failed to add mem, type={}, error={}",
-                            LogEventType.MEMORY_STORE, memType, e.getMessage());
+                    MEMORY_LOGGER.error("[{}] Failed to add mem, type={}, error={}", LogEventType.MEMORY_STORE, memType,
+                            e.getMessage());
                     throw e;
                 }
             } else {
-                MEMORY_LOGGER.warn("[{}] Unsupported memory type: {}",
-                        LogEventType.MEMORY_STORE, memType);
+                MEMORY_LOGGER.warn("[{}] Unsupported memory type: {}", LogEventType.MEMORY_STORE, memType);
             }
         }
     }
 
     /**
      * Update a memory by ID (determines type from store).
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @param memory memory
+     * @param semanticStore semanticStore
+     * @since 0.1.7
      */
-    public void updateMemById(String userId, String scopeId, String memId, String memory,
-                               SemanticStore semanticStore) {
+    public void updateMemById(String userId, String scopeId, String memId, String memory, SemanticStore semanticStore) {
         String memType = getMemTypeFromStore(userId, scopeId, memId);
         if (memType == null) {
-            MEMORY_LOGGER.warn("[{}] Skipping update, cannot determine mem_type. memId={}",
-                    LogEventType.MEMORY_STORE, memId);
+            MEMORY_LOGGER.warn("[{}] Skipping update, cannot determine mem_type. memId={}", LogEventType.MEMORY_STORE,
+                    memId);
             return;
         }
         Map<String, Object> kwargs = Map.of("semantic_store", semanticStore);
@@ -103,13 +119,18 @@ public class WriteManager {
 
     /**
      * Delete a memory by ID (determines type from store).
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @param semanticStore semanticStore
+     * @since 0.1.7
      */
-    public void deleteMemById(String userId, String scopeId, String memId,
-                               SemanticStore semanticStore) {
+    public void deleteMemById(String userId, String scopeId, String memId, SemanticStore semanticStore) {
         String memType = getMemTypeFromStore(userId, scopeId, memId);
         if (memType == null) {
-            MEMORY_LOGGER.warn("[{}] Skipping deletion, cannot determine mem_type. memId={}",
-                    LogEventType.MEMORY_STORE, memId);
+            MEMORY_LOGGER.warn("[{}] Skipping deletion, cannot determine mem_type. memId={}", LogEventType.MEMORY_STORE,
+                    memId);
             return;
         }
         Map<String, Object> kwargs = Map.of("semantic_store", semanticStore);
@@ -118,6 +139,11 @@ public class WriteManager {
 
     /**
      * Delete all memories for a user across all types.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param semanticStore semanticStore
+     * @since 0.1.7
      */
     public void deleteMemByUserId(String userId, String scopeId, SemanticStore semanticStore) {
         Map<String, Object> kwargs = Map.of("semantic_store", semanticStore);
@@ -126,13 +152,22 @@ public class WriteManager {
         }
     }
 
+    /**
+     * getMemTypeFromStore.
+     * 
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memId memId
+     * @return the result
+     * @since 0.1.7
+     */
     private String getMemTypeFromStore(String userId, String scopeId, String memId) {
         Map<String, Object> data;
         try {
             data = memStore.get(userId, scopeId, memId);
         } catch (Exception e) {
-            MEMORY_LOGGER.error("[{}] Failed to get memory. memId={}, error={}",
-                    LogEventType.MEMORY_STORE, memId, e.getMessage());
+            MEMORY_LOGGER.error("[{}] Failed to get memory. memId={}, error={}", LogEventType.MEMORY_STORE, memId,
+                    e.getMessage());
             return null;
         }
         if (data == null) {

@@ -1,7 +1,12 @@
+
 package com.openjiuwen.core.sysop.sandbox;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -11,21 +16,14 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 @Tag("system-test")
 class SandboxOperationSystemTest {
-
     @TempDir
     Path tempDir;
 
     private SandboxGatewayConfig config() {
-        return SandboxGatewayConfig.builder()
-                .params(Map.of(
-                        "root_path", tempDir.toString(),
-                        "shell_allowlist", List.of("pwd", "python3", "python", "echo")
-                ))
+        return SandboxGatewayConfig.builder().params(
+                Map.of("root_path", tempDir.toString(), "shell_allowlist", List.of("pwd", "python3", "python", "echo")))
                 .build();
     }
 

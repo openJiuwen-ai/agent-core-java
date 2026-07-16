@@ -17,13 +17,21 @@ import java.util.Map;
 
 /**
  * TXT/MD file parser aligned with the Python TxtMdParser behavior.
+ * 
+ * @since 0.1.7
  */
 public class TxtMdParser extends Parser {
-
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parse.
+     * 
+     * @param doc doc
+     * @param docId docId
+     * @param llmClient llmClient
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options) {
         try {
             String content = parseContent(doc, llmClient, options);
@@ -36,10 +44,16 @@ public class TxtMdParser extends Parser {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parseContent.
+     * 
+     * @param doc doc
+     * @param llmClient llmClient
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
         try {
             return Files.readString(Path.of(doc), StandardCharsets.UTF_8).trim();
@@ -48,10 +62,14 @@ public class TxtMdParser extends Parser {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * supports.
+     * 
+     * @param doc doc
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean supports(String doc) {
         String lower = doc == null ? "" : doc.toLowerCase(Locale.ROOT);
         return lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".markdown");

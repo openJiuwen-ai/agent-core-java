@@ -6,16 +6,23 @@ package com.openjiuwen.spi.store.query;
 
 /**
  * Expression for logical operations (and, or, xor, not).
+ * 
+ * @since 0.1.7
  */
 public class LogicalExpr extends QueryExpr {
-
     private final String operator;
     private final QueryExpr left;
+
     /** {@code null} for unary "not" operator. */
     private final QueryExpr right;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * LogicalExpr.
+     * 
+     * @param operator operator
+     * @param left left
+     * @param right right
+     * @since 0.1.7
      */
     public LogicalExpr(String operator, QueryExpr left, QueryExpr right) {
         this.operator = operator;
@@ -24,30 +31,43 @@ public class LogicalExpr extends QueryExpr {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOperator.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getOperator() {
         return operator;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLeft.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public QueryExpr getLeft() {
         return left;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getRight.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public QueryExpr getRight() {
         return right;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toExpr.
+     * 
+     * @param database database
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object toExpr(String database) {
         return QueryLanguageRegistry.get(database).applyLogical(this);
     }

@@ -9,6 +9,8 @@ import lombok.Data;
 
 /**
  * Plain task dependency record matching Python TeamTaskDependencyBase fields.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder

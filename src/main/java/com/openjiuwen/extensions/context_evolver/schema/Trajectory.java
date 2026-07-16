@@ -4,114 +4,167 @@
 
 package com.openjiuwen.extensions.context_evolver.schema;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.trajectory.Trajectory}.
- * 
  * Trajectory representing a task execution with feedback.
+ * 
+ * @since 0.1.7
  */
 public class Trajectory {
     private String query;
     private String response;
     private FeedbackType feedback = FeedbackType.NEUTRAL;
-    private Map<String, Object> context = new HashMap<>();
-    
+
     /**
-     * Auto-generated for codecheck compliance.
+     * HashMap<>.
+     * 
+     * @since 0.1.7
      */
-    public Trajectory() {}
-    
+    private Map<String, Object> context = new HashMap<>();
+
     /**
-     * Auto-generated for codecheck compliance.
+     * Trajectory.
+     * 
+     * @since 0.1.7
+     */
+    public Trajectory() {
+    }
+
+    /**
+     * Trajectory.
+     * 
+     * @param query query
+     * @param response response
+     * @since 0.1.7
      */
     public Trajectory(String query, String response) {
         this.query = query;
         this.response = response;
     }
-    
+
     /**
-     * Auto-generated for codecheck compliance.
+     * Trajectory.
+     * 
+     * @param query query
+     * @param response response
+     * @param feedback feedback
+     * @since 0.1.7
      */
     public Trajectory(String query, String response, FeedbackType feedback) {
         this.query = query;
         this.response = response;
         this.feedback = feedback;
     }
-    
+
     // Getters and setters
     /**
-     * Auto-generated for codecheck compliance.
+     * getQuery.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getQuery() {
         return query;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setQuery.
+     * 
+     * @param query query
+     * @since 0.1.7
      */
     public void setQuery(String query) {
         this.query = query;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getResponse.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getResponse() {
         return response;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setResponse.
+     * 
+     * @param response response
+     * @since 0.1.7
      */
     public void setResponse(String response) {
         this.response = response;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFeedback.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public FeedbackType getFeedback() {
         return feedback;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setFeedback.
+     * 
+     * @param feedback feedback
+     * @since 0.1.7
      */
     public void setFeedback(FeedbackType feedback) {
         this.feedback = feedback;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContext.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getContext() {
         return context;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setContext.
+     * 
+     * @param context context
+     * @since 0.1.7
      */
     public void setContext(Map<String, Object> context) {
         this.context = context;
     }
-    
+
     /**
      * Check if trajectory was successful.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isSuccess() {
         return feedback == FeedbackType.HELPFUL;
     }
-    
+
     /**
      * Check if trajectory was a failure.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isFailure() {
         return feedback == FeedbackType.HARMFUL;
     }
-    
+
     /**
      * Convert to dictionary.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toDict() {
         Map<String, Object> dict = new HashMap<>();
@@ -121,9 +174,13 @@ public class Trajectory {
         dict.put("context", context);
         return dict;
     }
-    
+
     /**
      * Create from dictionary.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public static Trajectory fromDict(Map<String, Object> data) {
         Trajectory trajectory = new Trajectory();
@@ -137,15 +194,16 @@ public class Trajectory {
         }
         return trajectory;
     }
-    
-    @Override
+
     /**
-     * Auto-generated for codecheck compliance.
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String toString() {
-        String queryPreview = query != null && query.length() > 50 
-            ? query.substring(0, 50) + "..." 
-            : query;
+        String queryPreview = query != null && query.length() > 50 ? query.substring(0, 50) + "..." : query;
         return "Trajectory(query='" + queryPreview + "', feedback=" + feedback + ")";
     }
 }

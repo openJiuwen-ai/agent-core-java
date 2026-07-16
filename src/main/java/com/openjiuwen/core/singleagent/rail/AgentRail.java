@@ -15,38 +15,41 @@ import java.util.function.Consumer;
 
 /**
  * Base class for agent rails.
- *
- * <p>Rails provide class-based lifecycle hooks with:
+ * <p>
+ * Rails provide class-based lifecycle hooks with:
  * <ul>
- *   <li>State management across callback invocations</li>
- *   <li>Tools that are auto-registered on the agent</li>
- *   <li>Priority-based execution ordering (lower = runs first)</li>
+ * <li>State management across callback invocations</li>
+ * <li>Tools that are auto-registered on the agent</li>
+ * <li>Priority-based execution ordering (lower = runs first)</li>
  * </ul>
- *
- * <p>Example:
- * <pre>{@code
- * class LogRail extends AgentRail {
- *     @Override
- *     public void beforeModelCall(AgentCallbackContext ctx) {
- *         System.out.println("calling LLM...");
+ * <p>
+ * Example:
+ * 
+ * <pre>
+ * {
+ *     &#64;code
+ *     class LogRail extends AgentRail {
+ *         &#64;Override
+ *         public void beforeModelCall(AgentCallbackContext ctx) {
+ *             System.out.println("calling LLM...");
+ *         }
+ * 
+ *         @Override
+ *         public void afterModelCall(AgentCallbackContext ctx) {
+ *             System.out.println("LLM responded");
+ *         }
  *     }
- *
- *     @Override
- *     public void afterModelCall(AgentCallbackContext ctx) {
- *         System.out.println("LLM responded");
- *     }
+ *     agent.registerRail(new LogRail());
  * }
- *
- * agent.registerRail(new LogRail());
- * }</pre>
+ * </pre>
+ * 
+ * @since 0.1.7
  */
 public abstract class AgentRail {
-
     /**
-     * Public mapping from callback event to hook method name.
-     *
-     * <p>Mirrors Python's {@code EVENT_METHOD_MAP} exported in
-     * {@code rail.__all__}.</p>
+     * EVENT_METHOD_MAP.
+     * 
+     * @since 0.1.7
      */
     public static final Map<AgentCallbackEvent, String> EVENT_METHOD_MAP = new EnumMap<>(AgentCallbackEvent.class);
 
@@ -66,21 +69,30 @@ public abstract class AgentRail {
     private final List<Object> skills;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentRail.
+     * 
+     * @since 0.1.7
      */
     protected AgentRail() {
         this(null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentRail.
+     * 
+     * @param tools tools
+     * @since 0.1.7
      */
     protected AgentRail(List<ToolCard> tools) {
         this(tools, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AgentRail.
+     * 
+     * @param tools tools
+     * @param skills skills
+     * @since 0.1.7
      */
     protected AgentRail(List<ToolCard> tools, List<Object> skills) {
         this.tools = tools != null ? tools : new ArrayList<>();
@@ -88,21 +100,30 @@ public abstract class AgentRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPriority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getPriority() {
         return priority;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setPriority.
+     * 
+     * @param priority priority
+     * @since 0.1.7
      */
     public void setPriority(int priority) {
         this.priority = priority;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTools.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<ToolCard> getTools() {
         return tools;
@@ -110,8 +131,9 @@ public abstract class AgentRail {
 
     /**
      * Skills carried by this rail (reserved for future use).
-     *
+     * 
      * @return list of skills
+     * @since 0.1.7
      */
     public List<Object> getSkills() {
         return skills;
@@ -119,64 +141,101 @@ public abstract class AgentRail {
 
     /**
      * Lifecycle hook invoked when the rail is registered on an agent.
-     *
+     * 
      * @param agent owning agent
+     * @since 0.1.7
      */
-    public void init(Object agent) {}
+    public void init(Object agent) {
+    }
 
     /**
      * Lifecycle hook invoked when the rail is unregistered from an agent.
-     *
+     * 
      * @param agent owning agent
+     * @since 0.1.7
      */
-    public void uninit(Object agent) {}
+    public void uninit(Object agent) {
+    }
 
     // -- 8 hook methods (override to activate) --
 
     /**
-     * Auto-generated for codecheck compliance.
+     * beforeInvoke.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
-    public void beforeInvoke(AgentCallbackContext ctx) {}
+    public void beforeInvoke(AgentCallbackContext ctx) {
+    }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterInvoke.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
-    public void afterInvoke(AgentCallbackContext ctx) {}
+    public void afterInvoke(AgentCallbackContext ctx) {
+    }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * beforeModelCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
-    public void beforeModelCall(AgentCallbackContext ctx) {}
+    public void beforeModelCall(AgentCallbackContext ctx) {
+    }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterModelCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
-    public void afterModelCall(AgentCallbackContext ctx) {}
+    public void afterModelCall(AgentCallbackContext ctx) {
+    }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * onModelException.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
-    public void onModelException(AgentCallbackContext ctx) {}
+    public void onModelException(AgentCallbackContext ctx) {
+    }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * beforeToolCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
-    public void beforeToolCall(AgentCallbackContext ctx) {}
+    public void beforeToolCall(AgentCallbackContext ctx) {
+    }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterToolCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
-    public void afterToolCall(AgentCallbackContext ctx) {}
+    public void afterToolCall(AgentCallbackContext ctx) {
+    }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * onToolException.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
-    public void onToolException(AgentCallbackContext ctx) {}
+    public void onToolException(AgentCallbackContext ctx) {
+    }
 
     /**
      * Extract overridden hook methods.
-     *
+     * 
      * @return map of event to callback, only for methods overridden by the subclass
+     * @since 0.1.7
      */
     public Map<AgentCallbackEvent, Consumer<AgentCallbackContext>> getCallbacks() {
         Map<AgentCallbackEvent, Consumer<AgentCallbackContext>> callbacks = new EnumMap<>(AgentCallbackEvent.class);
@@ -191,6 +250,13 @@ public abstract class AgentRail {
         return callbacks;
     }
 
+    /**
+     * isBaseMethod.
+     * 
+     * @param methodName methodName
+     * @return the result
+     * @since 0.1.7
+     */
     private boolean isBaseMethod(String methodName) {
         try {
             Method subclassMethod = this.getClass().getMethod(methodName, AgentCallbackContext.class);
@@ -201,6 +267,13 @@ public abstract class AgentRail {
         }
     }
 
+    /**
+     * buildCallback.
+     * 
+     * @param methodName methodName
+     * @return the result
+     * @since 0.1.7
+     */
     private Consumer<AgentCallbackContext> buildCallback(String methodName) {
         try {
             Method method = this.getClass().getMethod(methodName, AgentCallbackContext.class);

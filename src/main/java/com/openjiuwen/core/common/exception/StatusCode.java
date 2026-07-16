@@ -6,22 +6,22 @@ package com.openjiuwen.core.common.exception;
 
 /**
  * Unified StatusCode enum for the entire framework.
- *
- * <p>Each member carries an integer {@code code} and a message template ({@code errmsg}).
- * Message templates support {@code {placeholder}} syntax for deferred rendering.</p>
- *
- * <p>Mirrors Python's {@code openjiuwen.core.common.exception.codes.StatusCode}.</p>
+ * <p>
+ * Each member carries an integer {@code code} and a message template ({@code errmsg}).
+ * Message templates support {@code {placeholder}} syntax for deferred rendering.
+ * </p>
+ * <p>
+ * Mirrors Python's {@code openjiuwen.core.common.exception.codes.StatusCode}.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public enum StatusCode {
-
-    // ===== Generic =====
     SUCCESS(0, "success"),
 
     ERROR(-1, "error"),
 
-    // =============================================================================================================
     // 100. Workflow 100000–100999
-    // =============================================================================================================
 
     // 0. Workflow Validation Error Codes (100000 - 100099)
     WORKFLOW_COMPONENT_ID_INVALID(100010,
@@ -49,8 +49,7 @@ public enum StatusCode {
     WORKFLOW_EXECUTE_INPUT_INVALID(100016,
             "workflow execute input is invalid, inputs='{inputs}', reason='{reason}', workflow='{workflow}'"),
 
-    WORKFLOW_EXECUTE_SESSION_INVALID(100017,
-            "execute session is invalid, reason='{reason}', workflow='{workflow}'"),
+    WORKFLOW_EXECUTE_SESSION_INVALID(100017, "execute session is invalid, reason='{reason}', workflow='{workflow}'"),
 
     // 1. Workflow Execution Error Codes (100100 - 100199)
     WORKFLOW_COMPILE_ERROR(100100, "workflow compilation has error, error='{reason}', workflow={workflow}"),
@@ -66,9 +65,7 @@ public enum StatusCode {
     WORKFLOW_COMPONENT_EXECUTION_ERROR(100054,
             "component '{comp}' execute '{ability}' error, reason='{reason}', workflow='{workflow}'"),
 
-    // =============================================================================================================
     // 101. Built-in Workflow Component 101000–101999
-    // =============================================================================================================
 
     // 01. End Component 101010 - 101019
     COMPONENT_END_PARAM_INVALID(100010, "component end params is invalid, error='{reason}'"),
@@ -93,8 +90,7 @@ public enum StatusCode {
 
     COMPONENT_LOOP_EXECUTION_ERROR(101040, "loop execution error, error='{reason}', comp='{comp}'"),
 
-    COMPONENT_LOOP_CONDITION_EXECUTION_ERROR(101041,
-            "loop condition execution error, error='{reason}', comp='{comp}'"),
+    COMPONENT_LOOP_CONDITION_EXECUTION_ERROR(101041, "loop condition execution error, error='{reason}', comp='{comp}'"),
 
     COMPONENT_LOOP_BREAK_EXECUTION_ERROR(101042, "loop break execution error, error='{reason}', comp='{comp}'"),
 
@@ -171,8 +167,7 @@ public enum StatusCode {
     COMPONENT_MEMORY_WRITE_INPUT_PARAM_ERROR(102120,
             "component memory_write_input parameter error, reason: {error_msg}"),
 
-    COMPONENT_MEMORY_WRITE_INVOKE_CALL_FAILED(102121,
-            "component memory_write_invoke call failed, reason: {error_msg}"),
+    COMPONENT_MEMORY_WRITE_INVOKE_CALL_FAILED(102121, "component memory_write_invoke call failed, reason: {error_msg}"),
 
     // MemoryRetrievalComponent 102130 - 102139
     COMPONENT_MEMORY_RETRIEVAL_INPUT_PARAM_ERROR(102130,
@@ -181,9 +176,7 @@ public enum StatusCode {
     COMPONENT_MEMORY_RETRIEVAL_INVOKE_CALL_FAILED(102131,
             "component memory_retrieval_invoke call failed, reason: {error_msg}"),
 
-    // =============================================================================================================
     // Agent Orchestration 120000–129999
-    // =============================================================================================================
 
     AGENT_TOOL_NOT_FOUND(120000, "agent tool not found, reason: {error_msg}"),
 
@@ -219,9 +212,7 @@ public enum StatusCode {
 
     AGENT_CONTROLLER_EVENT_QUEUE_ERROR(123010, "agent controller event queue execution error, reason: {error_msg}"),
 
-    // =============================================================================================================
     // 110 Runner / Distributed 110000–110999
-    // =============================================================================================================
 
     RUNNER_TERMINATION_ERROR(110002, "runner is already terminate"),
 
@@ -288,9 +279,7 @@ public enum StatusCode {
 
     RESOURCE_MCP_TOOL_GET_ERROR(110515, "mcp server tool get failed, server_id={server_id}, error='{reason}'"),
 
-    // =============================================================================================================
     // 111. Session 111000 – 111999
-    // =============================================================================================================
 
     COMP_SESSION_INTERACT_ERROR(111005,
             "interact is not support, error='{reason}', comp_id={comp_id}, workflow={workflow}"),
@@ -331,9 +320,7 @@ public enum StatusCode {
 
     TRACER_AGENT_TRACE_ERROR(111141, "trace agent error, error='{reason}'"),
 
-    // =============================================================================================================
     // 112. Graph Engine 112000–112999
-    // =============================================================================================================
 
     GRAPH_STATE_COMMIT_ERROR(112030, "graph commit state error, error='{reason}'"),
 
@@ -362,9 +349,7 @@ public enum StatusCode {
 
     PREGEL_GRAPH_CONDITION_EDGE_INVALID(112103, "condition edge is invalid, source_id={source_id}, error='{reason}'"),
 
-    // =============================================================================================================
     // Multi-Agent 130000 - 130999
-    // =============================================================================================================
 
     AGENT_GROUP_ADD_RUNTIME_ERROR(132000, "agent group_add runtime error, reason: {error_msg}"),
 
@@ -372,9 +357,7 @@ public enum StatusCode {
 
     AGENT_GROUP_EXECUTION_ERROR(132002, "agent group execution error, reason: {error_msg}"),
 
-    // =============================================================================================================
     // ContextEngine 150000 - 154999
-    // =============================================================================================================
 
     CONTEXT_MESSAGE_PROCESS_ERROR(153000, "context message process error, reason: {error_msg}"),
 
@@ -382,9 +365,7 @@ public enum StatusCode {
 
     CONTEXT_MESSAGE_INVALID(153003, "context message is invalid, reason: {error_msg}"),
 
-    // =============================================================================================================
     // KnowledgeBase Retrieval 155000 - 157999
-    // =============================================================================================================
 
     RETRIEVAL_EMBEDDING_INPUT_INVALID(155000, "retrieval embedding_input is invalid, reason: {error_msg}"),
 
@@ -502,9 +483,7 @@ public enum StatusCode {
 
     RETRIEVAL_QUERY_REWRITER_PROMPT_NOT_FOUND(155606, "retrieval query_rewriter_prompt not found, reason: {error_msg}"),
 
-    // =============================================================================================================
     // Memory Engine 158000 – 159999
-    // =============================================================================================================
 
     MEMORY_REGISTER_STORE_EXECUTION_ERROR(158000,
             "failed to register {store_type} to memory engine, reason: {error_msg}"),
@@ -529,13 +508,11 @@ public enum StatusCode {
 
     MEMORY_REGISTER_OPERATION_VALIDATION_INVALID(158010,
             "failed to register operation for entity {entity_key} with schema_version {schema_version},"
-            + " reason: {error_msg}"),
+                    + " reason: {error_msg}"),
 
     MEMORY_INIT_ERROR(158011, "memory initialization failed, reason: {error_msg}"),
 
-    // =============================================================================================================
     // Optimization Toolchain 170000 - 179999
-    // =============================================================================================================
 
     TOOLCHAIN_AGENT_PARAM_ERROR(170000, "toolchain agent parameter error, reason: {error_msg}"),
 
@@ -563,9 +540,7 @@ public enum StatusCode {
     TOOLCHAIN_BAD_CASE_TEMPLATE_EXECUTION_ERROR(173002,
             "toolchain bad_case_template execution error, reason: {error_msg}"),
 
-    // =============================================================================================================
     // Foundation 180000 – 189999
-    // =============================================================================================================
 
     // Prompt Template 180000 - 180999
     PROMPT_ASSEMBLER_VARIABLE_INIT_FAILED(180000,
@@ -663,16 +638,10 @@ public enum StatusCode {
 
     SCHEMA_FORMAT_INVALID(189002, "format data with schema failed, error='{reason}', data={data}"),
 
-    // =============================================================================================================
     // Security / Guardrail 190000 - 190999
-    // =============================================================================================================
+    GUARDRAIL_BLOCKED(190000, "guardrail blocked: risk_type='{risk_type}', risk_level='{risk_level}', event='{event}'"),
 
-    GUARDRAIL_BLOCKED(190000,
-            "guardrail blocked: risk_type='{risk_type}', risk_level='{risk_level}', event='{event}'"),
-
-    // =============================================================================================================
     // SysOperation 199000–199999
-    // =============================================================================================================
 
     SYS_OPERATION_MANAGER_PROCESS_ERROR(199001,
             "sys operation manager process error, process: {process}, reason: {error_msg}"),
@@ -696,7 +665,7 @@ public enum StatusCode {
     /**
      * Creates a StatusCode with the given code and error message template.
      *
-     * @param code   the integer error code
+     * @param code the integer error code
      * @param errmsg the error message template with {placeholder} syntax
      */
     StatusCode(int code, String errmsg) {
@@ -706,8 +675,9 @@ public enum StatusCode {
 
     /**
      * Return the integer error code.
-     *
+     * 
      * @return the error code
+     * @since 0.1.7
      */
     public int getCode() {
         return code;
@@ -715,8 +685,9 @@ public enum StatusCode {
 
     /**
      * Compatibility accessor for translated tests that still call Python-style {@code code()}.
-     *
+     * 
      * @return the error code
+     * @since 0.1.7
      */
     public int code() {
         return getCode();
@@ -724,8 +695,9 @@ public enum StatusCode {
 
     /**
      * Return the error message template (unformatted).
-     *
+     * 
      * @return the error message template
+     * @since 0.1.7
      */
     public String getErrmsg() {
         return errmsg;

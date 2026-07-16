@@ -15,23 +15,19 @@ import java.util.Map;
  * with config extraction from the input map.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.graph.base.ExecutableGraph}.
- *
- * @param <I> input type (typically {@code Map<String, Object>})
- * @param <O> output type
+ * 
+ * @since 0.1.7
  */
 public abstract class ExecutableGraph<I, O> extends Executable<I, O> {
-
     /**
-     * Invoke the graph. Extracts INPUTS_KEY and CONFIG_KEY from the inputs map.
-     *
-     * @param inputs  input map containing INPUTS_KEY and optionally CONFIG_KEY
-     * @param session execution session
-     * @return the output
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public O invoke(I inputs, BaseSession session) {
         Map<String, Object> inputMap = (Map<String, Object>) inputs;
         Object actualInputs = inputMap.get(Constant.INPUTS_KEY);
@@ -41,10 +37,11 @@ public abstract class ExecutableGraph<I, O> extends Executable<I, O> {
 
     /**
      * Stream the graph output.
-     *
-     * @param inputs  input data
+     * 
+     * @param inputs input data
      * @param session execution session
      * @return an iterator of output chunks
+     * @since 0.1.7
      */
     public Iterator<O> stream(I inputs, BaseSession session) {
         return null;
@@ -52,10 +49,11 @@ public abstract class ExecutableGraph<I, O> extends Executable<I, O> {
 
     /**
      * Collect from streaming inputs and produce a single output.
-     *
-     * @param inputs  streaming input iterator
+     * 
+     * @param inputs streaming input iterator
      * @param session execution session
      * @return the collected output
+     * @since 0.1.7
      */
     public O collect(Iterator<I> inputs, BaseSession session) {
         return null;
@@ -63,10 +61,11 @@ public abstract class ExecutableGraph<I, O> extends Executable<I, O> {
 
     /**
      * Transform streaming inputs to streaming outputs.
-     *
-     * @param inputs  streaming input iterator
+     * 
+     * @param inputs streaming input iterator
      * @param session execution session
      * @return an iterator of transformed output chunks
+     * @since 0.1.7
      */
     public Iterator<O> transform(Iterator<I> inputs, BaseSession session) {
         return null;
@@ -74,8 +73,9 @@ public abstract class ExecutableGraph<I, O> extends Executable<I, O> {
 
     /**
      * Handle interrupt messages.
-     *
+     * 
      * @param message interrupt message
+     * @since 0.1.7
      */
     public void interrupt(Map<String, Object> message) {
         // Default no-op
@@ -83,11 +83,12 @@ public abstract class ExecutableGraph<I, O> extends Executable<I, O> {
 
     /**
      * Internal invoke implementation to be provided by subclasses.
-     *
-     * @param inputs  actual input data
+     * 
+     * @param inputs actual input data
      * @param session execution session
-     * @param config  optional configuration
+     * @param config optional configuration
      * @return the output
+     * @since 0.1.7
      */
     protected abstract O doInvoke(I inputs, BaseSession session, Object config);
 }

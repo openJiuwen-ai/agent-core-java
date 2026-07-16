@@ -7,8 +7,10 @@ package com.openjiuwen.agentteams.schema.team;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
-public record TeamModelConfig(
-        ModelClientConfig modelClientConfig,
-        ModelRequestConfig modelRequestConfig
-) {
+/**
+ * TeamModelConfig.
+ * 
+ * @since 0.1.7
+ */
+public record TeamModelConfig(ModelClientConfig modelClientConfig, ModelRequestConfig modelRequestConfig) {
 }

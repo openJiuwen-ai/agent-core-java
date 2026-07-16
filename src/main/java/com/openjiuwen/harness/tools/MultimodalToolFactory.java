@@ -10,27 +10,39 @@ import com.openjiuwen.harness.schema.config.VisionModelConfig;
 import java.util.List;
 
 /**
- * Auto-generated for codecheck compliance.
+ * MultimodalToolFactory.
+ * 
+ * @since 0.1.7
  */
 public final class MultimodalToolFactory {
+    /**
+     * MultimodalToolFactory.
+     * 
+     * @since 0.1.7
+     */
     private MultimodalToolFactory() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createVisionTools.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public static List<Object> createVisionTools(VisionModelConfig config) {
         return List.of(new ImageOCRTool(config), new VisualQuestionAnsweringTool(config));
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * createAudioTools.
+     * 
+     * @param config config
+     * @return the result
+     * @since 0.1.7
      */
     public static List<Object> createAudioTools(AudioModelConfig config) {
-        return List.of(
-                new AudioTranscriptionTool(config),
-                new AudioQuestionAnsweringTool(config),
-                new AudioMetadataTool(config)
-        );
+        return List.of(new AudioTranscriptionTool(config), new AudioQuestionAnsweringTool(config),
+                new AudioMetadataTool(config));
     }
 }

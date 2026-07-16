@@ -22,11 +22,12 @@ import java.util.Map;
  * Configuration for the Knowledge Retrieval workflow component.
  * <p>
  * Mirrors Python's {@code KnowledgeRetrievalCompConfig}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
 public class KnowledgeRetrievalCompConfig extends ComponentConfig {
-
     private List<KnowledgeBaseConfig> kbConfigs;
     private RetrievalConfig retrievalConfig;
     private VectorStoreConfig vectorStoreConfig;

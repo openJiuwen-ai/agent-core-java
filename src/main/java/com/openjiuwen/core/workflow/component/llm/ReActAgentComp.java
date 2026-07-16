@@ -14,19 +14,19 @@ import com.openjiuwen.core.workflow.ComponentComposable;
  * via its executable representation (see {@link #toExecutable()}).
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.react.ReActAgentComp}.
- *
+ * 
  * <pre>{@code
  * ReActAgentCompConfig config = ReActAgentCompConfig.builder()
- *         .modelClientConfig(clientConfig)
- *         .modelConfigObj(modelConfig)
- *         .maxIterations(5)
- *         .build();
+ * .modelClientConfig(clientConfig)
+ * .modelConfigObj(modelConfig)
+ * .maxIterations(5)
+ * .build();
  * ReActAgentComp reactComp = new ReActAgentComp(config);
  * reactComp.getExecutable().getAbilityManager().add(toolCard);
  * workflow.addWorkflowComp("react", reactComp, ...);
  * }</pre>
- *
- * @since 1.0.0
+ * 
+ * @since 0.1.7
  */
 public class ReActAgentComp implements ComponentComposable {
     private ReActAgentCompExecutable executable;
@@ -34,8 +34,9 @@ public class ReActAgentComp implements ComponentComposable {
 
     /**
      * Create a ReActAgentComp with the given configuration.
-     *
+     * 
      * @param config component configuration
+     * @since 0.1.7
      */
     public ReActAgentComp(ReActAgentCompConfig config) {
         this.config = config;
@@ -43,8 +44,9 @@ public class ReActAgentComp implements ComponentComposable {
 
     /**
      * Get the executable, creating it lazily on first access.
-     *
+     * 
      * @return the executable instance
+     * @since 0.1.7
      */
     public ReActAgentCompExecutable getExecutable() {
         if (executable == null) {
@@ -53,6 +55,12 @@ public class ReActAgentComp implements ComponentComposable {
         return executable;
     }
 
+    /**
+     * toExecutable.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     @Override
     public Executable<?, ?> toExecutable() {
         return getExecutable();

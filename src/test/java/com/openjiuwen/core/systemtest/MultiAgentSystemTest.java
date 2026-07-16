@@ -1,7 +1,11 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.systemtest;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.multiagent.BaseGroup;
 import com.openjiuwen.core.multiagent.GroupConfig;
@@ -23,42 +27,26 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * System tests for the multiagent module.
  */
 @Tag("system-test")
 class MultiAgentSystemTest extends SystemTestSupport {
-
     @Test
     @DisplayName("BaseGroup aggregates child agent outputs with group session envs")
     void testBaseGroupInvokeAggregatesChildAgentOutputs() {
         AggregatingGroup group = new AggregatingGroup(
-                GroupCard.builder()
-                        .id(uniqueId("group"))
-                        .name(uniqueId("group-name"))
-                        .description("multiagent system test group")
-                        .build(),
-                new GroupConfig()
-                        .configureMaxAgents(2)
-                        .configureConcurrency(2)
-                        .configureTimeout(10.0)
-        );
+                GroupCard.builder().id(uniqueId("group")).name(uniqueId("group-name"))
+                        .description("multiagent system test group").build(),
+                new GroupConfig().configureMaxAgents(2).configureConcurrency(2).configureTimeout(10.0));
         group.addAgent(new TemplateAgent(uniqueId("alpha"), "alpha"), "alpha");
         group.addAgent(new TemplateAgent(uniqueId("beta"), "beta"), "beta");
 
-        AgentGroupSessionApi session = AgentGroupSessionApi.create(
-                trackSessionId("group-session"),
-                Map.of("topic", "incident-response")
-        );
+        AgentGroupSessionApi session =
+            AgentGroupSessionApi.create(trackSessionId("group-session"), Map.of("topic", "incident-response"));
 
         @SuppressWarnings("unchecked")
-        Map<String, Object> result = (Map<String, Object>) group.invoke(
-                Map.of("query", "hello group"),
-                session
-        );
+        Map<String, Object> result = (Map<String, Object>) group.invoke(Map.of("query", "hello group"), session);
 
         assertEquals(2, group.getAgentCount());
         assertEquals(2, group.getCard().getAgentCards().size());
@@ -71,21 +59,16 @@ class MultiAgentSystemTest extends SystemTestSupport {
     @Test
     @DisplayName("BaseGroup stream emits one chunk per child agent")
     void testBaseGroupStreamEmitsChildChunks() {
-        AggregatingGroup group = new AggregatingGroup(
-                GroupCard.builder()
-                        .id(uniqueId("stream-group"))
-                        .name(uniqueId("stream-group-name"))
-                        .description("multiagent stream test group")
-                        .build(),
-                new GroupConfig().configureMaxAgents(2)
-        );
+        AggregatingGroup group =
+            new AggregatingGroup(
+                    GroupCard.builder().id(uniqueId("stream-group")).name(uniqueId("stream-group-name"))
+                            .description("multiagent stream test group").build(),
+                    new GroupConfig().configureMaxAgents(2));
         group.addAgent(new TemplateAgent(uniqueId("stream-alpha"), "stream-alpha"), "alpha");
         group.addAgent(new TemplateAgent(uniqueId("stream-beta"), "stream-beta"), "beta");
 
-        AgentGroupSessionApi session = AgentGroupSessionApi.create(
-                trackSessionId("group-stream-session"),
-                Map.of("topic", "streaming")
-        );
+        AgentGroupSessionApi session =
+            AgentGroupSessionApi.create(trackSessionId("group-stream-session"), Map.of("topic", "streaming"));
 
         List<Object> streamItems = collect(group.stream(Map.of("query", "fanout"), session));
 
@@ -95,7 +78,6 @@ class MultiAgentSystemTest extends SystemTestSupport {
     }
 
     private static final class AggregatingGroup extends BaseGroup {
-
         private AggregatingGroup(GroupCard card, GroupConfig config) {
             super(card, config);
         }
@@ -109,11 +91,8 @@ class MultiAgentSystemTest extends SystemTestSupport {
             results.put("topic", topic);
 
             for (Map.Entry<String, BaseAgent> entry : getAgents().entrySet()) {
-                AgentSessionApi agentSession = AgentSessionApi.create(
-                        session.getSessionId() + "-" + entry.getKey(),
-                        Map.of("topic", topic),
-                        entry.getValue().getCard()
-                );
+                AgentSessionApi agentSession = AgentSessionApi.create(session.getSessionId() + "-" + entry.getKey(),
+                        Map.of("topic", topic), entry.getValue().getCard());
                 results.put(entry.getKey(), entry.getValue().invoke(inputs, agentSession));
             }
             return results;
@@ -126,15 +105,9 @@ class MultiAgentSystemTest extends SystemTestSupport {
             List<Object> items = new ArrayList<>();
 
             for (Map.Entry<String, BaseAgent> entry : getAgents().entrySet()) {
-                AgentSessionApi agentSession = AgentSessionApi.create(
-                        session.getSessionId() + "-" + entry.getKey(),
-                        Map.of("topic", topic),
-                        entry.getValue().getCard()
-                );
-                items.add(Map.of(
-                        "agent_id", entry.getKey(),
-                        "payload", entry.getValue().invoke(inputs, agentSession)
-                ));
+                AgentSessionApi agentSession = AgentSessionApi.create(session.getSessionId() + "-" + entry.getKey(),
+                        Map.of("topic", topic), entry.getValue().getCard());
+                items.add(Map.of("agent_id", entry.getKey(), "payload", entry.getValue().invoke(inputs, agentSession)));
             }
             return items.iterator();
         }
@@ -149,15 +122,10 @@ class MultiAgentSystemTest extends SystemTestSupport {
     }
 
     private static final class TemplateAgent extends BaseAgent {
-
         private final String prefix;
 
         private TemplateAgent(String agentId, String prefix) {
-            super(AgentCard.builder()
-                    .id(agentId)
-                    .name(agentId)
-                    .description("template agent")
-                    .build());
+            super(AgentCard.builder().id(agentId).name(agentId).description("template agent").build());
             this.prefix = prefix;
         }
 
@@ -174,14 +142,10 @@ class MultiAgentSystemTest extends SystemTestSupport {
         @Override
         public Object invoke(Object inputs, Session session) {
             String query = extractQuery(inputs);
-            Object topic = session instanceof AgentSessionApi agentSessionApi
-                    ? agentSessionApi.getEnv("topic", "")
-                    : "";
-            return Map.of(
-                    "agent_id", getCard().getId(),
-                    "message", prefix + ":" + query,
-                    "topic", String.valueOf(topic)
-            );
+            Object topic =
+                session instanceof AgentSessionApi agentSessionApi ? agentSessionApi.getEnv("topic", "") : "";
+            return Map.of("agent_id", getCard().getId(), "message", prefix + ":" + query, "topic",
+                    String.valueOf(topic));
         }
 
         @Override

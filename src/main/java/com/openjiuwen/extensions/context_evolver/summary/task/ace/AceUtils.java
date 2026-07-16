@@ -4,7 +4,9 @@
 
 package com.openjiuwen.extensions.context_evolver.summary.task.ace;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,39 +21,68 @@ import java.util.regex.Pattern;
 
 /**
  * Utility functions for ACE operations.
- *
- * <p>Mirrors Python's {@code openjiuwen.extensions.context_evolver.summary.task.ace.utils}.
+ * <p>
+ * Mirrors Python's {@code openjiuwen.extensions.context_evolver.summary.task.ace.utils}.
+ * 
+ * @since 0.1.7
  */
 public final class AceUtils {
-
     private static final Logger logger = LoggerFactory.getLogger(AceUtils.class);
+
+    /**
+     * ObjectMapper.
+     * 
+     * @since 0.1.7
+     */
     private static final ObjectMapper objectMapper = new ObjectMapper();
-    private static final Pattern JSON_CODE_BLOCK = Pattern.compile("```(?:json)?\\s*(\\{.*?\\})\\s*```", Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern JSON_CODE_BLOCK =
+        Pattern.compile("```(?:json)?\\s*(\\{.*?\\})\\s*```", Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern JSON_OBJECT = Pattern.compile("\\{.*\\}", Pattern.DOTALL);
 
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern OBSERVATION_KEY_PATTERN = Pattern.compile("\"([A-Za-z0-9_]+)\"\\s*:");
+
+    /**
+     * AceUtils.
+     * 
+     * @since 0.1.7
+     */
     private AceUtils() {
     }
 
     /**
-     * Safely load JSON from string with error handling.
-     *
-     * @param text String containing JSON data
-     * @return Parsed JSON as Map
-     * @throws IllegalArgumentException If JSON parsing fails
+     * safeJsonLoads.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static Map<String, Object> safeJsonLoads(String text) {
         try {
             return objectMapper.readValue(text, Map.class);
-        } catch (Exception directError) {
+        } catch (JsonProcessingException directError) {
             Matcher codeBlockMatcher = JSON_CODE_BLOCK.matcher(text);
             if (codeBlockMatcher.find()) {
                 try {
                     return objectMapper.readValue(codeBlockMatcher.group(1), Map.class);
-                } catch (Exception ignored) {
+                } catch (JsonProcessingException ignored) {
                     // Fall through to the broad JSON extraction path.
                 }
             }
@@ -60,7 +91,7 @@ public final class AceUtils {
             if (jsonMatcher.find()) {
                 try {
                     return objectMapper.readValue(jsonMatcher.group(0), Map.class);
-                } catch (Exception ignored) {
+                } catch (JsonProcessingException ignored) {
                     // Fall through to the final error.
                 }
             }
@@ -72,21 +103,26 @@ public final class AceUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * normalizeForMatch.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     public static String normalizeForMatch(String text) {
         if (text == null || text.isBlank()) {
             return "";
         }
-        return text
-            .toLowerCase(Locale.ROOT)
-            .replaceAll("[^a-z0-9]+", " ")
-            .trim()
-            .replaceAll("\\s+", " ");
+        return text.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", " ").trim().replaceAll("\\s+", " ");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extractPrefixedLines.
+     * 
+     * @param text text
+     * @param prefix prefix
+     * @return the result
+     * @since 0.1.7
      */
     public static List<String> extractPrefixedLines(String text, String prefix) {
         List<String> lines = new ArrayList<>();
@@ -103,7 +139,11 @@ public final class AceUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extractObservationKeys.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     public static List<String> extractObservationKeys(String text) {
         Set<String> keys = new LinkedHashSet<>();
@@ -111,7 +151,7 @@ public final class AceUtils {
             return new ArrayList<>();
         }
 
-        Matcher matcher = Pattern.compile("\"([A-Za-z0-9_]+)\"\\s*:").matcher(text);
+        Matcher matcher = OBSERVATION_KEY_PATTERN.matcher(text);
         while (matcher.find()) {
             keys.add(matcher.group(1));
             if (keys.size() >= 6) {
@@ -122,12 +162,17 @@ public final class AceUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * guessSection.
+     * 
+     * @param query query
+     * @param trajectory trajectory
+     * @return the result
+     * @since 0.1.7
      */
     public static String guessSection(String query, String trajectory) {
         String combined = normalizeForMatch(query + " " + trajectory);
         if (combined.contains("api") || combined.contains("action") || combined.contains("spotify")
-            || combined.contains("search ") || combined.contains("query ")) {
+                || combined.contains("search ") || combined.contains("query ")) {
             return "apis_to_use_for_specific_information";
         }
         if (combined.contains("format") || combined.contains("schema") || combined.contains("json")) {
@@ -137,7 +182,11 @@ public final class AceUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * trailingCounter.
+     * 
+     * @param bulletId bulletId
+     * @return the result
+     * @since 0.1.7
      */
     public static int trailingCounter(String bulletId) {
         if (bulletId == null || bulletId.isBlank()) {
@@ -155,7 +204,11 @@ public final class AceUtils {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * compactWhitespace.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static String compactWhitespace(String value) {
         if (value == null) {

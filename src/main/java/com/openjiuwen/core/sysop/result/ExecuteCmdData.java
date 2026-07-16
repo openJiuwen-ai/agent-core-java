@@ -13,14 +13,14 @@ import lombok.NoArgsConstructor;
  * Data structure for shell command execution.
  * <p>
  * Mirrors Python's {@code ExecuteCmdData}.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ExecuteCmdData {
-
-    /** Original shell command executed. */
     private String command;
 
     /** Current working directory. */

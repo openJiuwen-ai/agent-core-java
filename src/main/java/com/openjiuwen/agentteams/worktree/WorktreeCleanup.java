@@ -18,24 +18,32 @@ import java.util.regex.Pattern;
 
 /**
  * Stale worktree cleanup with fail-closed safety strategy.
- *
- * <p>Mirrors Python worktree/cleanup.py: only processes worktrees matching
+ * <p>
+ * Mirrors Python worktree/cleanup.py: only processes worktrees matching
  * ephemeral patterns, skips current session worktree, checks for dirty
- * state before removal.</p>
+ * state before removal.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public final class WorktreeCleanup {
+    private static final List<Pattern> EPHEMERAL_PATTERNS =
+        List.of(Pattern.compile("^teammate-[0-9a-f]{8}$"), Pattern.compile("^agent-[0-9a-f]{7}$"));
 
-    /** Ephemeral worktree slug patterns: teammate-XXXXXXXX or agent-XXXXXXX */
-    private static final List<Pattern> EPHEMERAL_PATTERNS = List.of(
-            Pattern.compile("^teammate-[0-9a-f]{8}$"),
-            Pattern.compile("^agent-[0-9a-f]{7}$")
-    );
-
+    /**
+     * WorktreeCleanup.
+     * 
+     * @since 0.1.7
+     */
     private WorktreeCleanup() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isEphemeralSlug.
+     * 
+     * @param slug slug
+     * @return the result
+     * @since 0.1.7
      */
     public static boolean isEphemeralSlug(String slug) {
         if (slug == null) {
@@ -51,21 +59,20 @@ public final class WorktreeCleanup {
 
     /**
      * Cleanup stale worktrees using a fail-closed safety strategy.
-     *
-     * <p>Only processes worktrees matching ephemeral patterns. Skips the
+     * <p>
+     * Only processes worktrees matching ephemeral patterns. Skips the
      * current session's worktree. Checks for uncommitted changes and
-     * unpushed commits before removal.</p>
-     *
-     * @param config         worktree configuration
-     * @param manager        worktree manager for git operations
+     * unpushed commits before removal.
+     * </p>
+     * 
+     * @param config worktree configuration
+     * @param manager worktree manager for git operations
      * @param currentWorktreePath path to skip (current session), can be null
      * @return number of worktrees removed
+     * @since 0.1.7
      */
-    public static int cleanupStaleWorktrees(
-            WorktreeConfig config,
-            WorktreeManager manager,
+    public static int cleanupStaleWorktrees(WorktreeConfig config, WorktreeManager manager,
             String currentWorktreePath) {
-
         if (config == null || !config.isEnabled()) {
             return 0;
         }
@@ -75,15 +82,13 @@ public final class WorktreeCleanup {
             return 0;
         }
 
-        Path worktreesPath = Path.of(
-                SlugValidator.worktreesDir(Path.of(workspaceRoot)));
+        Path worktreesPath = Path.of(SlugValidator.worktreesDir(Path.of(workspaceRoot)));
 
         if (!Files.isDirectory(worktreesPath)) {
             return 0;
         }
 
-        int cleanupAfterDays = config.getCleanupAfterDays() > 0
-                ? config.getCleanupAfterDays() : 30;
+        int cleanupAfterDays = config.getCleanupAfterDays() > 0 ? config.getCleanupAfterDays() : 30;
         Instant cutoffTime = Instant.now().minus(cleanupAfterDays, ChronoUnit.DAYS);
         List<String> removed = new ArrayList<>();
 
@@ -98,16 +103,14 @@ public final class WorktreeCleanup {
                 }
 
                 // Skip current session worktree
-                if (currentWorktreePath != null
-                        && entry.toString().equals(currentWorktreePath)) {
+                if (currentWorktreePath != null && entry.toString().equals(currentWorktreePath)) {
                     Loggers.AGENT.debug("Skipping current worktree: {}", slug);
                     continue;
                 }
 
                 // Check mtime
                 try {
-                    BasicFileAttributes attrs = Files.readAttributes(
-                            entry, BasicFileAttributes.class);
+                    BasicFileAttributes attrs = Files.readAttributes(entry, BasicFileAttributes.class);
                     Instant mtime = attrs.lastModifiedTime().toInstant();
                     if (mtime.isAfter(cutoffTime)) {
                         Loggers.AGENT.debug("Skipping recent worktree: {} (mtime={})", slug, mtime);
@@ -144,6 +147,13 @@ public final class WorktreeCleanup {
         return removed.size();
     }
 
+    /**
+     * hasDirtyState.
+     * 
+     * @param worktreePath worktreePath
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean hasDirtyState(Path worktreePath) {
         // Check for uncommitted changes
         try {

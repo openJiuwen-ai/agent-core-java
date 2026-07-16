@@ -10,24 +10,30 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 
 /**
  * Public class ConfirmInterruptRail used by the Java parity implementation.
- *
- * @since 1.0
+ * 
+ * @since 0.1.7
  */
 public class ConfirmInterruptRail extends BaseInterruptRail {
     /**
-     * Auto-generated for codecheck compliance.
+     * ConfirmInterruptRail.
+     * 
+     * @param toolNames toolNames
+     * @since 0.1.7
      */
     public ConfirmInterruptRail(Iterable<String> toolNames) {
         super(toolNames);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveInterrupt.
+     * 
+     * @param ctx ctx
+     * @param toolCall toolCall
+     * @param userInput userInput
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     protected InterruptDecision resolveInterrupt(AgentCallbackContext ctx, ToolCall toolCall, Object userInput) {
         if (userInput != null) {
             String value = String.valueOf(userInput).trim().toLowerCase(java.util.Locale.ROOT);
@@ -36,8 +42,6 @@ public class ConfirmInterruptRail extends BaseInterruptRail {
             }
             return approve();
         }
-        return interrupt(InterruptRequest.builder()
-                .message("confirm tool call")
-                .build());
+        return interrupt(InterruptRequest.builder().message("confirm tool call").build());
     }
 }

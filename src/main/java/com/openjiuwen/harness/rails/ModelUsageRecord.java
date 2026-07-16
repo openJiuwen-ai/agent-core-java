@@ -5,19 +5,20 @@
 package com.openjiuwen.harness.rails;
 
 import com.openjiuwen.core.foundation.llm.schema.UsageMetadata;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Public class ModelUsageRecord used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class ModelUsageRecord used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class ModelUsageRecord {
     private String modelId;
@@ -26,7 +27,10 @@ public class ModelUsageRecord {
     private int totalTokens;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * add.
+     * 
+     * @param usage usage
+     * @since 0.1.7
      */
     public void add(UsageMetadata usage) {
         if (usage == null) {
@@ -38,14 +42,13 @@ public class ModelUsageRecord {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toUsageMetadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public UsageMetadata toUsageMetadata() {
-        return UsageMetadata.builder()
-                .modelName(modelId)
-                .inputTokens(inputTokens)
-                .outputTokens(outputTokens)
-                .totalTokens(totalTokens)
-                .build();
+        return UsageMetadata.builder().modelName(modelId).inputTokens(inputTokens).outputTokens(outputTokens)
+                .totalTokens(totalTokens).build();
     }
 }

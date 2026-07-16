@@ -6,21 +6,29 @@ package com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription;
 
 /**
  * Cancel event placed into the collector queue to wake up blocked waiters.
+ * 
+ * @since 0.1.7
  */
 public final class CancelEvent {
-
     private final CancelReason reason;
     private final String info;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CancelEvent.
+     * 
+     * @param reason reason
+     * @since 0.1.7
      */
     public CancelEvent(CancelReason reason) {
         this(reason, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * CancelEvent.
+     * 
+     * @param reason reason
+     * @param info info
+     * @since 0.1.7
      */
     public CancelEvent(CancelReason reason, String info) {
         this.reason = reason;
@@ -28,23 +36,32 @@ public final class CancelEvent {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getReason.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public CancelReason getReason() {
         return reason;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInfo.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getInfo() {
         return info;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * toString.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String toString() {
         return "CancelEvent{reason=" + reason + ", info='" + info + "'}";
     }

@@ -1,4 +1,11 @@
+
 package com.openjiuwen.autoharness;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mockStatic;
 
 import com.openjiuwen.autoharness.contexts.BaseExecutionContext;
 import com.openjiuwen.autoharness.contexts.SessionContext;
@@ -19,15 +26,15 @@ import com.openjiuwen.autoharness.schema.StageResult;
 import com.openjiuwen.autoharness.schema.TaskPlanArtifact;
 import com.openjiuwen.autoharness.schema.TaskStatus;
 import com.openjiuwen.autoharness.stages.BaseStage;
-import com.openjiuwen.autoharness.stages.LearningsStage;
 import com.openjiuwen.autoharness.stages.PlanStage;
-import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
+import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.TaskPlanningRail;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockedStatic;
@@ -35,18 +42,12 @@ import org.mockito.MockedStatic;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mockStatic;
 
 class ContextsPipelinesCompatibilityTest {
     @TempDir
@@ -56,11 +57,8 @@ class ContextsPipelinesCompatibilityTest {
     void contextsShouldResolveArtifactsAcrossSessionAndTaskScopes() {
         AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder().build());
         SessionContext sessionCtx = new SessionContext(orchestrator);
-        TaskContext taskCtx = new TaskContext(
-                orchestrator,
-                OptimizationTask.builder().topic("task-a").build(),
-                TaskRuntime.builder().wtPath("/tmp/wt").build()
-        );
+        TaskContext taskCtx = new TaskContext(orchestrator, OptimizationTask.builder().topic("task-a").build(),
+                TaskRuntime.builder().wtPath("/tmp/wt").build());
 
         sessionCtx.putArtifact("pipeline", "meta");
         taskCtx.putArtifact("report", "ok");
@@ -74,9 +72,8 @@ class ContextsPipelinesCompatibilityTest {
 
     @Test
     void orchestratorShouldInitializeEmptyTaskContextsLikePython() {
-        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder()
-                .dataDir(tempDir.toString())
-                .build());
+        AutoHarnessOrchestrator orchestrator =
+            new AutoHarnessOrchestrator(AutoHarnessConfig.builder().dataDir(tempDir.toString()).build());
 
         assertThat(orchestrator.getTaskContexts()).isEmpty();
     }
@@ -109,13 +106,9 @@ class ContextsPipelinesCompatibilityTest {
 
             @Override
             public List<Object> stream(com.openjiuwen.autoharness.contexts.BaseExecutionContext ignored) {
-                return List.of(
-                        new OutputSchema("message", 2, Map.of("content", "chunk")),
-                        StageResult.builder()
-                                .artifacts(new LinkedHashMap<>(Map.of("task_plan", "ok")))
-                                .messages(List.of("saved plan"))
-                                .build()
-                );
+                return List.of(new OutputSchema("message", 2, Map.of("content", "chunk")),
+                        StageResult.builder().artifacts(new LinkedHashMap<>(Map.of("task_plan", "ok")))
+                                .messages(List.of("saved plan")).build());
             }
         };
         List<StageResult> holder = new java.util.ArrayList<>();
@@ -158,24 +151,17 @@ class ContextsPipelinesCompatibilityTest {
             @Override
             public List<Object> stream(com.openjiuwen.autoharness.contexts.BaseExecutionContext ignored) {
                 return List.of(
-                        StageResult.builder()
-                                .artifacts(Map.of("phase", "first"))
-                                .messages(List.of("first done"))
+                        StageResult.builder().artifacts(Map.of("phase", "first")).messages(List.of("first done"))
                                 .build(),
-                        StageResult.builder()
-                                .status("failed")
-                                .artifacts(Map.of("phase", "second"))
-                                .messages(List.of("second failed"))
-                                .build()
-                );
+                        StageResult.builder().status("failed").artifacts(Map.of("phase", "second"))
+                                .messages(List.of("second failed")).build());
             }
         };
         List<StageResult> holder = new java.util.ArrayList<>();
         List<Object> events = pipeline.streamStage(stage, ctx, holder);
 
         assertThat(holder).hasSize(2);
-        assertThat(events).containsExactly(
-                BaseExecutionContext.message("first done"),
+        assertThat(events).containsExactly(BaseExecutionContext.message("first done"),
                 BaseExecutionContext.message("second failed"));
         assertThat(ctx.requireArtifact("phase")).isEqualTo("second");
         assertThat(pipeline.requireStageResult(stage, holder).getStatus()).isEqualTo("failed");
@@ -213,17 +199,13 @@ class ContextsPipelinesCompatibilityTest {
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getError()).contains("No allowed repo file was changed");
         assertThat(task.getStatus()).isEqualTo(TaskStatus.FAILED);
-        assertThat(events).anySatisfy(event ->
-                assertThat(messageText(event)).isEqualTo("[1/5] 执行代码修改"));
+        assertThat(events).anySatisfy(event -> assertThat(messageText(event)).isEqualTo("[1/5] 执行代码修改"));
     }
 
     @Test
     void prepareTaskRuntimeShouldCreateTaskSessionAgentsAndSharedEditRail() {
-        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder()
-                .workspace(".")
-                .dataDir("target/auto-harness-test")
-                .localRepo(".")
-                .build());
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(
+                AutoHarnessConfig.builder().workspace(".").dataDir("target/auto-harness-test").localRepo(".").build());
         OptimizationTask task = OptimizationTask.builder().topic("task-1").build();
 
         TaskRuntime runtime = PRTaskPipeline.prepareTaskRuntime(orchestrator, task);
@@ -256,17 +238,15 @@ class ContextsPipelinesCompatibilityTest {
         assertThat(singleEditSafetyRail(fixAgent)).isSameAs(runtime.getEditSafetyRail());
         assertThat(singleEditSafetyRail(commitAgent)).isNotSameAs(runtime.getEditSafetyRail());
         assertThat(runtime.getTaskSession()).isInstanceOf(AgentSessionApi.class);
-        assertThat(((AgentSessionApi) runtime.getTaskSession()).getSessionId())
-                .isEqualTo("auto-harness-task-1");
+        assertThat(((AgentSessionApi) runtime.getTaskSession()).getSessionId()).isEqualTo("auto-harness-task-1");
         assertThat(runtime.getWtPath()).isNotBlank();
         orchestrator.getWorktreeMgr().cleanup(runtime.getWtPath());
     }
 
     @Test
     void runIsolatedStreamShouldRecordExceptionFailure() {
-        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder()
-                .experienceDir("target/auto-harness-exception-experience")
-                .build());
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(
+                AutoHarnessConfig.builder().experienceDir("target/auto-harness-exception-experience").build());
         OptimizationTask task = OptimizationTask.builder().topic("boom").build();
 
         PRTaskPipeline.runIsolatedStream(orchestrator, task, () -> {
@@ -283,8 +263,7 @@ class ContextsPipelinesCompatibilityTest {
     void resolveTaskResultShouldPreferTaskArtifact() {
         AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder().build());
         OptimizationTask task = OptimizationTask.builder().topic("done").build();
-        orchestrator.getArtifacts().put("task_result",
-                CycleResult.builder().isSuccess(true).summary("done").build(),
+        orchestrator.getArtifacts().put("task_result", CycleResult.builder().isSuccess(true).summary("done").build(),
                 "done");
 
         CycleResult result = PRTaskPipeline.resolveTaskResult(orchestrator, task);
@@ -308,35 +287,28 @@ class ContextsPipelinesCompatibilityTest {
         SessionResultsArtifact results = (SessionResultsArtifact) ctx.requireArtifact("session_results");
         assertThat(results.getResults()).hasSize(1);
         assertThat(orchestrator.getTaskContexts()).isEmpty();
-        assertThat(events).anySatisfy(event ->
-                assertThat(messageText(event)).isEqualTo("[1/5] 执行代码修改"));
+        assertThat(events).anySatisfy(event -> assertThat(messageText(event)).isEqualTo("[1/5] 执行代码修改"));
     }
 
     @Test
     void metaEvolvePipelineShouldRecordLearningsIntoExperienceStoreAfterSessionResults() throws Exception {
         AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder()
-                .experienceDir(tempDir.resolve("experience-pipeline-learnings").toString())
-                .build());
+                .experienceDir(tempDir.resolve("experience-pipeline-learnings").toString()).build());
         SessionContext ctx = new SessionContext(orchestrator);
-        orchestrator.recordCycleResult(CycleResult.builder()
-                .isSuccess(false)
-                .error("verify failed")
-                .isReverted(true)
-                .build());
+        orchestrator.recordCycleResult(
+                CycleResult.builder().isSuccess(false).error("verify failed").isReverted(true).build());
         ctx.putArtifact("input_tasks", List.of());
-        FakeLearningsAgent agent = new FakeLearningsAgent("""
-                [
-                  {"type":"insight","topic":"pipeline","summary":"persist session learning","details":"from meta pipeline"}
-                ]
-                """);
+        FakeLearningsAgent agent = new FakeLearningsAgent(
+                """
+                        [
+                          {"type":"insight","topic":"pipeline","summary":"persist session learning","details":"from meta pipeline"}
+                        ]
+                        """);
 
         List<Object> events;
         try (MockedStatic<AutoHarnessFactory> factory = mockStatic(AutoHarnessFactory.class)) {
-            factory.when(() -> AutoHarnessFactory.createLearningsAgent(
-                    any(AutoHarnessConfig.class),
-                    anyString(),
-                    anyString()
-            )).thenReturn(agent);
+            factory.when(() -> AutoHarnessFactory.createLearningsAgent(any(AutoHarnessConfig.class), anyString(),
+                    anyString())).thenReturn(agent);
             events = new MetaEvolvePipeline().stream(ctx);
         }
 
@@ -354,14 +326,10 @@ class ContextsPipelinesCompatibilityTest {
         AutoHarnessOrchestrator direct = new AutoHarnessOrchestrator(AutoHarnessConfig.builder().build());
         direct.runSessionStream(List.of(OptimizationTask.builder().topic("direct task").build()));
 
-        assertThat(direct.getArtifacts().require("input_tasks", ""))
-                .asList()
-                .hasSize(1);
+        assertThat(direct.getArtifacts().require("input_tasks", "")).asList().hasSize(1);
 
-        AutoHarnessOrchestrator planned = new AutoHarnessOrchestrator(AutoHarnessConfig.builder()
-                .sessionBudgetSecs(0.0)
-                .taskTimeoutSecs(1.0)
-                .build());
+        AutoHarnessOrchestrator planned = new AutoHarnessOrchestrator(
+                AutoHarnessConfig.builder().sessionBudgetSecs(0.0).taskTimeoutSecs(1.0).build());
         planned.runSessionStream(null);
 
         assertThat(planned.getArtifacts().get("input_tasks", "", null)).isNull();
@@ -372,9 +340,8 @@ class ContextsPipelinesCompatibilityTest {
     @Test
     void sessionShouldStoreMetaPipelineSelectionBeforeRunningPipeline() {
         SelectionProbePipeline.entered.set(false);
-        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder()
-                .dataDir(tempDir.resolve("selection-before-run").toString())
-                .build());
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(
+                AutoHarnessConfig.builder().dataDir(tempDir.resolve("selection-before-run").toString()).build());
         orchestrator.getPipelineRegistry().require(MetaEvolvePipeline.NAME)
                 .setPipelineCls(SelectionProbePipeline.class);
 
@@ -388,12 +355,8 @@ class ContextsPipelinesCompatibilityTest {
     void metaEvolveSessionShouldPassthroughAssessAndPlanChunks() throws Exception {
         Path repo = initOriginDevelopRepo("session-stream-repo");
         AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(
-                AutoHarnessConfig.builder()
-                        .dataDir(tempDir.resolve("session-stream").toString())
-                        .localRepo(repo.toString())
-                        .gitBaseBranch("develop")
-                        .maxTasksPerSession(0)
-                        .build());
+                AutoHarnessConfig.builder().dataDir(tempDir.resolve("session-stream").toString())
+                        .localRepo(repo.toString()).gitBaseBranch("develop").maxTasksPerSession(0).build());
         String planJson = "```json\n[{\"topic\":\"t1\"}]\n```";
 
         try (MockedStatic<AutoHarnessFactory> factory = mockStatic(AutoHarnessFactory.class)) {
@@ -406,18 +369,12 @@ class ContextsPipelinesCompatibilityTest {
 
             List<Object> events = orchestrator.runSessionStream(null);
 
-            List<String> llmChunks = events.stream()
-                    .filter(OutputSchema.class::isInstance)
-                    .map(OutputSchema.class::cast)
-                    .filter(schema -> "llm_output".equals(schema.getType()))
-                    .map(ContextsPipelinesCompatibilityTest::messageText)
-                    .toList();
-            List<String> messageChunks = events.stream()
-                    .filter(OutputSchema.class::isInstance)
-                    .map(OutputSchema.class::cast)
-                    .filter(schema -> "message".equals(schema.getType()))
-                    .map(ContextsPipelinesCompatibilityTest::messageText)
-                    .toList();
+            List<String> llmChunks = events.stream().filter(OutputSchema.class::isInstance)
+                    .map(OutputSchema.class::cast).filter(schema -> "llm_output".equals(schema.getType()))
+                    .map(ContextsPipelinesCompatibilityTest::messageText).toList();
+            List<String> messageChunks = events.stream().filter(OutputSchema.class::isInstance)
+                    .map(OutputSchema.class::cast).filter(schema -> "message".equals(schema.getType()))
+                    .map(ContextsPipelinesCompatibilityTest::messageText).toList();
 
             assertThat(llmChunks).contains("# streamed assess", planJson);
             assertThat(messageChunks).doesNotContain("# streamed assess", planJson);
@@ -431,14 +388,9 @@ class ContextsPipelinesCompatibilityTest {
     void metaEvolveSessionShouldUseReadonlySnapshotForAssessAndPlan() throws Exception {
         Path repo = initOriginDevelopRepo("readonly-session-repo");
         String originalWorkspace = tempDir.resolve("original-workspace").toString();
-        AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(
-                AutoHarnessConfig.builder()
-                        .dataDir(tempDir.resolve("readonly-session").toString())
-                        .workspace(originalWorkspace)
-                        .localRepo(repo.toString())
-                        .gitBaseBranch("develop")
-                        .maxTasksPerSession(0)
-                        .build());
+        AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(AutoHarnessConfig
+                .builder().dataDir(tempDir.resolve("readonly-session").toString()).workspace(originalWorkspace)
+                .localRepo(repo.toString()).gitBaseBranch("develop").maxTasksPerSession(0).build());
         List<String> seenWorkspaces = new ArrayList<>();
 
         try (MockedStatic<AutoHarnessFactory> factory = mockStatic(AutoHarnessFactory.class)) {
@@ -471,14 +423,9 @@ class ContextsPipelinesCompatibilityTest {
     @Test
     void metaEvolveSessionShouldKeepOnlyFirstPlannedTask() throws Exception {
         Path repo = initOriginDevelopRepo("plan-truncate-repo");
-        AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(
-                AutoHarnessConfig.builder()
-                        .dataDir(tempDir.resolve("plan-truncate-session").toString())
-                        .localRepo(repo.toString())
-                        .gitBaseBranch("develop")
-                        .sessionBudgetSecs(0.0)
-                        .taskTimeoutSecs(1.0)
-                        .build());
+        AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(AutoHarnessConfig
+                .builder().dataDir(tempDir.resolve("plan-truncate-session").toString()).localRepo(repo.toString())
+                .gitBaseBranch("develop").sessionBudgetSecs(0.0).taskTimeoutSecs(1.0).build());
         String planJson = """
                 ```json
                 [{"topic":"t1"},{"topic":"t2"}]
@@ -506,11 +453,9 @@ class ContextsPipelinesCompatibilityTest {
 
     @Test
     void directTasksShouldSkipAssessAndPlanAgents() {
-        AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(
-                AutoHarnessConfig.builder()
-                        .dataDir(tempDir.resolve("direct-skip-assess-plan").toString())
-                        .maxTasksPerSession(1)
-                        .build());
+        AutoHarnessOrchestrator orchestrator =
+            AutoHarnessFactory.createAutoHarnessOrchestrator(AutoHarnessConfig.builder()
+                    .dataDir(tempDir.resolve("direct-skip-assess-plan").toString()).maxTasksPerSession(1).build());
 
         try (MockedStatic<AutoHarnessFactory> factory = mockStatic(AutoHarnessFactory.class)) {
             factory.when(() -> AutoHarnessFactory.createAutoHarnessOrchestrator(any(AutoHarnessConfig.class)))
@@ -520,7 +465,8 @@ class ContextsPipelinesCompatibilityTest {
             factory.when(() -> AutoHarnessFactory.createPlanAgent(any(AutoHarnessConfig.class)))
                     .thenThrow(new AssertionError("direct tasks must not run plan"));
 
-            List<Object> events = orchestrator.runSessionStream(List.of(OptimizationTask.builder().topic("t1").build()));
+            List<Object> events =
+                orchestrator.runSessionStream(List.of(OptimizationTask.builder().topic("t1").build()));
 
             assertThat(messageTexts(events)).anySatisfy(message -> assertThat(message).contains("t1"));
             TaskPlanArtifact taskPlan = (TaskPlanArtifact) orchestrator.getArtifacts().require("task_plan", "");
@@ -531,17 +477,12 @@ class ContextsPipelinesCompatibilityTest {
 
     @Test
     void orchestratorRunSessionStreamShouldCapDirectTasksByMaxTasksPerSession() {
-        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder()
-                .maxTasksPerSession(2)
-                .build());
+        AutoHarnessOrchestrator orchestrator =
+            new AutoHarnessOrchestrator(AutoHarnessConfig.builder().maxTasksPerSession(2).build());
 
-        orchestrator.runSessionStream(List.of(
-                OptimizationTask.builder().topic("t0").build(),
-                OptimizationTask.builder().topic("t1").build(),
-                OptimizationTask.builder().topic("t2").build(),
-                OptimizationTask.builder().topic("t3").build(),
-                OptimizationTask.builder().topic("t4").build()
-        ));
+        orchestrator.runSessionStream(List.of(OptimizationTask.builder().topic("t0").build(),
+                OptimizationTask.builder().topic("t1").build(), OptimizationTask.builder().topic("t2").build(),
+                OptimizationTask.builder().topic("t3").build(), OptimizationTask.builder().topic("t4").build()));
 
         assertThat(orchestrator.getResults()).hasSize(2);
         assertThat(orchestrator.getArtifacts().require("task_result", "t0")).isInstanceOf(CycleResult.class);
@@ -551,10 +492,8 @@ class ContextsPipelinesCompatibilityTest {
 
     @Test
     void metaEvolvePipelineShouldSkipTaskPipelineWhenSessionBudgetAlreadyStopped() {
-        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder()
-                .sessionBudgetSecs(0.0)
-                .taskTimeoutSecs(1.0)
-                .build());
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(
+                AutoHarnessConfig.builder().sessionBudgetSecs(0.0).taskTimeoutSecs(1.0).build());
         orchestrator.getBudget().start();
         SessionContext ctx = new SessionContext(orchestrator);
         OptimizationTask task = OptimizationTask.builder().topic("budget stopped").build();
@@ -569,10 +508,8 @@ class ContextsPipelinesCompatibilityTest {
 
     @Test
     void metaEvolvePipelineShouldSkipTaskPipelineWhenTaskBudgetIsInsufficient() {
-        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder()
-                .sessionBudgetSecs(1.0)
-                .taskTimeoutSecs(10.0)
-                .build());
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(
+                AutoHarnessConfig.builder().sessionBudgetSecs(1.0).taskTimeoutSecs(10.0).build());
         orchestrator.getBudget().start();
         SessionContext ctx = new SessionContext(orchestrator);
         OptimizationTask task = OptimizationTask.builder().topic("budget insufficient").build();
@@ -598,12 +535,9 @@ class ContextsPipelinesCompatibilityTest {
     }
 
     private static List<String> messageTexts(List<Object> events) {
-        return events.stream()
-                .filter(OutputSchema.class::isInstance)
-                .map(OutputSchema.class::cast)
+        return events.stream().filter(OutputSchema.class::isInstance).map(OutputSchema.class::cast)
                 .filter(schema -> "message".equals(schema.getType()))
-                .map(ContextsPipelinesCompatibilityTest::messageText)
-                .toList();
+                .map(ContextsPipelinesCompatibilityTest::messageText).toList();
     }
 
     private Path initOriginDevelopRepo(String name) throws Exception {
@@ -622,20 +556,15 @@ class ContextsPipelinesCompatibilityTest {
     }
 
     private static void run(Path cwd, String... command) throws Exception {
-        Process process = new ProcessBuilder(command)
-                .directory(cwd.toFile())
-                .redirectErrorStream(true)
-                .start();
+        Process process = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int code = process.waitFor();
         assertThat(code).as(String.join(" ", command) + "\n" + output).isZero();
     }
 
     private static EditSafetyRail singleEditSafetyRail(DeepAgent agent) {
-        List<EditSafetyRail> rails = agent.getConfig().getRails().stream()
-                .filter(EditSafetyRail.class::isInstance)
-                .map(EditSafetyRail.class::cast)
-                .toList();
+        List<EditSafetyRail> rails = agent.getConfig().getRails().stream().filter(EditSafetyRail.class::isInstance)
+                .map(EditSafetyRail.class::cast).toList();
         assertThat(rails).hasSize(1);
         return rails.get(0);
     }
@@ -646,8 +575,7 @@ class ContextsPipelinesCompatibilityTest {
 
         private FakeLearningsAgent(String output) {
             super(AgentCard.builder().name("fake-learnings").description("fake").build(),
-                    DeepAgentConfig.builder().enableTaskLoop(false).build(),
-                    Workspace.builder().rootPath(".").build());
+                    DeepAgentConfig.builder().enableTaskLoop(false).build(), Workspace.builder().rootPath(".").build());
             this.output = output;
         }
 
@@ -663,8 +591,7 @@ class ContextsPipelinesCompatibilityTest {
 
         private FakeStreamingAgent(String name, String output) {
             super(AgentCard.builder().name(name).description("fake").build(),
-                    DeepAgentConfig.builder().enableTaskLoop(false).build(),
-                    Workspace.builder().rootPath(".").build());
+                    DeepAgentConfig.builder().enableTaskLoop(false).build(), Workspace.builder().rootPath(".").build());
             this.output = output;
         }
 
@@ -683,7 +610,7 @@ class ContextsPipelinesCompatibilityTest {
             AutoHarnessOrchestrator orchestrator = ((SessionContext) ctx).getOrchestrator();
             assertThat(orchestrator.getRuntime().getSelectedPipeline()).isEqualTo(MetaEvolvePipeline.NAME);
             PipelineSelectionArtifact selection =
-                    (PipelineSelectionArtifact) orchestrator.getArtifacts().require("pipeline_selection", "");
+                (PipelineSelectionArtifact) orchestrator.getArtifacts().require("pipeline_selection", "");
             assertThat(selection.getPipelineName()).isEqualTo(MetaEvolvePipeline.NAME);
             entered.set(true);
             return List.of(SessionContext.message("pipeline running"));

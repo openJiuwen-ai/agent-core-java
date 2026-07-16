@@ -6,6 +6,7 @@ package com.openjiuwen.core.runner.spawn;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
@@ -13,14 +14,14 @@ import lombok.Setter;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * Public class ClassAgentSpawnConfig used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Getter
 @Setter
 @EqualsAndHashCode(callSuper = true)
-/**
- * Public class ClassAgentSpawnConfig used by the Java parity implementation.
- *
- * @since 1.0
- */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ClassAgentSpawnConfig extends SpawnAgentConfig {
     @JsonProperty("agent_module")
@@ -30,17 +31,29 @@ public class ClassAgentSpawnConfig extends SpawnAgentConfig {
     private String agentClass;
 
     @JsonProperty("init_kwargs")
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private Map<String, Object> initKwargs = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ClassAgentSpawnConfig.
+     * 
+     * @since 0.1.7
      */
     public ClassAgentSpawnConfig() {
         setAgentKind(SpawnAgentKind.CLASS_AGENT);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ClassAgentSpawnConfig.
+     * 
+     * @param agentModule agentModule
+     * @param agentClass agentClass
+     * @param initKwargs initKwargs
+     * @since 0.1.7
      */
     public ClassAgentSpawnConfig(String agentModule, String agentClass, Map<String, Object> initKwargs) {
         setAgentKind(SpawnAgentKind.CLASS_AGENT);
@@ -50,12 +63,12 @@ public class ClassAgentSpawnConfig extends SpawnAgentConfig {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toPayload.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public Map<String, Object> toPayload() {
         Map<String, Object> result = super.toPayload();
         result.put("agent_module", agentModule);

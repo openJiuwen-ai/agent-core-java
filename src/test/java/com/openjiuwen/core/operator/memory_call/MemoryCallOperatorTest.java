@@ -1,19 +1,8 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.operator.memory_call;
-
-import com.openjiuwen.core.operator.OperatorTestSupport;
-import com.openjiuwen.core.operator.OperatorStream;
-import com.openjiuwen.core.operator.TunableSpec;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -28,11 +17,23 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.openjiuwen.core.operator.OperatorStream;
+import com.openjiuwen.core.operator.OperatorTestSupport;
+import com.openjiuwen.core.operator.TunableSpec;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
 /**
  * Port of Python MemoryCallOperator tests.
  */
 class MemoryCallOperatorTest {
-
     @Test
     @DisplayName("operator id, tunables and state")
     void testMetadataAndState() {
@@ -98,14 +99,12 @@ class MemoryCallOperatorTest {
 
         MemoryCallOperator operator = new MemoryCallOperator(memory);
         operator.setParameter("enabled", false);
-        IllegalStateException disabled = assertThrows(
-                IllegalStateException.class,
+        IllegalStateException disabled = assertThrows(IllegalStateException.class,
                 () -> operator.invoke(Map.of(), new OperatorTestSupport.TrackingSession(), Map.of()));
         assertTrue(disabled.getMessage().contains("disabled"));
 
         MemoryCallOperator missing = new MemoryCallOperator();
-        IllegalStateException noMemory = assertThrows(
-                IllegalStateException.class,
+        IllegalStateException noMemory = assertThrows(IllegalStateException.class,
                 () -> missing.invoke(Map.of(), new OperatorTestSupport.TrackingSession(), Map.of()));
         assertTrue(noMemory.getMessage().contains("no memory"));
 

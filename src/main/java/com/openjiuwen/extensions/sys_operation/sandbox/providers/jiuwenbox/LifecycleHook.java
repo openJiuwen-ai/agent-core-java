@@ -8,17 +8,18 @@ import java.util.Map;
 
 /**
  * Functional interface for sandbox lifecycle event callbacks.
- *
- * @since 2026-01-01
+ * 
  * @version 1.0
+ * @since 0.1.7
  */
 @FunctionalInterface
 public interface LifecycleHook {
     /**
-     * Called when a sandbox lifecycle event occurs.
-     *
-     * @param eventName the lifecycle event name (e.g., "before_create", "after_create", "before_recreate", etc.)
-     * @param context the context map providing event-specific information
+     * onEvent.
+     * 
+     * @param eventName eventName
+     * @param context context
+     * @since 0.1.7
      */
     void onEvent(String eventName, Map<String, Object> context);
 }

@@ -10,57 +10,65 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.foundation.prompt.PromptTemplate;
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
 import com.openjiuwen.dev_tools.tune.EvaluatedCase;
-import com.openjiuwen.dev_tools.tune.TuneConstant;
 import com.openjiuwen.dev_tools.tune.TuneUtils;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Instruction optimizer for prompt tuning.
- *
- * <p>Mirrors Python's {@code InstructionOptimizer} in {@code openjiuwen.dev_tools.tune.optimizer.instruction_optimizer}.
+ * <p>
+ * Mirrors Python's {@code InstructionOptimizer} in {@code openjiuwen.dev_tools.tune.optimizer.instruction_optimizer}.
+ * 
+ * @since 0.1.7
  */
 public class InstructionOptimizer extends BaseOptimizer {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * model.
+     * 
+     * @since 0.1.7
      */
     protected final Model model;
 
     /**
      * Creates an InstructionOptimizer.
-     *
+     * 
      * @param modelConfig the model request configuration
      * @param modelClientConfig the model client configuration
      * @param parameters the LLM call parameters
+     * @since 0.1.7
      */
-    public InstructionOptimizer(ModelRequestConfig modelConfig,
-                                ModelClientConfig modelClientConfig,
-                                Map<String, LLMCall> parameters) {
+    public InstructionOptimizer(ModelRequestConfig modelConfig, ModelClientConfig modelClientConfig,
+            Map<String, LLMCall> parameters) {
         this(new Model(modelClientConfig, modelConfig), parameters);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * InstructionOptimizer.
+     * 
+     * @param model model
+     * @param parameters parameters
+     * @since 0.1.7
      */
     protected InstructionOptimizer(Model model, Map<String, LLMCall> parameters) {
         super(parameters);
         this.model = model;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * doBackward.
+     * 
+     * @param evaluatedCases evaluatedCases
+     * @since 0.1.7
      */
+    @Override
     protected void doBackward(List<EvaluatedCase> evaluatedCases) {
         for (Map.Entry<String, TextualParameter> entry : parameters.entrySet()) {
             String name = entry.getKey();
             TextualParameter param = entry.getValue();
-            
+
             String textualGradient = getTextualGradient(name, param);
             if (!param.getLlmCall().getFreezeSystemPrompt()) {
                 param.setGradient("system_prompt", textualGradient);
@@ -71,51 +79,65 @@ public class InstructionOptimizer extends BaseOptimizer {
         }
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * doUpdate.
+     * 
+     * @since 0.1.7
      */
+    @Override
     protected void doUpdate() {
         for (Map.Entry<String, TextualParameter> entry : parameters.entrySet()) {
             TextualParameter param = entry.getValue();
-            
+
             boolean freezeSystem = param.getLlmCall().getFreezeSystemPrompt();
             boolean freezeUser = param.getLlmCall().getFreezeUserPrompt();
-            
+
             if (!freezeSystem && !freezeUser) {
                 optimizeBothSystemAndUserPrompt(param);
             } else if (!freezeSystem) {
                 optimizeSystemOrUserPrompt(param, "system_prompt");
             } else if (!freezeUser) {
                 optimizeSystemOrUserPrompt(param, "user_prompt");
+            } else {
+                // no-op
             }
         }
     }
 
+    /**
+     * optimizeBothSystemAndUserPrompt.
+     * 
+     * @param param param
+     * @since 0.1.7
+     */
     private void optimizeBothSystemAndUserPrompt(TextualParameter param) {
         String systemPrompt = TuneUtils.getContentStringFromTemplate(param.getLlmCall().getSystemPrompt());
         String userPrompt = TuneUtils.getContentStringFromTemplate(param.getLlmCall().getUserPrompt());
         String gradient = param.getGradient("system_prompt").orElse("");
-        
+
         // Use model to optimize prompts
         String optimizedSystemPrompt = optimizePrompt(systemPrompt, gradient);
         String optimizedUserPrompt = optimizePrompt(userPrompt, gradient);
-        
+
         param.getLlmCall().updateSystemPrompt(optimizedSystemPrompt);
         param.getLlmCall().updateUserPrompt(optimizedUserPrompt);
     }
 
+    /**
+     * optimizeSystemOrUserPrompt.
+     * 
+     * @param param param
+     * @param promptType promptType
+     * @since 0.1.7
+     */
     private void optimizeSystemOrUserPrompt(TextualParameter param, String promptType) {
         PromptTemplate targetPrompt = promptType.equals("system_prompt")
                 ? param.getLlmCall().getSystemPrompt()
                 : param.getLlmCall().getUserPrompt();
         String gradient = param.getGradient(promptType).orElse("");
-        
-        String optimizedPrompt = optimizePrompt(
-                TuneUtils.getContentStringFromTemplate(targetPrompt), 
-                gradient
-        );
-        
+
+        String optimizedPrompt = optimizePrompt(TuneUtils.getContentStringFromTemplate(targetPrompt), gradient);
+
         if (promptType.equals("system_prompt")) {
             param.getLlmCall().updateSystemPrompt(optimizedPrompt);
         } else {
@@ -124,31 +146,37 @@ public class InstructionOptimizer extends BaseOptimizer {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTextualGradient.
+     * 
+     * @param name name
+     * @param param param
+     * @return the result
+     * @since 0.1.7
      */
     protected String getTextualGradient(String name, TextualParameter param) {
         String systemPrompt = TuneUtils.getContentStringFromTemplate(param.getLlmCall().getSystemPrompt());
         String userPrompt = TuneUtils.getContentStringFromTemplate(param.getLlmCall().getUserPrompt());
         String badCasesString = getBadCasesString();
-        
-        String prompt = String.format(
-                CREATE_TEXTUAL_GRADIENT_TEMPLATE,
-                systemPrompt, userPrompt, badCasesString
-        );
+
+        String prompt = String.format(CREATE_TEXTUAL_GRADIENT_TEMPLATE, systemPrompt, userPrompt, badCasesString);
 
         try {
-            return model.invoke(prompt, null, null, null, null, null, null, null, null, null)
-                    .getContentAsString();
+            return model.invoke(prompt, null, null, null, null, null, null, null, null, null).getContentAsString();
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate textual gradient", e);
         }
     }
 
+    /**
+     * optimizePrompt.
+     * 
+     * @param prompt prompt
+     * @param gradient gradient
+     * @return the result
+     * @since 0.1.7
+     */
     private String optimizePrompt(String prompt, String gradient) {
-        String optimizationPrompt = String.format(
-                PROMPT_OPTIMIZE_TEMPLATE,
-                prompt, getBadCasesString(), gradient
-        );
+        String optimizationPrompt = String.format(PROMPT_OPTIMIZE_TEMPLATE, prompt, getBadCasesString(), gradient);
         try {
             String response = model.invoke(optimizationPrompt, null, null, null, null, null, null, null, null, null)
                     .getContentAsString();
@@ -158,20 +186,30 @@ public class InstructionOptimizer extends BaseOptimizer {
         }
     }
 
+    /**
+     * getBadCasesString.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private String getBadCasesString() {
         StringBuilder sb = new StringBuilder();
         for (EvaluatedCase evalCase : badCases) {
-            sb.append(String.format(
-                    "[question]: %s\n[expected answer]: %s\n[assistant answer]: %s\n[reason]: %s\n===\n",
-                    evalCase.getInputs(),
-                    evalCase.getLabel(),
-                    evalCase.getAnswer(),
-                    evalCase.getReason()
-            ));
+            sb.append(
+                    String.format("[question]: %s\n[expected answer]: %s\n[assistant answer]: %s\n[reason]: %s\n===\n",
+                            evalCase.getInputs(), evalCase.getLabel(), evalCase.getAnswer(), evalCase.getReason()));
         }
         return sb.toString();
     }
 
+    /**
+     * extractOptimizedPrompt.
+     * 
+     * @param response response
+     * @param tag tag
+     * @return the result
+     * @since 0.1.7
+     */
     private static String extractOptimizedPrompt(String response, String tag) {
         Pattern pattern = Pattern.compile("<" + tag + ">(.*?)</" + tag + ">", Pattern.DOTALL);
         Matcher matcher = pattern.matcher(response);
@@ -184,31 +222,31 @@ public class InstructionOptimizer extends BaseOptimizer {
     // Template constants
     private static final String CREATE_TEXTUAL_GRADIENT_TEMPLATE = """
             作为提示词优化专家，分析以下提示词在错误实例中的问题：
-            
+
             System提示词：
             %s
-            
+
             User提示词：
             %s
-            
+
             错误实例：
             %s
-            
+
             请分析指令可能出错的原因并提供改进建议。
             """;
 
     private static final String PROMPT_OPTIMIZE_TEMPLATE = """
             作为提示词优化专家，优化以下提示词：
-            
+
             原始提示词：
             %s
-            
+
             错误实例：
             %s
-            
+
             分析反馈：
             %s
-            
+
             请输出优化后的提示词。
             """;
 }

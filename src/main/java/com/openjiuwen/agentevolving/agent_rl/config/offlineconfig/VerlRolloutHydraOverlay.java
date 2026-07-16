@@ -5,11 +5,14 @@
 package com.openjiuwen.agentevolving.agent_rl.config.offlineconfig;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
  * Mirrors Python's openjiuwen.agent_evolving.agent_rl.config.offlineconfig.VerlRolloutHydraOverlay.
+ * 
+ * @since 0.1.7
  */
 @Data
 @NoArgsConstructor
@@ -21,23 +24,58 @@ public class VerlRolloutHydraOverlay {
     private boolean isEnforceEager = true;
     private double gpuMemoryUtilization = 0.7;
     private boolean isEnableChunkedPrefill = false;
+
+    /**
+     * VerlRolloutMultiTurnHydraOverlay.
+     * 
+     * @since 0.1.7
+     */
     private VerlRolloutMultiTurnHydraOverlay multiTurn = new VerlRolloutMultiTurnHydraOverlay();
+
+    /**
+     * VerlEngineKwargsHydraOverlay.
+     * 
+     * @since 0.1.7
+     */
     private VerlEngineKwargsHydraOverlay engineKwargs = new VerlEngineKwargsHydraOverlay();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getGpu_memory_utilization.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public double getGpu_memory_utilization() { return getGpuMemoryUtilization(); }
+    public double getGpu_memory_utilization() {
+        return getGpuMemoryUtilization();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * isEnable_chunked_prefill.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public boolean isEnable_chunked_prefill() { return isEnableChunkedPrefill(); }
+    public boolean isEnable_chunked_prefill() {
+        return isEnableChunkedPrefill();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getMulti_turn.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public VerlRolloutMultiTurnHydraOverlay getMulti_turn() { return getMultiTurn(); }
+    public VerlRolloutMultiTurnHydraOverlay getMulti_turn() {
+        return getMultiTurn();
+    }
+
     /**
-     * Auto-generated for codecheck compliance.
+     * getEngine_kwargs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
-    public VerlEngineKwargsHydraOverlay getEngine_kwargs() { return getEngineKwargs(); }
+    public VerlEngineKwargsHydraOverlay getEngine_kwargs() {
+        return getEngineKwargs();
+    }
 }

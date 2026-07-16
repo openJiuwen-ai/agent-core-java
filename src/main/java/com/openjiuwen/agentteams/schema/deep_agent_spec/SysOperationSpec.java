@@ -7,6 +7,7 @@ package com.openjiuwen.agentteams.schema.deep_agent_spec;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -15,13 +16,14 @@ import lombok.NoArgsConstructor;
 /**
  * Serializable system operation specification.
  * Mirrors Python SysOperationSpec.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class SysOperationSpec {
-
     private String id;
     @Builder.Default
     private OperationMode mode = OperationMode.LOCAL;

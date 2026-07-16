@@ -17,6 +17,8 @@ import java.util.Map;
 
 /**
  * Budget rail: monitors session time/cost and records CI iteration boundaries.
+ * 
+ * @since 0.1.7
  */
 public class BudgetRail extends DeepAgentRail implements TaskIterationRail {
     private static final double INPUT_COST_PER_TOKEN = 3e-6;
@@ -27,19 +29,22 @@ public class BudgetRail extends DeepAgentRail implements TaskIterationRail {
     private int iterationCompletions;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * BudgetRail.
+     * 
+     * @param budget budget
+     * @since 0.1.7
      */
     public BudgetRail(SessionBudgetController budget) {
         this.budget = budget;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * beforeToolCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void beforeToolCall(AgentCallbackContext ctx) {
         if (budget.shouldStop()) {
             ctx.requestForceFinish(Map.of("reason", "Session budget exceeded"));
@@ -47,12 +52,12 @@ public class BudgetRail extends DeepAgentRail implements TaskIterationRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterModelCall.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void afterModelCall(AgentCallbackContext ctx) {
         if (!(ctx.getInputs() instanceof ModelCallInputs inputs) || inputs.getResponse() == null) {
             return;
@@ -61,8 +66,7 @@ public class BudgetRail extends DeepAgentRail implements TaskIterationRail {
         if (usage == null) {
             return;
         }
-        double cost = usage.getInputTokens() * INPUT_COST_PER_TOKEN
-                + usage.getOutputTokens() * OUTPUT_COST_PER_TOKEN;
+        double cost = usage.getInputTokens() * INPUT_COST_PER_TOKEN + usage.getOutputTokens() * OUTPUT_COST_PER_TOKEN;
         if (cost > 0) {
             budget.addCost(cost);
         }
@@ -72,37 +76,53 @@ public class BudgetRail extends DeepAgentRail implements TaskIterationRail {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * beforeTaskIteration.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     public void beforeTaskIteration(AgentCallbackContext ctx) {
         iterationStarts++;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * afterTaskIteration.
+     * 
+     * @param ctx ctx
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void afterTaskIteration(TaskIterationContext ctx) {
         iterationCompletions++;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * iterationStarts.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int iterationStarts() {
         return iterationStarts;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * iterationCompletions.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int iterationCompletions() {
         return iterationCompletions;
     }
 
+    /**
+     * usageMetadata.
+     * 
+     * @param response response
+     * @return the result
+     * @since 0.1.7
+     */
     private static UsageMetadata usageMetadata(Object response) {
         if (response instanceof AssistantMessage assistantMessage) {
             return assistantMessage.getUsageMetadata();

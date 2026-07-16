@@ -13,6 +13,8 @@ import java.util.function.Function;
  * <p>
  * A router receives some context and returns either a single target node ID (Hashable)
  * or a list of target node IDs.
+ * 
+ * @since 0.1.7
  */
 @FunctionalInterface
 public interface Router extends Function<Object, Object> {

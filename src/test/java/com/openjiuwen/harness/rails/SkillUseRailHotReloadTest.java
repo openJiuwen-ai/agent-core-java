@@ -1,10 +1,13 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.harness.rails;
 
-import com.openjiuwen.core.singleagent.skills.Skill;
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.openjiuwen.core.singleagent.skills.SkillManager;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -15,17 +18,15 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 /**
  * Compatibility tests for SkillUseRail hot-reload functionality.
- *
- * <p>Tests the core hot-reload mechanisms: signature comparison,
+ * <p>
+ * Tests the core hot-reload mechanisms: signature comparison,
  * incremental refresh, enableCache toggle, and skill lifecycle
- * (add/modify/delete without restart).</p>
+ * (add/modify/delete without restart).
+ * </p>
  */
 class SkillUseRailHotReloadTest {
-
     private SkillManager manager;
 
     @BeforeEach
@@ -190,8 +191,7 @@ class SkillUseRailHotReloadTest {
 
     @Test
     void testSkillUseRailConstructorWithEnableCache() {
-        SkillUseRail rail = new SkillUseRail(
-                List.of("/skills"), "all", List.of(), List.of(), List.of(), false);
+        SkillUseRail rail = new SkillUseRail(List.of("/skills"), "all", List.of(), List.of(), List.of(), false);
         assertThat(rail.configuredSkillDirectories()).containsExactly("/skills");
         assertThat(rail.skillMode()).isEqualTo("all");
 
@@ -220,12 +220,17 @@ class SkillUseRailHotReloadTest {
     }
 
     static boolean signaturesEqual(List<Map.Entry<String, Long>> a, List<Map.Entry<String, Long>> b) {
-        if (a == null && b == null) return true;
-        if (a == null || b == null) return false;
-        if (a.size() != b.size()) return false;
+        if (a == null && b == null) {
+            return true;
+        }
+        if (a == null || b == null) {
+            return false;
+        }
+        if (a.size() != b.size()) {
+            return false;
+        }
         for (int i = 0; i < a.size(); i++) {
-            if (!a.get(i).getKey().equals(b.get(i).getKey())
-                    || a.get(i).getValue() != b.get(i).getValue()) {
+            if (!a.get(i).getKey().equals(b.get(i).getKey()) || a.get(i).getValue() != b.get(i).getValue()) {
                 return false;
             }
         }

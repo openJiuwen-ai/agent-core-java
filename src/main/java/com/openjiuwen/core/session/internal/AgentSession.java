@@ -29,9 +29,10 @@ import java.util.Map;
  * callback manager, tracer, and checkpointer.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.internal.agent.AgentSession}.
+ * 
+ * @since 0.1.7
  */
 public class AgentSession extends BaseSession {
-
     private final String sessionId;
     private final Config configField;
     private final AgentStateCollection stateField;
@@ -44,11 +45,12 @@ public class AgentSession extends BaseSession {
 
     /**
      * Create a new AgentSession.
-     *
-     * @param sessionId    the unique session identifier
-     * @param config       the session config (nullable)
+     * 
+     * @param sessionId the unique session identifier
+     * @param config the session config (nullable)
      * @param checkpointer an explicit checkpointer, or null to use factory default
-     * @param card         the agent card (nullable)
+     * @param card the agent card (nullable)
+     * @since 0.1.7
      */
     public AgentSession(String sessionId, Config config, Checkpointer checkpointer, Object card) {
         this(sessionId, config, checkpointer, card, null);
@@ -56,15 +58,16 @@ public class AgentSession extends BaseSession {
 
     /**
      * Create a new AgentSession with explicit stream modes.
-     *
-     * @param sessionId    the unique session identifier
-     * @param config       the session config (nullable)
+     * 
+     * @param sessionId the unique session identifier
+     * @param config the session config (nullable)
      * @param checkpointer an explicit checkpointer, or null to use factory default
-     * @param card         the agent card (nullable)
-     * @param streamModes  explicit enabled stream modes, null to use defaults
+     * @param card the agent card (nullable)
+     * @param streamModes explicit enabled stream modes, null to use defaults
+     * @since 0.1.7
      */
     public AgentSession(String sessionId, Config config, Checkpointer checkpointer, Object card,
-                        List<StreamMode> streamModes) {
+            List<StreamMode> streamModes) {
         this.sessionId = sessionId;
         this.configField = config;
         this.stateField = new AgentStateCollection();
@@ -75,9 +78,7 @@ public class AgentSession extends BaseSession {
         tracer.init(this.streamWriterManagerField, this.callbackManagerField);
         this.tracerField = tracer;
 
-        this.checkpointerField = checkpointer != null
-                ? checkpointer
-                : CheckpointerFactory.getCheckpointer();
+        this.checkpointerField = checkpointer != null ? checkpointer : CheckpointerFactory.getCheckpointer();
 
         this.agentSpan = tracer.getTracerAgentSpanManager().createAgentSpan(null);
         this.card = card;
@@ -85,6 +86,11 @@ public class AgentSession extends BaseSession {
 
     /**
      * Convenience constructor without card.
+     * 
+     * @param sessionId sessionId
+     * @param config config
+     * @param checkpointer checkpointer
+     * @since 0.1.7
      */
     public AgentSession(String sessionId, Config config, Checkpointer checkpointer) {
         this(sessionId, config, checkpointer, null);
@@ -92,6 +98,10 @@ public class AgentSession extends BaseSession {
 
     /**
      * Convenience constructor with defaults.
+     * 
+     * @param sessionId sessionId
+     * @param config config
+     * @since 0.1.7
      */
     public AgentSession(String sessionId, Config config) {
         this(sessionId, config, null, null);
@@ -99,76 +109,106 @@ public class AgentSession extends BaseSession {
 
     /**
      * Compatibility constructor for translated tests.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public AgentSession(String sessionId) {
         this(sessionId, new Config(), null, null);
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Config config() {
         return configField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * state.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public State state() {
         return stateField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * tracer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object tracer() {
         return tracerField;
     }
 
     /**
      * Get the tracer (typed).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Tracer tracerTyped() {
         return tracerField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * streamWriterManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public StreamWriterManager streamWriterManager() {
         return streamWriterManagerField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * callbackManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public CallbackManager callbackManager() {
         return callbackManagerField;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * sessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String sessionId() {
         return sessionId;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * checkpointer.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public Object checkpointer() {
         return checkpointerField;
     }
 
     /**
      * Get the checkpointer (typed).
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Checkpointer checkpointerTyped() {
         return checkpointerField;
@@ -176,22 +216,21 @@ public class AgentSession extends BaseSession {
 
     /**
      * Get the agent span for this session.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TraceAgentSpan span() {
         return agentSpan;
     }
 
     /**
-     * Create a workflow session from this agent session.
-     * <p>
-     * The workflow session shares the agent's global state.
-     *
-     * @return a new WorkflowSession
+     * createWorkflowSession.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public WorkflowSession createWorkflowSession() {
         Map<String, Object> globalData = (Map<String, Object>) stateField.getGlobal(null);
         WorkflowCommitState workflowState = InMemoryState.create(null, globalData, null, null, null);
@@ -200,8 +239,9 @@ public class AgentSession extends BaseSession {
 
     /**
      * Get the agent ID from config or card.
-     *
+     * 
      * @return agent ID
+     * @since 0.1.7
      */
     public String agentId() {
         if (configField != null) {
@@ -219,8 +259,9 @@ public class AgentSession extends BaseSession {
 
     /**
      * Get the agent name from the card.
-     *
+     * 
      * @return agent name or null
+     * @since 0.1.7
      */
     public String agentName() {
         if (card instanceof com.openjiuwen.core.common.schema.BaseCard baseCard) {
@@ -231,8 +272,9 @@ public class AgentSession extends BaseSession {
 
     /**
      * Get the agent description from the card.
-     *
+     * 
      * @return agent description or null
+     * @since 0.1.7
      */
     public String agentDescription() {
         if (card instanceof com.openjiuwen.core.common.schema.BaseCard baseCard) {

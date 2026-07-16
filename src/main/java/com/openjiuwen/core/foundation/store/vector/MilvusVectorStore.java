@@ -10,25 +10,27 @@ import java.util.Map;
 
 /**
  * Foundation-store Milvus adapter.
+ * 
+ * @since 0.1.7
  */
 public class MilvusVectorStore extends AbstractRetrievalVectorStoreAdapter {
-
     /**
-     * Auto-generated for codecheck compliance.
+     * MilvusVectorStore.
+     * 
+     * @param options options
+     * @since 0.1.7
      */
     public MilvusVectorStore(Map<String, Object> options) {
         super(new com.openjiuwen.core.retrieval.vector_store.MilvusVectorStore(
-                new VectorStoreConfig(
-                        "milvus",
+                new VectorStoreConfig("milvus",
                         InMemoryVectorStore.stringOption(options, "database_name", "databaseName", "default"),
-                        InMemoryVectorStore.stringOption(options, "collection_name", "collectionName", "default_collection"),
-                        InMemoryVectorStore.stringOption(options, "distance_metric", "distanceMetric", "cosine")
-                ),
+                        InMemoryVectorStore.stringOption(options, "collection_name", "collectionName",
+                                "default_collection"),
+                        InMemoryVectorStore.stringOption(options, "distance_metric", "distanceMetric", "cosine")),
                 InMemoryVectorStore.stringOption(options, "milvus_uri", "milvusUri", ""),
                 options != null && (options.containsKey("milvus_token") || options.containsKey("milvusToken"))
                         ? InMemoryVectorStore.stringOption(options, "milvus_token", "milvusToken", null)
                         : null,
-                InMemoryVectorStore.indexType(options)
-        ));
+                InMemoryVectorStore.indexType(options)));
     }
 }

@@ -13,9 +13,10 @@ import java.util.Map;
  * Component execution parameters encapsulation.
  * <p>
  * Mirrors Python's {@code ComponentExecutionParams} dataclass from {@code _workflow.py}.
+ * 
+ * @since 0.1.7
  */
 public class ComponentExecutionParams {
-
     private final String nodeId;
     private final NodeSessionApi session;
     private final ComponentExecutable executor;
@@ -25,15 +26,20 @@ public class ComponentExecutionParams {
     private final ModelContext context;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ComponentExecutionParams.
+     * 
+     * @param nodeId nodeId
+     * @param session session
+     * @param executor executor
+     * @param inputs inputs
+     * @param inputsSchema inputsSchema
+     * @param outputsSchema outputsSchema
+     * @param context context
+     * @since 0.1.7
      */
-    public ComponentExecutionParams(String nodeId,
-                                    NodeSessionApi session,
-                                    ComponentExecutable executor,
-                                    Map<String, Object> inputs,
-                                    Map<String, Object> inputsSchema,
-                                    Map<String, Object> outputsSchema,
-                                    ModelContext context) {
+    public ComponentExecutionParams(String nodeId, NodeSessionApi session, ComponentExecutable executor,
+            Map<String, Object> inputs, Map<String, Object> inputsSchema, Map<String, Object> outputsSchema,
+            ModelContext context) {
         this.nodeId = nodeId;
         this.session = session;
         this.executor = executor;
@@ -44,59 +50,84 @@ public class ComponentExecutionParams {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ComponentExecutionParams.
+     * 
+     * @param nodeId nodeId
+     * @param session session
+     * @param executor executor
+     * @param inputs inputs
+     * @since 0.1.7
      */
-    public ComponentExecutionParams(String nodeId,
-                                    NodeSessionApi session,
-                                    ComponentExecutable executor,
-                                    Map<String, Object> inputs) {
+    public ComponentExecutionParams(String nodeId, NodeSessionApi session, ComponentExecutable executor,
+            Map<String, Object> inputs) {
         this(nodeId, session, executor, inputs, null, null, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNodeId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getNodeId() {
         return nodeId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSession.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public NodeSessionApi getSession() {
         return session;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExecutor.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ComponentExecutable getExecutor() {
         return executor;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getInputs() {
         return inputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputsSchema.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getInputsSchema() {
         return inputsSchema;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOutputsSchema.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getOutputsSchema() {
         return outputsSchema;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContext.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public ModelContext getContext() {
         return context;

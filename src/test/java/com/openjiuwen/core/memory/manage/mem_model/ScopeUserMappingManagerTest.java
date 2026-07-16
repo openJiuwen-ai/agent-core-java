@@ -1,20 +1,22 @@
+
 package com.openjiuwen.core.memory.manage.mem_model;
-
-import com.openjiuwen.core.memory.support.TestDbStore;
-import org.h2.jdbcx.JdbcDataSource;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
-import javax.sql.DataSource;
-import java.util.List;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ScopeUserMappingManagerTest {
+import com.openjiuwen.core.memory.support.TestDbStore;
 
+import org.h2.jdbcx.JdbcDataSource;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.UUID;
+
+import javax.sql.DataSource;
+
+class ScopeUserMappingManagerTest {
     private ScopeUserMappingManager manager;
 
     @BeforeEach

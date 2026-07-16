@@ -14,24 +14,26 @@ import java.util.Map;
  * Each provider declares which {@code typeName()} it supports.
  * Service adapters can also register providers programmatically via
  * {@link VectorStoreFactory#register(String, VectorStoreProvider)}.
- *
- * @since 0.1.12
+ * 
  * @see VectorStoreFactory
  * @see BaseVectorStore
+ * @since 0.1.7
  */
 public interface VectorStoreProvider {
     /**
-     * The store type name this provider handles (e.g., "milvus", "chroma").
-     *
-     * @return the type name for registration
+     * typeName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     String typeName();
 
     /**
      * Create a vector store with the given configuration.
-     *
+     * 
      * @param conf the configuration map
      * @return a new BaseVectorStore instance
+     * @since 0.1.7
      */
     BaseVectorStore create(Map<String, Object> conf);
 }

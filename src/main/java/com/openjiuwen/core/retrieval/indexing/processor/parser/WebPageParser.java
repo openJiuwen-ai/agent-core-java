@@ -22,57 +22,104 @@ import java.util.regex.Pattern;
 
 /**
  * Generic web page parser.
+ * 
+ * @since 0.1.7
  */
 public class WebPageParser extends Parser {
-
     private static final Pattern HTTP_URL_PATTERN = Pattern.compile("^https?://.+", Pattern.CASE_INSENSITIVE);
+
     /**
-     * Auto-generated for codecheck compliance.
+     * TITLE_META_PATTERN.
+     * 
+     * @since 0.1.7
      */
-    protected static final Pattern TITLE_META_PATTERN = Pattern.compile(
-            "<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)[\"'][^>]*>",
-            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    protected static final Pattern TITLE_META_PATTERN =
+        Pattern.compile("<meta[^>]+property=[\"']og:title[\"'][^>]+content=[\"']([^\"']+)[\"'][^>]*>",
+                Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
     /**
-     * Auto-generated for codecheck compliance.
+     * TITLE_PATTERN.
+     * 
+     * @since 0.1.7
      */
-    protected static final Pattern TITLE_PATTERN = Pattern.compile(
-            "<title[^>]*>(.*?)</title>",
-            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-    private static final Pattern ARTICLE_PATTERN = Pattern.compile(
-            "<article[^>]*>(.*?)</article>",
-            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-    private static final Pattern BODY_PATTERN = Pattern.compile(
-            "<body[^>]*>(.*?)</body>",
-            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-    private static final Pattern SCRIPT_STYLE_PATTERN = Pattern.compile(
-            "<(script|style)[^>]*>.*?</\\1>",
-            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+    protected static final Pattern TITLE_PATTERN =
+        Pattern.compile("<title[^>]*>(.*?)</title>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern ARTICLE_PATTERN =
+        Pattern.compile("<article[^>]*>(.*?)</article>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern BODY_PATTERN =
+        Pattern.compile("<body[^>]*>(.*?)</body>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
+    private static final Pattern SCRIPT_STYLE_PATTERN =
+        Pattern.compile("<(script|style)[^>]*>.*?</\\1>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern TAG_PATTERN = Pattern.compile("<[^>]+>");
+
+    /**
+     * Pattern.compile.
+     * 
+     * @since 0.1.7
+     */
     private static final Pattern WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
     /**
-     * Auto-generated for codecheck compliance.
+     * httpClient.
+     * 
+     * @since 0.1.7
      */
     protected final HttpClient httpClient;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WebPageParser.
+     * 
+     * @since 0.1.7
      */
     public WebPageParser() {
         this(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * WebPageParser.
+     * 
+     * @param httpClient httpClient
+     * @since 0.1.7
      */
     public WebPageParser(HttpClient httpClient) {
         this.httpClient = httpClient;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parse.
+     * 
+     * @param doc doc
+     * @param docId docId
+     * @param llmClient llmClient
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public List<Document> parse(String doc, String docId, BaseModelClient llmClient, Map<String, Object> options) {
         if (WeChatArticleParser.isWechatArticleUrl(doc)) {
             throw RetrievalExceptions.validation("Use WeChatArticleParser for WeChat URLs");
@@ -87,35 +134,45 @@ public class WebPageParser extends Parser {
         return List.of(new Document(docId, text, metadata));
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * parseContent.
+     * 
+     * @param doc doc
+     * @param llmClient llmClient
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     protected String parseContent(String doc, BaseModelClient llmClient, Map<String, Object> options) {
         return null;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * supports.
+     * 
+     * @param doc doc
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public boolean supports(String doc) {
-        return doc != null
-                && HTTP_URL_PATTERN.matcher(doc.trim()).matches()
+        return doc != null && HTTP_URL_PATTERN.matcher(doc.trim()).matches()
                 && !WeChatArticleParser.isWechatArticleUrl(doc);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fetchHtml.
+     * 
+     * @param url url
+     * @return the result
+     * @since 0.1.7
      */
     protected String fetchHtml(String url) {
         try {
-            HttpResponse<String> response = httpClient.send(
-                    HttpRequest.newBuilder(URI.create(url))
-                            .GET()
-                            .timeout(Duration.ofSeconds(30))
-                            .build(),
-                    HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response =
+                httpClient.send(HttpRequest.newBuilder(URI.create(url)).GET().timeout(Duration.ofSeconds(30)).build(),
+                        HttpResponse.BodyHandlers.ofString());
             return response.body();
         } catch (IOException | InterruptedException ex) {
             if (ex instanceof InterruptedException) {
@@ -126,7 +183,12 @@ public class WebPageParser extends Parser {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extractReadableText.
+     * 
+     * @param html html
+     * @param preferredPattern preferredPattern
+     * @return the result
+     * @since 0.1.7
      */
     protected static String extractReadableText(String html, Pattern preferredPattern) {
         String body = extractFirst(html, preferredPattern, extractFirst(html, BODY_PATTERN, html));
@@ -136,7 +198,13 @@ public class WebPageParser extends Parser {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * extractFirst.
+     * 
+     * @param html html
+     * @param pattern pattern
+     * @param fallback fallback
+     * @return the result
+     * @since 0.1.7
      */
     protected static String extractFirst(String html, Pattern pattern, String fallback) {
         if (html == null) {

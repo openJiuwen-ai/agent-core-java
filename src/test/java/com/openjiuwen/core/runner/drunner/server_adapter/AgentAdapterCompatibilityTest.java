@@ -1,13 +1,13 @@
+
 package com.openjiuwen.core.runner.drunner.server_adapter;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class AgentAdapterCompatibilityTest {
-
     @Test
     void agentAdapterShouldBuildTopicFromAgentIdAndVersion() throws Exception {
         AgentAdapter adapter = new AgentAdapter("agent-1", "v1");

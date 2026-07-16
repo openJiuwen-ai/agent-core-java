@@ -6,6 +6,8 @@ package com.openjiuwen.core.memory.migration.operation;
 
 /**
  * Rename a scalar field in a vector data type.
+ * 
+ * @since 0.1.7
  */
 public class RenameScalarFieldOperation extends BaseOperation {
     private final String dataType;
@@ -13,10 +15,16 @@ public class RenameScalarFieldOperation extends BaseOperation {
     private final String newFieldName;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * RenameScalarFieldOperation.
+     * 
+     * @param metadata metadata
+     * @param dataType dataType
+     * @param oldFieldName oldFieldName
+     * @param newFieldName newFieldName
+     * @since 0.1.7
      */
-    public RenameScalarFieldOperation(OperationMetadata metadata, String dataType,
-                                      String oldFieldName, String newFieldName) {
+    public RenameScalarFieldOperation(OperationMetadata metadata, String dataType, String oldFieldName,
+            String newFieldName) {
         super(metadata);
         this.dataType = dataType;
         this.oldFieldName = oldFieldName;
@@ -24,21 +32,30 @@ public class RenameScalarFieldOperation extends BaseOperation {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDataType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDataType() {
         return dataType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOldFieldName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getOldFieldName() {
         return oldFieldName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getNewFieldName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getNewFieldName() {
         return newFieldName;

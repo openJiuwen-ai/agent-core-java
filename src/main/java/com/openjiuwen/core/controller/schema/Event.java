@@ -13,22 +13,25 @@ import java.util.UUID;
  * <p>
  * Base class for all events, with specialized subclasses:
  * <ul>
- *   <li>{@link InputEvent} - user input event</li>
- *   <li>{@link TaskInteractionEvent} - task interaction event</li>
- *   <li>{@link TaskCompletionEvent} - task completion event</li>
- *   <li>{@link TaskFailedEvent} - task failed event</li>
+ * <li>{@link InputEvent} - user input event</li>
+ * <li>{@link TaskInteractionEvent} - task interaction event</li>
+ * <li>{@link TaskCompletionEvent} - task completion event</li>
+ * <li>{@link TaskFailedEvent} - task failed event</li>
  * </ul>
  * <p>
  * Mirrors Python's {@code Event} base class and its subclasses.
+ * 
+ * @since 0.1.7
  */
 public class Event {
-
     private EventType eventType;
     private String eventId;
     private Map<String, Object> metadata;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Event.
+     * 
+     * @since 0.1.7
      */
     public Event() {
         this.eventId = UUID.randomUUID().toString();
@@ -36,7 +39,10 @@ public class Event {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Event.
+     * 
+     * @param eventType eventType
+     * @since 0.1.7
      */
     public Event(EventType eventType) {
         this();
@@ -44,42 +50,60 @@ public class Event {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEventType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public EventType getEventType() {
         return eventType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEventType.
+     * 
+     * @param eventType eventType
+     * @since 0.1.7
      */
     public void setEventType(EventType eventType) {
         this.eventType = eventType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEventId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getEventId() {
         return eventId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setEventId.
+     * 
+     * @param eventId eventId
+     * @since 0.1.7
      */
     public void setEventId(String eventId) {
         this.eventId = eventId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMetadata() {
         return metadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMetadata.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata != null ? metadata : new HashMap<>();

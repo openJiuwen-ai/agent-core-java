@@ -6,6 +6,8 @@ package com.openjiuwen.core.memory.manage.update;
 
 /**
  * Status of memory action.
+ * 
+ * @since 0.1.7
  */
 public enum MemoryStatus {
     ADD("add"),
@@ -18,14 +20,21 @@ public enum MemoryStatus {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromValue.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public static MemoryStatus fromValue(String value) {
         for (MemoryStatus ms : values()) {

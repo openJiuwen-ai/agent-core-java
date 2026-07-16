@@ -13,23 +13,35 @@ import java.util.Map;
 
 /**
  * Mirrors Python's {@code openjiuwen.extensions.context_evolver.schema.io_schema.ReasoningBankMemory}.
+ * 
+ * @since 0.1.7
  */
 public class ReasoningBankMemory {
-
     private String workspaceId = "default";
     private String query;
+
+    /**
+     * ArrayList<>.
+     * 
+     * @since 0.1.7
+     */
     private List<ReasoningBankMemoryItem> memory = new ArrayList<>();
     private Boolean label;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * ReasoningBankMemory.
+     * 
+     * @since 0.1.7
      */
     public ReasoningBankMemory() {
         // Default constructor
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toVectorNode.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public VectorNode toVectorNode() {
         String title = memory.isEmpty() ? "" : memory.get(0).getTitle();
@@ -39,16 +51,15 @@ public class ReasoningBankMemory {
         metadata.put("memory", memory.stream().map(ReasoningBankMemoryItem::toMap).toList());
         metadata.put("label", label);
         metadata.put("workspace_id", workspaceId);
-        return new VectorNode(
-            "reasoning_bank_" + workspaceId + "_" + SchemaUtils.md5Hex(query + "|" + title),
-            query,
-            null,
-            metadata
-        );
+        return new VectorNode("reasoning_bank_" + workspaceId + "_" + SchemaUtils.md5Hex(query + "|" + title), query,
+                null, metadata);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toRetrievedMemories.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<ReasoningBankRetrievedMemory> toRetrievedMemories() {
         List<ReasoningBankRetrievedMemory> result = new ArrayList<>();
@@ -59,7 +70,10 @@ public class ReasoningBankMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * toMap.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> result = new LinkedHashMap<>();
@@ -71,14 +85,22 @@ public class ReasoningBankMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromVectorNode.
+     * 
+     * @param node node
+     * @return the result
+     * @since 0.1.7
      */
     public static ReasoningBankMemory fromVectorNode(VectorNode node) {
         return fromMap(node.getMetadata());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * fromMap.
+     * 
+     * @param data data
+     * @return the result
+     * @since 0.1.7
      */
     public static ReasoningBankMemory fromMap(Map<String, Object> data) {
         ReasoningBankMemory result = new ReasoningBankMemory();
@@ -92,6 +114,8 @@ public class ReasoningBankMemory {
                     result.memory.add(memoryItem);
                 } else if (item instanceof Map<?, ?>) {
                     result.memory.add(ReasoningBankMemoryItem.fromMap(SchemaUtils.mapValue(item)));
+                } else {
+                    // no-op
                 }
             }
         }
@@ -99,56 +123,80 @@ public class ReasoningBankMemory {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkspaceId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getWorkspaceId() {
         return workspaceId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setWorkspaceId.
+     * 
+     * @param workspaceId workspaceId
+     * @since 0.1.7
      */
     public void setWorkspaceId(String workspaceId) {
         this.workspaceId = workspaceId != null && !workspaceId.isBlank() ? workspaceId : "default";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getQuery.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getQuery() {
         return query;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setQuery.
+     * 
+     * @param query query
+     * @since 0.1.7
      */
     public void setQuery(String query) {
         this.query = query;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMemory.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<ReasoningBankMemoryItem> getMemory() {
         return new ArrayList<>(memory);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMemory.
+     * 
+     * @param memory memory
+     * @since 0.1.7
      */
     public void setMemory(List<ReasoningBankMemoryItem> memory) {
         this.memory = memory != null ? new ArrayList<>(memory) : new ArrayList<>();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getLabel.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Boolean getLabel() {
         return label;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setLabel.
+     * 
+     * @param label label
+     * @since 0.1.7
      */
     public void setLabel(Boolean label) {
         this.label = label;

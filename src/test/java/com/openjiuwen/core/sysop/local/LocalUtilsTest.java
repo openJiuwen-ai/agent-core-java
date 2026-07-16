@@ -1,23 +1,21 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.sysop.local;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Path;
 import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for local utility classes.
  */
 class LocalUtilsTest {
-
     @Nested
     @DisplayName("StreamEventType")
     class StreamEventTypeTests {
@@ -37,10 +35,7 @@ class LocalUtilsTest {
         @Test
         @DisplayName("builder creates event with correct fields")
         void testBuilder() {
-            StreamEvent event = StreamEvent.builder()
-                    .type(StreamEventType.STDOUT)
-                    .data("hello world")
-                    .build();
+            StreamEvent event = StreamEvent.builder().type(StreamEventType.STDOUT).data("hello world").build();
             assertEquals(StreamEventType.STDOUT, event.getType());
             assertEquals("hello world", event.getData());
             assertNotNull(event.getTimestamp());
@@ -53,11 +48,7 @@ class LocalUtilsTest {
         @Test
         @DisplayName("builder creates data with correct fields")
         void testBuilder() {
-            InvokeData data = InvokeData.builder()
-                    .stdout("output")
-                    .stderr("")
-                    .exitCode(0)
-                    .build();
+            InvokeData data = InvokeData.builder().stdout("output").stderr("").exitCode(0).build();
             assertEquals("output", data.getStdout());
             assertEquals("", data.getStderr());
             assertEquals(0, data.getExitCode());

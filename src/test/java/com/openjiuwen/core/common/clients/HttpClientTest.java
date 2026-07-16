@@ -1,8 +1,12 @@
+
 package com.openjiuwen.core.common.clients;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -16,10 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HttpClientTest {
-
     private HttpServer server;
 
     @AfterEach
@@ -33,30 +34,10 @@ class HttpClientTest {
 
     @Test
     void sessionConfigKeyShouldBeStable() {
-        SessionConfig first = new SessionConfig(
-                new ConnectorPoolConfig(),
-                Map.of("User-Agent", "Test"),
-                null,
-                30.0,
-                10.0,
-                Map.of("sock_read_timeout", 5),
-                null,
-                false,
-                true,
-                Map.of()
-        );
-        SessionConfig second = new SessionConfig(
-                new ConnectorPoolConfig(),
-                Map.of("User-Agent", "Test"),
-                null,
-                30.0,
-                10.0,
-                Map.of("sock_read_timeout", 5),
-                null,
-                false,
-                true,
-                Map.of()
-        );
+        SessionConfig first = new SessionConfig(new ConnectorPoolConfig(), Map.of("User-Agent", "Test"), null, 30.0,
+                10.0, Map.of("sock_read_timeout", 5), null, false, true, Map.of());
+        SessionConfig second = new SessionConfig(new ConnectorPoolConfig(), Map.of("User-Agent", "Test"), null, 30.0,
+                10.0, Map.of("sock_read_timeout", 5), null, false, true, Map.of());
 
         assertThat(first.generateKey()).isEqualTo(second.generateKey());
     }
@@ -84,18 +65,8 @@ class HttpClientTest {
         server.start();
 
         int port = server.getAddress().getPort();
-        HttpClient client = new HttpClient(new SessionConfig(
-                new ConnectorPoolConfig(),
-                Map.of("User-Agent", "Codex-Test"),
-                null,
-                10.0,
-                null,
-                Map.of(),
-                null,
-                false,
-                true,
-                Map.of()
-        ));
+        HttpClient client = new HttpClient(new SessionConfig(new ConnectorPoolConfig(),
+                Map.of("User-Agent", "Codex-Test"), null, 10.0, null, Map.of(), null, false, true, Map.of()));
 
         Map<String, Object> response = client.get("http://127.0.0.1:" + port + "/json", Map.of("q", "1"));
 
@@ -131,20 +102,15 @@ class HttpClientTest {
     @Test
     void shouldSupportAsyncRequest() throws Exception {
         server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/async", exchange -> writeResponse(exchange, "application/json", "{\"message\":\"async\"}"));
+        server.createContext("/async",
+                exchange -> writeResponse(exchange, "application/json", "{\"message\":\"async\"}"));
         server.start();
 
         int port = server.getAddress().getPort();
         HttpClient client = new HttpClient(new SessionConfig(), true);
 
-        CompletableFuture<Map<String, Object>> future = client.requestAsync(
-                "GET",
-                "http://127.0.0.1:" + port + "/async",
-                null,
-                null,
-                null,
-                Map.of()
-        );
+        CompletableFuture<Map<String, Object>> future =
+            client.requestAsync("GET", "http://127.0.0.1:" + port + "/async", null, null, null, Map.of());
 
         Map<String, Object> response = future.join();
         assertThat(response.get("code")).isEqualTo(200);

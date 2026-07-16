@@ -19,11 +19,14 @@ import java.util.UUID;
 
 /**
  * Local team runtime for Python-style multi-agent communication.
- *
- * <p>This runtime intentionally keeps the first Java parity layer local and
+ * <p>
+ * This runtime intentionally keeps the first Java parity layer local and
  * synchronous: point-to-point dispatch and publish/subscribe routing happen
  * inside the current process, while registered agent cards are still mirrored
- * into {@link Runner#resourceMgr()} for discovery compatibility.</p>
+ * into {@link Runner#resourceMgr()} for discovery compatibility.
+ * </p>
+ * 
+ * @since 0.1.7
  */
 public class TeamRuntime {
     private static final String CALL_DEPTH_KEY = "_team_runtime_call_depth";
@@ -32,27 +35,60 @@ public class TeamRuntime {
     private static final int MAX_DISPATCH_DEPTH = 64;
 
     private final String teamId;
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, AgentCard> agentCards = new LinkedHashMap<>();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, AgentProvider<? extends BaseAgent>> providers = new LinkedHashMap<>();
+
+    /**
+     * SubscriptionManager.
+     * 
+     * @since 0.1.7
+     */
     private final SubscriptionManager subscriptionManager = new SubscriptionManager();
+
+    /**
+     * LinkedHashMap<>.
+     * 
+     * @since 0.1.7
+     */
     private final Map<String, AgentGroupSessionApi> teamSessions = new LinkedHashMap<>();
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamRuntime.
+     * 
+     * @param teamId teamId
+     * @since 0.1.7
      */
     public TeamRuntime(String teamId) {
         this.teamId = teamId != null && !teamId.isBlank() ? teamId : "default";
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * TeamRuntime.
+     * 
+     * @since 0.1.7
      */
     public TeamRuntime() {
         this("default");
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * registerAgent.
+     * 
+     * @param card card
+     * @param provider provider
+     * @since 0.1.7
      */
     public void registerAgent(AgentCard card, AgentProvider<? extends BaseAgent> provider) {
         validateRegistration(card, provider);
@@ -72,7 +108,11 @@ public class TeamRuntime {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * unregisterAgent.
+     * 
+     * @param agentId agentId
+     * @return the result
+     * @since 0.1.7
      */
     public AgentCard unregisterAgent(String agentId) {
         providers.remove(agentId);
@@ -81,28 +121,42 @@ public class TeamRuntime {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * hasAgent.
+     * 
+     * @param agentId agentId
+     * @return the result
+     * @since 0.1.7
      */
     public boolean hasAgent(String agentId) {
         return agentCards.containsKey(agentId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentCard.
+     * 
+     * @param agentId agentId
+     * @return the result
+     * @since 0.1.7
      */
     public AgentCard getAgentCard(String agentId) {
         return agentCards.get(agentId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listAgents.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<String> listAgents() {
         return List.copyOf(agentCards.keySet());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getAgentCount.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getAgentCount() {
         return agentCards.size();
@@ -110,21 +164,26 @@ public class TeamRuntime {
 
     /**
      * Resolve a registered agent instance by ID.
-     *
-     * <p>Exposes the same resolution path used by {@link #send} so team
+     * <p>
+     * Exposes the same resolution path used by {@link #send} so team
      * subclasses (e.g. {@link com.openjiuwen.core.multiagent.teams.handoff.HandoffTeam})
      * can perform pre-invoke setup such as injecting handoff tools into the
-     * agent's {@code AbilityManager}.</p>
-     *
+     * agent's {@code AbilityManager}.
+     * </p>
+     * 
      * @param agentId ID of the agent to resolve.
      * @return resolved agent instance.
+     * @since 0.1.7
      */
     public BaseAgent getAgentInstance(String agentId) {
         return resolveAgent(agentId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * bindTeamSession.
+     * 
+     * @param session session
+     * @since 0.1.7
      */
     public void bindTeamSession(AgentGroupSessionApi session) {
         if (session != null) {
@@ -133,7 +192,10 @@ public class TeamRuntime {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * unbindTeamSession.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public void unbindTeamSession(String sessionId) {
         if (sessionId != null) {
@@ -142,31 +204,36 @@ public class TeamRuntime {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTeamSession.
+     * 
+     * @param sessionId sessionId
+     * @return the result
+     * @since 0.1.7
      */
     public AgentGroupSessionApi getTeamSession(String sessionId) {
         return sessionId == null ? null : teamSessions.get(sessionId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * send.
+     * 
+     * @param message message
+     * @param recipient recipient
+     * @param sender sender
+     * @param sessionId sessionId
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
-    public Object send(Object message, String recipient, String sender,
-                       String sessionId, AgentGroupSessionApi session) {
+    public Object send(Object message, String recipient, String sender, String sessionId,
+            AgentGroupSessionApi session) {
         if (sender == null || sender.isBlank()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_GROUP_EXECUTION_ERROR,
-                    "error_msg", "sender is required for team runtime messages"
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_EXECUTION_ERROR, "error_msg",
+                    "sender is required for team runtime messages");
         }
         BaseAgent agent = resolveAgent(recipient);
-        MessageEnvelope envelope = MessageEnvelope.builder()
-                .messageId(UUID.randomUUID().toString())
-                .message(message)
-                .sender(sender)
-                .recipient(recipient)
-                .sessionId(sessionId)
-                .build();
+        MessageEnvelope envelope = MessageEnvelope.builder().messageId(UUID.randomUUID().toString()).message(message)
+                .sender(sender).recipient(recipient).sessionId(sessionId).build();
         AgentGroupSessionApi resolvedSession = resolveSession(sessionId, session);
         int depth = 0;
         String rootSender = sender;
@@ -189,17 +256,11 @@ public class TeamRuntime {
                 rootRecipient = recipient;
             }
             if (depth >= MAX_DISPATCH_DEPTH) {
-                throw ErrorHelper.buildError(
-                        StatusCode.AGENT_GROUP_EXECUTION_ERROR,
-                        "error_msg", "Message from '" + rootSender + "' to '" + rootRecipient
-                                + "' timed out after Nones"
-                );
+                throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_EXECUTION_ERROR, "error_msg",
+                        "Message from '" + rootSender + "' to '" + rootRecipient + "' timed out after Nones");
             }
-            resolvedSession.updateState(Map.of(
-                    CALL_DEPTH_KEY, depth + 1,
-                    ROOT_SENDER_KEY, rootSender,
-                    ROOT_RECIPIENT_KEY, rootRecipient
-            ));
+            resolvedSession.updateState(
+                    Map.of(CALL_DEPTH_KEY, depth + 1, ROOT_SENDER_KEY, rootSender, ROOT_RECIPIENT_KEY, rootRecipient));
         }
         try {
             if (resolvedSession != null) {
@@ -220,23 +281,22 @@ public class TeamRuntime {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * publish.
+     * 
+     * @param message message
+     * @param topicId topicId
+     * @param sender sender
+     * @param sessionId sessionId
+     * @param session session
+     * @since 0.1.7
      */
-    public void publish(Object message, String topicId, String sender,
-                        String sessionId, AgentGroupSessionApi session) {
+    public void publish(Object message, String topicId, String sender, String sessionId, AgentGroupSessionApi session) {
         if (topicId == null || topicId.isBlank()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_GROUP_EXECUTION_ERROR,
-                    "error_msg", "topic_id is required for publish"
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_EXECUTION_ERROR, "error_msg",
+                    "topic_id is required for publish");
         }
-        MessageEnvelope envelope = MessageEnvelope.builder()
-                .messageId(UUID.randomUUID().toString())
-                .message(message)
-                .sender(sender)
-                .topicId(topicId)
-                .sessionId(sessionId)
-                .build();
+        MessageEnvelope envelope = MessageEnvelope.builder().messageId(UUID.randomUUID().toString()).message(message)
+                .sender(sender).topicId(topicId).sessionId(sessionId).build();
         AgentGroupSessionApi resolvedSession = resolveSession(sessionId, session);
         for (String subscriber : subscriptionManager.getSubscribers(topicId)) {
             if (resolvedSession != null) {
@@ -250,53 +310,74 @@ public class TeamRuntime {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * subscribe.
+     * 
+     * @param agentId agentId
+     * @param topic topic
+     * @since 0.1.7
      */
     public void subscribe(String agentId, String topic) {
         if (!hasAgent(agentId)) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_GROUP_EXECUTION_ERROR,
-                    "error_msg", "Agent '" + agentId + "' is not registered in runtime"
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_EXECUTION_ERROR, "error_msg",
+                    "Agent '" + agentId + "' is not registered in runtime");
         }
         subscriptionManager.subscribe(agentId, topic);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * unsubscribe.
+     * 
+     * @param agentId agentId
+     * @param topic topic
+     * @since 0.1.7
      */
     public void unsubscribe(String agentId, String topic) {
         subscriptionManager.unsubscribe(agentId, topic);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * listSubscriptions.
+     * 
+     * @param agentId agentId
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> listSubscriptions(String agentId) {
         return subscriptionManager.listSubscriptions(agentId);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSubscriptionCount.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getSubscriptionCount() {
         return subscriptionManager.getSubscriptionCount();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTeamId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTeamId() {
         return teamId;
     }
 
+    /**
+     * resolveAgent.
+     * 
+     * @param agentId agentId
+     * @return the result
+     * @since 0.1.7
+     */
     private BaseAgent resolveAgent(String agentId) {
         AgentProvider<? extends BaseAgent> provider = providers.get(agentId);
         if (provider == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_GROUP_EXECUTION_ERROR,
-                    "error_msg", "Recipient '" + agentId + "' not registered in runtime"
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_EXECUTION_ERROR, "error_msg",
+                    "Recipient '" + agentId + "' not registered in runtime");
         }
         BaseAgent agent = provider.get();
         if (agent instanceof CommunicableAgent communicable) {
@@ -305,6 +386,14 @@ public class TeamRuntime {
         return agent;
     }
 
+    /**
+     * resolveSession.
+     * 
+     * @param sessionId sessionId
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private AgentGroupSessionApi resolveSession(String sessionId, AgentGroupSessionApi session) {
         if (session != null) {
             bindTeamSession(session);
@@ -319,24 +408,25 @@ public class TeamRuntime {
         return created;
     }
 
+    /**
+     * validateRegistration.
+     * 
+     * @param card card
+     * @param provider provider
+     * @since 0.1.7
+     */
     private static void validateRegistration(AgentCard card, AgentProvider<? extends BaseAgent> provider) {
         if (card == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_GROUP_ADD_RUNTIME_ERROR,
-                    "error_msg", "Agent card is required"
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_ADD_RUNTIME_ERROR, "error_msg",
+                    "Agent card is required");
         }
         if (provider == null) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_GROUP_ADD_RUNTIME_ERROR,
-                    "error_msg", "Agent provider is required"
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_ADD_RUNTIME_ERROR, "error_msg",
+                    "Agent provider is required");
         }
         if (card.getId() == null || card.getId().isBlank()) {
-            throw ErrorHelper.buildError(
-                    StatusCode.AGENT_GROUP_ADD_RUNTIME_ERROR,
-                    "error_msg", "Agent card id is required"
-            );
+            throw ErrorHelper.buildError(StatusCode.AGENT_GROUP_ADD_RUNTIME_ERROR, "error_msg",
+                    "Agent card id is required");
         }
     }
 }

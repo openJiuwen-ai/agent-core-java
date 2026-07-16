@@ -1,27 +1,30 @@
+
 package com.openjiuwen.harness.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.harness.tools.browser.BrowserRunGuardrails;
 import com.openjiuwen.harness.tools.browser.BrowserService;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessBrowserServiceCompatibilityTest {
-
     @Test
     void failureSummaryShouldBeReusedThenCleared() {
         AtomicInteger counter = new AtomicInteger();
         java.util.List<String> observedTasks = new java.util.ArrayList<>();
-        BrowserService service = new BrowserService("openai", "key", "base", "model",
-                McpServerConfig.builder().serverId("s").serverName("s").serverPath("stdio://playwright").clientType("stdio").build(),
+        BrowserService service = new BrowserService(
+                "openai", "key", "base", "model", McpServerConfig.builder().serverId("s").serverName("s")
+                        .serverPath("stdio://playwright").clientType("stdio").build(),
                 BrowserRunGuardrails.builder().build()) {
             @Override
-            protected Map<String, Object> runTaskOnce(String task, String sessionId, String requestId, Integer timeoutS) {
+            protected Map<String, Object> runTaskOnce(String task, String sessionId, String requestId,
+                    Integer timeoutS) {
                 observedTasks.add(task);
                 int attempt = counter.incrementAndGet();
                 Map<String, Object> payload = new LinkedHashMap<>();
@@ -59,11 +62,13 @@ class HarnessBrowserServiceCompatibilityTest {
     @Test
     void retryAndResumeGuardrailsShouldWork() {
         AtomicInteger retryCounter = new AtomicInteger();
-        BrowserService retryService = new BrowserService("openai", "key", "base", "model",
-                McpServerConfig.builder().serverId("s").serverName("s").serverPath("stdio://playwright").clientType("stdio").build(),
+        BrowserService retryService = new BrowserService(
+                "openai", "key", "base", "model", McpServerConfig.builder().serverId("s").serverName("s")
+                        .serverPath("stdio://playwright").clientType("stdio").build(),
                 BrowserRunGuardrails.builder().retryOnce(true).build()) {
             @Override
-            protected Map<String, Object> runTaskOnce(String task, String sessionId, String requestId, Integer timeoutS) {
+            protected Map<String, Object> runTaskOnce(String task, String sessionId, String requestId,
+                    Integer timeoutS) {
                 int attempt = retryCounter.incrementAndGet();
                 Map<String, Object> payload = new LinkedHashMap<>();
                 if (attempt == 1) {
@@ -88,10 +93,12 @@ class HarnessBrowserServiceCompatibilityTest {
 
         AtomicInteger resumeCounter = new AtomicInteger();
         BrowserService resumeService = new BrowserService("openai", "key", "base", "model",
-                McpServerConfig.builder().serverId("s").serverName("s").serverPath("stdio://playwright").clientType("stdio").build(),
+                McpServerConfig.builder().serverId("s").serverName("s").serverPath("stdio://playwright")
+                        .clientType("stdio").build(),
                 BrowserRunGuardrails.builder().resumeOnMaxIterations(true).build()) {
             @Override
-            protected Map<String, Object> runTaskOnce(String task, String sessionId, String requestId, Integer timeoutS) {
+            protected Map<String, Object> runTaskOnce(String task, String sessionId, String requestId,
+                    Integer timeoutS) {
                 int attempt = resumeCounter.incrementAndGet();
                 Map<String, Object> payload = new LinkedHashMap<>();
                 if (attempt == 1) {

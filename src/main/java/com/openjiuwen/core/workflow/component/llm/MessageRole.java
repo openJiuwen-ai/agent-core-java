@@ -8,6 +8,8 @@ package com.openjiuwen.core.workflow.component.llm;
  * Role of a message in the LLM conversation.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.workflow.components.llm.llm_comp.MessageRole}.
+ * 
+ * @since 0.1.7
  */
 public enum MessageRole {
     USER("user"),
@@ -21,7 +23,10 @@ public enum MessageRole {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getValue() {
         return value;

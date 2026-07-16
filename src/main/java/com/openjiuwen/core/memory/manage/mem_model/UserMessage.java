@@ -6,13 +6,9 @@ package com.openjiuwen.core.memory.manage.mem_model;
 
 /**
  * Public row model matching the memory user_message table.
+ * 
+ * @since 0.1.7
  */
-public record UserMessage(
-        String messageId,
-        String userId,
-        String scopeId,
-        String content,
-        String sessionId,
-        String role,
-        String timestamp) {
+public record UserMessage(String messageId, String userId, String scopeId, String content, String sessionId,
+        String role, String timestamp) {
 }

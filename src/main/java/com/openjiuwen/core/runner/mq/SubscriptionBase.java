@@ -7,31 +7,40 @@ package com.openjiuwen.core.runner.mq;
 /**
  * Abstract subscription that processes received messages.
  * Mirrors Python's {@code SubscriptionBase} in {@code message_queue_base.py}.
+ * 
+ * @since 0.1.7
  */
 public abstract class SubscriptionBase {
-
     /**
-     * Sets the async message handler for this subscription.
-     *
-     * @param handler the async message handler
+     * setMessageHandler.
+     * 
+     * @param handler handler
+     * @since 0.1.7
      */
     public void setMessageHandler(AsyncMessageHandler<Object, Object> handler) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * activate.
+     * 
+     * @since 0.1.7
      */
     public void activate() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * deactivate.
+     * 
+     * @since 0.1.7
      */
     public void deactivate() {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * isActive.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public boolean isActive() {
         return false;

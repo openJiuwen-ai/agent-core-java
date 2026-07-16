@@ -1,7 +1,11 @@
 /*
  * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
  */
+
 package com.openjiuwen.core.controller;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.mock;
 
 import com.openjiuwen.core.controller.modules.TaskExecutor;
 import com.openjiuwen.core.controller.modules.TaskExecutorDependencies;
@@ -16,16 +20,12 @@ import org.junit.jupiter.api.Test;
 import java.util.Iterator;
 import java.util.function.Function;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.mock;
-
 /**
  * Unit tests for TaskExecutorRegistry.
  * Translated from Python tests/unit_tests/core/controller/test_task_executor.py
  * (TaskExecutorRegistration tests section)
  */
 class TaskExecutorRegistryTest {
-
     private TaskExecutorRegistry registry;
     private TaskExecutorDependencies mockDependencies;
 
@@ -99,11 +99,10 @@ class TaskExecutorRegistryTest {
         }
     }
 
-    private static final Function<TaskExecutorDependencies, TaskExecutor> SIMPLE_BUILDER =
-            SimpleTaskExecutor::new;
+    private static final Function<TaskExecutorDependencies, TaskExecutor> SIMPLE_BUILDER = SimpleTaskExecutor::new;
 
     private static final Function<TaskExecutorDependencies, TaskExecutor> TRACKABLE_BUILDER =
-            TrackableTaskExecutor::new;
+        TrackableTaskExecutor::new;
 
     @Test
     @DisplayName("test adding task executor")
@@ -122,8 +121,7 @@ class TaskExecutorRegistryTest {
         assertNotNull(executor);
 
         registry.removeTaskExecutor("test_type");
-        assertThrows(Exception.class,
-                () -> registry.getTaskExecutor("test_type", mockDependencies));
+        assertThrows(Exception.class, () -> registry.getTaskExecutor("test_type", mockDependencies));
     }
 
     @Test
@@ -138,8 +136,8 @@ class TaskExecutorRegistryTest {
     @Test
     @DisplayName("test getting unregistered task executor raises error")
     void testGetUnregisteredTaskExecutor() {
-        Exception exception = assertThrows(Exception.class,
-                () -> registry.getTaskExecutor("unregistered_type", mockDependencies));
+        Exception exception =
+            assertThrows(Exception.class, () -> registry.getTaskExecutor("unregistered_type", mockDependencies));
         assertTrue(exception.getMessage().toLowerCase().contains("task executor not found"),
                 "Should raise error for unregistered task type, got: " + exception.getMessage());
     }

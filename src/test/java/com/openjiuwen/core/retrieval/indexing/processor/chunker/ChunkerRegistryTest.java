@@ -4,14 +4,15 @@
 
 package com.openjiuwen.core.retrieval.indexing.processor.chunker;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import com.openjiuwen.core.retrieval.common.Document;
+
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ChunkerRegistryTest {
     @Test
@@ -38,11 +39,9 @@ class ChunkerRegistryTest {
 
     @Test
     void hybridShouldRejectUnknownKwargsWhenInnerProvided() {
-        assertThatThrownBy(() -> ChunkerRegistry.getChunker(
-                "hybrid",
+        assertThatThrownBy(() -> ChunkerRegistry.getChunker("hybrid",
                 Map.of("inner_chunker", new CharChunker(64, 10), "bad_param", true)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Unknown kwargs");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Unknown kwargs");
     }
 
     @Test
@@ -54,26 +53,22 @@ class ChunkerRegistryTest {
 
     @Test
     void unknownChunkerShouldThrow() {
-        assertThatThrownBy(() -> ChunkerRegistry.getChunker("nonexistent"))
-                .isInstanceOf(IllegalArgumentException.class)
+        assertThatThrownBy(() -> ChunkerRegistry.getChunker("nonexistent")).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unknown chunker");
     }
 
     @Test
     void registerShouldRejectEmptyAndDuplicateNamesUnlessOverwrite() {
         assertThatThrownBy(() -> ChunkerRegistry.registerChunker("", kwargs -> new CharChunker(10, 0)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("non-empty string");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("non-empty string");
         assertThatThrownBy(() -> ChunkerRegistry.registerChunker("char", kwargs -> new CharChunker(10, 0)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("already registered");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("already registered");
 
         String name = "_test_overwrite";
         try {
             ChunkerRegistry.registerChunker(name, kwargs -> new CharChunker(20, 0));
             assertThatThrownBy(() -> ChunkerRegistry.registerChunker(name, kwargs -> new CharChunker(30, 0)))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("already registered");
+                    .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("already registered");
             ChunkerRegistry.registerChunker(name, kwargs -> new CharChunker(30, 0), true);
             assertThat(ChunkerRegistry.getChunker(name).chunkSize).isEqualTo(30);
         } finally {
@@ -86,8 +81,7 @@ class ChunkerRegistryTest {
         String name = "_test_null";
         try {
             ChunkerRegistry.registerChunker(name, kwargs -> null);
-            assertThatThrownBy(() -> ChunkerRegistry.getChunker(name))
-                    .isInstanceOf(IllegalArgumentException.class)
+            assertThatThrownBy(() -> ChunkerRegistry.getChunker(name)).isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("must return a Chunker instance");
         } finally {
             ChunkerRegistry.unregisterChunker(name);
@@ -96,9 +90,8 @@ class ChunkerRegistryTest {
 
     @Test
     void hybridShouldAcceptNoSplitPredicate() {
-        Chunker chunker = ChunkerRegistry.getChunker(
-                "hybrid",
-                Map.of("no_split_when", (java.util.function.Predicate<Document>) doc -> "special".equals(doc.getMetadata().get("type"))));
+        Chunker chunker = ChunkerRegistry.getChunker("hybrid", Map.of("no_split_when",
+                (java.util.function.Predicate<Document>) doc -> "special".equals(doc.getMetadata().get("type"))));
 
         assertThat(chunker.chunkDocuments(List.of(new Document("id", "abcdef", Map.of("type", "special"))))).hasSize(1);
     }

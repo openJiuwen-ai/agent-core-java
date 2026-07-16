@@ -1,14 +1,19 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.singleagent.agents;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.singleagent.BaseAgent;
-import com.openjiuwen.core.singleagent.rail.EventInputs;
+import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
 import com.openjiuwen.core.singleagent.rail.AgentRail;
-import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
+import com.openjiuwen.core.singleagent.rail.EventInputs;
 import com.openjiuwen.core.singleagent.rail.InvokeInputs;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -16,14 +21,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 /**
  * Unit tests for {@link ReActAgentEvolve}.
  */
 class ReActAgentEvolveTest {
-
     private ReActAgentEvolve agent;
 
     private static final class TestSession implements Session {
@@ -52,10 +53,7 @@ class ReActAgentEvolveTest {
 
     @BeforeEach
     void setUp() {
-        AgentCard card = AgentCard.builder()
-                .name("test-evolve-agent")
-                .description("Test ReActAgentEvolve")
-                .build();
+        AgentCard card = AgentCard.builder().name("test-evolve-agent").description("Test ReActAgentEvolve").build();
         agent = new ReActAgentEvolve(card);
     }
 
@@ -79,10 +77,7 @@ class ReActAgentEvolveTest {
 
     @Test
     void testConfigureWithReActAgentConfig() {
-        ReActAgentConfig newConfig = ReActAgentConfig.builder()
-                .modelName("gpt-4-turbo")
-                .maxIterations(10)
-                .build();
+        ReActAgentConfig newConfig = ReActAgentConfig.builder().modelName("gpt-4-turbo").maxIterations(10).build();
 
         BaseAgent result = agent.configure(newConfig);
 
@@ -94,47 +89,34 @@ class ReActAgentEvolveTest {
 
     @Test
     void testConfigureWithWrongTypeThrows() {
-        assertThatThrownBy(() -> agent.configure("wrong type"))
-                .isInstanceOf(IllegalArgumentException.class)
+        assertThatThrownBy(() -> agent.configure("wrong type")).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Expected ReActAgentConfig");
     }
 
     @Test
     void testConfigureWithNullThrows() {
-        assertThatThrownBy(() -> agent.configure(null))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> agent.configure(null)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void testConfigureResetsLlmOnProviderChange() {
-        ReActAgentConfig config1 = ReActAgentConfig.builder()
-                .modelProvider("provider1")
-                .build();
+        ReActAgentConfig config1 = ReActAgentConfig.builder().modelProvider("provider1").build();
         agent.configure(config1);
 
-        ReActAgentConfig config2 = ReActAgentConfig.builder()
-                .modelProvider("provider2")
-                .build();
+        ReActAgentConfig config2 = ReActAgentConfig.builder().modelProvider("provider2").build();
         agent.configure(config2);
 
         // LLM should have been reset; getLlm() will throw since no model config
-        assertThatThrownBy(() -> agent.getLlm())
-                .isInstanceOf(IllegalStateException.class)
+        assertThatThrownBy(() -> agent.getLlm()).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("model_client_config is required");
     }
 
     @Test
     void testConfigurePreservesLlmWhenProviderSame() {
-        ReActAgentConfig config1 = ReActAgentConfig.builder()
-                .modelProvider("openai")
-                .maxIterations(3)
-                .build();
+        ReActAgentConfig config1 = ReActAgentConfig.builder().modelProvider("openai").maxIterations(3).build();
         agent.configure(config1);
 
-        ReActAgentConfig config2 = ReActAgentConfig.builder()
-                .modelProvider("openai")
-                .maxIterations(7)
-                .build();
+        ReActAgentConfig config2 = ReActAgentConfig.builder().modelProvider("openai").maxIterations(7).build();
         agent.configure(config2);
 
         assertThat(((ReActAgentConfig) agent.getConfig()).getMaxIterations()).isEqualTo(7);
@@ -144,8 +126,7 @@ class ReActAgentEvolveTest {
 
     @Test
     void testGetLlmThrowsWithoutConfig() {
-        assertThatThrownBy(() -> agent.getLlm())
-                .isInstanceOf(IllegalStateException.class)
+        assertThatThrownBy(() -> agent.getLlm()).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("model_client_config is required");
     }
 
@@ -170,22 +151,19 @@ class ReActAgentEvolveTest {
 
     @Test
     void testInvokeNullInputThrows() {
-        assertThatThrownBy(() -> agent.invoke(null, null))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> agent.invoke(null, null)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void testInvokeInvalidTypeThrows() {
-        assertThatThrownBy(() -> agent.invoke(42, null))
-                .isInstanceOf(IllegalArgumentException.class)
+        assertThatThrownBy(() -> agent.invoke(42, null)).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Input must be dict with 'query' or String");
     }
 
     @Test
     void testInvokeMapWithoutQueryThrows() {
         assertThatThrownBy(() -> agent.invoke(Map.of("text", "hello"), null))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Input dict must contain 'query'");
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Input dict must contain 'query'");
     }
 
     // ========== Rail Integration ==========
@@ -194,9 +172,12 @@ class ReActAgentEvolveTest {
     void testRailRegistration() {
         AgentRail rail = new AgentRail() {
             @Override
-            public void beforeInvoke(AgentCallbackContext ctx) {}
+            public void beforeInvoke(AgentCallbackContext ctx) {
+            }
+
             @Override
-            public void afterInvoke(AgentCallbackContext ctx) {}
+            public void afterInvoke(AgentCallbackContext ctx) {
+            }
         };
 
         agent.registerRail(rail);
@@ -227,8 +208,7 @@ class ReActAgentEvolveTest {
         java.util.List<EventInputs> seenInputs = new ArrayList<>();
         agent.registerCallback(AgentCallbackEvent.AFTER_INVOKE, ctx -> seenInputs.add(ctx.getInputs()), 50);
 
-        assertThatThrownBy(() -> agent.invoke(Map.of("query", "needs-model"), null))
-                .isInstanceOf(Exception.class);
+        assertThatThrownBy(() -> agent.invoke(Map.of("query", "needs-model"), null)).isInstanceOf(Exception.class);
 
         assertThat(seenInputs).hasSize(1);
         assertThat(seenInputs.get(0)).isInstanceOf(InvokeInputs.class);
@@ -237,13 +217,11 @@ class ReActAgentEvolveTest {
 
     @Test
     void testEnableReloadRegistersContextReloaderTool() {
-        ReActAgentConfig config = ReActAgentConfig.builder().build()
-                .configureContextEngine(200, 10, true);
+        ReActAgentConfig config = ReActAgentConfig.builder().build().configureContextEngine(200, 10, true);
         agent.configure(config);
         Session session = new TestSession("react-evolve-reload-session");
 
-        assertThatThrownBy(() -> agent.invoke(Map.of("query", "reload"), session))
-                .isInstanceOf(Exception.class);
+        assertThatThrownBy(() -> agent.invoke(Map.of("query", "reload"), session)).isInstanceOf(Exception.class);
 
         assertThat(agent.getAbilityManager().get("reload_original_context_messages")).isNotNull();
     }

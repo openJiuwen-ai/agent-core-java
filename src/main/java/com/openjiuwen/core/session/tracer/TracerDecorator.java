@@ -18,14 +18,25 @@ import java.util.function.BiFunction;
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.tracer.decorator} module.
  * In Java, dynamic proxying replaces Python's dynamic class wrapping.
+ * 
+ * @since 0.1.7
  */
 public final class TracerDecorator {
-
+    /**
+     * TracerDecorator.
+     * 
+     * @since 0.1.7
+     */
     private TracerDecorator() {
     }
 
     /**
      * Check if the object+session combination should be decorated with trace.
+     * 
+     * @param obj obj
+     * @param session session
+     * @return the result
+     * @since 0.1.7
      */
     private static boolean shouldDecorate(Object obj, Object session) {
         if (obj == null || session == null) {
@@ -47,15 +58,21 @@ public final class TracerDecorator {
     /**
      * Decorate a model with trace. Wraps invoke/stream calls with trace span recording.
      *
-     * @param model        the model object
+     * @param model the model object
      * @param agentSession the agent session API (expects an _inner field or getInner method)
-     * @param <T>          the model type
+     * @param <T> the model type
      * @return the wrapped model, or original if tracing is not applicable
      */
-    @SuppressWarnings("unchecked")
+
     /**
-     * Auto-generated for codecheck compliance.
+     * decorateModelWithTrace.
+     * 
+     * @param model model
+     * @param agentSession agentSession
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public static <T> T decorateModelWithTrace(T model, Object agentSession) {
         Object innerSession = getInnerSession(agentSession);
         if (!shouldDecorate(model, innerSession)) {
@@ -73,15 +90,21 @@ public final class TracerDecorator {
     /**
      * Decorate a tool with trace. Wraps invoke calls with trace span recording.
      *
-     * @param tool         the tool object
+     * @param tool the tool object
      * @param agentSession the agent session API
-     * @param <T>          the tool type
+     * @param <T> the tool type
      * @return the wrapped tool, or original if tracing is not applicable
      */
-    @SuppressWarnings("unchecked")
+
     /**
-     * Auto-generated for codecheck compliance.
+     * decorateToolWithTrace.
+     * 
+     * @param tool tool
+     * @param agentSession agentSession
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public static <T> T decorateToolWithTrace(T tool, Object agentSession) {
         Object innerSession = getInnerSession(agentSession);
         if (!shouldDecorate(tool, innerSession)) {
@@ -99,15 +122,21 @@ public final class TracerDecorator {
     /**
      * Decorate a workflow with trace. Wraps invoke/stream calls with trace span recording.
      *
-     * @param workflow     the workflow object
+     * @param workflow the workflow object
      * @param agentSession the agent session API
-     * @param <T>          the workflow type
+     * @param <T> the workflow type
      * @return the wrapped workflow, or original if tracing is not applicable
      */
-    @SuppressWarnings("unchecked")
+
     /**
-     * Auto-generated for codecheck compliance.
+     * decorateWorkflowWithTrace.
+     * 
+     * @param workflow workflow
+     * @param agentSession agentSession
+     * @return the result
+     * @since 0.1.7
      */
+    @SuppressWarnings("unchecked")
     public static <T> T decorateWorkflowWithTrace(T workflow, Object agentSession) {
         Object innerSession = getInnerSession(agentSession);
         if (!shouldDecorate(workflow, innerSession)) {
@@ -141,19 +170,18 @@ public final class TracerDecorator {
     /**
      * Synchronous trace wrapper around a function-like call.
      * Mirrors Python's {@code trace()}.
-     *
-     * @param session      the agent session (must expose tracer() and span())
-     * @param invokeType   the type of invocation
+     * 
+     * @param session the agent session (must expose tracer() and span())
+     * @param invokeType the type of invocation
      * @param instanceInfo descriptive info about the invoked instance
-     * @param callable     the callable to wrap (args -> result)
-     * @param args         the input arguments
-     * @param kwargs       the keyword-style arguments
+     * @param callable the callable to wrap (args -> result)
+     * @param args the input arguments
+     * @param kwargs the keyword-style arguments
      * @return the invocation result
+     * @since 0.1.7
      */
-    public static Object trace(Object session, InvokeType invokeType,
-                               Map<String, Object> instanceInfo,
-                               BiFunction<Object[], Map<String, Object>, Object> callable,
-                               Object[] args, Map<String, Object> kwargs) {
+    public static Object trace(Object session, InvokeType invokeType, Map<String, Object> instanceInfo,
+            BiFunction<Object[], Map<String, Object>, Object> callable, Object[] args, Map<String, Object> kwargs) {
         Tracer tracer = getTracer(session);
         if (tracer == null) {
             return callable.apply(args, kwargs);
@@ -167,30 +195,36 @@ public final class TracerDecorator {
             triggerKwargs.put("span", span);
             triggerKwargs.put("inputs", Map.of("inputs", args != null && args.length > 0 ? args[0] : new HashMap<>()));
             triggerKwargs.put("instance_info", instanceInfo);
-            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
-                    "on_" + invokeType.getValue() + "_start", triggerKwargs);
+            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_" + invokeType.getValue() + "_start",
+                    triggerKwargs);
 
             Object result = callable.apply(args, kwargs);
 
             Map<String, Object> endKwargs = new HashMap<>();
             endKwargs.put("span", span);
             endKwargs.put("outputs", Map.of("outputs", result));
-            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
-                    "on_" + invokeType.getValue() + "_end", endKwargs);
+            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_" + invokeType.getValue() + "_end", endKwargs);
 
             return result;
-        } catch (Exception error) {
+        } catch (RuntimeException error) {
             Map<String, Object> errorKwargs = new HashMap<>();
             errorKwargs.put("span", span);
             errorKwargs.put("error", error);
-            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
-                    "on_" + invokeType.getValue() + "_error", errorKwargs);
+            tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_" + invokeType.getValue() + "_error",
+                    errorKwargs);
             throw error;
         }
     }
 
     // ---- private helpers ----
 
+    /**
+     * getInnerSession.
+     * 
+     * @param agentSession agentSession
+     * @return the result
+     * @since 0.1.7
+     */
     private static Object getInnerSession(Object agentSession) {
         if (agentSession == null) {
             return null;
@@ -207,6 +241,14 @@ public final class TracerDecorator {
         }
     }
 
+    /**
+     * hasMethod.
+     * 
+     * @param obj obj
+     * @param methodName methodName
+     * @return the result
+     * @since 0.1.7
+     */
     private static boolean hasMethod(Object obj, String methodName) {
         try {
             obj.getClass().getMethod(methodName);
@@ -216,6 +258,13 @@ public final class TracerDecorator {
         }
     }
 
+    /**
+     * getTracer.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static Tracer getTracer(Object session) {
         try {
             Method tracerMethod = session.getClass().getMethod("tracer");
@@ -226,6 +275,13 @@ public final class TracerDecorator {
         }
     }
 
+    /**
+     * getSpan.
+     * 
+     * @param session session
+     * @return the result
+     * @since 0.1.7
+     */
     private static Span getSpan(Object session) {
         try {
             Method spanMethod = session.getClass().getMethod("span");
@@ -236,6 +292,13 @@ public final class TracerDecorator {
         }
     }
 
+    /**
+     * getClassName.
+     * 
+     * @param obj obj
+     * @return the result
+     * @since 0.1.7
+     */
     private static String getClassName(Object obj) {
         try {
             Method configMethod = obj.getClass().getMethod("getConfig");
@@ -257,6 +320,13 @@ public final class TracerDecorator {
         return obj.getClass().getSimpleName();
     }
 
+    /**
+     * getCardName.
+     * 
+     * @param obj obj
+     * @return the result
+     * @since 0.1.7
+     */
     private static String getCardName(Object obj) {
         try {
             Method cardMethod = obj.getClass().getMethod("getCard");
@@ -274,6 +344,14 @@ public final class TracerDecorator {
         return obj.getClass().getSimpleName();
     }
 
+    /**
+     * tryPutField.
+     * 
+     * @param map map
+     * @param field field
+     * @param obj obj
+     * @since 0.1.7
+     */
     private static void tryPutField(Map<String, Object> map, String field, Object obj) {
         try {
             String getter = "get" + Character.toUpperCase(field.charAt(0)) + field.substring(1);
@@ -282,15 +360,24 @@ public final class TracerDecorator {
             if (value != null) {
                 map.put(field, value);
             }
-        } catch (Exception ignored) {
+        } catch (ReflectiveOperationException ignored) {
             // skip
         }
     }
 
     @SuppressWarnings("unchecked")
-    private static <T> T createTracingProxy(T original, Object session,
-                                             InvokeType invokeType,
-                                             Map<String, Object> instanceInfo) {
+    /**
+     * createTracingProxy.
+     * 
+     * @param original original
+     * @param session session
+     * @param invokeType invokeType
+     * @param instanceInfo instanceInfo
+     * @return the result
+     * @since 0.1.7
+     */
+    private static <T> T createTracingProxy(T original, Object session, InvokeType invokeType,
+            Map<String, Object> instanceInfo) {
         Class<?>[] interfaces = original.getClass().getInterfaces();
         if (interfaces.length == 0) {
             // Cannot proxy non-interface types; return original
@@ -302,9 +389,7 @@ public final class TracerDecorator {
             return original;
         }
 
-        Object proxy = Proxy.newProxyInstance(
-                original.getClass().getClassLoader(),
-                interfaces,
+        Object proxy = Proxy.newProxyInstance(original.getClass().getClassLoader(), interfaces,
                 new TracingInvocationHandler(original, session, tracer, invokeType, instanceInfo));
 
         return (T) proxy;
@@ -320,8 +405,8 @@ public final class TracerDecorator {
         private final InvokeType invokeType;
         private final Map<String, Object> instanceInfo;
 
-        TracingInvocationHandler(Object target, Object session, Tracer tracer,
-                                 InvokeType invokeType, Map<String, Object> instanceInfo) {
+        TracingInvocationHandler(Object target, Object session, Tracer tracer, InvokeType invokeType,
+                Map<String, Object> instanceInfo) {
             this.target = target;
             this.session = session;
             this.tracer = tracer;
@@ -329,10 +414,17 @@ public final class TracerDecorator {
             this.instanceInfo = instanceInfo;
         }
 
-        @Override
         /**
-         * Auto-generated for codecheck compliance.
+         * invoke.
+         * 
+         * @param proxy proxy
+         * @param method method
+         * @param args args
+         * @return the result
+         * @throws Throwable Throwable
+         * @since 0.1.7
          */
+        @Override
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             String methodName = method.getName();
 
@@ -345,19 +437,19 @@ public final class TracerDecorator {
 
                     Map<String, Object> startKwargs = new HashMap<>();
                     startKwargs.put("span", span);
-                    startKwargs.put("inputs", Map.of("inputs",
-                            args != null && args.length > 0 ? args[0] : new HashMap<>()));
+                    startKwargs.put("inputs",
+                            Map.of("inputs", args != null && args.length > 0 ? args[0] : new HashMap<>()));
                     startKwargs.put("instance_info", instanceInfo);
-                    tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
-                            "on_" + invokeType.getValue() + "_start", startKwargs);
+                    tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_" + invokeType.getValue() + "_start",
+                            startKwargs);
 
                     Object result = method.invoke(target, args);
 
                     Map<String, Object> endKwargs = new HashMap<>();
                     endKwargs.put("span", span);
                     endKwargs.put("outputs", Map.of("outputs", result));
-                    tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
-                            "on_" + invokeType.getValue() + "_end", endKwargs);
+                    tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_" + invokeType.getValue() + "_end",
+                            endKwargs);
 
                     return result;
                 } catch (Exception error) {
@@ -365,8 +457,8 @@ public final class TracerDecorator {
                     Map<String, Object> errorKwargs = new HashMap<>();
                     errorKwargs.put("span", span);
                     errorKwargs.put("error", cause);
-                    tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(),
-                            "on_" + invokeType.getValue() + "_error", errorKwargs);
+                    tracer.trigger(TracerHandlerName.TRACE_AGENT.getValue(), "on_" + invokeType.getValue() + "_error",
+                            errorKwargs);
                     throw cause;
                 }
             }

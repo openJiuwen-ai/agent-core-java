@@ -9,14 +9,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * Public class PullRequestDraft used by the Java parity implementation.
+ * 
+ * @since 0.1.7
+ */
 @Data
 @Builder
 @NoArgsConstructor
-/**
- * Public class PullRequestDraft used by the Java parity implementation.
- *
- * @since 1.0
- */
 @AllArgsConstructor
 public class PullRequestDraft {
     @Builder.Default

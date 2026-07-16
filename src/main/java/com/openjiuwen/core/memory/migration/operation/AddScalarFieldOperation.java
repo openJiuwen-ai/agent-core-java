@@ -6,6 +6,8 @@ package com.openjiuwen.core.memory.migration.operation;
 
 /**
  * Add a scalar field to a vector data type.
+ * 
+ * @since 0.1.7
  */
 public class AddScalarFieldOperation extends BaseOperation {
     private final String dataType;
@@ -14,10 +16,17 @@ public class AddScalarFieldOperation extends BaseOperation {
     private final Object defaultValue;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * AddScalarFieldOperation.
+     * 
+     * @param metadata metadata
+     * @param dataType dataType
+     * @param fieldName fieldName
+     * @param fieldType fieldType
+     * @param defaultValue defaultValue
+     * @since 0.1.7
      */
-    public AddScalarFieldOperation(OperationMetadata metadata, String dataType,
-                                   String fieldName, String fieldType, Object defaultValue) {
+    public AddScalarFieldOperation(OperationMetadata metadata, String dataType, String fieldName, String fieldType,
+            Object defaultValue) {
         super(metadata);
         this.dataType = dataType;
         this.fieldName = fieldName;
@@ -26,28 +35,40 @@ public class AddScalarFieldOperation extends BaseOperation {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDataType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDataType() {
         return dataType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFieldName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getFieldName() {
         return fieldName;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getFieldType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getFieldType() {
         return fieldType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDefaultValue.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getDefaultValue() {
         return defaultValue;

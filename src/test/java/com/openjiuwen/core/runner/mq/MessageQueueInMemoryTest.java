@@ -1,5 +1,8 @@
 // Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+
 package com.openjiuwen.core.runner.mq;
+
+import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,15 +15,12 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
  * Tests for MessageQueueInMemory: stream, invoke, and publish messaging patterns.
  * Translated from Python test_message_queue.py
  */
 @DisplayName("MessageQueueInMemory Tests")
 class MessageQueueInMemoryTest {
-
     private MessageQueueInMemory mq;
 
     @BeforeEach
@@ -134,8 +134,7 @@ class MessageQueueInMemoryTest {
         mq.start();
 
         SubscriptionBase sub = mq.subscribe("topic_invoke");
-        sub.setMessageHandler(request ->
-                CompletableFuture.completedFuture("MockInvoke response for msg : " + request));
+        sub.setMessageHandler(request -> CompletableFuture.completedFuture("MockInvoke response for msg : " + request));
         sub.activate();
 
         // Send invoke request
@@ -158,8 +157,7 @@ class MessageQueueInMemoryTest {
         mq.start();
 
         SubscriptionBase sub = mq.subscribe("topic_invoke");
-        sub.setMessageHandler(request ->
-                CompletableFuture.completedFuture("MockInvoke response for msg : " + request));
+        sub.setMessageHandler(request -> CompletableFuture.completedFuture("MockInvoke response for msg : " + request));
         sub.activate();
 
         // Send StreamQueueMessage to invoke handler
@@ -171,7 +169,7 @@ class MessageQueueInMemoryTest {
         // This should result in error
         try {
             Iterator<Object> response = message.getResponse().get(5, TimeUnit.SECONDS);
-            // If we get here, the cast worked silently, which is the Java behavior 
+            // If we get here, the cast worked silently, which is the Java behavior
             // due to the unchecked cast in handleResponse
         } catch (Exception e) {
             // Expected - error from ClassCastException
@@ -187,8 +185,7 @@ class MessageQueueInMemoryTest {
         mq.start();
 
         SubscriptionBase sub = mq.subscribe("topic_invoke");
-        sub.setMessageHandler(request ->
-                CompletableFuture.completedFuture("MockInvoke response for msg : " + request));
+        sub.setMessageHandler(request -> CompletableFuture.completedFuture("MockInvoke response for msg : " + request));
         sub.activate();
 
         // Plain QueueMessage

@@ -1,9 +1,13 @@
+
 package com.openjiuwen.harness.tools;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.harness.lsp.core.LSPServerManager;
 import com.openjiuwen.harness.tools.lsp.LspInputs;
 import com.openjiuwen.harness.tools.lsp.LspOperation;
 import com.openjiuwen.harness.tools.lsp.LspToolSupport;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -11,10 +15,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class HarnessLspToolCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
@@ -32,8 +33,10 @@ class HarnessLspToolCompatibilityTest {
 
         assertThat(schema.get("name")).isEqualTo("lsp");
         assertThat(operationValues).hasSize(8).contains("goToDefinition", "outgoingCalls");
-        assertThat(LspToolSupport.operationToMethod(LspOperation.GO_TO_DEFINITION)).isEqualTo("textDocument/definition");
-        assertThat(LspToolSupport.operationToMethod(LspOperation.OUTGOING_CALLS)).isEqualTo("callHierarchy/outgoingCalls");
+        assertThat(LspToolSupport.operationToMethod(LspOperation.GO_TO_DEFINITION))
+                .isEqualTo("textDocument/definition");
+        assertThat(LspToolSupport.operationToMethod(LspOperation.OUTGOING_CALLS))
+                .isEqualTo("callHierarchy/outgoingCalls");
     }
 
     @Test
@@ -51,23 +54,15 @@ class HarnessLspToolCompatibilityTest {
 
     @Test
     void lspFormatterShouldFormatLocationsAndSymbols() {
-        String location = LspToolSupport.formatLocation(Map.of(
-                "uri", "file:///path/with%20space/file.py",
-                "range", Map.of("start", Map.of("line", 4, "character", 2))
-        ));
-        String definition = LspToolSupport.formatGoToDefinition(Map.of(
-                "uri", "file:///path/to/file.py",
-                "range", Map.of("start", Map.of("line", 0, "character", 0))
-        ));
-        String refs = LspToolSupport.formatFindReferences(List.of(
-                Map.of("uri", "file:///a.py", "range", Map.of("start", Map.of("line", 0, "character", 0))),
-                Map.of("uri", "file:///b.py", "range", Map.of("start", Map.of("line", 2, "character", 0)))
-        ));
-        String docSymbols = LspToolSupport.formatDocumentSymbol(List.of(
-                Map.of("name", "MyClass", "kind", 5, "children", List.of(
-                        Map.of("name", "my_method", "kind", 6, "children", List.of())
-                ))
-        ));
+        String location = LspToolSupport.formatLocation(Map.of("uri", "file:///path/with%20space/file.py", "range",
+                Map.of("start", Map.of("line", 4, "character", 2))));
+        String definition = LspToolSupport.formatGoToDefinition(
+                Map.of("uri", "file:///path/to/file.py", "range", Map.of("start", Map.of("line", 0, "character", 0))));
+        String refs = LspToolSupport.formatFindReferences(
+                List.of(Map.of("uri", "file:///a.py", "range", Map.of("start", Map.of("line", 0, "character", 0))),
+                        Map.of("uri", "file:///b.py", "range", Map.of("start", Map.of("line", 2, "character", 0)))));
+        String docSymbols = LspToolSupport.formatDocumentSymbol(List.of(Map.of("name", "MyClass", "kind", 5, "children",
+                List.of(Map.of("name", "my_method", "kind", 6, "children", List.of())))));
 
         assertThat(location).contains("/path/with space/file.py").contains(":5:3");
         assertThat(definition).contains("Defined in").contains("/path/to/file.py");
@@ -79,15 +74,13 @@ class HarnessLspToolCompatibilityTest {
     void lspToolShouldResolveWorkspaceRelativePaths() {
         LspTool tool = new LspTool(tempDir.toString());
 
-        ToolOutput output = tool.invoke(Map.of(
-                "operation", "goToDefinition",
-                "file_path", "src/Main.java"
-        ));
+        ToolOutput output = tool.invoke(Map.of("operation", "goToDefinition", "file_path", "src/Main.java"));
 
         assertThat(output.isSuccess()).isTrue();
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = (Map<String, Object>) output.getData();
-        assertThat(String.valueOf(payload.get("file_path"))).isEqualTo(tempDir.resolve("src/Main.java").normalize().toString());
+        assertThat(String.valueOf(payload.get("file_path")))
+                .isEqualTo(tempDir.resolve("src/Main.java").normalize().toString());
         assertThat(payload.get("method")).isEqualTo("textDocument/definition");
     }
 
@@ -98,20 +91,14 @@ class HarnessLspToolCompatibilityTest {
         java.nio.file.Files.writeString(file, "class Main {}");
         LSPServerManager manager = new LSPServerManager();
         HarnessLspManagerCompatibilityTest.FakeServer server =
-                new HarnessLspManagerCompatibilityTest.FakeServer("jdtls");
-        server.requestResult = Map.of(
-                "uri", file.toUri().toString(),
-                "range", Map.of("start", Map.of("line", 0, "character", 6))
-        );
+            new HarnessLspManagerCompatibilityTest.FakeServer("jdtls");
+        server.requestResult =
+            Map.of("uri", file.toUri().toString(), "range", Map.of("start", Map.of("line", 0, "character", 6)));
         manager.registerServer(file.toString(), server);
         LspTool tool = new LspTool(tempDir.toString(), manager);
 
-        ToolOutput output = tool.invoke(Map.of(
-                "operation", "goToDefinition",
-                "file_path", "src/Main.java",
-                "line", 1,
-                "character", 7
-        ));
+        ToolOutput output =
+            tool.invoke(Map.of("operation", "goToDefinition", "file_path", "src/Main.java", "line", 1, "character", 7));
 
         assertThat(output.isSuccess()).isTrue();
         assertThat(server.requests).hasSize(1);

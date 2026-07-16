@@ -10,30 +10,42 @@ import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 
 /**
  * Factory for InferenceAffinity model clients.
+ * 
+ * @since 0.1.7
  */
 public class InferenceAffinityModelClientFactory implements Model.ModelClientFactory {
-
     private final String providerName;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * InferenceAffinityModelClientFactory.
+     * 
+     * @param providerName providerName
+     * @since 0.1.7
      */
     public InferenceAffinityModelClientFactory(String providerName) {
         this.providerName = providerName;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * providerName.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public String providerName() {
         return providerName;
     }
 
-    @Override
     /**
-     * Auto-generated for codecheck compliance.
+     * create.
+     * 
+     * @param modelConfig modelConfig
+     * @param clientConfig clientConfig
+     * @return the result
+     * @since 0.1.7
      */
+    @Override
     public BaseModelClient create(ModelRequestConfig modelConfig, ModelClientConfig clientConfig) {
         return new InferenceAffinityModelClient(modelConfig, clientConfig);
     }

@@ -15,18 +15,30 @@ import java.util.List;
 /**
  * Reasoner utility methods for legacy controllers.
  * Mirrors Python's {@code ReasonerUtils}.
+ * 
+ * @since 0.1.7
  */
 public final class ReasonerUtils {
-
+    /**
+     * ReasonerUtils.
+     * 
+     * @since 0.1.7
+     */
     private ReasonerUtils() {
     }
 
     /**
      * Get history by max conversation rounds.
      * Mirrors Python's {@code ReasonerUtils.get_chat_history()}.
+     * 
+     * @param contextEngine contextEngine
+     * @param session session
+     * @param chatHistoryMaxTurn chatHistoryMaxTurn
+     * @return the result
+     * @since 0.1.7
      */
     public static List<BaseMessage> getChatHistory(ContextEngine contextEngine, Session session,
-                                                    int chatHistoryMaxTurn) {
+            int chatHistoryMaxTurn) {
         if (contextEngine == null || session == null) {
             return Collections.emptyList();
         }

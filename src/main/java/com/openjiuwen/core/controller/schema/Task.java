@@ -17,9 +17,10 @@ import java.util.Map;
  * input/output, and hierarchical relationships.
  * <p>
  * Mirrors Python's {@code Task(BaseModel)}.
+ * 
+ * @since 0.1.7
  */
 public class Task {
-
     private String sessionId;
     private String taskId;
     private String taskType;
@@ -36,7 +37,9 @@ public class Task {
     private Map<String, Object> extensions;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Task.
+     * 
+     * @since 0.1.7
      */
     public Task() {
         this.priority = 1;
@@ -45,7 +48,12 @@ public class Task {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * Task.
+     * 
+     * @param sessionId sessionId
+     * @param taskId taskId
+     * @param taskType taskType
+     * @since 0.1.7
      */
     public Task(String sessionId, String taskId, String taskType) {
         this();
@@ -59,6 +67,9 @@ public class Task {
 
     /**
      * Deep copy of this task.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Task copy() {
         Task copy = new Task();
@@ -81,6 +92,8 @@ public class Task {
 
     /**
      * Validate the task for consistency.
+     * 
+     * @since 0.1.7
      */
     public void validate() {
         validateRequiredString(sessionId, "sessionId");
@@ -108,6 +121,13 @@ public class Task {
         }
     }
 
+    /**
+     * validateRequiredString.
+     * 
+     * @param value value
+     * @param fieldName fieldName
+     * @since 0.1.7
+     */
     private static void validateRequiredString(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " field cannot be empty");
@@ -117,196 +137,280 @@ public class Task {
     // Getters and setters
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSessionId() {
         return sessionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setSessionId.
+     * 
+     * @param sessionId sessionId
+     * @since 0.1.7
      */
     public void setSessionId(String sessionId) {
         this.sessionId = sessionId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTaskId() {
         return taskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTaskId.
+     * 
+     * @param taskId taskId
+     * @since 0.1.7
      */
     public void setTaskId(String taskId) {
         this.taskId = taskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getTaskType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getTaskType() {
         return taskType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setTaskType.
+     * 
+     * @param taskType taskType
+     * @since 0.1.7
      */
     public void setTaskType(String taskType) {
         this.taskType = taskType;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDescription.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getDescription() {
         return description;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setDescription.
+     * 
+     * @param description description
+     * @since 0.1.7
      */
     public void setDescription(String description) {
         this.description = description;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getPriority.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public int getPriority() {
         return priority;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setPriority.
+     * 
+     * @param priority priority
+     * @since 0.1.7
      */
     public void setPriority(int priority) {
         this.priority = priority;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<Object> getInputs() {
         return inputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInputs.
+     * 
+     * @param inputs inputs
+     * @since 0.1.7
      */
     public void setInputs(List<Object> inputs) {
         this.inputs = inputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getOutputs.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public List<ControllerOutputChunk> getOutputs() {
         return outputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setOutputs.
+     * 
+     * @param outputs outputs
+     * @since 0.1.7
      */
     public void setOutputs(List<ControllerOutputChunk> outputs) {
         this.outputs = outputs;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getStatus.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public TaskStatus getStatus() {
         return status;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setStatus.
+     * 
+     * @param status status
+     * @since 0.1.7
      */
     public void setStatus(TaskStatus status) {
         this.status = status;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getParentTaskId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getParentTaskId() {
         return parentTaskId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setParentTaskId.
+     * 
+     * @param parentTaskId parentTaskId
+     * @since 0.1.7
      */
     public void setParentTaskId(String parentTaskId) {
         this.parentTaskId = parentTaskId != null && !parentTaskId.isBlank() ? parentTaskId.strip() : null;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getContextId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getContextId() {
         return contextId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setContextId.
+     * 
+     * @param contextId contextId
+     * @since 0.1.7
      */
     public void setContextId(String contextId) {
         this.contextId = contextId;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getInputRequiredFields.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getInputRequiredFields() {
         return inputRequiredFields;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setInputRequiredFields.
+     * 
+     * @param inputRequiredFields inputRequiredFields
+     * @since 0.1.7
      */
     public void setInputRequiredFields(Object inputRequiredFields) {
         this.inputRequiredFields = inputRequiredFields;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getErrorMessage.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getErrorMessage() {
         return errorMessage;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setErrorMessage.
+     * 
+     * @param errorMessage errorMessage
+     * @since 0.1.7
      */
     public void setErrorMessage(String errorMessage) {
         this.errorMessage = errorMessage;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMetadata.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getMetadata() {
         return metadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setMetadata.
+     * 
+     * @param metadata metadata
+     * @since 0.1.7
      */
     public void setMetadata(Map<String, Object> metadata) {
         this.metadata = metadata;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExtensions.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> getExtensions() {
         return extensions;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * setExtensions.
+     * 
+     * @param extensions extensions
+     * @since 0.1.7
      */
     public void setExtensions(Map<String, Object> extensions) {
         this.extensions = extensions;
@@ -314,6 +418,9 @@ public class Task {
 
     /**
      * Serialize task to a plain map for persistence.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> toMap() {
         Map<String, Object> map = new LinkedHashMap<>();
@@ -332,12 +439,13 @@ public class Task {
     }
 
     /**
-     * Deserialize task from a plain map.
+     * fromMap.
+     * 
+     * @param map map
+     * @return the result
+     * @since 0.1.7
      */
     @SuppressWarnings("unchecked")
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public static Task fromMap(Map<String, Object> map) {
         Task task = new Task();
         task.setSessionId((String) map.get("session_id"));

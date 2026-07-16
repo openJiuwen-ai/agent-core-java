@@ -13,6 +13,13 @@ import com.openjiuwen.core.retrieval.common.BaseCallback;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
 import com.openjiuwen.core.retrieval.common.RetrievalExceptions;
 
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.ResponseBody;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -31,101 +38,148 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
-
 /**
  * Universal HTTP embedding client aligned with the Python APIEmbedding implementation.
+ * 
+ * @since 0.1.7
  */
 public class APIEmbedding implements Embedding, AutoCloseable {
-
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * MediaType.get.
+     * 
+     * @param charset=utf-8" charset=utf-8"
+     * @since 0.1.7
+     */
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
     /**
-     * Auto-generated for codecheck compliance.
+     * config.
+     * 
+     * @since 0.1.7
      */
     protected final EmbeddingConfig config;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * modelName.
+     * 
+     * @since 0.1.7
      */
     protected final String modelName;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * apiKey.
+     * 
+     * @since 0.1.7
      */
     protected final String apiKey;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * apiUrl.
+     * 
+     * @since 0.1.7
      */
     protected final String apiUrl;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * timeout.
+     * 
+     * @since 0.1.7
      */
     protected final int timeout;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * maxRetries.
+     * 
+     * @since 0.1.7
      */
     protected final int maxRetries;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * maxBatchSize.
+     * 
+     * @since 0.1.7
      */
     protected final int maxBatchSize;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * maxConcurrent.
+     * 
+     * @since 0.1.7
      */
     protected final int maxConcurrent;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * headers.
+     * 
+     * @since 0.1.7
      */
     protected final Map<String, String> headers;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * httpClient.
+     * 
+     * @since 0.1.7
      */
     protected final HttpClient httpClient;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * okHttpClient.
+     * 
+     * @since 0.1.7
      */
     protected final OkHttpClient okHttpClient;
+
     /**
-     * Auto-generated for codecheck compliance.
+     * executor.
+     * 
+     * @since 0.1.7
      */
     protected final ExecutorService executor;
 
     private volatile Integer dimension;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * APIEmbedding.
+     * 
+     * @param config config
+     * @since 0.1.7
      */
     public APIEmbedding(EmbeddingConfig config) {
         this(config, 60, 3, null, 8, 50, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * APIEmbedding.
+     * 
+     * @param config config
+     * @param timeout timeout
+     * @param maxRetries maxRetries
+     * @param extraHeaders extraHeaders
+     * @param maxBatchSize maxBatchSize
+     * @param maxConcurrent maxConcurrent
+     * @since 0.1.7
      */
-    public APIEmbedding(EmbeddingConfig config,
-                        int timeout,
-                        int maxRetries,
-                        Map<String, String> extraHeaders,
-                        int maxBatchSize,
-                        int maxConcurrent) {
+    public APIEmbedding(EmbeddingConfig config, int timeout, int maxRetries, Map<String, String> extraHeaders,
+            int maxBatchSize, int maxConcurrent) {
         this(config, timeout, maxRetries, extraHeaders, maxBatchSize, maxConcurrent, null);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * APIEmbedding.
+     * 
+     * @param config config
+     * @param timeout timeout
+     * @param maxRetries maxRetries
+     * @param extraHeaders extraHeaders
+     * @param maxBatchSize maxBatchSize
+     * @param maxConcurrent maxConcurrent
+     * @param httpClient httpClient
+     * @since 0.1.7
      */
-    public APIEmbedding(EmbeddingConfig config,
-                        int timeout,
-                        int maxRetries,
-                        Map<String, String> extraHeaders,
-                        int maxBatchSize,
-                        int maxConcurrent,
-                        HttpClient httpClient) {
+    public APIEmbedding(EmbeddingConfig config, int timeout, int maxRetries, Map<String, String> extraHeaders,
+            int maxBatchSize, int maxConcurrent, HttpClient httpClient) {
         this.config = Objects.requireNonNull(config, "config");
         this.modelName = config.getModelName();
         this.apiKey = config.getApiKey();
@@ -144,60 +198,53 @@ public class APIEmbedding implements Embedding, AutoCloseable {
         }
         if (httpClient == null) {
             this.httpClient = null;
-            OkHttpClient.Builder okHttpBuilder = new OkHttpClient.Builder()
-                    .connectTimeout(Duration.ofSeconds(this.timeout))
-                    .readTimeout(Duration.ofSeconds(this.timeout))
-                    .writeTimeout(Duration.ofSeconds(this.timeout));
+            OkHttpClient.Builder okHttpBuilder =
+                new OkHttpClient.Builder().connectTimeout(Duration.ofSeconds(this.timeout))
+                        .readTimeout(Duration.ofSeconds(this.timeout)).writeTimeout(Duration.ofSeconds(this.timeout));
             OkHttpProxySupport.configureFromEnvironment(okHttpBuilder, this.apiUrl);
             this.okHttpClient = okHttpBuilder.build();
         } else {
             this.httpClient = httpClient;
             this.okHttpClient = null;
         }
-        this.executor = Executors.newFixedThreadPool(
-                this.maxConcurrent,
-                runnable -> {
-                    Thread thread = new Thread(runnable);
-                    thread.setName("openjiuwen-embed");
-                    thread.setDaemon(true);
-                    thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
-                        /**
-                         * Auto-generated for codecheck compliance.
-                         */
-                        @Override
-                        /**
-                         * Auto-generated for codecheck compliance.
-                         */
-                        public void uncaughtException(Thread t, Throwable e) {
-                            Loggers.CONTROLLER.error("APIEmbedding Error,Thread {} , {}", t.getName(),e.getMessage());
-                        }
-                    });
-                    return thread;
-                });
+        this.executor = Executors.newFixedThreadPool(this.maxConcurrent, runnable -> {
+            Thread thread = new Thread(runnable);
+            thread.setName("openjiuwen-embed");
+            thread.setDaemon(true);
+            thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+                @Override
+                public void uncaughtException(Thread t, Throwable e) {
+                    Loggers.CONTROLLER.error("APIEmbedding Error,Thread {} , {}", t.getName(), e.getMessage());
+                }
+            });
+            return thread;
+        });
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedQuery.
+     * 
+     * @param text text
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Float> embedQuery(String text) {
         return embedQuery(text, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedQuery.
+     * 
+     * @param text text
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<Float> embedQuery(String text, Map<String, Object> options) {
         if (text == null || text.isBlank()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
                     "Empty text provided for embedding");
         }
         List<List<Float>> embeddings = getEmbeddings(text, options);
@@ -205,23 +252,28 @@ public class APIEmbedding implements Embedding, AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedDocuments.
+     * 
+     * @param texts texts
+     * @param batchSize batchSize
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize) {
         return embedDocuments(texts, batchSize, Map.of());
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * embedDocuments.
+     * 
+     * @param texts texts
+     * @param batchSize batchSize
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public List<List<Float>> embedDocuments(List<?> texts, Integer batchSize, Map<String, Object> options) {
         List<String> nonEmpty = validateTexts(texts);
         int effectiveBatchSize = Math.max(1, Math.min(batchSize == null ? maxBatchSize : batchSize, maxBatchSize));
@@ -264,12 +316,12 @@ public class APIEmbedding implements Embedding, AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getDimension.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int getDimension() {
         Integer cached = dimension;
         if (cached != null) {
@@ -284,18 +336,23 @@ public class APIEmbedding implements Embedding, AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getMaxBatchSize.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public int getMaxBatchSize() {
         return maxBatchSize;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEmbeddings.
+     * 
+     * @param input input
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     protected List<List<Float>> getEmbeddings(Object input, Map<String, Object> options) {
         Map<String, Object> payload = new LinkedHashMap<>();
@@ -310,8 +367,7 @@ public class APIEmbedding implements Embedding, AutoCloseable {
                     if (attempt < maxRetries) {
                         continue;
                     }
-                    throw RetrievalExceptions.error(
-                            StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
+                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
                             "Failed to get embedding after " + maxRetries + " attempts");
                 }
                 List<List<Float>> embeddings = parseEmbeddings(MAPPER.readTree(response.body));
@@ -324,22 +380,27 @@ public class APIEmbedding implements Embedding, AutoCloseable {
                     Thread.currentThread().interrupt();
                 }
                 if (attempt >= maxRetries) {
-                    throw RetrievalExceptions.error(
-                            StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
+                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_REQUEST_CALL_FAILED,
                             "Failed to get embedding after " + maxRetries + " attempts");
                 }
             }
         }
-        throw RetrievalExceptions.error(
-                StatusCode.RETRIEVAL_EMBEDDING_UNREACHABLE_CALL_FAILED,
+        throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_UNREACHABLE_CALL_FAILED,
                 "Unreachable code in APIEmbedding.getEmbeddings");
     }
 
+    /**
+     * sendEmbeddingRequest.
+     * 
+     * @param body body
+     * @return the result
+     * @throws IOException IOException
+     * @throws InterruptedException InterruptedException
+     * @since 0.1.7
+     */
     private HttpResult sendEmbeddingRequest(String body) throws IOException, InterruptedException {
         if (okHttpClient != null) {
-            Request.Builder requestBuilder = new Request.Builder()
-                    .url(apiUrl)
-                    .post(RequestBody.create(body, JSON));
+            Request.Builder requestBuilder = new Request.Builder().url(apiUrl).post(RequestBody.create(body, JSON));
             for (Map.Entry<String, String> entry : headers.entrySet()) {
                 requestBuilder.header(entry.getKey(), entry.getValue());
             }
@@ -348,29 +409,35 @@ public class APIEmbedding implements Embedding, AutoCloseable {
                 return new HttpResult(response.code(), responseBody == null ? "" : responseBody.string());
             }
         }
-        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
-                .uri(URI.create(apiUrl))
-                .timeout(Duration.ofSeconds(timeout))
-                .POST(HttpRequest.BodyPublishers.ofString(body));
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder().uri(URI.create(apiUrl))
+                .timeout(Duration.ofSeconds(timeout)).POST(HttpRequest.BodyPublishers.ofString(body));
         for (Map.Entry<String, String> entry : headers.entrySet()) {
             requestBuilder.header(entry.getKey(), entry.getValue());
         }
-        HttpResponse<String> response = httpClient.send(
-                requestBuilder.build(),
-                HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
         return new HttpResult(response.statusCode(), response.body());
     }
 
+    /**
+     * HttpResult.
+     * 
+     * @param statusCode statusCode
+     * @param body body
+     * @since 0.1.7
+     */
     private record HttpResult(int statusCode, String body) {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseEmbeddings.
+     * 
+     * @param root root
+     * @return the result
+     * @since 0.1.7
      */
     protected List<List<Float>> parseEmbeddings(JsonNode root) {
         if (root == null || root.isMissingNode() || root.isNull()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                     "No embeddings in response: null");
         }
         if (root.has("embedding")) {
@@ -394,34 +461,32 @@ public class APIEmbedding implements Embedding, AutoCloseable {
             if (!embeddings.isEmpty()) {
                 return embeddings;
             }
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                     "No embedding field found in data items: " + root);
         }
-        throw RetrievalExceptions.error(
-                StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+        throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                 "No embeddings in response: " + root);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * parseSingleEmbedding.
+     * 
+     * @param embeddingNode embeddingNode
+     * @return the result
+     * @since 0.1.7
      */
     protected List<Float> parseSingleEmbedding(JsonNode embeddingNode) {
         if (embeddingNode == null || embeddingNode.isNull()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
-                    "embedding item is null");
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID, "embedding item is null");
         }
         if (!embeddingNode.isArray()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                     "embedding item is not a numeric array");
         }
         List<Float> embedding = new ArrayList<>(embeddingNode.size());
         for (JsonNode item : embeddingNode) {
             if (!item.isNumber()) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                         "embedding item is not numeric");
             }
             embedding.add(item.floatValue());
@@ -429,6 +494,13 @@ public class APIEmbedding implements Embedding, AutoCloseable {
         return embedding;
     }
 
+    /**
+     * parseEmbeddingArray.
+     * 
+     * @param embeddingsNode embeddingsNode
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<List<Float>> parseEmbeddingArray(JsonNode embeddingsNode) {
         List<List<Float>> embeddings = new ArrayList<>();
         for (JsonNode item : embeddingsNode) {
@@ -439,17 +511,22 @@ public class APIEmbedding implements Embedding, AutoCloseable {
         return embeddings;
     }
 
+    /**
+     * parseArrayItem.
+     * 
+     * @param item item
+     * @return the result
+     * @since 0.1.7
+     */
     private static List<Float> parseArrayItem(JsonNode item) {
         if (!item.isArray()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                     "embedding list item is not an array");
         }
         List<Float> embedding = new ArrayList<>(item.size());
         for (JsonNode value : item) {
             if (!value.isNumber()) {
-                throw RetrievalExceptions.error(
-                        StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
+                throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_RESPONSE_INVALID,
                         "embedding list item is not numeric");
             }
             embedding.add(value.floatValue());
@@ -458,13 +535,15 @@ public class APIEmbedding implements Embedding, AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * validateTexts.
+     * 
+     * @param texts texts
+     * @return the result
+     * @since 0.1.7
      */
     protected static List<String> validateTexts(List<?> texts) {
         if (texts == null || texts.isEmpty()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
-                    "Empty texts list provided");
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID, "Empty texts list provided");
         }
         List<String> nonEmpty = new ArrayList<>(texts.size());
         int emptyCount = 0;
@@ -476,20 +555,23 @@ public class APIEmbedding implements Embedding, AutoCloseable {
             }
         }
         if (emptyCount > 0) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
                     emptyCount + " chunks are empty while embedding");
         }
         if (nonEmpty.isEmpty()) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_INPUT_INVALID,
                     "All texts are empty after filtering");
         }
         return nonEmpty;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * resolveCallback.
+     * 
+     * @param options options
+     * @param sequence sequence
+     * @return the result
+     * @since 0.1.7
      */
     protected static BaseCallback resolveCallback(Map<String, Object> options, Collection<?> sequence) {
         Object callback = options == null ? null : options.get("callback");
@@ -504,22 +586,24 @@ public class APIEmbedding implements Embedding, AutoCloseable {
                 try {
                     return (BaseCallback) clazz.getConstructor().newInstance();
                 } catch (ReflectiveOperationException e) {
-                    throw RetrievalExceptions.error(
-                            StatusCode.RETRIEVAL_EMBEDDING_CALLBACK_INVALID,
+                    throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_CALLBACK_INVALID,
                             "callback_cls must be instantiable");
                 }
             }
         }
         if (callbackClass != null) {
-            throw RetrievalExceptions.error(
-                    StatusCode.RETRIEVAL_EMBEDDING_CALLBACK_INVALID,
+            throw RetrievalExceptions.error(StatusCode.RETRIEVAL_EMBEDDING_CALLBACK_INVALID,
                     "callback_cls in APIEmbedding.embedDocuments must be a subclass of BaseCallback");
         }
         return new BaseCallback(sequence);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * cleanPayloadOptions.
+     * 
+     * @param options options
+     * @return the result
+     * @since 0.1.7
      */
     protected static Map<String, Object> cleanPayloadOptions(Map<String, Object> options) {
         Map<String, Object> payloadOptions = new LinkedHashMap<>();
@@ -537,12 +621,11 @@ public class APIEmbedding implements Embedding, AutoCloseable {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * close.
+     * 
+     * @since 0.1.7
      */
     @Override
-    /**
-     * Auto-generated for codecheck compliance.
-     */
     public void close() {
         executor.shutdownNow();
         try {
@@ -552,6 +635,13 @@ public class APIEmbedding implements Embedding, AutoCloseable {
         }
     }
 
+    /**
+     * BatchResult.
+     * 
+     * @param start start
+     * @param embeddings embeddings
+     * @since 0.1.7
+     */
     private record BatchResult(int start, List<List<Float>> embeddings) {
     }
 }

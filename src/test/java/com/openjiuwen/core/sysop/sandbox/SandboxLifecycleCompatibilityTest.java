@@ -1,34 +1,28 @@
+
 package com.openjiuwen.core.sysop.sandbox;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxIsolationConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
-
 class SandboxLifecycleCompatibilityTest {
-
     @TempDir
     Path tempDir;
 
     private SandboxGatewayConfig config(Integer idleTtlSeconds) {
-        return SandboxGatewayConfig.builder()
-                .params(Map.of("root_path", tempDir.toString()))
-                .isolation(SandboxIsolationConfig.builder()
-                        .customId("session-1")
-                        .build())
-                .launcherConfig(SandboxLauncherConfig.builder()
-                        .launcherType("pre_deploy")
-                        .baseUrl("http://localhost:8080")
-                        .gatewayUrl("http://localhost:8080")
-                        .sandboxType("local")
-                        .idleTtlSeconds(idleTtlSeconds)
-                        .build())
+        return SandboxGatewayConfig.builder().params(Map.of("root_path", tempDir.toString()))
+                .isolation(SandboxIsolationConfig.builder().customId("session-1").build())
+                .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
+                        .baseUrl("http://localhost:8080").gatewayUrl("http://localhost:8080").sandboxType("local")
+                        .idleTtlSeconds(idleTtlSeconds).build())
                 .build();
     }
 

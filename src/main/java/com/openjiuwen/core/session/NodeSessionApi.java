@@ -21,16 +21,21 @@ import java.util.Map;
  * for state, streaming, tracing, and interaction.
  * <p>
  * Mirrors Python's {@code openjiuwen.core.session.node.Session}.
+ * 
+ * @since 0.1.7
  */
 public class NodeSessionApi {
-
     private final NodeSession inner;
     private WorkflowInteraction interaction;
     private final boolean streamMode;
     private final String description;
 
     /**
-     * Auto-generated for codecheck compliance.
+     * NodeSessionApi.
+     * 
+     * @param session session
+     * @param streamMode streamMode
+     * @since 0.1.7
      */
     public NodeSessionApi(NodeSession session, boolean streamMode) {
         this.inner = session;
@@ -39,42 +44,60 @@ public class NodeSessionApi {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * NodeSessionApi.
+     * 
+     * @param session session
+     * @since 0.1.7
      */
     public NodeSessionApi(NodeSession session) {
         this(session, false);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getWorkflowId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getWorkflowId() {
         return inner.workflowId();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getComponentId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getComponentId() {
         return inner.nodeId();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getComponentType.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getComponentType() {
         return inner.nodeType();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getComponentDescrip.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getComponentDescrip() {
         return description;
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * trace.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     public void trace(Map<String, Object> data) {
         if (inner.skipTrace()) {
@@ -84,7 +107,10 @@ public class NodeSessionApi {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * traceError.
+     * 
+     * @param error error
+     * @since 0.1.7
      */
     public void traceError(Exception error) {
         if (inner.skipTrace()) {
@@ -95,17 +121,16 @@ public class NodeSessionApi {
 
     /**
      * Trigger interaction with the user.
-     *
+     * 
      * @param value the interaction value descriptor
      * @return the user inputs
+     * @since 0.1.7
      */
     public <T> T interact(Object value) {
         if (streamMode) {
-            throw ErrorHelper.buildError(
-                    StatusCode.COMP_SESSION_INTERACT_ERROR,
-                    "reason", "Interact during streaming process (transform or collect) is not supported.",
-                    "comp_id", getComponentId(),
-                    "workflow", getWorkflowId());
+            throw ErrorHelper.buildError(StatusCode.COMP_SESSION_INTERACT_ERROR, "reason",
+                    "Interact during streaming process (transform or collect) is not supported.", "comp_id",
+                    getComponentId(), "workflow", getWorkflowId());
         }
         if (interaction == null) {
             interaction = new WorkflowInteraction(inner);
@@ -120,14 +145,16 @@ public class NodeSessionApi {
 
     /**
      * Return the latest user input without requiring another queued response.
+     * 
+     * @param value value
+     * @return the result
+     * @since 0.1.7
      */
     public <T> T userLatestInput(Object value) {
         if (streamMode) {
-            throw ErrorHelper.buildError(
-                    StatusCode.COMP_SESSION_INTERACT_ERROR,
-                    "reason", "Interact during streaming process (transform or collect) is not supported.",
-                    "comp_id", getComponentId(),
-                    "workflow", getWorkflowId());
+            throw ErrorHelper.buildError(StatusCode.COMP_SESSION_INTERACT_ERROR, "reason",
+                    "Interact during streaming process (transform or collect) is not supported.", "comp_id",
+                    getComponentId(), "workflow", getWorkflowId());
         }
         if (interaction == null) {
             interaction = new WorkflowInteraction(inner);
@@ -141,95 +168,137 @@ public class NodeSessionApi {
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getExecutableId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getExecutableId() {
         return inner.executableId();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getSessionId.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public String getSessionId() {
         return inner.sessionId();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateState.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     public void updateState(Map<String, Object> data) {
         inner.state().update(data);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getState.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public Object getState(Object key) {
         return inner.state().get(key);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * updateGlobalState.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
     public void updateGlobalState(Map<String, Object> data) {
         inner.state().updateGlobal(data);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getGlobalState.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public Object getGlobalState(Object key) {
         return inner.state().getGlobal(key);
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * dumpState.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Map<String, Object> dumpState() {
         return inner.state().dump();
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     /**
-     * Auto-generated for codecheck compliance.
+     * writeStream.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public void writeStream(Object data) {
-        StreamWriter writer = (StreamWriter) getStreamWriter();
+        StreamWriter<?> writer = getStreamWriter();
         if (writer != null) {
             writer.write(data);
         }
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
     /**
-     * Auto-generated for codecheck compliance.
+     * writeCustomStream.
+     * 
+     * @param data data
+     * @since 0.1.7
      */
+    @SuppressWarnings({"unchecked", "rawtypes"})
     public void writeCustomStream(Map<String, Object> data) {
-        StreamWriter writer = (StreamWriter) getCustomWriter();
+        StreamWriter<?> writer = getCustomWriter();
         if (writer != null) {
             writer.write(data);
             return;
         }
-        StreamWriter outputWriter = (StreamWriter) getStreamWriter();
+        StreamWriter<?> outputWriter = getStreamWriter();
         if (outputWriter != null) {
             outputWriter.write(new OutputSchema("custom", 0, data));
         }
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getCallbackManager.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public Object getCallbackManager() {
         return inner.callbackManager();
     }
 
     /**
-     * Auto-generated for codecheck compliance.
+     * getEnv.
+     * 
+     * @param key key
+     * @return the result
+     * @since 0.1.7
      */
     public Object getEnv(String key) {
         return inner.config() != null ? inner.config().getEnv(key) : null;
     }
 
+    /**
+     * getStreamWriter.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private StreamWriter<?> getStreamWriter() {
         if (inner.streamWriterManager() != null) {
             return inner.streamWriterManager().getOutputWriter();
@@ -237,6 +306,12 @@ public class NodeSessionApi {
         return null;
     }
 
+    /**
+     * getCustomWriter.
+     * 
+     * @return the result
+     * @since 0.1.7
+     */
     private StreamWriter<?> getCustomWriter() {
         if (inner.streamWriterManager() != null) {
             return inner.streamWriterManager().getCustomWriter();
@@ -246,6 +321,9 @@ public class NodeSessionApi {
 
     /**
      * Get the underlying internal NodeSession.
+     * 
+     * @return the result
+     * @since 0.1.7
      */
     public NodeSession getInner() {
         return inner;

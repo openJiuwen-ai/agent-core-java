@@ -1,11 +1,11 @@
-package com.openjiuwen.core.sysop;
 
-import org.junit.jupiter.api.Test;
+package com.openjiuwen.core.sysop;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class ShellTypeCompatibilityTest {
+import org.junit.jupiter.api.Test;
 
+class ShellTypeCompatibilityTest {
     @Test
     void fromStringShouldMatchPythonStyleValuesAndFallbackToAuto() {
         assertThat(ShellType.fromString("auto")).isEqualTo(ShellType.AUTO);

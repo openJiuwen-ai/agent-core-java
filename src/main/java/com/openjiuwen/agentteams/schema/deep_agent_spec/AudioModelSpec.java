@@ -12,13 +12,14 @@ import lombok.NoArgsConstructor;
 /**
  * Serializable mirror of AudioModelConfig.
  * Mirrors Python AudioModelSpec.
+ * 
+ * @since 0.1.7
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class AudioModelSpec {
-
     @Builder.Default
     private String apiKey = "";
     @Builder.Default
