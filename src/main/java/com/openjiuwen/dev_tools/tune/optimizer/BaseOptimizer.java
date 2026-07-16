@@ -4,6 +4,7 @@
 
 package com.openjiuwen.dev_tools.tune.optimizer;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
@@ -164,7 +165,7 @@ public abstract class BaseOptimizer implements AutoCloseable {
      */
     public CompletableFuture<Void> traceCallback(String llmCallId, Map<String, Object> nodeInput, BaseMessage output,
             Session session) {
-        return CompletableFuture.runAsync(() -> {
+        return OpenJiuwenExecutors.runBackgroundAsync(() -> {
             TraceNode traceNode = new TraceNode();
             traceNode.setCaseId(session.getSessionId());
             traceNode.setLlmCallId(llmCallId);

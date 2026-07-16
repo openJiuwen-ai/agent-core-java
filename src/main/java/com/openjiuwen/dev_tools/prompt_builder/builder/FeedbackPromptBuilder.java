@@ -8,6 +8,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -209,7 +210,7 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
      */
     private CompletableFuture<List<Object>> formatFeedbackTemplateInsert(String prompt, String feedback,
             Integer startPos) {
-        return CompletableFuture.supplyAsync(() -> {
+        return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
             try {
                 isIndexWithinBounds(prompt, MODE_INSERT, startPos, null);
                 String optimizedFeedback = isFeedbackValid(prompt, feedback).get();
@@ -238,7 +239,7 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
      */
     private CompletableFuture<List<Object>> formatFeedbackTemplateSelect(String prompt, String feedback,
             Integer startPos, Integer endPos) {
-        return CompletableFuture.supplyAsync(() -> {
+        return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
             try {
                 isIndexWithinBounds(prompt, MODE_SELECT, startPos, endPos);
                 String optimizedFeedback = isFeedbackValid(prompt, feedback).get();
@@ -280,7 +281,7 @@ public class FeedbackPromptBuilder extends BasePromptBuilder {
      * @since 0.1.7
      */
     private CompletableFuture<String> isFeedbackValid(String prompt, String feedback) {
-        return CompletableFuture.supplyAsync(() -> {
+        return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
             try {
                 PromptTemplate feedbackIntentTemplate =
                     PromptTemplateUtils.getTemplate(template, "PROMPT_FEEDBACK_INTENT_TEMPLATE");

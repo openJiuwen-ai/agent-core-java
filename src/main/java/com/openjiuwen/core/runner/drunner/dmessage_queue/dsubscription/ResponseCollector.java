@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqResponseMessage;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.ResultType;
 
@@ -17,7 +18,6 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -33,9 +33,7 @@ public class ResponseCollector {
     private static final ScheduledExecutorService TTL_SCHEDULER;
 
     static {
-        ScheduledThreadPoolExecutor exec = new ScheduledThreadPoolExecutor(1);
-        exec.setRemoveOnCancelPolicy(true);
-        TTL_SCHEDULER = exec;
+        TTL_SCHEDULER = OpenJiuwenExecutors.newScheduledThreadPool("response-collector-ttl", 1, false);
     }
 
     /**

@@ -7,6 +7,7 @@ package com.openjiuwen.core.workflow;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
@@ -50,7 +51,6 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -67,13 +67,8 @@ import java.util.function.Function;
  */
 public class Workflow {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
-    /**
-     * Executors.newCachedThreadPool.
-     * 
-     * @since 0.1.7
-     */
-    private static final ExecutorService STREAM_EXECUTOR = Executors.newCachedThreadPool();
+    private static final ExecutorService STREAM_EXECUTOR =
+            OpenJiuwenExecutors.newCachedThreadPool("workflow-stream", false);
 
     private final WorkflowCard card;
     private final BaseWorkflow internal;

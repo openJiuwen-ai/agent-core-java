@@ -6,8 +6,8 @@ package com.openjiuwen.core.retrieval.embedding;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.StatusCode;
-import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.OkHttpProxySupport;
 import com.openjiuwen.core.retrieval.common.BaseCallback;
 import com.openjiuwen.core.retrieval.common.EmbeddingConfig;
@@ -35,7 +35,6 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -207,18 +206,7 @@ public class APIEmbedding implements Embedding, AutoCloseable {
             this.httpClient = httpClient;
             this.okHttpClient = null;
         }
-        this.executor = Executors.newFixedThreadPool(this.maxConcurrent, runnable -> {
-            Thread thread = new Thread(runnable);
-            thread.setName("openjiuwen-embed");
-            thread.setDaemon(true);
-            thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
-                @Override
-                public void uncaughtException(Thread t, Throwable e) {
-                    Loggers.CONTROLLER.error("APIEmbedding Error,Thread {} , {}", t.getName(), e.getMessage());
-                }
-            });
-            return thread;
-        });
+        this.executor = OpenJiuwenExecutors.newFixedThreadPool("openjiuwen-embed", this.maxConcurrent, true);
     }
 
     /**

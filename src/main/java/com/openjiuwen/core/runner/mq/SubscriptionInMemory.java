@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.runner.mq;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,7 +13,6 @@ import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
@@ -74,12 +75,7 @@ public class SubscriptionInMemory extends SubscriptionBase {
     public void activate() {
         if (!active) {
             active = true;
-            consumerExecutor = Executors.newSingleThreadExecutor(r -> {
-                Thread thread = new Thread(r, "sub-inmemory-0");
-                thread.setDaemon(true);
-                thread.setUncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception in " + t.getName(), e));
-                return thread;
-            });
+            consumerExecutor = OpenJiuwenExecutors.newSingleThreadExecutor("sub-inmemory", true);
             consumerExecutor.submit(this::consumeMessages);
         }
     }

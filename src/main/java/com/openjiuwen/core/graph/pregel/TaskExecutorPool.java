@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.graph.pregel;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.store.PendingNode;
@@ -15,7 +16,6 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -62,7 +62,7 @@ public class TaskExecutorPool {
      */
     public TaskExecutorPool(PregelConfig config) {
         this.config = config;
-        this.executor = Executors.newCachedThreadPool();
+        this.executor = OpenJiuwenExecutors.newCachedThreadPool("pregel-task", false);
     }
 
     /**

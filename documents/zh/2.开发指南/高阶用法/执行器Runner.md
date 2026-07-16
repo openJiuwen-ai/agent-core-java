@@ -64,6 +64,48 @@ Runner.start();
 
 理解“默认运行器行为”时，应以 `RunnerConfig.DEFAULT` 为准，而不是只看字段声明的默认值。
 
+## 运行时线程池配置
+
+OpenJiuwen 通过统一入口创建、命名和回收运行时线程池。工具调用与未显式指定执行器的异步任务分别使用共享线程池；模块已有的实例专用线程池也由统一入口创建，但保留原有的队列、拒绝策略和生命周期。
+
+AbilityManager 在同一轮模型输出中拿到多个工具或能力调用时，默认会并行执行，并使用工具调用线程池，而不是 JDK 默认的 `ForkJoinPool.commonPool`。
+
+线程池配置支持 JVM 系统属性或环境变量。两种方式都是进程启动参数，在线程池初始化时读取，不支持运行期热更新。
+
+| 配置含义 | JVM 系统属性 | 环境变量 | 默认值 |
+| --- | --- | --- | --- |
+| 工具或能力调用最大线程数 | `openjiuwen.executor.tool-call.max-size` | `OPENJIUWEN_EXECUTOR_TOOL_CALL_MAX_SIZE` | `max(8, CPU 核数 * 2)` |
+| 工具或能力调用空闲线程保留时间，单位秒 | `openjiuwen.executor.tool-call.keep-alive-seconds` | `OPENJIUWEN_EXECUTOR_TOOL_CALL_KEEP_ALIVE_SECONDS` | `60` |
+| 等待单次工具调用结果的超时时间，单位毫秒；非正数表示不启用 | `openjiuwen.executor.tool-call.timeout-millis` | `OPENJIUWEN_EXECUTOR_TOOL_CALL_TIMEOUT_MILLIS` | `0` |
+| 普通后台任务最大线程数 | `openjiuwen.executor.background.max-size` | `OPENJIUWEN_EXECUTOR_BACKGROUND_MAX_SIZE` | `max(8, CPU 核数 * 2)` |
+| 普通后台任务空闲线程保留时间，单位秒 | `openjiuwen.executor.background.keep-alive-seconds` | `OPENJIUWEN_EXECUTOR_BACKGROUND_KEEP_ALIVE_SECONDS` | `60` |
+
+默认值设计说明：
+
+- 工具调用和普通后台两个共享线程池的最大线程数默认 `max(8, CPU 核数 * 2)`，兼顾低核机器并发能力和资源上限。
+- 两个共享线程池的空闲线程保留时间默认 `60s`，用于覆盖短时突发，同时空闲后可回收线程。
+- 单次工具调用超时默认 `0`，表示不启用统一超时，以保持历史兼容性。超时后当前轮不再等待结果并记录失败，但不会中断底层已开始执行的工具；工具自身仍需负责超时或取消。
+
+每类最大线程数是当前 JVM 进程内对应共享线程池的上限，多个会话或请求会共同竞争该池；模块专用线程池沿用其原有参数。高并发场景建议结合业务压测结果调大。
+
+JVM 系统属性适合本地测试或启动脚本中直接传参：
+
+```bash
+java -Dopenjiuwen.executor.tool-call.max-size=16 \
+     -Dopenjiuwen.executor.tool-call.timeout-millis=30000 \
+     -jar app.jar
+```
+
+环境变量适合容器、CI/CD 或平台化部署：
+
+```bash
+OPENJIUWEN_EXECUTOR_TOOL_CALL_MAX_SIZE=16 \
+OPENJIUWEN_EXECUTOR_TOOL_CALL_TIMEOUT_MILLIS=30000 \
+java -jar app.jar
+```
+
+如果两种方式同时配置，JVM 系统属性优先于环境变量。
+
 ## `DistributedConfig` 负责什么
 
 如果你需要跨进程或分布式运行，相关入口集中在 `DistributedConfig`：

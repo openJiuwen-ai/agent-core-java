@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agentteams.spawn;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import lombok.Builder;
 import lombok.Getter;
 
@@ -63,7 +65,7 @@ public class InProcessSpawnHandle implements SpawnHandle {
     public void startHealthCheck(Long intervalMillis) {
         stopHealthCheck();
         long safeInterval = Math.max(1L, intervalMillis != null ? intervalMillis : 50_000L);
-        healthCheckExecutor = new java.util.concurrent.ScheduledThreadPoolExecutor(1, runnable -> {
+        healthCheckExecutor = OpenJiuwenExecutors.newScheduledThreadPool(1, runnable -> {
             Thread thread = new Thread(runnable, "agent-teams-spawn-health-" + processId);
             thread.setDaemon(true);
             thread.setUncaughtExceptionHandler((ignoredThread, ignoredError) -> markUnhealthy());

@@ -6,6 +6,7 @@ package com.openjiuwen.core.graph.stream_actor;
 
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.workflow.component.ComponentAbility;
 
 import java.util.ArrayList;
@@ -16,7 +17,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -34,13 +34,8 @@ import java.util.function.Consumer;
 public class StreamActor {
     private static final LoggerProtocol logger = Loggers.GRAPH;
     private static final long SHUTDOWN_TIMEOUT_MS = 5000;
-
-    /**
-     * Executors.newCachedThreadPool.
-     * 
-     * @since 0.1.7
-     */
-    private static final ExecutorService VIRTUAL_EXECUTOR = Executors.newCachedThreadPool();
+    private static final ExecutorService STREAM_EXECUTOR =
+            OpenJiuwenExecutors.newCachedThreadPool("stream-actor", false);
 
     /**
      * HashMap<>.
@@ -117,7 +112,7 @@ public class StreamActor {
             CountDownLatch latch = new CountDownLatch(1);
             taskError = new CompletableFuture<>();
             taskCompletion = new CompletableFuture<>();
-            task = VIRTUAL_EXECUTOR.submit(() -> {
+            task = STREAM_EXECUTOR.submit(() -> {
                 try {
                     vertex.streamCall(latch, this::errorCallback);
                 } finally {
@@ -139,7 +134,7 @@ public class StreamActor {
                 ComponentAbility ability = entry.getKey();
                 StreamProcessor processor = entry.getValue();
                 CompletableFuture<Void> completion = new CompletableFuture<>();
-                Future<?> processorTask = VIRTUAL_EXECUTOR.submit(() -> {
+                Future<?> processorTask = STREAM_EXECUTOR.submit(() -> {
                     try {
                         processor.run(ability);
                     } finally {

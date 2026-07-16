@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.tools.browser;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -42,7 +44,7 @@ public final class BrowserRuntimeAgentCompat {
                     (proxy, invokedMethod, args) -> invokedMethod.invoke(abilityManager, args));
             field.set(agent, new Object() {
                 public Object execute(Object ctx, Object toolCall, Object session, Object tag) throws Exception {
-                    CompletableFuture<Object> future = CompletableFuture.supplyAsync(() -> {
+                    CompletableFuture<Object> future = OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
                         try {
                             return method.invoke(abilityManager, ctx, toolCall, session, tag);
                         } catch (IllegalAccessException | InvocationTargetException ex) {

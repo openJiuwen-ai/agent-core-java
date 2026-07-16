@@ -5,6 +5,7 @@
 package com.openjiuwen.core.multiagent.legacy;
 
 import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.mq.InvokeQueueMessage;
 import com.openjiuwen.core.runner.mq.MessageQueueInMemory;
@@ -314,15 +315,10 @@ public abstract class BaseGroupController {
         Loggers.MULTI_AGENT.info("BaseGroupController: Publishing message to {} subscribers for message_type={}",
                 subscribers.size(), messageType);
 
-        // Concurrently call all subscribers using regular threads
+        // Concurrently call all subscribers on the shared background executor.
         List<CompletableFuture<Object>> futures = subscribers.stream()
-                .map(agentId -> CompletableFuture.supplyAsync(() -> sendToAgent(event, agentId, session), runnable -> {
-                    Thread thread = new Thread(runnable, "base-controller-group");
-                    thread.setDaemon(true);
-                    thread.setUncaughtExceptionHandler(
-                            (t, e) -> Loggers.MULTI_AGENT.error("Uncaught exception in " + t.getName(), e));
-                    thread.start();
-                })).toList();
+                .map(agentId -> OpenJiuwenExecutors.supplyBackgroundAsync(() -> sendToAgent(event, agentId, session)))
+                .toList();
 
         List<Object> results = new ArrayList<>();
         for (int i = 0; i < futures.size(); i++) {

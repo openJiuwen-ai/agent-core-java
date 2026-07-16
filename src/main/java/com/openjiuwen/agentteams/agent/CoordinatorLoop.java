@@ -6,6 +6,7 @@ package com.openjiuwen.agentteams.agent;
 
 import com.openjiuwen.agentteams.schema.events.EventMessage;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import java.util.Locale;
 import java.util.Objects;
@@ -13,7 +14,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -254,7 +254,7 @@ public class CoordinatorLoop {
      */
     private synchronized void startPollTasks() {
         cancelPollTasks();
-        pollExecutor = new ScheduledThreadPoolExecutor(2, runnable -> {
+        pollExecutor = OpenJiuwenExecutors.newScheduledThreadPool(2, runnable -> {
             Thread thread =
                 new Thread(runnable, "agent-teams-coordinator-poll-" + role.name().toLowerCase(Locale.ROOT));
             thread.setDaemon(true);

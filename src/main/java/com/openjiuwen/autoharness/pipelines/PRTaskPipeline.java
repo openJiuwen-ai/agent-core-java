@@ -21,6 +21,7 @@ import com.openjiuwen.autoharness.stages.CommitStage;
 import com.openjiuwen.autoharness.stages.ImplementStage;
 import com.openjiuwen.autoharness.stages.PublishPrStage;
 import com.openjiuwen.autoharness.stages.VerifyStage;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 
@@ -28,8 +29,8 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -172,7 +173,14 @@ public class PRTaskPipeline extends BasePipeline {
     public static List<Object> runIsolatedStream(AutoHarnessOrchestrator orchestrator, OptimizationTask task,
             Callable<List<Object>> taskRunner) {
         task.setStatus(TaskStatus.RUNNING);
-        ExecutorService executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
+        ExecutorService executor = OpenJiuwenExecutors.newThreadPool("autoharness-task",
+                OpenJiuwenExecutors.ThreadPoolConfig.builder()
+                        .poolSize(1, 1)
+                        .keepAlive(0L, TimeUnit.MILLISECONDS)
+                        .workQueue(new ArrayBlockingQueue<>(1))
+                        .isDaemon(false)
+                        .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
+                        .build());
         Future<List<Object>> future = executor.submit(taskRunner);
         try {
             long timeoutMillis = Math.max(1L, Math.round(orchestrator.getConfig().getTaskTimeoutSecs() * 1000.0));

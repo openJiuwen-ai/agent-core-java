@@ -4,6 +4,7 @@
 
 package com.openjiuwen.extensions.context_evolver;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
@@ -380,7 +381,7 @@ public class ContextEvolvingReActAgent extends ReActAgent {
      * @since 0.1.7
      */
     public CompletableFuture<Map<String, Object>> summarizeTrajectories(SummarizeTrajectoriesInput params) {
-        return CompletableFuture.supplyAsync(() -> {
+        return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
             try {
                 // Handle trajectory(ies)
                 List<String> trajectories = new ArrayList<>();

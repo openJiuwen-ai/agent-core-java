@@ -4,6 +4,7 @@
 
 package com.openjiuwen.autoharness.rails;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.harness.rails.DeepAgentRail;
 
@@ -51,7 +52,8 @@ public class RevertOnFailureRail extends DeepAgentRail {
     public void beforeTaskIteration(AgentCallbackContext ctx) {
         try {
             Process process = new ProcessBuilder("git", "rev-parse", "HEAD").redirectErrorStream(true).start();
-            CompletableFuture<String> outputFuture = CompletableFuture.supplyAsync(() -> readFirstLine(process));
+            CompletableFuture<String> outputFuture = OpenJiuwenExecutors.supplyBackgroundAsync(
+                    () -> readFirstLine(process));
             String output = outputFuture.join();
             if (process.onExit().join().exitValue() == 0 && output != null && !output.isBlank()) {
                 setBaseCommit(output.trim());
@@ -75,7 +77,7 @@ public class RevertOnFailureRail extends DeepAgentRail {
         try {
             Process process = new ProcessBuilder("git", "reset", "--hard", baseCommit)
                     .directory(workspace == null ? null : workspace.toFile()).redirectErrorStream(true).start();
-            CompletableFuture<Void> drain = CompletableFuture.runAsync(() -> discardOutput(process));
+            CompletableFuture<Void> drain = OpenJiuwenExecutors.runBackgroundAsync(() -> discardOutput(process));
             boolean isSuccess = process.onExit().join().exitValue() == 0;
             drain.join();
             return isSuccess;

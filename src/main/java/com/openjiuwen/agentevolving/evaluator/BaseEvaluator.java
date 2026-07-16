@@ -9,6 +9,7 @@ import com.openjiuwen.agentevolving.TuneUtils;
 import com.openjiuwen.agentevolving.dataset.Case;
 import com.openjiuwen.agentevolving.dataset.CaseLoader;
 import com.openjiuwen.agentevolving.dataset.EvaluatedCase;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 
@@ -17,7 +18,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
@@ -60,7 +60,7 @@ public abstract class BaseEvaluator {
         TuneUtils.validateDigitalParameter(numParallel, "num_parallel", TuneConstant.MIN_PARALLEL_NUM,
                 TuneConstant.MAX_PARALLEL_NUM);
         int workers = Math.min(numParallel, safeCases.size());
-        ExecutorService executor = Executors.newFixedThreadPool(workers);
+        ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("agent-evolving-evaluator", workers, false);
         try {
             List<Future<EvaluatedCase>> futures = new ArrayList<>(safeCases.size());
             for (int i = 0; i < safeCases.size(); i++) {

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.dev_tools.skill_evaluator;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
 import com.openjiuwen.core.runner.Runner;
@@ -56,7 +57,7 @@ public class SkillEvaluator {
      * @since 0.1.7
      */
     public CompletableFuture<Void> createAgent() {
-        return CompletableFuture.runAsync(() -> {
+        return OpenJiuwenExecutors.runBackgroundAsync(() -> {
             Path resolvedSkillsDir = resolveSkillsDir();
             Path resolvedOutputDir = resolvePathConfig("OUTPUT_DIR", Path.of(DEFAULT_OUTPUT_DIR));
 
@@ -109,7 +110,7 @@ public class SkillEvaluator {
      * @since 0.1.7
      */
     public CompletableFuture<Object> evaluate(String skillPath, String requirement, String outputPath) {
-        return CompletableFuture.supplyAsync(() -> {
+        return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
             ensureAgentReady();
             Path resolvedSkillPath = Paths.get(skillPath).toAbsolutePath().normalize();
             Path reportDir = resolveReportDir(outputPath, outputDir);

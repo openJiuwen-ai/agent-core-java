@@ -5,6 +5,7 @@
 package com.openjiuwen.core.runner.callback;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,7 +23,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -603,7 +603,7 @@ public class CallbackFramework {
         Object[] finalArgs = args != null ? args : new Object[0];
         Map<String, Object> finalKwargs = kwargs != null ? kwargs : new HashMap<>();
 
-        ExecutorService executor = Executors.newCachedThreadPool();
+        ExecutorService executor = OpenJiuwenExecutors.newCachedThreadPool("callback-parallel", false);
         List<Future<Object>> futures = new ArrayList<>();
 
         for (CallbackInfo callbackInfo : new ArrayList<>(eventCallbacks)) {
@@ -629,7 +629,7 @@ public class CallbackFramework {
 
                     Object result;
                     if (callbackInfo.getTimeout() != null && callbackInfo.getTimeout() > 0) {
-                        ExecutorService inner = Executors.newSingleThreadExecutor();
+                        ExecutorService inner = OpenJiuwenExecutors.newSingleThreadExecutor("callback-timeout", false);
                         try {
                             Future<Object> innerFuture =
                                 inner.submit(() -> callbackInfo.getCallback().apply(callbackKwargs));
@@ -865,7 +865,7 @@ public class CallbackFramework {
      */
     public ScheduledFuture<List<Object>> triggerDelayed(String event, double delaySeconds, Object[] args,
             Map<String, Object> kwargs) {
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        ScheduledExecutorService scheduler = OpenJiuwenExecutors.newScheduledThreadPool("callback-delay", 1, false);
         long delayMillis = (long) (delaySeconds * 1000);
         return scheduler.schedule(() -> {
             try {
