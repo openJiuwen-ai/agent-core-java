@@ -24,4 +24,15 @@ class StatusCodeTest {
         assertTrue(message.contains("{reason}"));
         assertTrue(message.contains("{workflow}"));
     }
+
+    @Test
+    void modelStatusCodesBuildModelErrorAndKeepErrorMessageParam() {
+        BaseError error = ErrorHelper.buildError(
+                StatusCode.MODEL_CALL_FAILED,
+                "error_msg",
+                "upstream http 500: body");
+
+        assertTrue(error instanceof ModelError);
+        assertEquals("upstream http 500: body", error.getParams().get("error_msg"));
+    }
 }

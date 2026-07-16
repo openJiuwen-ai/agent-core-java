@@ -7,23 +7,14 @@ package com.openjiuwen.core.foundation.llm.model_clients;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
+import com.openjiuwen.core.common.exception.ErrorHelper;
+import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryListener;
 import com.openjiuwen.core.foundation.llm.model_clients.errors.ErrorResponseBodySanitizer;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelCallFailureStage;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelClientInternalException;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelClientInternalFailureInfo;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelClientException;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelHttpFailureInfo;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelHttpStatusException;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelResponseParseException;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelResponseParseFailureInfo;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelStreamException;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelStreamFailureInfo;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelTransportException;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelTransportFailureInfo;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -266,7 +257,7 @@ public class OpenAIModelClient extends BaseModelClient {
             Loggers.LLM.info("OpenAI API response received. {}", Map.of("response", responseData));
             recordTracerData(tracerRecordData, "llm_response", assistantMessage);
             return assistantMessage;
-        } catch (ModelClientException exception) {
+        } catch (BaseError exception) {
             Loggers.LLM.error("OpenAI API async invoke error. {}", exception.getMessage());
             throw exception;
         } catch (Exception exception) {
@@ -316,7 +307,7 @@ public class OpenAIModelClient extends BaseModelClient {
                             transportHeaders.headers(), sensitiveValues, retryListener),
                     tracerRecordData
             );
-        } catch (ModelClientException exception) {
+        } catch (BaseError exception) {
             Loggers.LLM.error("OpenAI API async stream error. {}", exception.getMessage());
             throw exception;
         } catch (Exception exception) {
@@ -1320,22 +1311,16 @@ public class OpenAIModelClient extends BaseModelClient {
         });
     }
 
-    private ModelTransportException transportException(
+    private BaseError transportException(
             Exception exception,
             boolean streaming,
             Collection<String> sensitiveValues) {
-        ModelTransportFailureInfo failureInfo = new ModelTransportFailureInfo(
-                ModelCallFailureStage.TRANSPORT,
-                modelClientConfig.getClientProvider(),
-                safeApiBase(),
-                streaming,
-                "send_request",
-                exception.getClass().getSimpleName(),
-                safeExceptionMessage(exception, sensitiveValues));
-        return new ModelTransportException(failureInfo, exception);
+        return modelCallError(
+                "transport failure at send_request: " + safeExceptionMessage(exception, sensitiveValues),
+                exception);
     }
 
-    private ModelResponseParseException responseParseException(
+    private BaseError responseParseException(
             String body,
             Exception exception,
             boolean streaming,
@@ -1343,17 +1328,12 @@ public class OpenAIModelClient extends BaseModelClient {
             Collection<String> sensitiveValues) {
         ErrorResponseBodySanitizer.SanitizedBody sanitized =
                 ErrorResponseBodySanitizer.sanitize(body, sensitiveValues);
-        ModelResponseParseFailureInfo failureInfo = new ModelResponseParseFailureInfo(
-                ModelCallFailureStage.RESPONSE_PARSE,
-                modelClientConfig.getClientProvider(),
-                safeApiBase(),
-                streaming,
-                phase,
-                sanitized.body(),
-                sanitized.truncated(),
-                exception.getClass().getSimpleName(),
-                safeExceptionMessage(exception, sensitiveValues));
-        return new ModelResponseParseException(failureInfo, exception);
+        String message = "response parse failure at " + phase + ": "
+                + safeExceptionMessage(exception, sensitiveValues);
+        if (!sanitized.body().isBlank()) {
+            message += ", response body: " + sanitized.body();
+        }
+        return modelCallError(message, exception);
     }
 
     private static String responseDataForDiagnostics(Map<String, Object> responseData) {
@@ -1364,40 +1344,24 @@ public class OpenAIModelClient extends BaseModelClient {
         }
     }
 
-    private ModelStreamException streamException(
+    private BaseError streamException(
             String event,
             Exception exception,
             Collection<String> sensitiveValues) {
-        ErrorResponseBodySanitizer.SanitizedBody sanitizedEvent =
-                ErrorResponseBodySanitizer.sanitize(event, sensitiveValues);
-        ModelStreamFailureInfo failureInfo = new ModelStreamFailureInfo(
-                ModelCallFailureStage.STREAM,
-                modelClientConfig.getClientProvider(),
-                safeApiBase(),
-                true,
-                "read_chunk",
-                sanitizedEvent.body(),
-                exception.getClass().getSimpleName(),
-                safeExceptionMessage(exception, sensitiveValues));
-        return new ModelStreamException(failureInfo, exception);
+        return modelCallError(
+                "stream failure at read_chunk: " + safeExceptionMessage(exception, sensitiveValues),
+                exception);
     }
 
-    private ModelClientInternalException clientInternalException(
+    private BaseError clientInternalException(
             Exception exception,
             boolean streaming,
             String phase,
             Collection<String> sensitiveValues) {
-        String safeMessage = safeExceptionMessage(exception, sensitiveValues);
-        ModelClientInternalFailureInfo failureInfo = new ModelClientInternalFailureInfo(
-                ModelCallFailureStage.CLIENT_INTERNAL,
-                modelClientConfig.getClientProvider(),
-                safeApiBase(),
-                streaming,
-                phase,
-                safeMessage,
-                exception.getClass().getSimpleName(),
-                safeMessage);
-        return new ModelClientInternalException(failureInfo, exception);
+        return modelCallError(
+                "model client internal failure at " + phase + ": "
+                        + safeExceptionMessage(exception, sensitiveValues),
+                exception);
     }
 
     private static String safeExceptionMessage(Exception exception, Collection<String> sensitiveValues) {
@@ -1414,46 +1378,16 @@ public class OpenAIModelClient extends BaseModelClient {
         }
         ErrorResponseBodySanitizer.SanitizedBody sanitized =
                 ErrorResponseBodySanitizer.sanitize(body, sensitiveValues);
-        ModelHttpFailureInfo failureInfo = new ModelHttpFailureInfo(
-                ModelCallFailureStage.HTTP_STATUS,
-                modelClientConfig.getClientProvider(),
-                safeApiBase(),
-                streaming,
-                statusCode,
-                sanitized.body(),
-                sanitized.truncated());
-        throw new ModelHttpStatusException(failureInfo, null);
+        throw modelCallError("HTTP " + statusCode + ": " + sanitized.body(), null);
     }
 
-    private String safeApiBase() {
-        return sanitizeApiBase(modelClientConfig.getApiBase());
-    }
-
-    private static String sanitizeApiBase(String apiBase) {
-        if (apiBase == null || apiBase.isBlank()) {
-            return "";
-        }
-        try {
-            URI uri = URI.create(apiBase);
-            StringBuilder builder = new StringBuilder();
-            if (uri.getScheme() != null) {
-                builder.append(uri.getScheme()).append("://");
-            }
-            if (uri.getHost() != null) {
-                builder.append(uri.getHost());
-                if (uri.getPort() >= 0) {
-                    builder.append(':').append(uri.getPort());
-                }
-            } else if (uri.getRawAuthority() != null) {
-                builder.append("[redacted-authority]");
-            }
-            if (builder.length() == 0) {
-                return ErrorResponseBodySanitizer.sanitize(apiBase).body();
-            }
-            return builder.toString();
-        } catch (RuntimeException exception) {
-            return ErrorResponseBodySanitizer.sanitize(apiBase).body();
-        }
+    private BaseError modelCallError(String errorMessage, Throwable cause) {
+        return ErrorHelper.buildError(
+                StatusCode.MODEL_CALL_FAILED,
+                null,
+                null,
+                cause,
+                Map.of("error_msg", errorMessage));
     }
 
     private static String readBody(InputStream inputStream) throws IOException {

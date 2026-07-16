@@ -86,6 +86,12 @@ public final class StatusMapping {
     static {
         Map<StatusCode, String> overrides = new EnumMap<>(StatusCode.class);
         putIfExists(overrides, "CONTROLLER_INVOKE_LLM_FAILED", "FrameworkError");
+        putIfExists(overrides, "MODEL_PROVIDER_INVALID", "ModelError");
+        putIfExists(overrides, "MODEL_CALL_FAILED", "ModelError");
+        putIfExists(overrides, "MODEL_SERVICE_CONFIG_ERROR", "ModelError");
+        putIfExists(overrides, "MODEL_CONFIG_ERROR", "ModelError");
+        putIfExists(overrides, "MODEL_INVOKE_PARAM_ERROR", "ModelError");
+        putIfExists(overrides, "MODEL_CLIENT_CONFIG_INVALID", "ModelError");
         putIfExists(overrides, "TOOL_EXECUTION_ERROR", "ToolError");
         putIfExists(overrides, "TOOL_NOT_FOUND_ERROR", "ValidationError");
         putIfExists(overrides, "AGENT_TEAM_EXECUTION_ERROR", "AgentError");
