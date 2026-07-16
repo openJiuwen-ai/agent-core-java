@@ -118,7 +118,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                                    String stop,
                                    BaseOutputParser outputParser,
                                    Float timeout,
-                                   Map<String, Object> kwargs) throws Exception {
+                                   Map<String, Object> kwargs) {
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
         Object tracerRecordData = effectiveKwargs.remove("tracer_record_data");
         Map<String, Object> params = buildAndSanitizeParams(
@@ -132,10 +132,10 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 false,
                 effectiveKwargs
         );
-        callTracer(tracerRecordData, singlePayload("llm_params", params));
-        Loggers.LLM.info("LLM request params ready. {}", requestLogMetadata(params, false));
 
         try {
+            callTracer(tracerRecordData, singlePayload("llm_params", params));
+            Loggers.LLM.info("LLM request params ready. {}", requestLogMetadata(params, false));
             HttpResult result = postJson(params, timeout);
             if (result.statusCode() >= 400) {
                 throw new IOException("API returned error " + result.statusCode() + ": " + result.body());
@@ -167,7 +167,7 @@ public class SiliconFlowModelClient extends BaseModelClient {
                                                   String stop,
                                                   BaseOutputParser outputParser,
                                                   Float timeout,
-                                                  Map<String, Object> kwargs) throws Exception {
+                                                  Map<String, Object> kwargs) {
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
         Object tracerRecordData = effectiveKwargs.remove("tracer_record_data");
         Map<String, Object> params = buildAndSanitizeParams(
@@ -181,9 +181,9 @@ public class SiliconFlowModelClient extends BaseModelClient {
                 true,
                 effectiveKwargs
         );
-        callTracer(tracerRecordData, singlePayload("llm_params", params));
 
         try {
+            callTracer(tracerRecordData, singlePayload("llm_params", params));
             Iterator<AssistantMessageChunk> iterator = outputParser != null
                     ? streamWithParser(params, outputParser, timeout)
                     : streamResponse(params, timeout);

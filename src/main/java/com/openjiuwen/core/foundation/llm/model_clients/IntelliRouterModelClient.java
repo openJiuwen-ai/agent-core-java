@@ -91,22 +91,28 @@ public class IntelliRouterModelClient extends BaseModelClient {
                                    String stop,
                                    BaseOutputParser outputParser,
                                    Float timeout,
-                                   Map<String, Object> kwargs) throws Exception {
-        List<Map<String, Object>> convertedMessages = convertMessagesToDict(messages);
-        String modelName = resolveModelName(model);
-        Map<String, Object> requestParams = buildIntelliRouterRequestParams(
-                convertedMessages,
-                tools,
-                temperature,
-                topP,
-                maxTokens,
-                stop,
-                modelName,
-                false,
-                timeout,
-                kwargs);
-        Map<String, Object> response = router.completion(modelName, convertedMessages, requestParams);
-        return convertResponse(response, outputParser);
+                                   Map<String, Object> kwargs) {
+        try {
+            List<Map<String, Object>> convertedMessages = convertMessagesToDict(messages);
+            String modelName = resolveModelName(model);
+            Map<String, Object> requestParams = buildIntelliRouterRequestParams(
+                    convertedMessages,
+                    tools,
+                    temperature,
+                    topP,
+                    maxTokens,
+                    stop,
+                    modelName,
+                    false,
+                    timeout,
+                    kwargs);
+            Map<String, Object> response = router.completion(modelName, convertedMessages, requestParams);
+            return convertResponse(response, outputParser);
+        } catch (RuntimeException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw intelliRouterCallError("invoke", exception);
+        }
     }
 
     @Override
@@ -119,21 +125,27 @@ public class IntelliRouterModelClient extends BaseModelClient {
                                                   String stop,
                                                   BaseOutputParser outputParser,
                                                   Float timeout,
-                                                  Map<String, Object> kwargs) throws Exception {
-        List<Map<String, Object>> convertedMessages = convertMessagesToDict(messages);
-        String modelName = resolveModelName(model);
-        Map<String, Object> requestParams = buildIntelliRouterRequestParams(
-                convertedMessages,
-                tools,
-                temperature,
-                topP,
-                maxTokens,
-                stop,
-                modelName,
-                true,
-                timeout,
-                kwargs);
-        return new ChunkIterator(router.streamCompletion(modelName, convertedMessages, requestParams));
+                                                  Map<String, Object> kwargs) {
+        try {
+            List<Map<String, Object>> convertedMessages = convertMessagesToDict(messages);
+            String modelName = resolveModelName(model);
+            Map<String, Object> requestParams = buildIntelliRouterRequestParams(
+                    convertedMessages,
+                    tools,
+                    temperature,
+                    topP,
+                    maxTokens,
+                    stop,
+                    modelName,
+                    true,
+                    timeout,
+                    kwargs);
+            return new ChunkIterator(router.streamCompletion(modelName, convertedMessages, requestParams));
+        } catch (RuntimeException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw intelliRouterCallError("stream", exception);
+        }
     }
 
     @Override
@@ -184,6 +196,16 @@ public class IntelliRouterModelClient extends BaseModelClient {
                 "error_msg",
                 "IntelliRouter does not support video generation"
         );
+    }
+
+    private static BaseError intelliRouterCallError(String operation, Exception exception) {
+        String message = "IntelliRouter " + operation + " failed: " + exception.getMessage();
+        return ErrorHelper.buildError(
+                StatusCode.MODEL_CALL_FAILED,
+                null,
+                null,
+                exception,
+                Map.of("error_msg", message));
     }
 
     static String makeRouterKey(IntelliRouterClientConfig config) {

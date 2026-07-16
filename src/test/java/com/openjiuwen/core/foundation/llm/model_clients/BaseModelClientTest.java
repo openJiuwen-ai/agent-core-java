@@ -21,11 +21,11 @@ import com.openjiuwen.core.foundation.llm.schema.VideoGenerationResponse;
 import com.openjiuwen.core.foundation.tool.schema.ToolInfo;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -247,6 +247,37 @@ class BaseModelClientTest {
     }
 
     @Test
+    void textInvokeAndStreamDoNotDeclareCheckedExceptions() throws NoSuchMethodException {
+        Method invoke = BaseModelClient.class.getDeclaredMethod(
+                "invoke",
+                Object.class,
+                Object.class,
+                Float.class,
+                Float.class,
+                String.class,
+                Integer.class,
+                String.class,
+                BaseOutputParser.class,
+                Float.class,
+                Map.class);
+        Method stream = BaseModelClient.class.getDeclaredMethod(
+                "stream",
+                Object.class,
+                Object.class,
+                Float.class,
+                Float.class,
+                String.class,
+                Integer.class,
+                String.class,
+                BaseOutputParser.class,
+                Float.class,
+                Map.class);
+
+        assertEquals(0, invoke.getExceptionTypes().length);
+        assertEquals(0, stream.getExceptionTypes().length);
+    }
+
+    @Test
     void typedInvokeAndStreamUseProviderExtraFieldExtensionWithoutForwardingListenerByDefault() {
         TestModelClient client = new TestModelClient(requestConfig(), validClientConfig(), true);
         ModelInvokeOptions options = ModelInvokeOptions.builder()
@@ -269,14 +300,13 @@ class BaseModelClientTest {
                 .requestHeaders(Map.of("X-Private-Key", "private-value"))
                 .build();
 
-        CompletionException error = assertThrows(CompletionException.class,
-                () -> client.invoke(List.of(new UserMessage("hello")), options).toCompletableFuture().join());
+        UnsupportedOperationException error = assertThrows(UnsupportedOperationException.class,
+                () -> client.invoke(List.of(new UserMessage("hello")), options));
 
-        assertTrue(error.getCause() instanceof UnsupportedOperationException);
-        assertTrue(error.getCause().getMessage().contains(
+        assertTrue(error.getMessage().contains(
                 "TestModelClient does not support request-level headers"));
-        assertFalse(error.getCause().getMessage().contains("X-Private-Key"));
-        assertFalse(error.getCause().getMessage().contains("private-value"));
+        assertFalse(error.getMessage().contains("X-Private-Key"));
+        assertFalse(error.getMessage().contains("private-value"));
     }
 
     @Test
@@ -286,14 +316,13 @@ class BaseModelClientTest {
                 .requestHeaders(Map.of("X-Private-Key", "private-value"))
                 .build();
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
+        UnsupportedOperationException error = assertThrows(UnsupportedOperationException.class,
                 () -> client.stream(List.of(new UserMessage("hello")), options));
 
-        assertTrue(error.getCause() instanceof UnsupportedOperationException);
-        assertTrue(error.getCause().getMessage().contains(
+        assertTrue(error.getMessage().contains(
                 "TestModelClient does not support request-level headers"));
-        assertFalse(error.getCause().getMessage().contains("X-Private-Key"));
-        assertFalse(error.getCause().getMessage().contains("private-value"));
+        assertFalse(error.getMessage().contains("X-Private-Key"));
+        assertFalse(error.getMessage().contains("private-value"));
     }
 
     private static ModelRequestConfig requestConfig() {

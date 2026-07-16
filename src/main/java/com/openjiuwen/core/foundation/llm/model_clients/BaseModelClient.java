@@ -11,7 +11,6 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.UserConfig;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
-import com.openjiuwen.core.foundation.llm.model_clients.errors.ModelClientException;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -387,29 +386,23 @@ public abstract class BaseModelClient implements Model.ModelClient {
                                             String stop,
                                             BaseOutputParser outputParser,
                                             Float timeout,
-                                            Map<String, Object> kwargs) throws Exception;
+                                            Map<String, Object> kwargs);
 
     @Override
     public CompletionStage<AssistantMessage> invoke(List<BaseMessage> messages, ModelInvokeOptions options) {
         ModelInvokeOptions resolvedOptions = options == null ? ModelInvokeOptions.builder().build() : options;
-        try {
-            return CompletableFuture.completedFuture(invoke(
-                    messages,
-                    resolvedOptions.getTools(),
-                    resolvedOptions.getTemperature(),
-                    resolvedOptions.getTopP(),
-                    resolvedOptions.getModel(),
-                    resolvedOptions.getMaxTokens(),
-                    resolvedOptions.getStop(),
-                    resolvedOptions.getOutputParser(),
-                    resolvedOptions.getTimeout(),
-                    invocationExtraFields(resolvedOptions)
-            ));
-        } catch (ModelClientException exception) {
-            throw exception;
-        } catch (Exception exception) {
-            return CompletableFuture.failedFuture(exception);
-        }
+        return CompletableFuture.completedFuture(invoke(
+                messages,
+                resolvedOptions.getTools(),
+                resolvedOptions.getTemperature(),
+                resolvedOptions.getTopP(),
+                resolvedOptions.getModel(),
+                resolvedOptions.getMaxTokens(),
+                resolvedOptions.getStop(),
+                resolvedOptions.getOutputParser(),
+                resolvedOptions.getTimeout(),
+                invocationExtraFields(resolvedOptions)
+        ));
     }
 
     public abstract Iterator<AssistantMessageChunk> stream(Object messages,
@@ -421,29 +414,23 @@ public abstract class BaseModelClient implements Model.ModelClient {
                                                            String stop,
                                                            BaseOutputParser outputParser,
                                                            Float timeout,
-                                                           Map<String, Object> kwargs) throws Exception;
+                                                           Map<String, Object> kwargs);
 
     @Override
     public Iterator<AssistantMessageChunk> stream(List<BaseMessage> messages, ModelInvokeOptions options) {
         ModelInvokeOptions resolvedOptions = options == null ? ModelInvokeOptions.builder().build() : options;
-        try {
-            return stream(
-                    messages,
-                    resolvedOptions.getTools(),
-                    resolvedOptions.getTemperature(),
-                    resolvedOptions.getTopP(),
-                    resolvedOptions.getModel(),
-                    resolvedOptions.getMaxTokens(),
-                    resolvedOptions.getStop(),
-                    resolvedOptions.getOutputParser(),
-                    resolvedOptions.getTimeout(),
-                    invocationExtraFields(resolvedOptions)
-            );
-        } catch (ModelClientException exception) {
-            throw exception;
-        } catch (Exception exception) {
-            throw new IllegalStateException(exception);
-        }
+        return stream(
+                messages,
+                resolvedOptions.getTools(),
+                resolvedOptions.getTemperature(),
+                resolvedOptions.getTopP(),
+                resolvedOptions.getModel(),
+                resolvedOptions.getMaxTokens(),
+                resolvedOptions.getStop(),
+                resolvedOptions.getOutputParser(),
+                resolvedOptions.getTimeout(),
+                invocationExtraFields(resolvedOptions)
+        );
     }
 
     /**

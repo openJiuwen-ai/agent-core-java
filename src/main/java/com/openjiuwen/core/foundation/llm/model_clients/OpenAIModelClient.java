@@ -219,7 +219,7 @@ public class OpenAIModelClient extends BaseModelClient {
                                    String stop,
                                    BaseOutputParser outputParser,
                                    Float timeout,
-                                   Map<String, Object> kwargs) throws Exception {
+                                   Map<String, Object> kwargs) {
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
         Map<String, ?> formalRequestHeaders = popFormalRequestHeaders(effectiveKwargs);
         Map<String, ?> legacyRequestHeaders = popRequestCustomHeaders(effectiveKwargs);
@@ -286,7 +286,7 @@ public class OpenAIModelClient extends BaseModelClient {
                                                   String stop,
                                                   BaseOutputParser outputParser,
                                                   Float timeout,
-                                                  Map<String, Object> kwargs) throws Exception {
+                                                  Map<String, Object> kwargs) {
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
         Map<String, ?> formalRequestHeaders = popFormalRequestHeaders(effectiveKwargs);
         Map<String, ?> legacyRequestHeaders = popRequestCustomHeaders(effectiveKwargs);
