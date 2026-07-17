@@ -1,0 +1,671 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package examples.gitcode_issue_evolver.job;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.time.Duration;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
+
+/**
+ * SQLite implementation with delivery deduplication, optimistic locking, and worker leases.
+ *
+ * @since 0.1.12
+ */
+public final class SqliteEvolutionJobStore implements EvolutionJobStore {
+    private static final int MAX_DETAIL_LENGTH = 4000;
+    private static final Logger LOGGER = LoggerFactory.getLogger(SqliteEvolutionJobStore.class);
+    private static final String ACTIVE_STATES = "'RECEIVED','PLANNING','IMPLEMENTING','VERIFYING',"
+            + "'COMMITTED','PUBLISHING','PR_CREATED','WAITING_REVIEW','FAILED_RETRYABLE',"
+            + "'CANCEL_REQUESTED'";
+    private static final String JOB_COLUMNS = "id,repo,issue_iid,issue_title,issue_url,state,"
+            + "trigger_delivery_id,branch,head_sha,pr_number,pr_url,draft,attempt_count,next_attempt_at,"
+            + "lease_owner,lease_until,version,last_error,created_at,updated_at";
+    private static final String FIND_BY_PULL_REQUEST_SQL = "SELECT " + JOB_COLUMNS
+            + " FROM evolution_jobs WHERE repo=? AND pr_number=? ORDER BY created_at DESC LIMIT 1";
+    private static final String FIND_ACTIVE_ISSUE_SQL = "SELECT " + JOB_COLUMNS
+            + " FROM evolution_jobs WHERE repo=? AND issue_iid=? AND state IN (" + ACTIVE_STATES + ")"
+            + " ORDER BY created_at DESC LIMIT 1";
+    private static final String FIND_LATEST_ISSUE_SQL = "SELECT " + JOB_COLUMNS
+            + " FROM evolution_jobs WHERE repo=? AND issue_iid=? ORDER BY created_at DESC LIMIT 1";
+    private static final String FIND_BY_ID_SQL = "SELECT " + JOB_COLUMNS + " FROM evolution_jobs WHERE id=?";
+    private static final String CLAIM_JOB_SQL = "UPDATE evolution_jobs SET lease_owner=?,lease_until=?,"
+            + "attempt_count=attempt_count+1,version=version+1,updated_at=? WHERE id=(SELECT id "
+            + "FROM evolution_jobs WHERE state IN ('RECEIVED','FAILED_RETRYABLE','CANCEL_REQUESTED') "
+            + "AND next_attempt_at<=? "
+            + "AND (lease_until=0 OR lease_until<?) ORDER BY created_at LIMIT 1) "
+            + "AND (lease_until=0 OR lease_until<?) RETURNING " + JOB_COLUMNS;
+    private final String jdbcUrl;
+
+    /**
+     * Open or create a versioned SQLite job database.
+     *
+     * @param databasePath database file path
+     */
+    public SqliteEvolutionJobStore(Path databasePath) {
+        Path normalized = Objects.requireNonNull(databasePath, "databasePath must not be null")
+                .toAbsolutePath().normalize();
+        try {
+            if (normalized.getParent() != null) {
+                Files.createDirectories(normalized.getParent());
+            }
+        } catch (IOException ex) {
+            throw new IllegalStateException("Unable to create SQLite data directory", ex);
+        }
+        this.jdbcUrl = "jdbc:sqlite:" + normalized;
+        initialize();
+    }
+
+    @Override
+    public boolean acceptDelivery(String deliveryId, String eventType, String payloadSha256) {
+        requireText(deliveryId, "deliveryId");
+        requireText(eventType, "eventType");
+        requireText(payloadSha256, "payloadSha256");
+        try (Connection connection = connection()) {
+            return insertDelivery(connection, deliveryId, eventType, payloadSha256) == 1;
+        } catch (SQLException ex) {
+            throw failure("accept webhook delivery", ex);
+        }
+    }
+
+    @Override
+    public EnqueueResult enqueueIssue(IssueJobRequest request) {
+        Objects.requireNonNull(request, "request must not be null");
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                int inserted = insertDelivery(
+                        connection, request.deliveryId(), request.eventType(), request.payloadSha256());
+                if (inserted == 0) {
+                    connection.commit();
+                    return new EnqueueResult(EnqueueResult.Status.DUPLICATE_DELIVERY,
+                            findByIssue(connection, request.repository(), request.issueIid(), true));
+                }
+                Optional<EvolutionJob> existing = findByIssue(
+                        connection, request.repository(), request.issueIid(), true);
+                if (existing.isPresent()) {
+                    connection.commit();
+                    return new EnqueueResult(EnqueueResult.Status.EXISTING_ACTIVE_JOB, existing);
+                }
+                EvolutionJob created = insertJob(connection, request);
+                connection.commit();
+                return new EnqueueResult(EnqueueResult.Status.CREATED, Optional.of(created));
+            } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
+                rollback(connection, ex);
+                throw ex;
+            }
+        } catch (SQLException ex) {
+            throw failure("enqueue issue", ex);
+        }
+    }
+
+    @Override
+    public Optional<EvolutionJob> createJobIfAbsent(IssueJobRequest request) {
+        Objects.requireNonNull(request, "request must not be null");
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                int inserted = insertDelivery(
+                        connection, request.deliveryId(), request.eventType(), request.payloadSha256());
+                Optional<EvolutionJob> existing = findByIssue(
+                        connection, request.repository(), request.issueIid(), true);
+                if (existing.isPresent()) {
+                    connection.commit();
+                    return existing;
+                }
+                if (inserted == 0) {
+                    connection.commit();
+                    return Optional.empty();
+                }
+                EvolutionJob created = insertJob(connection, request);
+                connection.commit();
+                return Optional.of(created);
+            } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
+                rollback(connection, ex);
+                throw ex;
+            }
+        } catch (SQLException ex) {
+            throw failure("create issue job", ex);
+        }
+    }
+
+    @Override
+    public Optional<EvolutionJob> findByIssue(String repository, long issueIid) {
+        requireText(repository, "repository");
+        requirePositive(issueIid, "issueIid");
+        try (Connection connection = connection()) {
+            Optional<EvolutionJob> active = findByIssue(connection, repository, issueIid, true);
+            return active.isPresent() ? active : findByIssue(connection, repository, issueIid, false);
+        } catch (SQLException ex) {
+            throw failure("find issue job", ex);
+        }
+    }
+
+    @Override
+    public Optional<EvolutionJob> findById(String jobId) {
+        requireText(jobId, "jobId");
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(FIND_BY_ID_SQL)) {
+            statement.setString(1, jobId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(readJob(result)) : Optional.empty();
+            }
+        } catch (SQLException ex) {
+            throw failure("find evolution job", ex);
+        }
+    }
+
+    @Override
+    public Optional<EvolutionJob> findByPullRequest(String repository, long pullRequestNumber) {
+        requireText(repository, "repository");
+        requirePositive(pullRequestNumber, "pullRequestNumber");
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(FIND_BY_PULL_REQUEST_SQL)) {
+            statement.setString(1, repository);
+            statement.setLong(2, pullRequestNumber);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(readJob(result)) : Optional.empty();
+            }
+        } catch (SQLException ex) {
+            throw failure("find pull request job", ex);
+        }
+    }
+
+    @Override
+    public Optional<EvolutionJob> leaseNext(String workerId, Duration leaseDuration) {
+        requireText(workerId, "workerId");
+        long now = System.currentTimeMillis();
+        long leaseUntil = leaseDeadline(now, leaseDuration);
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement statement = connection.prepareStatement(CLAIM_JOB_SQL)) {
+                statement.setString(1, workerId);
+                statement.setLong(2, leaseUntil);
+                statement.setLong(3, now);
+                statement.setLong(4, now);
+                statement.setLong(5, now);
+                statement.setLong(6, now);
+                EvolutionJob leased;
+                try (ResultSet result = statement.executeQuery()) {
+                    if (!result.next()) {
+                        connection.commit();
+                        return Optional.empty();
+                    }
+                    leased = readJob(result);
+                }
+                appendEvent(connection, leased.id(), leased.state(), leased.state(), "leased by " + workerId);
+                connection.commit();
+                return Optional.of(leased);
+            } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
+                rollback(connection, ex);
+                throw ex;
+            }
+        } catch (SQLException ex) {
+            throw failure("lease issue job", ex);
+        }
+    }
+
+    @Override
+    public boolean heartbeat(String jobId, String workerId, Duration leaseDuration) {
+        requireText(jobId, "jobId");
+        requireText(workerId, "workerId");
+        String sql = "UPDATE evolution_jobs SET lease_until=?,updated_at=? "
+                + "WHERE id=? AND lease_owner=? AND lease_until>0";
+        long now = System.currentTimeMillis();
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, leaseDeadline(now, leaseDuration));
+            statement.setLong(2, now);
+            statement.setString(3, jobId);
+            statement.setString(4, workerId);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException ex) {
+            throw failure("heartbeat issue job", ex);
+        }
+    }
+
+    @Override
+    public EvolutionJob transition(String jobId, long expectedVersion, EvolutionJobState state, String error) {
+        requireText(jobId, "jobId");
+        requireNonNegative(expectedVersion, "expectedVersion");
+        Objects.requireNonNull(state, "state must not be null");
+        String safeError = safeDetail(error);
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                EvolutionJob before = requireById(connection, jobId);
+                requireTransition(before.state(), state);
+                long nextAttemptAt = state == EvolutionJobState.FAILED_RETRYABLE
+                        ? System.currentTimeMillis() + retryDelay(before.attemptCount()) : 0L;
+                boolean release = state.releasesLease() || state == EvolutionJobState.FAILED_RETRYABLE;
+                String sql = "UPDATE evolution_jobs SET state=?,last_error=?,next_attempt_at=?,"
+                        + (release ? "lease_owner='',lease_until=0," : "")
+                        + "version=version+1,updated_at=? WHERE id=? AND version=?";
+                try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                    statement.setString(1, state.name());
+                    statement.setString(2, safeError);
+                    statement.setLong(3, nextAttemptAt);
+                    statement.setLong(4, System.currentTimeMillis());
+                    statement.setString(5, jobId);
+                    statement.setLong(6, expectedVersion);
+                    requireUpdated(statement.executeUpdate(), jobId);
+                }
+                EvolutionJob after = requireById(connection, jobId);
+                appendEvent(connection, jobId, before.state(), state, safeError);
+                connection.commit();
+                return after;
+            } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
+                rollback(connection, ex);
+                throw ex;
+            }
+        } catch (SQLException ex) {
+            throw failure("transition issue job", ex);
+        }
+    }
+
+    @Override
+    public EvolutionJob requestCancellation(String jobId, String reason) {
+        requireText(jobId, "jobId");
+        String safeReason = safeDetail(reason);
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                EvolutionJob before = requireById(connection, jobId);
+                if (before.state() == EvolutionJobState.CANCEL_REQUESTED
+                        || before.state() == EvolutionJobState.CANCELLED) {
+                    connection.commit();
+                    return before;
+                }
+                requireTransition(before.state(), EvolutionJobState.CANCEL_REQUESTED);
+                String sql = "UPDATE evolution_jobs SET state='CANCEL_REQUESTED',last_error=?,"
+                        + "next_attempt_at=0,version=version+1,updated_at=? WHERE id=? AND version=?";
+                try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                    statement.setString(1, safeReason);
+                    statement.setLong(2, System.currentTimeMillis());
+                    statement.setString(3, jobId);
+                    statement.setLong(4, before.version());
+                    requireUpdated(statement.executeUpdate(), jobId);
+                }
+                EvolutionJob after = requireById(connection, jobId);
+                appendEvent(connection, jobId, before.state(), after.state(), safeReason);
+                connection.commit();
+                return after;
+            } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
+                rollback(connection, ex);
+                throw ex;
+            }
+        } catch (SQLException ex) {
+            throw failure("request job cancellation", ex);
+        }
+    }
+
+    @Override
+    public EvolutionJob recordPullRequest(String jobId, long expectedVersion, long number,
+                                          String url, String headSha, boolean draft) {
+        requireText(jobId, "jobId");
+        requireNonNegative(expectedVersion, "expectedVersion");
+        requirePositive(number, "pullRequestNumber");
+        String requiredUrl = requireText(url, "url");
+        String requiredHeadSha = requireText(headSha, "headSha");
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                EvolutionJob before = requireById(connection, jobId);
+                requireTransition(before.state(), EvolutionJobState.PR_CREATED);
+                String sql = "UPDATE evolution_jobs SET state='PR_CREATED',pr_number=?,pr_url=?,head_sha=?,draft=?,"
+                        + "version=version+1,updated_at=? WHERE id=? AND version=?";
+                try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                    statement.setLong(1, number);
+                    statement.setString(2, requiredUrl);
+                    statement.setString(3, requiredHeadSha);
+                    statement.setInt(4, draft ? 1 : 0);
+                    statement.setLong(5, System.currentTimeMillis());
+                    statement.setString(6, jobId);
+                    statement.setLong(7, expectedVersion);
+                    requireUpdated(statement.executeUpdate(), jobId);
+                }
+                EvolutionJob after = requireById(connection, jobId);
+                appendEvent(connection, jobId, before.state(), after.state(), requiredUrl);
+                connection.commit();
+                return after;
+            } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
+                rollback(connection, ex);
+                throw ex;
+            }
+        } catch (SQLException ex) {
+            throw failure("record pull request", ex);
+        }
+    }
+
+    @Override
+    public void recoverExpiredLeases() {
+        long now = System.currentTimeMillis();
+        recoverExpiredCancellationLeases(now);
+        String sql = "UPDATE evolution_jobs SET state='FAILED_RETRYABLE',lease_owner='',lease_until=0,"
+                + "next_attempt_at=? + CASE attempt_count "
+                + "WHEN 1 THEN 30000 WHEN 2 THEN 120000 ELSE 600000 END,"
+                + "last_error='WORKER_INFRASTRUCTURE_FAILED: worker lease expired',"
+                + "version=version+1,updated_at=? "
+                + "WHERE state IN (" + ACTIVE_STATES + ") "
+                + "AND state NOT IN ('RECEIVED','FAILED_RETRYABLE','WAITING_REVIEW','CANCEL_REQUESTED') "
+                + "AND lease_until>0 AND lease_until<?";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, now);
+            statement.setLong(2, now);
+            statement.setLong(3, now);
+            int recovered = statement.executeUpdate();
+            if (recovered > 0) {
+                LOGGER.info("Recovered {} expired evolution job leases", recovered);
+            }
+        } catch (SQLException ex) {
+            throw failure("recover expired leases", ex);
+        }
+    }
+
+    private void recoverExpiredCancellationLeases(long now) {
+        String sql = "UPDATE evolution_jobs SET lease_owner='',lease_until=0,next_attempt_at=0,"
+                + "version=version+1,updated_at=? WHERE state='CANCEL_REQUESTED' "
+                + "AND lease_until>0 AND lease_until<?";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, now);
+            statement.setLong(2, now);
+            int recovered = statement.executeUpdate();
+            if (recovered > 0) {
+                LOGGER.info("Recovered {} expired cancellation leases", recovered);
+            }
+        } catch (SQLException ex) {
+            throw failure("recover expired cancellation leases", ex);
+        }
+    }
+
+    private void initialize() {
+        String schema = """
+                CREATE TABLE IF NOT EXISTS webhook_deliveries (
+                  delivery_id TEXT PRIMARY KEY,
+                  event_type TEXT NOT NULL,
+                  payload_sha256 TEXT NOT NULL,
+                  received_at INTEGER NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS evolution_jobs (
+                  id TEXT PRIMARY KEY,
+                  repo TEXT NOT NULL,
+                  issue_iid INTEGER NOT NULL,
+                  issue_title TEXT NOT NULL,
+                  issue_url TEXT NOT NULL,
+                  state TEXT NOT NULL,
+                  trigger_delivery_id TEXT NOT NULL UNIQUE,
+                  branch TEXT NOT NULL,
+                  head_sha TEXT NOT NULL DEFAULT '',
+                  pr_number INTEGER,
+                  pr_url TEXT NOT NULL DEFAULT '',
+                  draft INTEGER NOT NULL DEFAULT 0,
+                  attempt_count INTEGER NOT NULL DEFAULT 0,
+                  next_attempt_at INTEGER NOT NULL DEFAULT 0,
+                  lease_owner TEXT NOT NULL DEFAULT '',
+                  lease_until INTEGER NOT NULL DEFAULT 0,
+                  version INTEGER NOT NULL DEFAULT 0,
+                  last_error TEXT NOT NULL DEFAULT '',
+                  created_at INTEGER NOT NULL,
+                  updated_at INTEGER NOT NULL,
+                  FOREIGN KEY(trigger_delivery_id) REFERENCES webhook_deliveries(delivery_id)
+                );
+                CREATE TABLE IF NOT EXISTS evolution_job_events (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  job_id TEXT NOT NULL,
+                  from_state TEXT NOT NULL,
+                  to_state TEXT NOT NULL,
+                  detail TEXT NOT NULL,
+                  created_at INTEGER NOT NULL,
+                  FOREIGN KEY(job_id) REFERENCES evolution_jobs(id)
+                );
+                DROP INDEX IF EXISTS ux_evolution_active_issue;
+                CREATE UNIQUE INDEX ux_evolution_active_issue
+                  ON evolution_jobs(repo, issue_iid) WHERE state IN (
+                    'RECEIVED','PLANNING','IMPLEMENTING','VERIFYING','COMMITTED','PUBLISHING',
+                    'PR_CREATED','WAITING_REVIEW','FAILED_RETRYABLE','CANCEL_REQUESTED');
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_evolution_pr
+                  ON evolution_jobs(repo, pr_number) WHERE pr_number IS NOT NULL;
+                PRAGMA user_version=2;
+                """;
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            for (String sql : schema.split(";")) {
+                if (!sql.isBlank()) {
+                    int updated = statement.executeUpdate(sql);
+                    LOGGER.debug("Applied SQLite schema statement with update count {}", updated);
+                }
+            }
+        } catch (SQLException ex) {
+            throw failure("initialize SQLite schema", ex);
+        }
+    }
+
+    private Connection connection() throws SQLException {
+        Connection connection = DriverManager.getConnection(jdbcUrl);
+        try {
+            try (Statement statement = connection.createStatement()) {
+                executePragma(statement, "PRAGMA foreign_keys=ON");
+                executePragma(statement, "PRAGMA journal_mode=WAL");
+                executePragma(statement, "PRAGMA busy_timeout=5000");
+            }
+            return connection;
+        } catch (SQLException ex) {
+            try {
+                connection.close();
+            } catch (SQLException closeFailure) {
+                ex.addSuppressed(closeFailure);
+            }
+            throw ex;
+        }
+    }
+
+    private static int insertDelivery(Connection connection, String id, String eventType, String hash)
+            throws SQLException {
+        String sql = "INSERT OR IGNORE INTO webhook_deliveries(delivery_id,event_type,payload_sha256,received_at) "
+                + "VALUES(?,?,?,?)";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, id);
+            statement.setString(2, value(eventType));
+            statement.setString(3, value(hash));
+            statement.setLong(4, System.currentTimeMillis());
+            return statement.executeUpdate();
+        }
+    }
+
+    private static EvolutionJob insertJob(Connection connection, IssueJobRequest request) throws SQLException {
+        long now = System.currentTimeMillis();
+        String id = UUID.randomUUID().toString();
+        String sql = "INSERT INTO evolution_jobs(id,repo,issue_iid,issue_title,issue_url,state,"
+                + "trigger_delivery_id,branch,created_at,updated_at) VALUES(?,?,?,?,?,'RECEIVED',?,?,?,?)";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, id);
+            statement.setString(2, request.repository());
+            statement.setLong(3, request.issueIid());
+            statement.setString(4, value(request.title()));
+            statement.setString(5, value(request.issueUrl()));
+            statement.setString(6, request.deliveryId());
+            statement.setString(7, request.branch());
+            statement.setLong(8, now);
+            statement.setLong(9, now);
+            requireInserted(statement.executeUpdate(), "evolution job", id);
+        }
+        EvolutionJob job = requireById(connection, id);
+        appendEvent(connection, id, EvolutionJobState.RECEIVED, EvolutionJobState.RECEIVED, "webhook accepted");
+        return job;
+    }
+
+    private static Optional<EvolutionJob> findByIssue(Connection connection, String repo, long iid, boolean active)
+            throws SQLException {
+        String sql = active ? FIND_ACTIVE_ISSUE_SQL : FIND_LATEST_ISSUE_SQL;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, repo);
+            statement.setLong(2, iid);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(readJob(result)) : Optional.empty();
+            }
+        }
+    }
+
+    private static EvolutionJob requireById(Connection connection, String id) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(FIND_BY_ID_SQL)) {
+            statement.setString(1, id);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    throw new IllegalStateException("Evolution job not found: " + id);
+                }
+                return readJob(result);
+            }
+        }
+    }
+
+    private static EvolutionJob readJob(ResultSet result) throws SQLException {
+        long prNumber = result.getLong("pr_number");
+        boolean isPrNumberNull = result.wasNull();
+        return EvolutionJob.builder()
+                .id(result.getString("id"))
+                .repository(result.getString("repo"))
+                .issueIid(result.getLong("issue_iid"))
+                .issueTitle(result.getString("issue_title"))
+                .issueUrl(result.getString("issue_url"))
+                .state(EvolutionJobState.valueOf(result.getString("state")))
+                .triggerDeliveryId(result.getString("trigger_delivery_id"))
+                .branch(result.getString("branch"))
+                .headSha(result.getString("head_sha"))
+                .pullRequestNumber(isPrNumberNull ? null : prNumber)
+                .pullRequestUrl(result.getString("pr_url"))
+                .draft(result.getInt("draft") == 1)
+                .attemptCount(result.getInt("attempt_count"))
+                .nextAttemptAt(result.getLong("next_attempt_at"))
+                .leaseOwner(result.getString("lease_owner"))
+                .leaseUntil(result.getLong("lease_until"))
+                .version(result.getLong("version"))
+                .lastError(result.getString("last_error"))
+                .createdAt(result.getLong("created_at"))
+                .updatedAt(result.getLong("updated_at"))
+                .build();
+    }
+
+    private static void appendEvent(Connection connection, String jobId, EvolutionJobState from,
+                                    EvolutionJobState to, String detail) throws SQLException {
+        String sql = "INSERT INTO evolution_job_events(job_id,from_state,to_state,detail,created_at) VALUES(?,?,?,?,?)";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, jobId);
+            statement.setString(2, from.name());
+            statement.setString(3, to.name());
+            statement.setString(4, safeDetail(detail));
+            statement.setLong(5, System.currentTimeMillis());
+            requireInserted(statement.executeUpdate(), "evolution job event", jobId);
+        }
+    }
+
+    private static void executePragma(Statement statement, String sql) throws SQLException {
+        boolean hasResult = statement.execute(sql);
+        if (hasResult) {
+            try (ResultSet result = statement.getResultSet()) {
+                while (result.next()) {
+                    LOGGER.debug("SQLite pragma {} returned a result", sql);
+                }
+            }
+        }
+    }
+
+    private static void requireUpdated(int count, String jobId) {
+        if (count != 1) {
+            throw new IllegalStateException("Evolution job version conflict: " + jobId);
+        }
+    }
+
+    private static void requireInserted(int count, String entity, String id) {
+        if (count != 1) {
+            throw new IllegalStateException("Unable to insert " + entity + ": " + id);
+        }
+    }
+
+    private static void requireTransition(EvolutionJobState source, EvolutionJobState destination) {
+        if (!source.canTransitionTo(destination)) {
+            throw new IllegalStateException(
+                    "Invalid evolution job transition: " + source + " -> " + destination);
+        }
+    }
+
+    private static void rollback(Connection connection, Exception originalFailure) {
+        try {
+            connection.rollback();
+        } catch (SQLException rollbackFailure) {
+            originalFailure.addSuppressed(rollbackFailure);
+        }
+    }
+
+    private static long retryDelay(int attemptCount) {
+        return switch (attemptCount) {
+            case 0, 1 -> Duration.ofSeconds(30).toMillis();
+            case 2 -> Duration.ofMinutes(2).toMillis();
+            default -> Duration.ofMinutes(10).toMillis();
+        };
+    }
+
+    private static long leaseMillis(Duration leaseDuration) {
+        Duration required = Objects.requireNonNull(leaseDuration, "leaseDuration must not be null");
+        if (required.isZero() || required.isNegative()) {
+            throw new IllegalArgumentException("leaseDuration must be positive");
+        }
+        try {
+            return Math.max(1L, required.toMillis());
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("leaseDuration is too large", ex);
+        }
+    }
+
+    private static long leaseDeadline(long now, Duration leaseDuration) {
+        try {
+            return Math.addExact(now, leaseMillis(leaseDuration));
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException("leaseDuration is too large", ex);
+        }
+    }
+
+    private static String requireText(String value, String name) {
+        String required = Objects.requireNonNull(value, name + " must not be null");
+        if (required.isBlank()) {
+            throw new IllegalArgumentException(name + " must not be blank");
+        }
+        return required;
+    }
+
+    private static void requirePositive(long value, String name) {
+        if (value <= 0) {
+            throw new IllegalArgumentException(name + " must be positive");
+        }
+    }
+
+    private static void requireNonNegative(long value, String name) {
+        if (value < 0) {
+            throw new IllegalArgumentException(name + " must not be negative");
+        }
+    }
+
+    private static String safeDetail(String value) {
+        String detail = value(value);
+        return detail.length() <= MAX_DETAIL_LENGTH ? detail : detail.substring(0, MAX_DETAIL_LENGTH);
+    }
+
+    private static IllegalStateException failure(String action, SQLException ex) {
+        return new IllegalStateException("Unable to " + action + ": " + ex.getMessage(), ex);
+    }
+
+    private static String value(String value) {
+        return value == null ? "" : value;
+    }
+}

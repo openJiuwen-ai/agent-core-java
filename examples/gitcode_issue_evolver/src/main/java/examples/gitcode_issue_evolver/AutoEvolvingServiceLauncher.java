@@ -1,0 +1,99 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
+package examples.gitcode_issue_evolver;
+
+import com.openjiuwen.core.runner.Runner;
+import examples.gitcode_issue_evolver.agent.TrustedSkillStager;
+import examples.gitcode_issue_evolver.gitcode.GitCodeClient;
+import examples.gitcode_issue_evolver.gitcode.HttpGitCodeClient;
+import examples.gitcode_issue_evolver.job.EvolutionJobStore;
+import examples.gitcode_issue_evolver.job.SqliteEvolutionJobStore;
+import examples.gitcode_issue_evolver.profile.AgentCoreJavaRepositoryProfile;
+import examples.gitcode_issue_evolver.profile.RepositoryProfile;
+import examples.gitcode_issue_evolver.publish.GitCodeForkPushGateway;
+import examples.gitcode_issue_evolver.publish.PullRequestPublisher;
+import examples.gitcode_issue_evolver.worker.AutoEvolvingWorker;
+import examples.gitcode_issue_evolver.worker.ExampleIssueTaskExecutor;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+
+/**
+ * Launches the GitCode issue evolver demo from one fully resolved file configuration.
+ *
+ * @since 0.1.12
+ */
+public final class AutoEvolvingServiceLauncher {
+    private AutoEvolvingServiceLauncher() {
+    }
+
+    /**
+     * Start the service and block until the process is interrupted or shut down.
+     *
+     * @param config resolved service configuration
+     * @throws IOException when the HTTP listener cannot be created
+     * @throws InterruptedException when the process wait is interrupted
+     */
+    public static void run(AutoEvolvingConfig config) throws IOException, InterruptedException {
+        AutoEvolvingConfig requiredConfig = Objects.requireNonNull(config, "config must not be null");
+        List<String> readinessErrors = requiredConfig.readinessErrors();
+        if (!readinessErrors.isEmpty()) {
+            throw new IllegalStateException("GitCode Issue Evolver is not ready: "
+                    + String.join("; ", readinessErrors));
+        }
+        RepositoryCoordinates coordinates = requiredConfig.repositoryCoordinates();
+        RepositoryProfile profile = new AgentCoreJavaRepositoryProfile(coordinates);
+        Path trustedSkillsRoot = TrustedSkillStager.stage(
+                requiredConfig.trustedSkillsDir(),
+                requiredConfig.getCodingStandardSkill(),
+                requiredConfig.getIssueWorkerSkill());
+        try (EvolutionJobStore store = new SqliteEvolutionJobStore(requiredConfig.databasePath())) {
+            GitCodeClient gitCode = new HttpGitCodeClient(
+                    requiredConfig.apiBaseUrl(), requiredConfig.getGitCodeToken(), coordinates);
+            PullRequestPublisher publisher = new PullRequestPublisher(
+                    gitCode,
+                    new GitCodeForkPushGateway(coordinates, coordinates.publishOwner(),
+                            requiredConfig.getGitCodeToken()),
+                    profile,
+                    requiredConfig.getAssignees());
+            ExampleIssueTaskExecutor executor = new ExampleIssueTaskExecutor(
+                    requiredConfig, profile, publisher, trustedSkillsRoot);
+            AutoEvolvingWorker worker = new AutoEvolvingWorker(store, gitCode, executor);
+            runService(requiredConfig, store, profile, worker);
+        } finally {
+            Runner.stop();
+        }
+    }
+
+    private static void runService(AutoEvolvingConfig config, EvolutionJobStore store,
+                                   RepositoryProfile profile, AutoEvolvingWorker worker)
+            throws IOException, InterruptedException {
+        try (AutoEvolvingService service = new AutoEvolvingService(
+                config, store, profile, Optional.of(worker))) {
+            Thread shutdownHook = new AutoEvolvingThreadFactory("auto-evolving-shutdown")
+                    .newThread(service::close);
+            Runtime runtime = Runtime.getRuntime();
+            runtime.addShutdownHook(shutdownHook);
+            try {
+                service.start();
+                new CountDownLatch(1).await();
+            } finally {
+                removeShutdownHook(runtime, shutdownHook);
+            }
+        }
+    }
+
+    private static void removeShutdownHook(Runtime runtime, Thread shutdownHook) {
+        try {
+            runtime.removeShutdownHook(shutdownHook);
+        } catch (IllegalStateException ex) {
+            // The registered hook owns shutdown once JVM termination has started.
+        }
+    }
+}
