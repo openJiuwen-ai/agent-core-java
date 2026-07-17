@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.runner.spawn;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import lombok.Getter;
 
 import java.io.BufferedReader;
@@ -16,7 +18,6 @@ import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -182,7 +183,7 @@ public class SpawnedProcessHandle {
         }
         long intervalMillis =
             secondsToMillis(intervalSeconds != null ? intervalSeconds : config.getHealthCheckInterval());
-        healthCheckExecutor = new ScheduledThreadPoolExecutor(1, runnable -> {
+        healthCheckExecutor = OpenJiuwenExecutors.newScheduledThreadPool(1, runnable -> {
             Thread thread = new Thread(runnable, "runner-spawn-health-" + processId);
             thread.setDaemon(true);
             thread.setUncaughtExceptionHandler((ignoredThread, ignoredError) -> {

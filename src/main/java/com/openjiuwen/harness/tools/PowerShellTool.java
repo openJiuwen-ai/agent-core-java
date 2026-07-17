@@ -4,12 +4,15 @@
 
 package com.openjiuwen.harness.tools;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Public class PowerShellTool used by the Java parity implementation.
@@ -86,15 +89,21 @@ public class PowerShellTool {
      */
     private static ShellExecutor defaultExecutor() {
         return (command, shellType) -> {
-            Process process = new ProcessBuilder("bash", "-lc", command).start();
-            CompletableFuture<String> stdoutFuture =
-                CompletableFuture.supplyAsync(() -> read(process.getInputStream()));
-            CompletableFuture<String> stderrFuture =
-                CompletableFuture.supplyAsync(() -> read(process.getErrorStream()));
-            int exitCode = process.onExit().join().exitValue();
-            String stdout = stdoutFuture.join();
-            String stderr = stderrFuture.join();
-            return new ShellResult(stdout, stderr, exitCode);
+            ExecutorService processIoExecutor = OpenJiuwenExecutors.newFixedThreadPool(
+                    "harness-powershell-process-io", 2, true);
+            try {
+                Process process = new ProcessBuilder("bash", "-lc", command).start();
+                CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(
+                        () -> read(process.getInputStream()), processIoExecutor);
+                CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(
+                        () -> read(process.getErrorStream()), processIoExecutor);
+                int exitCode = process.onExit().join().exitValue();
+                String stdout = stdoutFuture.join();
+                String stderr = stderrFuture.join();
+                return new ShellResult(stdout, stderr, exitCode);
+            } finally {
+                processIoExecutor.shutdownNow();
+            }
         };
     }
 

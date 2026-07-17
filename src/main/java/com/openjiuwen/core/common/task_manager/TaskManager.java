@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.common.task_manager;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 
@@ -24,10 +25,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.CancellationException;
@@ -57,34 +56,17 @@ public class TaskManager {
      * @since 0.1.7
      */
     private final ReentrantLock lock = new ReentrantLock();
-    private static final ThreadFactory TASK_THREAD_FACTORY = runnable -> {
-        Thread thread = new Thread(runnable, "task-manager-worker");
-        thread.setDaemon(true);
-        thread.setUncaughtExceptionHandler((t, e) -> log.error("Uncaught exception in " + t.getName(), e));
-        return thread;
-    };
-    private static final ThreadFactory SCHEDULER_THREAD_FACTORY = runnable -> {
-        Thread thread = new Thread(runnable, "task-manager-scheduler");
-        thread.setDaemon(true);
-        thread.setUncaughtExceptionHandler((t, e) -> log.error("Uncaught exception in " + t.getName(), e));
-        return thread;
-    };
+    private final ExecutorService executor = OpenJiuwenExecutors.newThreadPool("task-manager-worker",
+            OpenJiuwenExecutors.ThreadPoolConfig.builder()
+                    .poolSize(0, Integer.MAX_VALUE)
+                    .keepAlive(60L, TimeUnit.SECONDS)
+                    .workQueue(new SynchronousQueue<>())
+                    .isDaemon(true)
+                    .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
+                    .build());
 
-    /**
-     * ThreadPoolExecutor.
-     * 
-     * @param SynchronousQueue<>( SynchronousQueue<>(
-     * @since 0.1.7
-     */
-    private final ExecutorService executor = new ThreadPoolExecutor(0, Integer.MAX_VALUE, 60L, TimeUnit.SECONDS,
-            new SynchronousQueue<>(), TASK_THREAD_FACTORY);
-
-    /**
-     * ScheduledThreadPoolExecutor.
-     * 
-     * @since 0.1.7
-     */
-    private final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(1, SCHEDULER_THREAD_FACTORY);
+    private final ScheduledExecutorService scheduler = OpenJiuwenExecutors.newScheduledThreadPool(
+            "task-manager-scheduler", 1, true);
 
     /**
      * Runner.callbackFramework.

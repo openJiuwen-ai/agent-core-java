@@ -19,6 +19,7 @@ import com.openjiuwen.agentevolving.trajectory.Trajectory;
 import com.openjiuwen.agentevolving.trajectory.UpdateKey;
 import com.openjiuwen.agentevolving.trajectory.Updates;
 import com.openjiuwen.agentevolving.updater.Updater;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.internal.AgentSession;
@@ -32,7 +33,6 @@ import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
@@ -242,7 +242,7 @@ public class Trainer {
 
         List<Case> caseList = cases.getCases();
         int workers = Math.max(1, Math.min(numParallel, caseList.size()));
-        ExecutorService executor = Executors.newFixedThreadPool(workers);
+        ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("agent-evolving-trainer", workers, false);
         try {
             List<Future<PredictionAndSession>> futures = new ArrayList<>(caseList.size());
             for (Case caseData : caseList) {

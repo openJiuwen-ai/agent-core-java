@@ -7,6 +7,7 @@ package com.openjiuwen.core.application.llm;
 import com.openjiuwen.core.application.schema.LlmAgentConfig;
 import com.openjiuwen.core.application.schema.PluginSchema;
 import com.openjiuwen.core.application.schema.WorkflowSchema;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.constants.ControllerType;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.context.schema.ContextEngineConfig;
@@ -37,7 +38,6 @@ import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * LLM Agent - ReAct style Agent based on ControllerAgent.
@@ -449,7 +449,7 @@ public class LlmAgent extends ControllerAgent {
      * @since 0.1.7
      */
     private void writeMessagesToMemoryAsync(Map<?, ?> inputs, Object result) {
-        CompletableFuture.runAsync(() -> {
+        OpenJiuwenExecutors.runBackgroundAsync(() -> {
             try {
                 writeMessagesToMemory(inputs, result);
             } catch (Exception e) {

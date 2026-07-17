@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agentteams.teamworkspace;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
@@ -250,7 +252,8 @@ public class TeamWorkspaceManager {
                     "--format=%H|%an|%ai|%s", "--", relativePath != null ? relativePath : "");
             builder.directory(Path.of(workspacePath).toFile());
             Process process = builder.start();
-            CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(() -> readProcessStream(process));
+            CompletableFuture<String> stdoutFuture = OpenJiuwenExecutors.supplyBackgroundAsync(
+                    () -> readProcessStream(process));
             int exit = process.onExit().join().exitValue();
             String stdout = stdoutFuture.join();
             if (exit != 0 || stdout.isBlank()) {

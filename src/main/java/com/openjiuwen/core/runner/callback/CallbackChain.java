@@ -4,6 +4,8 @@
 
 package com.openjiuwen.core.runner.callback;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,7 +16,6 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -278,7 +279,7 @@ public class CallbackChain {
      */
     private Object executeWithTimeout(Function<Map<String, Object>, Object> callback, Map<String, Object> kwargs,
             double timeoutSeconds) throws TimeoutException {
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        ExecutorService executor = OpenJiuwenExecutors.newSingleThreadExecutor("callback-chain-timeout", false);
         try {
             Callable<Object> task = () -> callback.apply(kwargs);
             Future<Object> future = executor.submit(task);

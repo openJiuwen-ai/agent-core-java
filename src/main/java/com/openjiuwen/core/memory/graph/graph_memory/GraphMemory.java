@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.memory.graph.graph_memory;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.store.base_embedding.Embedding;
@@ -1195,7 +1196,7 @@ public class GraphMemory {
                 state.getMergeInfos().get(targetUuid).getNewRelations().clear();
                 state.getMergeInfos().get(targetUuid).getNewRelations().addAll(relationList);
                 Entity finalTargetEntity = targetEntity;
-                CompletableFuture<AssistantMessage> task = CompletableFuture.supplyAsync(() -> {
+                CompletableFuture<AssistantMessage> task = OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
                     try {
                         return invokeLlm(ExtractionPrompts.filterRelationsForMerge(finalTargetEntity, relationList,
                                 state.getPrompting().getLanguage(), state.getExtras(), 2), Map.of());
@@ -1349,7 +1350,7 @@ public class GraphMemory {
             if (!currentRelations.isEmpty()) {
                 List<Entity> existingEntities = List.of(endpointToEntity(newRelation.getLhs(), state),
                         endpointToEntity(newRelation.getRhs(), state));
-                CompletableFuture<AssistantMessage> task = CompletableFuture.supplyAsync(() -> {
+                CompletableFuture<AssistantMessage> task = OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
                     try {
                         return invokeLlm(ExtractionPrompts.dedupeRelationList(content, newRelation, currentRelations,
                                 existingEntities, state.getHistory(), null, state.getPrompting().getLanguage(), 2),

@@ -5,6 +5,7 @@
 package com.openjiuwen.core.graph;
 
 import com.openjiuwen.core.common.constants.Constant;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.exception.BaseError;
@@ -39,7 +40,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
@@ -58,13 +58,8 @@ import java.util.stream.Collectors;
 public class Vertex extends AtomicNode implements StreamConsumer {
     private static final LoggerProtocol LOGGER = Loggers.GRAPH;
     private static final String SUB_WORKFLOW_COMPONENT = "sub_workflow";
-
-    /**
-     * Executors.newCachedThreadPool.
-     * 
-     * @since 0.1.7
-     */
-    private static final ExecutorService VIRTUAL_EXECUTOR = Executors.newCachedThreadPool();
+    private static final ExecutorService STREAM_EXECUTOR =
+            OpenJiuwenExecutors.newCachedThreadPool("vertex-stream", false);
 
     private final String nodeId;
     private final Executable<Object, Object> executable;
@@ -808,7 +803,7 @@ public class Vertex extends AtomicNode implements StreamConsumer {
                     } catch (Exception e) {
                         throw new RuntimeException(e);
                     }
-                }, VIRTUAL_EXECUTOR);
+                }, STREAM_EXECUTOR);
                 tasks.add(task);
                 abilityLatch.await();
             }

@@ -19,6 +19,7 @@ import com.openjiuwen.agentteams.spawn.SpawnHandle;
 import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.agentteams.tools.TeamMember;
 import com.openjiuwen.agentteams.tools.database.MemberRecord;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.spawn.SpawnConfig;
@@ -29,7 +30,6 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Supplier;
@@ -93,7 +93,8 @@ public class SpawnManager {
      */
     public SpawnManager(TeamAgent teamAgent, TeamBackend teamBackend, RecoveryManager recoveryManager,
             Supplier<String> sessionIdGetter) {
-        this(teamAgent, teamBackend, recoveryManager, sessionIdGetter, Executors.newCachedThreadPool());
+        this(teamAgent, teamBackend, recoveryManager, sessionIdGetter,
+                OpenJiuwenExecutors.newCachedThreadPool("agent-teams-spawn", false));
     }
 
     /**

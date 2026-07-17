@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.controller.modules;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -28,7 +29,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -179,7 +179,6 @@ public class TaskScheduler {
         publishTaskEvent(taskId, session, failedChunk);
     }
 
-    @SuppressWarnings("resource")
     /**
      * executeTaskWrapper.
      * 
@@ -192,18 +191,8 @@ public class TaskScheduler {
             if (config.getTaskTimeout() != null) {
                 // Execute with timeout: run on current virtual thread, use a watchdog to interrupt
                 Thread currentThread = Thread.currentThread();
-                ScheduledExecutorService watchdog = new ScheduledThreadPoolExecutor(1, r -> {
-                    Thread t = new Thread(r, "task-timeout-" + taskId);
-                    t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
-                        @Override
-                        public void uncaughtException(Thread t, Throwable e) {
-                            Loggers.CONTROLLER.error("executeTaskWrapper Error,Thread {} , {}", t.getName(),
-                                    e.getMessage());
-                        }
-                    });
-                    t.setDaemon(true);
-                    return t;
-                });
+                ScheduledExecutorService watchdog = OpenJiuwenExecutors.newScheduledThreadPool(
+                        "task-timeout-" + taskId, 1, true);
                 long timeoutMs = (long) (config.getTaskTimeout() * 1000);
                 ScheduledFuture<?> timeout = watchdog.schedule(() -> {
                     Loggers.CONTROLLER.error("Task {} timed out after {} seconds", taskId, config.getTaskTimeout());
@@ -627,17 +616,7 @@ public class TaskScheduler {
             return;
         }
         running = true;
-        scheduler = new ScheduledThreadPoolExecutor(1, r -> {
-            Thread t = new Thread(r, "task-scheduler");
-            t.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
-                @Override
-                public void uncaughtException(Thread t, Throwable e) {
-                    Loggers.CONTROLLER.error("start Error,Thread {} , {}", t.getName(), e.getMessage());
-                }
-            });
-            t.setDaemon(true);
-            return t;
-        });
+        scheduler = OpenJiuwenExecutors.newScheduledThreadPool("task-scheduler", 1, true);
         long intervalMs = (long) (config.getScheduleInterval() * 1000);
         schedulerFuture = scheduler.scheduleWithFixedDelay(this::scheduleLoop, 0, intervalMs, TimeUnit.MILLISECONDS);
         Loggers.CONTROLLER.info("TaskScheduler started");
@@ -698,9 +677,9 @@ public class TaskScheduler {
             lock.unlock();
         }
 
-        for (Thread t : threads) {
+        for (Thread taskThread : threads) {
             try {
-                t.join(5000);
+                taskThread.join(5000);
             } catch (InterruptedException ex) {
                 Thread.currentThread().interrupt();
             }

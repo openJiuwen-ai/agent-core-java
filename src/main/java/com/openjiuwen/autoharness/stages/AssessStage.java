@@ -16,6 +16,7 @@ import com.openjiuwen.autoharness.schema.Experience;
 import com.openjiuwen.autoharness.schema.ExperienceType;
 import com.openjiuwen.autoharness.schema.Gap;
 import com.openjiuwen.autoharness.schema.StageResult;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -331,7 +332,8 @@ public class AssessStage extends SessionStage {
             Process process = new ProcessBuilder(concat("git", args))
                     .directory(Path.of(hasText(workspace) ? workspace : ".").toFile()).redirectErrorStream(false)
                     .start();
-            CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(() -> readStdout(process));
+            CompletableFuture<String> stdoutFuture = OpenJiuwenExecutors.supplyBackgroundAsync(
+                    () -> readStdout(process));
             int code = process.onExit().join().exitValue();
             String stdout = stdoutFuture.join();
             if (code != 0) {

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.dev_tools.tune.optimizer.adopt;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
@@ -20,7 +21,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -159,7 +159,8 @@ public class AdoptOptimizer extends BaseOptimizer {
      */
     private Map<String, String> calculateGlobalGradient() {
         int workers = Math.max(Math.min(DEFAULT_PARALLEL_NUM, badCases.size()), 1);
-        ExecutorService executor = Executors.newFixedThreadPool(workers);
+        ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("dev-tools-adopt-global-gradient", workers,
+                false);
 
         try {
             Map<String, String> gradientMap = new ConcurrentHashMap<>();
@@ -227,7 +228,8 @@ public class AdoptOptimizer extends BaseOptimizer {
      */
     private List<GradientResult> calculatePartialGradients(Map<String, String> globalGradient) {
         int workers = Math.max(Math.min(DEFAULT_PARALLEL_NUM, badCases.size()), 1);
-        ExecutorService executor = Executors.newFixedThreadPool(workers);
+        ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("dev-tools-adopt-partial-gradient", workers,
+                false);
 
         try {
             List<GradientResult> results = new ArrayList<>();
