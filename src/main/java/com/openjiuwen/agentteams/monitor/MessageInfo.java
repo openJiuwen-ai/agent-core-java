@@ -25,6 +25,6 @@ public class MessageInfo {
     private String toMember;
     private String content;
     private long timestamp;
-    private boolean broadcast;
-    private boolean read;
+    private boolean isBroadcast;
+    private boolean isRead;
 }

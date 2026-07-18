@@ -202,6 +202,7 @@ public class RemoteWorktreeBackend {
         } catch (IOException e) {
             return new GitCommandResult(1, e.getMessage() == null ? "" : e.getMessage());
         } catch (InterruptedException e) {
+            // do not self-interrupt (G.CON.10)
             return new GitCommandResult(1, e.getMessage() == null ? "" : e.getMessage());
         }
     }

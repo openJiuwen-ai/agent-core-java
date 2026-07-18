@@ -53,7 +53,7 @@ public final class TeamFactory {
         context.getMetadata().put("teammate_mode",
                 builtSpec.getTeammateMode() != null ? builtSpec.getTeammateMode() : "build_mode");
         context.getMetadata().put("team_mode", builtSpec.getTeamMode() != null ? builtSpec.getTeamMode() : "default");
-        context.getMetadata().put("enable_hitt", builtSpec.isEnableHitt());
+        context.getMetadata().put("enable_hitt", builtSpec.isHittEnabled());
         context.getMetadata().put("expose_human_agents_to_teammates", builtSpec.isExposeHumanAgentsToTeammates());
         if (builtSpec.getTransport() != null) {
             context.getMetadata().put("transport", builtSpec.getTransport());

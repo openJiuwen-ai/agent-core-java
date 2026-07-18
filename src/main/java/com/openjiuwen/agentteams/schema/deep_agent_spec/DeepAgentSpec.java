@@ -59,28 +59,28 @@ public class DeepAgentSpec {
      */
     private List<RailSpec> rails = new ArrayList<>();
     @Builder.Default
-    private boolean enableTaskLoop = false;
+    private boolean isTaskLoopEnabled = false;
     @Builder.Default
-    private boolean enableAsyncSubagent = false;
+    private boolean isAsyncSubagentEnabled = false;
     @Builder.Default
-    private boolean addGeneralPurposeAgent = false;
+    private boolean shouldAddGeneralPurposeAgent = false;
     @Builder.Default
     private int maxIterations = 15;
     private WorkspaceSpec workspace;
     private List<String> skills;
     @Builder.Default
-    private boolean enableSkillDiscovery = false;
+    private boolean isSkillDiscoveryEnabled = false;
     private SysOperationSpec sysOperation;
     private String language;
     private String promptMode;
     private VisionModelSpec visionModel;
     private AudioModelSpec audioModel;
     @Builder.Default
-    private boolean enableTaskPlanning = false;
+    private boolean isTaskPlanningEnabled = false;
     @Builder.Default
-    private boolean restrictToSandbox = false;
+    private boolean isRestrictedToSandbox = false;
     @Builder.Default
-    private boolean autoCreateWorkspace = true;
+    private boolean shouldAutoCreateWorkspace = true;
     @Builder.Default
     private double completionTimeout = 600.0;
     private ProgressiveToolSpec progressiveTool;

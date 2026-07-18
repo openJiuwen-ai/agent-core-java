@@ -25,9 +25,7 @@ graph TD
     G2 --> I
     
     I -- 否 --> J1[继续辩论]
-    I -- 是 --> K[投资组合与风险控制]
-    
-    K --> L[报告生成]
+    I -- 是 --> K[投资组合与风险控制<br/>FINAL: 直接生成最终报告]
     
     K -.反馈.-> B
     K -.反馈.-> C4
@@ -64,6 +62,44 @@ graph TD
 - **Output**: 任务分发确认
 - **Serial / Parallel**: 并行分发
 - **Quality gate**: 所有分析师确认接收任务，否则重新分发
+
+#### Step 1.1 — Task board contract (MANDATORY)
+
+Leader **必须**在 Step 1 一次性建好以下全部 task，**不得**事后补建、不得漏建。每个 task 的 `assignee` 和 `dependencies` 字段按下表硬约束。**每个 task 必须通过 create_task 的 assignee 字段指定执行者**，禁止创建后再用 update_task 补设。
+
+| Task ID | Title | assignee | dependencies | 落盘文件（teammate 自写） |
+| --- | --- | --- | --- | --- |
+| T1 | fundamental_analysis | fundamental-analyst | [] | `.team/reports/T1_fundamental_analysis.md` |
+| T2 | technical_analysis | technical-analyst | [] | `.team/reports/T2_technical_analysis.md` |
+| T3 | digital_media_analysis | digital-media-analyst | [] | `.team/reports/T3_digital_media_analysis.md` |
+| T4 | macro_analysis | macro-analyst | [] | `.team/reports/T4_macro_analysis.md` |
+| T5 | optimistic_round1 | optimistic-researcher | [T1, T2, T3] | `.team/reports/T5_optimistic_round1.md` |
+| T6 | pessimistic_round1 | pessimistic-researcher | [T1, T2, T3] | `.team/reports/T6_pessimistic_round1.md` |
+| T7 | debate_optimistic | optimistic-researcher | [T5, T6] | `.team/reports/T7_debate_optimistic.md` |
+| T8 | debate_pessimistic | pessimistic-researcher | [T5, T6] | `.team/reports/T8_debate_pessimistic.md` |
+| **T9** | **portfolio_risk (FINAL)** | **portfolio-risk-controller** | **[T7, T8]** | **`.team/reports/T9_portfolio_risk.md`** |
+
+**T9 是最终产物，由 portfolio-risk-controller 直接生成完整投资分析报告（含原文引用）。** T9 完成即整个团队完成，框架合法判 `isTeamCompleted()==true` 收尾。
+
+#### Step 1.2 — Post-dispatch self-check (MANDATORY)
+
+Leader 建完 task 后**立即**调用 `view_task` 读取整个 task board，自检：
+
+1. task list 长度 == 8（T1-T8 + T9）
+2. 存在 `task_id=T9` 且 `assignee=portfolio-risk-controller` 且 `dependencies=[T7, T8]`
+3. 所有 T1-T8/T9 task 的 `assignee` 非 leader 自己
+
+任一不满足 → 重建 task，不得继续 Step 2。
+
+#### Step 1.3 — File name contract (MANDATORY)
+
+所有 teammate 落盘时**必须**使用上表"落盘文件"列的**精确路径**。禁止：
+
+- 起别名（如 `T8_pessimistic_round2.md` 代替 `T8_debate_pessimistic.md`）
+- 加 run_id / 时间戳后缀
+- 改扩展名
+
+`file_io(action="write", path=<精确路径>)` 的 `path` 参数从上表取，不由 LLM 自由发挥。
 
 ### Step 2 — 四分析师并行分析
 
@@ -131,35 +167,44 @@ graph TD
   - 辩论完成2轮
   - 失败处理：继续辩论，必须完成2轮
 
-### Step 6 — 投资组合与风险控制
+### Step 6 — 投资组合与风险控制（FINAL）
 
 - **Executor**: 投资组合与风险控制
-- **Input**: 研究员输出的辩论结论、投资目标、风险承受能力
-- **Action**: 构建投资组合建议、制定风险控制策略、提出最终决策
-- **Output**: 投资决策报告
+- **Input**: 研究员输出的辩论结论、投资目标、风险承受能力，**以及所有上游中间报告原文**（T1-T8）
+- **Action**: 构建投资组合建议、制定风险控制策略、提出最终决策，并**将所有中间过程的完整报告作为原文引用插入最终报告**，而非仅提供摘要。portfolio-risk-controller 直接产出团队最终产物。
+- **Output**: 最终投资分析报告（含完整原文引用，确保透明性和可追溯性）
+- **Output Path**: `.team/reports/T9_portfolio_risk.md`（portfolio-risk-controller 通过 `file_io(action="write")` 落盘；原文引用来自 `.team/reports/T1` 至 `T8`，controller 读取这些文件而非依赖消息体内容）
 - **Serial / Parallel**: 串行执行
 - **Quality gate**: 
   - 包含具体的仓位建议和配置策略
   - 包含至少3个风险控制措施
   - 包含监控指标和调整触发条件
+  - **包含全部中间报告的原文引用**（T1-T8 + 辩论结论）
   - 失败处理：重新构建投资组合建议，最多重试2次
 
-### Step 7 — Final: emit 投资分析报告
+#### Step 6.1 — Pre-write self-check (MANDATORY)
 
-- **Executor**: Leader
-- **Input**: 所有上游步骤的输出（完整原始报告）
-- **Action**: 整合所有分析结果，生成最终投资分析报告。**关键要求**: 将所有中间过程的完整报告作为原文引用插入最终报告，而非仅提供摘要。具体包括：
-  - 四个分析师的完整原始报告（基本面、技术、数字媒体、宏观）
-  - 乐观研究员和悲观研究员的 Round 1 完整报告
-  - Round 2 和 Round 3 的完整辩论报告
-  - 研究员输出的完整辩论结论
-  - 投资组合与风险控制的完整决策报告
-  - 报告生成元数据和质量门控记录
-- **Output**: 投资分析报告（包含所有中间过程的完整原文引用，确保透明性和可追溯性）
+portfolio-risk-controller 落盘 T9 前**必须**自检：
+
+1. `view_task` 列出 task board，确认 T1-T8 均为 `completed` 终态。
+2. `.team/reports/` 下存在 T1-T8 全部 8 个文件（对照 Step 1.1 表格路径）。
+3. `.team/reports/` 下**不**存在表外命名（如 `T8_pessimistic_round2.md` 等别名）— 若发现，controller 警告但仍读正式路径文件。
+
+任一不满足 → 不得写 T9，先补救（等待 teammate 补齐 / 标记缺失）。
+
+#### Step 6.2 — Post-write self-check (MANDATORY)
+
+controller 写完 T9 后**立即**调用 `update_task(task_id=T9, status=completed)`，并 `view_task` 确认：
+
+1. T9 `status=completed`。
+2. task board 所有 task 均为终态（completed/cancelled）。
+3. `.team/reports/T9_portfolio_risk.md` 文件存在且非空。
+
+此时框架合法判 `isTeamCompleted()==true` 并触发 `TEAM_COMPLETED` 事件收尾。leader 不再执行 Step 7。
 
 #### Final Report Format
 
-**重要变更**: 最终报告必须将所有中间过程的完整报告作为原文引用插入，而非仅提供摘要。这确保了分析过程的完整透明性和可追溯性。
+**重要**: T9 最终报告必须将所有中间过程的完整报告作为原文引用插入，而非仅提供摘要。这确保了分析过程的完整透明性和可追溯性。
 
 ```markdown
 # 投资分析报告
@@ -329,5 +374,5 @@ graph TD
 - 完成辩论校验通过（明确共识点或分歧点）
 - 研究员输出辩论结论（包含至少3个分歧点或共识点）
 - 投资组合与风险控制包含至少3个风险控制措施
-- 最终投资分析报告包含所有必要章节（包含2轮辩论过程和辩论结论）
+- **T9 最终报告包含所有必要章节（分析师原文 + Round 1 原文 + Round 2 辩论原文 + 辩论结论 + 投资决策），作为团队最终产物**
 - 所有质量门控通过或明确记录失败原因和处理方式

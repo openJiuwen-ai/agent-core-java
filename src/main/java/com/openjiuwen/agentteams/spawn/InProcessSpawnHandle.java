@@ -129,6 +129,7 @@ public class InProcessSpawnHandle implements SpawnHandle {
         } catch (CancellationException ignored) {
             return task.isDone();
         } catch (InterruptedException e) {
+            // do not self-interrupt (G.CON.10)
             return task.isDone();
         } catch (ExecutionException | TimeoutException e) {
             return task.isDone();
@@ -165,6 +166,7 @@ public class InProcessSpawnHandle implements SpawnHandle {
             task.get();
             return 0;
         } catch (InterruptedException e) {
+            // do not self-interrupt (G.CON.10)
             return -1;
         } catch (ExecutionException | java.util.concurrent.CancellationException e) {
             return -1;

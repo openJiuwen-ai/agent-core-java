@@ -84,6 +84,10 @@ PROCESSING INSTRUCTIONS:
 2. 查询GDP、CPI、PPI、利率、汇率等核心指标
 3. 分析货币政策、财政政策对投资的影响
 4. 评估系统性风险和行业周期位置
+5. 通过 file_io(action="write", path=".team/reports/T4_macro_analysis.md") 落盘完整报告
+6. 通过 send_message 向 leader 发"完成摘要 + 文件路径"，不发完整内容
+
+OUTPUT FILE: .team/reports/T4_macro_analysis.md
 
 OUTPUT FORMAT (use exactly this structure, no preamble, no postscript):
 

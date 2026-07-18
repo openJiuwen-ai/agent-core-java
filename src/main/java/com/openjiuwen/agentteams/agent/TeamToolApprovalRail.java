@@ -14,6 +14,8 @@ import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.harness.rails.interrupt.ConfirmInterruptRail;
 import com.openjiuwen.harness.rails.interrupt.InterruptDecision;
 
+import java.util.concurrent.CompletionException;
+
 /**
  * Tool approval rail for team coordination.
  * <p>
@@ -81,7 +83,7 @@ public class TeamToolApprovalRail extends ConfirmInterruptRail {
                     Loggers.AGENT.error("Failed to send approval request for {}", toolName);
                     return reject("Failed to send approval request to leader");
                 }
-            } catch (Exception e) {
+            } catch (CompletionException e) {
                 Loggers.AGENT.error("Failed to send approval request for {}: {}", toolName, e.getMessage());
                 return reject("Failed to send approval request to leader: " + e.getMessage());
             }
@@ -91,18 +93,17 @@ public class TeamToolApprovalRail extends ConfirmInterruptRail {
         }
 
         // Resume: process leader's approval response
-        try {
-            String value = String.valueOf(userInput).trim().toLowerCase(java.util.Locale.ROOT);
-            if ("false".equals(value) || "no".equals(value) || "reject".equals(value)) {
-                Loggers.AGENT.info("Tool {} rejected by leader for member {}", toolName, memberName);
-                return reject("Tool call rejected by leader");
-            }
-            Loggers.AGENT.info("Tool {} approved by leader for member {}", toolName, memberName);
-            return approve();
-        } catch (Exception e) {
-            Loggers.AGENT.error("Failed to parse approval response for {}: {}", toolName, e.getMessage());
+        if (userInput == null) {
+            Loggers.AGENT.error("Failed to parse approval response for {}: null input", toolName);
             return interrupt(InterruptRequest.builder()
                     .message("Invalid approval response format for tool: " + toolName).build());
         }
+        String value = String.valueOf(userInput).trim().toLowerCase(java.util.Locale.ROOT);
+        if ("false".equals(value) || "no".equals(value) || "reject".equals(value)) {
+            Loggers.AGENT.info("Tool {} rejected by leader for member {}", toolName, memberName);
+            return reject("Tool call rejected by leader");
+        }
+        Loggers.AGENT.info("Tool {} approved by leader for member {}", toolName, memberName);
+        return approve();
     }
 }

@@ -7,12 +7,14 @@ import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
+import com.openjiuwen.agentteams.spawn.SpawnContext;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptEntry;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +23,17 @@ import java.util.Map;
 
 @Tag("agent-teams-team-rail-slice")
 class TeamRailCompatibilityTest {
+
+    @AfterEach
+    void resetSpawnSession() {
+        // setSessionId pins a new session id into SpawnContext's
+        // InheritableThreadLocal and never restores the previous value.
+        // Without this reset, the leaked id poisons later test classes whose
+        // TeamBackend constructs from SpawnContext.getSessionId() and then
+        // publishes on a session-prefixed topic the subscriber never matches.
+        SpawnContext.setSessionId("");
+    }
+
     @Test
     void roleSectionShouldMatchPythonTeamRailLeaderPolicyShape() {
         var section = TeamRail.buildTeamRoleSection(TeamRole.LEADER, "leader1", "build_mode", "cn");

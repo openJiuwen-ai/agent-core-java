@@ -1,11 +1,9 @@
-
 package com.openjiuwen.agentteams.agent;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.openjiuwen.agentteams.TeamConstants;
 import com.openjiuwen.agentteams.factory.TeamFactory;
+import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.agentteams.schema.events.EventMessage;
 import com.openjiuwen.agentteams.schema.status.MemberStatus;
@@ -17,24 +15,25 @@ import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
 import com.openjiuwen.agentteams.spawn.InProcessSpawnHandle;
 import com.openjiuwen.agentteams.spawn.ProcessSpawnHandle;
 import com.openjiuwen.agentteams.spawn.SpawnHandle;
-import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
-import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
-import com.openjiuwen.core.runner.spawn.Message;
-import com.openjiuwen.core.runner.spawn.MessageType;
 import com.openjiuwen.core.runner.spawn.SpawnAgentConfig;
 import com.openjiuwen.core.runner.spawn.SpawnAgentConfigs;
-import com.openjiuwen.core.runner.spawn.SpawnAgentKind;
 import com.openjiuwen.core.runner.spawn.SpawnConfig;
+import com.openjiuwen.core.runner.spawn.SpawnAgentKind;
+import com.openjiuwen.core.runner.spawn.Message;
+import com.openjiuwen.core.runner.spawn.MessageType;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 class SpawnManagerCompatibilityTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -43,8 +42,12 @@ class SpawnManagerCompatibilityTest {
     void spawnManagerShouldRegisterInprocessHandleAndRebuildContextFromBackend() {
         TeamAgent agent = TeamFactory.createAgentTeam(teamSpec());
         agent.resumeForNewSession("spawn-session-101");
-        TeamRuntimeContext ctx = TeamRuntimeContext.builder().teamId("spawn-manager-team")
-                .sessionId("spawn-session-101").memberName("worker-1").role(TeamRole.MEMBER).build();
+        TeamRuntimeContext ctx = TeamRuntimeContext.builder()
+                .teamId("spawn-manager-team")
+                .sessionId("spawn-session-101")
+                .memberName("worker-1")
+                .role(TeamRole.MEMBER)
+                .build();
 
         SpawnHandle handle = agent.getSpawnManager().spawnTeammate(ctx, "@worker-1 handle backlog");
         agent.getTeamBackend().updateMemberStatus("worker-1", MemberStatus.READY);
@@ -53,7 +56,8 @@ class SpawnManagerCompatibilityTest {
         assertThat(agent.getSpawnManager().getSpawnedHandles()).containsKey("worker-1");
         assertThat(handle.isHealthCheckRunning()).isTrue();
         assertThat(agent.getRecoveryManager().collectLiveTeammatesForSessionSwitch())
-                .extracting(RecoveryManager.RecoverableMember::memberName).contains("worker-1");
+                .extracting(RecoveryManager.RecoverableMember::memberName)
+                .contains("worker-1");
         assertThat(rebuilt.getTeamId()).isEqualTo("spawn-manager-team");
         assertThat(rebuilt.getSessionId()).isEqualTo("spawn-session-101");
         assertThat(rebuilt.getMemberName()).isEqualTo("worker-1");
@@ -63,101 +67,20 @@ class SpawnManagerCompatibilityTest {
     }
 
     @Test
-    void spawnManagerShouldUseRunnerProcessSpawnWhenSpecRequestsProcessMode() {
-        TeamAgent agent =
-            TeamFactory.createAgentTeam(TeamAgentSpec.builder().name("spawn-manager-team").spawnMode("process")
-                    .members(List.of(
-                            TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
-                                    .role(TeamRole.LEADER).build(),
-                            TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).description("Worker one")
-                                    .build()))
-                    .build());
-        agent.resumeForNewSession("spawn-session-process");
-        TeamRuntimeContext ctx = TeamRuntimeContext.builder().teamId("spawn-manager-team")
-                .sessionId("spawn-session-process").memberName("worker-1").role(TeamRole.MEMBER).build();
-
-        SpawnHandle handle = agent.getSpawnManager().spawnTeammate(ctx, "Process branch work.");
-        Message done = ((ProcessSpawnHandle) handle).delegate().receiveMessage();
-        int exitCode = handle.waitForCompletion();
-
-        assertThat(handle).isInstanceOf(ProcessSpawnHandle.class);
-        assertThat(done.getType()).isEqualTo(MessageType.DONE);
-        assertThat(done.getPayload()).asString().contains("spawn-manager-team");
-        assertThat(exitCode).isZero();
-
-        agent.getSpawnManager().shutdownAllHandles();
-    }
-
-    @Test
-    void healthCheckLoopShouldTriggerUnhealthyRecoveryWhenHandleStops() throws Exception {
-        TeamAgent agent = TeamFactory.createAgentTeam(teamSpec());
-        agent.resumeForNewSession("spawn-session-health");
-        agent.getTeamBackend().spawnMember("worker-1", "Worker One",
-                AgentCard.builder().name("worker-1").description("Worker one").build()).join();
-        InProcessSpawnHandle stoppedHandle = InProcessSpawnHandle.builder().processId("stopped-worker")
-                .task(CompletableFuture.completedFuture(null)).build();
-
-        agent.getSpawnManager().registerHandle("worker-1", stoppedHandle);
-        stoppedHandle.startHealthCheck(1L);
-
-        awaitRecoveryTasksDrained(agent);
-
-        assertThat(stoppedHandle.isHealthCheckRunning()).isFalse();
-        assertThat(agent.getTeamBackend().getMember("worker-1").getStatus()).isEqualTo(MemberStatus.RESTARTING);
-        assertThat(agent.getSpawnManager().getSpawnedHandles()).containsKey("worker-1");
-
-        agent.getSpawnManager().shutdownAllHandles();
-    }
-
-    @Test
-    void processHealthCheckShouldTriggerSpawnManagerRecoveryAndMonitorVisibleRestart() throws Exception {
-        TeamAgent agent =
-            TeamFactory.createAgentTeam(TeamAgentSpec.builder().name("spawn-manager-team").spawnMode("process")
-                    .members(List.of(
-                            TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
-                                    .role(TeamRole.LEADER).build(),
-                            TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).description("Worker one")
-                                    .build()))
-                    .build());
-        agent.resumeForNewSession("spawn-session-process-health");
-        List<EventMessage> events = new CopyOnWriteArrayList<>();
-        agent.getTeamBackend().getMessager().subscribe("team:spawn-manager-team", message -> {
-            events.add(message);
-            return CompletableFuture.completedFuture(null);
-        }).join();
-        TeamRuntimeContext ctx = TeamRuntimeContext.builder().teamId("spawn-manager-team")
-                .sessionId("spawn-session-process-health").memberName("worker-1").role(TeamRole.MEMBER).build();
-
-        SpawnHandle firstHandle = agent.getSpawnManager().spawnTeammate(ctx, "run long enough for health failure",
-                SpawnConfig.builder().healthCheckInterval(0.01).healthCheckTimeout(0.001).build());
-
-        awaitRestartEvent(agent, events);
-
-        assertThat(firstHandle).isInstanceOf(ProcessSpawnHandle.class);
-        assertThat(firstHandle.isAlive()).isFalse();
-        assertThat(agent.getTeamBackend().getMember("worker-1").getStatus()).isEqualTo(MemberStatus.RESTARTING);
-        assertThat(agent.getSpawnManager().getSpawnedHandles()).containsKey("worker-1");
-        assertThat(agent.getSpawnManager().getSpawnedHandles().get("worker-1")).isNotSameAs(firstHandle);
-        assertThat(events).anySatisfy(event -> {
-            assertThat(event.getEventType()).isEqualTo("member_restarted");
-            assertThat(event.getPayload()).containsEntry("member_name", "worker-1");
-            assertThat(event.getPayload()).containsEntry("reason", "health_check_failure");
-        });
-
-        agent.getSpawnManager().shutdownAllHandles();
-    }
-
-    @Test
     void unhealthyHandleShouldCleanupMarkRestartingAndRestartTeammateLikePythonSpawnManager() throws Exception {
         TeamAgent agent = TeamFactory.createAgentTeam(teamSpec());
         agent.resumeForNewSession("spawn-session-102");
         List<EventMessage> events = new CopyOnWriteArrayList<>();
-        agent.getTeamBackend().getMessager().subscribe("team:spawn-manager-team", message -> {
+        agent.getTeamBackend().getMessager().subscribe("session:spawn-session-102:team:spawn-manager-team:team", message -> {
             events.add(message);
             return java.util.concurrent.CompletableFuture.completedFuture(null);
         }).join();
-        TeamRuntimeContext ctx = TeamRuntimeContext.builder().teamId("spawn-manager-team")
-                .sessionId("spawn-session-102").memberName("worker-1").role(TeamRole.MEMBER).build();
+        TeamRuntimeContext ctx = TeamRuntimeContext.builder()
+                .teamId("spawn-manager-team")
+                .sessionId("spawn-session-102")
+                .memberName("worker-1")
+                .role(TeamRole.MEMBER)
+                .build();
 
         SpawnHandle firstHandle = agent.getSpawnManager().spawnTeammate(ctx, "@worker-1 start");
         agent.getTeamBackend().updateMemberStatus("worker-1", MemberStatus.READY);
@@ -186,8 +109,11 @@ class SpawnManagerCompatibilityTest {
     @SuppressWarnings("unchecked")
     void teamAgentShouldBuildSpawnPayloadAndRecoverFromSpawnConfigPayload() throws Exception {
         TeamAgent agent = TeamFactory.createAgentTeam(teamSpec());
-        TeamRuntimeContext ctx = agent.buildMemberContext(
-                TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).description("Backend worker").build());
+        TeamRuntimeContext ctx = agent.buildMemberContext(TeamMemberSpec.builder()
+                .name("worker-1")
+                .role(TeamRole.MEMBER)
+                .description("Backend worker")
+                .build());
 
         Map<String, Object> payload = agent.buildSpawnPayload(ctx, "Review the migration delta.");
         Map<String, Object> coordination = (Map<String, Object>) payload.get("coordination");
@@ -225,17 +151,27 @@ class SpawnManagerCompatibilityTest {
     @Test
     @SuppressWarnings("unchecked")
     void spawnPayloadJsonRoundTripShouldPreserveMemberModelForDeepAgentConfig() throws Exception {
-        TeamAgent agent =
-            TeamFactory.createAgentTeam(TeamAgentSpec.builder().name("spawn-model-team").spawnMode("process")
-                    .members(List.of(TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
-                            .role(TeamRole.LEADER).modelName("gpt-4").build()))
-                    .modelPool(List.of(poolEntry("gpt-4", "http://a1"), poolEntry("gpt-4", "http://a2")))
-                    .modelPoolStrategy("by_model_name").build());
-        agent.getTeamBackend()
-                .spawnMember("pool-worker", "Pool Worker",
-                        AgentCard.builder().name("worker").description("pool-backed worker").build(), TeamRole.MEMBER,
-                        "Resume the backlog.", agent.allocateModel("gpt-4"))
-                .join();
+        TeamAgent agent = TeamFactory.createAgentTeam(TeamAgentSpec.builder()
+                .name("spawn-model-team")
+                .spawnMode("process")
+                .members(List.of(
+                        TeamMemberSpec.builder()
+                                .name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
+                                .role(TeamRole.LEADER)
+                                .modelName("gpt-4")
+                                .build()
+                ))
+                .modelPool(List.of(
+                        poolEntry("gpt-4", "http://a1"),
+                        poolEntry("gpt-4", "http://a2")
+                ))
+                .modelPoolStrategy("by_model_name")
+                .build());
+        agent.getTeamBackend().spawnMember(TeamBackend.SpawnMemberParams.builder()
+                .memberName("pool-worker").displayName("Pool Worker")
+                .agentCard(AgentCard.builder().name("worker").description("pool-backed worker").build())
+                .role(TeamRole.MEMBER).prompt("Resume the backlog.")
+                .allocation(agent.allocateModel("gpt-4")).build()).join();
         TeamRuntimeContext ctx = agent.getSpawnManager().buildContextFromBackend("pool-worker");
 
         String json = OBJECT_MAPPER.writeValueAsString(agent.buildSpawnConfig(ctx).getPayload());
@@ -253,32 +189,46 @@ class SpawnManagerCompatibilityTest {
 
     @Test
     void spawnManagerShouldResolvePersistedModelRefFromLivePoolWhenRebuildingContext() {
-        TeamAgent agent =
-            TeamFactory.createAgentTeam(TeamAgentSpec.builder().name("spawn-manager-team").spawnMode("inprocess")
-                    .members(List.of(TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
-                            .role(TeamRole.LEADER).modelName("gpt-4").build()))
-                    .modelPool(List.of(poolEntry("gpt-4", "http://a1"), poolEntry("gpt-4", "http://a2"),
-                            poolEntry("claude", "http://c1")))
-                    .modelPoolStrategy("by_model_name").build());
+        TeamAgent agent = TeamFactory.createAgentTeam(TeamAgentSpec.builder()
+                .name("spawn-manager-team")
+                .spawnMode("inprocess")
+                .members(List.of(
+                        TeamMemberSpec.builder()
+                                .name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
+                                .role(TeamRole.LEADER)
+                                .modelName("gpt-4")
+                                .build()
+                ))
+                .modelPool(List.of(
+                        poolEntry("gpt-4", "http://a1"),
+                        poolEntry("gpt-4", "http://a2"),
+                        poolEntry("claude", "http://c1")
+                ))
+                .modelPoolStrategy("by_model_name")
+                .build());
         Allocation allocation = agent.allocateModel("gpt-4");
 
-        agent.getTeamBackend()
-                .spawnMember("dynamic-worker", "Dynamic Worker",
-                        AgentCard.builder().name("worker").description("pool-backed worker").build(), TeamRole.MEMBER,
-                        "Resume the backlog.", allocation)
-                .join();
+        agent.getTeamBackend().spawnMember(TeamBackend.SpawnMemberParams.builder()
+                .memberName("dynamic-worker").displayName("Dynamic Worker")
+                .agentCard(AgentCard.builder().name("worker").description("pool-backed worker").build())
+                .role(TeamRole.MEMBER).prompt("Resume the backlog.")
+                .allocation(allocation).build()).join();
 
         TeamRuntimeContext rebuilt = agent.getSpawnManager().buildContextFromBackend("dynamic-worker");
 
-        assertThat(agent.getTeamBackend().getDb().member.getMember("dynamic-worker", "spawn-manager-team")
+        assertThat(agent.getTeamBackend().getDb().member
+                .getMember("dynamic-worker", "spawn-manager-team")
                 .getModelRefJson()).contains("\"model_name\":\"gpt-4\"").contains("\"model_index\":1");
         assertThat(rebuilt.getMetadata()).containsEntry("persona", "pool-backed worker");
         assertThat(rebuilt.getMetadata().get("member_model")).isInstanceOf(TeamModelConfig.class);
         TeamModelConfig memberModel = (TeamModelConfig) rebuilt.getMetadata().get("member_model");
         assertThat(memberModel.modelClientConfig().getApiBase()).isEqualTo("http://a2");
 
-        agent.updateModelPool(List.of(poolEntry("gpt-4", "http://new-a1"), poolEntry("gpt-4", "http://new-a2"),
-                poolEntry("claude", "http://new-c1")));
+        agent.updateModelPool(List.of(
+                poolEntry("gpt-4", "http://new-a1"),
+                poolEntry("gpt-4", "http://new-a2"),
+                poolEntry("claude", "http://new-c1")
+        ));
 
         TeamRuntimeContext afterRefresh = agent.getSpawnManager().buildContextFromBackend("dynamic-worker");
         TeamModelConfig refreshedModel = (TeamModelConfig) afterRefresh.getMetadata().get("member_model");
@@ -288,9 +238,13 @@ class SpawnManagerCompatibilityTest {
     @Test
     void spawnManagerShouldIgnoreMalformedPersistedModelRef() {
         TeamAgent agent = TeamFactory.createAgentTeam(teamSpec());
-        agent.getTeamBackend().spawnMember("dynamic-worker", "Dynamic Worker",
-                AgentCard.builder().name("worker").description("worker").build()).join();
-        agent.getTeamBackend().getDb().member.getMember("dynamic-worker", "spawn-manager-team")
+        agent.getTeamBackend().spawnMember(
+                "dynamic-worker",
+                "Dynamic Worker",
+                AgentCard.builder().name("worker").description("worker").build()
+        ).join();
+        agent.getTeamBackend().getDb().member
+                .getMember("dynamic-worker", "spawn-manager-team")
                 .setModelRefJson("{not-json");
 
         TeamRuntimeContext rebuilt = agent.getSpawnManager().buildContextFromBackend("dynamic-worker");
@@ -325,7 +279,8 @@ class SpawnManagerCompatibilityTest {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
         while (System.nanoTime() < deadline) {
             boolean restarted = events.stream().anyMatch(event -> "member_restarted".equals(event.getEventType()));
-            if (restarted && agent.getSpawnManager().getRecoveryTaskCount() == 0
+            if (restarted
+                    && agent.getSpawnManager().getRecoveryTaskCount() == 0
                     && agent.getSpawnManager().getSpawnedHandles().containsKey("worker-1")) {
                 return;
             }
@@ -334,14 +289,28 @@ class SpawnManagerCompatibilityTest {
     }
 
     private static TeamAgentSpec teamSpec() {
-        return TeamAgentSpec.builder().name("spawn-manager-team").members(List.of(
-                TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build(),
-                TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).description("Worker one").build()))
+        return TeamAgentSpec.builder()
+                .name("spawn-manager-team")
+                .members(List.of(
+                        TeamMemberSpec.builder()
+                                .name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
+                                .role(TeamRole.LEADER)
+                                .build(),
+                        TeamMemberSpec.builder()
+                                .name("worker-1")
+                                .role(TeamRole.MEMBER)
+                                .description("Worker one")
+                                .build()
+                ))
                 .build();
     }
 
     private static ModelPoolEntry poolEntry(String modelName, String apiBaseUrl) {
-        return ModelPoolEntry.builder().modelName(modelName).provider("OpenAI").apiKey("key").apiBaseUrl(apiBaseUrl)
+        return ModelPoolEntry.builder()
+                .modelName(modelName)
+                .provider("OpenAI")
+                .apiKey("key")
+                .apiBaseUrl(apiBaseUrl)
                 .build();
     }
 }

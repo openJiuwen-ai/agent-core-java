@@ -214,6 +214,7 @@ public final class GitCommands {
             }
             return result;
         } catch (IOException | InterruptedException e) {
+            // do not self-interrupt (G.CON.10); caller can check thread status if needed
             throw new GitError(String.join(" ", args), -1, e.getMessage());
         }
     }
@@ -276,15 +277,16 @@ public final class GitCommands {
                 String ref = result.getStdout().trim();
                 return ref.substring(ref.lastIndexOf('/') + 1);
             }
-        } catch (Exception ignored) {
+        } catch (GitError ignored) {
             // Fall through to probing
         }
+
         // Probe main then master
         for (String branch : List.of("main", "master")) {
             try {
                 runGit(List.of("rev-parse", "--verify", branch), cwd, true);
                 return branch;
-            } catch (Exception ignored) {
+            } catch (GitError ignored) {
                 // continue
             }
         }
@@ -331,6 +333,7 @@ public final class GitCommands {
                 // Content: "gitdir: /path/to/main/.git/worktrees/name"
                 if (content.startsWith("gitdir: ")) {
                     String realGitDir = content.substring(8).trim();
+
                     // realGitDir is .../main/.git/worktrees/name
                     // Navigate up to find the common dir
                     Path wtPath = Path.of(realGitDir);
@@ -339,6 +342,7 @@ public final class GitCommands {
                         String commondir = Files.readString(commondirPath).trim();
                         return Path.of(realGitDir).resolve(commondir).normalize().toString();
                     }
+
                     // Fallback: gitdir is .../main/.git, common dir is .../main/.git
                     Path dotGit = wtPath.getParent(); // up from worktrees/
                     if (dotGit != null && dotGit.getFileName().toString().equals("worktrees")) {
@@ -349,6 +353,7 @@ public final class GitCommands {
                 Loggers.AGENT.debug("Failed to read worktree gitdir: {}", e.getMessage());
             }
         }
+
         // Regular repo or cannot resolve — use direct git root
         return findGitRoot(cwd);
     }
@@ -488,7 +493,7 @@ public final class GitCommands {
         try {
             GitResult result = runGit(List.of("rev-list", "--max-count=1", "HEAD", "--not", "--remotes"), cwd);
             return result.isOk() && !result.getStdout().trim().isEmpty();
-        } catch (Exception e) {
+        } catch (GitError e) {
             Loggers.AGENT.debug("Failed to check unpushed commits: {}", e.getMessage());
             return false;
         }

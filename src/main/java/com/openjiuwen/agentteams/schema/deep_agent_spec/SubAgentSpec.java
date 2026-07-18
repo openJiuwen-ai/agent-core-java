@@ -59,7 +59,7 @@ public class SubAgentSpec {
     private String language;
     private String promptMode;
     @Builder.Default
-    private boolean enableTaskLoop = false;
+    private boolean isTaskLoopEnabled = false;
     private Integer maxIterations;
     private String factoryName;
     @Builder.Default

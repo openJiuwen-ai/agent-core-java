@@ -79,6 +79,10 @@ PROCESSING INSTRUCTIONS:
 2. 分析利润表、资产负债表、现金流量表关键指标
 3. 计算财务比率（PE、PB、ROE、ROA、负债率等）
 4. 评估财务健康度、盈利能力和竞争优势
+5. 通过 file_io(action="write", path=".team/reports/T1_fundamental_analysis.md") 落盘完整报告
+6. 通过 send_message 向 leader 发"完成摘要 + 文件路径"，不发完整内容
+
+OUTPUT FILE: .team/reports/T1_fundamental_analysis.md
 
 OUTPUT FORMAT (use exactly this structure, no preamble, no postscript):
 

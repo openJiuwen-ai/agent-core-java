@@ -10,6 +10,8 @@ import com.openjiuwen.agentteams.interaction.Router;
 import com.openjiuwen.agentteams.interaction.UserInbox;
 import com.openjiuwen.agentteams.messager.Messager;
 import com.openjiuwen.agentteams.schema.events.EventMessage;
+import com.openjiuwen.agentteams.schema.events.TeamEvent;
+import com.openjiuwen.agentteams.schema.events.TeamTopic;
 import com.openjiuwen.agentteams.schema.status.MemberStatus;
 import com.openjiuwen.agentteams.schema.team.TeamLifecycle;
 import com.openjiuwen.agentteams.tools.TeamBackend;
@@ -21,52 +23,49 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.function.Consumer;
 
 /**
  * Coordination handoff and lifecycle wiring mirroring Python {@code coordination_manager.py}.
- * 
- * @since 0.1.7
+ *
+ * @since 2026/7/9
  */
 public class CoordinationManager {
-    private static final List<String> TRANSPORT_TOPICS =
-        List.of("team:%s", "team:task", "team:message", "team:broadcast");
-
     private final TeamAgent host;
     private final TeamBackend teamBackend;
     private final TeamMessageManager messageManager;
     private final Consumer<String> leaderInputSink;
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private final List<String> subscribedTopics = new ArrayList<>();
 
     /**
-     * CoordinationManager.
-     * 
-     * @param teamBackend teamBackend
-     * @param messageManager messageManager
-     * @param leaderInputSink leaderInputSink
+     * Construct a manager without a host agent (delegates to the host-bearing overload with {@code null}).
+     *
+     * @param teamBackend the team backend used for messager and member lookups
+     * @param messageManager the manager used to deliver user-driven messages
+     * @param leaderInputSink the sink that receives plain leader-directed user input
      * @since 0.1.7
      */
-    public CoordinationManager(TeamBackend teamBackend, TeamMessageManager messageManager,
+    public CoordinationManager(
+            TeamBackend teamBackend,
+            TeamMessageManager messageManager,
             Consumer<String> leaderInputSink) {
         this(null, teamBackend, messageManager, leaderInputSink);
     }
 
     /**
-     * CoordinationManager.
-     * 
-     * @param host host
-     * @param teamBackend teamBackend
-     * @param messageManager messageManager
-     * @param leaderInputSink leaderInputSink
+     * Construct a manager bound to a host {@link TeamAgent}.
+     *
+     * @param host the host agent this manager coordinates for; may be {@code null} in helper-only usage
+     * @param teamBackend the team backend used for messager and member lookups
+     * @param messageManager the manager used to deliver user-driven messages
+     * @param leaderInputSink the sink that receives plain leader-directed user input
      * @since 0.1.7
      */
-    public CoordinationManager(TeamAgent host, TeamBackend teamBackend, TeamMessageManager messageManager,
+    public CoordinationManager(
+            TeamAgent host,
+            TeamBackend teamBackend,
+            TeamMessageManager messageManager,
             Consumer<String> leaderInputSink) {
         this.host = host;
         this.teamBackend = teamBackend;
@@ -75,9 +74,9 @@ public class CoordinationManager {
     }
 
     /**
-     * subscribedTopics.
-     * 
-     * @return the result
+     * Return the team topics this manager has currently subscribed to.
+     *
+     * @return an immutable copy of the subscribed topic strings
      * @since 0.1.7
      */
     public List<String> subscribedTopics() {
@@ -85,14 +84,15 @@ public class CoordinationManager {
     }
 
     /**
-     * start.
-     * 
+     * Start coordination for the host agent: mark the member ready,
+     * start the kernel, and subscribe to transport topics.
+     *
      * @since 0.1.7
      */
     public void start() {
         String who = host != null ? host.resolveLocalMemberName() : "null";
-        Loggers.AGENT.info("CoordinationManager.start() called for member={} role={}", who,
-                host != null && host.getContext() != null ? host.getContext().getRole() : "?");
+        Loggers.AGENT.info("CoordinationManager.start() called for member={} role={}",
+                who, host != null && host.getContext() != null ? host.getContext().getRole() : "?");
         if (host == null) {
             return;
         }
@@ -105,15 +105,15 @@ public class CoordinationManager {
             host.recoverTeam();
         }
         teamBackend.updateMemberStatus(host.resolveLocalMemberName(), MemberStatus.READY);
-        if (host.getCoordinatorLoop() != null && !host.getCoordinatorLoop().isRunning()) {
-            host.getCoordinatorLoop().start();
+        if (host.getCoordinationKernel() != null && !host.getCoordinationKernel().isRunning()) {
+            host.getCoordinationKernel().start();
         }
         subscribeTransport();
     }
 
     /**
-     * pause.
-     * 
+     * Pause coordination: persist allocator state, publish a standby event, unsubscribe transport, and stop the kernel.
+     *
      * @since 0.1.7
      */
     public void pause() {
@@ -123,8 +123,8 @@ public class CoordinationManager {
         host.persistAllocatorState();
         publishTeamStandby();
         unsubscribeTransport();
-        if (host.getCoordinatorLoop() != null) {
-            host.getCoordinatorLoop().stop();
+        if (host.getCoordinationKernel() != null) {
+            host.getCoordinationKernel().stop();
         }
         if (host.getStreamController() != null) {
             host.getStreamController().closeStream();
@@ -135,8 +135,9 @@ public class CoordinationManager {
     }
 
     /**
-     * stop.
-     * 
+     * Stop coordination: persist allocator state, unsubscribe transport,
+     * shut down spawned members, and stop the kernel.
+     *
      * @since 0.1.7
      */
     public void stop() {
@@ -152,8 +153,8 @@ public class CoordinationManager {
         if (host.getMemoryManager() != null) {
             host.getMemoryManager().close();
         }
-        if (host.getCoordinatorLoop() != null) {
-            host.getCoordinatorLoop().stop();
+        if (host.getCoordinationKernel() != null) {
+            host.getCoordinationKernel().stop();
         }
         if (host.getStreamController() != null) {
             host.getStreamController().closeStream();
@@ -164,9 +165,10 @@ public class CoordinationManager {
     }
 
     /**
-     * subscribeTransport.
-     * 
-     * @since 0.1.7
+     * Subscribe messager to the three team topics (TEAM / TASK / MESSAGE) plus the
+     * direct-message handler, mirroring Python {@code kernel.subscribe_transport}:
+     * iterate {@code TeamTopic} and call {@code topic.build(session_id, team_name)}.
+     * Broadcast rides the MESSAGE topic (no separate broadcast subscription).
      */
     public void subscribeTransport() {
         String who = host != null ? host.resolveLocalMemberName() : "null";
@@ -174,8 +176,8 @@ public class CoordinationManager {
             Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP host=null for {}", who);
             return;
         }
-        if (host.getCoordinatorLoop() == null) {
-            Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP coordinatorLoop=null for {}", who);
+        if (host.getCoordinationKernel() == null) {
+            Loggers.AGENT.info("CoordinationManager.subscribeTransport: SKIP coordinationKernel=null for {}", who);
             return;
         }
         if (teamBackend.getMessager() == null) {
@@ -188,20 +190,25 @@ public class CoordinationManager {
         }
         Loggers.AGENT.info("CoordinationManager.subscribeTransport: subscribing for member={}", who);
         Messager messager = teamBackend.getMessager();
-        messager.registerDirectMessageHandler(message -> {
-            host.getCoordinatorLoop().enqueue(message);
-            return CompletableFuture.completedFuture(null);
-        }).join();
-        for (String topicTemplate : TRANSPORT_TOPICS) {
-            String topic = topicTemplate.formatted(teamBackend.getTeamName());
-            messager.subscribe(topic, this::handleTransportEvent).join();
-            subscribedTopics.add(topic);
+        messager
+                .registerDirectMessageHandler(
+                        message -> {
+                            host.getCoordinationKernel().enqueue(message);
+                            return CompletableFuture.completedFuture(null);
+                        })
+                .join();
+        String sessionId = teamBackend.getTeamSessionId();
+        String teamName = teamBackend.getTeamName();
+        for (TeamTopic topic : TeamTopic.values()) {
+            String topicStr = topic.build(sessionId, teamName);
+            messager.subscribe(topicStr, this::handleTransportEvent).join();
+            subscribedTopics.add(topicStr);
         }
     }
 
     /**
-     * unsubscribeTransport.
-     * 
+     * Unsubscribe the messager from the direct-message handler and all previously subscribed team topics.
+     *
      * @since 0.1.7
      */
     public void unsubscribeTransport() {
@@ -212,12 +219,13 @@ public class CoordinationManager {
         Messager messager = teamBackend.getMessager();
         try {
             messager.unregisterDirectMessageHandler().join();
-        } catch (RuntimeException ignored) {
+        } catch (CompletionException ignored) {
+            // Python cleanup logs and continues when a transport backend is already gone.
         }
         for (String topic : List.copyOf(subscribedTopics)) {
             try {
                 messager.unsubscribe(topic).join();
-            } catch (RuntimeException ignored) {
+            } catch (CompletionException ignored) {
                 // Best-effort cleanup.
             }
         }
@@ -225,41 +233,40 @@ public class CoordinationManager {
     }
 
     /**
-     * enqueueUserInput.
-     * 
-     * @param inputs inputs
+     * Enqueue user input onto the host's coordination kernel, unwrapping a {@code query} field when the input is a map.
+     *
+     * @param inputs the user input; either a raw string or a map containing a {@code query} key
      * @since 0.1.7
      */
     public void enqueueUserInput(Object inputs) {
-        if (host == null || host.getCoordinatorLoop() == null) {
+        if (host == null || host.getCoordinationKernel() == null) {
             return;
         }
         Object query = inputs;
         if (inputs instanceof Map<?, ?> map) {
             query = map.containsKey("query") ? map.get("query") : "";
         }
-        host.getCoordinatorLoop().enqueue(InnerEventMessage.builder().eventType(InnerEventType.USER_INPUT)
-                .payload(Map.of("content", query != null ? String.valueOf(query) : "")).build());
+        host.getCoordinationKernel().enqueueUserInput(query != null ? String.valueOf(query) : "");
     }
 
     /**
-     * wakeMailboxIfInterruptCleared.
-     * 
+     * Wake the kernel's mailbox poll once the host no longer has a pending interrupt.
+     *
      * @since 0.1.7
      */
     public void wakeMailboxIfInterruptCleared() {
-        if (host == null || host.hasPendingInterrupt() || host.getCoordinatorLoop() == null) {
+        if (host == null || host.hasPendingInterrupt() || host.getCoordinationKernel() == null) {
             return;
         }
-        host.getCoordinatorLoop().enqueue(InnerEventMessage.builder().eventType(InnerEventType.POLL_MAILBOX).build());
+        host.getCoordinationKernel().enqueuePollMailbox();
     }
 
     /**
-     * handoffUserInput.
-     * 
-     * @param query query
-     * @param leaderMemberName leaderMemberName
-     * @return the result
+     * Route a user input string to a mentioned teammate or, lacking a mention, deliver it to the leader sink.
+     *
+     * @param query the raw user input, possibly prefixed with a {@code @member} mention
+     * @param leaderMemberName the leader member name used when the input is routed to the leader
+     * @return the {@link UserInputHandoff} describing where the input was delivered
      * @since 0.1.7
      */
     public UserInputHandoff handoffUserInput(String query, String leaderMemberName) {
@@ -275,10 +282,10 @@ public class CoordinationManager {
     }
 
     /**
-     * broadcastFromUser.
-     * 
-     * @param content content
-     * @return the result
+     * Broadcast a user-supplied message to every team member.
+     *
+     * @param content the message body to broadcast
+     * @return the message id assigned to the broadcast
      * @since 0.1.7
      */
     public String broadcastFromUser(String content) {
@@ -286,25 +293,18 @@ public class CoordinationManager {
     }
 
     /**
-     * handoffHumanAgentInput.
-     * 
-     * @param content content
-     * @param to to
-     * @param sender sender
-     * @return the result
+     * Send a message on behalf of the human agent member to a named recipient.
+     *
+     * @param content the message body
+     * @param to the target member name
+     * @param sender the sender member name, typically the human agent
+     * @return the message id assigned to the delivered message
      * @since 0.1.7
      */
     public String handoffHumanAgentInput(String content, String to, String sender) {
         return new HumanAgentInbox(teamBackend, messageManager).send(content, to, sender).join();
     }
 
-    /**
-     * handleTransportEvent.
-     * 
-     * @param event event
-     * @return the result
-     * @since 0.1.7
-     */
     private CompletableFuture<Void> handleTransportEvent(EventMessage event) {
         if (event == null) {
             return CompletableFuture.completedFuture(null);
@@ -312,29 +312,25 @@ public class CoordinationManager {
         notifyEventListeners(event);
         String localMember = host != null ? host.resolveLocalMemberName() : null;
         String eventType = event.getEventType();
+
         // Skip events published by this member (echo suppression).
         // Since each member now has a unique nodeId (= memberName), this correctly
         // filters only the member's own events while letting everything else through.
         if (localMember != null && localMember.equals(event.getSenderId())) {
             return CompletableFuture.completedFuture(null);
         }
-        if (host != null && host.getCoordinatorLoop() != null) {
+        if (host != null && host.getCoordinationKernel() != null) {
             // Log all transport events for visibility — previously only logged task_* and
             // broadcast, but "message" events (from send_message) are critical for leader
             // to receive analyst reports.
-            Loggers.AGENT.info("CoordinationManager: enqueuing event type={} senderId={} for member={}", eventType,
-                    event.getSenderId(), localMember);
-            host.getCoordinatorLoop().enqueue(event);
+            Loggers.AGENT.info(
+                    "CoordinationManager: enqueuing event type={} senderId={} for member={}",
+                    eventType, event.getSenderId(), localMember);
+            host.getCoordinationKernel().enqueue(event);
         }
         return CompletableFuture.completedFuture(null);
     }
 
-    /**
-     * notifyEventListeners.
-     * 
-     * @param event event
-     * @since 0.1.7
-     */
     private void notifyEventListeners(EventMessage event) {
         if (host == null) {
             return;
@@ -343,33 +339,38 @@ public class CoordinationManager {
             if (listener instanceof java.util.function.Consumer<?> consumer) {
                 @SuppressWarnings("unchecked")
                 java.util.function.Consumer<EventMessage> eventConsumer =
-                    (java.util.function.Consumer<EventMessage>) consumer;
+                        (java.util.function.Consumer<EventMessage>) consumer;
                 eventConsumer.accept(event);
             }
         }
     }
 
-    /**
-     * publishTeamStandby.
-     * 
-     * @since 0.1.7
-     */
     private void publishTeamStandby() {
-        if (host == null || host.getContext() == null
+        if (host == null
+                || host.getContext() == null
                 || host.getContext().getRole() != com.openjiuwen.agentteams.schema.team.TeamRole.LEADER) {
             return;
         }
+
+        // Mirrors Python kernel.pause: TeamTopic.TEAM.build(get_session_id(), team_name).
+        // Use the team-level session id pinned on the backend so the event reaches members
+        // subscribed to the team session — not the leader's transient ReAct-stream session.
         teamBackend
-                .getMessager().publish("team:" + teamBackend.getTeamName(), EventMessage.builder()
-                        .eventType("team_standby").payload(Map.of("team_name", teamBackend.getTeamName())).build())
+                .getMessager()
+                .publish(
+                        TeamTopic.TEAM.build(teamBackend.getTeamSessionId(), teamBackend.getTeamName()),
+                        EventMessage.builder()
+                                .eventType(TeamEvent.STANDBY)
+                                .payload(Map.of("team_name", teamBackend.getTeamName()))
+                                .build())
                 .join();
     }
 
     /**
      * Public record UserInputHandoff used by the Java parity implementation.
-     * 
+     *
      * @since 0.1.7
      */
-    public record UserInputHandoff(String route, String target, String deliveredContent, String messageId) {
-    }
+    public record UserInputHandoff(
+            String route, String target, String deliveredContent, String messageId) {}
 }

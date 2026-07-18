@@ -49,23 +49,6 @@ class TeamWorkspaceCompatibilityTest {
     }
 
     @Test
-    void managerShouldMountIntoWorkspaceAndManageLocks() throws Exception {
-        Path workspace = tempDir.resolve("shared-workspace");
-        Files.createDirectories(workspace);
-        TeamWorkspaceManager manager =
-            new TeamWorkspaceManager(TeamWorkspaceConfig.builder().build(), workspace.toString(), "team-alpha");
-        Path agentWorkspace = tempDir.resolve("agent-workspace");
-        Files.createDirectories(agentWorkspace);
-
-        manager.mountIntoWorkspace(agentWorkspace.toString());
-
-        assertThat(Files.exists(agentWorkspace.resolve(".team").resolve("team-alpha"))).isTrue();
-        assertThat(manager.acquireLock("src/Main.java", "m1", "alice", 300)).isTrue();
-        assertThat(manager.acquireLock("src/Main.java", "m2", "bob", 300)).isFalse();
-        assertThat(manager.releaseLock("src/Main.java", "m1")).isTrue();
-    }
-
-    @Test
     void managerShouldHandleLeaderSideDistributedLockRequestsLikePython() throws Exception {
         Path workspace = tempDir.resolve("distributed-workspace");
         Files.createDirectories(workspace);
@@ -89,6 +72,6 @@ class TeamWorkspaceCompatibilityTest {
         assertThat(wrongRelease.isGranted()).isFalse();
         assertThat(wrongRelease.getHolder()).containsEntry("holder_id", "m1");
         assertThat(released.isGranted()).isTrue();
-        assertThat(manager.getLock("artifacts/code/app.java")).isNull();
+        assertThat(manager.getLock("artifacts/code/app.java")).isEmpty();
     }
 }

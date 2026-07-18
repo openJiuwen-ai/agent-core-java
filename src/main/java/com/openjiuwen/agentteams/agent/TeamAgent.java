@@ -5,6 +5,11 @@
 package com.openjiuwen.agentteams.agent;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import com.openjiuwen.agentteams.agent.coordination.DispatcherHost;
+import com.openjiuwen.agentteams.agent.coordination.TeamAgentBlueprint;
+import com.openjiuwen.agentteams.agent.coordination.TeamInfra;
+import com.openjiuwen.agentteams.agent.coordination.CoordinationKernel;
 import com.openjiuwen.agentteams.messager.Messager;
 import com.openjiuwen.agentteams.messager.MessagerFactory;
 import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
@@ -18,9 +23,11 @@ import com.openjiuwen.agentteams.schema.team.TeamModelConfig;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.agentteams.tools.TeamBackend;
+import com.openjiuwen.agentteams.tools.database.MemberRecord;
 import com.openjiuwen.agentteams.tools.TeamMessage;
 import com.openjiuwen.agentteams.tools.TeamMessageManager;
 import com.openjiuwen.core.foundation.tool.Tool;
@@ -56,15 +63,16 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * Java coordination host mirroring the first real TeamAgent interaction slice.
- * 
- * @since 0.1.7
+ *
+ * @since 2026/7/9
  */
 @Getter
-public class TeamAgent {
+public class TeamAgent implements DispatcherHost {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private TeamAgentSpec spec;
@@ -72,8 +80,7 @@ public class TeamAgent {
     private TeamBackend teamBackend;
     private TeamMessageManager messageManager;
     private CoordinationManager coordinationManager;
-    private CoordinatorLoop coordinatorLoop;
-    private EventDispatcher dispatcher;
+    private CoordinationKernel coordinationKernel;
     private RecoveryManager recoveryManager;
     private SpawnManager spawnManager;
     private ModelAllocator modelAllocator;
@@ -85,34 +92,23 @@ public class TeamAgent {
     private boolean isCancelRequested;
     private boolean isInFlightRound;
     private String pendingUserQuery = "";
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private final List<Object> eventListeners = new ArrayList<>();
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
     private final List<String> leaderInbox = new ArrayList<>();
 
     /**
-     * configure.
-     * 
-     * @param spec spec
-     * @param context context
-     * @return the result
+     * Configure the agent with its spec and runtime context, then bootstrap coordination and the deep agent.
+     *
+     * @param spec the team agent spec describing members, lifecycle, and tools
+     * @param context the runtime context for this agent; may be {@code null} to derive a default from {@code spec}
+     * @return this agent for chaining
      * @since 0.1.7
      */
     public TeamAgent configure(TeamAgentSpec spec, TeamRuntimeContext context) {
         this.spec = spec.build();
-        this.context = context != null
-                ? context
-                : TeamRuntimeContext.builder().teamId(this.spec.getName()).lifecycle(TeamLifecycle.CREATED).build();
+        this.context = context != null ? context : TeamRuntimeContext.builder()
+                .teamId(this.spec.getName())
+                .lifecycle(TeamLifecycle.CREATED)
+                .build();
         if (this.context.getTeamId() == null || this.context.getTeamId().isBlank()) {
             this.context.setTeamId(this.spec.getName());
         }
@@ -138,11 +134,11 @@ public class TeamAgent {
     }
 
     /**
-     * attachModelAllocator.
-     * 
-     * @param allocator allocator
-     * @param leaderAllocation leaderAllocation
-     * @return the result
+     * Attach a model allocator and stash the leader allocation metadata into the runtime context.
+     *
+     * @param allocator the model allocator to attach
+     * @param leaderAllocation the leader allocation carrying the leader's model config; may be {@code null}
+     * @return this agent for chaining
      * @since 0.1.7
      */
     public TeamAgent attachModelAllocator(ModelAllocator allocator, Allocation leaderAllocation) {
@@ -161,16 +157,16 @@ public class TeamAgent {
     }
 
     /**
-     * resumeForNewSession.
-     * 
-     * @param sessionId sessionId
-     * @return the result
+     * Switch to a new session id, cleaning up previously live teammates and restarting them on the new session.
+     *
+     * @param sessionId the new session id to resume on
+     * @return this agent for chaining
      * @since 0.1.7
      */
     public TeamAgent resumeForNewSession(String sessionId) {
         ensureConfigured();
         List<RecoveryManager.RecoverableMember> recoverableMembers =
-            recoveryManager.collectLiveTeammatesForSessionSwitch();
+                recoveryManager.collectLiveTeammatesForSessionSwitch();
         applySessionId(sessionId);
         recoveryManager.restartForSessionSwitch(recoverableMembers, true);
         context.getMetadata().put("recoverable_member_count", recoverableMembers.size());
@@ -179,16 +175,16 @@ public class TeamAgent {
     }
 
     /**
-     * recoverForExistingSession.
-     * 
-     * @param sessionId sessionId
-     * @return the result
+     * Reattach to an existing session id, recovering previously live teammates without forcing a clean restart.
+     *
+     * @param sessionId the existing session id to attach to
+     * @return this agent for chaining
      * @since 0.1.7
      */
     public TeamAgent recoverForExistingSession(String sessionId) {
         ensureConfigured();
         List<RecoveryManager.RecoverableMember> recoverableMembers =
-            recoveryManager.collectLiveTeammatesForSessionSwitch();
+                recoveryManager.collectLiveTeammatesForSessionSwitch();
         applySessionId(sessionId);
         recoveryManager.restartForSessionSwitch(recoverableMembers, false);
         context.getMetadata().put("recoverable_member_count", recoverableMembers.size());
@@ -197,9 +193,10 @@ public class TeamAgent {
     }
 
     /**
-     * recoverTeam.
-     * 
-     * @return the result
+     * Recover any previously-known teammates that should be brought back,
+     * recording their names in the context metadata.
+     *
+     * @return the list of member names that were restarted
      * @since 0.1.7
      */
     public List<String> recoverTeam() {
@@ -210,8 +207,8 @@ public class TeamAgent {
     }
 
     /**
-     * persistLeaderConfigToSession.
-     * 
+     * Persist the leader config (spec, context, allocator) onto the agent session so spawned members can restore it.
+     *
      * @since 0.1.7
      */
     public void persistLeaderConfigToSession() {
@@ -220,8 +217,8 @@ public class TeamAgent {
     }
 
     /**
-     * persistAllocatorStateToSession.
-     * 
+     * Persist the current model allocator state onto the agent session.
+     *
      * @since 0.1.7
      */
     public void persistAllocatorStateToSession() {
@@ -230,8 +227,8 @@ public class TeamAgent {
     }
 
     /**
-     * persistAllocatorState.
-     * 
+     * Persist the model allocator state both to the runtime context and to the agent session.
+     *
      * @since 0.1.7
      */
     public void persistAllocatorState() {
@@ -241,10 +238,10 @@ public class TeamAgent {
     }
 
     /**
-     * dispatchTask.
-     * 
-     * @param query query
-     * @return the result
+     * Dispatch a task: route user input to a mentioned teammate or to the leader, then return the dispatch summary.
+     *
+     * @param query the user input to dispatch; may be a raw string or {@code null}
+     * @return a map describing the team id, session id, route, target, delivered content, and message id
      * @since 0.1.7
      */
     public Map<String, Object> dispatchTask(String query) {
@@ -260,8 +257,9 @@ public class TeamAgent {
         setInFlightRound(true);
         startCoordination(query);
         try {
-            CoordinationManager.UserInputHandoff handoff =
-                coordinationManager.handoffUserInput(query, resolveLeaderMemberName());
+            CoordinationManager.UserInputHandoff handoff = coordinationManager.handoffUserInput(
+                    query,
+                    resolveLeaderMemberName());
             String route = handoff.route();
             String target = handoff.target();
             String deliveredContent = handoff.deliveredContent();
@@ -272,8 +270,10 @@ public class TeamAgent {
             context.getMetadata().put("leader_inbox_size", leaderInbox.size());
             context.getMetadata().put("message_count", messageManager.listAllMessages().size());
 
-            TeamMemberSpec leader = spec.getMembers().stream().filter(member -> member.getRole() == TeamRole.LEADER)
-                    .findFirst().orElse(null);
+            TeamMemberSpec leader = spec.getMembers().stream()
+                    .filter(member -> member.getRole() == TeamRole.LEADER)
+                    .findFirst()
+                    .orElse(null);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("team_id", context.getTeamId());
             result.put("session_id", context.getSessionId());
@@ -286,8 +286,9 @@ public class TeamAgent {
             result.put("delivered_content", deliveredContent);
             result.put("message_id", messageId);
             result.put("leader_inbox_size", leaderInbox.size());
-            com.openjiuwen.core.common.logging.Loggers.AGENT
-                    .info("dispatchTask completed: member={} route={} target={}", memberName, route, target);
+            com.openjiuwen.core.common.logging.Loggers.AGENT.info(
+                    "dispatchTask completed: member={} route={} target={}",
+                    memberName, route, target);
             return result;
         } finally {
             finalizeRound();
@@ -296,18 +297,21 @@ public class TeamAgent {
     }
 
     /**
-     * stream.
-     * 
-     * @param inputs inputs
-     * @param session session
-     * @return the result
+     * Start a streaming coordination round and return an iterator over the produced chunks.
+     *
+     * @param inputs the inputs map; the {@code query} or {@code data} entry feeds the round
+     * @param session the session object or session id string used to bind this stream
+     * @return an iterator over the chunks emitted by the round
      * @since 0.1.7
      */
     public Iterator<Object> stream(Map<String, Object> inputs, Object session) {
         ensureConfigured();
-        Loggers.AGENT.info("stream() called: member={} sessionParam={}", resolveLocalMemberName(),
+        Loggers.AGENT.info("stream() called: member={} sessionParam={}",
+                resolveLocalMemberName(),
                 session != null ? session.getClass().getSimpleName() + ":" + session : "null");
-        Object rawQuery = inputs != null ? inputs.getOrDefault("query", inputs.getOrDefault("data", "")) : "";
+        Object rawQuery = inputs != null
+                ? inputs.getOrDefault("query", inputs.getOrDefault("data", ""))
+                : "";
         context.setLifecycle(TeamLifecycle.RUNNING);
         pendingUserQuery = rawQuery != null ? String.valueOf(rawQuery) : "";
         context.getMetadata().put("last_query", pendingUserQuery);
@@ -325,20 +329,21 @@ public class TeamAgent {
         streamController.setStreamQueue(queue);
         streamController.requestCloseStreamAfterCurrentRound();
         startCoordination(pendingUserQuery);
+
         // Ensure transport subscriptions are active before starting the loop.
+        // invokeForSpawn() does this via coordinationManager.start(), but stream()
         // (used by the leader) was skipping it, causing the leader to never receive
         // task/message/broadcast events from spawned members.
         coordinationManager.subscribeTransport();
-        coordinatorLoop.start();
-        coordinatorLoop.enqueue(InnerEventMessage.builder().eventType(InnerEventType.USER_INPUT)
-                .payload(Map.of("content", pendingUserQuery)).build());
+        coordinationKernel.start();
+        coordinationKernel.enqueueUserInput(pendingUserQuery);
         return new CoordinationStreamIterator(queue);
     }
 
     /**
-     * deliverInput.
-     * 
-     * @param content content
+     * Deliver input to the agent, defaulting to using the steer route when the agent is running.
+     *
+     * @param content the input string to deliver
      * @since 0.1.7
      */
     public void deliverInput(String content) {
@@ -346,9 +351,9 @@ public class TeamAgent {
     }
 
     /**
-     * interact.
-     * 
-     * @param message message
+     * Send an interactive user message to the agent, starting a new round if idle.
+     *
+     * @param message the user message to deliver
      * @since 0.1.7
      */
     public void interact(String message) {
@@ -358,22 +363,22 @@ public class TeamAgent {
             context.getMetadata().put("last_interact_route", "steer");
             return;
         }
-        if (coordinatorLoop != null) {
-            coordinatorLoop.enqueue(InnerEventMessage.builder().eventType(InnerEventType.USER_INPUT)
-                    .payload(Map.of("content", message != null ? message : "")).build());
+        if (coordinationKernel != null) {
+            coordinationKernel.enqueueUserInput(message);
             context.getMetadata().put("last_interact_route", "enqueue");
         }
     }
 
     /**
-     * deliverInput.
-     * 
-     * @param content content
-     * @param isUseSteer isUseSteer
+     * Deliver input to the agent, choosing between steer and follow-up when running, or starting a new round otherwise.
+     *
+     * @param content the input string to deliver
+     * @param isUseSteer when {@code true} use {@code DeepAgent.steer}; when {@code false} use {@code isFollowUp}
      * @since 0.1.7
      */
     public void deliverInput(String content, boolean isUseSteer) {
         ensureConfigured();
+
         // Sync thread-local SpawnContext with context's session ID.
         // This is needed because ReAct stream processing runs on executor threads
         // that may have been created before the session was set on the main thread.
@@ -382,9 +387,19 @@ public class TeamAgent {
             com.openjiuwen.agentteams.spawn.SpawnContext.setSessionId(ctxSid);
         }
         String role = context != null ? String.valueOf(context.getRole()) : "unknown";
-        Loggers.AGENT.info("deliverInput: member={} role={} agentRunning={} contentLen={}", resolveLocalMemberName(),
-                role, streamController != null && streamController.isAgentRunning(),
+        Loggers.AGENT.info("deliverInput: member={} role={} agentRunning={} contentLen={}",
+                resolveLocalMemberName(), role,
+                streamController != null && streamController.isAgentRunning(),
                 content != null ? content.length() : 0);
+
+        // Short-circuit when the team has been cleaned/deleted: drop inputs
+        // silently so mailbox sweeps, stale task events, or teammate farewell
+        // messages don't relaunch the leader ReAct loop after clean_team.
+        if (streamController != null && streamController.isTeamTerminated()) {
+            Loggers.AGENT.info("deliverInput: team terminated, dropping input for member={} contentLen={}",
+                    resolveLocalMemberName(), content != null ? content.length() : 0);
+            return;
+        }
         if (streamController != null && streamController.isAgentRunning()) {
             if (isUseSteer) {
                 streamController.steer(content);
@@ -407,6 +422,7 @@ public class TeamAgent {
             context.getMetadata().put("pending_input_count", streamController.getPendingInputs().size());
             return;
         }
+
         // Match Python: start own agent round instead of routing to leader
         pendingUserQuery = content != null ? content : "";
         Loggers.AGENT.info("deliverInput: starting own agent round for member={}", resolveLocalMemberName());
@@ -415,9 +431,8 @@ public class TeamAgent {
 
     /**
      * Match Python _start_agent: start a round on this member's own DeepAgent.
-     * 
-     * @param content content
-     * @since 0.1.7
+     *
+     * @param content the input content for the round; may be {@code null}
      */
     public void startAgent(String content) {
         if (streamController != null) {
@@ -428,11 +443,10 @@ public class TeamAgent {
     /**
      * Match Python invoke(): process initial input through member's own ReAct stream,
      * consuming chunks until the round completes.
-     * 
-     * @param query query
-     * @return the result
-     * @throws InterruptedException InterruptedException
-     * @since 0.1.7
+     *
+     * @param query the initial query to process; may be {@code null} or blank for idle start
+     * @return the last chunk produced by the round, or {@code null} if no chunks were emitted
+     * @throws InterruptedException if the polling loop is interrupted while waiting for chunks
      */
     public Object invokeForSpawn(String query) throws InterruptedException {
         ensureConfigured();
@@ -441,42 +455,66 @@ public class TeamAgent {
         LinkedBlockingQueue<Object> queue = new LinkedBlockingQueue<>();
         streamController.setStreamQueue(queue);
         startCoordinationLoop();
-        coordinatorLoop.start();
-        coordinatorLoop.enqueue(InnerEventMessage.builder().eventType(InnerEventType.USER_INPUT)
-                .payload(Map.of("content", query != null ? query : "")).build());
+        coordinationKernel.start();
+
+        // Mirrors Python inprocess_spawn.py: empty query means "no first round" —
+        // the teammate comes up, subscribes, and idles until a real mailbox
+        // message arrives. Only a non-blank query drives an initial round.
+        if (query != null && !query.isBlank()) {
+            coordinationKernel.enqueueUserInput(query);
+        }
+
         // Match Python: keep the coordinator loop running so the member can
         // receive new dispatches (broadcasts, direct messages, task events)
         // after the initial round. Block until the coordinator loop is stopped
         // by shutdown_member or clean_team.
         Object lastResult = null;
         try {
-            while (coordinatorLoop.isRunning()) {
+            while (coordinationKernel.isRunning()) {
                 Object chunk = queue.poll(1, java.util.concurrent.TimeUnit.SECONDS);
-                if (chunk != null) {
-                    lastResult = chunk;
+                if (chunk == null) {
+                    // Empty poll — re-check isRunning() and retry. Skipping the
+                    // null branch keeps the loop responsive to external stop().
+                    continue;
                 }
+                if (chunk == StreamController.STREAM_END) {
+                    // runOneRound's finally enqueues STREAM_END when the member's
+                    // persisted status flips to SHUTDOWN_REQUESTED (or the round
+                    // chain otherwise ends). StreamController.STREAM_END is the
+                    // sentinel CoordinationStreamIterator decodes — but
+                    // invokeForSpawn drives its own poll loop, so decode it here:
+                    // drive the same finalize -> stopCoordinationLoop -> exit
+                    // path the iterator would have taken.
+                    finalizeStreamingRound();
+                    break;
+                }
+                lastResult = chunk;
                 // If the loop was stopped externally (shutdown_member/clean_team),
                 // isRunning() returns false and the loop exits naturally.
             }
         } finally {
-            if (coordinatorLoop != null && coordinatorLoop.isRunning()) {
-                coordinatorLoop.stop();
+            if (coordinationKernel != null && coordinationKernel.isRunning()) {
+                coordinationKernel.stop();
             }
             if (streamController != null) {
                 streamController.getPendingInputs().clear();
             }
             finalizeRound();
         }
+
         // Log task status at completion to help diagnose stuck claimed tasks
         if (teamBackend != null && teamBackend.getTaskManager() != null) {
             var tasks = teamBackend.getTaskManager().list();
-            var claimedByMe = tasks.stream().filter(t -> "claimed".equals(t.getStatus()))
-                    .filter(t -> resolveLocalMemberName().equals(t.getAssignee())).toList();
+            var claimedByMe = tasks.stream()
+                    .filter(t -> "claimed".equals(t.getStatus()))
+                    .filter(t -> resolveLocalMemberName().equals(t.getAssignee()))
+                    .toList();
             if (!claimedByMe.isEmpty()) {
-                Loggers.AGENT.warn(
-                        "invokeForSpawn: member={} finished but has {} claimed task(s) still not completed: {}",
+                Loggers.AGENT.warn("invokeForSpawn: member={} finished but has {}"
+                        + " claimed task(s) still not completed: {}",
                         resolveLocalMemberName(), claimedByMe.size(),
-                        claimedByMe.stream().map(t -> t.getTaskId() + " (" + t.getTitle() + ")").toList());
+                        claimedByMe.stream().map(t -> t.getTaskId() + " (" + t.getTitle() + ")")
+                                .toList());
             }
         }
         Loggers.AGENT.info("invokeForSpawn: completed for member={}", resolveLocalMemberName());
@@ -484,9 +522,10 @@ public class TeamAgent {
     }
 
     /**
-     * resumeInterrupt.
-     * 
-     * @param input input
+     * Resume a previously interrupted tool, validating the input against
+     * pending interrupts and queuing if a round is in flight.
+     *
+     * @param input the interactive input that resolves pending interrupts
      * @since 0.1.7
      */
     public void resumeInterrupt(InteractiveInput input) {
@@ -497,20 +536,23 @@ public class TeamAgent {
         }
         if (hasInFlightRound()) {
             streamController.getPendingInterruptResumes().offer(input);
-            context.getMetadata().put("pending_interrupt_resume_count",
+            context.getMetadata().put(
+                    "pending_interrupt_resume_count",
                     streamController.getPendingInterruptResumes().size());
             return;
         }
         this.lastResumedInterruptInput = input;
-        context.getMetadata().put("last_resume_interrupt",
+        context.getMetadata().put(
+                "last_resume_interrupt",
                 input != null ? new LinkedHashMap<>(input.getUserInputs()) : null);
         streamController.startRound(input);
     }
 
     /**
-     * addEventListener.
-     * 
-     * @param handler handler
+     * Register an event listener that will be notified of incoming transport events.
+     *
+     * @param handler the listener; should accept
+     *     {@link com.openjiuwen.agentteams.schema.events.EventMessage} when applicable
      * @since 0.1.7
      */
     public void addEventListener(Object handler) {
@@ -518,9 +560,9 @@ public class TeamAgent {
     }
 
     /**
-     * removeEventListener.
-     * 
-     * @param handler handler
+     * Remove a previously registered event listener.
+     *
+     * @param handler the listener to remove
      * @since 0.1.7
      */
     public void removeEventListener(Object handler) {
@@ -528,8 +570,8 @@ public class TeamAgent {
     }
 
     /**
-     * cancelAgent.
-     * 
+     * Request that the running agent be cancelled and record the cancel request in the context metadata.
+     *
      * @since 0.1.7
      */
     public void cancelAgent() {
@@ -539,9 +581,9 @@ public class TeamAgent {
     }
 
     /**
-     * getTaskManager.
-     * 
-     * @return TeamTaskManager
+     * Get the team task manager owned by the team backend.
+     *
+     * @return the team task manager
      * @since 0.1.7
      */
     public com.openjiuwen.agentteams.tools.TeamTaskManager getTaskManager() {
@@ -550,9 +592,9 @@ public class TeamAgent {
     }
 
     /**
-     * hasInFlightRound.
-     * 
-     * @return the result
+     * Check whether a round is currently in flight on this agent or its stream controller.
+     *
+     * @return {@code true} if a round is in flight
      * @since 0.1.7
      */
     public boolean hasInFlightRound() {
@@ -560,9 +602,9 @@ public class TeamAgent {
     }
 
     /**
-     * isAgentReady.
-     * 
-     * @return the result
+     * Check whether the deep agent has been initialized.
+     *
+     * @return {@code true} when the deep agent is non-{@code null}
      * @since 0.1.7
      */
     public boolean isAgentReady() {
@@ -570,9 +612,9 @@ public class TeamAgent {
     }
 
     /**
-     * currentMemberName.
-     * 
-     * @return the result
+     * Get the member name recorded on the runtime context.
+     *
+     * @return the context's member name, or {@code null} when the context is missing
      * @since 0.1.7
      */
     public String currentMemberName() {
@@ -580,9 +622,9 @@ public class TeamAgent {
     }
 
     /**
-     * setInFlightRound.
-     * 
-     * @param isInFlightRound isInFlightRound
+     * Set the in-flight round flag and reflect it in the runtime context metadata.
+     *
+     * @param isInFlightRound the new in-flight state
      * @since 0.1.7
      */
     public void setInFlightRound(boolean isInFlightRound) {
@@ -593,10 +635,10 @@ public class TeamAgent {
     }
 
     /**
-     * broadcast.
-     * 
-     * @param content content
-     * @return the result
+     * Broadcast a user-supplied message to every team member.
+     *
+     * @param content the message body to broadcast
+     * @return the assigned message id
      * @since 0.1.7
      */
     public String broadcast(String content) {
@@ -609,12 +651,12 @@ public class TeamAgent {
     }
 
     /**
-     * humanAgentSay.
-     * 
-     * @param content content
-     * @param to to
-     * @param sender sender
-     * @return the result
+     * Send a message on behalf of the human agent to a named recipient (or broadcast when {@code to} is {@code null}).
+     *
+     * @param content the message body
+     * @param to the target member name; {@code null} broadcasts to the team
+     * @param sender the sender member name, typically the human agent
+     * @return the assigned message id
      * @since 0.1.7
      */
     public String humanAgentSay(String content, String to, String sender) {
@@ -627,9 +669,9 @@ public class TeamAgent {
     }
 
     /**
-     * updateModelPool.
-     * 
-     * @param newPool newPool
+     * Merge a new model pool into the spec, rebuild the allocator, and persist the resulting allocator state.
+     *
+     * @param newPool the new pool entries to merge with the spec's existing pool
      * @since 0.1.7
      */
     public void updateModelPool(List<ModelPoolEntry> newPool) {
@@ -642,9 +684,9 @@ public class TeamAgent {
     }
 
     /**
-     * snapshot.
-     * 
-     * @return the result
+     * Capture a snapshot of the agent's spec, context, leader inbox, messages, and allocator state for restore later.
+     *
+     * @return a map containing the snapshot fields
      * @since 0.1.7
      */
     public Map<String, Object> snapshot() {
@@ -655,16 +697,17 @@ public class TeamAgent {
         snapshot.put("session_id", context.getSessionId());
         snapshot.put("leader_inbox", new ArrayList<>(leaderInbox));
         snapshot.put("messages", new ArrayList<>(messageManager.listAllMessages()));
-        snapshot.put("model_allocator_state",
+        snapshot.put(
+                "model_allocator_state",
                 modelAllocator != null ? new LinkedHashMap<>(modelAllocator.stateDict()) : null);
         return snapshot;
     }
 
     /**
-     * buildMemberContext.
-     * 
-     * @param memberSpec memberSpec
-     * @return the result
+     * Build a runtime context for a teammate using this agent's team id, session id, and the member's persona.
+     *
+     * @param memberSpec the member spec to build a context for; must not be {@code null}
+     * @return the built {@link TeamRuntimeContext}
      * @since 0.1.7
      */
     public TeamRuntimeContext buildMemberContext(TeamMemberSpec memberSpec) {
@@ -674,19 +717,21 @@ public class TeamAgent {
         if (memberSpec.getDescription() != null && !memberSpec.getDescription().isBlank()) {
             metadata.put("persona", memberSpec.getDescription());
         }
-        return TeamRuntimeContext.builder().teamId(context.getTeamId()).sessionId(context.getSessionId())
+        return TeamRuntimeContext.builder()
+                .teamId(context.getTeamId())
+                .sessionId(context.getSessionId())
                 .memberName(memberSpec.getName())
-                .role(memberSpec.getRole() == TeamRole.LEADER ? TeamRole.LEADER : TeamRole.MEMBER).metadata(metadata)
+                .role(memberSpec.getRole() == TeamRole.LEADER ? TeamRole.LEADER : TeamRole.MEMBER)
+                .metadata(metadata)
                 .build();
     }
 
     /**
-     * buildSpawnPayload.
-     * 
-     * @param ctx ctx
-     * @param initialMessage initialMessage
-     * @return the result
-     * @since 0.1.7
+     * Build the spawn payload map containing coordination metadata and the initial query for a subprocess teammate.
+     *
+     * @param ctx the runtime context for the teammate; must not be {@code null}
+     * @param initialMessage the initial message; {@code null} or blank falls back to a default join prompt
+     * @return the payload map passed to the runner
      */
     public Map<String, Object> buildSpawnPayload(TeamRuntimeContext ctx, String initialMessage) {
         ensureConfigured();
@@ -702,19 +747,17 @@ public class TeamAgent {
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("coordination", coordination);
-        payload.put("query",
-                initialMessage != null && !initialMessage.isBlank()
-                        ? initialMessage
-                        : "Join the team and wait for your first assignment.");
+        payload.put("query", initialMessage != null && !initialMessage.isBlank()
+                ? initialMessage
+                : "Join the team and wait for your first assignment.");
         return payload;
     }
 
     /**
-     * buildSpawnConfig.
-     * 
-     * @param ctx ctx
-     * @return the result
-     * @since 0.1.7
+     * Build a {@link SpawnAgentConfig} for a subprocess teammate, serializing the spec and context into the payload.
+     *
+     * @param ctx the runtime context for the teammate; must not be {@code null}
+     * @return the spawn agent config
      */
     public SpawnAgentConfig buildSpawnConfig(TeamRuntimeContext ctx) {
         ensureConfigured();
@@ -723,28 +766,30 @@ public class TeamAgent {
         payload.put("spec", serializeSpec(spec));
         payload.put("context", serializeContext(ctx));
 
-        return SpawnAgentConfig.builder().agentKind(SpawnAgentKind.TEAM_AGENT)
-                .runnerConfig(RunnerConfig.getRunnerConfig()).loggingConfig(Map.of("member_name", ctx.getMemberName()))
-                .sessionId(null).payload(payload).build();
+        return SpawnAgentConfig.builder()
+                .agentKind(SpawnAgentKind.TEAM_AGENT)
+                .runnerConfig(RunnerConfig.getRunnerConfig())
+                .loggingConfig(Map.of("member_name", ctx.getMemberName()))
+                .sessionId(null)
+                .payload(payload)
+                .build();
     }
 
     /**
-     * buildSpawnConfigPayload.
-     * 
-     * @param ctx ctx
-     * @return the result
-     * @since 0.1.7
+     * Build the spawn config and return it as a plain map payload.
+     *
+     * @param ctx the runtime context for the teammate
+     * @return the config payload map
      */
     public Map<String, Object> buildSpawnConfigPayload(TeamRuntimeContext ctx) {
         return buildSpawnConfig(ctx).toPayload();
     }
 
     /**
-     * fromSpawnPayload.
-     * 
-     * @param payload payload
-     * @return the result
-     * @since 0.1.7
+     * Reconstruct a TeamAgent from a spawn payload map by deserializing the spec and context.
+     *
+     * @param payload the spawn payload map; must not be {@code null}
+     * @return the reconstructed and configured TeamAgent
      */
     @SuppressWarnings("unchecked")
     public static TeamAgent fromSpawnPayload(Map<String, Object> payload) {
@@ -755,11 +800,11 @@ public class TeamAgent {
     }
 
     /**
-     * restoreFromSnapshot.
-     * 
-     * @param snapshot snapshot
-     * @return the result
-     * @since 0.1.7
+     * Restore this agent's state from a previously captured snapshot,
+     * including leader inbox, session id, messages, and allocator state.
+     *
+     * @param snapshot the snapshot map produced by {@link #snapshot()}
+     * @return this agent for chaining
      */
     @SuppressWarnings("unchecked")
     public TeamAgent restoreFromSnapshot(Map<String, Object> snapshot) {
@@ -803,62 +848,60 @@ public class TeamAgent {
     }
 
     /**
-     * pendingUserQuery.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Get the pending user query that was last dispatched but not yet consumed.
+     *
+     * @return the pending user query string
      */
     public String pendingUserQuery() {
         return pendingUserQuery;
     }
 
     /**
-     * eventListeners.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Get the list of registered event listeners.
+     *
+     * @return the event listeners list
      */
     public List<Object> eventListeners() {
         return eventListeners;
     }
 
     /**
-     * sessionId.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Get the session id from the runtime context.
+     *
+     * @return the session id, or {@code null} when the context is missing
      */
     public String sessionId() {
         return context != null ? context.getSessionId() : null;
     }
 
     /**
-     * setSessionId.
-     * 
-     * @param sessionId sessionId
-     * @since 0.1.7
+     * Apply a new session id to the runtime context and the agent session.
+     *
+     * @param sessionId the session id to set
      */
     public void setSessionId(String sessionId) {
         applySessionId(sessionId);
     }
 
-    /**
-     * bootstrapCoordinationHost.
-     * 
-     * @since 0.1.7
-     */
     private void bootstrapCoordinationHost() {
         String leaderName = resolveLeaderMemberName();
         String localMemberName = resolveLocalMemberName();
+
         // Use localMemberName (not leaderName) as nodeId so each member gets a
         // unique subscription key in the messager's topic map. Previously all
         // members shared "team_leader", causing the last subscriber to overwrite
         // earlier ones — the leader never received "message" events from analysts.
-        Messager messager = MessagerFactory.createMessager(
-                MessagerTransportConfig.builder().teamName(context.getTeamId()).nodeId(localMemberName).build());
+        Messager messager = MessagerFactory.createMessager(MessagerTransportConfig.builder()
+                .teamName(context.getTeamId())
+                .nodeId(localMemberName)
+                .build());
+
         // Use resolveLocalMemberName() so spawned members get their own memberName
-        // (not the leader's name) in TeamBackend / TeamTaskManager.
-        this.teamBackend = new TeamBackend(context.getTeamId(), localMemberName, true, messager);
+        // (not the leader's name) in TeamBackend / TeamTaskManager. Pin the team-level
+        // session id at construction so every topic publish/subscribe rides the same
+        // session even when the leader's ReAct stream swaps SpawnContext mid-flight.
+        this.teamBackend = new TeamBackend(
+                context.getTeamId(), localMemberName, true, messager, context.getSessionId());
         this.teamBackend.syncMembers(spec.getMembers());
         this.messageManager = teamBackend.getMessageManager();
         this.coordinationManager = new CoordinationManager(this, teamBackend, messageManager, leaderInbox::add);
@@ -869,6 +912,7 @@ public class TeamAgent {
             TeamRuntimeContext ctx = spawnManager.buildContextFromBackend(memberName);
             if (ctx != null) {
                 com.openjiuwen.agentteams.tools.TeamMember member = teamBackend.getMember(memberName);
+
                 // Priority: member-specific prompt > broadcast with identity prefix > fallback
                 String prompt = member != null ? member.getPrompt() : null;
                 final String initialMessage;
@@ -877,9 +921,10 @@ public class TeamAgent {
                 } else if (broadcastContent != null && !broadcastContent.isBlank()) {
                     // Tag the broadcast with member identity so the LLM knows which
                     // specific task it should claim from the broadcast.
-                    String displayName =
-                        member != null && member.getDisplayName() != null ? member.getDisplayName() : memberName;
-                    initialMessage = "你是 " + displayName + "（" + memberName + "）。" + " 以下是队长的任务分配。请只认领和完成分配给你的任务，"
+                    String displayName = member != null && member.getDisplayName() != null
+                            ? member.getDisplayName() : memberName;
+                    initialMessage = "你是 " + displayName + "（" + memberName + "）。"
+                            + " 以下是队长的任务分配。请只认领和完成分配给你的任务，"
                             + " 不要认领其他成员的任务。\n\n" + broadcastContent;
                 } else {
                     initialMessage = "Join the team and wait for your first assignment.";
@@ -890,38 +935,85 @@ public class TeamAgent {
             }
         });
         this.agentSession = com.openjiuwen.core.session.AgentSessionApi.create(context.getSessionId(), null, null);
+
         // Sync thread-local SpawnContext so DB operations on leader thread use the correct session
         String sid = this.agentSession.getSessionId();
         if (sid != null && !sid.isBlank()) {
             context.setSessionId(sid);
             com.openjiuwen.agentteams.spawn.SpawnContext.setSessionId(sid);
+
+            // Latch the resolved session id on the backend (and its message/task
+            // managers) so topic builds route to the same topic members subscribe
+            // on. The backend was constructed earlier (before the session existed)
+            // with an empty teamSessionId; this closes the gap.
+            this.teamBackend.setTeamSessionId(sid);
         }
-        this.streamController = new StreamController(() -> deepAgent, this::resolveLocalMemberName,
-                status -> teamBackend.updateMemberStatus(resolveLocalMemberName(), status), ignored -> {
-                }, () -> agentSession, () -> {
-                    dispatcher.processUnreadMessages(resolveLocalMemberName());
-                    // Auto-complete any claimed tasks the member forgot to mark completed.
-                    // This prevents the leader summary from being blocked forever.
-                    dispatcher.tryAutoCompleteMemberTasks();
-                }, null);
-        this.dispatcher = new EventDispatcher(this);
-        this.coordinatorLoop = new CoordinatorLoop(context.getRole(), dispatcher::dispatch);
+        this.streamController = new StreamController(
+                () -> deepAgent,
+                this::resolveLocalMemberName,
+                status -> teamBackend.updateMemberStatus(resolveLocalMemberName(), status),
+                ignored -> {},
+                () -> agentSession,
+                () -> {
+                    // Enqueue a POLL_MAILBOX inner event so the handler-based system
+                    // processes unread messages through the normal dispatch path.
+                    // This replaces the old direct call to
+                    // dispatcher.processUnreadMessages() + tryAutoCompleteMemberTasks().
+                    if (coordinationKernel != null) {
+                        coordinationKernel.enqueuePollMailbox();
+                    }
+                },
+                null,
+                this::resolveMemberStatusFromDb
+        );
+
+        // Bind onTeamCleaned so that a successful clean_team latches the
+        // StreamController into team-terminated state. Without this, the leader
+        // keeps waking on stale mailbox content and re-entering ReAct rounds
+        // after the team DB row is gone (clean_team -> deleteTeam returned true
+        // path). The callback is best-effort: the DB delete is the source of
+        // truth, this only short-circuits the leader stream.
+        this.teamBackend.setOnTeamCleaned(() -> {
+            Loggers.AGENT.info("[{}] team cleaned: marking stream as terminated",
+                    resolveLocalMemberName());
+            if (this.streamController != null) {
+                this.streamController.markTeamTerminated();
+                this.streamController.closeStream();
+            }
+        });
+
+        // Reset the team-terminated latch when a new team is built on the
+        // same TeamAgent instance. Without this, a clean_team -> build_team
+        // cycle in one process leaves streamController.teamTerminated=true,
+        // and the leader refuses to start any new round on the rebuilt team.
+        this.teamBackend.setOnTeamBuilt(() -> {
+            Loggers.AGENT.info("[{}] team built: resetting team-terminated latch",
+                    resolveLocalMemberName());
+            if (this.streamController != null) {
+                this.streamController.resetTeamTerminated();
+            }
+        });
+        TeamAgentBlueprint blueprint = new TeamAgentBlueprint(spec, context);
+        TeamInfra infra = new TeamInfra(messager, teamBackend,
+                teamBackend.getTaskManager(), messageManager);
+        this.coordinationKernel = new CoordinationKernel(this, blueprint, infra);
     }
 
-    /**
-     * setupAgent.
-     * 
-     * @since 0.1.7
-     */
     private void setupAgent() {
-        TeamMemberSpec leader =
-            spec.getMembers().stream().filter(member -> member.getRole() == TeamRole.LEADER).findFirst().orElse(null);
+        TeamMemberSpec leader = spec.getMembers().stream()
+                .filter(member -> member.getRole() == TeamRole.LEADER)
+                .findFirst()
+                .orElse(null);
         String leaderName = leader != null ? leader.getName() : resolveLeaderMemberName();
-        Workspace workspace =
-            Workspace.builder().rootPath(resolveWorkspaceRoot().toString()).language(resolveLanguage()).build();
+        Workspace workspace = Workspace.builder()
+                .rootPath(resolveWorkspaceRoot().toString())
+                .language(resolveLanguage())
+                .build();
         SysOperation sysOperation = new SysOperation(SysOperationCard.builder()
-                .id(context.getTeamId() + "." + leaderName + ".sys_operation").mode(OperationMode.LOCAL)
-                .workConfig(LocalWorkConfig.builder().workDir(workspace.root().toString()).build()).build());
+                .id(context.getTeamId() + "." + leaderName + ".sys_operation")
+                .mode(OperationMode.LOCAL)
+                .workConfig(LocalWorkConfig.builder().workDir(workspace.root().toString()).build())
+                .build());
 
         // Register team tools before creating DeepAgent
         List<Tool> teamTools = registerTeamTools();
@@ -934,68 +1026,93 @@ public class TeamAgent {
         // file_io (read/write files within workspace sandbox).
         String workspaceRoot = workspace.root().toString();
         var fsBackend = new com.openjiuwen.harness.tools.FilesystemTool(workspaceRoot);
-        Tool fileIoTool =
-            new com.openjiuwen.core.foundation.tool.function.LocalFunction(com.openjiuwen.core.foundation.tool.ToolCard
-                    .builder().id("team.file_io").name("file_io")
-                    .description("Read or write files within the team workspace. "
-                            + "Use action='read' to read a file, action='write' to write content to a file.")
-                    .inputParams(Map.of("type", "object", "properties", Map.of("action",
-                            Map.of("type", "string", "enum", List.of("read", "write"), "description",
-                                    "Action: 'read' to read a file, 'write' to create/overwrite a file"),
-                            "file_path",
-                            Map.of("type", "string", "description", "Absolute path to the file within the workspace"),
-                            "content",
-                            Map.of("type", "string", "description", "Content to write (required for action='write')")),
-                            "required", List.of("action", "file_path")))
-                    .build(), inputs -> {
-                        String action = inputs.get("action") instanceof String s ? s : "";
-                        String filePath = inputs.get("file_path") instanceof String s ? s : "";
-                        if (filePath.isBlank()) {
-                            return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder().success(false)
-                                    .error("file_path is required").build());
+        Tool fileIoTool = new com.openjiuwen.core.foundation.tool.function.LocalFunction(
+                com.openjiuwen.core.foundation.tool.ToolCard.builder()
+                        .id("team.file_io")
+                        .name("file_io")
+                        .description("Read or write files within the team workspace. "
+                                + "Use action='read' to read a file, action='write' to write content to a file.")
+                        .inputParams(Map.of(
+                                "type", "object",
+                                "properties", Map.of(
+                                        "action", Map.of("type", "string", "enum", List.of("read", "write"),
+                                                "description",
+                                                "Action: 'read' to read a file, 'write' to create/overwrite a file"),
+                                        "file_path", Map.of("type", "string", "description",
+                                                "Absolute path to the file within the workspace"),
+                                        "content", Map.of("type", "string", "description",
+                                                "Content to write (required for action='write')")),
+                                "required", List.of("action", "file_path")))
+                        .build(),
+                inputs -> {
+                    String action = inputs.get("action") instanceof String s ? s : "";
+                    String filePath = inputs.get("file_path") instanceof String s ? s : "";
+                    if (filePath.isBlank()) {
+                        return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
+                                .success(false).error("file_path is required").build());
+                    }
+                    if ("read".equals(action)) {
+                        return java.util.List.of(fsBackend.readFile(filePath));
+                    }
+                    if ("write".equals(action)) {
+                        String content = inputs.get("content") instanceof String s ? s : "";
+                        if (content.isBlank()) {
+                            return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
+                                    .success(false).error("content is required for write action").build());
                         }
-                        if ("read".equals(action)) {
-                            return java.util.List.of(fsBackend.readFile(filePath));
-                        }
-                        if ("write".equals(action)) {
-                            String content = inputs.get("content") instanceof String s ? s : "";
-                            if (content.isBlank()) {
-                                return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
-                                        .success(false).error("content is required for write action").build());
-                            }
-                            return java.util.List.of(fsBackend.writeFile(filePath, content));
-                        }
-                        return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder().success(false)
-                                .error("Unknown action '" + action + "'. Use 'read' or 'write'.").build());
-                    });
-        com.openjiuwen.core.runner.Runner.resourceMgr().addTool(fileIoTool, context.getTeamId() + "." + leaderName);
+                        return java.util.List.of(fsBackend.writeFile(filePath, content));
+                    }
+                    return java.util.List.of(com.openjiuwen.harness.tools.ToolOutput.builder()
+                            .success(false).error("Unknown action '" + action + "'. Use 'read' or 'write'.").build());
+                });
+        com.openjiuwen.core.runner.Runner.resourceMgr().addTool(fileIoTool,
+                context.getTeamId() + "." + leaderName);
         teamTools.add(fileIoTool);
 
-        Loggers.AGENT.info("setupAgent: memberName={} ctxMemberName={} role={}", resolveLocalMemberName(),
-                context.getMemberName(), context.getRole());
+        Loggers.AGENT.info("setupAgent: memberName={} ctxMemberName={} role={}",
+                resolveLocalMemberName(),
+                context.getMemberName(),
+                context.getRole());
 
         String localName = resolveLocalMemberName();
-        this.deepAgent = HarnessFactory
-                .createDeepAgent(
-                        com.openjiuwen.core.singleagent.schema.AgentCard.builder()
-                                .id(context.getTeamId() + "." + localName).name(localName)
-                                .description(leader != null ? leader.getDescription() : "").build(),
-                        DeepAgentConfig.builder().workspacePath(workspace.root().toString()).language(resolveLanguage())
-                                .model(resolveConfiguredModel()).backend(resolveConfiguredBackend())
-                                .isTaskLoopEnabled(true).enableSkillDiscovery(true)
-                                .skillDirectories(List.of(workspace.getNodePath("skills").toString(),
-                                        System.getProperty("user.dir"),
-                                        System.getProperty("user.home") + "/.openjiuwen/workspace/skills",
-                                        System.getProperty("user.home") + "/.claude/skills"))
-                                .skillMode("all").sysOperation(sysOperation)
-                                .tools(new ArrayList<>(teamTools.stream().map(Tool::getCard).toList()))
-                                .rails(List.of(new TeamRail(
-                                        context.getRole() != null ? context.getRole() : TeamRole.LEADER,
-                                        resolvePersona(leader), resolveLocalMemberName(), spec.getLifecycle(),
-                                        "build_mode", resolveLanguage(), "default", null, resolveTeamWorkspaceMount(),
-                                        resolveTeamWorkspacePath(), teamBackend.humanAgentNames(), teamBackend)))
-                                .build(),
-                        workspace);
+        this.deepAgent = HarnessFactory.createDeepAgent(
+                com.openjiuwen.core.singleagent.schema.AgentCard.builder()
+                        .id(context.getTeamId() + "." + localName)
+                        .name(localName)
+                        .description(leader != null ? leader.getDescription() : "")
+                        .build(),
+                DeepAgentConfig.builder()
+                        .workspacePath(workspace.root().toString())
+                        .language(resolveLanguage())
+                        .model(resolveConfiguredModel())
+                        .backend(resolveConfiguredBackend())
+                        .isTaskLoopEnabled(true)
+                        .enableSkillDiscovery(true)
+                        .skillDirectories(List.of(
+                                workspace.getNodePath("skills").toString(),
+                                System.getProperty("user.dir"),
+                                System.getProperty("user.home") + "/.openjiuwen/workspace/skills"
+                        ))
+                        .skillMode("all")
+                        .sysOperation(sysOperation)
+                        .tools(new ArrayList<>(teamTools.stream().map(Tool::getCard).toList()))
+                        .rails(List.of(new TeamRail(
+                                context.getRole() != null ? context.getRole() : TeamRole.LEADER,
+                                resolvePersona(leader),
+                                resolveLocalMemberName(),
+                                spec.getLifecycle(),
+                                "build_mode",
+                                resolveLanguage(),
+                                "default",
+                                null,
+                                resolveTeamWorkspaceMount(),
+                                resolveTeamWorkspacePath(),
+                                teamBackend.humanAgentNames(),
+                                teamBackend
+                        )))
+                        .build(),
+                workspace
+        );
         this.deepAgent.ensureInitialized();
         this.memoryManager = buildMemoryManager(workspace, sysOperation, leaderName);
         Object configuredModel = this.deepAgent.getConfig().getModel();
@@ -1004,19 +1121,19 @@ public class TeamAgent {
         }
     }
 
-    /**
-     * registerTeamTools.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private List<Tool> registerTeamTools() {
         String roleValue = context.getRole() != null ? context.getRole().name().toLowerCase(Locale.ROOT) : "leader";
         String teammateMode = resolveTeammateMode();
         Set<String> excludeTools = "predefined".equals(resolveTeamMode()) ? Set.of("spawn_member") : Set.of();
-        List<Tool> tools = com.openjiuwen.agentteams.tools.TeamTools.createTeamTools(roleValue, teamBackend,
-                teammateMode, excludeTools, null, null,
-                modelName -> modelAllocator != null ? modelAllocator.allocate(modelName) : null);
+        List<Tool> tools = com.openjiuwen.agentteams.tools.TeamTools.createTeamTools(
+                com.openjiuwen.agentteams.tools.TeamTools.TeamToolsConfig.builder()
+                        .role(roleValue).backend(teamBackend)
+                        .teammateMode(teammateMode).excludeTools(excludeTools)
+                        .workspaceManager(null).worktreeManager(null)
+                        .modelConfigAllocator(modelName ->
+                                modelAllocator != null ? modelAllocator.allocate(modelName) : null)
+                        .build());
+
         // Match Python _qualify_team_tool_ids: make each agent's tool IDs unique
         // so they don't overwrite each other in the global ResourceMgr.
         qualifyTeamToolIds(tools);
@@ -1026,9 +1143,8 @@ public class TeamAgent {
     /**
      * Match Python _qualify_team_tool_ids: add team_name.member_name suffix
      * to each tool's card ID so per-agent tools don't collide globally.
-     * 
-     * @param tools tools
-     * @since 0.1.7
+     *
+     * @param tools the list of tools to qualify in place
      */
     private void qualifyTeamToolIds(List<Tool> tools) {
         String teamKey = context.getTeamId() != null ? context.getTeamId() : "default";
@@ -1049,31 +1165,6 @@ public class TeamAgent {
         }
     }
 
-    /**
-     * Re-register team tools after backend state sharing.
-     * 
-     * @since 0.1.7
-     */
-    public void reregisterTeamTools() {
-        String memberName =
-            context != null && context.getMemberName() != null ? context.getMemberName() : resolveLeaderMemberName();
-        List<Tool> teamTools = registerTeamTools();
-        for (Tool tool : teamTools) {
-            Loggers.AGENT.info("reregisterTeamTools: registering tool id={} db={}",
-                    tool.getCard() != null ? tool.getCard().getId() : "null",
-                    Integer.toHexString(System.identityHashCode(teamBackend.getDb())));
-            com.openjiuwen.core.runner.Runner.resourceMgr().addTool(tool, context.getTeamId() + "." + memberName);
-        }
-        com.openjiuwen.core.common.logging.Loggers.AGENT
-                .info("reregisterTeamTools: re-registered {} tools for member={}", teamTools.size(), memberName);
-    }
-
-    /**
-     * resolveTeammateMode.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private String resolveTeammateMode() {
         if (context != null && context.getMetadata() != null) {
             Object mode = context.getMetadata().get("teammate_mode");
@@ -1084,12 +1175,6 @@ public class TeamAgent {
         return "build_mode";
     }
 
-    /**
-     * resolveTeamMode.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private String resolveTeamMode() {
         if (context != null && context.getMetadata() != null) {
             Object mode = context.getMetadata().get("team_mode");
@@ -1100,12 +1185,6 @@ public class TeamAgent {
         return "default";
     }
 
-    /**
-     * resolveConfiguredModel.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private Object resolveConfiguredModel() {
         if (context == null || context.getMetadata() == null) {
             return nullValue();
@@ -1118,12 +1197,6 @@ public class TeamAgent {
         return memberModel;
     }
 
-    /**
-     * resolveConfiguredBackend.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private Object resolveConfiguredBackend() {
         if (context == null || context.getMetadata() == null) {
             return nullValue();
@@ -1132,15 +1205,6 @@ public class TeamAgent {
         return config != null ? config.modelClientConfig() : null;
     }
 
-    /**
-     * buildMemoryManager.
-     * 
-     * @param workspace workspace
-     * @param sysOperation sysOperation
-     * @param memberName memberName
-     * @return the result
-     * @since 0.1.7
-     */
     private TeamMemoryManager buildMemoryManager(Workspace workspace, SysOperation sysOperation, String memberName) {
         TeamMemoryConfig memory = spec.getMemory();
         if (memory == null || !memory.isEnabled()) {
@@ -1161,26 +1225,27 @@ public class TeamAgent {
         String readOnlySource = lifecycle == com.openjiuwen.core.memory.team.TeamLifecycle.TEMPORARY
                 ? memory.getParentWorkspacePath()
                 : null;
-        return new TeamMemoryManager(TeamMemoryManagerParams.builder().memberName(memberName)
-                .teamName(context.getTeamId()).role(com.openjiuwen.core.memory.team.TeamRole.LEADER)
-                .lifecycle(lifecycle).scenario(parseScenario(memory.getScenario()))
-                .embeddingConfig(TeamMemoryConfig.resolveEmbeddingConfig(memory)).workspace(workspace)
-                .sysOperation(sysOperation).teamMemoryDir(teamMemoryDir).language(parseLanguage(resolveLanguage()))
+        return new TeamMemoryManager(TeamMemoryManagerParams.builder()
+                .memberName(memberName)
+                .teamName(context.getTeamId())
+                .role(com.openjiuwen.core.memory.team.TeamRole.LEADER)
+                .lifecycle(lifecycle)
+                .scenario(parseScenario(memory.getScenario()))
+                .embeddingConfig(TeamMemoryConfig.resolveEmbeddingConfig(memory))
+                .workspace(workspace)
+                .sysOperation(sysOperation)
+                .teamMemoryDir(teamMemoryDir)
+                .language(parseLanguage(resolveLanguage()))
                 .promptMode(parsePromptMode(memory.getMemberMemoryPromptMode()))
-                .enableAutoExtract(
-                        memory.isAutoExtract() && lifecycle == com.openjiuwen.core.memory.team.TeamLifecycle.PERSISTENT)
-                .readOnlySourceWorkspace(readOnlySource).db(teamBackend.getDb())
-                .taskManager(teamBackend.getTaskManager()).timezoneOffsetHours(memory.getTimezoneOffsetHours())
+                .enableAutoExtract(memory.isAutoExtract()
+                        && lifecycle == com.openjiuwen.core.memory.team.TeamLifecycle.PERSISTENT)
+                .readOnlySourceWorkspace(readOnlySource)
+                .db(teamBackend.getDb())
+                .taskManager(teamBackend.getTaskManager())
+                .timezoneOffsetHours(memory.getTimezoneOffsetHours())
                 .build());
     }
 
-    /**
-     * resolvePersona.
-     * 
-     * @param fallbackLeader fallbackLeader
-     * @return the result
-     * @since 0.1.7
-     */
     private String resolvePersona(TeamMemberSpec fallbackLeader) {
         if (context != null && context.getMetadata() != null) {
             Object persona = context.getMetadata().get("persona");
@@ -1191,12 +1256,6 @@ public class TeamAgent {
         return fallbackLeader != null ? fallbackLeader.getDescription() : "";
     }
 
-    /**
-     * startCoordination.
-     * 
-     * @param query query
-     * @since 0.1.7
-     */
     private void startCoordination(String query) {
         if (memoryManager == null || deepAgent == null) {
             return;
@@ -1217,11 +1276,6 @@ public class TeamAgent {
         }
     }
 
-    /**
-     * finalizeRound.
-     * 
-     * @since 0.1.7
-     */
     private void finalizeRound() {
         if (memoryManager == null) {
             return;
@@ -1233,32 +1287,97 @@ public class TeamAgent {
         }
     }
 
-    /**
-     * finalizeStreamingRound.
-     * 
-     * @since 0.1.7
-     */
     private void finalizeStreamingRound() {
         try {
             finalizeRound();
         } finally {
             context.getMetadata().remove("streaming_coordination");
             setInFlightRound(false);
-            // Don't stop coordinator loop here. The loop lifecycle is managed by:
-            // - Temporary teams: nudgeIdleAgent stops it when all tasks complete
-            // - Persistent teams: shutdown_member / clean_team stops it
-            // - Members: shutdown_member from leader stops it
-            // This matches Python where the coordinator loop keeps running
-            // after each round to handle new events (messages, task changes).
+
+            // Mirrors Python TeamRuntimeManager.finalize_member (manager.py:243-306):
+            // settle the member's persisted status at the natural round-end path
+            // so SHUTDOWN_REQUESTED -> SHUTDOWN (otherwise clean_team blocks
+            // forever waiting for "shut_down"). Leader is skipped: it goes
+            // through shutdownSelf on its own path.
+            finalizeMemberStatus();
         }
     }
 
     /**
-     * allocateModel.
-     * 
-     * @param modelName modelName
-     * @return the result
-     * @since 0.1.7
+     * Read this member's persisted status from the DB.
+     *
+     * <p>Returns {@code null} when the member row is missing (e.g. team already
+     * cleaned) so callers can no-op cleanly. Mirrors the Python
+     * {@code team_member.status()} read in {@code finalize_member}.</p>
+     *
+     * @return the member's current status, or {@code null} if not available
+     */
+    private MemberStatus resolveMemberStatusFromDb() {
+        if (teamBackend == null) {
+            return nullValue();
+        }
+        String memberName = resolveLocalMemberName();
+        MemberRecord record = teamBackend.getDb().member.getMember(
+                memberName, teamBackend.getTeamName());
+        if (record == null || record.getStatus() == null || record.getStatus().isBlank()) {
+            return nullValue();
+        }
+        try {
+            return MemberStatus.fromValue(record.getStatus());
+        } catch (IllegalArgumentException e) {
+            return nullValue();
+        }
+    }
+
+    /**
+     * Settle this member's persisted status at the natural round-end path.
+     *
+     * <p>Mirrors Python {@code TeamRuntimeManager.finalize_member}
+     * ({@code runtime/manager.py:243-306}):
+     * <ul>
+     *   <li>STOPPED / PAUSED / SHUTDOWN -- someone else already wrote the
+     *       outcome (leader stop/pause, shutdown_self); only stop coordination.</li>
+     *   <li>SHUTDOWN_REQUESTED -- leader asked for shutdown; stop coordination
+     *       and write SHUTDOWN so clean_team can proceed.</li>
+     *   <li>otherwise -- park the member in READY for the next assignment.</li>
+     * </ul>
+     * Leader is skipped: leader does not go through this path (it goes through
+     * {@code shutdownSelf} when the team is cleaned).</p>
+     */
+    private void finalizeMemberStatus() {
+        if (teamBackend == null || context == null) {
+            return;
+        }
+        if (context.getRole() == TeamRole.LEADER) {
+            return;
+        }
+        String memberName = resolveLocalMemberName();
+        MemberStatus current = resolveMemberStatusFromDb();
+        if (current == null) {
+            return;
+        }
+
+        // Mirrors Python _MEMBER_FINALIZED_STATUSES = {STOPPED, PAUSED, SHUTDOWN}.
+        if (current == MemberStatus.STOPPED
+                || current == MemberStatus.PAUSED
+                || current == MemberStatus.SHUTDOWN) {
+            stopCoordinationLoop();
+            return;
+        }
+        if (current == MemberStatus.SHUTDOWN_REQUESTED) {
+            stopCoordinationLoop();
+            teamBackend.forceUpdateMemberStatus(memberName, MemberStatus.SHUTDOWN);
+            return;
+        }
+        stopCoordinationLoop();
+        teamBackend.forceUpdateMemberStatus(memberName, MemberStatus.READY);
+    }
+
+    /**
+     * Allocate a model by name through the model allocator and persist the resulting allocator state.
+     *
+     * @param modelName the model name to allocate
+     * @return the allocation, or {@code null} when no allocator is set
      */
     public Allocation allocateModel(String modelName) {
         if (modelAllocator == null) {
@@ -1271,10 +1390,9 @@ public class TeamAgent {
     }
 
     /**
-     * restoreAllocatorState.
-     * 
-     * @param state state
-     * @since 0.1.7
+     * Restore the model allocator state from a state dictionary and reflect it in the runtime context metadata.
+     *
+     * @param state the allocator state dictionary; {@code null} is a no-op
      */
     public void restoreAllocatorState(Map<String, Object> state) {
         if (modelAllocator == null || state == null) {
@@ -1284,12 +1402,6 @@ public class TeamAgent {
         context.getMetadata().put("model_allocator_state", new LinkedHashMap<>(modelAllocator.stateDict()));
     }
 
-    /**
-     * applySessionId.
-     * 
-     * @param sessionId sessionId
-     * @since 0.1.7
-     */
     private void applySessionId(String sessionId) {
         Loggers.AGENT.info("applySessionId: inputSid={}", sessionId);
         context.setSessionId(sessionId);
@@ -1299,18 +1411,23 @@ public class TeamAgent {
         context.getMetadata().put("session_id", sessionId);
         context.getMetadata().put("leader_inbox_size", leaderInbox.size());
         context.getMetadata().put("message_count", messageManager.listAllMessages().size());
+
         // Keep thread-local SpawnContext in sync when session changes
         if (resolvedSid != null && !resolvedSid.isBlank()) {
             com.openjiuwen.agentteams.spawn.SpawnContext.setSessionId(resolvedSid);
             Loggers.AGENT.info("applySessionId: SpawnContext set to {}", resolvedSid);
+
+            // Latch the resolved session id on the backend (and its message/task
+            // managers) so topic builds route to the same topic members subscribe
+            // on. The backend may have been constructed before the session existed
+            // (e.g. via bootstrapCoordinationHost before setupAgent) with an empty
+            // teamSessionId; this closes the gap for leader and any later overrides.
+            if (teamBackend != null) {
+                teamBackend.setTeamSessionId(resolvedSid);
+            }
         }
     }
 
-    /**
-     * restoreAllocatorStateFromContext.
-     * 
-     * @since 0.1.7
-     */
     private void restoreAllocatorStateFromContext() {
         Object state = context.getMetadata().get("model_allocator_state");
         if (state instanceof Map<?, ?> rawState && modelAllocator != null) {
@@ -1321,26 +1438,18 @@ public class TeamAgent {
         }
     }
 
-    /**
-     * persistAllocatorStateToContext.
-     * 
-     * @since 0.1.7
-     */
     private void persistAllocatorStateToContext() {
         if (modelAllocator != null) {
             context.getMetadata().put("model_allocator_state", new LinkedHashMap<>(modelAllocator.stateDict()));
         }
     }
 
-    /**
-     * resolveLeaderMemberName.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private String resolveLeaderMemberName() {
-        return spec.getMembers().stream().filter(member -> member.getRole() == TeamRole.LEADER)
-                .map(TeamMemberSpec::getName).findFirst().orElseGet(() -> {
+        return spec.getMembers().stream()
+                .filter(member -> member.getRole() == TeamRole.LEADER)
+                .map(TeamMemberSpec::getName)
+                .findFirst()
+                .orElseGet(() -> {
                     if (spec.getMembers().isEmpty()) {
                         return context != null ? context.getTeamId() : "leader";
                     }
@@ -1349,10 +1458,9 @@ public class TeamAgent {
     }
 
     /**
-     * getTeamBackend.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Get the team backend instance.
+     *
+     * @return the team backend
      */
     public TeamBackend getTeamBackend() {
         return teamBackend;
@@ -1360,42 +1468,36 @@ public class TeamAgent {
 
     /**
      * Override Lombok getter to always use teamBackend's shared instance.
-     * 
-     * @return the result
-     * @since 0.1.7
+     *
+     * @return the team message manager
      */
     public TeamMessageManager getMessageManager() {
         return teamBackend != null ? teamBackend.getMessageManager() : messageManager;
     }
 
     /**
-     * getCoordinatorLoop.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Get the coordination kernel instance.
+     *
+     * @return the coordination kernel
      */
-    public CoordinatorLoop getCoordinatorLoop() {
-        return coordinatorLoop;
+    public CoordinationKernel getCoordinationKernel() {
+        return coordinationKernel;
     }
 
     /**
-     * close.
-     * 
-     * @since 0.1.7
+     * Close the memory manager and stop the coordination kernel.
      */
     public void close() {
         if (memoryManager != null) {
             memoryManager.close();
         }
-        if (coordinatorLoop != null) {
-            coordinatorLoop.stop();
+        if (coordinationKernel != null) {
+            coordinationKernel.stop();
         }
     }
 
     /**
-     * startCoordinationLoop.
-     * 
-     * @since 0.1.7
+     * Start the coordination loop by delegating to the coordination manager.
      */
     public void startCoordinationLoop() {
         ensureConfigured();
@@ -1403,9 +1505,7 @@ public class TeamAgent {
     }
 
     /**
-     * stopCoordinationLoop.
-     * 
-     * @since 0.1.7
+     * Stop the coordination loop by delegating to the coordination manager.
      */
     public void stopCoordinationLoop() {
         if (coordinationManager != null) {
@@ -1414,31 +1514,25 @@ public class TeamAgent {
     }
 
     /**
-     * pausePolls.
-     * 
-     * @since 0.1.7
+     * Pause the coordination kernel's periodic polls.
      */
     public void pausePolls() {
-        if (coordinatorLoop != null) {
-            coordinatorLoop.pausePolls();
+        if (coordinationKernel != null) {
+            coordinationKernel.pausePolls();
         }
     }
 
     /**
-     * resumePolls.
-     * 
-     * @since 0.1.7
+     * Resume the coordination kernel's periodic polls after a previous pause.
      */
     public void resumePolls() {
-        if (coordinatorLoop != null) {
-            coordinatorLoop.resumePolls();
+        if (coordinationKernel != null) {
+            coordinationKernel.resumePolls();
         }
     }
 
     /**
-     * shutdownSelf.
-     * 
-     * @since 0.1.7
+     * Shut down this member: cancel the agent, close the stream, update DB status to SHUTDOWN, and close resources.
      */
     public void shutdownSelf() {
         String memberName = resolveLocalMemberName();
@@ -1447,15 +1541,16 @@ public class TeamAgent {
             streamController.cancelAgent();
             streamController.closeStream();
         }
+
         // Match Python: update DB status to SHUTDOWN so clean_team can succeed.
         // Python: await self._team_member.update_status(MemberStatus.SHUTDOWN)
         if (teamBackend != null) {
             try {
                 teamBackend.updateMemberStatus(memberName, MemberStatus.SHUTDOWN);
                 Loggers.AGENT.info("shutdownSelf: member={} status updated to SHUTDOWN", memberName);
-            } catch (Exception e) {
-                Loggers.AGENT.debug("shutdownSelf: post-clean status update failed for {}: {}", memberName,
-                        e.getMessage());
+            } catch (BaseError | CompletionException | NullPointerException e) {
+                Loggers.AGENT.debug("shutdownSelf: post-clean status update failed for {}: {}",
+                        memberName, e.getMessage());
             }
         }
         if (context != null) {
@@ -1464,43 +1559,78 @@ public class TeamAgent {
         close();
     }
 
+    @Override
+    public boolean isAgentRunning() {
+        return streamController != null && streamController.isAgentRunning();
+    }
+
+    @Override
+    public void concludeCompletedRound(int memberCount, int taskCount) {
+        Loggers.AGENT.info("concludeCompletedRound: member={} memberCount={} taskCount={}",
+                resolveLocalMemberName(), memberCount, taskCount);
+
+        // Persistent teams auto-pause on completion: close the leader stream
+        // so the Runner finally drives finalize -> pause.
+        if (streamController != null && streamController.isAgentRunning()) {
+            streamController.closeStream();
+        }
+        if (coordinationKernel != null) {
+            coordinationKernel.pausePolls();
+        }
+    }
+
+    @Override
+    public void deliverInput(Object content) {
+        deliverInput(content != null ? String.valueOf(content) : "");
+    }
+
+    @Override
+    public void deliverInput(Object content, boolean shouldUseSteer) {
+        deliverInput(content != null ? String.valueOf(content) : "", shouldUseSteer);
+    }
+
     /**
-     * destroyTeam.
-     * 
-     * @param isForceEnabled isForceEnabled
-     * @return the result
-     * @since 0.1.7
+     * Destroy the team: close resources, optionally force-shutdown all other members, then clean the team.
+     *
+     * @param isForceEnabled when {@code true}, force-shutdown every other member before cleaning
+     * @return {@code true} if the team was cleaned successfully
      */
     public boolean destroyTeam(boolean isForceEnabled) {
         ensureConfigured();
         close();
         if (isForceEnabled) {
-            for (var member : teamBackend.getDb().member.getTeamMembers(teamBackend.getTeamName())) {
-                if (!resolveLocalMemberName().equals(member.getMemberName())) {
-                    teamBackend.shutdownMember(member.getMemberName(), true).join();
-                }
-            }
+            forceShutdownOtherMembers();
         }
         return teamBackend.cleanTeam().join();
     }
 
     /**
-     * hasPendingInterrupt.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Force-shutdown every other team member before cleaning the team.
+     */
+    private void forceShutdownOtherMembers() {
+        String localName = resolveLocalMemberName();
+        for (var member : teamBackend.getDb().member.getTeamMembers(teamBackend.getTeamName())) {
+            if (localName.equals(member.getMemberName())) {
+                continue;
+            }
+            com.openjiuwen.agentteams.tools.MemberOpResult result =
+                    teamBackend.shutdownMember(member.getMemberName(), true).join();
+            if (!result.isOk()) {
+                Loggers.AGENT.warn("destroyTeam: shutdown failed for member={}: {}",
+                        member.getMemberName(), result.getReason());
+            }
+        }
+    }
+
+    /**
+     * Check whether the stream controller has a pending tool interrupt.
+     *
+     * @return {@code true} if a tool interrupt is pending
      */
     public boolean hasPendingInterrupt() {
         return streamController != null && streamController.hasPendingInterrupt();
     }
 
-    /**
-     * firstNonBlank.
-     * 
-     * @param values values
-     * @return the result
-     * @since 0.1.7
-     */
     private static String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -1510,22 +1640,16 @@ public class TeamAgent {
         return null;
     }
 
-    /**
-     * isStreamingCoordinationActive.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private boolean isStreamingCoordinationActive() {
-        return context != null && context.getMetadata() != null
+        return context != null
+                && context.getMetadata() != null
                 && Boolean.TRUE.equals(context.getMetadata().get("streaming_coordination"));
     }
 
     /**
-     * resolveLocalMemberName.
-     * 
-     * @return the result
-     * @since 0.1.7
+     * Resolve the local member name from the context, falling back to the leader member name.
+     *
+     * @return the local member name
      */
     public String resolveLocalMemberName() {
         if (context != null && context.getMemberName() != null && !context.getMemberName().isBlank()) {
@@ -1534,12 +1658,6 @@ public class TeamAgent {
         return resolveLeaderMemberName();
     }
 
-    /**
-     * resolveWorkspaceRoot.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private Path resolveWorkspaceRoot() {
         Object configuredWorkspace = context.getMetadata().get("workspace_path");
         if (configuredWorkspace != null && !String.valueOf(configuredWorkspace).isBlank()) {
@@ -1548,35 +1666,15 @@ public class TeamAgent {
         return defaultTeamHome(context.getTeamId()).resolve("team-workspace");
     }
 
-    /**
-     * defaultTeamHome.
-     * 
-     * @param teamName teamName
-     * @return the result
-     * @since 0.1.7
-     */
     private static Path defaultTeamHome(String teamName) {
         return Path.of(System.getProperty("user.home"), ".openjiuwen", ".agent_teams",
                 teamName != null && !teamName.isBlank() ? teamName : "agent_team");
     }
 
-    /**
-     * defaultTeamMemoryDir.
-     * 
-     * @param teamName teamName
-     * @return the result
-     * @since 0.1.7
-     */
     private static Path defaultTeamMemoryDir(String teamName) {
         return defaultTeamHome(teamName).resolve("team-workspace").resolve("team-memory");
     }
 
-    /**
-     * resolveTeamWorkspaceMount.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private String resolveTeamWorkspaceMount() {
         if (context == null || context.getMetadata() == null) {
             return nullValue();
@@ -1585,12 +1683,6 @@ public class TeamAgent {
         return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : null;
     }
 
-    /**
-     * resolveTeamWorkspacePath.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private String resolveTeamWorkspacePath() {
         if (context == null || context.getMetadata() == null) {
             return nullValue();
@@ -1599,69 +1691,28 @@ public class TeamAgent {
         return value != null && !String.valueOf(value).isBlank() ? String.valueOf(value) : null;
     }
 
-    /**
-     * resolveLanguage.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private String resolveLanguage() {
         return spec.getLanguage() != null && !spec.getLanguage().isBlank() ? spec.getLanguage() : "cn";
     }
 
-    /**
-     * parseMemoryLifecycle.
-     * 
-     * @param lifecycle lifecycle
-     * @return TeamLifecycle
-     * @since 0.1.7
-     */
     private static com.openjiuwen.core.memory.team.TeamLifecycle parseMemoryLifecycle(String lifecycle) {
         return "persistent".equalsIgnoreCase(lifecycle)
                 ? com.openjiuwen.core.memory.team.TeamLifecycle.PERSISTENT
                 : com.openjiuwen.core.memory.team.TeamLifecycle.TEMPORARY;
     }
 
-    /**
-     * parseScenario.
-     * 
-     * @param scenario scenario
-     * @return the result
-     * @since 0.1.7
-     */
     private static TeamScenario parseScenario(String scenario) {
         return "coding".equalsIgnoreCase(scenario) ? TeamScenario.CODING : TeamScenario.GENERAL;
     }
 
-    /**
-     * parseLanguage.
-     * 
-     * @param language language
-     * @return the result
-     * @since 0.1.7
-     */
     private static TeamLanguage parseLanguage(String language) {
         return "en".equalsIgnoreCase(language) ? TeamLanguage.EN : TeamLanguage.CN;
     }
 
-    /**
-     * parsePromptMode.
-     * 
-     * @param mode mode
-     * @return the result
-     * @since 0.1.7
-     */
     private static PromptMode parsePromptMode(String mode) {
         return "passive".equalsIgnoreCase(mode) ? PromptMode.PASSIVE : PromptMode.PROACTIVE;
     }
 
-    /**
-     * payloadRole.
-     * 
-     * @param role role
-     * @return the result
-     * @since 0.1.7
-     */
     private static String payloadRole(TeamRole role) {
         if (role == TeamRole.LEADER) {
             return "leader";
@@ -1675,13 +1726,6 @@ public class TeamAgent {
         return "teammate";
     }
 
-    /**
-     * parsePayloadRole.
-     * 
-     * @param role role
-     * @return the result
-     * @since 0.1.7
-     */
     private static TeamRole parsePayloadRole(Object role) {
         String value = role != null ? String.valueOf(role) : "";
         if ("leader".equalsIgnoreCase(value)) {
@@ -1696,13 +1740,6 @@ public class TeamAgent {
         return TeamRole.MEMBER;
     }
 
-    /**
-     * serializeSpec.
-     * 
-     * @param spec spec
-     * @return the result
-     * @since 0.1.7
-     */
     private static Map<String, Object> serializeSpec(TeamAgentSpec spec) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("name", spec.getName());
@@ -1724,32 +1761,19 @@ public class TeamAgent {
         return data;
     }
 
-    /**
-     * serializeContext.
-     * 
-     * @param ctx ctx
-     * @return the result
-     * @since 0.1.7
-     */
     private static Map<String, Object> serializeContext(TeamRuntimeContext ctx) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("team_id", ctx.getTeamId());
         data.put("session_id", ctx.getSessionId());
         data.put("member_name", ctx.getMemberName());
         data.put("role", payloadRole(ctx.getRole()));
-        data.put("metadata",
+        data.put(
+                "metadata",
                 ctx.getMetadata() != null ? new LinkedHashMap<>(ctx.getMetadata()) : new LinkedHashMap<>());
         return data;
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * deserializeSpec.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static TeamAgentSpec deserializeSpec(Object value) {
         if (value instanceof TeamAgentSpec teamAgentSpec) {
             return teamAgentSpec;
@@ -1762,28 +1786,27 @@ public class TeamAgent {
         if (memberValues instanceof List<?> list) {
             for (Object item : list) {
                 if (item instanceof Map<?, ?> memberMap) {
-                    members.add(TeamMemberSpec.builder().name(stringValue(memberMap.get("name")))
+                    members.add(TeamMemberSpec.builder()
+                            .name(stringValue(memberMap.get("name")))
                             .role(parsePayloadRole(memberMap.get("role")))
                             .description(stringValue(memberMap.get("description")))
                             .agentId(stringValue(memberMap.get("agent_id")))
                             .modelId(stringValue(memberMap.get("model_id")))
-                            .modelName(stringValue(memberMap.get("model_name"))).build());
+                            .modelName(stringValue(memberMap.get("model_name")))
+                            .build());
                 }
             }
         }
-        return TeamAgentSpec.builder().name(stringValue(raw.get("name")))
-                .description(stringValue(raw.get("description"))).lifecycle(stringValue(raw.get("lifecycle")))
-                .language(stringValue(raw.get("language"))).members(members).build();
+        return TeamAgentSpec.builder()
+                .name(stringValue(raw.get("name")))
+                .description(stringValue(raw.get("description")))
+                .lifecycle(stringValue(raw.get("lifecycle")))
+                .language(stringValue(raw.get("language")))
+                .members(members)
+                .build();
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * deserializeContext.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static TeamRuntimeContext deserializeContext(Object value) {
         if (value instanceof TeamRuntimeContext teamRuntimeContext) {
             return teamRuntimeContext;
@@ -1799,19 +1822,15 @@ public class TeamAgent {
                 metadata.put(name, normalizeMetadataValue(name, item));
             });
         }
-        return TeamRuntimeContext.builder().teamId(stringValue(raw.get("team_id")))
-                .sessionId(stringValue(raw.get("session_id"))).memberName(stringValue(raw.get("member_name")))
-                .role(parsePayloadRole(raw.get("role"))).metadata(metadata).build();
+        return TeamRuntimeContext.builder()
+                .teamId(stringValue(raw.get("team_id")))
+                .sessionId(stringValue(raw.get("session_id")))
+                .memberName(stringValue(raw.get("member_name")))
+                .role(parsePayloadRole(raw.get("role")))
+                .metadata(metadata)
+                .build();
     }
 
-    /**
-     * normalizeMetadataValue.
-     * 
-     * @param key key
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static Object normalizeMetadataValue(String key, Object value) {
         if ("member_model".equals(key)) {
             TeamModelConfig config = teamModelConfigFromObject(value);
@@ -1823,13 +1842,6 @@ public class TeamAgent {
     }
 
     @SuppressWarnings("unchecked")
-    /**
-     * teamModelConfigFromObject.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static TeamModelConfig teamModelConfigFromObject(Object value) {
         if (value instanceof TeamModelConfig config) {
             return config;
@@ -1837,29 +1849,25 @@ public class TeamAgent {
         if (!(value instanceof Map<?, ?> raw)) {
             return nullValue();
         }
-        Object client =
-            firstPresent(raw, new String[]{"modelClientConfig", "model_client_config", "modelClient", "model_client"});
-        Object request = firstPresent(raw,
+        Object client = firstPresent(
+                raw,
+                new String[]{"modelClientConfig", "model_client_config", "modelClient", "model_client"});
+        Object request = firstPresent(
+                raw,
                 new String[]{"modelRequestConfig", "model_request_config", "modelConfig", "model_config"});
         if (!(client instanceof Map<?, ?>) || !(request instanceof Map<?, ?>)) {
             return nullValue();
         }
         try {
-            return new TeamModelConfig(OBJECT_MAPPER.convertValue(client, ModelClientConfig.class),
-                    OBJECT_MAPPER.convertValue(request, ModelRequestConfig.class));
+            return new TeamModelConfig(
+                    OBJECT_MAPPER.convertValue(client, ModelClientConfig.class),
+                    OBJECT_MAPPER.convertValue(request, ModelRequestConfig.class)
+            );
         } catch (IllegalArgumentException e) {
             return nullValue();
         }
     }
 
-    /**
-     * firstPresent.
-     * 
-     * @param raw raw
-     * @param keys keys
-     * @return the result
-     * @since 0.1.7
-     */
     private static Object firstPresent(Map<?, ?> raw, String[] keys) {
         for (String key : keys) {
             if (raw.containsKey(key)) {
@@ -1869,22 +1877,10 @@ public class TeamAgent {
         return nullValue();
     }
 
-    /**
-     * stringValue.
-     * 
-     * @param value value
-     * @return the result
-     * @since 0.1.7
-     */
     private static String stringValue(Object value) {
         return value != null ? String.valueOf(value) : null;
     }
 
-    /**
-     * ensureConfigured.
-     * 
-     * @since 0.1.7
-     */
     private void ensureConfigured() {
         if (spec == null || context == null || teamBackend == null || messageManager == null) {
             throw new IllegalStateException("TeamAgent is not configured");
@@ -1896,21 +1892,14 @@ public class TeamAgent {
         private Object next;
         private boolean isFinished;
 
-        /**
-         * CoordinationStreamIterator.
-         * 
-         * @param queue queue
-         * @since 0.1.7
-         */
         private CoordinationStreamIterator(LinkedBlockingQueue<Object> queue) {
             this.queue = queue;
         }
 
         /**
-         * hasNext.
-         * 
-         * @return the result
-         * @since 0.1.7
+         * Check whether the iterator has a next element, blocking on the queue until one arrives or the stream ends.
+         *
+         * @return {@code true} if another chunk is available
          */
         @Override
         public boolean hasNext() {
@@ -1930,10 +1919,14 @@ public class TeamAgent {
                 next = item;
                 return true;
             } catch (InterruptedException interruptedException) {
+                // cooperative stop: mark stream finished without self-interrupt (G.CON.10)
                 isFinished = true;
                 finalizeStreamingRound();
                 return false;
             } catch (RuntimeException runtimeException) {
+                // Safety net: queue.take() or finalizeStreamingRound() may throw
+                // unexpected RuntimeExceptions; catching broadly is intentional
+                // since the exception is re-thrown after cleanup.
                 isFinished = true;
                 finalizeStreamingRound();
                 throw runtimeException;
@@ -1941,10 +1934,9 @@ public class TeamAgent {
         }
 
         /**
-         * next.
-         * 
-         * @return the result
-         * @since 0.1.7
+         * Return the next chunk from the stream.
+         *
+         * @return the next chunk
          */
         @Override
         public Object next() {
@@ -1956,13 +1948,6 @@ public class TeamAgent {
             return value;
         }
     }
-
-    /**
-     * nullValue.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     private static <T> T nullValue() {
         return null;
     }
