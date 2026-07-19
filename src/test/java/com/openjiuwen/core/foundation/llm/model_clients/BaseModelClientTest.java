@@ -31,6 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -193,6 +195,113 @@ class BaseModelClientTest {
     }
 
     @Test
+    void buildRequestParamsFallsBackInvalidTypedToolCallsWithoutChangingToolCallObjects() {
+        String validRaw = " { \"b\" : 2, \"a\" : 1 } ";
+        ToolCall valid = ToolCall.builder().id("call-valid").name("lookup").arguments(validRaw).build();
+        ToolCall malformed = ToolCall.builder().id("call-malformed").name("lookup")
+                .arguments("{\"query\":[1,2").build();
+        ToolCall array = ToolCall.builder().id("call-array").name("lookup").arguments("[]").build();
+        AssistantMessage assistant = AssistantMessage.builder().content("")
+                .toolCalls(List.of(valid, malformed, array)).build();
+        TestModelClient client = new TestModelClient(requestConfig(), validClientConfig());
+
+        Map<String, Object> params = client.requestParams(
+                List.of(assistant), null, null, null, null, null, null, false, Map.of());
+
+        assertEquals(List.of(validRaw, "{}", "{}"), requestArguments(params));
+        assertEquals(validRaw, valid.getArguments());
+        assertEquals("{\"query\":[1,2", malformed.getArguments());
+        assertEquals("[]", array.getArguments());
+    }
+
+    @Test
+    void buildRequestParamsFallsBackInvalidMapMessagesWithoutChangingCallerNestedMaps() {
+        Map<String, Object> function = new LinkedHashMap<>();
+        function.put("name", "lookup");
+        function.put("arguments", "{\"query\": bare}");
+        Map<String, Object> toolCall = new LinkedHashMap<>();
+        toolCall.put("id", "call-map");
+        toolCall.put("type", "function");
+        toolCall.put("function", function);
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("role", "assistant");
+        message.put("content", "");
+        message.put("tool_calls", List.of(toolCall));
+        TestModelClient client = new TestModelClient(requestConfig(), validClientConfig());
+
+        Map<String, Object> params = client.requestParams(
+                List.of(message), null, null, null, null, null, null, false, Map.of());
+
+        assertEquals(List.of("{}"), requestArguments(params));
+        assertEquals("{\"query\": bare}", function.get("arguments"));
+        assertEquals(function, ((Map<?, ?>) toolCall.get("function")));
+    }
+
+    @Test
+    void buildRequestParamsDoesNotCopyValidMapToolCallArguments() {
+        String validRaw = " { \"a\" : 1 } ";
+        Map<String, Object> function = new LinkedHashMap<>();
+        function.put("name", "lookup");
+        function.put("arguments", validRaw);
+        Map<String, Object> toolCall = new LinkedHashMap<>();
+        toolCall.put("id", "call-valid-map");
+        toolCall.put("type", "function");
+        toolCall.put("function", function);
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("role", "assistant");
+        message.put("content", "");
+        message.put("tool_calls", List.of(toolCall));
+        TestModelClient client = new TestModelClient(requestConfig(), validClientConfig());
+
+        Map<String, Object> params = client.requestParams(
+                List.of(message), null, null, null, null, null, null, false, Map.of());
+
+        List<Map<String, Object>> requestToolCalls = requestToolCalls(params);
+        assertEquals(List.of(validRaw), requestArguments(params));
+        assertEquals(validRaw, function.get("arguments"));
+        assertSame(toolCall, requestToolCalls.get(0));
+        assertSame(function, requestToolCalls.get(0).get("function"));
+    }
+
+    @Test
+    void buildRequestParamsOnlyCopiesMapToolCallsWithChangedArguments() {
+        String validRaw = " { \"a\" : 1 } ";
+        Map<String, Object> validFunction = new LinkedHashMap<>();
+        validFunction.put("name", "lookup");
+        validFunction.put("arguments", validRaw);
+        Map<String, Object> validToolCall = new LinkedHashMap<>();
+        validToolCall.put("id", "call-valid-map");
+        validToolCall.put("type", "function");
+        validToolCall.put("function", validFunction);
+
+        Map<String, Object> invalidFunction = new LinkedHashMap<>();
+        invalidFunction.put("name", "lookup");
+        invalidFunction.put("arguments", "{\"query\": bare}");
+        Map<String, Object> invalidToolCall = new LinkedHashMap<>();
+        invalidToolCall.put("id", "call-invalid-map");
+        invalidToolCall.put("type", "function");
+        invalidToolCall.put("function", invalidFunction);
+
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("role", "assistant");
+        message.put("content", "");
+        message.put("tool_calls", List.of(validToolCall, invalidToolCall));
+        TestModelClient client = new TestModelClient(requestConfig(), validClientConfig());
+
+        Map<String, Object> params = client.requestParams(
+                List.of(message), null, null, null, null, null, null, false, Map.of());
+
+        List<Map<String, Object>> requestToolCalls = requestToolCalls(params);
+        assertEquals(List.of(validRaw, "{}"), requestArguments(params));
+        assertEquals(validRaw, validFunction.get("arguments"));
+        assertEquals("{\"query\": bare}", invalidFunction.get("arguments"));
+        assertSame(validToolCall, requestToolCalls.get(0));
+        assertSame(validFunction, requestToolCalls.get(0).get("function"));
+        assertNotSame(invalidToolCall, requestToolCalls.get(1));
+        assertNotSame(invalidFunction, requestToolCalls.get(1).get("function"));
+    }
+
+    @Test
     void buildRequestParamsPreservesPythonDecimalShapeForFloatModelParams() {
         TestModelClient client = new TestModelClient(requestConfig(), validClientConfig());
         Map<String, Object> kwargs = new LinkedHashMap<>();
@@ -336,6 +445,19 @@ class BaseModelClientTest {
                 .apiBase("http://localhost")
                 .verifySsl(false)
                 .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Object> requestArguments(Map<String, Object> params) {
+        return requestToolCalls(params).stream()
+                .map(call -> (Object) ((Map<?, ?>) call.get("function")).get("arguments"))
+                .toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> requestToolCalls(Map<String, Object> params) {
+        List<Map<String, Object>> messages = (List<Map<String, Object>>) params.get("messages");
+        return (List<Map<String, Object>>) messages.get(0).get("tool_calls");
     }
 
     /**

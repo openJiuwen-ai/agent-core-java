@@ -259,6 +259,23 @@ class ReActAgentToolLifecycleStreamTest {
     }
 
     @Test
+    void repairsArgumentsBeforeHistoryAndUsesSameValueForExecution() {
+        CountingTool tool = new CountingTool(unique("lookup-tool"), "lookupEnv", Map.of("result", "prod"));
+        RecordingReActAgent agent = new RecordingReActAgent(
+                ToolCall.builder().id("call-repair").name("lookupEnv").arguments("{\"query\":[1,2").build()
+        );
+        registerGlobalTool(agent, tool);
+
+        agent.invoke(Map.of("query", "repair args"), new MemorySession("repair-args-session"))
+                .toCompletableFuture()
+                .join();
+
+        assertThat(agent.getCapturedAssistantArguments()).containsExactly("{\"query\":[1,2]}");
+        assertThat(tool.lastInputs).isEqualTo(Map.of("query", List.of(1, 2)));
+        assertThat(tool.invokeCount).isEqualTo(1);
+    }
+
+    @Test
     void streamEmitsErrorToolResultWhenToolReturnsSuccessFalse() {
         CountingTool tool = new CountingTool(unique("failing-tool"), "failingTool",
                 Map.of("success", false, "error", "lookup failed"));
@@ -477,6 +494,7 @@ class ReActAgentToolLifecycleStreamTest {
         private final ToolCall toolCall;
         private final List<String> capturedToolMessageIds = new ArrayList<>();
         private final List<String> capturedAssistantToolCallIds = new ArrayList<>();
+        private final List<String> capturedAssistantArguments = new ArrayList<>();
         private int callCount;
 
         private RecordingReActAgent(ToolCall toolCall) {
@@ -496,6 +514,7 @@ class ReActAgentToolLifecycleStreamTest {
                         if (call.getId() != null) {
                             capturedAssistantToolCallIds.add(call.getId());
                         }
+                        capturedAssistantArguments.add(String.valueOf(call.getArguments()));
                     }
                 }
             }
@@ -511,6 +530,10 @@ class ReActAgentToolLifecycleStreamTest {
 
         private List<String> getCapturedAssistantToolCallIds() {
             return capturedAssistantToolCallIds;
+        }
+
+        private List<String> getCapturedAssistantArguments() {
+            return capturedAssistantArguments;
         }
     }
 
@@ -544,6 +567,7 @@ class ReActAgentToolLifecycleStreamTest {
     private static final class CountingTool extends Tool {
         private final Object result;
         private int invokeCount;
+        private Map<String, Object> lastInputs = Map.of();
 
         private CountingTool(String id, String name, Object result) {
             super(ToolCard.builder()
@@ -558,6 +582,7 @@ class ReActAgentToolLifecycleStreamTest {
         @Override
         public Object invoke(Map<String, Object> inputs, Map<String, Object> kwargs) throws Exception {
             invokeCount++;
+            lastInputs = new LinkedHashMap<>(inputs);
             if (result instanceof Exception exception) {
                 throw exception;
             }
