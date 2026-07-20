@@ -45,6 +45,9 @@ import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
 
+import com.openjiuwen.core.testsupport.OsTestSupport;
+
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockedStatic;
@@ -208,6 +211,7 @@ class AutoHarnessStagesCompatibilityTest {
 
     @Test
     void verifyFixLoopShouldOmitWarningSummaryFromFixTarget() throws Exception {
+        Assumptions.assumeTrue(OsTestSupport.isBashAvailable(), "bash not found, skipping");
         Path repo = initGitRepo();
         Path failScript = tempDir.resolve("pytest-failure.sh");
         Files.writeString(failScript, """
@@ -232,12 +236,13 @@ class AutoHarnessStagesCompatibilityTest {
                 """);
         failScript.toFile().setExecutable(true);
         Path ciConfig = tempDir.resolve("ci-pytest-failure.yaml");
+        // YAML double-quoted scalars treat '\' as escapes; use forward slashes for Windows paths.
         Files.writeString(ciConfig, """
                 ci_gates:
                   - name: test
                     command: "%s"
                     required: true
-                """.formatted(failScript));
+                """.formatted(failScript.toString().replace('\\', '/')));
         Path target = repo.resolve("openjiuwen/harness/demo.py");
         Files.createDirectories(target.getParent());
         Files.writeString(target, "print('changed')\n");
@@ -1088,6 +1093,9 @@ class AutoHarnessStagesCompatibilityTest {
     }
 
     private static void run(Path cwd, String... command) throws Exception {
+        if (command.length > 0 && "git".equals(command[0])) {
+            OsTestSupport.assumeGitAvailable();
+        }
         Process process = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int code = process.waitFor();

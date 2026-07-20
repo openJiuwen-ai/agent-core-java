@@ -26,8 +26,13 @@ class HarnessUtilityToolsCompatibilityTest {
 
         assertThat(written.isSuccess()).isTrue();
         assertThat(read.getData()).isEqualTo("hello memory");
-        assertThat(listed.getData()).isEqualTo(List.of("notes/a.txt"));
-        assertThat(searched.getData()).isEqualTo(List.of("notes/a.txt"));
+        assertThat(normalizePaths(listed.getData())).isEqualTo(List.of("notes/a.txt"));
+        assertThat(normalizePaths(searched.getData())).isEqualTo(List.of("notes/a.txt"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> normalizePaths(Object data) {
+        return ((List<String>) data).stream().map(p -> p.replace('\\', '/')).toList();
     }
 
     @Test

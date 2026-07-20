@@ -5,7 +5,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
 
 import com.openjiuwen.autoharness.schema.AutoHarnessConfig;
+import com.openjiuwen.core.testsupport.OsTestSupport;
 
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -20,6 +22,10 @@ import java.util.Map;
 class InfraCompatibilityTest {
     @TempDir
     Path tempDir;
+
+    private static void assumeBashAvailable() {
+        Assumptions.assumeTrue(OsTestSupport.isBashAvailable(), "bash not found, skipping CIGate tests");
+    }
 
     @Test
     void sessionBudgetShouldTrackTimeAndCost() {
@@ -127,6 +133,7 @@ class InfraCompatibilityTest {
 
     @Test
     void ciGateAndGitWorktreeHelpersShouldExposeExpectedPlans() throws Exception {
+        assumeBashAvailable();
         Path configPath = tempDir.resolve("ci_gate.yaml");
         Files.writeString(configPath, """
                 ci_gates:
@@ -267,6 +274,7 @@ class InfraCompatibilityTest {
 
     @Test
     void ciGateShouldMapCheckAliasAndReportMissingAction() throws Exception {
+        assumeBashAvailable();
         Path configPath = tempDir.resolve("ci_gate_alias.yaml");
         Files.writeString(configPath, """
                 ci_gates:
@@ -295,6 +303,7 @@ class InfraCompatibilityTest {
 
     @Test
     void ciGateShouldTreatOnlyOmittedActionAsAllLikePythonDefault() throws Exception {
+        assumeBashAvailable();
         Path configPath = tempDir.resolve("ci_gate_default_all.yaml");
         Files.writeString(configPath, """
                 ci_gates:
@@ -321,6 +330,7 @@ class InfraCompatibilityTest {
 
     @Test
     void ciGateShouldReturnNoMatchForMissingYamlLikePythonEmptyGates() {
+        assumeBashAvailable();
         Path missingConfig = tempDir.resolve("missing-ci-gate.yaml");
         CIGateRunner runner = new CIGateRunner(tempDir.toString(), missingConfig.toString(), "", "");
 
@@ -335,6 +345,7 @@ class InfraCompatibilityTest {
 
     @Test
     void ciGateShouldReturnFailedGateOutput() throws Exception {
+        assumeBashAvailable();
         Path configPath = tempDir.resolve("ci_gate_failed.yaml");
         Files.writeString(configPath, """
                 ci_gates:
@@ -357,6 +368,7 @@ class InfraCompatibilityTest {
 
     @Test
     void ciGateShouldNormalizePythonBackedCommandsLikePythonRunner() throws Exception {
+        assumeBashAvailable();
         Path python = tempDir.resolve("python3.11");
         Files.writeString(python, """
                 #!/usr/bin/env bash
@@ -380,14 +392,16 @@ class InfraCompatibilityTest {
 
         CIGateResult result = runner.run("all");
 
+        String py = python.toString().replace('\\', '/');
         assertThat(result.isPassed()).isTrue();
-        assertThat(result.getExecutedCommands()).containsExactly(python + " -m pytest tests/unit_tests/harness/",
-                python + " -m pytest -q", "PATH=\"/tmp/bin:$PATH\" " + python + " -m pytest");
+        assertThat(result.getExecutedCommands()).containsExactly(py + " -m pytest tests/unit_tests/harness/",
+                py + " -m pytest -q", "PATH=\"/tmp/bin:$PATH\" " + py + " -m pytest");
         assertThat(result.getGateOutputs()).contains("[test]\nPY:-m pytest tests/unit_tests/harness/");
     }
 
     @Test
     void ciGateShouldInjectPythonEnvironmentLikePythonRunner() throws Exception {
+        assumeBashAvailable();
         Path venv = tempDir.resolve(".venv");
         Path binDir = venv.resolve("bin");
         Files.createDirectories(binDir);
@@ -402,24 +416,31 @@ class InfraCompatibilityTest {
                 ci_gates:
                   - name: env
                     command: |
-                      printf 'PY=%s\\nVENV=%s\\nPATH=%s\\nCI=%s\\n' "$AUTO_HARNESS_PYTHON" "$VIRTUAL_ENV" "$PATH" "$CI"
+                      echo "PY=$AUTO_HARNESS_PYTHON"
+                      echo "VENV=$VIRTUAL_ENV"
+                      echo "PATH=$PATH"
+                      echo "CI=$CI"
                     required: true
                 """);
         CIGateRunner runner = new CIGateRunner(tempDir.toString(), configPath.toString(), python.toString(), "");
 
         CIGateResult result = runner.run("all");
 
+        String py = python.toString().replace('\\', '/');
+        String venvPath = venv.toString().replace('\\', '/');
         assertThat(result.isPassed()).isTrue();
         String output = result.getGateOutputs().get(0);
-        assertThat(output).contains("PY=" + python);
-        assertThat(output).contains("VENV=" + venv);
+        assertThat(output).contains("PY=" + py);
+        assertThat(output).contains("VENV=" + venvPath);
         assertThat(output).contains("CI=1");
         String pathLine = output.lines().filter(line -> line.startsWith("PATH=")).findFirst().orElseThrow();
-        assertThat(pathLine).startsWith("PATH=" + binDir);
+        // Git Bash may rewrite Windows paths (e.g. C:/... -> /c/... or /tmp/...); require venv bin present.
+        assertThat(pathLine).contains(".venv/bin");
     }
 
     @Test
     void ciGateShouldFilterPytestWarningSummaryFromFailedOutput() throws Exception {
+        assumeBashAvailable();
         Path failScript = tempDir.resolve("fail.sh");
         Files.writeString(failScript, """
                 #!/usr/bin/env bash
@@ -449,7 +470,7 @@ class InfraCompatibilityTest {
                   - name: test
                     command: "%s"
                     required: true
-                """.formatted(failScript));
+                """.formatted(failScript.toString().replace('\\', '/')));
         CIGateRunner runner = new CIGateRunner(tempDir.toString(), configPath.toString(), "", "");
 
         CIGateResult result = runner.run("all");
@@ -465,8 +486,10 @@ class InfraCompatibilityTest {
 
     @Test
     void ciGateShouldRunInstallCommandOnlyOnceBeforeGates() throws Exception {
+        assumeBashAvailable();
         Path marker = tempDir.resolve("install-count.txt");
         Path installScript = tempDir.resolve("install.sh");
+        String markerPath = marker.toString().replace('\\', '/');
         Files.writeString(installScript, """
                 #!/usr/bin/env bash
                 count=0
@@ -474,7 +497,7 @@ class InfraCompatibilityTest {
                   count=$(cat "%s")
                 fi
                 printf '%%s' "$((count + 1))" > "%s"
-                """.formatted(marker, marker, marker));
+                """.formatted(markerPath, markerPath, markerPath));
         installScript.toFile().setExecutable(true);
         Path configPath = tempDir.resolve("ci_gate_install.yaml");
         Files.writeString(configPath, """
@@ -486,16 +509,17 @@ class InfraCompatibilityTest {
                     command: "printf lint-ok"
                     required: true
                 """);
-        CIGateRunner runner = new CIGateRunner(tempDir.toString(), configPath.toString(), "", installScript.toString());
+        String installPath = installScript.toString().replace('\\', '/');
+        CIGateRunner runner = new CIGateRunner(tempDir.toString(), configPath.toString(), "", installPath);
 
         CIGateResult first = runner.run("test");
         CIGateResult second = runner.run("lint");
 
         assertThat(first.isPassed()).isTrue();
         assertThat(second.isPassed()).isTrue();
-        assertThat(first.getExecutedCommands()).containsExactly(installScript.toString(), "printf test-ok");
+        assertThat(first.getExecutedCommands()).containsExactly(installPath, "printf test-ok");
         assertThat(second.getExecutedCommands()).containsExactly("printf lint-ok");
-        assertThat(Files.readString(marker)).isEqualTo("1");
+        assertThat(Files.readString(marker).replace("\r\n", "\n")).isEqualTo("1");
     }
 
     @Test
@@ -693,7 +717,7 @@ class InfraCompatibilityTest {
         assertThat(snapshot.getFileName().toString()).endsWith("-assess");
         assertThat(runCapture(snapshot, "git", "branch", "--show-current")).isBlank();
         assertThat(runCapture(snapshot, "git", "rev-parse", "HEAD")).isEqualTo(originHead);
-        assertThat(Files.readString(snapshot.resolve("README.md"))).isEqualTo("base\n");
+        assertThat(Files.readString(snapshot.resolve("README.md")).replace("\r\n", "\n")).isEqualTo("base\n");
 
         manager.cleanup(snapshot.toString());
         assertThat(snapshot).doesNotExist();
@@ -746,7 +770,7 @@ class InfraCompatibilityTest {
         assertThat(base).isEqualTo(config.cacheRepoPath());
         assertThat(base.resolve(".git")).isDirectory();
         assertThat(runCapture(base, "git", "branch", "--show-current")).isEqualTo("develop");
-        assertThat(Files.readString(base.resolve("README.md"))).isEqualTo("base\n");
+        assertThat(Files.readString(base.resolve("README.md")).replace("\r\n", "\n")).isEqualTo("base\n");
 
         Files.writeString(seed.resolve("README.md"), "updated\n");
         run(seed, "git", "add", "README.md");
@@ -793,6 +817,7 @@ class InfraCompatibilityTest {
 
     @Test
     void worktreeEnsureBaseRepoShouldFailWhenInitialCloneFails() {
+        OsTestSupport.assumeGitAvailable();
         WorktreeManager manager =
             new WorktreeManager(AutoHarnessConfig.builder().dataDir(tempDir.resolve("data-clone-failure").toString())
                     .repoUrl(tempDir.resolve("missing-clone-origin.git").toString()).gitBaseBranch("develop").build());
@@ -865,6 +890,9 @@ class InfraCompatibilityTest {
     }
 
     private static void run(Path cwd, String... command) throws Exception {
+        if (command.length > 0 && "git".equals(command[0])) {
+            OsTestSupport.assumeGitAvailable();
+        }
         Process process = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int code = process.waitFor();
@@ -872,6 +900,9 @@ class InfraCompatibilityTest {
     }
 
     private static String runCapture(Path cwd, String... command) throws Exception {
+        if (command.length > 0 && "git".equals(command[0])) {
+            OsTestSupport.assumeGitAvailable();
+        }
         Process process = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int code = process.waitFor();

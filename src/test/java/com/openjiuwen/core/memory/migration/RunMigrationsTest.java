@@ -6,6 +6,7 @@ package com.openjiuwen.core.memory.migration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.memory.common.KvPrefixRegistry;
@@ -93,7 +94,7 @@ class RunMigrationsTest {
         MigrationPlan.getSqlRegistry().register("bad_table", new AddColumnOperation(
                 new OperationMetadata(1, "bad table"), "bad_table", "source", "TEXT", true, null));
 
-        assertFalse(RunMigrations.runSqlMigrations(new SqlDbStore(dbStore)));
+        assertThrows(IllegalArgumentException.class, () -> RunMigrations.runSqlMigrations(new SqlDbStore(dbStore)));
     }
 
     @Test

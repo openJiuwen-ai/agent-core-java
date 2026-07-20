@@ -123,7 +123,8 @@ class TeamMemoryTest {
         assertThat(manager.initToolkit()).isTrue();
         String prompt = manager.loadAndInject("");
 
-        assertThat(prompt).contains("# Persistent Storage System (Read-Only Mode)")
+        String normalized = prompt.replace("\r\n", "\n").replaceAll("\\s+", " ");
+        assertThat(normalized).contains("# Persistent Storage System (Read-Only Mode)")
                 .contains("Writing or modifying memory files is not allowed").contains("source memory");
         manager.close();
     }

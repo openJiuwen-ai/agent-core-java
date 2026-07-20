@@ -90,11 +90,21 @@ public class WorktreeRemoteHandler {
         if (slug == null || slug.isBlank()) {
             return WorktreeRemoteResponse.builder().isSuccess(false).error("slug is required").build();
         }
-        Path repoRoot = ensureRepo(request.getRepoUrl());
-        fetchRef(repoRoot,
-                request.getBaseBranch() == null || request.getBaseBranch().isBlank()
-                        ? "main"
-                        : request.getBaseBranch());
+        String baseBranch = request.getBaseBranch() == null || request.getBaseBranch().isBlank()
+                ? "main"
+                : request.getBaseBranch();
+        Path repoRoot = ensureRepo(request.getRepoUrl(), baseBranch);
+        fetchRef(repoRoot, baseBranch);
+        // Shallow clones of bare remotes can leave HEAD unresolved; force the requested branch tip.
+        GitCommandResult checkout =
+                runGit(repoRoot, java.util.List.of("checkout", "-B", baseBranch, "origin/" + baseBranch));
+        if (checkout.code() != 0) {
+            checkout = runGit(repoRoot, java.util.List.of("checkout", "-B", baseBranch, baseBranch));
+            if (checkout.code() != 0) {
+                return WorktreeRemoteResponse.builder().isSuccess(false)
+                        .error("Unable to checkout base branch '" + baseBranch + "': " + checkout.output()).build();
+            }
+        }
         WorktreeCreateResult result = manager.createAgentWorktree(slug, repoRoot.toString());
         return WorktreeRemoteResponse.builder().worktreePath(result.getWorktreePath())
                 .worktreeBranch(result.getWorktreeBranch()).headCommit(result.getHeadCommit())
@@ -140,11 +150,32 @@ public class WorktreeRemoteHandler {
      * @since 0.1.7
      */
     private Path ensureRepo(String repoUrl) throws IOException {
+        return ensureRepo(repoUrl, null);
+    }
+
+    /**
+     * ensureRepo.
+     *
+     * @param repoUrl repoUrl
+     * @param branch preferred clone/checkout branch
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
+    private Path ensureRepo(String repoUrl, String branch) throws IOException {
         Path localPath = agentTeamsHome().resolve("remote_repos").resolve(hashRepo(repoUrl));
         if (!Files.isDirectory(localPath.resolve(".git"))) {
             Files.createDirectories(localPath.getParent());
-            runGitOrThrow(localPath.getParent(),
-                    java.util.List.of("clone", "--depth=1", repoUrl, localPath.toString()));
+            java.util.List<String> args = new java.util.ArrayList<>();
+            args.add("clone");
+            args.add("--depth=1");
+            if (branch != null && !branch.isBlank()) {
+                args.add("--branch");
+                args.add(branch);
+            }
+            args.add(repoUrl);
+            args.add(localPath.toString());
+            runGitOrThrow(localPath.getParent(), args);
         }
         return localPath;
     }

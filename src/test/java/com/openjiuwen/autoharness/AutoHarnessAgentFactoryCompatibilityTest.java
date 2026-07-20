@@ -409,7 +409,8 @@ class AutoHarnessAgentFactoryCompatibilityTest {
     private static void assertTrustedLocalSysOperation(DeepAgent agent, Path expectedWorkspace) {
         SysOperation sysOperation = agent.getConfig().getSysOperation();
         assertThat(sysOperation).isNotNull();
-        var result = sysOperation.shell().executeCmd("printf trusted", ".", 30, null, null);
+        // Use echo for Windows cmd.exe compatibility (printf is Unix-only).
+        var result = sysOperation.shell().executeCmd("echo trusted", ".", 30, null, null);
 
         assertThat(result.getCode()).isZero();
         assertThat(result.getData().getStdout()).contains("trusted");

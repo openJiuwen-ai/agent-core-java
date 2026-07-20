@@ -41,7 +41,7 @@ public class CodeTool {
         }
 
         List<String> command = switch (normalized) {
-            case "python", "python3" -> List.of("python3", "-c", code);
+            case "python", "python3" -> List.of(resolvePythonExecutable(), "-c", code);
             case "bash" -> List.of("bash", "-lc", code);
             default -> List.of("sh", "-c", code);
         };
@@ -71,6 +71,47 @@ public class CodeTool {
         } catch (IOException | SecurityException | CompletionException ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();
         }
+    }
+
+    /**
+     * resolvePythonExecutable
+     *
+     * @return the python cmd of the specific os
+     * @since 0.1.7
+     */
+    private static String resolvePythonExecutable() {
+        boolean isWindows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+        String[] candidates = isWindows
+                ? new String[] {"python", "python3", "python.exe"}
+                : new String[] {"python3", "python"};
+        for (String candidate : candidates) {
+            if (isExecutableOnPath(candidate, isWindows)) {
+                return candidate;
+            }
+        }
+        return isWindows ? "python" : "python3";
+    }
+
+    /**
+     * isExecutableOnPath.
+     *
+     * @param candidate executable name
+     * @param isWindows whether the host OS is Windows
+     * @return true when the executable exists on PATH
+     * @since 0.1.7
+     */
+    private static boolean isExecutableOnPath(String candidate, boolean isWindows) {
+        String pathEnv = System.getenv("PATH");
+        if (pathEnv == null) {
+            return false;
+        }
+        for (String dir : pathEnv.split(java.io.File.pathSeparator)) {
+            java.io.File file = new java.io.File(dir, candidate);
+            if (file.isFile() && (isWindows || file.canExecute())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -225,7 +225,10 @@ public class AgentCard extends BaseCard {
         @Override
         public AgentCard build() {
             AgentCard card = new AgentCard();
-            card.setId(id);
+            // Keep BaseCard's default UUID when caller did not set id explicitly.
+            if (id != null && !id.isBlank()) {
+                card.setId(id);
+            }
             card.setName(name);
             card.setDescription(description);
             card.setInputParams(inputParams);

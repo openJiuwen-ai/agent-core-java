@@ -223,8 +223,8 @@ public class ToolMgr {
         }
         McpClient client = createClient(serverConfig);
         try {
-            boolean connected = client.connect();
-            if (!connected) {
+            boolean isConnected = client.connect(1, 30f);
+            if (!isConnected) {
                 throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_CONNECTION_ERROR, "server_config",
                         String.valueOf(serverConfig), "reason", "");
             }

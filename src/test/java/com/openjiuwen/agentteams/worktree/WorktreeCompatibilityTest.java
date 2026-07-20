@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.agentteams.messager.InProcessMessager;
 import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
+import com.openjiuwen.core.testsupport.OsTestSupport;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -280,6 +281,7 @@ class WorktreeCompatibilityTest {
 
     @Test
     void managerShouldRejectNonGitRoot() throws Exception {
+        OsTestSupport.assumeGitAvailable();
         Path nonRepo = tempDir.resolve("not-repo");
         Files.createDirectories(nonRepo);
         WorktreeManager manager = new WorktreeManager(WorktreeConfig.builder().build());
@@ -374,7 +376,9 @@ class WorktreeCompatibilityTest {
     private Path createGitRepo() throws Exception {
         Path repoRoot = tempDir.resolve("repo-" + System.nanoTime());
         Files.createDirectories(repoRoot);
-        runGitOrThrow(repoRoot, "init", "-b", "main");
+        // Avoid `git init -b` (requires Git >= 2.28); set branch name before first commit.
+        runGitOrThrow(repoRoot, "init");
+        runGitOrThrow(repoRoot, "symbolic-ref", "HEAD", "refs/heads/main");
         runGitOrThrow(repoRoot, "config", "user.email", "test@example.com");
         runGitOrThrow(repoRoot, "config", "user.name", "Test User");
         Files.writeString(repoRoot.resolve("README.md"), "hello\n");
@@ -400,6 +404,7 @@ class WorktreeCompatibilityTest {
     }
 
     private static GitResult runGit(Path cwd, String... args) throws Exception {
+        OsTestSupport.assumeGitAvailable();
         List<String> command = new ArrayList<>();
         command.add("git");
         command.addAll(List.of(args));

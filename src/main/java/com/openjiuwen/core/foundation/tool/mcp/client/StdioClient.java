@@ -346,8 +346,7 @@ public class StdioClient implements McpClient {
     private Map<String, Object> readLine(long deadlineMs) throws Exception {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         while (true) {
-            checkDeadline(deadlineMs);
-            checkProcessAlive();
+            waitForReadableByte(deadlineMs);
             int current = stdout.read();
             if (current == -1) {
                 throw new IOException("MCP STDIO subprocess stream closed unexpectedly");
@@ -365,6 +364,31 @@ public class StdioClient implements McpClient {
         }
         return MAPPER.readValue(lineBytes, new TypeReference<>() {
         });
+    }
+
+    /**
+     * Poll until at least one byte is available, respecting deadline and process liveness.
+     * Avoids indefinite block on {@link InputStream#read()} when the peer is silent.
+     *
+     * @param deadlineMs long
+     * @throws Exception Exception
+     *
+     * @since 0.1.7
+     */
+    private void waitForReadableByte(long deadlineMs) throws Exception {
+        while (stdout.available() <= 0) {
+            checkDeadline(deadlineMs);
+            checkProcessAlive();
+            long sleepMs = 20L;
+            if (deadlineMs != 0L) {
+                long remaining = deadlineMs - System.currentTimeMillis();
+                if (remaining <= 0L) {
+                    throw new SocketTimeoutException("MCP STDIO read timeout");
+                }
+                sleepMs = Math.min(sleepMs, remaining);
+            }
+            Thread.sleep(sleepMs);
+        }
     }
 
     /**

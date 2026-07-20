@@ -37,7 +37,6 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -343,7 +342,7 @@ public class AgentConfigurator {
                 teamName, currentMemberName, isLeader, messager, ctx.getSessionId());
         this.teamBackend.syncMembers(spec.getMembers());
 
-        String roleValue = ctx.getRole() != null ? ctx.getRole().name().toLowerCase(Locale.ROOT) : "leader";
+        String roleValue = ctx.getRole() != null ? payloadRole(ctx.getRole()) : "leader";
         String teammateMode = spec.getTeammateMode() != null ? spec.getTeammateMode() : "build_mode";
         String teamMode = spec.getTeamMode() != null && !spec.getTeamMode().isBlank() ? spec.getTeamMode() : "default";
         Set<String> excludeTools = "predefined".equals(teamMode) ? Set.of("spawn_member") : Set.of();

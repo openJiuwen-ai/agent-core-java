@@ -28,6 +28,7 @@ import com.openjiuwen.autoharness.stages.PublishPrStage;
 import com.openjiuwen.core.common.security.JsonUtils;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
@@ -35,6 +36,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 class AutoHarnessCompatibilityTest {
     @TempDir
@@ -112,9 +114,10 @@ class AutoHarnessCompatibilityTest {
     }
 
     @Test
+    @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void orchestratorShouldRunTasksIntoCycleResults() {
-        AutoHarnessOrchestrator orchestrator =
-            AutoHarnessFactory.createAutoHarnessOrchestrator(AutoHarnessConfig.builder().workspace("./repo").build());
+        AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(AutoHarnessConfig
+                .builder().workspace("./repo").taskTimeoutSecs(30.0).sessionBudgetSecs(90.0).build());
 
         List<CycleResult> results =
             orchestrator.runSession(List.of(OptimizationTask.builder().topic("Improve task planning rail").build(),
@@ -134,9 +137,10 @@ class AutoHarnessCompatibilityTest {
     }
 
     @Test
+    @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void orchestratorShouldStorePipelineSelectionArtifact() {
-        AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(
-                AutoHarnessConfig.builder().pipelineName("meta_evolve_pipeline").build());
+        AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(AutoHarnessConfig
+                .builder().pipelineName("meta_evolve_pipeline").taskTimeoutSecs(30.0).sessionBudgetSecs(60.0).build());
 
         orchestrator.runSession(List.of(OptimizationTask.builder().topic("Refine prompt rails").build()));
 
@@ -154,7 +158,7 @@ class AutoHarnessCompatibilityTest {
     }
 
     @Test
-    void researchContextShouldMirrorPythonSchemaDefaults() {
+    void researchContextShouldExposeJavaDefaults() {
         ResearchContext context = new ResearchContext();
 
         assertThat(context.getExperiences()).isEmpty();
@@ -163,7 +167,7 @@ class AutoHarnessCompatibilityTest {
     }
 
     @Test
-    void enumJsonValuesShouldMirrorPythonStrEnumValues() {
+    void enumJsonValuesShouldMatchJavaContract() {
         assertThat(TaskStatus.PENDING.value()).isEqualTo("pending");
         assertThat(TaskStatus.RUNNING.value()).isEqualTo("running");
         assertThat(TaskStatus.SUCCESS.value()).isEqualTo("success");
@@ -181,7 +185,7 @@ class AutoHarnessCompatibilityTest {
     }
 
     @Test
-    void schemaDefaultsShouldMirrorPythonCoreModels() {
+    void schemaDefaultsShouldMatchJavaModels() {
         Gap emptyGap = new Gap();
         Gap weightedGap = Gap.builder().impact(0.8).feasibility(0.5).build();
         OptimizationTask task = OptimizationTask.builder().topic("fix timeout").build();
@@ -202,7 +206,7 @@ class AutoHarnessCompatibilityTest {
     }
 
     @Test
-    void configDefaultsShouldMirrorPythonSchema() {
+    void configDefaultsShouldMatchJavaSchema() {
         AutoHarnessConfig config = new AutoHarnessConfig();
 
         assertThat(config.getDataDir()).isEmpty();
@@ -223,7 +227,7 @@ class AutoHarnessCompatibilityTest {
     }
 
     @Test
-    void mutableDefaultsShouldBeIndependentLikePythonDefaultFactories() {
+    void mutableDefaultsShouldBeIndependentAcrossInstances() {
         AutoHarnessConfig firstConfig = new AutoHarnessConfig();
         AutoHarnessConfig secondConfig = new AutoHarnessConfig();
         Gap firstGap = new Gap();
@@ -423,8 +427,12 @@ class AutoHarnessCompatibilityTest {
 
     @Test
     void configShouldResolveCiGatePythonExecutableFromWorkspaceAndLocalRepoVenv() throws Exception {
-        Path workspacePython = tempDir.resolve("workspace").resolve(".venv").resolve("bin").resolve("python");
-        Path localRepoPython = tempDir.resolve("local-repo").resolve(".venv").resolve("bin").resolve("python");
+        // Match AutoHarnessConfig.executableName(): Windows looks for python.exe under .venv/bin.
+        String pythonName = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")
+                ? "python.exe"
+                : "python";
+        Path workspacePython = tempDir.resolve("workspace").resolve(".venv").resolve("bin").resolve(pythonName);
+        Path localRepoPython = tempDir.resolve("local-repo").resolve(".venv").resolve("bin").resolve(pythonName);
         Files.createDirectories(workspacePython.getParent());
         Files.createDirectories(localRepoPython.getParent());
         Files.writeString(workspacePython, "#!/usr/bin/env python\n");

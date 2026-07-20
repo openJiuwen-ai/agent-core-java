@@ -7,6 +7,7 @@ package com.openjiuwen.core.sysop.local;
 import static org.junit.jupiter.api.Assertions.*;
 
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.testsupport.OsTestSupport;
 import com.openjiuwen.core.sysop.BaseShellOperation;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperation;
@@ -16,7 +17,6 @@ import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
 
 import org.junit.jupiter.api.*;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
@@ -55,24 +55,7 @@ class LocalShellOperationTest {
         return results;
     }
 
-    private static boolean isWindows() {
-        return System.getProperty("os.name", "").toLowerCase().contains("win");
-    }
-
-    private static boolean isPythonAvailable() {
-        String pathEnv = System.getenv("PATH");
-        if (pathEnv == null) {
-            return false;
-        }
-        String pythonExe = isWindows() ? "python.exe" : "python";
-        for (String dir : pathEnv.split(File.pathSeparator)) {
-            File f = new File(dir, pythonExe);
-            if (f.exists() && f.isFile() && f.canExecute()) {
-                return true;
-            }
-        }
-        return false;
-    }
+    // isPythonAvailable removed — timeout tests use platform-native long-running commands
 
     // ==================== executeCmd Test Cases ====================
 
@@ -90,7 +73,7 @@ class LocalShellOperationTest {
     @Test
     @DisplayName("Platform specific list directory command")
     void testShellListDir() {
-        String cmd = isWindows() ? "dir" : "ls -la";
+        String cmd = OsTestSupport.isWindows() ? "dir" : "ls -la";
         ExecuteCmdResult res = shell().executeCmd(cmd, null, 300, null, null);
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
         assertNotNull(res.getData());
@@ -102,7 +85,7 @@ class LocalShellOperationTest {
     @DisplayName("Shell with environment variables")
     void testShellEnvironmentVariables() {
         Map<String, String> env = Map.of("TEST_VAR", "custom_value");
-        String cmd = isWindows() ? "echo %TEST_VAR%" : "echo $TEST_VAR";
+        String cmd = OsTestSupport.isWindows() ? "echo %TEST_VAR%" : "echo $TEST_VAR";
         ExecuteCmdResult res = shell().executeCmd(cmd, null, 300, env, null);
 
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
@@ -115,7 +98,7 @@ class LocalShellOperationTest {
         File subdir = new File(workDir.toFile(), "subdir");
         subdir.mkdirs();
 
-        String cmd = isWindows() ? "echo %CD%" : "pwd";
+        String cmd = OsTestSupport.isWindows() ? "echo %CD%" : "pwd";
         ExecuteCmdResult res = shell().executeCmd(cmd, subdir.getAbsolutePath(), 300, null, null);
 
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
@@ -128,7 +111,7 @@ class LocalShellOperationTest {
         File subdir = new File(workDir.toFile(), "rel_subdir");
         subdir.mkdirs();
 
-        String cmd = isWindows() ? "echo %CD%" : "pwd";
+        String cmd = OsTestSupport.isWindows() ? "echo %CD%" : "pwd";
         ExecuteCmdResult res = shell().executeCmd(cmd, "rel_subdir", 300, null, null);
 
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
@@ -138,7 +121,7 @@ class LocalShellOperationTest {
     @Test
     @DisplayName("Shell defaults to workDir when no cwd provided")
     void testShellDefaultCwd() {
-        String cmd = isWindows() ? "echo %CD%" : "pwd";
+        String cmd = OsTestSupport.isWindows() ? "echo %CD%" : "pwd";
         ExecuteCmdResult res = shell().executeCmd(cmd, null, 300, null, null);
 
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
@@ -150,33 +133,44 @@ class LocalShellOperationTest {
 
     @Test
     @DisplayName("Shell command timeout")
-    void testShellTimeout() {
-        Assumptions.assumeTrue(isPythonAvailable(), "Python not found, skipping test");
-        String cmd = "python -c \"import time; time.sleep(5)\"";
-        ExecuteCmdResult res = shell().executeCmd(cmd, null, 1, null, null);
+    void testShellTimeout() throws Exception {
+        // Use a separate cwd so @TempDir cleanup is not blocked by the timed-out process on Windows.
+        Path separateDir = java.nio.file.Files.createTempDirectory("shell-timeout");
+        try {
+            LocalWorkConfig cfg =
+                LocalWorkConfig.builder().workDir(separateDir.toString()).shellAllowlist(null).build();
+            SysOperationCard card = new SysOperationCard();
+            card.setId("shell_timeout_test");
+            card.setMode(OperationMode.LOCAL);
+            card.setWorkConfig(cfg);
+            SysOperation localOp = new SysOperation(card);
 
-        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), res.getCode());
-        assertTrue(res.getMessage().toLowerCase().contains("timeout"));
-    }
+            String cmd = OsTestSupport.isWindows() ? "ping -n 30 127.0.0.1" : "sleep 30";
+            ExecuteCmdResult res = localOp.shell().executeCmd(cmd, null, 1, null, null);
 
-    @Test
-    @DisplayName("Shell ping timeout")
-    void testShellPingTimeout() {
-        String cmd = "ping 127.0.0.1";
-        ExecuteCmdResult res = shell().executeCmd(cmd, null, 1, null, null);
-
-        assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), res.getCode());
-        assertTrue(res.getMessage().toLowerCase().contains("timeout"));
-        // Partial data may be captured
-        assertNotNull(res.getData());
+            assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), res.getCode());
+            assertTrue(res.getMessage().toLowerCase().contains("timeout"));
+            assertNotNull(res.getData());
+        } finally {
+            Thread.sleep(500);
+            try {
+                java.nio.file.Files.walk(separateDir).sorted(java.util.Comparator.reverseOrder()).forEach(p -> {
+                    try {
+                        java.nio.file.Files.deleteIfExists(p);
+                    } catch (Exception ignored) {
+                    }
+                });
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     @Test
     @DisplayName("Shell allowlist enforcement")
     void testShellAllowlist() {
         // Create operation with restricted allowlist
-        LocalWorkConfig config =
-            LocalWorkConfig.builder().shellAllowlist(List.of("echo", "pwd")).workDir(workDir.toString()).build();
+        LocalWorkConfig config = LocalWorkConfig.builder()
+                .shellAllowlist(List.of("echo", OsTestSupport.cwdCommand())).workDir(workDir.toString()).build();
         SysOperationCard card = new SysOperationCard();
         card.setId("test_allowlist");
         card.setMode(OperationMode.LOCAL);
@@ -184,7 +178,7 @@ class LocalShellOperationTest {
         SysOperation restrictedOp = new SysOperation(card);
 
         // Allowed command
-        String allowedCmd = isWindows() ? "echo hello" : "pwd";
+        String allowedCmd = OsTestSupport.isWindows() ? "echo hello" : OsTestSupport.cwdCommand();
         ExecuteCmdResult allowedRes = restrictedOp.shell().executeCmd(allowedCmd, null, 300, null, null);
         assertEquals(StatusCode.SUCCESS.getCode(), allowedRes.getCode());
 
@@ -227,7 +221,7 @@ class LocalShellOperationTest {
         card.setWorkConfig(config);
         SysOperation restrictedOp = new SysOperation(card);
 
-        ExecuteCmdResult deniedRes = restrictedOp.shell().executeCmd("pwd", cwdOutside.toString(), 300, null, null);
+        ExecuteCmdResult deniedRes = restrictedOp.shell().executeCmd(OsTestSupport.cwdCommand(), cwdOutside.toString(), 300, null, null);
         assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), deniedRes.getCode());
         assertTrue(deniedRes.getMessage().contains("Access denied"));
     }
@@ -254,19 +248,14 @@ class LocalShellOperationTest {
     @Test
     @DisplayName("Shell background execution returns pid")
     void testShellBackgroundExecution() {
-        String cmd = isWindows() ? "ping -n 3 127.0.0.1 > NUL" : "sleep 2";
-        var result = shell().executeCmdBackground(cmd, null, null, 0.1, null);
+        String cmd = OsTestSupport.shortBackgroundWaitCommand();
+        var result = shell().executeCmdBackground(cmd, null, null, 0, null);
 
         assertEquals(StatusCode.SUCCESS.getCode(), result.getCode());
         assertNotNull(result.getData());
         assertNotNull(result.getData().getPid());
         assertTrue(result.getData().getPid() > 0);
-        ProcessHandle.of(result.getData().getPid()).ifPresent(handle -> {
-            handle.destroy();
-            if (handle.isAlive()) {
-                handle.destroyForcibly();
-            }
-        });
+        OsTestSupport.destroyProcessTree(result.getData().getPid());
     }
 
     @Test
@@ -279,13 +268,14 @@ class LocalShellOperationTest {
     }
 
     @Test
-    @DisplayName("Shell options can request bash shell type")
-    void testShellTypeOptionBash() {
-        Assumptions.assumeFalse(isWindows(), "bash shell_type test is Unix-like only");
-        ExecuteCmdResult res = shell().executeCmd("echo shell-ok", null, 300, null, Map.of("shell_type", "bash"));
+    @DisplayName("Shell options can request an explicit shell type")
+    void testShellTypeOption() {
+        String shellType = OsTestSupport.isWindows() ? "cmd" : "bash";
+        ExecuteCmdResult res =
+            shell().executeCmd("echo shell-ok", null, 300, null, Map.of("shell_type", shellType));
 
         assertEquals(StatusCode.SUCCESS.getCode(), res.getCode());
-        assertEquals("bash", res.getData().getShellType());
+        assertEquals(shellType, res.getData().getShellType());
         assertTrue(res.getData().getStdout().contains("shell-ok"));
     }
 
@@ -295,7 +285,7 @@ class LocalShellOperationTest {
     @DisplayName("Stream: basic streaming execution")
     void testStreamBasic() {
         String cmd;
-        if (isWindows()) {
+        if (OsTestSupport.isWindows()) {
             cmd = "echo chunk1 && echo chunk2 && echo error_chunk 1>&2";
         } else {
             cmd = "echo chunk1; sleep 0.01; echo chunk2; sleep 0.01; echo error_chunk 1>&2";
@@ -345,7 +335,7 @@ class LocalShellOperationTest {
             card.setWorkConfig(cfg);
             SysOperation localOp = new SysOperation(card);
 
-            String cmd = isWindows() ? "ping -n 10 127.0.0.1" : "sleep 10";
+            String cmd = OsTestSupport.isWindows() ? "ping -n 10 127.0.0.1" : "sleep 10";
             List<ExecuteCmdStreamResult> results =
                 collectStreamResults(localOp.shell().executeCmdStream(cmd, null, 1, null, null));
 
@@ -403,7 +393,7 @@ class LocalShellOperationTest {
         assertTrue(hasAllowed);
 
         // Denied
-        String denyCmd = isWindows() ? "dir" : "ls";
+        String denyCmd = OsTestSupport.isWindows() ? "dir" : "ls";
         List<ExecuteCmdStreamResult> denyResults =
             collectStreamResults(restrictedOp.shell().executeCmdStream(denyCmd, null, 300, null, null));
         assertEquals(StatusCode.SYS_OPERATION_SHELL_EXECUTION_ERROR.getCode(), denyResults.get(0).getCode());
@@ -413,7 +403,7 @@ class LocalShellOperationTest {
     @Test
     @DisplayName("Stream: continuous output (ping)")
     void testStreamContinuousOutput() {
-        String cmd = isWindows() ? "ping -n 3 127.0.0.1" : "ping -c 3 127.0.0.1";
+        String cmd = OsTestSupport.isWindows() ? "ping -n 3 127.0.0.1" : "ping -c 3 127.0.0.1";
         List<ExecuteCmdStreamResult> results =
             collectStreamResults(shell().executeCmdStream(cmd, null, 15, null, null));
 

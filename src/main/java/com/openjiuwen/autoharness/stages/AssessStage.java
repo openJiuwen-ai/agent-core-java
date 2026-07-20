@@ -16,7 +16,6 @@ import com.openjiuwen.autoharness.schema.Experience;
 import com.openjiuwen.autoharness.schema.ExperienceType;
 import com.openjiuwen.autoharness.schema.Gap;
 import com.openjiuwen.autoharness.schema.StageResult;
-import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,7 +30,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Public class AssessStage used by the Java parity implementation.
@@ -329,34 +327,22 @@ public class AssessStage extends SessionStage {
      */
     private static List<String> runGitLines(String workspace, String... args) {
         try {
-            Process process = new ProcessBuilder(concat("git", args))
-                    .directory(Path.of(hasText(workspace) ? workspace : ".").toFile()).redirectErrorStream(false)
+            // Merge stderr + close stdin: avoids pipe deadlocks (unused stderr / interactive wait)
+            List<String> command = concat("git", args);
+            command.add(1, "--no-pager");
+            Process process = new ProcessBuilder(command)
+                    .directory(Path.of(hasText(workspace) ? workspace : ".").toFile()).redirectErrorStream(true)
                     .start();
-            CompletableFuture<String> stdoutFuture = OpenJiuwenExecutors.supplyBackgroundAsync(
-                    () -> readStdout(process));
-            int code = process.onExit().join().exitValue();
-            String stdout = stdoutFuture.join();
+            process.getOutputStream().close();
+            String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            int code = process.waitFor();
             if (code != 0) {
                 return List.of();
             }
             return stdout.lines().map(String::trim).filter(line -> !line.isEmpty()).toList();
-        } catch (IllegalStateException | IOException ex) {
+        } catch (IllegalStateException | IOException | InterruptedException ex) {
+            // return empty and let the stage continue.
             return List.of();
-        }
-    }
-
-    /**
-     * readStdout.
-     * 
-     * @param process process
-     * @return the result
-     * @since 0.1.7
-     */
-    private static String readStdout(Process process) {
-        try {
-            return new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException ex) {
-            return "";
         }
     }
 

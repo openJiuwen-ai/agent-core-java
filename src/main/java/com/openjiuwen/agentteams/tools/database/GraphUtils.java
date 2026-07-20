@@ -63,7 +63,7 @@ public final class GraphUtils {
      * 
      * @param adjacency outgoing-edge adjacency map (taskId -> dependsOn list)
      * @return the cycle as a list of task IDs (repeated node at both ends,
-     *         e.g. [A, B, C, A]), or {@code null} if the graph is acyclic
+     *         e.g. [A, B, C, A]), or an empty list if the graph is acyclic
      * @since 0.1.7
      */
     public static List<String> detectCycleInAdjacency(Map<String, List<String>> adjacency) {

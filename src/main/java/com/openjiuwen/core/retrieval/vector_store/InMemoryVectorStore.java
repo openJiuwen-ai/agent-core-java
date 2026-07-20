@@ -928,8 +928,8 @@ public class InMemoryVectorStore implements VectorStore, SchemaMutableVectorStor
             case "UpdateEmbeddingDimensionOperation" -> {
                 String fieldName = readString(operation, "getFieldName");
                 int newDimension = readInt(operation, "getNewDimension");
-                if ((fieldName == null || fieldName.equals(vectorField) || fieldName.equals("embedding")
-                        || fieldName.equals("vector")) && vector != null) {
+                if ((fieldName == null || fieldName.equals(vectorField) || "embedding".equals(fieldName)
+                        || "vector".equals(fieldName)) && vector != null) {
                     vector = resizeVector(vector, newDimension);
                     fields.put(vectorField, vector);
                 }

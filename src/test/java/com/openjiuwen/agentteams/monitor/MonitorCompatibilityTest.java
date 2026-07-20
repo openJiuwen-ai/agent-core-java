@@ -39,7 +39,8 @@ class MonitorCompatibilityTest {
     @Test
     void monitorShouldQueryBackendStateAndReceiveEvents() throws Exception {
         InProcessMessager messager = new InProcessMessager(MessagerTransportConfig.builder().nodeId("leader").build());
-        TeamBackend backend = new TeamBackend("team-a", "leader", true, messager);
+        // Unique team id: MEMORY TeamDatabase is process-shared; "team-a" leaks members from other tests.
+        TeamBackend backend = new TeamBackend("team-monitor-query", "leader", true, messager);
         backend.spawnMember("member1", "Member One", AgentCard.builder().name("agent").description("desc").build()).join();
 
         TeamMonitor monitor = new TeamMonitor(backend);
@@ -48,13 +49,13 @@ class MonitorCompatibilityTest {
         backend.getTaskManager().add("Task 1", "Content 1").join();
         backend.getMessageManager().sendMessage("hello", "member1").join();
 
-        assertThat(monitor.getTeamInfo().orElseThrow().getTeamId()).isEqualTo("team-a");
+        assertThat(monitor.getTeamInfo().orElseThrow().getTeamId()).isEqualTo("team-monitor-query");
         assertThat(monitor.getMembers()).hasSize(2);
         assertThat(monitor.getTasks()).hasSize(1);
         assertThat(monitor.getMessages()).isNotEmpty();
 
         MonitorEvent event = monitor.nextEvent();
-        assertThat(event.getTeamId()).isEqualTo("team-a");
+        assertThat(event.getTeamId()).isEqualTo("team-monitor-query");
     }
 
     @Test

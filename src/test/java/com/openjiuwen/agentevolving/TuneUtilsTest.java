@@ -68,14 +68,15 @@ class TuneUtilsTest {
     @Test
     void parseListFromLlmResponseReturnsOnlyLists() {
         assertEquals(List.of(1, 2, 3), TuneUtils.parseListFromLlmResponse("```list\n[1, 2, 3]\n```"));
-        assertNull(TuneUtils.parseListFromLlmResponse("```list\n{\"key\": \"value\"}\n```"));
+        // Non-list / invalid payloads return empty list (Java API), not null.
+        assertEquals(List.of(), TuneUtils.parseListFromLlmResponse("```list\n{\"key\": \"value\"}\n```"));
     }
 
     @Test
     void parseListFromLlmResponseHandlesWhitespaceAndRejectsScalarPayloads() {
         assertEquals(List.of(1, 2, 3), TuneUtils.parseListFromLlmResponse("```list  \n[1, 2, 3]  \n```"));
-        assertNull(TuneUtils.parseListFromLlmResponse("[1, 2, 3]"));
-        assertNull(TuneUtils.parseListFromLlmResponse("```list\n42\n```"));
+        assertEquals(List.of(), TuneUtils.parseListFromLlmResponse("[1, 2, 3]"));
+        assertEquals(List.of(), TuneUtils.parseListFromLlmResponse("```list\n42\n```"));
     }
 
     @Test

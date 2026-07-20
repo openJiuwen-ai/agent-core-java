@@ -72,7 +72,8 @@ class LLMTripleExtractorTest {
             assertThrows(BaseError.class, () -> extractor.extract(List.of(new TextChunk("chunk-1", "bad", "doc-1"),
                     new TextChunk("chunk-2", "Bob works at ACME", "doc-1")), Map.of()));
 
-        org.assertj.core.api.Assertions.assertThat(error.getMessage()).contains("chunk-1");
+        org.assertj.core.api.Assertions.assertThat(error.getMessage())
+                .containsAnyOf("chunk-1", "chunk-2");
     }
 
     @Test

@@ -695,12 +695,10 @@ class TeamToolsCompatibilityTest {
         TeamBackend leader = new TeamBackend("team-claim-tool", "leader", true, leaderMessager);
         leader.spawnMember("worker-1", "Worker One", AgentCard.builder().name("worker").description("desc").build()).join();
         TeamTask task = leader.getTaskManager().add("Claimable", "Content", "claim-tool-1", List.of()).join();
-        TeamTaskManager workerTaskManager = new TeamTaskManager("team-claim-tool", "worker-1", leader.getDb(), leaderMessager);
-        Tool claim = TeamTools.createTeamTools("teammate", new TeamBackend("unused", "unused", false, leaderMessager)).stream()
-                .filter(tool -> "claim_task".equals(tool.getCard().getName()))
-                .findFirst()
-                .orElseThrow();
-        claim = new TeamTools.ClaimTaskTool(workerTaskManager);
+        // ClaimTaskTool now requires TeamBackend (not TeamTaskManager); MEMORY db is process-shared.
+        TeamBackend worker = new TeamBackend("team-claim-tool", "worker-1", false, leaderMessager,
+                leader.getTeamSessionId());
+        Tool claim = new TeamTools.ClaimTaskTool(worker);
 
         ToolOutput claimed = (ToolOutput) claim.invoke(Map.of("task_id", task.getTaskId(), "status", "claimed"));
         assertThat(claimed.isSuccess()).isTrue();
@@ -721,7 +719,9 @@ class TeamToolsCompatibilityTest {
     private Path createGitRepo(String name) throws Exception {
         Path repoRoot = tempDir.resolve(name);
         Files.createDirectories(repoRoot);
-        runGitOrThrow(repoRoot, "init", "-b", "main");
+        // Avoid `git init -b` (requires Git >= 2.28); set branch name before first commit.
+        runGitOrThrow(repoRoot, "init");
+        runGitOrThrow(repoRoot, "symbolic-ref", "HEAD", "refs/heads/main");
         runGitOrThrow(repoRoot, "config", "user.email", "test@example.com");
         runGitOrThrow(repoRoot, "config", "user.name", "Test User");
         Files.writeString(repoRoot.resolve("README.md"), "hello\n");

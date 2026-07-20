@@ -17,6 +17,7 @@ import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 import com.openjiuwen.core.sysop.result.ExecuteCmdResult;
 import com.openjiuwen.core.sysop.result.ExecuteCmdStreamResult;
 import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
+import com.openjiuwen.core.testsupport.OsTestSupport;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -99,8 +100,9 @@ class JiuwenBoxShellProviderTest {
     @Test
     @DisplayName("executeCmd routes excluded command to local execution")
     void testExecuteCmdExcludedCommand() throws Exception {
+        String cwdCmd = OsTestSupport.cwdCommand();
         LinkedHashMap<String, Object> extraParams = new LinkedHashMap<>();
-        extraParams.put("excluded_commands", List.of("pwd"));
+        extraParams.put("excluded_commands", List.of(cwdCmd));
         extraParams.put("root_path", System.getProperty("java.io.tmpdir"));
 
         SandboxEndpoint endpoint =
@@ -108,11 +110,11 @@ class JiuwenBoxShellProviderTest {
         SandboxGatewayConfig config = SandboxGatewayConfig.builder()
                 .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
                         .baseUrl("http://mock-server:8080").sandboxType("jiuwenbox").extraParams(extraParams).build())
-                .params(Map.of("root_path", System.getProperty("java.io.tmpdir"), "shell_allowlist", List.of("pwd")))
+                .params(Map.of("root_path", System.getProperty("java.io.tmpdir"), "shell_allowlist", List.of(cwdCmd)))
                 .build();
         provider = createProviderWithMockClient(endpoint, config);
 
-        ExecuteCmdResult result = provider.executeCmd("pwd", ".", 30, null, null);
+        ExecuteCmdResult result = provider.executeCmd(cwdCmd, ".", 30, null, null);
 
         assertThat(result.getData()).isNotNull();
     }
@@ -123,6 +125,7 @@ class JiuwenBoxShellProviderTest {
         when(mockClient.exec(anyString(), anyList(), anyString(), anyInt(), any(), any()))
                 .thenReturn(makeExecResponse("", "error", 1));
 
+        String cwdCmd = OsTestSupport.cwdCommand();
         LinkedHashMap<String, Object> extraParams = new LinkedHashMap<>();
         extraParams.put("fallback_on_failure", true);
         extraParams.put("root_path", System.getProperty("java.io.tmpdir"));
@@ -132,11 +135,11 @@ class JiuwenBoxShellProviderTest {
         SandboxGatewayConfig config = SandboxGatewayConfig.builder()
                 .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
                         .baseUrl("http://mock-server:8080").sandboxType("jiuwenbox").extraParams(extraParams).build())
-                .params(Map.of("root_path", System.getProperty("java.io.tmpdir"), "shell_allowlist", List.of("pwd")))
+                .params(Map.of("root_path", System.getProperty("java.io.tmpdir"), "shell_allowlist", List.of(cwdCmd)))
                 .build();
         provider = createProviderWithMockClient(endpoint, config);
 
-        ExecuteCmdResult result = provider.executeCmd("pwd", ".", 30, null, null);
+        ExecuteCmdResult result = provider.executeCmd(cwdCmd, ".", 30, null, null);
 
         assertThat(result.getData()).isNotNull();
     }

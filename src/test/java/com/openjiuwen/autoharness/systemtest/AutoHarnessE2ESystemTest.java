@@ -15,6 +15,7 @@ import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
 import com.openjiuwen.core.systemtest.ApiConfigLoader;
+import com.openjiuwen.core.testsupport.OsTestSupport;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -44,6 +45,7 @@ class AutoHarnessE2ESystemTest {
                 "real MODEL_PROVIDER is required in environment or APIKEY/apiconfig.json");
         assumeTrue(hasRealText(api.get("MODEL_NAME")),
                 "real MODEL_NAME is required in environment or APIKEY/apiconfig.json");
+        OsTestSupport.assumeGitAvailable();
 
         Path repo = tempDir.resolve("repo");
         Path origin = tempDir.resolve("origin.git");
@@ -199,6 +201,9 @@ class AutoHarnessE2ESystemTest {
     }
 
     private static String run(Path cwd, String... command) throws Exception {
+        if (command.length > 0 && "git".equals(command[0])) {
+            OsTestSupport.assumeGitAvailable();
+        }
         Process process = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
         int code = process.waitFor();

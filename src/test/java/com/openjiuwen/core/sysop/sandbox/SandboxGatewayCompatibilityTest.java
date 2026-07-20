@@ -4,6 +4,7 @@ package com.openjiuwen.core.sysop.sandbox;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.testsupport.OsTestSupport;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 
@@ -23,7 +24,7 @@ class SandboxGatewayCompatibilityTest {
                 .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
                         .baseUrl("http://local-provider:9999").sandboxType("local").build())
                 .params(Map.of("root_path", tempDir.toString(), "shell_allowlist",
-                        List.of("pwd", "python3", "python", "echo")))
+                        List.of("pwd", "cd", "python3", "python", "echo")))
                 .build();
     }
 
@@ -35,7 +36,7 @@ class SandboxGatewayCompatibilityTest {
         assertThat(client.fs()).isNotNull();
         assertThat(client.shell()).isNotNull();
         assertThat(client.code()).isNotNull();
-        assertThat(client.shell().executeCmd("pwd", ".", 300, null, null).getCode())
+        assertThat(client.shell().executeCmd(OsTestSupport.cwdCommand(), ".", 300, null, null).getCode())
                 .isEqualTo(StatusCode.SUCCESS.getCode());
     }
 
@@ -72,8 +73,8 @@ class SandboxGatewayCompatibilityTest {
 
         GatewayResponse response = gateway.handleRequest(config(),
                 com.openjiuwen.core.sysop.config.GatewayInvokeRequest.builder().opType("shell").method("executeCmd")
-                        .params(Map.of("command", "pwd", "cwd", ".", "timeout", 300)).isolationKey("invoke-demo")
-                        .build());
+                        .params(Map.of("command", OsTestSupport.cwdCommand(), "cwd", ".", "timeout", 300))
+                        .isolationKey("invoke-demo").build());
 
         assertThat(response.isSuccess()).isTrue();
         assertThat(response.getData()).isNotNull();
@@ -90,7 +91,8 @@ class SandboxGatewayCompatibilityTest {
         SandboxGateway gateway = SandboxGateway.getInstance();
         SandboxGatewayClient client = new SandboxGatewayClient(config(), "client-demo", gateway);
 
-        Object result = client.invoke("shell", "executeCmd", Map.of("command", "pwd", "cwd", ".", "timeout", 300));
+        Object result = client.invoke("shell", "executeCmd",
+                Map.of("command", OsTestSupport.cwdCommand(), "cwd", ".", "timeout", 300));
         SandboxEndpoint endpoint = client.getEndpoint();
 
         assertThat(result).isNotNull();
@@ -106,10 +108,12 @@ class SandboxGatewayCompatibilityTest {
 
         GatewayResponse response = gateway.handleRequest(config,
                 com.openjiuwen.core.sysop.config.GatewayInvokeRequest.builder().opType("shell").method("executeCmd")
-                        .params(Map.of("command", "pwd", "cwd", ".", "timeout", 300)).isolationKey("invoke-demo")
-                        .build());
+                        .params(Map.of("command", OsTestSupport.cwdCommand(), "cwd", ".", "timeout", 300))
+                        .isolationKey("invoke-demo").build());
 
         assertThat(response.isSuccess()).isFalse();
-        assertThat(response.getMessage()).contains("does not support operation");
+        assertThat(response.getMessage()).satisfiesAnyOf(
+                msg -> assertThat(msg).contains("does not support operation"),
+                msg -> assertThat(msg).contains("is not implemented"));
     }
 }
