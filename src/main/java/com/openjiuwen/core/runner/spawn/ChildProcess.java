@@ -5,6 +5,7 @@
 package com.openjiuwen.core.runner.spawn;
 
 import com.openjiuwen.agentteams.agent.TeamAgent;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.runner.Runner;
 
 import java.io.BufferedReader;
@@ -22,9 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 /**
  * ChildProcess.
@@ -55,14 +53,7 @@ public final class ChildProcess {
         BufferedReader reader = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(protocolOut, StandardCharsets.UTF_8));
         Object writerLock = new Object();
-        ExecutorService agentExecutor =
-            new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>(), runnable -> {
-                Thread thread = new Thread(runnable, "runner-spawn-agent-task");
-                thread.setDaemon(true);
-                thread.setUncaughtExceptionHandler((ignoredThread, ignoredError) -> {
-                });
-                return thread;
-            });
+        ExecutorService agentExecutor = OpenJiuwenExecutors.newSingleThreadExecutor("runner-spawn-agent-task", true);
         Future<?> agentTask = null;
         Runner.start();
         try {

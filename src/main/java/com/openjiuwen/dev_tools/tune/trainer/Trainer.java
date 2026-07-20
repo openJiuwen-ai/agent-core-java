@@ -4,6 +4,7 @@
 
 package com.openjiuwen.dev_tools.tune.trainer;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.operator.legacy.llm_call.LLMCall;
 import com.openjiuwen.core.singleagent.legacy.BaseAgent;
@@ -21,7 +22,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * Trainer for prompt optimization.
@@ -248,7 +248,7 @@ public class Trainer {
         List<Map<String, Object>> results = new ArrayList<>();
         int workers = Math.min(numParallel, cases.size());
 
-        ExecutorService executor = Executors.newFixedThreadPool(workers);
+        ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("dev-tools-tune-trainer", workers, false);
 
         try {
             List<CompletableFuture<Map<String, Object>>> futures = new ArrayList<>();

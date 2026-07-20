@@ -6,6 +6,7 @@ package com.openjiuwen.dev_tools.prompt_builder.builder;
 
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -135,7 +136,7 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
      * @since 0.1.7
      */
     private CompletableFuture<List<Object>> formatBadCaseTemplate(String prompt, List<EvaluatedCase> cases) {
-        return CompletableFuture.supplyAsync(() -> {
+        return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
             try {
                 String feedback = getFeedbackFromBadCase(prompt, cases).get();
                 PromptTemplate badCaseOptimizeTemplate =
@@ -159,7 +160,7 @@ public class BadCasePromptBuilder extends BasePromptBuilder {
      * @since 0.1.7
      */
     private CompletableFuture<String> getFeedbackFromBadCase(String prompt, List<EvaluatedCase> cases) {
-        return CompletableFuture.supplyAsync(() -> {
+        return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
             try {
                 validateInput(prompt, cases);
                 String badCaseString = buildBadCaseString(cases);

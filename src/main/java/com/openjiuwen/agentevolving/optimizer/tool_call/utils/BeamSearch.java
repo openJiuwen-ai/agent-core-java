@@ -4,6 +4,8 @@
 
 package com.openjiuwen.agentevolving.optimizer.tool_call.utils;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
@@ -12,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
@@ -139,7 +140,8 @@ public class BeamSearch {
             return newBeamList;
         }
 
-        ExecutorService executor = Executors.newFixedThreadPool(numWorkers);
+        ExecutorService executor = OpenJiuwenExecutors.newFixedThreadPool("agent-evolving-beam-search", numWorkers,
+                false);
         try {
             List<Future<TreeNode>> futures = new ArrayList<>();
             for (TreeNode node : beamList) {

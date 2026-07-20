@@ -4,6 +4,7 @@
 
 package com.openjiuwen.extensions.message_queue;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.runner.PulsarConfig;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.MessageSerializer;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.message.DmqMessage;
@@ -24,9 +25,6 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -265,8 +263,8 @@ public class MessageQueuePulsar extends MessageQueueBase {
          * @param LinkedBlockingQueue<>( LinkedBlockingQueue<>(
          * @since 0.1.7
          */
-        private final ExecutorService executor =
-            new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new LinkedBlockingQueue<>());
+        private final ExecutorService executor = OpenJiuwenExecutors.newSingleThreadExecutor(
+                "pulsar-subscription", false);
 
         /**
          * AtomicBoolean.

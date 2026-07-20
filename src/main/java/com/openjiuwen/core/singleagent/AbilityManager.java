@@ -7,6 +7,7 @@ package com.openjiuwen.core.singleagent;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -35,6 +36,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -306,70 +310,213 @@ public class AbilityManager implements ToolRegistry {
             return List.of();
         }
 
-        List<ToolExecutionEntry> finalResults = new ArrayList<>();
-
-        for (ToolCall singleToolCall : toolCalls) {
-            AgentCallbackContext toolCtx = AgentCallbackContext.builder().agent(ctx.getAgent())
-                    .inputs(ToolCallInputs.builder().toolCall(singleToolCall).toolName(singleToolCall.getName())
-                            .toolArgs(singleToolCall.getArguments()).build())
-                    .config(ctx.getConfig()).session(session).context(ctx.getContext()).extra(ctx.getExtra()).build();
-            if (ctx.hasSteeringQueue()) {
-                toolCtx.bindSteeringQueue(ctx.getSteeringQueue());
-            }
-
-            try {
-                ToolExecutionEntry result;
-                try {
-                    result = railedExecuteSingleToolCall(toolCtx, singleToolCall, session, tag);
-                } finally {
-                    toolCtx.getExtra().remove("_skip_tool");
-                }
-
-                if (toolCtx.getInputs() instanceof ToolCallInputs inputs) {
-                    Object toolResult = inputs.getToolResult() != null
-                            ? inputs.getToolResult()
-                            : (result != null ? result.result() : null);
-                    ToolMessage toolMsg = inputs.getToolMsg() != null
-                            ? inputs.getToolMsg()
-                            : (result != null ? result.toolMessage() : null);
-                    finalResults.add(new ToolExecutionEntry(toolResult, toolMsg));
-                } else {
-                    finalResults.add(result);
-                }
-            } catch (Exception e) {
-                ToolInterruptException interruptException = unwrapToolInterrupt(e);
-                if (interruptException != null) {
-                    Loggers.AGENT.debug("Ability execution interrupted for tool {}: {}", singleToolCall.getName(),
-                            interruptException.getMessage());
-                    finalResults.add(new ToolExecutionEntry(interruptException, null));
-                    continue;
-                }
-
-                String errorMsg =
-                    "Ability execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
-                Loggers.AGENT.error(errorMsg);
-
-                Object toolResult = null;
-                ToolMessage toolMessage = null;
-
-                if (toolCtx.getInputs() instanceof ToolCallInputs inputs) {
-                    toolResult = inputs.getToolResult();
-                    toolMessage = inputs.getToolMsg();
-                }
-
-                if (toolMessage == null && e instanceof AbilityExecutionError aee) {
-                    toolMessage = aee.getToolMessage();
-                }
-
-                if (toolMessage == null) {
-                    toolMessage = ToolMessage.builder().content(errorMsg).toolCallId(singleToolCall.getId()).build();
-                }
-
-                finalResults.add(new ToolExecutionEntry(toolResult, toolMessage));
-            }
+        if (toolCalls.size() == 1) {
+            return List.of(executeOneToolCall(ctx, toolCalls.get(0), session, tag));
         }
 
+        return executeParallelToolCalls(ctx, toolCalls, session, tag);
+    }
+
+    private List<ToolExecutionEntry> executeParallelToolCalls(
+            AgentCallbackContext ctx,
+            List<ToolCall> toolCalls,
+            Session session,
+            String tag
+    ) {
+        List<AgentCallbackContext> toolContexts = new ArrayList<>();
+        List<CompletableFuture<ToolExecutionEntry>> futures = new ArrayList<>();
+        for (ToolCall singleToolCall : toolCalls) {
+            AgentCallbackContext toolCtx = buildToolCallbackContext(ctx, singleToolCall, session);
+            toolContexts.add(toolCtx);
+            CompletableFuture<ToolExecutionEntry> future = OpenJiuwenExecutors.withToolCallTimeout(
+                    OpenJiuwenExecutors.supplyToolCallAsync(
+                            () -> executePreparedToolCall(toolCtx, singleToolCall, session, tag)
+                    )
+            );
+            futures.add(future);
+        }
+
+        List<ToolExecutionEntry> finalResults = new ArrayList<>();
+        for (int i = 0; i < futures.size(); i++) {
+            finalResults.add(joinToolExecution(toolCalls.get(i), futures.get(i)));
+        }
+        for (AgentCallbackContext toolCtx : toolContexts) {
+            mergeToolContext(ctx, toolCtx);
+        }
         return finalResults;
+    }
+
+    private ToolExecutionEntry executeOneToolCall(
+            AgentCallbackContext ctx,
+            ToolCall singleToolCall,
+            Session session,
+            String tag
+    ) {
+        AgentCallbackContext toolCtx = buildToolCallbackContext(ctx, singleToolCall, session);
+        try {
+            return executePreparedToolCall(toolCtx, singleToolCall, session, tag);
+        } finally {
+            mergeToolContext(ctx, toolCtx);
+        }
+    }
+
+    private ToolExecutionEntry executePreparedToolCall(
+            AgentCallbackContext toolCtx,
+            ToolCall singleToolCall,
+            Session session,
+            String tag
+    ) {
+        Session previousSession = SessionContextHolder.getCurrentSession();
+        try {
+            SessionContextHolder.setCurrentSession(session);
+            ToolExecutionEntry result;
+            try {
+                result = railedExecuteSingleToolCall(toolCtx, singleToolCall, session, tag);
+            } finally {
+                toolCtx.getExtra().remove("_skip_tool");
+            }
+
+            if (toolCtx.getInputs() instanceof ToolCallInputs inputs) {
+                Object toolResult = inputs.getToolResult() != null
+                        ? inputs.getToolResult()
+                        : (result != null ? result.result() : null);
+                ToolMessage toolMsg = inputs.getToolMsg() != null
+                        ? inputs.getToolMsg()
+                        : (result != null ? result.toolMessage() : null);
+                return new ToolExecutionEntry(toolResult, toolMsg);
+            }
+            return result;
+        } catch (ToolInterruptException | AbilityExecutionError e) {
+            return handleToolExecutionException(singleToolCall, toolCtx, e);
+        } finally {
+            SessionContextHolder.restoreCurrentSession(previousSession);
+        }
+    }
+
+    private AgentCallbackContext buildToolCallbackContext(
+            AgentCallbackContext ctx,
+            ToolCall singleToolCall,
+            Session session
+    ) {
+        AgentCallbackContext toolCtx = AgentCallbackContext.builder()
+                .agent(ctx.getAgent())
+                .inputs(ToolCallInputs.builder()
+                        .toolCall(singleToolCall)
+                        .toolName(singleToolCall.getName())
+                        .toolArgs(singleToolCall.getArguments())
+                        .build())
+                .config(ctx.getConfig())
+                .session(session)
+                .context(ctx.getContext())
+                .extra(copyToolExtra(ctx.getExtra()))
+                .build();
+        if (ctx.hasSteeringQueue()) {
+            toolCtx.bindSteeringQueue(ctx.getSteeringQueue());
+        }
+        return toolCtx;
+    }
+
+    private static Map<String, Object> copyToolExtra(Map<String, Object> extra) {
+        Map<String, Object> copied = new LinkedHashMap<>();
+        if (extra == null || extra.isEmpty()) {
+            return copied;
+        }
+        copied.putAll(extra);
+        if (copied.containsKey("steering")) {
+            copied.put("steering", new ArrayList<>());
+        }
+        copied.remove("_skip_tool");
+        return copied;
+    }
+
+    private static void mergeToolExtra(AgentCallbackContext parentCtx, AgentCallbackContext toolCtx) {
+        if (parentCtx == null || parentCtx.getExtra() == null || toolCtx == null || toolCtx.getExtra() == null) {
+            return;
+        }
+        Object childSteering = toolCtx.getExtra().get("steering");
+        if (!(childSteering instanceof List<?> childList) || childList.isEmpty()) {
+            return;
+        }
+        @SuppressWarnings("unchecked")
+        List<Object> parentSteering = (List<Object>) parentCtx.getExtra()
+                .computeIfAbsent("steering", ignored -> new ArrayList<>());
+        parentSteering.addAll(childList);
+    }
+
+    private static void mergeToolContext(AgentCallbackContext parentCtx, AgentCallbackContext toolCtx) {
+        mergeToolExtra(parentCtx, toolCtx);
+        propagateForceFinish(parentCtx, toolCtx);
+    }
+
+    private static void propagateForceFinish(AgentCallbackContext parentCtx, AgentCallbackContext toolCtx) {
+        if (parentCtx == null || toolCtx == null) {
+            return;
+        }
+        AgentCallbackContext.ForceFinishRequest forceFinishRequest = toolCtx.consumeForceFinish();
+        if (forceFinishRequest == null) {
+            return;
+        }
+        if (!parentCtx.hasForceFinishRequest()) {
+            parentCtx.requestForceFinish(forceFinishRequest.getResult());
+        }
+    }
+
+    private ToolExecutionEntry handleToolExecutionException(
+            ToolCall singleToolCall,
+            AgentCallbackContext toolCtx,
+            RuntimeException e
+    ) {
+        ToolInterruptException interruptException = unwrapToolInterrupt(e);
+        if (interruptException != null) {
+            Loggers.AGENT.debug("Ability execution interrupted for tool {}: {}",
+                    singleToolCall.getName(), interruptException.getMessage());
+            return new ToolExecutionEntry(interruptException, null);
+        }
+
+        String errorMsg = "Ability execution error: " + (e instanceof BaseError be ? be.toString() : e.getMessage());
+        Loggers.AGENT.error(errorMsg);
+
+        Object toolResult = null;
+        ToolMessage toolMessage = null;
+
+        if (toolCtx.getInputs() instanceof ToolCallInputs inputs) {
+            toolResult = inputs.getToolResult();
+            toolMessage = inputs.getToolMsg();
+        }
+
+        if (toolMessage == null && e instanceof AbilityExecutionError aee) {
+            toolMessage = aee.getToolMessage();
+        }
+
+        if (toolMessage == null) {
+            toolMessage = ToolMessage.builder()
+                    .content(errorMsg)
+                    .toolCallId(singleToolCall.getId())
+                    .build();
+        }
+
+        return new ToolExecutionEntry(toolResult, toolMessage);
+    }
+
+    static ToolExecutionEntry joinToolExecution(ToolCall toolCall, CompletableFuture<ToolExecutionEntry> future) {
+        try {
+            return future.join();
+        } catch (CancellationException e) {
+            String errorMsg = "Ability execution cancelled";
+            Loggers.AGENT.warning("{} for tool {}", errorMsg, toolCall != null ? toolCall.getName() : null);
+            return new ToolExecutionEntry(null, ToolMessage.builder()
+                    .content(errorMsg)
+                    .toolCallId(toolCall != null ? toolCall.getId() : null)
+                    .build());
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            String errorMsg = "Ability execution error: " + cause.getMessage();
+            Loggers.AGENT.error(errorMsg);
+            return new ToolExecutionEntry(null, ToolMessage.builder()
+                    .content(errorMsg)
+                    .toolCallId(toolCall != null ? toolCall.getId() : null)
+                    .build());
+        }
     }
 
     /**
@@ -791,6 +938,7 @@ public class AbilityManager implements ToolRegistry {
      */
     private Object invokeTool(Tool tool, Map<String, Object> toolArgs, Session session) throws Exception {
         Map<String, Object> kwargs = new LinkedHashMap<String, Object>();
+        Session previousSession = SessionContextHolder.getCurrentSession();
         if (session != null) {
             kwargs.put("session", session);
             SessionContextHolder.setCurrentSession(session);
@@ -798,7 +946,7 @@ public class AbilityManager implements ToolRegistry {
         try {
             return tool.invoke(toolArgs, kwargs);
         } finally {
-            SessionContextHolder.clearCurrentSession();
+            SessionContextHolder.restoreCurrentSession(previousSession);
         }
     }
 

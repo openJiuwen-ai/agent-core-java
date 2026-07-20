@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.foundation.store.graph;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.foundation.store.base_embedding.Embedding;
 import com.openjiuwen.spi.store.query.ComparisonExpr;
 import com.openjiuwen.spi.store.query.LogicalExpr;
@@ -55,8 +56,14 @@ public class InMemoryGraphStore implements GraphStore {
     private InMemoryGraphStore(GraphConfig config) {
         this.config = config;
         int workerThreads = Math.max(1, config.getWorkerThreads());
-        this.embedExecutor = new ThreadPoolExecutor(workerThreads, workerThreads, 0L, TimeUnit.MILLISECONDS,
-                new LinkedBlockingQueue<>(EMBED_QUEUE_CAPACITY), new ThreadPoolExecutor.CallerRunsPolicy());
+        this.embedExecutor = OpenJiuwenExecutors.newThreadPool("graph-store-embedding",
+                OpenJiuwenExecutors.ThreadPoolConfig.builder()
+                        .poolSize(workerThreads, workerThreads)
+                        .keepAlive(0L, TimeUnit.MILLISECONDS)
+                        .workQueue(new LinkedBlockingQueue<>(EMBED_QUEUE_CAPACITY))
+                        .isDaemon(false)
+                        .rejectionHandler(new ThreadPoolExecutor.CallerRunsPolicy())
+                        .build());
     }
 
     /**

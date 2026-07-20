@@ -9,6 +9,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.utils.SchemaUtils;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
+import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.SessionContextHolder;
 
 import java.util.Iterator;
@@ -168,16 +169,17 @@ public class LocalFunction extends Tool {
      */
     private Object invokeFunction(Map<String, Object> inputs, Map<String, Object> kwargs) {
         Object session = kwargs != null ? kwargs.get("session") : null;
+        Session previousSession = SessionContextHolder.getCurrentSession();
         try {
-            if (session instanceof com.openjiuwen.core.session.Session) {
-                SessionContextHolder.setCurrentSession((com.openjiuwen.core.session.Session) session);
+            if (session instanceof Session currentSession) {
+                SessionContextHolder.setCurrentSession(currentSession);
             }
             if (contextFunc != null) {
                 return contextFunc.apply(inputs, kwargs != null ? kwargs : Map.<String, Object>of());
             }
             return func.apply(inputs);
         } finally {
-            SessionContextHolder.clearCurrentSession();
+            SessionContextHolder.restoreCurrentSession(previousSession);
         }
     }
 

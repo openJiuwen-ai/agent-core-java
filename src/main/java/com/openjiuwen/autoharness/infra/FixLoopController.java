@@ -4,8 +4,10 @@
 
 package com.openjiuwen.autoharness.infra;
 
-import java.util.concurrent.Callable;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -152,7 +154,14 @@ public class FixLoopController {
         if (timeoutPerAttemptSecs <= 0) {
             throw new TimeoutException("timed out");
         }
-        ExecutorService executor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(1));
+        ExecutorService executor = OpenJiuwenExecutors.newThreadPool("autoharness-fix-loop",
+                OpenJiuwenExecutors.ThreadPoolConfig.builder()
+                        .poolSize(1, 1)
+                        .keepAlive(0L, TimeUnit.MILLISECONDS)
+                        .workQueue(new ArrayBlockingQueue<>(1))
+                        .isDaemon(false)
+                        .rejectionHandler(new ThreadPoolExecutor.AbortPolicy())
+                        .build());
         Future<T> future = executor.submit(callable);
         try {
             return future.get(timeoutMillis(), TimeUnit.MILLISECONDS);

@@ -4,6 +4,8 @@
 
 package com.openjiuwen.harness.tools;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,6 +16,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Public class BashTool used by the Java parity implementation.
@@ -83,26 +86,34 @@ public class BashTool {
             if (workdir != null && !workdir.isBlank()) {
                 builder.directory(new java.io.File(workdir));
             }
-            Process process = builder.start();
-            CompletableFuture<String> stdoutFuture =
-                CompletableFuture.supplyAsync(() -> read(process.getInputStream()));
-            CompletableFuture<String> stderrFuture =
-                CompletableFuture.supplyAsync(() -> read(process.getErrorStream()));
-            int exitCode = process.onExit().join().exitValue();
-            String stdout = stdoutFuture.join();
-            String stderr = stderrFuture.join();
-            int limit = maxOutputChars != null ? Math.max(200, Math.min(maxOutputChars, 20000)) : 8000;
-            boolean isExecutionSuccessful = exitCode == 0 || isNonErrorExit(command, exitCode);
-            Map<String, Object> payload = new LinkedHashMap<>();
-            payload.put("stdout", truncate(stdout, limit));
-            payload.put("stderr", truncate(stderr, limit));
-            payload.put("exit_code", exitCode);
-            payload.put("return_code_interpretation", interpret(command, exitCode));
-            payload.put("no_output_expected", isSilent(command));
-            payload.put("destructive_warning", getDestructiveWarning(command));
-            return ToolOutput.builder().success(isExecutionSuccessful).data(payload)
-                    .error(isExecutionSuccessful ? null : truncate(stderr.isBlank() ? "command failed" : stderr, limit))
-                    .build();
+            ExecutorService processIoExecutor = OpenJiuwenExecutors.newFixedThreadPool("harness-bash-process-io", 2,
+                    true);
+            try {
+                Process process = builder.start();
+                CompletableFuture<String> stdoutFuture = CompletableFuture.supplyAsync(
+                        () -> read(process.getInputStream()), processIoExecutor);
+                CompletableFuture<String> stderrFuture = CompletableFuture.supplyAsync(
+                        () -> read(process.getErrorStream()), processIoExecutor);
+                int exitCode = process.onExit().join().exitValue();
+                String stdout = stdoutFuture.join();
+                String stderr = stderrFuture.join();
+                int limit = maxOutputChars != null ? Math.max(200, Math.min(maxOutputChars, 20000)) : 8000;
+                boolean isExecutionSuccessful = exitCode == 0 || isNonErrorExit(command, exitCode);
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("stdout", truncate(stdout, limit));
+                payload.put("stderr", truncate(stderr, limit));
+                payload.put("exit_code", exitCode);
+                payload.put("return_code_interpretation", interpret(command, exitCode));
+                payload.put("no_output_expected", isSilent(command));
+                payload.put("destructive_warning", getDestructiveWarning(command));
+                return ToolOutput.builder().success(isExecutionSuccessful).data(payload)
+                        .error(isExecutionSuccessful
+                                ? null
+                                : truncate(stderr.isBlank() ? "command failed" : stderr, limit))
+                        .build();
+            } finally {
+                processIoExecutor.shutdownNow();
+            }
         } catch (IOException | SecurityException | CompletionException ex) {
             return ToolOutput.builder().success(false).error(ex.getMessage()).build();
         }

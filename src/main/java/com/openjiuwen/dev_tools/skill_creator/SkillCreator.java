@@ -4,6 +4,7 @@
 
 package com.openjiuwen.dev_tools.skill_creator;
 
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.singleagent.agents.ReActAgent;
@@ -69,7 +70,7 @@ public class SkillCreator {
      * @since 0.1.7
      */
     public CompletableFuture<Void> createAgent() {
-        return CompletableFuture.runAsync(() -> {
+        return OpenJiuwenExecutors.runBackgroundAsync(() -> {
             // Get skills directory path
             String skillsDirEnv = getEnvOrDefault("SKILLS_DIR", "");
             Path skillsDir;
@@ -162,7 +163,7 @@ public class SkillCreator {
      * @since 0.1.7
      */
     public CompletableFuture<Object> generate(String requirement, String outputPath) {
-        return CompletableFuture.supplyAsync(() -> {
+        return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
             if (this.agent == null) {
                 throw new IllegalStateException("Agent not initialized. Call createAgent() first.");
             }

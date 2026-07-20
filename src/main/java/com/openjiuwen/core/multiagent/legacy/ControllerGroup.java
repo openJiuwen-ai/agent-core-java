@@ -5,6 +5,7 @@
 package com.openjiuwen.core.multiagent.legacy;
 
 import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 import com.openjiuwen.core.session.AgentGroupSessionApi;
 
 import java.util.Iterator;
@@ -141,7 +142,7 @@ public class ControllerGroup extends LegacyBaseGroup {
         }
 
         AgentGroupSessionApi finalSession = effectiveSession;
-        CompletableFuture<Void> controllerTask = CompletableFuture.runAsync(() -> {
+        CompletableFuture<Void> controllerTask = OpenJiuwenExecutors.runBackgroundAsync(() -> {
             try {
                 groupController.invoke(event, finalSession);
             } catch (Exception e) {
@@ -149,12 +150,6 @@ public class ControllerGroup extends LegacyBaseGroup {
             } finally {
                 finalSession.getInner().streamWriterManager().getStreamEmitter().close();
             }
-        }, runnable -> {
-            Thread thread = new Thread(runnable, "controller-group");
-            thread.setDaemon(true);
-            thread.setUncaughtExceptionHandler(
-                    (t, e) -> Loggers.MULTI_AGENT.error("Uncaught exception in " + t.getName(), e));
-            thread.start();
         });
 
         Iterator<Object> sessionStream = finalSession.getInner().streamWriterManager().streamIterator();

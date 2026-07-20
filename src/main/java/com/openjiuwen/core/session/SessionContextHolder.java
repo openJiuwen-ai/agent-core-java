@@ -55,4 +55,17 @@ public final class SessionContextHolder {
     public static void clearCurrentSession() {
         CURRENT_SESSION.remove();
     }
+
+    /**
+     * Restore a previously captured session binding.
+     *
+     * @param session previous session, or null when the previous state was unbound
+     */
+    public static void restoreCurrentSession(Session session) {
+        if (session == null) {
+            clearCurrentSession();
+            return;
+        }
+        setCurrentSession(session);
+    }
 }
