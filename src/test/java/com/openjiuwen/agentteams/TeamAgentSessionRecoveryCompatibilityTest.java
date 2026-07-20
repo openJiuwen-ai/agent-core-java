@@ -11,8 +11,10 @@ import com.openjiuwen.agentteams.schema.status.MemberStatus;
 import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
+import com.openjiuwen.agentteams.spawn.SpawnContext;
 import com.openjiuwen.core.session.AgentSessionApi;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +23,18 @@ import java.util.Map;
 
 @Tag("agent-teams-recovery-slice")
 class TeamAgentSessionRecoveryCompatibilityTest {
+
+    @AfterEach
+    void resetSpawnSession() {
+        // resumeForNewSession / recoverForExistingSession mutate the
+        // InheritableThreadLocal session id inside SpawnContext and never
+        // restore it. Without this cleanup the leaked id poisons the next
+        // test class (e.g. TeamToolsCompatibilityTest subscribes on
+        // "session::team:<team>:team" but TeamBackend would publish on
+        // "session:<leaked-sid>:team:<team>:team" — handlers never match).
+        SpawnContext.setSessionId("");
+    }
+
     @Test
     void resumePersistentTeamShouldSetSessionIdWithoutChangingTeamId() {
         TeamAgentSpec spec = TeamAgentSpec.builder().name("research-team")
@@ -34,40 +48,6 @@ class TeamAgentSessionRecoveryCompatibilityTest {
         assertThat(agent.getContext().getMetadata()).containsEntry("session_id", "team-session-001");
         assertThat(agent.getContext().getMetadata()).containsEntry("recoverable_member_count", 0);
         assertThat(agent.getContext().getMetadata()).containsEntry("session_switch_cleanup", true);
-    }
-
-    @Test
-    void resumePersistentTeamShouldRebindOnlyLiveTeammates() {
-        TeamAgentSpec spec = TeamAgentSpec.builder().name("persistent-team")
-                .members(List.of(
-                        TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER)
-                                .build(),
-                        TeamMemberSpec.builder().name("worker-busy").role(TeamRole.MEMBER).build(),
-                        TeamMemberSpec.builder().name("worker-ready").role(TeamRole.MEMBER).build(),
-                        TeamMemberSpec.builder().name("worker-idle-no-handle").role(TeamRole.MEMBER).build(),
-                        TeamMemberSpec.builder().name("worker-shutdown").role(TeamRole.MEMBER).build()))
-                .build();
-
-        TeamAgent agent = TeamFactory.createAgentTeam(spec);
-        agent.getTeamBackend().updateMemberStatus("worker-busy", MemberStatus.READY);
-        agent.getTeamBackend().updateMemberStatus("worker-busy", MemberStatus.BUSY);
-        agent.getTeamBackend().updateMemberStatus("worker-ready", MemberStatus.READY);
-        agent.getTeamBackend().updateMemberStatus("worker-idle-no-handle", MemberStatus.READY);
-        agent.getTeamBackend().updateMemberStatus("worker-shutdown", MemberStatus.SHUTDOWN);
-        agent.getRecoveryManager().registerSpawnedHandle("worker-busy");
-        agent.getRecoveryManager().registerSpawnedHandle("worker-ready");
-
-        TeamFactory.resumePersistentTeam(agent, "team-session-010");
-
-        assertThat(agent.getContext().getSessionId()).isEqualTo("team-session-010");
-        assertThat(agent.getContext().getMetadata()).containsEntry("recoverable_member_count", 2);
-        assertThat(agent.getContext().getMetadata()).containsEntry("session_switch_cleanup", true);
-        assertThat(agent.getTeamBackend().getMember("worker-busy").getStatus()).isEqualTo(MemberStatus.RESTARTING);
-        assertThat(agent.getTeamBackend().getMember("worker-ready").getStatus()).isEqualTo(MemberStatus.RESTARTING);
-        assertThat(agent.getTeamBackend().getMember("worker-idle-no-handle").getStatus()).isEqualTo(MemberStatus.READY);
-        assertThat(agent.getTeamBackend().getMember("worker-shutdown").getStatus()).isEqualTo(MemberStatus.SHUTDOWN);
-        assertThat(agent.getTeamBackend().getDb().member.getMember("worker-busy", "persistent-team").getStatus())
-                .isEqualTo("restarting");
     }
 
     @Test

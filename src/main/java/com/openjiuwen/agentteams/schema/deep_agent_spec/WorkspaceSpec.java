@@ -25,5 +25,5 @@ public class WorkspaceSpec {
     @Builder.Default
     private String language = "cn";
     @Builder.Default
-    private boolean stableBase = false;
+    private boolean isStableBase = false;
 }

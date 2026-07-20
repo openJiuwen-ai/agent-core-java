@@ -78,6 +78,10 @@ INPUTS YOU WILL RECEIVE:
 - 公司名称: {COMPANY_NAME_PLACEHOLDER}
 - 社交媒体数据: {SOCIAL_MEDIA_DATA_PLACEHOLDER}
 
+OUTPUT FILE: .team/reports/T3_digital_media_analysis.md
+- 通过 file_io(action="write") 落盘完整报告
+- 通过 send_message 向 leader 发"完成摘要 + 文件路径"，不发完整内容
+
 OUTPUT FORMAT (use exactly this structure, no preamble, no postscript):
 
 ## Role: 数字媒体分析师

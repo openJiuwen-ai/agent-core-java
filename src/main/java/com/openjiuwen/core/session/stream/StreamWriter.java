@@ -77,7 +77,14 @@ public class StreamWriter<S extends StreamSchema> {
 
     /**
      * Perform the actual write. Can be overridden by subclasses.
-     * 
+     *
+     * <p>When the underlying emitter has been closed (e.g. the session finished
+     * while an upstream LLM / tool stream is still producing chunks), the write
+     * is silently dropped at debug level. The discard is intentional — calling
+     * code cannot always cancel an in-flight {@code Iterator} cleanly — so it
+     * is logged at {@code debug} rather than {@code warning} to avoid log
+     * flooding (see incident: 35k+ warning lines per stalled session).</p>
+     *
      * @param validatedData the validated data
      * @since 0.1.7
      */
@@ -85,7 +92,7 @@ public class StreamWriter<S extends StreamSchema> {
         if (streamEmitter != null && !streamEmitter.isClosed()) {
             streamEmitter.emit(validatedData);
         } else {
-            Loggers.SESSION.warning("Stream message discarded, emitter already isClosed, dataType={}",
+            Loggers.SESSION.debug("Stream message discarded, emitter already closed, dataType={}",
                     validatedData.getClass().getSimpleName());
         }
     }

@@ -161,11 +161,12 @@ public final class WorktreeCleanup {
             if (!Files.exists(gitDir)) {
                 return false;
             }
+
             // Basic check: look for untracked or modified files
             // Full git status check is delegated to Git CLI
             return false;
-        } catch (Exception e) {
-            return true; // fail-closed: if we can't verify, assume dirty
+        } catch (SecurityException e) {
+            return true; // fail-closed: if security manager denies access, assume dirty
         }
     }
 }

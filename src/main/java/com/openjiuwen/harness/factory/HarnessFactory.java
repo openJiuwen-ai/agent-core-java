@@ -122,22 +122,22 @@ public final class HarnessFactory {
         List<Object> subagents = new ArrayList<>(source.getSubagents() != null ? source.getSubagents() : List.of());
         List<Object> tools = new ArrayList<>(source.getTools() != null ? source.getTools() : List.of());
 
-        if (source.isAddGeneralPurposeAgent()) {
+        if (source.isGeneralPurposeAgentEnabled()) {
             injectGeneralPurposeSubagent(subagents, language, source, tools);
         }
 
         addDefaultRailIfAbsent(rails, SecurityRail.class, SecurityRail::new);
-        if (source.isEnableTaskPlanning()) {
+        if (source.isTaskPlanningEnabled()) {
             addDefaultRailIfAbsent(rails, TaskPlanningRail.class, TaskPlanningRail::new);
         }
-        if (source.isEnableTaskLoop()) {
+        if (source.isTaskLoopEnabled()) {
             addDefaultRailIfAbsent(rails, TaskCompletionRail.class, TaskCompletionRail::new);
         }
         if (hasConfiguredSkills(source) || source.isEnableSkillDiscovery()) {
             addSkillUseRailIfAbsent(rails, source);
         }
         if (!subagents.isEmpty()) {
-            if (source.isEnableAsyncSubagent()) {
+            if (source.isAsyncSubagentEnabled()) {
                 addDefaultRailIfAbsent(rails, SessionRail.class, SessionRail::new);
             } else {
                 addDefaultRailIfAbsent(rails, SubagentRail.class, SubagentRail::new);
@@ -166,7 +166,7 @@ public final class HarnessFactory {
         }
 
         return DeepAgentConfig.builder().systemPrompt(source.getSystemPrompt()).maxIterations(source.getMaxIterations())
-                .isTaskLoopEnabled(source.isEnableTaskLoop()).isTaskPlanningEnabled(source.isEnableTaskPlanning())
+                .isTaskLoopEnabled(source.isTaskLoopEnabled()).isTaskPlanningEnabled(source.isTaskPlanningEnabled())
                 .language(language).defaultMode(source.getDefaultMode())
                 .workspacePath(effectiveWorkspace.root().toString()).completionTimeout(source.getCompletionTimeout())
                 .permissions(source.getPermissions()).tools(tools).rails(rails)
@@ -181,8 +181,8 @@ public final class HarnessFactory {
                 .enableSkillDiscovery(source.isEnableSkillDiscovery())
                 .factoryKwargs(new java.util.LinkedHashMap<>(
                         source.getFactoryKwargs() != null ? source.getFactoryKwargs() : Map.of()))
-                .isAsyncSubagentEnabled(source.isEnableAsyncSubagent())
-                .addGeneralPurposeAgent(source.isAddGeneralPurposeAgent())
+                .isAsyncSubagentEnabled(source.isAsyncSubagentEnabled())
+                .addGeneralPurposeAgent(source.isGeneralPurposeAgentEnabled())
                 .restrictToWorkDir(source.isRestrictToWorkDir()).sysOperation(sysOperation)
                 .permissionHost(source.getPermissionHost()).build();
     }
@@ -294,7 +294,7 @@ public final class HarnessFactory {
                 SubAgentConfig.builder()
                         .agentCard(AgentCard.builder().name(GENERAL_PURPOSE_NAME).description(description).build())
                         .systemPrompt(source.getSystemPrompt()).language(resolvedLanguage)
-                        .maxIterations(source.getMaxIterations()).isTaskLoopEnabled(source.isEnableTaskLoop())
+                        .maxIterations(source.getMaxIterations()).isTaskLoopEnabled(source.isTaskLoopEnabled())
                         .tools(new ArrayList<>(tools)).rails(subagentRails)
                         .mcps(new ArrayList<>(source.getMcps() != null ? source.getMcps() : List.of()))
                         .skillDirectories(new ArrayList<>(

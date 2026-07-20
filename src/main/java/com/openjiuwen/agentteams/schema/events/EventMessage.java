@@ -21,7 +21,7 @@ import java.util.Map;
 @Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
-public class EventMessage {
+public class EventMessage implements CoordinationEvent {
     @Builder.Default
     private String eventType = "";
     @Builder.Default
@@ -33,4 +33,9 @@ public class EventMessage {
     private Map<String, Object> payload = new LinkedHashMap<>();
     @Builder.Default
     private String senderId = "";
+
+    @Override
+    public String eventKey() {
+        return eventType != null ? eventType : "";
+    }
 }

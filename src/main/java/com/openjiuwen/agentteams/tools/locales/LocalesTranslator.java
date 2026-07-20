@@ -4,6 +4,7 @@
 
 package com.openjiuwen.agentteams.tools.locales;
 
+import java.io.IOException;
 import java.util.Map;
 
 /**
@@ -21,20 +22,20 @@ import java.util.Map;
  * @since 0.1.7
  */
 public final class LocalesTranslator {
-    private final String language;
-    private final Map<String, String> strings;
-
     /**
      * Map.of.
-     * 
+     *
      * @since 0.1.7
      */
     private static final Map<String, Map<String, String>> STRING_TABLES =
         Map.of("cn", ToolStringsCn.STRINGS, "en", ToolStringsEn.STRINGS);
 
+    private final String language;
+    private final Map<String, String> strings;
+
     /**
      * LocalesTranslator.
-     * 
+     *
      * @param language language
      * @param strings strings
      * @since 0.1.7
@@ -117,7 +118,7 @@ public final class LocalesTranslator {
                 byte[] bytes = is.readAllBytes();
                 return new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             // Silently fall through to STRINGS dict
         }
         return null;

@@ -69,7 +69,7 @@ public class WorktreeRemoteHandler {
                 default -> WorktreeRemoteResponse.builder().isSuccess(false)
                         .error("Unknown action: " + request.getAction()).build();
             };
-        } catch (RuntimeException | IOException exception) {
+        } catch (IllegalStateException | IOException exception) {
             return WorktreeRemoteResponse.builder().isSuccess(false).error(exception.getMessage()).build();
         }
     }
@@ -238,6 +238,7 @@ public class WorktreeRemoteHandler {
         } catch (IOException e) {
             return new GitCommandResult(1, e.getMessage() == null ? "" : e.getMessage());
         } catch (InterruptedException e) {
+            // do not self-interrupt (G.CON.10)
             return new GitCommandResult(1, e.getMessage() == null ? "" : e.getMessage());
         }
     }

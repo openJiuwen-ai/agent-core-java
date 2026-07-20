@@ -16,13 +16,13 @@
 | 对象 | 作用 | 你需要关心什么 |
 | --- | --- | --- |
 | `LeaderTeammateAgentTeam` | 团队顶层入口与门面 | 用 `Builder` 配置团队，`build()` 创建实例 |
-| `TeamAgent` | 团队协调器与运行宿主 | 持有 `TeamBackend`、`CoordinatorLoop`、`EventDispatcher`、`StreamController` 等子系统 |
+| `TeamAgent` | 团队协调器与运行宿主 | 持有 `TeamBackend`、`CoordinationKernel`、`StreamController` 等子系统 |
 | `TeamAgentSpec` | 团队蓝图 | 声明 name、members、modelPool、lifecycle、teammateMode、spawnMode、transport、storage 等 |
 | `TeamRuntimeContext` | 单成员运行上下文 | 承载 teamId、sessionId、memberName、role、metadata |
 | `TeamMemberSpec` | 成员声明 | name、role（LEADER/MEMBER/HUMAN_AGENT/USER）、description、modelName 等 |
 | `TeamFactory` | 团队工厂 | 根据 spec 构建 `TeamAgent`，分配 leader 模型，恢复 snapshot |
 | `TeamBackend` | 团队后端 | 维护成员、消息、任务，并桥接 `Messager` 与 `TeamDatabase` |
-| `CoordinatorLoop` | 协调循环 | 唤醒回调、mailbox/task 周期轮询 |
+| `CoordinationKernel` | 协调内核 | 单线程事件派发器，持有 `EventBus` + 8 个 scenario handler；唤醒回调、mailbox/task 周期轮询 |
 | `Messager` | 进程间/进程内消息总线 | `InProcessMessager`、`PyZmqMessager` |
 | `TeamMonitor` | 团队监控 | 订阅 team/task/message/broadcast 事件 |
 
@@ -49,8 +49,8 @@
 一次典型的 leader-teammate 执行：
 
 1. 用 `LeaderTeammateAgentTeam.builder()` 配置 teamName、lifecycle、teammateMode、spawnMode、transport、storage、leader、预定义成员。
-2. 调用 `build()` → `TeamFactory.createAgentTeam(spec)` 构造 `TeamAgent`，内部会装配 `ModelAllocator`、`TeamBackend`、`CoordinatorLoop`、`EventDispatcher`、`RecoveryManager`、`SpawnManager`、`StreamController`，并创建 leader 自己的 `DeepAgent`。
-3. 调用 `interact(...)` / `deliverInput(...)` / `dispatchTask(...)` / `stream(...)`，触发 `CoordinatorLoop` 唤醒，`EventDispatcher` 消费事件。
+2. 调用 `build()` → `TeamFactory.createAgentTeam(spec)` 构造 `TeamAgent`，内部会装配 `ModelAllocator`、`TeamBackend`、`CoordinationKernel`（含 8 个 scenario handler）、`SpawnManager`、`StreamController`，并创建 leader 自己的 `DeepAgent`。
+3. 调用 `interact(...)` / `deliverInput(...)` / `dispatchTask(...)` / `stream(...)`，触发 `EventBus` 唤醒，`CoordinationKernel.dispatch(event)` 统一派发到 handler。
 4. leader 通过团队工具（`send_message`、`update_task`、`claim_task`、`spawn_member` 等）与 teammate 协作；teammate 通过 `invokeForSpawn(...)` 进入自己的 ReAct 循环。
 5. 任务完成后，根据 lifecycle：`temporary` 团队由 leader 调用 `shutdown_member` 再 `clean_team` 收尾；`persistent` 团队保持运行等待新指令。
 
@@ -58,46 +58,54 @@
 
 - `LeaderTeammateAgentTeam` 是声明式入口，`TeamAgent` 是运行时宿主。
 - `TeamBackend` 是数据与消息中枢，`Messager` 是传输层，`TeamDatabase` 是存储层。
-- `CoordinatorLoop` 不做决策，只负责唤醒和周期轮询；真正的协作逻辑在 `EventDispatcher` + 团队工具里。
+- `CoordinationKernel` 不做决策，只负责单线程派发事件到 8 个 scenario handler；真正的协作逻辑在 handler 里。
 
 ### 事件驱动与协调机制
 
-`TeamAgent` 的协作靠两条事件流汇入 `CoordinatorLoop` 队列，再由 `EventDispatcher.dispatch(event)` 统一分发。
+`TeamAgent` 的协作靠两条事件流汇入 `EventBus` 队列，再由 `CoordinationKernel.dispatch(event)` 统一派发到 8 个 scenario handler。
 
 **事件来源**
 
 | 来源 | 类型 | 触发方 |
 | --- | --- | --- |
-| JVM 内部 | `InnerEventMessage`（`USER_INPUT` / `POLL_MAILBOX` / `POLL_TASK` / `SHUTDOWN`） | `CoordinatorLoop` 周期轮询、`interact/deliverInput` 入队、`stop()` 发 SHUTDOWN |
+| JVM 内部 | `InnerEventMessage`（`USER_INPUT` / `POLL_MAILBOX` / `POLL_TASK` / `SHUTDOWN`） | `CoordinationKernel` 周期轮询、`interact/deliverInput` 入队、`stop()` 发 SHUTDOWN |
 | transport 层 | `EventMessage`，发布到 4 个主题：`team:<name>` / `team:task` / `team:message` / `team:broadcast` | 团队工具调用、`TeamMemberState` 迁移、`TeamTaskManager` 状态变更 |
 
-`CoordinationManager.subscribeTransport()` 在 leader 首轮 `stream(...)` 或 teammate `invokeForSpawn(...)` 时订阅这 4 个主题，并注册 direct message handler。所有 transport 事件入队前会做 **echo suppression**——`localMember.equals(event.getSenderId())` 时直接跳过，避免成员收到自己发出的事件。
+`CoordinationKernel` 在 leader 首轮 `stream(...)` 或 teammate `invokeForSpawn(...)` 时订阅这 4 个主题，并注册 direct message handler。所有 transport 事件入队前会做 **echo suppression**——`localMember.equals(event.getSenderId())` 时直接跳过，避免成员收到自己发出的事件。
 
-**`EventDispatcher` 的事件路由**
+**`CoordinationKernel` 与 8 个 scenario handler**
 
-| 事件类型 | 处理 | 说明 |
+`CoordinationKernel` 自身不做业务决策，只做粗粒度过滤（agent 是否 ready、HUMAN_AGENT 事件白名单）后把事件路由给 handler。handler 注册顺序与职责：
+
+| handler | 注册事件 | 职责 |
 | --- | --- | --- |
-| `InnerEventMessage.USER_INPUT` | 解析 `@mention` 路由或 `deliverInput(text)` | `@member_name xxx` 会直接走 `UserInbox.direct(...)`，不进 leader 的 ReAct |
-| `InnerEventMessage.POLL_MAILBOX` | `processUnreadMessages(memberName)` | 30 秒周期，把未读消息逐条投递给成员 |
-| `InnerEventMessage.POLL_TASK` | `checkStaleClaimedTasks` + `checkStalePendingTasks` | 见下方"过期任务催办" |
-| `team_standby` | `host.pausePolls()` | leader 暂停轮询，teammate 不动 |
-| `team_cleaned` | 非 leader 调 `shutdownSelf()` | leader 调 `clean_team` 后广播，teammate 收到即自关 |
-| `message` / `broadcast` | leader 先 `ackUserBoundMessage`（把发给 `user` 的消息标已读），再 `processUnreadMessages` | 团队内消息流转 |
-| `member_results_delivery` | 仅当 `target_assignee == localMember` 时 `deliverInput(content)` | 多阶段任务的上游结果投递，见"team skill 多阶段数据流" |
-| `task_*`（created/updated/claimed/completed/cancelled/unblocked） | `handleTaskBoardEvent` → `nudgeIdleAgent` | 给 leader 推任务看板或给 teammate 推可领取任务 |
-| `member_*`（spawned/restarted/status_changed/execution_changed/shutdown/canceled） | leader 走 `handleLeaderMemberLifecycleEvent`；teammate 走 `handleTeammateMemberLifecycleEvent` | `member_canceled` → teammate `cancelAgent()`；`member_shutdown` → teammate `shutdownSelf()` |
-| `tool_approval_result` | `resumeInterrupt(InteractiveInput)` | leader 审批 teammate 的工具调用后回传 |
+| `AgentLifecycleHandler` | `team_standby` / `team_cleaned` / `team_created` 等 | leader `clean_team` 后广播 `team_cleaned`，非 leader 成员收到后 `shutdownSelf()` |
+| `MemberHandler` | `member_*`（spawned/restarted/status_changed/execution_changed/shutdown/canceled）+ 共享 stale-claim throttle | `member_canceled` → teammate `cancelAgent()`；`member_shutdown` → teammate `shutdownSelf()`；同时承担 member 状态变更路径的 stale-claim 检测 |
+| `MessageHandler` | `message` / `broadcast` / `POLL_MAILBOX` / `MEMBER_SHUTDOWN` | leader 先 `ackUserBoundMessage`（把发给 `user` 的消息标已读）+ 通知 HITT 入站回调；所有成员 `resumePolls` + `processUnreadMessages`；teammate 关闭时 drain 自己的 mailbox |
+| `TaskBoardHandler` | `task_*`（created/updated/completed/cancelled/unblocked/claimed/plan_request/plan_response） | 给 idle agent `nudgeIdleAgent`：leader 看到任务板全 `completed` 时推 `dispatcher.all_done_*` prompt，teammate 看到可领取的 `pending` 任务时推任务看板 |
+| `StaleTaskHandler` | `POLL_TASK` | 见"过期任务催办" |
+| `TeamCompletionHandler` | `POLL_TASK`（leader only）+ `TASK_LIST_DRAINED` + `TEAM_COMPLETED` | leader idle 时评估 `TeamBackend.isTeamCompleted()` 三条件，满足后发 `TEAM_COMPLETED`；task board drained 时触发 `TeamSkillRail.notifyTeamCompleted` 回调 |
+| `WorkflowHandler` | 工作流相关事件 | 多阶段任务依赖解锁（见"team skill 多阶段数据流"） |
+| `BaseCoordinationHandler` | — | 抽象基类，提供 `callbacks` map + `extractPayload` 工具方法 |
 
 **过期任务催办**
 
-`POLL_TASK` 会触发两类催办：
+`StaleTaskHandler.onPollTask` 在每个 `POLL_TASK` tick 触发两类催办（阈值都已改为 10 分钟）：
 
-- `checkStaleClaimedTasks`：claimed 状态超过 `STALE_CLAIM_MILLIS`（60 秒）的任务。leader 会给 assignee 发 `send_message` 催促；teammate 自己的 stale 任务会被**自动 complete**（防止 leader 永远卡在等汇总）。
+- `checkStaleClaimedTasks`：claimed 状态超过 `STALE_CLAIM_MILLIS`（10 分钟）的任务。每个 member 扫自己 assignee 的 stale 任务，leader 额外扫所有成员的。leader 给 assignee 发 `send_message` 催促。
 - `checkStalePendingTasks`：仅 leader 执行，pending 状态超过 `STALE_PENDING_MILLIS`（10 分钟）的任务，提示 leader 评估并指派。
 
-**任务完成后的自动收尾**
+stale-claim 的 throttle map 由 `MemberHandler` 与 `StaleTaskHandler` 共享同一实例，保证 poll tick 和 member 状态变更两个路径不会在同一窗口内重复催办同一任务。
 
-`StreamController` 在 member 的 ReAct 轮次结束时调 `tryAutoCompleteMemberTasks`：如果该 member 本轮给 leader 发过 `send_message`，框架会自动 claim + complete 它名下所有未完成任务，并把消息内容收进 `TeamResultCollector` 供下游阶段使用——member 不必显式调 `complete_task`。
+**团队完成判定**
+
+`TeamCompletionHandler.onPollTask` 只在 leader 且 leader 当前 idle（无 in-flight round、agent 未运行）时调 `TeamBackend.isTeamCompleted()`。该方法同时检查三条件：
+
+1. 所有 task 都处于 terminal 状态（`completed` / `cancelled` 等，见 `GraphUtils.TASK_TERMINAL_STATUSES`）
+2. 所有 member 都处于 settled 状态（`READY` / `PAUSED` / `STOPPED` / `SHUTDOWN`，见 `MemberStatus.MEMBER_SETTLED_STATUSES`；`BUSY` / `ERROR` / `SHUTDOWN_REQUESTED` / `RESTARTING` 都会阻止完成）
+3. 全团队无未读消息（`messageManager.hasUnreadMessages(true)`）
+
+三条件同时满足时，handler 上升沿发一次 `TEAM_COMPLETED` 事件到 `team:<name>` 主题，persistent 团队还会调 `lifecycle.concludeCompletedRound(...)` 关闭 leader 流驱动 finalize→pause。`temporary` 团队由 leader 自己按 prompt 指引走 `shutdown_member` + `clean_team`。
 
 ## 快速开始
 
@@ -200,7 +208,7 @@ while (chunks.hasNext()) {
 
 ### 方式 2：与用户持续交互
 
-面向 chat 类场景，调用 `interact(...)` / `deliverInput(...)`。两者都会把输入塞进 `CoordinatorLoop`，区别在于 agent 正在运行时是否走 steer：
+面向 chat 类场景，调用 `interact(...)` / `deliverInput(...)`。两者都会把输入塞进 `EventBus`，区别在于 agent 正在运行时是否走 steer：
 
 ```java
 team.interact("换个角度看下估值");      // 等价于 deliverInput(message, true)
@@ -252,9 +260,8 @@ snapshot 用 `team.snapshot()` 拿到，内部包含 spec、context、leader_inb
 `TeamAgent` 是框架内部真正承载运行时的对象。它的子系统职责：
 
 - `TeamBackend`：管理成员、消息、任务，并持有共享 `TeamDatabase` 与 `Messager`。
-- `CoordinatorLoop`：守护线程，负责唤醒回调与 mailbox/task 周期轮询（默认 30 秒）。
-- `EventDispatcher`：消费 `InnerEventMessage` 和 transport 事件，转换为协作行为。
-- `SpawnManager` + `RecoveryManager`：spawn/restart 成员、session 切换时回收存活 teammate。
+- `CoordinationKernel`：单线程协调内核，持有 `EventBus` + `AsyncCallbackFramework` + 8 个 scenario handler。负责唤醒回调与 mailbox/task 周期轮询（默认 30 秒，由 `PollController` 驱动）。
+- `SpawnManager`：spawn/restart 成员、session 切换时回收存活 teammate。
 - `StreamController`：管理 ReAct 流、steer、follow-up、interrupt 恢复、in-flight 轮次。
 - `TeamRail`：以 prompt section 的形式把团队信息、角色策略、工作流程注入 leader/teammate 的 system prompt。
 
@@ -302,16 +309,18 @@ snapshot 用 `team.snapshot()` 拿到，内部包含 spec、context、leader_inb
 
 ### team skill 的多阶段数据流
 
-`investment-analysis-team` 这类 team skill 之所以能跑通"四分析师并行 → 两研究员辩论 → 投资组合决策"的多阶段流水线，靠的是框架内建的多阶段交付机制，而不是 leader 显式调度：
+`investment-analysis-team` 这类 team skill 之所以能跑通"四分析师并行 → 两研究员辩论 → 投资组合决策"的多阶段流水线，靠的是任务状态机 + handler nudge + team-completion 判定三件套，而不是 leader 显式转发消息。
 
-1. **创建带依赖的任务**：leader 用 `create_task(..., dependencies=["T1","T2"])` 创建任务，`TeamTaskManager.add(...)` 会把带依赖的任务初始状态设为 `blocked`，并在 `TaskDependencyRecord` 表里记录边。
-2. **member 完成上游任务**：member 领取并完成 T1 后，`TeamTaskManager.completeResult(...)` 会把 T1 标 `completed`，并发布 `task_completed` 事件。
-3. **框架捕获上游输出**：`EventDispatcher.tryAutoCompleteMemberTasks` 检测到 member 给 leader 发过 `send_message`，会把消息内容收进 `TeamResultCollector`（以 `teamName + memberName` 为 key）。
-4. **自动解锁下游**：`tryDeliverToNextStage` 遍历所有 `blocked` 任务，当某任务的全部 `dependencies` 都 `completed` 时，从 `TeamResultCollector` 取出各依赖 assignee 的输出，组装成 `member_results_delivery` 事件，通过 `team:message` 主题发布给该任务的 assignee。
-5. **下游 member 接收**：`EventDispatcher` 收到 `member_results_delivery`，校验 `target_assignee == localMember` 后 `deliverInput(content)`，把上游结果注入自己的 ReAct 循环。
-6. **`team_mode=predefined` 的特殊处理**：当下游 assignee 含 `leader` 时，投递消息会附带"你是 leader，必须自己用 file_io 写最终报告并 complete 该任务"的强约束提示，防止 leader 把终局任务转派出去。
+当前链路：
 
-这条链路解释了为什么示例 1 里 T1 完成后 T2 会"自动"进入可执行状态，以及示例 2 里分析师的报告如何到达研究员手上——都不需要 leader 在 prompt 里手动转发。
+1. **创建带依赖的任务**：leader 用 `create_task(..., dependencies=["T1","T2"])` 创建任务，`TeamTaskManager.add(...)` 会把带依赖的任务初始状态设为 `blocked`，并在 `TaskDependencyRecord` 表里记录依赖边。
+2. **member 领取并完成上游**：teammate 通过 `claim_task` 把 T1 从 `pending` 变 `claimed`（`claim_task` 工具的描述是 "Claim or complete a task"，自带 complete 语义），工作完成后 `update_task(T1, status="completed")`，`TeamTaskManager` 发布 `task_completed` 事件到 `team:task` 主题。
+3. **依赖解锁**：`task_completed` 事件被 `TaskBoardHandler` / `WorkflowHandler` 消费。下游 T2 的依赖全部 `completed` 时，框架把 T2 从 `blocked` 改为 `pending`，发 `task_unblocked` 事件。这一步只是改状态，不携带上游 member 的输出内容。
+4. **nudge 下游 assignee**：`task_unblocked` 进入 `TaskBoardHandler.onTaskBoardEvent` → `nudgeIdleAgent(memberName, false)`。如果下游 assignee 是 idle teammate，`deliverInput(Format.renderTaskBoard(...))` 把"当前可领取任务看板"推给它。teammate 在看板里看到 T2 已 pending 后自己 `claim_task` 领取——不是框架直接指派。
+5. **上游内容怎么到下游手里**：teammate 完成 T1 时通过 `send_message` 向 leader 发"完成摘要 + `.team/reports/T<n>.md` 文件路径"。leader 收到后，在 spawn 下游 teammate 或创建 T2 时，把上游的文件路径作为 task description / `deliverInput` 的一部分写进去，由下游 teammate 用 `file_io(action="read")` 主动读取。这条链路是 leader 显式转发路径引用，不是框架自动投递 member 的消息内容。
+6. **leader 收尾**：当下游最后一个 task（通常是 portfolio-risk-controller assignee 的 `T10_portfolio_risk` FINAL task）也 `completed` 后，`TeamCompletionHandler.onPollTask` 评估 `isTeamCompleted()` 三条件满足，发 `TEAM_COMPLETED`。`TASK_LIST_DRAINED` 同时触发 `TeamSkillRail.notifyTeamCompleted` 回调，用于沉淀本轮协作经验。
+
+这条链路解释了为什么示例 1 里 T1 完成后 T2 会"自动"进入可执行状态——靠的是任务状态机 + `task_unblocked` 事件 + `nudgeIdleAgent`。但上游 member 的实际输出内容不会自动流到下游，需要 leader 在 prompt 里显式传递路径引用或把摘要塞进 task description。
 
 ### 团队工具集
 
@@ -335,14 +344,15 @@ snapshot 用 `team.snapshot()` 拿到，内部包含 spec、context、leader_inb
 | 子包 | 关键类 | 职责 |
 | --- | --- | --- |
 | `agentteams` | `LeaderTeammateAgentTeam`、`TeamFactory`（在 `factory`）、`TeamConstants`、`I18n`、`TeamPaths` | 顶层入口、工厂、保留名、运行期 i18n 字符串、文件路径布局 |
-| `agentteams.agent` | `TeamAgent`、`CoordinatorLoop`、`EventDispatcher`、`CoordinationManager`、`RecoveryManager`、`SpawnManager`、`StreamController`、`TeamRail`、`TeamToolApprovalRail`、`TeamMemberState`、`FirstIterationGate`、`AgentConfigurator`、`SessionManager`、`ModelAllocator(s)`、`AgentTeamPolicy` | 团队协调器、唤醒循环、事件分发、spawn 与恢复、流控、prompt rail、模型分配策略、leader/teammate 策略模板 |
+| `agentteams.agent` | `TeamAgent`、`CoordinationKernel`、`EventBus`、`AsyncCallbackFramework`、`AgentRoundController`、`PollController`、`TeamAgentBlueprint`、`TeamInfra`、`TeamLifecycleController`、`DispatcherHost`、`EventCallback`、`InnerEventMessage`、`InnerEventType`、`SpawnManager`、`StreamController`、`TeamRail`、`TeamToolApprovalRail`、`AgentConfigurator`、`ModelAllocator(s)`、`AgentTeamPolicy` | 团队协调器、单线程事件派发、事件总线、异步回调、ReAct 轮次控制、轮询控制、blueprint、共享基础设施、生命周期控制、handler dispatcher 宿主、spawn、流控、prompt rail、模型分配策略 |
+| `agentteams.agent.coordination.handlers` | `BaseCoordinationHandler`、`AgentLifecycleHandler`、`MemberHandler`、`MessageHandler`、`TaskBoardHandler`、`StaleTaskHandler`、`TeamCompletionHandler`、`WorkflowHandler` | 8 个 scenario handler：团队生命周期、member 状态、消息流转、任务看板 nudge、stale 催办、团队完成判定、工作流依赖解锁 |
 | `agentteams.messager` | `Messager`、`MessagerFactory`、`InProcessMessager`、`PyZmqMessager`、`MessagerHandler`、`MessagerTransportConfig`、`MessagerPeerConfig`、`SubscriptionHandle` | 进程内 / PyZMQ 传输层抽象与实现 |
 | `agentteams.spawn` | `SpawnHandle`、`InProcessSpawnHandle`、`ProcessSpawnHandle`、`SpawnContext`、`SharedResources` | 进程内 / 进程级 spawn 句柄与可继承的 session 上下文 |
 | `agentteams.worktree` | `WorktreeManager`、`WorktreeRail`、`WorktreeSession`、`WorktreeConfig`、`WorktreeBackends`、`RemoteWorktreeBackend`、`WorktreeRemoteHandler` 等 | git worktree 隔离与生命周期管理 |
 | `agentteams.teamworkspace` | `TeamWorkspaceManager`、`TeamWorkspaceConfig`、`WorkspaceFileLock`、`WorkspaceLockRequest`、`WorkspaceLockResponse`、`WorkspaceMode`、`ConflictStrategy` | 团队共享工作空间、目录初始化、文件锁 |
 | `agentteams.monitor` | `TeamMonitor`、`MonitorEvent`、`MonitorEventType`、`TeamInfo`、`MemberInfo`、`TaskInfo`、`MessageInfo` | 团队事件监控与状态快照 |
 | `agentteams.interaction` | `Router`、`MentionRoute`、`UserInbox`、`HumanAgentInbox`、`UnknownHumanAgentError`、`HumanAgentNotEnabledError` | mention 路由解析、用户与人类成员收件箱 |
-| `agentteams.tools` | `TeamBackend`、`TeamMember`、`TeamMessage`、`TeamMessageManager`、`TeamTask`、`TeamTaskManager`、`TeamTools`、`TeamResultCollector`、`TaskOpResult` | 团队工具实现（send_message、claim_task、update_task、spawn_member、shutdown_member、clean_team 等） |
+| `agentteams.tools` | `TeamBackend`、`TeamMember`、`TeamMessage`、`TeamMessageManager`、`TeamTask`、`TeamTaskManager`、`TeamTools`、`TaskOpResult` | 团队工具实现（send_message、claim_task、update_task、spawn_member、shutdown_member、clean_team 等） |
 | `agentteams.tools.database` | `TeamDatabase`、`DatabaseConfig`、`DatabaseType`、`TeamRecord`、`MemberRecord`、`MessageRecord`、`TaskRecord`、`TaskDependencyRecord`、`GraphMutationResult`、`RuntimeCleanupResult`、`MemoryDatabaseConfig` | 团队持久化抽象与多后端适配 |
 | `agentteams.schema.blueprint` | `TeamAgentSpec` | 团队蓝图 |
 | `agentteams.schema.team` | `TeamMemberSpec`、`TeamRole`、`TeamLifecycle`、`TeamRuntimeContext`、`TeamModelConfig`、`ModelPoolEntry`、`ModelPoolEntries` | 团队/成员/运行上下文/模型池 schema |
@@ -399,7 +409,7 @@ team skill 的标准目录结构由 5 个部分组成，每个文件各司其职
 
 两条关键机制：
 
-- **直接点对点辩论**：Round 2 中 `optimistic-researcher` 与 `pessimistic-researcher` 通过 `send_message` 直接交换观点，无需 leader 转达。`bind.md` 把这条列为"强制要求"，优先级 `直接点对点交换 > 共享黑板 > Leader 转发`。框架通过 `member_results_delivery` 事件把上游输出投递给下游 assignee（见上文"team skill 的多阶段数据流"）支撑这条链路。
+- **直接点对点辩论**：Round 2 中 `optimistic-researcher` 与 `pessimistic-researcher` 通过 `send_message` 直接交换观点，无需 leader 转达。`bind.md` 把这条列为"强制要求"，优先级 `直接点对点交换 > 共享黑板 > Leader 转发`。实现上靠 `send_message` 工具 + `MessageHandler.processUnreadMessages` 把对方的消息 drain 进自己的 ReAct 循环。
 - **辩论固定 2 轮**：`bind.md` 同时声明 `debate_rounds_limit=2` 与 `min_debate_rounds=2`，leader 在 Step 5 完成"是否满 2 轮"的校验，未满则强制继续，不允许提前终止。
 
 ### Demo 详细功能实现
@@ -422,7 +432,7 @@ TeamAgent leader = TeamFactory.createAgentTeam(spec);
 Runner.start();
 ```
 
-`TeamFactory.createAgentTeam(...)` 内部完成：分配 leader 模型 → 构建 `TeamRuntimeContext` → `new TeamAgent().attachModelAllocator(...).configure(spec, context)`。`configure(...)` 会触发 `bootstrapCoordinationHost()`（创建 `TeamBackend`、`Messager`、`CoordinatorLoop`、`EventDispatcher`、`RecoveryManager`、`SpawnManager`、`StreamController`）和 `setupAgent()`（注册团队工具 + `file_io`，创建 leader 自己的 `DeepAgent`，挂上 `TeamRail`）。
+`TeamFactory.createAgentTeam(...)` 内部完成：分配 leader 模型 → 构建 `TeamRuntimeContext` → `new TeamAgent().attachModelAllocator(...).configure(spec, context)`。`configure(...)` 会触发 `bootstrapCoordinationHost()`（创建 `TeamBackend`、`Messager`、`CoordinationKernel` 含 8 个 handler、`SpawnManager`、`StreamController`）和 `setupAgent()`（注册团队工具 + `file_io`，创建 leader 自己的 `DeepAgent`，挂上 `TeamRail`）。
 
 #### 3. 流式触发首轮
 
@@ -435,7 +445,7 @@ consumeStream(stream);
 
 - 把 query 写入 `pendingUserQuery`，标记 `streaming_coordination=true`。
 - 创建 `LinkedBlockingQueue`，绑定到 `StreamController`。
-- `coordinationManager.subscribeTransport()` 订阅团队消息主题，再 `coordinatorLoop.start()` 启动守护线程。
+- `coordinationKernel` 订阅团队消息主题（4 个），再 `start()` 启动 `EventBus` 守护线程。
 - 入队一条 `USER_INPUT` 事件，返回 `CoordinationStreamIterator`。
 
 `consumeStream(...)` 负责把流里的 chunk 按 `type` 分类渲染到终端：
@@ -450,7 +460,7 @@ consumeStream(stream);
 | `llm_output` | 绿色 `[Output] <text>` | 模型正文输出 |
 | `answer` | 黄色 `[Answer] <text>` | 最终答案（若已有 llm_output 则去重） |
 
-`StreamController.STREAM_END` 是流结束哨兵，触发 `finalizeStreamingRound()`（提交本轮记忆抽取、清掉 `streaming_coordination` 标记、保留 `CoordinatorLoop` 运行）。
+`StreamController.STREAM_END` 是流结束哨兵，触发 `finalizeStreamingRound()`（提交本轮记忆抽取、清掉 `streaming_coordination` 标记、保留 `EventBus` 守护线程运行）。
 
 #### 4. REPL 交互循环
 
@@ -459,12 +469,12 @@ consumeStream(stream);
 - 输入 `exit` / `quit` 退出。
 - 其他输入通过 `leader.interact(userInput)` 投递给 leader。
   - 如果 leader 的 agent 正在运行，`interact` 会走 `streamController.steer(message)` 路径（运行中插入新指令）。
-  - 否则走 `coordinatorLoop.enqueue(USER_INPUT)` 路径（唤醒协调循环）。
+  - 否则走 `EventBus.enqueue(USER_INPUT)` 路径（唤醒 `CoordinationKernel`）。
 - 随后调用 `tryConsumeNewOutput(...)` 再开一次流把新输出渲染出来。
 
 #### 5. 收尾
 
-`finally` 块依次 `leader.close()`（关闭 `TeamMemoryManager` 和 `CoordinatorLoop`）和 `Runner.stop()`。整个 demo 不显式调用 `clean_team` / `destroyTeam`——因为 lifecycle 是 `temporary`，leader 在任务全部完成后会按 prompt 指引自行调用 `shutdown_member` 与 `clean_team`，`CoordinatorLoop` 在 `nudgeIdleAgent` 判定全部完成后会停止。
+`finally` 块依次 `leader.close()`（关闭 `TeamMemoryManager` 和 `EventBus` 守护线程）和 `Runner.stop()`。整个 demo 不显式调用 `clean_team` / `destroyTeam`——因为 lifecycle 是 `temporary`，leader 在 `TeamCompletionHandler` 发出 `TEAM_COMPLETED` 后会按 prompt 指引自行调用 `shutdown_member` 与 `clean_team`。
 
 #### 关键观察点
 
@@ -483,19 +493,19 @@ consumeStream(stream);
 拉2个人报数，分为2个有依赖的任务
 ```
 
-这条输入用于验证 leader 的动态 spawn + 任务依赖编排能力，对应 `teamMode=default` 路径。真实执行路径比"leader 手动指派"更自动化：
+这条输入用于验证 leader 的动态 spawn + 任务依赖编排能力，对应 `teamMode=default` 路径。当前实现的真实链路：
 
 - leader 解析指令后，通过 `spawn_member` 工具拉起两个 teammate（例如 `member_a`、`member_b`）。
 - 用 `create_task(..., dependencies=["T1"])` 创建 T2 时，`TeamTaskManager.add(...)` 把 T2 初始状态设为 `blocked`（不是 `pending`），并在 `TaskDependencyRecord` 表里记录 T2 → T1 的依赖边。T1 无依赖，初始状态 `pending`。
-- `member_a` 通过 `claim_task` 领取 T1，状态变 `claimed`；完成后 `complete_task` 把 T1 标 `completed`，发布 `task_completed` 事件。
-- `EventDispatcher` 收到 `task_completed` 后调 `tryDeliverToNextStage`：检测到 T2 的全部依赖（T1）已完成，从 `TeamResultCollector` 取出 T1 assignee 的输出，组装成 `member_results_delivery` 事件，通过 `team:message` 主题投递给 T2 的 assignee。
-- T2 的 assignee 收到 `member_results_delivery` 后 `deliverInput(content)`，进入自己的 ReAct 循环处理 T2。
-- `tryAutoCompleteMemberTasks` 在每个 member 轮次结束时检查：如果该 member 给 leader 发过 `send_message`，自动 claim + complete 它名下未完成任务，无需 member 显式调 `complete_task`。
-- 全部任务 `completed` 后，leader 的 `nudgeIdleAgent` 检测到任务板清空，对 `temporary` 团队 stop `CoordinatorLoop` 并提示 leader 收尾。
+- `member_a` 通过 `claim_task` 领取 T1，状态变 `claimed`；完成后 `update_task(T1, status="completed")`，`TeamTaskManager` 发布 `task_completed` 事件到 `team:task` 主题。
+- `TaskBoardHandler` / `WorkflowHandler` 收到 `task_completed`：检测到 T2 的全部依赖（T1）已完成，把 T2 从 `blocked` 改为 `pending`，发 `task_unblocked` 事件。
+- `task_unblocked` 进入 `TaskBoardHandler.onTaskBoardEvent` → `nudgeIdleAgent(member_b, false)`：把"当前可领取任务看板"推给 `member_b`。`member_b` 在看板里看到 T2 已 pending，自己 `claim_task` 领取——不是框架直接指派。
+- 上游 T1 的实际输出内容（`member_a` 报的数）通过 `send_message` 发给 leader，leader 在创建 T2 时把内容或路径写进 T2 的 description；或 `member_b` 领取后通过 `view_task` 看到上游 deliver 进来的 task context。框架**不**自动把 `member_a` 的消息内容投递给 `member_b`。
+- 全部任务 `completed` 后，`TeamCompletionHandler.onPollTask` 评估 `isTeamCompleted()` 三条件满足（task 全 terminal + member 全 settled + 无未读消息），发 `TEAM_COMPLETED`。`temporary` 团队的 leader 按 prompt 指引走 `shutdown_member` + `clean_team`。
 
-预期在终端看到：两次 `● spawn_member` → `● create_task`（T1，pending）→ `● create_task`（T2，blocked，dependencies=[T1]）→ `● claim_task` + `● complete_task`（T1）→ `● task_unblocked`（T2 自动转 pending）→ T2 assignee 领取并完成 → leader 汇总。
+预期在终端看到：两次 `● spawn_member` → `● create_task`（T1，pending）→ `● create_task`（T2，blocked，dependencies=[T1]）→ `● claim_task` + `● update_task`（T1 → completed）→ `● task_unblocked`（T2 自动转 pending）→ T2 assignee 领取并完成 → leader 汇总 → `TEAM_COMPLETED`。
 
-这是验证 leader 能否正确处理任务依赖、`TaskRecord.status` 在 `pending → blocked → claimed → completed` 间迁移、以及 `member_results_delivery` 多阶段投递是否正常的最小用例。
+这是验证 leader 能否正确处理任务依赖、`TaskRecord.status` 在 `pending → blocked → claimed → completed` 间迁移、以及 `task_unblocked` + `nudgeIdleAgent` 联动是否正常的最小用例。
 
 #### 示例 2：读取 investment-analysis-team team skill，以 AAPL 苹果为分析例子执行任务
 
@@ -522,28 +532,11 @@ consumeStream(stream);
 - 四个分析师并行（彼此不可见），输出报告后通过 `send_message` 向 leader 发送完成摘要与文件路径，而不是发完整内容。
 - `optimistic-researcher` 与 `pessimistic-researcher` 在 Round 1 并行（不可见）；Round 2 通过 `send_message` 直接点对点交换观点进行 2 轮反驳辩论（无需 leader 转达），最后各自输出辩论结论。
 - leader 完成辩论校验（必须满 2 轮）后，交给 `portfolio-risk-controller` 串行生成最终投资决策（至少 3 个风控措施）。
-- 最终 leader 把所有中间报告以**原文引用**形式整合到 `.team/reports/T11_final_report.md`。
+- `portfolio-risk-controller` 直接产出团队最终产物 `.team/reports/T10_portfolio_risk.md`，包含所有中间报告（T1-T8）的原文引用 + 投资决策。T10 完成即团队完成，leader 不再汇总。
 
 `bind.md` 中对该 team skill 的资源约束（`max_parallel_teammates=4`、`total_wall_clock_budget=30min`、`debate_rounds_limit=2`、各角色 token 上限等）会被 `TeamRail` 注入到 leader 的 prompt 中，leader 需要在分发任务时遵守。
 
 注意：该示例依赖 `gs_stock_financial_query`、`gs_stock_market_query`、`gs_economy_query`、`content-strategy` 等 skill 与 `python3`、`curl`、`jq` 等工具；任一缺失时 team skill 会按 `dependencies.yaml` 的 `required: false` 标记降级运行，并在最终报告中标注哪些分析师启用了降级模式。
-
-## 参考入口
-
-- [API 文档：LeaderTeammateAgentTeam](../API文档/com.openjiuwen.agentteams/LeaderTeammateAgentTeam.md)
-- [API 文档：TeamFactory](../API文档/com.openjiuwen.agentteams/factory/TeamFactory.md)
-- [API 文档：TeamAgent](../API文档/com.openjiuwen.agentteams/agent/TeamAgent.md)
-- [API 文档：TeamAgentSpec](../API文档/com.openjiuwen.agentteams/schema/blueprint/TeamAgentSpec.md)
-- [API 文档：TeamBackend](../API文档/com.openjiuwen.agentteams/tools/TeamBackend.md)
-- [API 文档：Messager](../API文档/com.openjiuwen.agentteams/messager/Messager.md)
-- [API 文档：SpawnHandle](../API文档/com.openjiuwen.agentteams/spawn/SpawnHandle.md)
-- [API 文档：TeamMonitor](../API文档/com.openjiuwen.agentteams/monitor/TeamMonitor.md)
-- [API 文档：WorktreeManager](../API文档/com.openjiuwen.agentteams/worktree/WorktreeManager.md)
-- [API 文档：TeamWorkspaceManager](../API文档/com.openjiuwen.agentteams/teamworkspace/TeamWorkspaceManager.md)
-- [API 文档：Router](../API文档/com.openjiuwen.agentteams/interaction/Router.md)
-- [API 文档：TeamSkillRail](../API文档/com.openjiuwen.harness/rails/TeamSkillRail.md)
-- [API 文档：TeamSkillCreateRail](../API文档/com.openjiuwen.harness/rails/TeamSkillCreateRail.md)
-- [API 文档：SkillUseRail](../API文档/com.openjiuwen.harness/rails/SkillUseRail.md)
 
 ## 使用边界
 

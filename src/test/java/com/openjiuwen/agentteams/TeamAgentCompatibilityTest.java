@@ -15,6 +15,7 @@ import com.openjiuwen.agentteams.schema.team.ModelPoolEntry;
 import com.openjiuwen.agentteams.schema.team.TeamLifecycle;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
+import com.openjiuwen.agentteams.spawn.SpawnContext;
 import com.openjiuwen.core.memory.team.TeamMemoryConfig;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
@@ -22,6 +23,7 @@ import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptEntry;
 import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -35,6 +37,16 @@ import java.util.Map;
 public class TeamAgentCompatibilityTest {
     @TempDir
     Path tempDir;
+
+    @AfterEach
+    void resetSpawnSession() {
+        // resumePersistentTeam pins a new session id into SpawnContext's
+        // InheritableThreadLocal and never restores the previous value.
+        // Without this reset, the leaked id poisons later test classes whose
+        // TeamBackend constructs from SpawnContext.getSessionId() and then
+        // publishes on a session-prefixed topic the subscriber never matches.
+        SpawnContext.setSessionId("");
+    }
 
     @Test
     void specShouldInjectDefaultLeaderWhenMissing() {

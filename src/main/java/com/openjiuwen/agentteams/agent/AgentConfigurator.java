@@ -20,6 +20,7 @@ import com.openjiuwen.agentteams.teamworkspace.TeamWorkspaceManager;
 import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.agentteams.tools.TeamTools;
 import com.openjiuwen.agentteams.worktree.WorktreeManager;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
@@ -68,9 +69,9 @@ public class AgentConfigurator {
     private FirstIterationGate firstIterGate;
 
     /**
-     * AgentConfigurator.
-     * 
-     * @param card card
+     * Create an AgentConfigurator bound to the given agent card.
+     *
+     * @param card the agent card defining the agent identity and capabilities
      * @since 0.1.7
      */
     public AgentConfigurator(AgentCard card) {
@@ -81,9 +82,9 @@ public class AgentConfigurator {
     // ---- Properties ----
 
     /**
-     * getSpec.
-     * 
-     * @return the result
+     * Return the team agent specification.
+     *
+     * @return the team agent spec, or null if not yet configured
      * @since 0.1.7
      */
     public TeamAgentSpec getSpec() {
@@ -91,9 +92,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * getCtx.
-     * 
-     * @return the result
+     * Return the runtime context for the current team session.
+     *
+     * @return the runtime context, or null if not yet configured
      * @since 0.1.7
      */
     public TeamRuntimeContext getCtx() {
@@ -101,9 +102,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * getRole.
-     * 
-     * @return the result
+     * Return the team role derived from the runtime context.
+     *
+     * @return the team role, defaults to LEADER if context is absent
      * @since 0.1.7
      */
     public TeamRole getRole() {
@@ -111,9 +112,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * getMemberName.
-     * 
-     * @return the result
+     * Return the member name derived from the runtime context.
+     *
+     * @return the member name, or null if context is absent
      * @since 0.1.7
      */
     public String getMemberName() {
@@ -121,9 +122,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * getModelAllocator.
-     * 
-     * @return the result
+     * Return the model allocator used for LLM model selection.
+     *
+     * @return the model allocator, or null if not yet set
      * @since 0.1.7
      */
     public ModelAllocator getModelAllocator() {
@@ -131,9 +132,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * setModelAllocator.
-     * 
-     * @param modelAllocator modelAllocator
+     * Replace the model allocator instance.
+     *
+     * @param modelAllocator the new model allocator
      * @since 0.1.7
      */
     public void setModelAllocator(ModelAllocator modelAllocator) {
@@ -141,9 +142,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * getLeaderAllocation.
-     * 
-     * @return the result
+     * Return the model allocation reserved for the leader.
+     *
+     * @return the leader allocation, or null if not yet set
      * @since 0.1.7
      */
     public Allocation getLeaderAllocation() {
@@ -151,9 +152,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * getTeamBackend.
-     * 
-     * @return the result
+     * Return the team backend for inter-member communication.
+     *
+     * @return the team backend, or null if infrastructure not yet set up
      * @since 0.1.7
      */
     public TeamBackend getTeamBackend() {
@@ -161,9 +162,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * getDeepAgent.
-     * 
-     * @return the result
+     * Return the configured DeepAgent instance.
+     *
+     * @return the deep agent, or null if not yet configured
      * @since 0.1.7
      */
     public DeepAgent getDeepAgent() {
@@ -171,9 +172,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * getMemoryManager.
-     * 
-     * @return the result
+     * Return the team memory manager.
+     *
+     * @return the memory manager, or null if not yet set up
      * @since 0.1.7
      */
     public TeamMemoryManager getMemoryManager() {
@@ -181,9 +182,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * getFirstIterGate.
-     * 
-     * @return the result
+     * Return the first-iteration gate that controls initial agent behavior.
+     *
+     * @return the first iteration gate, or null if not yet set up
      * @since 0.1.7
      */
     public FirstIterationGate getFirstIterGate() {
@@ -191,9 +192,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * getMessager.
-     * 
-     * @return the result
+     * Return the messager used for team event transport.
+     *
+     * @return the messager, or null if not yet created
      * @since 0.1.7
      */
     public Messager getMessager() {
@@ -201,9 +202,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * getWorkspaceManager.
-     * 
-     * @return the result
+     * Return the team workspace manager.
+     *
+     * @return the workspace manager, or null if not yet created
      * @since 0.1.7
      */
     public TeamWorkspaceManager getWorkspaceManager() {
@@ -211,9 +212,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * getWorktreeManager.
-     * 
-     * @return the result
+     * Return the worktree manager for isolated work directories.
+     *
+     * @return the worktree manager, or null if not yet created
      * @since 0.1.7
      */
     public WorktreeManager getWorktreeManager() {
@@ -223,11 +224,11 @@ public class AgentConfigurator {
     // ---- Main entry point ----
 
     /**
-     * configure.
-     * 
-     * @param spec spec
-     * @param ctx ctx
-     * @return the result
+     * Two-phase setup: infrastructure then agent, returning the configured DeepAgent.
+     *
+     * @param spec the team agent specification
+     * @param ctx the runtime context for this team session
+     * @return the fully configured DeepAgent instance
      * @since 0.1.7
      */
     public DeepAgent configure(TeamAgentSpec spec, TeamRuntimeContext ctx) {
@@ -238,10 +239,10 @@ public class AgentConfigurator {
     // ---- Phase 1: Infrastructure ----
 
     /**
-     * setupInfra.
-     * 
-     * @param spec spec
-     * @param ctx ctx
+     * Phase 1: create messager, model allocator, and register team tools.
+     *
+     * @param spec the team agent specification
+     * @param ctx the runtime context for this team session
      * @since 0.1.7
      */
     public void setupInfra(TeamAgentSpec spec, TeamRuntimeContext ctx) {
@@ -259,10 +260,10 @@ public class AgentConfigurator {
     }
 
     /**
-     * buildMessagerFromSpec.
-     * 
-     * @param spec spec
-     * @return the result
+     * Create a Messager from the transport config in the spec.
+     *
+     * @param spec the team agent specification
+     * @return the created messager, or null on failure
      * @since 0.1.7
      */
     private Messager buildMessagerFromSpec(TeamAgentSpec spec) {
@@ -271,18 +272,18 @@ public class AgentConfigurator {
                 MessagerTransportConfig.builder().teamName(spec.getName()).nodeId(resolveLeaderMemberName())
                         .backend(spec.getTransport() != null ? spec.getTransport() : "inprocess").build();
             return MessagerFactory.createMessager(config);
-        } catch (Exception e) {
+        } catch (IllegalArgumentException | NullPointerException e) {
             Loggers.AGENT.debug("Failed to create messager: {}", e.getMessage());
             return null;
         }
     }
 
     /**
-     * createWorkspaceManager.
-     * 
-     * @param wsConfig wsConfig
-     * @param teamName teamName
-     * @return the result
+     * Create a TeamWorkspaceManager, ensuring the workspace directory exists.
+     *
+     * @param wsConfig workspace configuration including root path
+     * @param teamName team name used for default path resolution
+     * @return the created workspace manager
      * @since 0.1.7
      */
     public static TeamWorkspaceManager createWorkspaceManager(TeamWorkspaceConfig wsConfig, String teamName) {
@@ -299,9 +300,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * createWorktreeManager.
-     * 
-     * @return the result
+     * Create a WorktreeManager with no base path.
+     *
+     * @return the created worktree manager
      * @since 0.1.7
      */
     public WorktreeManager createWorktreeManager() {
@@ -311,11 +312,11 @@ public class AgentConfigurator {
     // ---- Phase 2: Agent setup (delegated to TeamAgent) ----
 
     /**
-     * setupAgent.
-     * 
-     * @param spec spec
-     * @param ctx ctx
-     * @return the result
+     * Phase 2: return the DeepAgent (actual wiring delegated to TeamAgent).
+     *
+     * @param spec the team agent specification
+     * @param ctx the runtime context for this team session
+     * @return the deep agent instance
      * @since 0.1.7
      */
     public DeepAgent setupAgent(TeamAgentSpec spec, TeamRuntimeContext ctx) {
@@ -325,11 +326,11 @@ public class AgentConfigurator {
     // ---- Tool registration ----
 
     /**
-     * registerTeamTools.
-     * 
-     * @param spec spec
-     * @param ctx ctx
-     * @return the result
+     * Create TeamBackend and register team tools with the resource manager.
+     *
+     * @param spec the team agent specification
+     * @param ctx the runtime context for this team session
+     * @return the list of tool cards for the registered team tools
      * @since 0.1.7
      */
     private List<ToolCard> registerTeamTools(TeamAgentSpec spec, TeamRuntimeContext ctx) {
@@ -338,7 +339,8 @@ public class AgentConfigurator {
 
         boolean isLeader = ctx.getRole() == TeamRole.LEADER;
 
-        this.teamBackend = new TeamBackend(teamName, currentMemberName, isLeader, messager);
+        this.teamBackend = new TeamBackend(
+                teamName, currentMemberName, isLeader, messager, ctx.getSessionId());
         this.teamBackend.syncMembers(spec.getMembers());
 
         String roleValue = ctx.getRole() != null ? ctx.getRole().name().toLowerCase(Locale.ROOT) : "leader";
@@ -346,15 +348,20 @@ public class AgentConfigurator {
         String teamMode = spec.getTeamMode() != null && !spec.getTeamMode().isBlank() ? spec.getTeamMode() : "default";
         Set<String> excludeTools = "predefined".equals(teamMode) ? Set.of("spawn_member") : Set.of();
 
-        List<Tool> tools = TeamTools.createTeamTools(roleValue, teamBackend, teammateMode, excludeTools, null, null,
-                modelName -> modelAllocator != null ? modelAllocator.allocate(modelName) : null);
+        List<Tool> tools = TeamTools.createTeamTools(TeamTools.TeamToolsConfig.builder()
+                .role(roleValue).backend(teamBackend)
+                .teammateMode(teammateMode).excludeTools(excludeTools)
+                .workspaceManager(null).worktreeManager(null)
+                .modelConfigAllocator(modelName ->
+                        modelAllocator != null ? modelAllocator.allocate(modelName) : null)
+                .build());
         qualifyTeamToolIds(tools, teamName, currentMemberName);
 
         try {
             for (Tool tool : tools) {
                 Runner.resourceMgr().addTool(tool, teamName + "." + currentMemberName);
             }
-        } catch (Exception e) {
+        } catch (BaseError | NullPointerException e) {
             Loggers.AGENT.debug("Runner.resource_mgr not available, skipping tool registration");
         }
 
@@ -370,9 +377,9 @@ public class AgentConfigurator {
     // ---- Model pool ----
 
     /**
-     * updateModelPool.
-     * 
-     * @param newPool newPool
+     * Merge new model pool entries into the spec and rebuild the allocator.
+     *
+     * @param newPool the new model pool entries to merge
      * @since 0.1.7
      */
     public void updateModelPool(List<ModelPoolEntry> newPool) {
@@ -385,10 +392,10 @@ public class AgentConfigurator {
     }
 
     /**
-     * attachModelAllocator.
-     * 
-     * @param allocator allocator
-     * @param leaderAllocation leaderAllocation
+     * Attach an externally created model allocator and leader allocation.
+     *
+     * @param allocator the model allocator to use
+     * @param leaderAllocation the model allocation reserved for the leader
      * @since 0.1.7
      */
     public void attachModelAllocator(ModelAllocator allocator, Allocation leaderAllocation) {
@@ -397,9 +404,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * restoreAllocatorState.
-     * 
-     * @param state state
+     * Restore allocator internal state from a previously saved state dict.
+     *
+     * @param state the state dictionary to load
      * @since 0.1.7
      */
     public void restoreAllocatorState(Map<String, Object> state) {
@@ -411,11 +418,11 @@ public class AgentConfigurator {
     // ---- Spawn helpers ----
 
     /**
-     * buildSpawnPayload.
-     * 
-     * @param ctx ctx
-     * @param initialMessage initialMessage
-     * @return the result
+     * Build the spawn payload map for a new teammate process.
+     *
+     * @param ctx the runtime context of the member to spawn
+     * @param initialMessage the first message sent to the new teammate, or null for default
+     * @return the spawn payload as a plain map
      * @since 0.1.7
      */
     public Map<String, Object> buildSpawnPayload(TeamRuntimeContext ctx, String initialMessage) {
@@ -438,10 +445,10 @@ public class AgentConfigurator {
     }
 
     /**
-     * buildMemberContext.
-     * 
-     * @param memberSpec memberSpec
-     * @return the result
+     * Build a TeamRuntimeContext for a member from its spec.
+     *
+     * @param memberSpec the member specification
+     * @return the constructed runtime context
      * @since 0.1.7
      */
     public TeamRuntimeContext buildMemberContext(TeamMemberSpec memberSpec) {
@@ -452,10 +459,10 @@ public class AgentConfigurator {
     }
 
     /**
-     * buildSpawnConfig.
-     * 
-     * @param ctx ctx
-     * @return the result
+     * Build a SpawnAgentConfig for spawning a teammate as a sub-process.
+     *
+     * @param ctx the runtime context of the member to spawn
+     * @return the spawn agent configuration
      * @since 0.1.7
      */
     public SpawnAgentConfig buildSpawnConfig(TeamRuntimeContext ctx) {
@@ -470,11 +477,11 @@ public class AgentConfigurator {
     // ---- Private helpers ----
 
     /**
-     * qualifyTeamToolIds.
-     * 
-     * @param tools tools
-     * @param teamName teamName
-     * @param memberName memberName
+     * Prefix tool IDs with team and member keys for namespace isolation.
+     *
+     * @param tools the tools to qualify
+     * @param teamName the team name
+     * @param memberName the member name
      * @since 0.1.7
      */
     private void qualifyTeamToolIds(List<Tool> tools, String teamName, String memberName) {
@@ -493,9 +500,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * resolveLeaderMemberName.
-     * 
-     * @return the result
+     * Find the leader member name from the spec, with fallbacks.
+     *
+     * @return the leader member name
      * @since 0.1.7
      */
     private String resolveLeaderMemberName() {
@@ -507,10 +514,10 @@ public class AgentConfigurator {
     }
 
     /**
-     * payloadRole.
-     * 
-     * @param role role
-     * @return the result
+     * Convert a TeamRole to the snake_case string used in spawn payloads.
+     *
+     * @param role the team role to convert
+     * @return the snake_case role string
      * @since 0.1.7
      */
     private static String payloadRole(TeamRole role) {
@@ -528,10 +535,10 @@ public class AgentConfigurator {
 
     @SuppressWarnings("unchecked")
     /**
-     * serializeSpec.
-     * 
-     * @param spec spec
-     * @return the result
+     * Serialize the spec to a plain map via Jackson round-trip.
+     *
+     * @param spec the team agent specification
+     * @return the serialized map, or an empty map on failure
      * @since 0.1.7
      */
     private static Map<String, Object> serializeSpec(TeamAgentSpec spec) {
@@ -546,10 +553,10 @@ public class AgentConfigurator {
 
     @SuppressWarnings("unchecked")
     /**
-     * serializeContext.
-     * 
-     * @param ctx ctx
-     * @return the result
+     * Serialize the context to a plain map via Jackson round-trip.
+     *
+     * @param ctx the runtime context
+     * @return the serialized map, or an empty map on failure
      * @since 0.1.7
      */
     private static Map<String, Object> serializeContext(TeamRuntimeContext ctx) {
@@ -563,9 +570,9 @@ public class AgentConfigurator {
     }
 
     /**
-     * nullValue.
-     * 
-     * @return the result
+     * Return null, used as a type-safe null placeholder.
+     *
+     * @return null
      * @since 0.1.7
      */
     private static <T> T nullValue() {
