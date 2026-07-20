@@ -719,7 +719,9 @@ class TeamToolsCompatibilityTest {
     private Path createGitRepo(String name) throws Exception {
         Path repoRoot = tempDir.resolve(name);
         Files.createDirectories(repoRoot);
-        runGitOrThrow(repoRoot, "init", "-b", "main");
+        // Avoid `git init -b` (requires Git >= 2.28); set branch name before first commit.
+        runGitOrThrow(repoRoot, "init");
+        runGitOrThrow(repoRoot, "symbolic-ref", "HEAD", "refs/heads/main");
         runGitOrThrow(repoRoot, "config", "user.email", "test@example.com");
         runGitOrThrow(repoRoot, "config", "user.name", "Test User");
         Files.writeString(repoRoot.resolve("README.md"), "hello\n");
