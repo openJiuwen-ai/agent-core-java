@@ -349,7 +349,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
 
     /**
      * buildCliCmd.
-     * 
+     *
      * @param language language
      * @param code code
      * @return the result
@@ -357,7 +357,7 @@ public class LocalCodeOperation extends BaseCodeOperation {
      */
     private String buildCliCmd(String language, String code) {
         if ("python".equals(language)) {
-            return "python\0-u\0-c\0" + code;
+            return pythonCommand() + "\0-u\0-c\0" + code;
         } else {
             return "node\0-e\0" + code;
         }
@@ -373,10 +373,50 @@ public class LocalCodeOperation extends BaseCodeOperation {
      */
     private String buildFileCmd(String language, String filePath) {
         if ("python".equals(language)) {
-            return "python\0-u\0" + filePath;
+            return pythonCommand() + "\0-u\0" + filePath;
         } else {
             return "node\0" + filePath;
         }
+    }
+
+    /**
+     * Resolve a python launcher that exists on PATH. Prefer {@code python3} on Unix and
+     * {@code python} on Windows; fall back to the other name when present.
+     *
+     * @return python command
+     * @since 0.1.7
+     */
+    private String pythonCommand() {
+        String[] candidates = isWindows()
+                ? new String[] {"python", "python3", "python.exe"}
+                : new String[] {"python3", "python"};
+        for (String candidate : candidates) {
+            if (isExecutableOnPath(candidate)) {
+                return candidate;
+            }
+        }
+        return isWindows() ? "python" : "python3";
+    }
+
+    /**
+     * isExecutableOnPath.
+     *
+     * @param candidate executable name
+     * @return true when the executable exists on PATH
+     * @since 0.1.7
+     */
+    private boolean isExecutableOnPath(String candidate) {
+        String pathEnv = System.getenv("PATH");
+        if (pathEnv == null) {
+            return false;
+        }
+        for (String dir : pathEnv.split(java.io.File.pathSeparator)) {
+            java.io.File file = new java.io.File(dir, candidate);
+            if (file.isFile() && (isWindows() || file.canExecute())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

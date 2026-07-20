@@ -101,7 +101,9 @@ public class GitOperations {
      */
     public GitCommandResult git(String... args) {
         ProcessBuilder builder = new ProcessBuilder(command(args));
-        builder.directory(new java.io.File(workspace));
+        // Empty workspace is invalid as a process cwd on Windows (CreateProcess error=123).
+        String cwd = hasText(workspace) ? workspace : ".";
+        builder.directory(new java.io.File(cwd));
         builder.redirectErrorStream(true);
         builder.environment().putAll(gitEnv);
         try {
@@ -113,6 +115,7 @@ public class GitOperations {
         } catch (IOException ex) {
             return new GitCommandResult(1, ex.getMessage() == null ? "" : ex.getMessage());
         } catch (InterruptedException ex) {
+            // return failure to the caller.
             return new GitCommandResult(1, ex.getMessage() == null ? "" : ex.getMessage());
         }
     }
@@ -146,7 +149,9 @@ public class GitOperations {
             return status;
         }
         for (String line : result.output().split("\\R")) {
-            if (line.length() < 4) {
+            // Ignore CRLF/LF advisories merged via redirectErrorStream, and non-porcelain lines.
+            if (line.startsWith("warning:")
+                    || line.startsWith("error:") || line.length() < 4 || line.charAt(2) != ' ') {
                 continue;
             }
             String marker = line.substring(0, 2);
@@ -236,8 +241,15 @@ public class GitOperations {
     public List<String> diffNameOnly(String revision) {
         GitCommandResult result = git("diff", "--name-only", hasText(revision) ? revision : "HEAD");
         List<String> files = new ArrayList<>();
+        if (result.code() != 0) {
+            return files;
+        }
         for (String line : result.output().split("\\R")) {
-            String normalized = normalizePath(line.trim());
+            String trimmed = line.trim();
+            if (trimmed.isBlank() || trimmed.startsWith("warning:") || trimmed.startsWith("error:")) {
+                continue;
+            }
+            String normalized = normalizePath(trimmed);
             if (!normalized.isBlank()) {
                 files.add(normalized);
             }
@@ -252,7 +264,13 @@ public class GitOperations {
      * @since 0.1.7
      */
     public String statusPorcelain() {
-        return git("status", "--porcelain", "--untracked-files=all").output().stripTrailing();
+        GitCommandResult result = git("status", "--porcelain", "--untracked-files=all");
+        if (result.code() != 0) {
+            return "";
+        }
+        // Drop stderr advisories that were merged into stdout.
+        return result.output().lines().filter(line -> !line.startsWith("warning:") && !line.startsWith("error:"))
+                .reduce((left, right) -> left + "\n" + right).orElse("").stripTrailing();
     }
 
     /**

@@ -81,19 +81,21 @@ class ResourceMgrTest {
         }
 
         @Test
-        @DisplayName("Add agent with empty id throws error")
+        @DisplayName("Add agent with empty id auto-generates id")
         void testAddAgentWithEmptyId() {
             AgentCard card = AgentCard.builder().id("").name("Test Agent").build();
-            Exception ex = assertThrows(Exception.class, () -> resourceMgr.addAgent(card, () -> "mock_agent", null));
-            assertTrue(ex.getMessage().contains("cannot be empty"));
+            Result<?> result = resourceMgr.addAgent(card, () -> "mock_agent", null);
+            assertTrue(result.isOk());
+            assertFalse(card.getId().isBlank());
         }
 
         @Test
-        @DisplayName("Add agent with whitespace-only id throws error")
+        @DisplayName("Add agent with whitespace-only id auto-generates id")
         void testAddAgentWithWhitespaceId() {
             AgentCard card = AgentCard.builder().id("   ").name("Test Agent").build();
-            Exception ex = assertThrows(Exception.class, () -> resourceMgr.addAgent(card, () -> "mock_agent", null));
-            assertTrue(ex.getMessage().contains("whitespace"));
+            Result<?> result = resourceMgr.addAgent(card, () -> "mock_agent", null);
+            assertTrue(result.isOk());
+            assertFalse(card.getId().isBlank());
         }
 
         @Test
@@ -221,12 +223,12 @@ class ResourceMgrTest {
         }
 
         @Test
-        @DisplayName("Add duplicate agent fails")
+        @DisplayName("Add duplicate agent replaces existing registration")
         void testAddDuplicateAgent() {
             AgentCard card = AgentCard.builder().id("agent1").name("Agent One").build();
             resourceMgr.addAgent(card, () -> "agent_instance", null);
             Result<?> result = resourceMgr.addAgent(card, () -> "agent_instance2", null);
-            assertFalse(result.isOk());
+            assertTrue(result.isOk());
         }
 
         @Test

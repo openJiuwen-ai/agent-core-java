@@ -5,8 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.memory.support.TestDbStore;
 
 import org.h2.jdbcx.JdbcDataSource;
@@ -56,14 +58,12 @@ class SqlDbStoreTest {
 
     @Test
     void getWithSortReturnsEmptyWhenSortColumnDoesNotExist() {
-        List<Map<String, Object>> rows =
-            sqlDbStore.getWithSort("user_message", Map.of("user_id", "u1"), "missing_column", "ASC", 10);
-
-        assertTrue(rows.isEmpty());
+        assertThrows(BaseError.class,
+                () -> sqlDbStore.getWithSort("user_message", Map.of("user_id", "u1"), "missing_column", "ASC", 10));
     }
 
     @Test
-    void batchGetUsesOrWithinEachConditionGroupLikePython() {
+    void batchGetUsesOrWithinEachConditionGroup() {
         List<Map<String, Object>> rows =
             sqlDbStore.batchGet("user_message", List.of(Map.of("message_id", "m1", "role", "assistant")));
 
@@ -78,7 +78,7 @@ class SqlDbStoreTest {
         Map invalidConditions = new LinkedHashMap();
         invalidConditions.put("message_id", "m1");
 
-        assertNull(sqlDbStore.conditionGet("user_message", invalidConditions, null));
+        assertThrows(BaseError.class, () -> sqlDbStore.conditionGet("user_message", invalidConditions, null));
     }
 
     @Test

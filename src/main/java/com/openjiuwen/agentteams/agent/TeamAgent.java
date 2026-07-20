@@ -1122,7 +1122,9 @@ public class TeamAgent implements DispatcherHost {
     }
 
     private List<Tool> registerTeamTools() {
-        String roleValue = context.getRole() != null ? context.getRole().name().toLowerCase(Locale.ROOT) : "leader";
+        // Align with spawn payload role strings (MEMBER -> "teammate") so tool filtering
+        // stays consistent across TeamAgent bootstrap and fromSpawnPayload paths.
+        String roleValue = context.getRole() != null ? payloadRole(context.getRole()) : "leader";
         String teammateMode = resolveTeammateMode();
         Set<String> excludeTools = "predefined".equals(resolveTeamMode()) ? Set.of("spawn_member") : Set.of();
         List<Tool> tools = com.openjiuwen.agentteams.tools.TeamTools.createTeamTools(

@@ -30,12 +30,14 @@ import com.openjiuwen.autoharness.stages.PlanStage;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
+import com.openjiuwen.core.testsupport.OsTestSupport;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.rails.TaskPlanningRail;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.MockedStatic;
 
@@ -47,6 +49,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 class ContextsPipelinesCompatibilityTest {
@@ -203,9 +206,12 @@ class ContextsPipelinesCompatibilityTest {
     }
 
     @Test
-    void prepareTaskRuntimeShouldCreateTaskSessionAgentsAndSharedEditRail() {
-        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(
-                AutoHarnessConfig.builder().workspace(".").dataDir("target/auto-harness-test").localRepo(".").build());
+    void prepareTaskRuntimeShouldCreateTaskSessionAgentsAndSharedEditRail() throws Exception {
+        // Use a fixture with origin/develop; cwd may not have that remote branch on CI/Linux.
+        Path repo = initOriginDevelopRepo("prepare-task-runtime-repo");
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder()
+                .workspace(repo.toString()).dataDir(tempDir.resolve("auto-harness-test").toString())
+                .localRepo(repo.toString()).gitBaseBranch("develop").build());
         OptimizationTask task = OptimizationTask.builder().topic("task-1").build();
 
         TaskRuntime runtime = PRTaskPipeline.prepareTaskRuntime(orchestrator, task);
@@ -322,8 +328,11 @@ class ContextsPipelinesCompatibilityTest {
     }
 
     @Test
+    @Timeout(value = 60, unit = TimeUnit.SECONDS)
     void orchestratorRunSessionStreamShouldOnlyStoreInputTasksWhenProvided() {
-        AutoHarnessOrchestrator direct = new AutoHarnessOrchestrator(AutoHarnessConfig.builder().build());
+        // Keep taskTimeoutSecs finite so a stuck implement stage cannot hang IDEA (default is 1200s).
+        AutoHarnessOrchestrator direct = new AutoHarnessOrchestrator(
+                AutoHarnessConfig.builder().taskTimeoutSecs(30.0).sessionBudgetSecs(60.0).build());
         direct.runSessionStream(List.of(OptimizationTask.builder().topic("direct task").build()));
 
         assertThat(direct.getArtifacts().require("input_tasks", "")).asList().hasSize(1);
@@ -452,10 +461,13 @@ class ContextsPipelinesCompatibilityTest {
     }
 
     @Test
+    @Timeout(value = 30, unit = TimeUnit.SECONDS)
     void directTasksShouldSkipAssessAndPlanAgents() {
-        AutoHarnessOrchestrator orchestrator =
-            AutoHarnessFactory.createAutoHarnessOrchestrator(AutoHarnessConfig.builder()
-                    .dataDir(tempDir.resolve("direct-skip-assess-plan").toString()).maxTasksPerSession(1).build());
+        // maxTasksPerSession=0 keeps the session from running the heavy PR task pipeline;
+        // this case only verifies that provided input_tasks skip assess/plan and populate task_plan.
+        AutoHarnessOrchestrator orchestrator = AutoHarnessFactory.createAutoHarnessOrchestrator(AutoHarnessConfig
+                .builder().dataDir(tempDir.resolve("direct-skip-assess-plan").toString()).maxTasksPerSession(0)
+                .taskTimeoutSecs(5.0).sessionBudgetSecs(10.0).build());
 
         try (MockedStatic<AutoHarnessFactory> factory = mockStatic(AutoHarnessFactory.class)) {
             factory.when(() -> AutoHarnessFactory.createAutoHarnessOrchestrator(any(AutoHarnessConfig.class)))
@@ -465,10 +477,12 @@ class ContextsPipelinesCompatibilityTest {
             factory.when(() -> AutoHarnessFactory.createPlanAgent(any(AutoHarnessConfig.class)))
                     .thenThrow(new AssertionError("direct tasks must not run plan"));
 
-            List<Object> events =
-                orchestrator.runSessionStream(List.of(OptimizationTask.builder().topic("t1").build()));
+            orchestrator.runSessionStream(List.of(OptimizationTask.builder().topic("t1").build()));
 
-            assertThat(messageTexts(events)).anySatisfy(message -> assertThat(message).contains("t1"));
+            factory.verify(() -> AutoHarnessFactory.createAssessAgent(any(AutoHarnessConfig.class)),
+                    org.mockito.Mockito.never());
+            factory.verify(() -> AutoHarnessFactory.createPlanAgent(any(AutoHarnessConfig.class)),
+                    org.mockito.Mockito.never());
             TaskPlanArtifact taskPlan = (TaskPlanArtifact) orchestrator.getArtifacts().require("task_plan", "");
             assertThat(taskPlan.getTasks()).hasSize(1);
             assertThat(taskPlan.getTasks().get(0).getTopic()).isEqualTo("t1");
@@ -476,9 +490,10 @@ class ContextsPipelinesCompatibilityTest {
     }
 
     @Test
+    @Timeout(value = 90, unit = TimeUnit.SECONDS)
     void orchestratorRunSessionStreamShouldCapDirectTasksByMaxTasksPerSession() {
-        AutoHarnessOrchestrator orchestrator =
-            new AutoHarnessOrchestrator(AutoHarnessConfig.builder().maxTasksPerSession(2).build());
+        AutoHarnessOrchestrator orchestrator = new AutoHarnessOrchestrator(AutoHarnessConfig.builder()
+                .maxTasksPerSession(2).taskTimeoutSecs(30.0).sessionBudgetSecs(90.0).build());
 
         orchestrator.runSessionStream(List.of(OptimizationTask.builder().topic("t0").build(),
                 OptimizationTask.builder().topic("t1").build(), OptimizationTask.builder().topic("t2").build(),
@@ -556,6 +571,9 @@ class ContextsPipelinesCompatibilityTest {
     }
 
     private static void run(Path cwd, String... command) throws Exception {
+        if (command.length > 0 && "git".equals(command[0])) {
+            OsTestSupport.assumeGitAvailable();
+        }
         Process process = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         int code = process.waitFor();

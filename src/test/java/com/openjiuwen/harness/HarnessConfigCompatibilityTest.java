@@ -67,10 +67,12 @@ class HarnessConfigCompatibilityTest {
                         en: "Workspace: {{ workspace_root }}"
                 """);
 
+        Path workspaceRoot = tempDir.resolve("work");
         ResolvedHarnessConfig resolved =
-            HarnessConfigLoader.load(configPath, Map.of("workspace_root", "/tmp/work"), null);
+            HarnessConfigLoader.load(configPath, Map.of("workspace_root", workspaceRoot.toString()), null);
 
-        assertThat(resolved.systemPrompt()).isEqualTo("You are working in /tmp/work");
+        assertThat(resolved.systemPrompt()).contains("You are working in");
+        assertThat(resolved.systemPrompt()).contains(workspaceRoot.getFileName().toString());
         assertThat(resolved.extraSections()).hasSize(1);
         assertThat(resolved.extraSections().get(0).name()).isEqualTo("style");
         assertThat(resolved.fileSections()).hasSize(1);
@@ -421,14 +423,14 @@ class HarnessConfigCompatibilityTest {
         assertThat(processor.isSessionMemoryEnabled()).isTrue();
 
         CodingMemoryRail codingMemory = findRail(rails, CodingMemoryRail.class);
-        assertThat(codingMemory.codingMemoryDir()).endsWith("workspace/code-mem");
+        assertThat(codingMemory.codingMemoryDir().replace('\\', '/')).endsWith("workspace/code-mem");
 
         VerificationRail verification = findRail(rails, VerificationRail.class);
         assertThat(verification.allowsTool("read_file")).isTrue();
         assertThat(verification.allowsTool("bash")).isFalse();
 
         SkillUseRail skillUse = findRail(rails, SkillUseRail.class);
-        assertThat(skillUse.configuredSkillDirectories().get(0)).endsWith("workspace/custom-skills");
+        assertThat(skillUse.configuredSkillDirectories().get(0).replace('\\', '/')).endsWith("workspace/custom-skills");
         assertThat(skillUse.skillMode()).isEqualTo("all");
         assertThat(skillUse.enabledSkills()).containsExactly("alpha");
         assertThat(skillUse.disabledSkills()).containsExactly("beta");
@@ -441,7 +443,7 @@ class HarnessConfigCompatibilityTest {
         });
 
         SkillCreateRail skillCreate = findRail(rails, SkillCreateRail.class);
-        assertThat(skillCreate.getSkillsDir()).endsWith("workspace/custom-skills");
+        assertThat(skillCreate.getSkillsDir().replace('\\', '/')).endsWith("workspace/custom-skills");
         assertThat(skillCreate.getLanguage()).isEqualTo("en");
         assertThat(skillCreate.shouldProposeNewSkill()).isFalse();
 
@@ -455,7 +457,7 @@ class HarnessConfigCompatibilityTest {
         assertThat(teamSkillCreate.shouldProposeNewTeamSkill()).isTrue();
 
         TeamSkillRail teamSkill = findRail(rails, TeamSkillRail.class);
-        assertThat(teamSkill.getSkillsDir()).endsWith("workspace/team-skills");
+        assertThat(teamSkill.getSkillsDir().replace('\\', '/')).endsWith("workspace/team-skills");
         assertThat(teamSkill.getLanguage()).isEqualTo("en");
     }
 

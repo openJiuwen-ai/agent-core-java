@@ -243,6 +243,9 @@
                     <argLine>@{argLine} -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
                     <groups>${surefire.groups}</groups>
                     <excludedGroups>${surefire.excludedGroups}</excludedGroups>
+                    <!-- Prevent a single hung test from blocking the whole suite forever (e.g. MCP stdio). -->
+                    <forkedProcessTimeoutInSeconds>900</forkedProcessTimeoutInSeconds>
+                    <reportFormat>plain</reportFormat>
                 </configuration>
             </plugin>
             <plugin>

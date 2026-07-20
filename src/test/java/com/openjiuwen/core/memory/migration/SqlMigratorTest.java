@@ -91,7 +91,7 @@ class SqlMigratorTest {
         BaseOperation operation = new AddColumnOperation(new OperationMetadata(1, "bad table"), "not_memory_table",
                 "source", "TEXT", true, null);
 
-        assertFalse(migrator.tryMigrate("not_memory_table", List.of(operation)));
+        assertThrows(IllegalArgumentException.class, () -> migrator.tryMigrate("not_memory_table", List.of(operation)));
         assertThrows(IllegalArgumentException.class, () -> SqlMigrator.validateTable("not_memory_table"));
     }
 

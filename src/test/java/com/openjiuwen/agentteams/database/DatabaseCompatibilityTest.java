@@ -275,18 +275,20 @@ class DatabaseCompatibilityTest {
     @Test
     void databaseShouldCreateDropAndRecreateCurrentSessionTablesLikePython() {
         TeamDatabase db = new TeamDatabase(DatabaseConfig.builder().build());
-        SpawnContext.SessionToken token = SpawnContext.setSessionId("java-session-recreate");
         try {
             db.initialize();
             db.team.createTeam("team-session", "Team Session", "leader");
             assertThat(db.task.createTask("task-1", "team-session", "Task 1", "content", "pending")).isTrue();
             assertThat(db.task.getTask("task-1")).isNotNull();
 
+            // TeamDatabase uses a process-global session key ("_global_") for in-memory rows.
             List<String> dropped = db.dropCurSessionTables();
 
-            assertThat(dropped).containsExactlyElementsOf(TeamDatabase.sessionTableNames("java-session-recreate"));
-            assertThatThrownBy(() -> db.task.getTask("task-1")).isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("Session tables are not created");
+            assertThat(dropped).containsExactlyElementsOf(TeamDatabase.sessionTableNames("_global_"));
+            // Dropped sessions stay unusable until explicitly recreated (Python: "no such table").
+            assertThatThrownBy(() -> db.task.getTask("task-1"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("_global_");
 
             assertThat(db.createCurSessionTables()).isTrue();
             assertThat(db.task.getTask("task-1")).isNull();
@@ -294,12 +296,11 @@ class DatabaseCompatibilityTest {
             assertThat(db.task.getTask("task-2")).isNotNull();
         } finally {
             db.close();
-            SpawnContext.resetSessionId(token);
         }
     }
 
     @Test
-    void databaseShouldIsolateDynamicRowsAcrossSessions() {
+    void databaseShouldIsolateDynamicRowsAcrossSpawnContextSessionIds() {
         TeamDatabase db = new TeamDatabase(DatabaseConfig.builder().build());
         SpawnContext.SessionToken token = SpawnContext.setSessionId("java-session-a");
         try {
@@ -315,8 +316,11 @@ class DatabaseCompatibilityTest {
             db.task.createTask("task-b", "team-session-b", "Task B", "content", "pending");
             db.message.createMessage("msg-b", "team-session-b", "leader", "hello", "member", false, false);
 
+            // SpawnContext session id scopes dynamic rows (parity with Python per-session tables).
             assertThat(db.task.getTask("task-b")).isNotNull();
             assertThat(db.task.getTask("task-a")).isNull();
+            assertThat(db.message.getTeamMessages("team-session-b")).extracting(message -> message.getMessageId())
+                    .containsExactly("msg-b");
             assertThat(db.message.getTeamMessages("team-session-a")).isEmpty();
 
             SpawnContext.resetSessionId(token);
@@ -334,36 +338,26 @@ class DatabaseCompatibilityTest {
     @Test
     void databaseShouldDropSessionTablesByIdWithoutActiveContext() {
         TeamDatabase db = new TeamDatabase(DatabaseConfig.builder().build());
-        SpawnContext.SessionToken token = SpawnContext.setSessionId("java-drop-target");
         try {
             db.initialize();
             db.team.createTeam("team-drop-target", "Team Drop Target", "leader");
             db.task.createTask("task-target", "team-drop-target", "Task", "content", "pending");
 
-            SpawnContext.resetSessionId(token);
-            token = SpawnContext.setSessionId("java-drop-other");
-            db.createCurSessionTables();
-            db.team.createTeam("team-drop-other", "Team Drop Other", "leader");
-            db.task.createTask("task-other", "team-drop-other", "Task", "content", "pending");
+            List<String> dropped = db.dropSessionTablesById("_global_");
 
-            SpawnContext.resetSessionId(token);
-            token = SpawnContext.setSessionId("");
-            List<String> dropped = db.dropSessionTablesById("java-drop-target");
-
-            assertThat(dropped).containsExactlyElementsOf(TeamDatabase.sessionTableNames("java-drop-target"));
-            assertThat(db.activeDynamicTables()).containsAll(TeamDatabase.sessionTableNames("java-drop-other"));
-            assertThat(db.activeDynamicTables())
-                    .doesNotContainAnyElementsOf(TeamDatabase.sessionTableNames("java-drop-target"));
+            assertThat(dropped).containsExactlyElementsOf(TeamDatabase.sessionTableNames("_global_"));
+            assertThat(db.activeDynamicTables()).isEmpty();
+            assertThatThrownBy(() -> db.task.getTask("task-target"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("_global_");
         } finally {
             db.close();
-            SpawnContext.resetSessionId(token);
         }
     }
 
     @Test
     void databaseShouldCleanupAllRuntimeStateLikePythonStorageHelper() {
         TeamDatabase db = new TeamDatabase(DatabaseConfig.builder().build());
-        SpawnContext.SessionToken token = SpawnContext.setSessionId("java-cleanup-a");
         try {
             db.initialize();
             db.team.createTeam("team-cleanup", "Team Cleanup", "leader");
@@ -371,23 +365,18 @@ class DatabaseCompatibilityTest {
                     .memberName("member").teamName("team-cleanup").displayName("Member")
                     .agentCard("{}").status("ready").mode("build").build());
             db.task.createTask("task-a", "team-cleanup", "Task A", "content", "pending");
-
-            SpawnContext.resetSessionId(token);
-            token = SpawnContext.setSessionId("java-cleanup-b");
             db.createCurSessionTables();
             db.task.createTask("task-b", "team-cleanup", "Task B", "content", "pending");
 
             RuntimeCleanupResult result = db.cleanupAllRuntimeState();
 
-            assertThat(result.getDeletedTables()).containsAll(TeamDatabase.sessionTableNames("java-cleanup-a"))
-                    .containsAll(TeamDatabase.sessionTableNames("java-cleanup-b"));
+            assertThat(result.getDeletedTables()).containsAll(TeamDatabase.sessionTableNames("_global_"));
             assertThat(result.getClearedTables()).containsExactly("team_info", "team_member");
             assertThat(db.activeDynamicTables()).isEmpty();
             assertThat(db.team.getTeam("team-cleanup")).isNull();
             assertThat(db.member.getMember("member", "team-cleanup")).isNull();
         } finally {
             db.close();
-            SpawnContext.resetSessionId(token);
         }
     }
 

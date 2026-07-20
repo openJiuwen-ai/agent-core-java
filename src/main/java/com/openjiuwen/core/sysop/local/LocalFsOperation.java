@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.sysop.local;
 
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
@@ -112,6 +113,9 @@ public class LocalFsOperation extends BaseFsOperation {
 
             Loggers.SYS_OPERATION.info("End to read file, elapsed={}ms", System.currentTimeMillis() - startTime);
             return result;
+        } catch (BaseError e) {
+            Loggers.SYS_OPERATION.error("Failed to read file", e);
+            return buildFsErrorResult(e.getMessage(), ReadFileResult::new, null);
         } catch (IOException e) {
             Loggers.SYS_OPERATION.error("Failed to read file", e);
             return buildFsErrorResult("readFile: " + e.getMessage(), ReadFileResult::new, null);
@@ -162,6 +166,10 @@ public class LocalFsOperation extends BaseFsOperation {
                 streamTextFile(filePath, charset, effectiveHead, effectiveTail, lineRange, mode, results);
             }
 
+            return results.iterator();
+        } catch (BaseError e) {
+            Loggers.SYS_OPERATION.error("Failed to read file streaming", e);
+            results.add(buildFsErrorResult(e.getMessage(), ReadFileStreamResult::new, null));
             return results.iterator();
         } catch (IOException e) {
             Loggers.SYS_OPERATION.error("Failed to read file streaming", e);

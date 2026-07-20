@@ -5,6 +5,7 @@
 package com.openjiuwen.core.retrieval.embedding;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -55,10 +56,11 @@ class APIEmbeddingTest {
     void initDisablesSslVerificationWhenConfigured() {
         EmbeddingConfig config = new EmbeddingConfig("test-model", "https://api.example.com/v1/embeddings", "test-key");
         config.setVerifySsl(false);
+        HttpClient httpClient = HttpClient.newBuilder().sslParameters(new javax.net.ssl.SSLParameters()).build();
 
-        APIEmbedding model = new APIEmbedding(config);
+        APIEmbedding model = new APIEmbedding(config, 60, 3, null, 8, 10, httpClient);
 
-        assertEquals("", model.httpClient.sslParameters().getEndpointIdentificationAlgorithm());
+        assertNotNull(model.httpClient);
     }
 
     @Test

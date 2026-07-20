@@ -343,6 +343,7 @@ public class AgentSessionApi implements Session {
         if ((runState.getAndUpdate(s -> s | POST_DONE) & POST_DONE) != 0) {
             return;
         }
+        // Close_stream first, then commit/post_agent_execute.
         inner.streamWriterManager().getStreamEmitter().close();
         if (inner.checkpointerTyped() != null) {
             inner.checkpointerTyped().postAgentExecute(inner);

@@ -75,6 +75,7 @@ public final class ChildProcess {
                     return;
                 }
                 if (message.getType() == MessageType.INPUT) {
+                    // Only start work when no agent task is active.
                     if (agentTask == null || agentTask.isDone()) {
                         Message inputMessage = message;
                         agentTask = agentExecutor.submit(() -> runInput(inputMessage, writer, writerLock));

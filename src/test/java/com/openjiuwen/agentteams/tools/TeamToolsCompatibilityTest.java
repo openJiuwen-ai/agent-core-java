@@ -695,12 +695,10 @@ class TeamToolsCompatibilityTest {
         TeamBackend leader = new TeamBackend("team-claim-tool", "leader", true, leaderMessager);
         leader.spawnMember("worker-1", "Worker One", AgentCard.builder().name("worker").description("desc").build()).join();
         TeamTask task = leader.getTaskManager().add("Claimable", "Content", "claim-tool-1", List.of()).join();
-        TeamTaskManager workerTaskManager = new TeamTaskManager("team-claim-tool", "worker-1", leader.getDb(), leaderMessager);
-        Tool claim = TeamTools.createTeamTools("teammate", new TeamBackend("unused", "unused", false, leaderMessager)).stream()
-                .filter(tool -> "claim_task".equals(tool.getCard().getName()))
-                .findFirst()
-                .orElseThrow();
-        claim = new TeamTools.ClaimTaskTool(workerTaskManager);
+        // ClaimTaskTool now requires TeamBackend (not TeamTaskManager); MEMORY db is process-shared.
+        TeamBackend worker = new TeamBackend("team-claim-tool", "worker-1", false, leaderMessager,
+                leader.getTeamSessionId());
+        Tool claim = new TeamTools.ClaimTaskTool(worker);
 
         ToolOutput claimed = (ToolOutput) claim.invoke(Map.of("task_id", task.getTaskId(), "status", "claimed"));
         assertThat(claimed.isSuccess()).isTrue();
