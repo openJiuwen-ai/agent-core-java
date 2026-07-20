@@ -89,7 +89,7 @@ public class DashScopeModelClient extends BaseModelClient {
             String stop,
             BaseOutputParser outputParser,
             Float timeout,
-            Map<String, Object> kwargs) throws Exception {
+            Map<String, Object> kwargs) {
         return AssistantMessage.class.cast(callChatCompletionDelegate(
                 "invoke",
                 new Class<?>[] {
@@ -119,7 +119,7 @@ public class DashScopeModelClient extends BaseModelClient {
             String stop,
             BaseOutputParser outputParser,
             Float timeout,
-            Map<String, Object> kwargs) throws Exception {
+            Map<String, Object> kwargs) {
         return (Iterator<AssistantMessageChunk>) callChatCompletionDelegate(
                 "stream",
                 new Class<?>[] {
@@ -551,8 +551,7 @@ public class DashScopeModelClient extends BaseModelClient {
         return new ModelError(StatusCode.MODEL_CALL_FAILED, message, null, ex, Map.of("error_msg", message));
     }
 
-    private Object callChatCompletionDelegate(String methodName, Class<?>[] parameterTypes, Object... args)
-            throws Exception {
+    private Object callChatCompletionDelegate(String methodName, Class<?>[] parameterTypes, Object... args) {
         if (chatCompletionDelegate == null) {
             throw modelCallError("OpenAIModelClient dependency is unavailable for DashScope chat completions.");
         }
@@ -561,13 +560,18 @@ public class DashScopeModelClient extends BaseModelClient {
             return method.invoke(chatCompletionDelegate, args);
         } catch (InvocationTargetException ex) {
             Throwable cause = ex.getCause();
-            if (cause instanceof Exception exception) {
+            if (cause instanceof RuntimeException exception) {
                 throw exception;
             }
             if (cause instanceof Error error) {
                 throw error;
             }
-            throw ex;
+            if (cause instanceof Exception exception) {
+                throw wrapUnexpected("chat completion", exception);
+            }
+            throw wrapUnexpected("chat completion", ex);
+        } catch (ReflectiveOperationException ex) {
+            throw wrapUnexpected("chat completion", ex);
         }
     }
 

@@ -13,6 +13,7 @@ import com.openjiuwen.core.retrieval.common.StoreType;
 import com.openjiuwen.core.retrieval.common.TextChunk;
 import com.openjiuwen.core.retrieval.common.VectorStoreConfig;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
+import com.openjiuwen.core.retrieval.vector_store.ChromaVectorStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -152,6 +153,33 @@ class ChromaIndexerTest {
         assertThat(indexer.getIndexInfo("collection").join()).containsEntry("count", 1);
         assertThat(indexer.deleteIndex("doc-1", "collection", Map.of()).join()).isTrue();
         assertThat(indexer.deleteIndex("doc-1", "collection", Map.of()).join()).isFalse();
+    }
+
+    @Test
+    void vectorStoreConstructorSharesIndexedDataWithRetrievalAndDeletion() {
+        VectorStoreConfig storeConfig = VectorStoreConfig.builder()
+                .storeProvider(StoreType.CHROMA)
+                .collectionName("collection")
+                .distanceMetric("cosine")
+                .build();
+        ChromaVectorStore store = new ChromaVectorStore(storeConfig, "memory://shared-indexer-test");
+        ChromaIndexer indexer = new ChromaIndexer(store);
+        IndexConfig indexConfig = IndexConfig.builder()
+                .indexName("collection")
+                .indexType("vector")
+                .build();
+
+        assertThat(indexer.buildIndex(
+                List.of(chunk("chunk-1", "doc-1")),
+                indexConfig,
+                new FakeEmbedding(),
+                Map.of()).join()).isTrue();
+        assertThat(store.search(List.of(1.0d, 2.0d), 5, null, Map.of()).join())
+                .singleElement()
+                .satisfies(result -> assertThat(result.getDocId()).isEqualTo("doc-1"));
+
+        assertThat(indexer.deleteIndex("doc-1", "collection", Map.of()).join()).isTrue();
+        assertThat(store.search(List.of(1.0d, 2.0d), 5, null, Map.of()).join()).isEmpty();
     }
 
     private static VectorStoreConfig config() {

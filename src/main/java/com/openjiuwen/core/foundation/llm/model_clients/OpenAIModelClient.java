@@ -7,12 +7,14 @@ package com.openjiuwen.core.foundation.llm.model_clients;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.common.exception.BaseError;
 import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.foundation.llm.HeadersHelper;
 import com.openjiuwen.core.foundation.llm.ModelInvokeOptions;
 import com.openjiuwen.core.foundation.llm.ModelRetryListener;
+import com.openjiuwen.core.foundation.llm.model_clients.errors.ErrorResponseBodySanitizer;
 import com.openjiuwen.core.foundation.llm.output_parsers.BaseOutputParser;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
@@ -208,16 +210,18 @@ public class OpenAIModelClient extends BaseModelClient {
                                    String stop,
                                    BaseOutputParser outputParser,
                                    Float timeout,
-                                   Map<String, Object> kwargs) throws Exception {
+                                   Map<String, Object> kwargs) {
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
         Map<String, ?> formalRequestHeaders = popFormalRequestHeaders(effectiveKwargs);
         Map<String, ?> legacyRequestHeaders = popRequestCustomHeaders(effectiveKwargs);
         ModelRetryListener retryListener = popRetryListener(effectiveKwargs);
         Object tracerRecordData = popTracerRecordData(effectiveKwargs);
+        Collection<String> sensitiveValues = List.of();
 
         try {
             TransportHeaders transportHeaders = resolveTransportHeaders(
                     legacyRequestHeaders, formalRequestHeaders);
+            sensitiveValues = sensitiveValues(transportHeaders);
             Map<String, Object> params = buildPreparedParams(
                     messages,
                     tools,
@@ -238,20 +242,28 @@ public class OpenAIModelClient extends BaseModelClient {
                     ));
             Map<String, Object> responseData = postJson(
                     params, timeout, transportHeaders.authorization(), transportHeaders.headers(),
-                    transportHeaders.omitErrorResponseBody(), retryListener);
+                    sensitiveValues, retryListener);
+            AssistantMessage assistantMessage;
+            try {
+                assistantMessage = parseResponse(responseData, outputParser);
+            } catch (RuntimeException exception) {
+                throw responseParseException(
+                        responseDataForDiagnostics(responseData),
+                        exception,
+                        false,
+                        "parse_response",
+                        sensitiveValues);
+            }
             Loggers.LLM.info("OpenAI API response received. {}", Map.of("response", responseData));
-            AssistantMessage assistantMessage = parseResponse(responseData, outputParser);
             recordTracerData(tracerRecordData, "llm_response", assistantMessage);
             return assistantMessage;
-        } catch (Exception exception) {
+        } catch (BaseError exception) {
             Loggers.LLM.error("OpenAI API async invoke error. {}", exception.getMessage());
-            throw ErrorHelper.buildError(
-                    StatusCode.MODEL_CALL_FAILED,
-                    null,
-                    null,
-                    exception,
-                    Map.of("error_msg", "openAI API async invoke error: " + exception.getMessage())
-            );
+            throw exception;
+        } catch (Exception exception) {
+            String detail = safeExceptionMessage(exception, sensitiveValues);
+            Loggers.LLM.error("OpenAI API async invoke error. {}", detail);
+            throw clientInternalException(exception, false, "prepare_request", sensitiveValues);
         }
     }
 
@@ -265,16 +277,18 @@ public class OpenAIModelClient extends BaseModelClient {
                                                   String stop,
                                                   BaseOutputParser outputParser,
                                                   Float timeout,
-                                                  Map<String, Object> kwargs) throws Exception {
+                                                  Map<String, Object> kwargs) {
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
         Map<String, ?> formalRequestHeaders = popFormalRequestHeaders(effectiveKwargs);
         Map<String, ?> legacyRequestHeaders = popRequestCustomHeaders(effectiveKwargs);
         ModelRetryListener retryListener = popRetryListener(effectiveKwargs);
         Object tracerRecordData = popTracerRecordData(effectiveKwargs);
+        Collection<String> sensitiveValues = List.of();
 
         try {
             TransportHeaders transportHeaders = resolveTransportHeaders(
                     legacyRequestHeaders, formalRequestHeaders);
+            sensitiveValues = sensitiveValues(transportHeaders);
             Map<String, Object> params = buildPreparedParams(
                     messages,
                     tools,
@@ -290,19 +304,16 @@ public class OpenAIModelClient extends BaseModelClient {
             recordTracerData(tracerRecordData, "llm_params", params);
             return tracingIterator(
                     streamChunks(params, outputParser, timeout, transportHeaders.authorization(),
-                            transportHeaders.headers(), transportHeaders.omitErrorResponseBody(), retryListener),
+                            transportHeaders.headers(), sensitiveValues, retryListener),
                     tracerRecordData
             );
+        } catch (BaseError exception) {
+            Loggers.LLM.error("OpenAI API async stream error. {}", exception.getMessage());
+            throw exception;
         } catch (Exception exception) {
-            String detail = errorDetail(exception);
+            String detail = safeExceptionMessage(exception, sensitiveValues);
             Loggers.LLM.error("OpenAI API async stream error. {}", detail);
-            throw ErrorHelper.buildError(
-                    StatusCode.MODEL_CALL_FAILED,
-                    null,
-                    null,
-                    exception,
-                    Map.of("error_msg", "openAI API async stream error: " + detail)
-            );
+            throw clientInternalException(exception, true, "prepare_request", sensitiveValues);
         }
     }
 
@@ -362,7 +373,7 @@ public class OpenAIModelClient extends BaseModelClient {
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
                 .finishReason(toolCalls.isEmpty() ? "stop" : "tool_calls")
-                .reasoningContent(asString(message.get("reasoning_content")))
+                .reasoningContent(reasoningContentFrom(message))
                 .parserContent(parserContent)
                 .promptTokenIds(integerList(response.get("prompt_token_ids")))
                 .completionTokenIds(integerList(choice.get("token_ids")))
@@ -403,7 +414,7 @@ public class OpenAIModelClient extends BaseModelClient {
 
         return AssistantMessageChunk.builder()
                 .content(pythonTruthy(delta.get("content")) ? delta.get("content") : "")
-                .reasoningContent(asString(delta.get("reasoning_content")))
+                .reasoningContent(reasoningContentFrom(delta))
                 .toolCalls(toolCalls.isEmpty() ? null : toolCalls)
                 .usageMetadata(usageMetadata)
                 .finishReason(pythonTruthy(choice.get("finish_reason"))
@@ -420,14 +431,26 @@ public class OpenAIModelClient extends BaseModelClient {
             Float timeout,
             String authorization,
             Map<String, String> requestHeaders,
-            boolean omitErrorResponseBody,
+            Collection<String> sensitiveValues,
             ModelRetryListener retryListener) throws Exception {
         PreparedRequest preparedRequest = prepareRequest(
-                params, timeout, authorization, requestHeaders, omitErrorResponseBody);
-        HttpResponse<String> response = retryingHttpClient.send(retryCount ->
-                sendStringAttempt(preparedRequest, retryCount), retryListener);
-        ensureSuccess(response.statusCode(), response.body(), preparedRequest.omitErrorResponseBody());
-        return parseJsonObject(response.body());
+                params, timeout, authorization, requestHeaders);
+        HttpResponse<String> response;
+        try {
+            response = retryingHttpClient.send(retryCount ->
+                    sendStringAttempt(preparedRequest, retryCount), retryListener);
+        } catch (IOException exception) {
+            throw transportException(exception, false, sensitiveValues);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw transportException(exception, false, sensitiveValues);
+        }
+        ensureSuccess(response.statusCode(), response.body(), false, sensitiveValues);
+        try {
+            return parseJsonObject(response.body());
+        } catch (JsonProcessingException exception) {
+            throw responseParseException(response.body(), exception, false, "parse_json", sensitiveValues);
+        }
     }
 
     private Iterator<AssistantMessageChunk> streamChunks(
@@ -436,17 +459,30 @@ public class OpenAIModelClient extends BaseModelClient {
             Float timeout,
             String authorization,
             Map<String, String> requestHeaders,
-            boolean omitErrorResponseBody,
+            Collection<String> sensitiveValues,
             ModelRetryListener retryListener) throws Exception {
         PreparedRequest preparedRequest = prepareRequest(
-                params, timeout, authorization, requestHeaders, omitErrorResponseBody);
-        HttpResponse<InputStream> response = retryingHttpClient.send(retryCount ->
-                sendStreamAttempt(preparedRequest, retryCount), retryListener);
-        if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            String body = readBody(response.body());
-            ensureSuccess(response.statusCode(), body, preparedRequest.omitErrorResponseBody());
+                params, timeout, authorization, requestHeaders);
+        HttpResponse<InputStream> response;
+        try {
+            response = retryingHttpClient.send(retryCount ->
+                    sendStreamAttempt(preparedRequest, retryCount), retryListener);
+        } catch (IOException exception) {
+            throw transportException(exception, true, sensitiveValues);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw transportException(exception, true, sensitiveValues);
         }
-        return new SseChunkIterator(response.body(), outputParser);
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            String body;
+            try {
+                body = readBody(response.body());
+            } catch (IOException exception) {
+                throw transportException(exception, true, sensitiveValues);
+            }
+            ensureSuccess(response.statusCode(), body, true, sensitiveValues);
+        }
+        return new SseChunkIterator(response.body(), outputParser, sensitiveValues);
     }
 
     private HttpResponse<String> sendStringAttempt(
@@ -541,8 +577,7 @@ public class OpenAIModelClient extends BaseModelClient {
             Map<String, Object> params,
             Float timeout,
             String authorization,
-            Map<String, String> requestHeaders,
-            boolean omitErrorResponseBody) throws JsonProcessingException {
+            Map<String, String> requestHeaders) throws JsonProcessingException {
         String bodyJson = OBJECT_MAPPER.writeValueAsString(requestBodyParams(params));
         String effectiveAuthorization = authorization != null
                 ? authorization
@@ -552,8 +587,7 @@ public class OpenAIModelClient extends BaseModelClient {
                 bodyJson,
                 timeoutDuration(timeout),
                 effectiveAuthorization,
-                new LinkedHashMap<>(requestHeaders),
-                omitErrorResponseBody);
+                new LinkedHashMap<>(requestHeaders));
     }
 
     private HttpRequest buildRequest(
@@ -584,8 +618,7 @@ public class OpenAIModelClient extends BaseModelClient {
             String bodyJson,
             Duration timeout,
             String authorization,
-            Map<String, String> extraHeaders,
-            boolean omitErrorResponseBody) {
+            Map<String, String> extraHeaders) {
     }
 
     private String localFixtureFallbackApiBase(IOException exception) {
@@ -681,9 +714,7 @@ public class OpenAIModelClient extends BaseModelClient {
 
         Map<String, String> mergedHeaders = buildRequestHeaders(baseHeaders, legacyRequestHeaders);
         mergedHeaders = buildRequestHeaders(mergedHeaders, formalRequestHeaders);
-        boolean omitErrorResponseBody = formalRequestHeaders != null && !formalRequestHeaders.isEmpty();
-        return new TransportHeaders(
-                authorization, new LinkedHashMap<>(mergedHeaders), omitErrorResponseBody);
+        return new TransportHeaders(authorization, new LinkedHashMap<>(mergedHeaders));
     }
 
     private static void validateFormalAuthorization(String authorization) {
@@ -791,8 +822,28 @@ public class OpenAIModelClient extends BaseModelClient {
 
     private record TransportHeaders(
             String authorization,
-            Map<String, String> headers,
-            boolean omitErrorResponseBody) {
+            Map<String, String> headers) {
+    }
+
+    private Collection<String> sensitiveValues(TransportHeaders transportHeaders) {
+        List<String> values = new ArrayList<>();
+        addSensitiveValue(values, transportHeaders.authorization());
+        String apiKey = modelClientConfig.getApiKey();
+        addSensitiveValue(values, apiKey);
+        if (apiKey != null && !apiKey.isBlank()) {
+            addSensitiveValue(values, "Bearer " + apiKey);
+        }
+        transportHeaders.headers().forEach((name, value) -> {
+            addSensitiveValue(values, name);
+            addSensitiveValue(values, value);
+        });
+        return values;
+    }
+
+    private static void addSensitiveValue(List<String> values, String value) {
+        if (value != null && !value.isBlank()) {
+            values.add(value);
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -993,15 +1044,20 @@ public class OpenAIModelClient extends BaseModelClient {
     private final class SseChunkIterator implements Iterator<AssistantMessageChunk>, AutoCloseable {
         private final BufferedReader reader;
         private final BaseOutputParser outputParser;
+        private final Collection<String> sensitiveValues;
         private final StringBuilder accumulatedContent = new StringBuilder();
         private final Map<Integer, ToolCallState> toolCallStates = new LinkedHashMap<>();
         private AssistantMessageChunk nextChunk;
         private String pendingToolCallFinishReason = "null";
         private boolean closed;
 
-        private SseChunkIterator(InputStream inputStream, BaseOutputParser outputParser) {
+        private SseChunkIterator(
+                InputStream inputStream,
+                BaseOutputParser outputParser,
+                Collection<String> sensitiveValues) {
             this.reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8));
             this.outputParser = outputParser;
+            this.sensitiveValues = sensitiveValues;
         }
 
         @Override
@@ -1027,6 +1083,7 @@ public class OpenAIModelClient extends BaseModelClient {
         }
 
         private AssistantMessageChunk readNextChunk() {
+            String currentEvent = "";
             try {
                 String rawLine;
                 while ((rawLine = reader.readLine()) != null) {
@@ -1035,6 +1092,7 @@ public class OpenAIModelClient extends BaseModelClient {
                         continue;
                     }
                     String data = line.substring("data:".length()).strip();
+                    currentEvent = data;
                     if ("[DONE]".equals(data)) {
                         close();
                         return finalToolCallChunk();
@@ -1055,13 +1113,7 @@ public class OpenAIModelClient extends BaseModelClient {
                 close();
                 String detail = errorDetail(exception);
                 Loggers.LLM.error("OpenAI API async stream read error. {}", detail);
-                throw ErrorHelper.buildError(
-                        StatusCode.MODEL_CALL_FAILED,
-                        null,
-                        null,
-                        exception,
-                        Map.of("error_msg", "openAI API async stream error: " + detail)
-                );
+                throw streamException(currentEvent, exception, sensitiveValues);
             }
         }
 
@@ -1259,17 +1311,83 @@ public class OpenAIModelClient extends BaseModelClient {
         });
     }
 
-    private static void ensureSuccess(
+    private BaseError transportException(
+            Exception exception,
+            boolean streaming,
+            Collection<String> sensitiveValues) {
+        return modelCallError(
+                "transport failure at send_request: " + safeExceptionMessage(exception, sensitiveValues),
+                exception);
+    }
+
+    private BaseError responseParseException(
+            String body,
+            Exception exception,
+            boolean streaming,
+            String phase,
+            Collection<String> sensitiveValues) {
+        ErrorResponseBodySanitizer.SanitizedBody sanitized =
+                ErrorResponseBodySanitizer.sanitize(body, sensitiveValues);
+        String message = "response parse failure at " + phase + ": "
+                + safeExceptionMessage(exception, sensitiveValues);
+        if (!sanitized.body().isBlank()) {
+            message += ", response body: " + sanitized.body();
+        }
+        return modelCallError(message, exception);
+    }
+
+    private static String responseDataForDiagnostics(Map<String, Object> responseData) {
+        try {
+            return OBJECT_MAPPER.writeValueAsString(responseData);
+        } catch (JsonProcessingException exception) {
+            return String.valueOf(responseData);
+        }
+    }
+
+    private BaseError streamException(
+            String event,
+            Exception exception,
+            Collection<String> sensitiveValues) {
+        return modelCallError(
+                "stream failure at read_chunk: " + safeExceptionMessage(exception, sensitiveValues),
+                exception);
+    }
+
+    private BaseError clientInternalException(
+            Exception exception,
+            boolean streaming,
+            String phase,
+            Collection<String> sensitiveValues) {
+        return modelCallError(
+                "model client internal failure at " + phase + ": "
+                        + safeExceptionMessage(exception, sensitiveValues),
+                exception);
+    }
+
+    private static String safeExceptionMessage(Exception exception, Collection<String> sensitiveValues) {
+        return ErrorResponseBodySanitizer.sanitize(errorDetail(exception), sensitiveValues).body();
+    }
+
+    private void ensureSuccess(
             int statusCode,
             String body,
-            boolean omitErrorResponseBody) throws IOException {
+            boolean streaming,
+            Collection<String> sensitiveValues) {
         if (statusCode >= 200 && statusCode < 300) {
             return;
         }
-        if (omitErrorResponseBody) {
-            throw new IOException("HTTP " + statusCode);
-        }
-        throw new IOException("HTTP " + statusCode + ": " + (body == null ? "" : body));
+        ErrorResponseBodySanitizer.SanitizedBody sanitized =
+                ErrorResponseBodySanitizer.sanitize(body, sensitiveValues);
+        throw modelCallError("HTTP " + statusCode + ": " + sanitized.body(), null);
+    }
+
+    private BaseError modelCallError(String errorMessage, Throwable cause) {
+        return ErrorHelper.buildError(
+                StatusCode.MODEL_CALL_FAILED,
+                null,
+                null,
+                cause,
+                Map.of("error_msg", errorMessage));
     }
 
     private static String readBody(InputStream inputStream) throws IOException {
@@ -1398,6 +1516,11 @@ public class OpenAIModelClient extends BaseModelClient {
 
     private static String asString(Object value) {
         return value == null ? null : String.valueOf(value);
+    }
+
+    private static String reasoningContentFrom(Map<String, Object> message) {
+        Object reasoningContent = firstNonNull(message.get("reasoning_content"), message.get("reasoning"));
+        return asString(reasoningContent);
     }
 
     private static int intValue(Object value) {

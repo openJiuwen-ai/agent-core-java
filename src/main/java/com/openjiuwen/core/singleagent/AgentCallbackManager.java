@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.singleagent;
 
+import com.openjiuwen.core.runner.callback.AbortError;
 import com.openjiuwen.core.singleagent.rail.AgentCallback;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackEvent;
@@ -16,7 +17,9 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 
 /**
@@ -27,8 +30,10 @@ import java.util.function.Function;
  */
 public class AgentCallbackManager {
     private final String agentId;
-    private final CallbackFramework callbackFramework;
+    private final CallbackFramework globalCallbackFramework;
+    private final CallbackFramework instanceCallbackFramework;
     private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> railCallbacks = new IdentityHashMap<>();
+    private final Map<AgentRail, Map<AgentCallbackEvent, AgentCallback>> instanceRailCallbacks = new IdentityHashMap<>();
 
     public AgentCallbackManager(String agentId) {
         this(agentId, new ReflectionRunnerCallbackFramework());
@@ -36,7 +41,8 @@ public class AgentCallbackManager {
 
     AgentCallbackManager(String agentId, CallbackFramework callbackFramework) {
         this.agentId = agentId == null ? "" : agentId;
-        this.callbackFramework = callbackFramework == null ? new ReflectionRunnerCallbackFramework() : callbackFramework;
+        this.globalCallbackFramework = callbackFramework == null ? new ReflectionRunnerCallbackFramework() : callbackFramework;
+        this.instanceCallbackFramework = new InstanceCallbackFramework();
     }
 
     public CompletionStage<AgentCallbackManager> registerCallback(AgentCallbackEvent event,
@@ -45,7 +51,7 @@ public class AgentCallbackManager {
         if (event == null || callback == null) {
             return CompletableFuture.completedFuture(this);
         }
-        return callbackFramework.register(getAgentEvent(event), callback, priority)
+        return globalCallbackFramework.register(getAgentEvent(event), callback, priority)
                 .thenApply(ignored -> this);
     }
 
@@ -63,7 +69,7 @@ public class AgentCallbackManager {
         railCallbacks.put(rail, callbacks);
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
         for (Map.Entry<AgentCallbackEvent, AgentCallback> entry : callbacks.entrySet()) {
-            chain = chain.thenCompose(ignored -> callbackFramework.register(
+            chain = chain.thenCompose(ignored -> globalCallbackFramework.register(
                     getAgentEvent(entry.getKey()),
                     entry.getValue(),
                     rail.getPriority()
@@ -76,6 +82,23 @@ public class AgentCallbackManager {
         return registerRail(rail, agent);
     }
 
+    public CompletionStage<AgentCallbackManager> registerInstanceRail(AgentRail rail, Object agent) {
+        if (rail == null) {
+            return CompletableFuture.completedFuture(this);
+        }
+        Map<AgentCallbackEvent, AgentCallback> callbacks = rail.getCallbacks();
+        instanceRailCallbacks.put(rail, callbacks);
+        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        for (Map.Entry<AgentCallbackEvent, AgentCallback> entry : callbacks.entrySet()) {
+            chain = chain.thenCompose(ignored -> instanceCallbackFramework.register(
+                    getInstanceEvent(entry.getKey()),
+                    entry.getValue(),
+                    rail.getPriority()
+            ));
+        }
+        return chain.thenApply(ignored -> this);
+    }
+
     public CompletionStage<Void> unregisterRail(AgentRail rail, Object agent) {
         if (rail == null) {
             return CompletableFuture.completedFuture(null);
@@ -86,7 +109,7 @@ public class AgentCallbackManager {
         }
         CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
         for (Map.Entry<AgentCallbackEvent, AgentCallback> entry : callbacks.entrySet()) {
-            chain = chain.thenCompose(ignored -> callbackFramework.unregister(getAgentEvent(entry.getKey()),
+            chain = chain.thenCompose(ignored -> globalCallbackFramework.unregister(getAgentEvent(entry.getKey()),
                     entry.getValue()));
         }
         return chain;
@@ -96,40 +119,76 @@ public class AgentCallbackManager {
         return unregisterRail(rail, agent);
     }
 
+    public CompletionStage<Void> unregisterInstanceRail(AgentRail rail, Object agent) {
+        if (rail == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        Map<AgentCallbackEvent, AgentCallback> callbacks = instanceRailCallbacks.remove(rail);
+        if (callbacks == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+        for (Map.Entry<AgentCallbackEvent, AgentCallback> entry : callbacks.entrySet()) {
+            chain = chain.thenCompose(ignored -> instanceCallbackFramework.unregister(getInstanceEvent(entry.getKey()),
+                    entry.getValue()));
+        }
+        return chain;
+    }
+
     public CompletionStage<Void> unregister(AgentCallbackEvent event, AgentCallback callback) {
         if (event == null || callback == null) {
             return CompletableFuture.completedFuture(null);
         }
-        return callbackFramework.unregister(getAgentEvent(event), callback);
+        return globalCallbackFramework.unregister(getAgentEvent(event), callback);
     }
 
     public CompletionStage<Void> clear(AgentCallbackEvent event) {
         if (event == null) {
             CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
             for (AgentCallbackEvent callbackEvent : AgentCallbackEvent.values()) {
-                chain = chain.thenCompose(ignored -> callbackFramework.unregisterEvent(getAgentEvent(callbackEvent)));
+                chain = chain.thenCompose(ignored -> globalCallbackFramework.unregisterEvent(getAgentEvent(callbackEvent)));
             }
             return chain;
         }
-        return callbackFramework.unregisterEvent(getAgentEvent(event));
+        return globalCallbackFramework.unregisterEvent(getAgentEvent(event));
+    }
+
+    public CompletionStage<Void> clearInstance(AgentCallbackEvent event) {
+        if (event == null) {
+            CompletionStage<Void> chain = CompletableFuture.completedFuture(null);
+            for (AgentCallbackEvent callbackEvent : AgentCallbackEvent.values()) {
+                chain = chain.thenCompose(ignored -> instanceCallbackFramework.unregisterEvent(
+                        getInstanceEvent(callbackEvent)));
+            }
+            return chain;
+        }
+        return instanceCallbackFramework.unregisterEvent(getInstanceEvent(event));
     }
 
     public boolean hasHooks(AgentCallbackEvent event) {
         if (event == null) {
             return false;
         }
-        return !callbackFramework.listCallbacks(getAgentEvent(event)).toCompletableFuture().join().isEmpty();
+        return !globalCallbackFramework.listCallbacks(getAgentEvent(event)).toCompletableFuture().join().isEmpty();
     }
 
     public boolean has_hooks(AgentCallbackEvent event) {
         return hasHooks(event);
     }
 
+    public boolean hasInstanceHooks(AgentCallbackEvent event) {
+        if (event == null) {
+            return false;
+        }
+        return !instanceCallbackFramework.listCallbacks(getInstanceEvent(event)).toCompletableFuture().join().isEmpty();
+    }
+
     public CompletionStage<AgentCallbackContext> execute(AgentCallbackEvent event, AgentCallbackContext context) {
         if (event == null) {
             return CompletableFuture.completedFuture(context);
         }
-        return callbackFramework.trigger(getAgentEvent(event), context)
+        return globalCallbackFramework.trigger(getAgentEvent(event), context)
+                .thenCompose(ignored -> instanceCallbackFramework.trigger(getInstanceEvent(event), context))
                 .thenApply(ignored -> context);
     }
 
@@ -143,6 +202,10 @@ public class AgentCallbackManager {
 
     public String _get_agent_event(AgentCallbackEvent event) {
         return getAgentEvent(event);
+    }
+
+    private String getInstanceEvent(AgentCallbackEvent event) {
+        return event == null ? "" : "AgentCallbackEvent." + event.name();
     }
 
     public String getAgentId() {
@@ -174,7 +237,11 @@ public class AgentCallbackManager {
                             ? callbackContext
                             : null;
                     if (context != null) {
-                        callback.handle(context).toCompletableFuture().join();
+                        try {
+                            callback.handle(context).toCompletableFuture().join();
+                        } catch (CompletionException exception) {
+                            throw normalizeCallbackFailure(exception);
+                        }
                     }
                     return null;
                 };
@@ -265,6 +332,29 @@ public class AgentCallbackManager {
                 // Missing framework means there are no callbacks to trigger.
             }
             return CompletableFuture.completedFuture(null);
+        }
+
+        private static RuntimeException normalizeCallbackFailure(Throwable error) {
+            Throwable normalized = unwrapCallbackFailure(error);
+            if (normalized instanceof AbortError abortError) {
+                throw abortError;
+            }
+            if (normalized instanceof Error fatal) {
+                throw fatal;
+            }
+            if (error instanceof RuntimeException runtimeException) {
+                return runtimeException;
+            }
+            return new CompletionException(error);
+        }
+
+        private static Throwable unwrapCallbackFailure(Throwable error) {
+            Throwable current = error;
+            while ((current instanceof CompletionException || current instanceof ExecutionException)
+                    && current.getCause() != null) {
+                current = current.getCause();
+            }
+            return current;
         }
 
         private Object runnerCallbackFramework() throws ReflectiveOperationException {

@@ -53,6 +53,7 @@ public class ChromaIndexer extends Indexer {
     private final Map<String, Object> searchConfig;
     private final Class<? extends BaseCallback> docIndexCallback;
     private final ChromaClientGateway client;
+    private VectorStore directVectorStore;
 
     public ChromaIndexer(VectorStoreConfig config, String chromaPath) {
         this(config, chromaPath, "content", "embedding", "sparse_vector", "metadata", "document_id",
@@ -108,12 +109,17 @@ public class ChromaIndexer extends Indexer {
     }
 
     /**
-     * Compatibility constructor for earlier Java skeleton code.
+     * Creates an indexer that writes into the supplied vector store instance.
      *
-     * @param ignoredVectorStore ignored by Chroma's Python indexer semantics
+     * <p>This keeps the Java in-process Chroma adapter consistent with Python's
+     * persistent-client behavior: the indexer and retriever must observe the same
+     * collection.</p>
+     *
+     * @param vectorStore target Chroma vector store
      */
-    public ChromaIndexer(VectorStore ignoredVectorStore) {
+    public ChromaIndexer(VectorStore vectorStore) {
         this(new VectorStoreConfig(), "memory");
+        this.directVectorStore = Objects.requireNonNull(vectorStore, "vectorStore");
     }
 
     public String getChromaPath() {
@@ -205,7 +211,11 @@ public class ChromaIndexer extends Indexer {
             }
 
             return embeddingFuture.thenApply(ignored -> {
-                collection.add(toChromaData(safeChunks));
+                List<Map<String, Object>> data = toChromaData(safeChunks);
+                if (directVectorStore != null) {
+                    directVectorStore.add(data, null, kwargs).join();
+                }
+                collection.add(data);
                 LOGGER.info("Successfully built index {} with {} chunks", collectionName, safeChunks.size());
                 return Boolean.TRUE;
             }).exceptionally(throwable -> {
@@ -264,6 +274,10 @@ public class ChromaIndexer extends Indexer {
                 List<String> idsToDelete = collection.idsWhere(Map.of(docIdField, docId));
                 if (idsToDelete.isEmpty()) {
                     LOGGER.info("No entries found for doc_id={}", docId);
+                    return Boolean.FALSE;
+                }
+                if (directVectorStore != null
+                        && !Boolean.TRUE.equals(directVectorStore.delete(idsToDelete, null, kwargs).join())) {
                     return Boolean.FALSE;
                 }
                 collection.delete(idsToDelete);

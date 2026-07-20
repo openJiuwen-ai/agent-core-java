@@ -121,7 +121,7 @@ public class InferenceAffinityModelClient extends BaseModelClient {
                                    String stop,
                                    BaseOutputParser outputParser,
                                    Float timeout,
-                                   Map<String, Object> kwargs) throws Exception {
+                                   Map<String, Object> kwargs) {
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
         effectiveKwargs.remove("tracer_record_data");
         String sessionId = asString(effectiveKwargs.remove("session_id"));
@@ -167,7 +167,7 @@ public class InferenceAffinityModelClient extends BaseModelClient {
                                                   String stop,
                                                   BaseOutputParser outputParser,
                                                   Float timeout,
-                                                  Map<String, Object> kwargs) throws Exception {
+                                                  Map<String, Object> kwargs) {
         Map<String, Object> effectiveKwargs = copyMap(kwargs);
         effectiveKwargs.remove("tracer_record_data");
         String sessionId = asString(effectiveKwargs.remove("session_id"));

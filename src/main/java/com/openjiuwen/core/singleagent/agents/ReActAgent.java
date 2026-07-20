@@ -18,6 +18,7 @@ import com.openjiuwen.core.foundation.llm.schema.AssistantMessageChunk;
 import com.openjiuwen.core.foundation.llm.schema.BaseMessage;
 import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.llm.schema.ToolCall;
+import com.openjiuwen.core.foundation.llm.schema.ToolCallArgumentUtils;
 import com.openjiuwen.core.foundation.llm.schema.ToolMessage;
 import com.openjiuwen.core.foundation.llm.schema.UserMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
@@ -1313,6 +1314,7 @@ public class ReActAgent extends BaseAgent {
                         }
                         List<ToolCall> toolCalls = aiMessage.getToolCalls();
                         ensureToolCallIds(toolCalls);
+                        repairToolCallJsonObjectArguments(toolCalls);
                         context.addMessages(copyAssistantMessage(aiMessage)).toCompletableFuture().join();
                         if (toolCalls == null || toolCalls.isEmpty()) {
                             if (ctx.hasPendingSteering()) {
@@ -1467,6 +1469,17 @@ public class ReActAgent extends BaseAgent {
         }
         for (ToolCall toolCall : toolCalls) {
             ToolLifecycleOutputFactory.ensureToolCallId(toolCall);
+        }
+    }
+
+    private void repairToolCallJsonObjectArguments(List<ToolCall> toolCalls) {
+        if (toolCalls == null || toolCalls.isEmpty()) {
+            return;
+        }
+        for (ToolCall toolCall : toolCalls) {
+            if (toolCall != null) {
+                toolCall.setArguments(ToolCallArgumentUtils.repairJsonObject(toolCall.getArguments()));
+            }
         }
     }
 

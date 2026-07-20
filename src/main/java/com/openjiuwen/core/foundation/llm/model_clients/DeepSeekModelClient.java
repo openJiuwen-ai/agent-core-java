@@ -115,7 +115,7 @@ public class DeepSeekModelClient extends BaseModelClient {
                                    String stop,
                                    BaseOutputParser outputParser,
                                    Float timeout,
-                                   Map<String, Object> kwargs) throws Exception {
+                                   Map<String, Object> kwargs) {
         return openAiDelegate().invoke(
                 convertMessagesToDict(messages),
                 tools,
@@ -139,7 +139,7 @@ public class DeepSeekModelClient extends BaseModelClient {
                                                   String stop,
                                                   BaseOutputParser outputParser,
                                                   Float timeout,
-                                                  Map<String, Object> kwargs) throws Exception {
+                                                  Map<String, Object> kwargs) {
         return openAiDelegate().stream(
                 convertMessagesToDict(messages),
                 tools,
