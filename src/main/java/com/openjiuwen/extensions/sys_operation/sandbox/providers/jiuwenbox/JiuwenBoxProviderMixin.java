@@ -13,6 +13,8 @@ import com.openjiuwen.core.sysop.sandbox.SandboxEndpoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import okhttp3.OkHttpClient;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -99,9 +101,21 @@ public class JiuwenBoxProviderMixin {
             if (baseUrlOpt.isEmpty() || baseUrlOpt.get().isBlank()) {
                 throw new IllegalArgumentException("jiuwenbox provider requires endpoint.base_url");
             }
-            client = new JiuwenBoxClient(baseUrlOpt.get(), timeoutSeconds);
+            OkHttpClient injectedClient = resolveOkHttpClient(config);
+            client = new JiuwenBoxClient(baseUrlOpt.get(), timeoutSeconds, injectedClient);
         }
         return client;
+    }
+
+    private static OkHttpClient resolveOkHttpClient(SandboxGatewayConfig config) {
+        if (config == null || config.getParams() == null) {
+            return null;
+        }
+        Object injected = config.getParams().get("_ojw_okhttp_client");
+        if (injected instanceof OkHttpClient okHttpClient) {
+            return okHttpClient;
+        }
+        return null;
     }
 
     /**

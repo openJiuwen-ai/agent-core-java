@@ -72,14 +72,30 @@ public class JiuwenBoxClient {
      * @since 0.1.7
      */
     public JiuwenBoxClient(String baseUrl, int timeoutSeconds) {
+        this(baseUrl, timeoutSeconds, null);
+    }
+
+    /**
+     * Constructs a JiuwenBoxClient with the given base URL, timeout, and optional OkHttp client.
+     *
+     * @param baseUrl the jiuwenBox server base URL
+     * @param timeoutSeconds the request timeout in seconds
+     * @param injectedClient optional pre-configured OkHttp client (TLS/auth)
+     * @since 0.1.7
+     */
+    public JiuwenBoxClient(String baseUrl, int timeoutSeconds, OkHttpClient injectedClient) {
         String stripped = baseUrl;
         while (stripped.endsWith("/") && stripped.length() > 1) {
             stripped = stripped.substring(0, stripped.length() - 1);
         }
         this.baseUrl = stripped;
         this.timeoutSeconds = timeoutSeconds;
-        this.client = new OkHttpClient.Builder().connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
-                .readTimeout(timeoutSeconds, TimeUnit.SECONDS).writeTimeout(timeoutSeconds, TimeUnit.SECONDS).build();
+        if (injectedClient != null) {
+            this.client = injectedClient;
+        } else {
+            this.client = new OkHttpClient.Builder().connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                    .readTimeout(timeoutSeconds, TimeUnit.SECONDS).writeTimeout(timeoutSeconds, TimeUnit.SECONDS).build();
+        }
     }
 
     /**
