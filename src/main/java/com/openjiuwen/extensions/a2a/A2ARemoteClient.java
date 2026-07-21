@@ -7,7 +7,9 @@ package com.openjiuwen.extensions.a2a;
 import com.openjiuwen.core.runner.drunner.remoteclient.RemoteClient;
 import com.openjiuwen.core.runner.drunner.remoteclient.RemoteClientConfig;
 
+import java.net.http.HttpClient;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -20,6 +22,9 @@ import java.util.Map;
  * @since 0.1.7
  */
 public class A2ARemoteClient implements RemoteClient {
+    private static final String KWARG_HTTP_CLIENT = "_ojw_http_client";
+    private static final String KWARG_AUTH_HEADERS = "_ojw_auth_headers";
+
     private final RemoteClientConfig config;
     private final A2AClient client;
     private boolean isStarted;
@@ -35,7 +40,38 @@ public class A2ARemoteClient implements RemoteClient {
         if (config.getUrl() == null || config.getUrl().isBlank()) {
             throw new IllegalArgumentException("A2A remote client requires a non-empty url");
         }
-        this.client = new A2AClient(config.getUrl());
+        HttpClient httpClient = resolveHttpClient(config);
+        Map<String, String> authHeaders = resolveAuthHeaders(config);
+        this.client = new A2AClient(config.getUrl(), httpClient, authHeaders);
+    }
+
+    private static HttpClient resolveHttpClient(RemoteClientConfig config) {
+        if (config.getKwargs() == null) {
+            return HttpClient.newHttpClient();
+        }
+        Object injected = config.getKwargs().get(KWARG_HTTP_CLIENT);
+        if (injected instanceof HttpClient client) {
+            return client;
+        }
+        return HttpClient.newHttpClient();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> resolveAuthHeaders(RemoteClientConfig config) {
+        if (config.getKwargs() == null) {
+            return Map.of();
+        }
+        Object injected = config.getKwargs().get(KWARG_AUTH_HEADERS);
+        if (!(injected instanceof Map<?, ?> raw)) {
+            return Map.of();
+        }
+        Map<String, String> headers = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : raw.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                headers.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+            }
+        }
+        return headers;
     }
 
     /**

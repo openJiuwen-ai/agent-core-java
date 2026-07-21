@@ -67,7 +67,17 @@ abstract class AbstractHttpMcpClient implements McpClient {
      */
     protected AbstractHttpMcpClient(McpServerConfig config) {
         this.config = config;
-        this.httpClient = HttpClient.newBuilder().build();
+        this.httpClient = resolveHttpClient(config);
+    }
+
+    private static HttpClient resolveHttpClient(McpServerConfig config) {
+        if (config != null && config.getParams() != null) {
+            Object injected = config.getParams().get("_ojw_http_client");
+            if (injected instanceof HttpClient client) {
+                return client;
+            }
+        }
+        return HttpClient.newBuilder().build();
     }
 
     /**

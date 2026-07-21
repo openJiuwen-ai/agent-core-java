@@ -36,6 +36,7 @@ import java.util.UUID;
 public class A2AClient {
     private final URI endpoint;
     private final HttpClient httpClient;
+    private final Map<String, String> authHeaders;
 
     /**
      * Create an A2A client with a default HTTP client.
@@ -44,7 +45,7 @@ public class A2AClient {
      * @since 0.1.7
      */
     public A2AClient(String endpointUrl) {
-        this(endpointUrl, HttpClient.newHttpClient());
+        this(endpointUrl, HttpClient.newHttpClient(), Map.of());
     }
 
     /**
@@ -55,8 +56,21 @@ public class A2AClient {
      * @since 0.1.7
      */
     public A2AClient(String endpointUrl, HttpClient httpClient) {
+        this(endpointUrl, httpClient, Map.of());
+    }
+
+    /**
+     * Create an A2A client with a custom HTTP client and auth headers.
+     *
+     * @param endpointUrl A2A endpoint URL
+     * @param httpClient HTTP client
+     * @param authHeaders outbound auth headers
+     * @since 0.1.7
+     */
+    public A2AClient(String endpointUrl, HttpClient httpClient, Map<String, String> authHeaders) {
         this.endpoint = URI.create(normalizeEndpoint(endpointUrl));
         this.httpClient = httpClient;
+        this.authHeaders = authHeaders == null ? Map.of() : Map.copyOf(authHeaders);
     }
 
     /**
@@ -134,10 +148,13 @@ public class A2AClient {
     private HttpRequest buildJsonRequest(Map<String, Object> payload, Double timeoutSeconds) {
         Duration timeout =
             timeoutSeconds != null ? Duration.ofMillis(toMillis(timeoutSeconds)) : Duration.ofSeconds(30);
-        return HttpRequest.newBuilder(endpoint).header("Content-Type", "application/json")
+        HttpRequest.Builder builder = HttpRequest.newBuilder(endpoint).header("Content-Type", "application/json")
                 .header("Accept", "application/json, text/event-stream").timeout(timeout)
-                .POST(HttpRequest.BodyPublishers.ofString(JsonUtils.safeJsonDumps(payload), StandardCharsets.UTF_8))
-                .build();
+                .POST(HttpRequest.BodyPublishers.ofString(JsonUtils.safeJsonDumps(payload), StandardCharsets.UTF_8));
+        for (Map.Entry<String, String> entry : authHeaders.entrySet()) {
+            builder.header(entry.getKey(), entry.getValue());
+        }
+        return builder.build();
     }
 
     /**
