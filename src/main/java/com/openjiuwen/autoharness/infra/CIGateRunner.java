@@ -154,7 +154,8 @@ public class CIGateRunner {
             return;
         }
         executedCommands.add(installCommand);
-        ProcessResult result = runShell(installCommand);
+        // Install commands are often absolute Windows paths; normalize separators for Git Bash only.
+        ProcessResult result = runShell(toBashFriendly(installCommand));
         if (result.code() != 0) {
             throw new IOException(result.output().strip());
         }
@@ -195,21 +196,25 @@ public class CIGateRunner {
      * @since 0.1.7
      */
     private ProcessResult runShell(String command) throws IOException, InterruptedException {
+        // Do not rewrite the whole command: converting '\' would corrupt printf escapes like \n.
         ProcessBuilder builder = new ProcessBuilder("bash", "-c", command);
         builder.directory(Path.of(workspace == null || workspace.isBlank() ? "." : workspace).toFile());
         builder.redirectErrorStream(true);
         builder.environment().put("CI", "1");
         String resolvedPython = resolvePythonExecutable();
-        builder.environment().put("AUTO_HARNESS_PYTHON", resolvedPython);
+        builder.environment().put("AUTO_HARNESS_PYTHON", toBashFriendly(resolvedPython));
         Path pythonPath = Path.of(resolvedPython);
         if (pythonPath.getFileName() != null && pythonPath.getFileName().toString().startsWith("python")) {
             Path binDir = pythonPath.getParent();
             if (binDir != null) {
                 Path envRoot = binDir.getParent();
-                builder.environment().put("VIRTUAL_ENV", value(envRoot == null ? null : envRoot.toString()));
+                builder.environment().put("VIRTUAL_ENV",
+                        toBashFriendly(value(envRoot == null ? null : envRoot.toString())));
                 String existingPath = builder.environment().getOrDefault("PATH", "");
-                builder.environment().put("PATH",
-                        existingPath.isBlank() ? binDir.toString() : binDir + ":" + existingPath);
+                String bashBin = toBashFriendly(binDir.toString());
+                // Prefer ';' on Windows so drive-letter PATH entries are not split on ':'.
+                String sep = existingPath.contains(";") || bashBin.matches("^[A-Za-z]:/.*") ? ";" : ":";
+                builder.environment().put("PATH", existingPath.isBlank() ? bashBin : bashBin + sep + existingPath);
             }
         }
         Process process = builder.start();
@@ -231,7 +236,7 @@ public class CIGateRunner {
      */
     private String normalizeCommand(String command) {
         String stripped = value(command).strip();
-        String python = shellQuote(resolvePythonExecutable());
+        String python = shellQuote(toBashFriendly(resolvePythonExecutable()));
         if (!stripped.startsWith("make ")) {
             if (stripped.startsWith("python -m ")) {
                 return python + " -m " + stripped.substring("python -m ".length());
@@ -530,5 +535,16 @@ public class CIGateRunner {
      */
     private static String value(String value) {
         return value == null ? "" : value;
+    }
+
+    /**
+     * Convert Windows path separators for Git Bash consumption.
+     *
+     * @param value value
+     * @return value
+     * @since 0.1.7
+     */
+    private static String toBashFriendly(String value) {
+        return value == null ? "" : value.replace('\\', '/');
     }
 }

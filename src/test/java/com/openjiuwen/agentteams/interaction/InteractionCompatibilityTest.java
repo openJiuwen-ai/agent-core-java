@@ -93,7 +93,9 @@ class InteractionCompatibilityTest {
         TeamBackend backend =
             new TeamBackend(teamName, TeamConstants.DEFAULT_LEADER_MEMBER_NAME, true, new NoopMessager());
         List<TeamMemberSpec> allMembers = new java.util.ArrayList<>(members);
-        if (hitt) {
+        boolean hasReservedHuman = allMembers.stream()
+                .anyMatch(member -> TeamConstants.HUMAN_AGENT_MEMBER_NAME.equals(member.getName()));
+        if (hitt && !hasReservedHuman) {
             allMembers.add(0, humanMember(TeamConstants.HUMAN_AGENT_MEMBER_NAME, "Human"));
         }
         backend.syncMembers(allMembers);

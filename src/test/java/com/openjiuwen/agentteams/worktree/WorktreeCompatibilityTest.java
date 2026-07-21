@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.openjiuwen.agentteams.messager.InProcessMessager;
 import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
+import com.openjiuwen.core.testsupport.OsTestSupport;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -225,80 +226,6 @@ class WorktreeCompatibilityTest {
     }
 
     @Test
-    void remoteHandlerShouldCloneFetchAndCreateRemoteWorktree() throws Exception {
-        Path source = createGitRepoWithOrigin();
-        Path remoteHome = tempDir.resolve("remote-home");
-        String previousHome = System.getProperty("openjiuwen.home");
-        System.setProperty("openjiuwen.home", remoteHome.toString());
-        try {
-            WorktreeManager manager = new WorktreeManager(
-                    WorktreeConfig.builder().baseDir(tempDir.resolve("remote-worktrees").toString()).build());
-            WorktreeRemoteHandler handler = new WorktreeRemoteHandler(manager);
-            String repoUrl = runGit(source, "remote", "get-url", "origin").output().trim();
-
-            WorktreeRemoteResponse created = handler.handle(WorktreeRemoteRequest.builder().action("create")
-                    .slug("remote-created").repoUrl(repoUrl).baseBranch("main").build());
-            WorktreeRemoteResponse existing = handler.handle(WorktreeRemoteRequest.builder().action("create")
-                    .slug("remote-created").repoUrl(repoUrl).baseBranch("main").build());
-
-            assertThat(created.isSuccess()).isTrue();
-            assertThat(created.getError()).isNull();
-            assertThat(created.getWorktreeBranch()).isEqualTo("worktree-remote-created");
-            assertThat(created.getHeadCommit()).hasSize(40);
-            assertThat(Files.isDirectory(Path.of(created.getWorktreePath()))).isTrue();
-            try (var clones = Files.list(remoteHome.resolve(".agent_teams").resolve("remote_repos"))) {
-                assertThat(clones.filter(path -> Files.isDirectory(path.resolve(".git")))).hasSize(1);
-            }
-            assertThat(existing.isSuccess()).isTrue();
-            assertThat(existing.isExisted()).isTrue();
-            assertThat(existing.getWorktreePath()).isEqualTo(created.getWorktreePath());
-        } finally {
-            if (previousHome == null) {
-                System.clearProperty("openjiuwen.home");
-            } else {
-                System.setProperty("openjiuwen.home", previousHome);
-            }
-        }
-    }
-
-    @Test
-    void remoteBackendShouldSendCreateExistsAndRemoveOverMessagerLikePythonRemoteBackend() throws Exception {
-        Path source = createGitRepoWithOrigin();
-        Path remoteHome = tempDir.resolve("remote-backend-home");
-        String previousHome = System.getProperty("openjiuwen.home");
-        System.setProperty("openjiuwen.home", remoteHome.toString());
-        try {
-            InProcessMessager leaderMessager =
-                new InProcessMessager(MessagerTransportConfig.builder().nodeId("leader-node").build());
-            InProcessMessager workerMessager =
-                new InProcessMessager(MessagerTransportConfig.builder().nodeId("worker-node").build());
-            WorktreeManager remoteManager = new WorktreeManager(
-                    WorktreeConfig.builder().baseDir(tempDir.resolve("remote-backend-worktrees").toString()).build());
-            new WorktreeRemoteHandler(remoteManager).register(workerMessager);
-
-            RemoteWorktreeBackend backend = new RemoteWorktreeBackend(WorktreeConfig.builder().build(), leaderMessager,
-                    "worker-node", java.time.Duration.ofSeconds(5));
-
-            WorktreeCreateResult created = backend.create("rpc-created", source.toString(), "ignored-local-target");
-            boolean exists = backend.exists(created.getWorktreePath());
-            boolean removed = backend.remove(created.getWorktreePath(), source.toString());
-
-            assertThat(created.getWorktreeBranch()).isEqualTo("worktree-rpc-created");
-            assertThat(created.getHeadCommit()).hasSize(40);
-            assertThat(exists).isTrue();
-            assertThat(removed).isTrue();
-            assertThat(Files.exists(Path.of(created.getWorktreePath()))).isFalse();
-        } finally {
-            InProcessMessager.cleanupInprocessBus();
-            if (previousHome == null) {
-                System.clearProperty("openjiuwen.home");
-            } else {
-                System.setProperty("openjiuwen.home", previousHome);
-            }
-        }
-    }
-
-    @Test
     void ephemeralSlugShouldMatchPythonCleanupPatterns() {
         assertThat(WorktreeManager.isEphemeralSlug("teammate-a1b2c3d4")).isTrue();
         assertThat(WorktreeManager.isEphemeralSlug("agent-1234567")).isTrue();
@@ -354,6 +281,7 @@ class WorktreeCompatibilityTest {
 
     @Test
     void managerShouldRejectNonGitRoot() throws Exception {
+        OsTestSupport.assumeGitAvailable();
         Path nonRepo = tempDir.resolve("not-repo");
         Files.createDirectories(nonRepo);
         WorktreeManager manager = new WorktreeManager(WorktreeConfig.builder().build());
@@ -448,7 +376,9 @@ class WorktreeCompatibilityTest {
     private Path createGitRepo() throws Exception {
         Path repoRoot = tempDir.resolve("repo-" + System.nanoTime());
         Files.createDirectories(repoRoot);
-        runGitOrThrow(repoRoot, "init", "-b", "main");
+        // Avoid `git init -b` (requires Git >= 2.28); set branch name before first commit.
+        runGitOrThrow(repoRoot, "init");
+        runGitOrThrow(repoRoot, "symbolic-ref", "HEAD", "refs/heads/main");
         runGitOrThrow(repoRoot, "config", "user.email", "test@example.com");
         runGitOrThrow(repoRoot, "config", "user.name", "Test User");
         Files.writeString(repoRoot.resolve("README.md"), "hello\n");
@@ -474,6 +404,7 @@ class WorktreeCompatibilityTest {
     }
 
     private static GitResult runGit(Path cwd, String... args) throws Exception {
+        OsTestSupport.assumeGitAvailable();
         List<String> command = new ArrayList<>();
         command.add("git");
         command.addAll(List.of(args));

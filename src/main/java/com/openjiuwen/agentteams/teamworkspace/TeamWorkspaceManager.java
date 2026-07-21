@@ -18,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -166,18 +167,19 @@ public class TeamWorkspaceManager {
 
     /**
      * getLock.
-     * 
+     *
      * @param filePath filePath
-     * @return the result
+     * @return an {@link Optional} containing the lock, or {@link Optional#empty()}
+     *     if no lock exists or it has expired
      * @since 0.1.7
      */
-    public synchronized WorkspaceFileLock getLock(String filePath) {
+    public synchronized Optional<WorkspaceFileLock> getLock(String filePath) {
         WorkspaceFileLock lock = locks.get(filePath);
         if (lock != null && lock.isExpired()) {
             locks.remove(filePath);
-            return null;
+            return Optional.empty();
         }
-        return lock;
+        return Optional.ofNullable(lock);
     }
 
     /**
@@ -215,9 +217,9 @@ public class TeamWorkspaceManager {
 
         Map<String, Object> holder = null;
         if (!isGranted) {
-            WorkspaceFileLock existing = getLock(request.getFilePath());
-            if (existing != null) {
-                holder = lockToMap(existing);
+            Optional<WorkspaceFileLock> existingOpt = getLock(request.getFilePath());
+            if (existingOpt.isPresent()) {
+                holder = lockToMap(existingOpt.get());
             }
         }
         return WorkspaceLockResponse.builder().teamName(teamName).memberName(memberName).filePath(request.getFilePath())

@@ -754,8 +754,13 @@ public class ResourceMgr {
         for (McpServerConfig config : configs) {
             try {
                 // Validate client type
-                if (!"sse".equals(config.getClientType()) && !"stdio".equals(config.getClientType())
-                        && !"streamable_http".equals(config.getClientType())) {
+                String clientType = config.getClientType();
+                if ("streamable-http".equals(clientType)) {
+                    clientType = "streamable_http";
+                    config.setClientType(clientType);
+                }
+                if (!"sse".equals(clientType) && !"stdio".equals(clientType)
+                        && !"streamable_http".equals(clientType)) {
                     throw ErrorHelper.buildError(StatusCode.RESOURCE_MCP_SERVER_PARAM_INVALID, "param", "client_type",
                             "reason", "Unsupported MCP client type: " + config.getClientType());
                 }

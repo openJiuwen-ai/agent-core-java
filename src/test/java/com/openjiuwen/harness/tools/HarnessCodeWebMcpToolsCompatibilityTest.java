@@ -3,6 +3,7 @@ package com.openjiuwen.harness.tools;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.openjiuwen.core.testsupport.OsTestSupport;
 import com.openjiuwen.harness.tools.web.WebHttpResponse;
 
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,7 @@ import java.util.Map;
 class HarnessCodeWebMcpToolsCompatibilityTest {
     @Test
     void codeToolShouldRunPythonAndSurfaceFailure() {
+        OsTestSupport.assumePythonAvailable();
         CodeTool tool = new CodeTool();
 
         ToolOutput ok = tool.invoke("print('hi')", "python");

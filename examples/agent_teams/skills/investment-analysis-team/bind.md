@@ -28,7 +28,7 @@
 
 ### Team-level rules
 
-1. **Leader 不生成内容**: Leader 只负责任务分发、质量门控和报告整合，不进行任何分析工作
+1. **Leader 不生成内容也不写文件**: Leader 只负责任务分发和质量门控，不进行任何分析工作，不落盘任何报告文件。最终产物 T9 由 portfolio-risk-controller 直接产出。
 2. **分析师之间不可见**: 四个分析师并行工作，彼此看不到对方的输出
 3. **研究员 Round 1 不可见**: 乐观研究员和悲观研究员在 Round 1 并行工作，彼此看不到对方的输出
 4. **研究员 Round 2 直接可见**: 乐观研究员和悲观研究员在 Round 2 直接看到对方的观点，进行反驳辩论（无需协调员转达）
@@ -63,6 +63,65 @@
 **辩论轮次规则**:
 - Round 1: 研究员并行工作，彼此不可见（初始观点）
 - Round 2: 研究员直接看到对方 Round 1 观点，进行反驳辩论，输出辩论结论（必须完成）
+
+## Output Persistence
+
+### On-disk layout
+
+所有运行时产物写入团队当前工作目录（CWD）下的 `.team/reports/`，**不写入 skill 目录**。skill 目录只存放静态定义文件（SKILL.md / workflow.md / bind.md / roles/*.md / dependencies.yaml）。
+
+```
+<CWD>/
+└── .team/
+    └── reports/
+        ├── T1_fundamental_analysis.md
+        ├── T2_technical_analysis.md
+        ├── T3_digital_media_analysis.md
+        ├── T4_macro_analysis.md
+        ├── T5_optimistic_round1.md
+        ├── T6_pessimistic_round1.md
+        ├── T7_debate_optimistic.md
+        ├── T8_debate_pessimistic.md
+        └── T9_portfolio_risk.md   ← FINAL (含所有中间报告原文引用)
+```
+
+### Persistence rules
+
+1. **每个 teammate 落盘自己的产物** — 通过 `file_io(action="write", path=".team/reports/T<n>_<name>.md")` 写入，路径相对于团队 CWD。Leader 不代写 teammate 的中间报告。
+2. **`send_message` 只发摘要 + 路径** — teammate 完成后向 leader 发"完成摘要 + 文件路径"，不发完整内容，避免消息体过大。
+3. **T9 是最终产物，由 portfolio-risk-controller 落盘** — 含所有 T1-T8 中间报告原文引用 + 投资决策。Leader 不写任何文件。
+4. **Round 2 辩论落双份** — `optimistic-researcher` 写 T7_debate_optimistic.md，`pessimistic-researcher` 写 T8_debate_pessimistic.md，各自独立落盘。
+5. **降级模式标注** — 任一角色启用降级（见 Input-overscale degradation）时，在自身落盘文件开头加 `> [DEGRADED] 原因: ...`，并在 T9 最终报告元数据中汇总。
+
+### File naming convention
+
+- `T<n>` 为阶段编号，与 workflow.md Step 编号对齐（跳号留位给未来扩展）。
+- `<name>` 用 kebab-case，与 role id 对齐。
+- 固定 `.md` 扩展名，UTF-8 编码。
+- 不要在文件名中塞 run_id / 时间戳 — 团队每次运行覆盖同名文件，历史版本由 `TeamDatabase`（sqlite）的事件流保留，不在文件系统层做版本化。
+
+### Hard constraints (MANDATORY)
+
+1. **T9 is FINAL** — T9 必须包含所有 T1-T8 中间报告原文引用 + 投资决策。T9 完成即团队完成，框架合法判 `isTeamCompleted()==true` 收尾。
+2. **Exact path table** — teammate 落盘时 `file_io(action="write", path=...)` 的 `path` 必须**逐字符**匹配下表，禁止 LLM 自由命名：
+
+   | Task | 精确路径 |
+   | --- | --- |
+   | T1 | `.team/reports/T1_fundamental_analysis.md` |
+   | T2 | `.team/reports/T2_technical_analysis.md` |
+   | T3 | `.team/reports/T3_digital_media_analysis.md` |
+   | T4 | `.team/reports/T4_macro_analysis.md` |
+   | T5 | `.team/reports/T5_optimistic_round1.md` |
+   | T6 | `.team/reports/T6_pessimistic_round1.md` |
+   | T7 | `.team/reports/T7_debate_optimistic.md` |
+   | T8 | `.team/reports/T8_debate_pessimistic.md` |
+   | T9 (FINAL) | `.team/reports/T9_portfolio_risk.md`（portfolio-risk-controller，含原文引用） |
+
+3. **No aliasing** — 禁止起别名（如 `T8_pessimistic_round2.md` 代替 `T8_debate_pessimistic.md`）。若 teammate prompt 倾向自由命名，role 文件必须重复硬编码精确路径。
+
+### Visibility vs persistence
+
+可见性（bind.md § Phase-scoped visibility rules）约束的是"谁能在消息层看到谁的输出"。落盘是独立的：所有 teammate 产物都落盘到同一 `.team/reports/` 目录，但 Round 1 阶段两个研究员**不读对方文件**，即使文件已存在。框架通过 `member_results_delivery` 事件在 Round 2 才把对方观点投递过来。
 
 ## Failure Handling
 

@@ -10,9 +10,15 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Public class MemberRecord used by the Java parity implementation.
- * 
- * @since 0.1.7
+ * Member record persisted in the team database.
+ *
+ * <p>Mirrors Python {@code team_member} table row. Fields map 1:1 to the
+ * database columns. The {@code role} field defaults to null/blank when unset;
+ * callers that create teammates pass {@code TeamRole.TEAMMATE.value()}.
+ * Used by {@code MemberDao.isHumanAgent} / {@code listHumanAgentNames} to
+ * probe role straight from the DB row so the answer is always current.
+ *
+ * @since 1.0
  */
 @Data
 @Builder
@@ -30,4 +36,10 @@ public class MemberRecord {
     private String prompt;
     private String modelRefJson;
     private long updatedAt;
+
+    // Mirrors Python team_member.role column. Defaults to null/blank when
+    // unset; callers that create teammates pass TeamRole.TEAMMATE.value().
+    // Used by MemberDao.isHumanAgent / listHumanAgentNames to probe role
+    // straight from the DB row so the answer is always current.
+    private String role;
 }

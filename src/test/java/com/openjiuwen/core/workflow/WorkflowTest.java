@@ -275,7 +275,7 @@ class WorkflowTest {
     @Test
     @DisplayName("workflow validates inputs and supports skip flag")
     void testWorkflowInputValidation() {
-        Workflow flow = new Workflow(WorkflowCard.builder().inputParams(Map.of("type", "object", "properties",
+        Workflow flow = new Workflow(WorkflowCard.builder().id("validation-workflow").inputParams(Map.of("type", "object", "properties",
                 Map.of("value", Map.of("type", "integer")), "required", List.of("value"))).build());
         flow.setStartComp("start", new Start(), Map.of("value", "${value}"), null);
         flow.setEndComp("end", new IdentityNode(), Map.of("result", "${start.value}"), null);

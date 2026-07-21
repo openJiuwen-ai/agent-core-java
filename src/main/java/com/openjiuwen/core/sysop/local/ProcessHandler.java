@@ -119,13 +119,13 @@ public class ProcessHandler {
 
             if (!finished) {
                 Loggers.SYS_OPERATION.error("Get process result time out", LogEventType.SYS_OP_ERROR.getValue());
-                process.destroyForcibly();
+                killProcessTree(process);
                 try {
-                    boolean killedOk = process.waitFor(30, TimeUnit.SECONDS);
+                    boolean isKilledOk = process.waitFor(10, TimeUnit.SECONDS);
                     // Wait for reader threads to drain remaining data
                     stdoutThread.join(5000);
                     stderrThread.join(5000);
-                    if (!killedOk) {
+                    if (!isKilledOk) {
                         return InvokeData.builder().stdout(stdoutBuf.toString())
                                 .stderr("Process did not terminate after kill").exitCode(-1)
                                 .exception(new InterruptedException(
@@ -307,7 +307,7 @@ public class ProcessHandler {
                     long elapsedMs = System.currentTimeMillis() - startTimeMs;
                     if (elapsedMs >= (long) overallTimeoutSeconds * 1000) {
                         Loggers.SYS_OPERATION.error("Stream execution time out, timeout={}s", overallTimeoutSeconds);
-                        process.destroyForcibly();
+                        killProcessTree(process);
                         return StreamEvent.builder().type(StreamEventType.ERROR)
                                 .data("execution timeout after " + overallTimeoutSeconds + " seconds").build();
                     }
@@ -329,7 +329,7 @@ public class ProcessHandler {
                 if (!readersAlive && queue.isEmpty()) {
                     // Emit EXIT event
                     try {
-                        process.waitFor(30, TimeUnit.SECONDS);
+                        process.waitFor(10, TimeUnit.SECONDS);
                     } catch (InterruptedException e) {
                         Thread.currentThread().interrupt();
                     }
@@ -338,5 +338,32 @@ public class ProcessHandler {
                 }
             }
         }
+    }
+
+    /**
+     * Force-kill the process and its descendants. On Windows, {@link Process#destroyForcibly()}
+     * often leaves child processes (e.g. {@code ping} under {@code cmd.exe}) alive.
+     *
+     * @param process process
+     * @since 0.1.7
+     */
+    private static void killProcessTree(Process process) {
+        long pid = process.pid();
+        String os = System.getProperty("os.name", "").toLowerCase();
+        if (os.contains("win")) {
+            try {
+                Process killer = new ProcessBuilder("taskkill", "/F", "/T", "/PID", String.valueOf(pid))
+                        .redirectErrorStream(true).start();
+                // Drain merged output so taskkill cannot block on a full pipe buffer.
+                try (InputStream in = killer.getInputStream()) {
+                    in.readAllBytes();
+                }
+                killer.waitFor(2, TimeUnit.SECONDS);
+            } catch (IOException | InterruptedException ignored) {
+                // fall through to destroyForcibly; interruption is handled by the invoke timeout path
+            }
+        }
+        process.destroyForcibly();
+        process.descendants().forEach(ProcessHandle::destroyForcibly);
     }
 }

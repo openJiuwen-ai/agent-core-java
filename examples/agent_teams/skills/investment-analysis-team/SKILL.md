@@ -48,13 +48,12 @@ roles:
 团队遵循以下工作流程（详见 [workflow.md](workflow.md)）：
 
 1. **Pre-flight: check dependencies** — 读取 [dependencies.yaml](dependencies.yaml) 并验证所有依赖是否可用。报告缺失项：`required: true` = 缺失后可能失败；`required: false` = 降级但仍可运行。**用户决定**是否继续。团队可以在纯推理模式（inline-persona-only）下运行，如果所有技能缺失。
-2. **任务分发** — Leader 创建所有阶段的 task（包括自己最终的汇总 task，assignee="team_leader"），每个 task 设置 assignee 和 dependencies。**不要漏掉 Leader 自己的最终汇总环节。**
+2. **任务分发** — Leader 创建所有阶段的 task（T1-T8 + T9），每个 task 设置 assignee 和 dependencies。**T9 是最终产物，assignee=portfolio-risk-controller。**
 3. **四分析师并行分析** — 四个分析师并行工作，各自输出结构化分析报告。质量门控：每份报告必须包含至少3个关键发现，格式符合 Output Schema。
 4. **研究员观点整合（Round 1）** — 乐观研究员和悲观研究员并列获取三个分析师输入（基本面、技术、数字媒体），并行工作，彼此不可见。乐观研究员从乐观视角识别投资机会，悲观研究员从悲观视角识别潜在风险。质量门控：每份报告必须包含至少2个关键观点和辩论辩护准备。
 5. **直接点对点辩论（Round 2）** — 乐观研究员和悲观研究员直接看到对方的观点，进行反驳辩论。每轮辩论必须包含反驳论据和新证据支撑。辩论固定进行2轮。研究员直接输出辩论结论（无需协调员转达）。质量门控：每份辩论报告必须包含至少2个反驳论据和辩论结论。
 6. **完成辩论校验** — Leader 验证辩论是否充分、是否达成共识或明确分歧。若判断为"否"，继续下一轮辩论，最多2轮。
-7. **投资组合与风险控制** — 投资组合与风险控制角色基于研究员输出的辩论结论，构建投资组合建议、制定风险控制策略、提出最终决策。质量门控：必须包含至少3个风险控制措施。
-8. **Final: emit 投资分析报告** — Leader 整合所有分析结果，生成最终投资分析报告（包含分析师观点、研究员观点、多轮辩论过程、辩论结论、投资决策）。
+7. **投资组合与风险控制（FINAL）** — 投资组合与风险控制角色基于研究员输出的辩论结论 + 所有上游中间报告原文，构建投资组合建议、制定风险控制策略、提出最终决策，并**直接产出团队最终报告（T9）**，包含所有中间报告原文引用。质量门控：必须包含至少3个风险控制措施。
 
 ## Roles
 
@@ -83,3 +82,27 @@ roles:
 | [bind.md](bind.md)                     | Resource limits, behavioral constraints, debate failure handling and degraded modes   | When hitting limits, handling debate failures, or needing degraded-mode rules |
 | [roles/*.md](roles/)                   | Per-role identity, success criteria, output schema, Inline Persona for Teammate       | Before dispatching each teammate — extract Inline Persona                     |
 | [dependencies.yaml](dependencies.yaml) | External skills and tools required to run                                             | **Startup** — verify deps, report missing items, user decides go/no-go        |
+
+## Output Persistence
+
+运行时产物（各角色报告、辩论报告、最终报告）**不写入 skill 目录**，而是写入团队当前工作目录下的 `.team/reports/`。详见 [bind.md](bind.md) § Output Persistence。
+
+| 阶段 | 角色 | 落盘文件 |
+| --- | --- | --- |
+| Step 2 | fundamental-analyst | `.team/reports/T1_fundamental_analysis.md` |
+| Step 2 | technical-analyst | `.team/reports/T2_technical_analysis.md` |
+| Step 2 | digital-media-analyst | `.team/reports/T3_digital_media_analysis.md` |
+| Step 2 | macro-analyst | `.team/reports/T4_macro_analysis.md` |
+| Step 3 | optimistic-researcher (Round 1) | `.team/reports/T5_optimistic_round1.md` |
+| Step 3 | pessimistic-researcher (Round 1) | `.team/reports/T6_pessimistic_round1.md` |
+| Step 4 | optimistic-researcher (Round 2) | `.team/reports/T7_debate_optimistic.md` |
+| Step 4 | pessimistic-researcher (Round 2) | `.team/reports/T8_debate_pessimistic.md` |
+| **Step 6 (FINAL)** | **portfolio-risk-controller** | **`.team/reports/T9_portfolio_risk.md`** |
+
+每个 teammate 通过 `file_io(action="write")` 落盘自己的产物，通过 `send_message` 向 leader 发"完成摘要 + 文件路径"。**T9 是最终产物**，portfolio-risk-controller 直接产出含原文引用的最终报告。
+
+### Hard constraints (MANDATORY)
+
+1. **T9 is FINAL** — T9 由 portfolio-risk-controller 落盘，必须包含所有中间报告（T1-T8）原文引用 + 投资决策。T9 完成即团队完成。
+2. **Exact file paths** — 所有 teammate 必须**精确**使用上表"落盘文件"列的路径，禁止起别名（如把 `T8_debate_pessimistic.md` 写成 `T8_pessimistic_round2.md`）、禁止加 run_id/时间戳后缀。详见 [workflow.md](workflow.md) § Step 1.3。
+3. **Leader 分工硬约束** — Leader 只负责任务分发和质量门控，**禁止**自己 `file_io(action="read")` 读取 T1-T8 报告原文，**禁止**自己生成 T9 内容。收到"生成 T9" 类用户请求时，Leader 必须通过 `send_message` 通知 portfolio-risk-controller 执行，或通过 `view_task` 确认 T9 已被 portfolio-risk-controller 认领后等待其完成。Leader 提前 shutdown_member / clean_team 等同于违反本约束。

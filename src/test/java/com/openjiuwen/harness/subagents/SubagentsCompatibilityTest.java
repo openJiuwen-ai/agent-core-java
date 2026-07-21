@@ -263,7 +263,8 @@ class SubagentsCompatibilityTest {
         agent.ensureInitialized();
 
         assertThat(rail.embeddingConfig()).isSameAs(embeddingConfig);
-        assertThat(rail.codingMemoryDir()).isEqualTo("/tmp/code-memory");
+        assertThat(java.nio.file.Path.of(rail.codingMemoryDir()).toAbsolutePath().normalize())
+                .isEqualTo(java.nio.file.Path.of("/tmp/code-memory").toAbsolutePath().normalize());
     }
 
     @Test

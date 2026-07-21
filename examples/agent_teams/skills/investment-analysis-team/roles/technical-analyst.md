@@ -88,6 +88,10 @@ PROCESSING INSTRUCTIONS:
 2. 获取实时行情、历史行情（近20个交易日）、资金流向
 3. 分析价格趋势、技术指标（MACD、RSI、均线等）
 4. 识别支撑位、阻力位和关键价位
+5. 通过 file_io(action="write", path=".team/reports/T2_technical_analysis.md") 落盘完整报告
+6. 通过 send_message 向 leader 发"完成摘要 + 文件路径"，不发完整内容
+
+OUTPUT FILE: .team/reports/T2_technical_analysis.md
 
 OUTPUT FORMAT (use exactly this structure, no preamble, no postscript):
 

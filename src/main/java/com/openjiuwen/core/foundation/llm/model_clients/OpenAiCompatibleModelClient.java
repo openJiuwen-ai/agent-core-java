@@ -67,6 +67,9 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
      */
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
+    /** Default per-call cap (seconds) when caller does not specify one. */
+    private static final float DEFAULT_CALL_TIMEOUT_SECONDS = 180f;
+
     private final OkHttpClient httpClient;
 
     /**
@@ -307,7 +310,7 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
 
     /**
      * responseBody.
-     * 
+     *
      * @param response response
      * @return the result
      * @throws IOException IOException
@@ -320,7 +323,7 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
 
     /**
      * responseBodyOrNull.
-     * 
+     *
      * @param response response
      * @return the result
      * @throws IOException IOException
@@ -335,16 +338,14 @@ public class OpenAiCompatibleModelClient extends BaseModelClient {
 
     /**
      * applyCallTimeout.
-     * 
+     *
      * @param call call
      * @param timeoutOverride timeoutOverride
      * @since 0.1.7
      */
     private static void applyCallTimeout(Call call, Float timeoutOverride) {
-        if (timeoutOverride == null) {
-            return;
-        }
-        call.timeout().timeout(resolveTimeout(timeoutOverride).toMillis(), TimeUnit.MILLISECONDS);
+        float effective = timeoutOverride != null ? timeoutOverride.floatValue() : DEFAULT_CALL_TIMEOUT_SECONDS;
+        call.timeout().timeout(resolveTimeout(effective).toMillis(), TimeUnit.MILLISECONDS);
     }
 
     /**

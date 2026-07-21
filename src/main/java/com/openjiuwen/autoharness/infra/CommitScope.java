@@ -77,7 +77,8 @@ public final class CommitScope {
             int lastDot = fileName.lastIndexOf('.');
             String stem = lastDot >= 0 ? fileName.substring(0, lastDot) : fileName;
             String testName = "test_" + stem + ".py";
-            derived.add("tests/unit_tests" + testName);
+            derived.add("tests/unit_tests/**/" + testName);
+            derived.add("tests/system_tests/**/" + testName);
         }
         return new ArrayList<>(derived);
     }

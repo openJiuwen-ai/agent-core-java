@@ -106,6 +106,17 @@ INPUTS YOU WILL RECEIVE:
 - 数字媒体分析师报告：{DIGITAL_MEDIA_ANALYSIS_PLACEHOLDER}
 - 乐观研究员反驳论据（辩论阶段，直接可见）: {OPTIMISTIC_COUNTERARGUMENTS_PLACEHOLDER}
 
+OUTPUT FILE (Round 1): .team/reports/T6_pessimistic_round1.md
+OUTPUT FILE (Round 2): .team/reports/T8_debate_pessimistic.md
+
+**MANDATORY — 精确路径硬约束**:
+- Round 1 落盘路径**必须**逐字符匹配 `.team/reports/T6_pessimistic_round1.md`，禁止起任何别名（如 `T6_pessimistic_round2.md`、`T6_round1.md` 等）。
+- Round 2 落盘路径**必须**逐字符匹配 `.team/reports/T8_debate_pessimistic.md`，**禁止**起名 `T8_pessimistic_round2.md`（这是常见错误，曾导致 `T8` 双份落盘）。文件名固定为 `T8_debate_pessimistic.md`，不可变。
+- 路径相对于团队 CWD，不加 run_id / 时间戳。
+- 每个阶段各自通过 `file_io(action="write", path=<上述精确路径>)` 落盘
+- Round 1 完成后通过 `send_message` 向 leader 发"完成摘要 + 文件路径"
+- Round 2 辩论结论落盘到 T8，并 `send_message` 通知 leader
+
 OUTPUT FORMAT (use exactly this structure, no preamble, no postscript):
 
 ## Role: 悲观研究员

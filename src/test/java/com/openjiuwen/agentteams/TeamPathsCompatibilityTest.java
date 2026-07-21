@@ -5,11 +5,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
 class TeamPathsCompatibilityTest {
+    @TempDir
+    Path tempDir;
+
     @AfterEach
     void resetHome() {
         TeamPaths.resetOpenjiuwenHome();
@@ -53,7 +57,7 @@ class TeamPathsCompatibilityTest {
 
     @Test
     void shouldHonorConfiguredHome() {
-        Path custom = Paths.get("/custom/home");
+        Path custom = tempDir.resolve("custom-home");
         TeamPaths.configureOpenjiuwenHome(custom);
         Path home = TeamPaths.getOpenjiuwenHome();
         assertThat(home).isEqualTo(custom);
@@ -63,7 +67,7 @@ class TeamPathsCompatibilityTest {
 
     @Test
     void shouldResetHomeAfterConfigure() {
-        TeamPaths.configureOpenjiuwenHome("/tmp/test");
+        TeamPaths.configureOpenjiuwenHome(tempDir.resolve("test"));
         TeamPaths.resetOpenjiuwenHome();
         Path home = TeamPaths.getOpenjiuwenHome();
         assertThat(home.endsWith(".openjiuwen")).isTrue();

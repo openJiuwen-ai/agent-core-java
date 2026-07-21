@@ -263,7 +263,9 @@ public class SpawnedProcessHandle {
         stopHealthCheck();
         process.destroyForcibly();
         try {
-            process.waitFor();
+            // Timed wait: on Linux a child blocked on a full stderr PIPE may not exit until the
+            // pipe is drained; an unbounded waitFor() can hang the caller indefinitely.
+            process.waitFor(5L, TimeUnit.SECONDS);
         } catch (InterruptedException interruptedException) {
             Thread.currentThread().interrupt();
         }
@@ -449,7 +451,7 @@ public class SpawnedProcessHandle {
         try {
             if (!process.waitFor(Duration.ofSeconds(2).toMillis(), TimeUnit.MILLISECONDS)) {
                 process.destroyForcibly();
-                process.waitFor();
+                process.waitFor(5L, TimeUnit.SECONDS);
             }
         } catch (InterruptedException interruptedException) {
             Thread.currentThread().interrupt();

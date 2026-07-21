@@ -32,6 +32,6 @@ class LspExampleSupportTest {
 
         assertThat(manager.getWorkspaceRoot()).isEqualTo(tempDir.toAbsolutePath().normalize().toString());
         assertThat(result).containsEntry("operation", "goToDefinition");
-        assertThat(String.valueOf(result.get("file_path"))).contains("src/Main.java");
+        assertThat(String.valueOf(result.get("file_path")).replace('\\', '/')).contains("src/Main.java");
     }
 }

@@ -4,6 +4,7 @@ package com.openjiuwen.core.sysop.sandbox;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.openjiuwen.core.common.exception.StatusCode;
+import com.openjiuwen.core.testsupport.OsTestSupport;
 import com.openjiuwen.core.sysop.config.SandboxGatewayConfig;
 import com.openjiuwen.core.sysop.config.SandboxLauncherConfig;
 
@@ -24,12 +25,13 @@ class SandboxGatewayClientCompatibilityTest {
                 .launcherConfig(SandboxLauncherConfig.builder().launcherType("pre_deploy")
                         .baseUrl("http://local-provider:9999").sandboxType("local").build())
                 .params(Map.of("root_path", tempDir.toString(), "shell_allowlist",
-                        List.of("pwd", "python3", "python", "echo")))
+                        List.of("pwd", "cd", "python3", "python", "echo")))
                 .build();
     }
 
     @Test
     void gatewayClientShouldInvokeAcrossFsShellAndCodeProviders() throws Exception {
+        OsTestSupport.assumePythonAvailable();
         SandboxTestLocalProviders.ensureRegistered();
         Files.writeString(tempDir.resolve("hello.txt"), "hi");
         SandboxGatewayClient client = new SandboxGatewayClient(config(), "client-1");
@@ -37,8 +39,9 @@ class SandboxGatewayClientCompatibilityTest {
         Object read = client.invoke("fs", "readFile",
                 SandboxOperationSupport.paramsOf("path", "hello.txt", "mode", "text", "head", null, "tail", null,
                         "lineRange", null, "encoding", "utf-8", "chunkSize", 0, "options", null));
-        Object pwd = client.invoke("shell", "executeCmd", SandboxOperationSupport.paramsOf("command", "pwd", "cwd", "/",
-                "timeout", 300, "environment", null, "options", null));
+        String shellCmd = OsTestSupport.cwdCommand();
+        Object pwd = client.invoke("shell", "executeCmd", SandboxOperationSupport.paramsOf("command", shellCmd, "cwd",
+                ".", "timeout", 300, "environment", null, "options", null));
         Object code = client.invoke("code", "executeCode",
                 SandboxOperationSupport.paramsOf("code", "import os; print(os.getcwd())", "language", "python",
                         "timeout", 300, "environment", null, "options", null));

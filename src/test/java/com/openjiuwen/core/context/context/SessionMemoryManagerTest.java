@@ -148,9 +148,10 @@ class SessionMemoryManagerTest {
         assertTrue(manager.maybeScheduleUpdate(session, context, new WorkspaceLike("/tmp/workspace")));
         Map<String, Object> runtime = SessionMemoryManager.getSessionMemoryRuntime(session);
         assertEquals(true, runtime.get("is_extracting"));
-        assertTrue(String.valueOf(runtime.get("memory_path"))
+        assertTrue(String.valueOf(runtime.get("memory_path")).replace('\\', '/')
                 .endsWith("context/session-1_context/session_memory/session_context.md"));
-        assertTrue(String.valueOf(runtime.get("pending_memory_path")).endsWith("session_context.pending.md"));
+        assertTrue(String.valueOf(runtime.get("pending_memory_path")).replace('\\', '/')
+                .endsWith("session_context.pending.md"));
     }
 
     private static void setMetadata(BaseMessage message, String messageId) throws Exception {

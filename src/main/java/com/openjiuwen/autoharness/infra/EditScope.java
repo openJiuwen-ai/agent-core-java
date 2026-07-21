@@ -45,19 +45,27 @@ public final class EditScope {
         if (raw.isEmpty()) {
             return "";
         }
-
-        Path currentCwd = Path.of(CwdContext.getCwd()).toAbsolutePath().normalize();
-        Path projectRoot =
-            Path.of(CwdContext.getProjectRoot() == null ? CwdContext.getCwd() : CwdContext.getProjectRoot())
-                    .toAbsolutePath().normalize();
-        Path expanded = Path.of(expandUser(raw));
-        Path isResolved = expanded.isAbsolute()
-                ? expanded.toAbsolutePath().normalize()
-                : currentCwd.resolve(expanded).toAbsolutePath().normalize();
-        if (isResolved.startsWith(projectRoot)) {
-            return projectRoot.relativize(isResolved).toString().replace('\\', '/');
+        // Reject process/error blobs that are not filesystem paths (e.g. CreateProcess messages).
+        if (raw.indexOf('"') >= 0 || raw.contains("Cannot run program")) {
+            return "";
         }
-        return isResolved.toString().replace('\\', '/');
+
+        try {
+            Path currentCwd = Path.of(CwdContext.getCwd()).toAbsolutePath().normalize();
+            Path projectRoot =
+                Path.of(CwdContext.getProjectRoot() == null ? CwdContext.getCwd() : CwdContext.getProjectRoot())
+                        .toAbsolutePath().normalize();
+            Path expanded = Path.of(expandUser(raw));
+            Path isResolved = expanded.isAbsolute()
+                    ? expanded.toAbsolutePath().normalize()
+                    : currentCwd.resolve(expanded).toAbsolutePath().normalize();
+            if (isResolved.startsWith(projectRoot)) {
+                return projectRoot.relativize(isResolved).toString().replace('\\', '/');
+            }
+            return isResolved.toString().replace('\\', '/');
+        } catch (java.nio.file.InvalidPathException ex) {
+            return "";
+        }
     }
 
     /**
@@ -111,7 +119,7 @@ public final class EditScope {
      * @since 0.1.7
      */
     private static String expandUser(String raw) {
-        if (raw.equals("~")) {
+        if ("~".equals(raw)) {
             return System.getProperty("user.home", raw);
         }
         if (raw.startsWith("~/") || raw.startsWith("~\\")) {

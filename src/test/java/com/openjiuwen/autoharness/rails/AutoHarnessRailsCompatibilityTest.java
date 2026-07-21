@@ -30,6 +30,7 @@ import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.task_loop.LoopQueues;
 import com.openjiuwen.harness.tools.ToolOutput;
 import com.openjiuwen.harness.workspace.Workspace;
+import com.openjiuwen.core.testsupport.OsTestSupport;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -277,7 +278,7 @@ class AutoHarnessRailsCompatibilityTest {
 
         assertThat(rail.revert(tempDir)).isTrue();
         assertThat(runGit(tempDir, "rev-parse", "HEAD")).isEqualTo(baseCommit);
-        assertThat(Files.readString(trackedFile, StandardCharsets.UTF_8)).isEqualTo("base\n");
+        assertThat(Files.readString(trackedFile, StandardCharsets.UTF_8).replace("\r\n", "\n")).isEqualTo("base\n");
     }
 
     @Test
@@ -344,6 +345,7 @@ class AutoHarnessRailsCompatibilityTest {
     }
 
     private static String runGit(Path workspace, String... args) throws Exception {
+        OsTestSupport.assumeGitAvailable();
         List<String> command = new ArrayList<>();
         command.add("git");
         command.addAll(List.of(args));

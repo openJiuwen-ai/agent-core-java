@@ -49,6 +49,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -62,6 +63,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 class HarnessRailsCompatibilityTest {
     @TempDir
@@ -462,6 +464,7 @@ class HarnessRailsCompatibilityTest {
     }
 
     @Test
+    @Timeout(value = 15, unit = TimeUnit.SECONDS)
     void mcpRailShouldListAndReadResourcesFromRealStdioServer() throws Exception {
         String serverId = "stdio-fixture-" + java.util.UUID.randomUUID().toString().replace("-", "");
         McpServerConfig serverConfig = McpServerConfig.builder().serverId(serverId).serverName("stdio-fixture")
@@ -506,6 +509,7 @@ class HarnessRailsCompatibilityTest {
     }
 
     @Test
+    @Timeout(value = 20, unit = TimeUnit.SECONDS)
     void mcpRailShouldListAndReadResourcesFromHttpTransports() throws Exception {
         for (String clientType : List.of("sse", "streamable-http")) {
             HttpServer server = startHttpMcpResourceServer();

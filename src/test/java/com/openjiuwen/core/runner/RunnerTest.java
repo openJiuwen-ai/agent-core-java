@@ -13,6 +13,7 @@ import com.openjiuwen.core.multiagent.schema.GroupCard;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
 import com.openjiuwen.core.runner.resourcemanager.ResourceMgr;
+import com.openjiuwen.core.session.AgentGroupSessionApi;
 import com.openjiuwen.core.session.AgentSessionApi;
 import com.openjiuwen.core.session.NodeSessionApi;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
@@ -404,13 +405,21 @@ class RunnerTest {
     }
 
     private static class TypedGroup {
-        public Map<String, Object> invoke(Map<String, Object> inputs, String sessionId) {
-            return Map.of("group_value", inputs.get("value"), "session_id", sessionId);
+        public Map<String, Object> invoke(Map<String, Object> inputs, Object sessionId) {
+            return Map.of("group_value", inputs.get("value"), "session_id", normalizeSessionId(sessionId));
         }
 
-        public Iterator<Object> stream(Map<String, Object> inputs, String sessionId) {
-            return List.<Object>of(Map.of("group_value", inputs.get("value"), "session_id", sessionId),
-                    Map.of("group_value", inputs.get("value") + "-next", "session_id", sessionId)).iterator();
+        public Iterator<Object> stream(Map<String, Object> inputs, Object sessionId) {
+            Object sessionRef = normalizeSessionId(sessionId);
+            return List.<Object>of(Map.of("group_value", inputs.get("value"), "session_id", sessionRef),
+                    Map.of("group_value", inputs.get("value") + "-next", "session_id", sessionRef)).iterator();
+        }
+
+        private static Object normalizeSessionId(Object sessionId) {
+            if (sessionId instanceof AgentGroupSessionApi groupSession) {
+                return groupSession.getSessionId();
+            }
+            return sessionId;
         }
     }
 }

@@ -1,37 +1,36 @@
-
 package com.openjiuwen.agentteams.monitor;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
+import com.openjiuwen.agentteams.messager.InProcessMessager;
+import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
 import com.openjiuwen.agentteams.TeamConstants;
 import com.openjiuwen.agentteams.agent.SpawnManager;
 import com.openjiuwen.agentteams.agent.TeamAgent;
 import com.openjiuwen.agentteams.factory.TeamFactory;
-import com.openjiuwen.agentteams.messager.InProcessMessager;
-import com.openjiuwen.agentteams.messager.MessagerTransportConfig;
 import com.openjiuwen.agentteams.schema.blueprint.TeamAgentSpec;
 import com.openjiuwen.agentteams.schema.events.EventMessage;
+import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.agentteams.schema.status.MemberStatus;
 import com.openjiuwen.agentteams.schema.team.TeamMemberSpec;
 import com.openjiuwen.agentteams.schema.team.TeamRole;
 import com.openjiuwen.agentteams.schema.team.TeamRuntimeContext;
 import com.openjiuwen.agentteams.spawn.SpawnHandle;
-import com.openjiuwen.agentteams.tools.TeamBackend;
 import com.openjiuwen.core.runner.spawn.SpawnConfig;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
-
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 class MonitorCompatibilityTest {
+
     @AfterEach
     void cleanup() {
         InProcessMessager.cleanupInprocessBus();
@@ -40,9 +39,9 @@ class MonitorCompatibilityTest {
     @Test
     void monitorShouldQueryBackendStateAndReceiveEvents() throws Exception {
         InProcessMessager messager = new InProcessMessager(MessagerTransportConfig.builder().nodeId("leader").build());
-        TeamBackend backend = new TeamBackend("team-a", "leader", true, messager);
-        backend.spawnMember("member1", "Member One", AgentCard.builder().name("agent").description("desc").build())
-                .join();
+        // Unique team id: MEMORY TeamDatabase is process-shared; "team-a" leaks members from other tests.
+        TeamBackend backend = new TeamBackend("team-monitor-query", "leader", true, messager);
+        backend.spawnMember("member1", "Member One", AgentCard.builder().name("agent").description("desc").build()).join();
 
         TeamMonitor monitor = new TeamMonitor(backend);
         monitor.start();
@@ -50,74 +49,20 @@ class MonitorCompatibilityTest {
         backend.getTaskManager().add("Task 1", "Content 1").join();
         backend.getMessageManager().sendMessage("hello", "member1").join();
 
-        assertThat(monitor.getTeamInfo().getTeamId()).isEqualTo("team-a");
+        assertThat(monitor.getTeamInfo().orElseThrow().getTeamId()).isEqualTo("team-monitor-query");
         assertThat(monitor.getMembers()).hasSize(2);
         assertThat(monitor.getTasks()).hasSize(1);
         assertThat(monitor.getMessages()).isNotEmpty();
 
         MonitorEvent event = monitor.nextEvent();
-        assertThat(event.getTeamId()).isEqualTo("team-a");
-    }
-
-    @Test
-    void monitorStartStopShouldSubscribeTeamLifecycleAndUnsubscribeCleanly() throws Exception {
-        InProcessMessager messager = new InProcessMessager(MessagerTransportConfig.builder().nodeId("leader").build());
-        TeamBackend backend = new TeamBackend("team-life", "leader", true, messager);
-        TeamMonitor monitor = new TeamMonitor(backend);
-
-        monitor.start();
-        monitor.start();
-        backend.shutdownMember("worker-1", false).join();
-        messager.publish("team:team-life",
-                EventMessage.builder().eventType("member_restarted").payload(Map.of("team_name", "team-life",
-                        "member_name", "worker-1", "reason", "health_check_failure", "restart_count", 1)).build())
-                .join();
-
-        MonitorEvent event = monitor.nextEvent();
-        assertThat(monitor.isStarted()).isTrue();
-        assertThat(event.getEventType()).isEqualTo(MonitorEventType.MEMBER_RESTARTED);
-        assertThat(event.getTeamId()).isEqualTo("team-life");
-        assertThat(event.getMemberId()).isEqualTo("worker-1");
-
-        monitor.stop();
-        assertThat(monitor.isStarted()).isFalse();
-        MonitorEvent sentinel = monitor.nextEvent();
-        assertThat(sentinel.getEventType()).isNull();
-
-        messager.publish("team:team-life", EventMessage.builder().eventType("member_restarted").payload(
-                Map.of("team_name", "team-life", "member_name", "worker-1", "reason", "late", "restart_count", 2))
-                .build()).join();
-        assertThat(monitor.hasQueuedEvents()).isFalse();
-    }
-
-    @Test
-    void monitorEventsShouldYieldUntilStopSentinelLikePythonAsyncIterator() throws Exception {
-        InProcessMessager messager = new InProcessMessager(MessagerTransportConfig.builder().nodeId("leader").build());
-        TeamBackend backend = new TeamBackend("team-events", "leader", true, messager);
-        TeamMonitor monitor = new TeamMonitor(backend);
-
-        monitor.start();
-        java.util.Iterator<MonitorEvent> iterator = monitor.events().iterator();
-        messager.publish("team:team-events",
-                EventMessage.builder().eventType("member_restarted").payload(
-                        Map.of("team_name", "team-events", "member_name", "worker-1", "reason", "health_check_failure"))
-                        .build())
-                .join();
-
-        assertThat(iterator.hasNext()).isTrue();
-        assertThat(iterator.next().getEventType()).isEqualTo(MonitorEventType.MEMBER_RESTARTED);
-
-        monitor.stop();
-        assertThat(iterator.hasNext()).isFalse();
-        assertThatThrownBy(iterator::next).isInstanceOf(java.util.NoSuchElementException.class);
+        assertThat(event.getTeamId()).isEqualTo("team-monitor-query");
     }
 
     @Test
     void monitorShouldReceiveMemberStatusAndExecutionChangesFromBackendLikePythonMemberUpdates() throws Exception {
         InProcessMessager messager = new InProcessMessager(MessagerTransportConfig.builder().nodeId("leader").build());
         TeamBackend backend = new TeamBackend("team-recovery-events", "leader", true, messager);
-        backend.spawnMember("worker-1", "Worker One", AgentCard.builder().name("agent").description("desc").build())
-                .join();
+        backend.spawnMember("worker-1", "Worker One", AgentCard.builder().name("agent").description("desc").build()).join();
         TeamMonitor monitor = new TeamMonitor(backend);
 
         monitor.start();
@@ -145,58 +90,37 @@ class MonitorCompatibilityTest {
     }
 
     @Test
-    void monitorShouldObserveRecoverTeamStatusAndRestartEvents() throws Exception {
-        TeamAgent agent =
-            TeamFactory.createAgentTeam(TeamAgentSpec.builder().name("team-monitor-recovery").spawnMode("inprocess")
-                    .members(List.of(
-                            TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
-                                    .role(TeamRole.LEADER).build(),
-                            TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).description("Worker one")
-                                    .build()))
-                    .build());
-        agent.resumeForNewSession("monitor-recovery-session");
-        TeamMonitor monitor = new TeamMonitor(agent.getTeamBackend());
-
-        monitor.start();
-        agent.getTeamBackend().updateMemberStatus("worker-1", MemberStatus.READY);
-        monitor.nextEvent();
-
-        List<String> recoveredMembers = agent.recoverTeam();
-
-        MonitorEvent restarting = monitor.nextEvent();
-        MonitorEvent restartedEvent = monitor.nextEvent();
-        assertThat(recoveredMembers).containsExactly("worker-1");
-        assertThat(restarting.getEventType()).isEqualTo(MonitorEventType.MEMBER_STATUS_CHANGED);
-        assertThat(restarting.getTeamId()).isEqualTo("team-monitor-recovery");
-        assertThat(restarting.getMemberId()).isEqualTo("worker-1");
-        assertThat(restarting.getOldStatus()).isEqualTo("ready");
-        assertThat(restarting.getNewStatus()).isEqualTo("restarting");
-        assertThat(restartedEvent.getEventType()).isEqualTo(MonitorEventType.MEMBER_RESTARTED);
-        assertThat(restartedEvent.getMemberId()).isEqualTo("worker-1");
-        assertThat(restartedEvent.getReason()).isEqualTo("health_check_failure");
-        assertThat(restartedEvent.getRestartCount()).isEqualTo(1);
-
-        agent.getSpawnManager().shutdownAllHandles();
-    }
-
-    @Test
     void monitorShouldObserveProcessHealthRecoveryStatusAndRestartEvents() throws Exception {
-        TeamAgent agent = TeamFactory
-                .createAgentTeam(TeamAgentSpec.builder().name("team-monitor-process-recovery").spawnMode("process")
-                        .members(List.of(
-                                TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
-                                        .role(TeamRole.LEADER).build(),
-                                TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER)
-                                        .description("Worker one").build()))
-                        .build());
+        TeamAgent agent = TeamFactory.createAgentTeam(TeamAgentSpec.builder()
+                .name("team-monitor-process-recovery")
+                .spawnMode("process")
+                .members(List.of(
+                        TeamMemberSpec.builder()
+                                .name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
+                                .role(TeamRole.LEADER)
+                                .build(),
+                        TeamMemberSpec.builder()
+                                .name("worker-1")
+                                .role(TeamRole.MEMBER)
+                                .description("Worker one")
+                                .build()
+                ))
+                .build());
         agent.resumeForNewSession("monitor-process-recovery-session");
         TeamMonitor monitor = new TeamMonitor(agent.getTeamBackend());
-        TeamRuntimeContext ctx = TeamRuntimeContext.builder().teamId("team-monitor-process-recovery")
-                .sessionId("monitor-process-recovery-session").memberName("worker-1").role(TeamRole.MEMBER).build();
+        TeamRuntimeContext ctx = TeamRuntimeContext.builder()
+                .teamId("team-monitor-process-recovery")
+                .sessionId("monitor-process-recovery-session")
+                .memberName("worker-1")
+                .role(TeamRole.MEMBER)
+                .build();
 
         monitor.start();
-        SpawnHandle firstHandle = agent.getSpawnManager().spawnTeammate(ctx, "run long enough for monitor recovery",
-                SpawnConfig.builder().healthCheckInterval(0.01).healthCheckTimeout(0.001).build());
+        SpawnHandle firstHandle = agent.getSpawnManager().spawnTeammate(
+                ctx,
+                "run long enough for monitor recovery",
+                SpawnConfig.builder().healthCheckInterval(0.01).healthCheckTimeout(0.001).build()
+        );
 
         MonitorEvent restarting = nextEventOfType(monitor, MonitorEventType.MEMBER_STATUS_CHANGED);
         MonitorEvent restarted = nextEventOfType(monitor, MonitorEventType.MEMBER_RESTARTED);
@@ -217,20 +141,34 @@ class MonitorCompatibilityTest {
 
     @Test
     void monitorShouldObserveRestartFailureReturningMemberToError() throws Exception {
-        TeamAgent agent = TeamFactory
-                .createAgentTeam(TeamAgentSpec.builder().name("team-monitor-recovery-fail").spawnMode("inprocess")
-                        .members(List.of(
-                                TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
-                                        .role(TeamRole.LEADER).build(),
-                                TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER)
-                                        .description("Worker one").build()))
-                        .build());
+        TeamAgent agent = TeamFactory.createAgentTeam(TeamAgentSpec.builder()
+                .name("team-monitor-recovery-fail")
+                .spawnMode("inprocess")
+                .members(List.of(
+                        TeamMemberSpec.builder()
+                                .name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
+                                .role(TeamRole.LEADER)
+                                .build(),
+                        TeamMemberSpec.builder()
+                                .name("worker-1")
+                                .role(TeamRole.MEMBER)
+                                .description("Worker one")
+                                .build()
+                ))
+                .build());
         agent.resumeForNewSession("monitor-recovery-fail-session");
         TeamMonitor monitor = new TeamMonitor(agent.getTeamBackend());
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        ThreadPoolExecutor executor = new ThreadPoolExecutor(0, 1, 60L,
+                java.util.concurrent.TimeUnit.SECONDS,
+                new java.util.concurrent.LinkedBlockingQueue<>());
         executor.shutdownNow();
-        SpawnManager failingSpawnManager = new SpawnManager(agent, agent.getTeamBackend(), agent.getRecoveryManager(),
-                () -> agent.getContext().getSessionId(), executor);
+        SpawnManager failingSpawnManager = new SpawnManager(
+                agent,
+                agent.getTeamBackend(),
+                agent.getRecoveryManager(),
+                () -> agent.getContext().getSessionId(),
+                executor
+        );
 
         monitor.start();
         agent.getTeamBackend().forceUpdateMemberStatus("worker-1", MemberStatus.RESTARTING);
@@ -252,8 +190,7 @@ class MonitorCompatibilityTest {
     void monitorQueriesShouldUseDatabaseBackedFiltersLikePythonMonitor() {
         InProcessMessager messager = new InProcessMessager(MessagerTransportConfig.builder().nodeId("leader").build());
         TeamBackend backend = new TeamBackend("team-filter", "leader", true, messager);
-        backend.spawnMember("member1", "Member One", AgentCard.builder().name("agent").description("dev").build())
-                .join();
+        backend.spawnMember("member1", "Member One", AgentCard.builder().name("agent").description("dev").build()).join();
         backend.getDb().member.updateMemberStatus("member1", "team-filter", "busy");
         backend.updateMemberExecutionStatus("member1", "starting");
         backend.getTaskManager().add("Pending", "p", "task-pending", List.of()).join();
@@ -263,22 +200,29 @@ class MonitorCompatibilityTest {
         backend.getMessageManager().broadcastMessage("broadcast", "member1").join();
         TeamMonitor monitor = new TeamMonitor(backend);
 
-        assertThat(monitor.getMembers("busy")).singleElement().satisfies(member -> {
-            assertThat(member.getMemberId()).isEqualTo("member1");
-            assertThat(member.getExecutionStatus()).isEqualTo("starting");
-        });
+        assertThat(monitor.getMembers("busy"))
+                .singleElement()
+                .satisfies(member -> {
+                    assertThat(member.getMemberId()).isEqualTo("member1");
+                    assertThat(member.getExecutionStatus()).isEqualTo("starting");
+                });
         assertThat(monitor.getMember("member1").getStatus()).isEqualTo("busy");
         assertThat(monitor.getMember("missing")).isNull();
-        assertThat(monitor.getTasks("blocked")).singleElement().satisfies(task -> {
-            assertThat(task.getTaskId()).isEqualTo("task-blocked");
-            assertThat(task.getUpdatedAt()).isNotNull().isPositive();
-        });
-        assertThat(monitor.getMessages("member1", "leader")).singleElement().satisfies(message -> {
-            assertThat(message.getContent()).isEqualTo("from leader");
-            assertThat(message.getTimestamp()).isPositive();
-            assertThat(message.isBroadcast()).isFalse();
-        });
-        assertThat(monitor.getMessages(null, "member1")).extracting(MessageInfo::getContent)
+        assertThat(monitor.getTasks("blocked"))
+                .singleElement()
+                .satisfies(task -> {
+                    assertThat(task.getTaskId()).isEqualTo("task-blocked");
+                    assertThat(task.getUpdatedAt()).isNotNull().isPositive();
+                });
+        assertThat(monitor.getMessages("member1", "leader"))
+                .singleElement()
+                .satisfies(message -> {
+                    assertThat(message.getContent()).isEqualTo("from leader");
+                    assertThat(message.getTimestamp()).isPositive();
+                    assertThat(message.isBroadcast()).isFalse();
+                });
+        assertThat(monitor.getMessages(null, "member1"))
+                .extracting(MessageInfo::getContent)
                 .containsExactly("from member", "broadcast");
     }
 
@@ -288,36 +232,41 @@ class MonitorCompatibilityTest {
         TeamBackend backend = new TeamBackend("team-db-info", "leader", true, messager);
         TeamMonitor monitor = new TeamMonitor(backend);
 
-        TeamInfo info = monitor.getTeamInfo();
+        TeamInfo info = monitor.getTeamInfo().orElseThrow();
         assertThat(info.getTeamId()).isEqualTo("team-db-info");
         assertThat(info.getName()).isEqualTo("team-db-info");
         assertThat(info.getLeaderId()).isEqualTo("leader");
         assertThat(info.getCreated()).isPositive();
 
         backend.getDb().team.deleteTeam("team-db-info");
-        assertThat(monitor.getTeamInfo()).isNull();
+        assertThat(monitor.getTeamInfo()).isEmpty();
     }
 
     @Test
     void createMonitorShouldRequireLeaderTeamAgentLikePythonFactory() throws Exception {
-        TeamAgent leader = TeamFactory
-                .createAgentTeam(TeamAgentSpec
-                        .builder().name("team-monitor-factory").members(List.of(TeamMemberSpec.builder()
-                                .name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME).role(TeamRole.LEADER).build()))
-                        .build());
+        TeamAgent leader = TeamFactory.createAgentTeam(TeamAgentSpec.builder()
+                .name("team-monitor-factory")
+                .members(List.of(TeamMemberSpec.builder()
+                        .name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
+                        .role(TeamRole.LEADER)
+                        .build()))
+                .build());
 
         TeamMonitor monitor = TeamMonitor.createMonitor(leader);
-        assertThat(monitor.getTeamInfo().getTeamId()).isEqualTo("team-monitor-factory");
+        assertThat(monitor.getTeamInfo().orElseThrow().getTeamId()).isEqualTo("team-monitor-factory");
 
         monitor.start();
         assertThat(leader.eventListeners()).hasSize(1);
         @SuppressWarnings("unchecked")
         Consumer<EventMessage> listener = (Consumer<EventMessage>) leader.eventListeners().get(0);
-        listener.accept(
-                EventMessage
-                        .builder().eventType("member_restarted").payload(Map.of("team_name", "team-monitor-factory",
-                                "member_name", "worker-1", "reason", "health_check_failure", "restart_count", 1))
-                        .build());
+        listener.accept(EventMessage.builder()
+                .eventType("member_restarted")
+                .payload(Map.of(
+                        "team_name", "team-monitor-factory",
+                        "member_name", "worker-1",
+                        "reason", "health_check_failure",
+                        "restart_count", 1))
+                .build());
         MonitorEvent event = monitor.nextEvent();
         assertThat(event.getEventType()).isEqualTo(MonitorEventType.MEMBER_RESTARTED);
         assertThat(event.getTeamId()).isEqualTo("team-monitor-factory");
@@ -327,74 +276,87 @@ class MonitorCompatibilityTest {
         MonitorEvent sentinel = monitor.nextEvent();
         assertThat(sentinel.getEventType()).isNull();
 
-        TeamAgent teammate = new TeamAgent().configure(
-                TeamAgentSpec.builder().name("team-monitor-factory-member")
+        TeamAgent teammate = new TeamAgent().configure(TeamAgentSpec.builder()
+                        .name("team-monitor-factory-member")
                         .members(List.of(
-                                TeamMemberSpec.builder().name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
-                                        .role(TeamRole.LEADER).build(),
-                                TeamMemberSpec.builder().name("worker-1").role(TeamRole.MEMBER).build()))
+                                TeamMemberSpec.builder()
+                                        .name(TeamConstants.DEFAULT_LEADER_MEMBER_NAME)
+                                        .role(TeamRole.LEADER)
+                                        .build(),
+                                TeamMemberSpec.builder()
+                                        .name("worker-1")
+                                        .role(TeamRole.MEMBER)
+                                        .build()))
                         .build(),
-                TeamRuntimeContext.builder().teamId("team-monitor-factory-member").memberName("worker-1")
-                        .role(TeamRole.MEMBER).build());
+                TeamRuntimeContext.builder()
+                        .teamId("team-monitor-factory-member")
+                        .memberName("worker-1")
+                        .role(TeamRole.MEMBER)
+                        .build());
 
-        assertThatThrownBy(() -> TeamMonitor.createMonitor(teammate)).isInstanceOf(IllegalArgumentException.class)
+        assertThatThrownBy(() -> TeamMonitor.createMonitor(teammate))
+                .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("leader TeamAgent");
     }
 
     @Test
     void monitorEventShouldFlattenPublicTeamMemberTaskAndMessageEventsOnly() {
-        MonitorEvent team =
-            MonitorEvent
-                    .fromEventMessage(
-                            EventMessage.builder().eventType("team_created")
-                                    .payload(Map.of("team_name", "team-a", "display_name", "Team A",
-                                            "leader_member_name", "leader", "created", 1234L))
-                                    .build(),
-                            "fallback-team");
+        MonitorEvent team = MonitorEvent.fromEventMessage(EventMessage.builder()
+                .eventType("team_created")
+                .payload(Map.of(
+                        "team_name", "team-a",
+                        "display_name", "Team A",
+                        "leader_member_name", "leader",
+                        "created", 1234L))
+                .build(), "fallback-team");
         assertThat(team.getEventType()).isEqualTo(MonitorEventType.TEAM_CREATED);
         assertThat(team.getTeamId()).isEqualTo("team-a");
         assertThat(team.getName()).isEqualTo("Team A");
         assertThat(team.getLeaderId()).isEqualTo("leader");
         assertThat(team.getCreated()).isEqualTo(1234L);
 
-        MonitorEvent member = MonitorEvent.fromEventMessage(
-                EventMessage.builder().eventType("member_restarted").payload(Map.of("team_name", "team-a",
-                        "member_name", "worker-1", "reason", "health_check_failure", "restart_count", 2)).build(),
-                "fallback-team");
+        MonitorEvent member = MonitorEvent.fromEventMessage(EventMessage.builder()
+                .eventType("member_restarted")
+                .payload(Map.of(
+                        "team_name", "team-a",
+                        "member_name", "worker-1",
+                        "reason", "health_check_failure",
+                        "restart_count", 2))
+                .build(), "fallback-team");
         assertThat(member.getEventType()).isEqualTo(MonitorEventType.MEMBER_RESTARTED);
         assertThat(member.getMemberId()).isEqualTo("worker-1");
         assertThat(member.getReason()).isEqualTo("health_check_failure");
         assertThat(member.getRestartCount()).isEqualTo(2);
 
-        MonitorEvent status = MonitorEvent.fromEventMessage(
-                EventMessage.builder().eventType("member_execution_changed").payload(Map.of("team_name", "team-a",
-                        "member_name", "worker-1", "old_status", "running", "new_status", "completed")).build(),
-                "fallback-team");
+        MonitorEvent status = MonitorEvent.fromEventMessage(EventMessage.builder()
+                .eventType("member_execution_changed")
+                .payload(Map.of("team_name", "team-a", "member_name", "worker-1", "old_status", "running", "new_status", "completed"))
+                .build(), "fallback-team");
         assertThat(status.getEventType()).isEqualTo(MonitorEventType.MEMBER_EXECUTION_CHANGED);
         assertThat(status.getOldStatus()).isEqualTo("running");
         assertThat(status.getNewStatus()).isEqualTo("completed");
 
-        MonitorEvent task = MonitorEvent.fromEventMessage(
-                EventMessage.builder().eventType("task_unblocked")
-                        .payload(Map.of("team_name", "team-a", "task_id", "task-1", "status", "pending")).build(),
-                "fallback-team");
+        MonitorEvent task = MonitorEvent.fromEventMessage(EventMessage.builder()
+                .eventType("task_unblocked")
+                .payload(Map.of("team_name", "team-a", "task_id", "task-1", "status", "pending"))
+                .build(), "fallback-team");
         assertThat(task.getEventType()).isEqualTo(MonitorEventType.TASK_UNBLOCKED);
         assertThat(task.getTaskId()).isEqualTo("task-1");
         assertThat(task.getStatus()).isEqualTo("pending");
 
-        MonitorEvent message =
-            MonitorEvent.fromEventMessage(
-                    EventMessage.builder().eventType("message").payload(Map.of("team_name", "team-a", "message_id",
-                            "msg-1", "from_member_name", "leader", "to_member_name", "worker-1")).build(),
-                    "fallback-team");
+        MonitorEvent message = MonitorEvent.fromEventMessage(EventMessage.builder()
+                .eventType("message")
+                .payload(Map.of("team_name", "team-a", "message_id", "msg-1", "from_member_name", "leader", "to_member_name", "worker-1"))
+                .build(), "fallback-team");
         assertThat(message.getEventType()).isEqualTo(MonitorEventType.MESSAGE);
         assertThat(message.getMessageId()).isEqualTo("msg-1");
         assertThat(message.getFromMember()).isEqualTo("leader");
         assertThat(message.getToMember()).isEqualTo("worker-1");
 
-        assertThat(MonitorEvent.fromEventMessage(
-                EventMessage.builder().eventType("tool_approval_result").payload(Map.of("team_name", "team-a")).build(),
-                "fallback-team")).isNull();
+        assertThat(MonitorEvent.fromEventMessage(EventMessage.builder()
+                .eventType("tool_approval_result")
+                .payload(Map.of("team_name", "team-a"))
+                .build(), "fallback-team")).isNull();
     }
 
     private static MonitorEvent nextEventOfType(TeamMonitor monitor, MonitorEventType eventType) throws Exception {

@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import com.openjiuwen.autoharness.infra.GitOperations;
 import com.openjiuwen.autoharness.infra.WorktreeManager;
 import com.openjiuwen.autoharness.schema.AutoHarnessConfig;
+import com.openjiuwen.core.testsupport.OsTestSupport;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,7 @@ class AutoHarnessGitCodeSystemTest {
     @Test
     void worktreeManagerShouldCloneAndFetchPublicGitCodeRepository() throws Exception {
         assumeTrue("1".equals(System.getenv(ENABLE_ENV)), ENABLE_ENV + "=1 is required for real GitCode network test");
+        OsTestSupport.assumeGitAvailable();
 
         AutoHarnessConfig config = AutoHarnessConfig.builder().dataDir(tempDir.resolve("data").toString())
                 .repoUrl("https://gitcode.com/openJiuwen/agent-core.git").upstreamRepo("agent-core")
@@ -50,6 +52,7 @@ class AutoHarnessGitCodeSystemTest {
     @Test
     void worktreeManagerShouldFailInitialCloneForMissingGitCodeRepository() {
         assumeTrue("1".equals(System.getenv(ENABLE_ENV)), ENABLE_ENV + "=1 is required for real GitCode network test");
+        OsTestSupport.assumeGitAvailable();
 
         AutoHarnessConfig config = AutoHarnessConfig.builder().dataDir(tempDir.resolve("data-missing").toString())
                 .repoUrl("https://gitcode.com/openJiuwen/auto-harness-missing-repo-for-system-test.git")
@@ -63,6 +66,7 @@ class AutoHarnessGitCodeSystemTest {
     @Test
     void worktreeManagerShouldContinueWhenAuthenticatedGitCodeFetchFails() throws Exception {
         assumeTrue("1".equals(System.getenv(ENABLE_ENV)), ENABLE_ENV + "=1 is required for real GitCode network test");
+        OsTestSupport.assumeGitAvailable();
 
         Path dataDir = tempDir.resolve("data-auth-fetch-failure");
         AutoHarnessConfig seedConfig = AutoHarnessConfig.builder().dataDir(dataDir.toString())
@@ -88,6 +92,7 @@ class AutoHarnessGitCodeSystemTest {
     void gitOperationsShouldPushBranchAndCreateGitCodePrWhenExplicitlyEnabled() throws Exception {
         assumeTrue("1".equals(System.getenv(ENABLE_PR_ENV)),
                 ENABLE_PR_ENV + "=1 is required for real GitCode PR creation test");
+        OsTestSupport.assumeGitAvailable();
         String token = System.getenv("GITCODE_ACCESS_TOKEN");
         String forkOwner = System.getenv("AUTO_HARNESS_GITCODE_FORK_OWNER");
         assumeTrue(hasText(token), "GITCODE_ACCESS_TOKEN is required");
@@ -128,6 +133,9 @@ class AutoHarnessGitCodeSystemTest {
     }
 
     private static String runCapture(Path cwd, String... command) throws Exception {
+        if (command.length > 0 && "git".equals(command[0])) {
+            OsTestSupport.assumeGitAvailable();
+        }
         Process process = new ProcessBuilder(command).directory(cwd.toFile()).redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
         int code = process.waitFor();
@@ -136,6 +144,7 @@ class AutoHarnessGitCodeSystemTest {
     }
 
     private static int runGitCodeLsRemoteWithInvalidAuth() throws Exception {
+        OsTestSupport.assumeGitAvailable();
         ProcessBuilder builder =
             new ProcessBuilder("git", "ls-remote", "https://gitcode.com/openJiuwen/agent-core.git", "HEAD");
         builder.redirectErrorStream(true);

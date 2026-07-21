@@ -34,6 +34,11 @@
         <dashscope.version>2.22.17</dashscope.version>
         <okhttp3.version>4.12.0</okhttp3.version>
         <testcontainers.version>1.21.3</testcontainers.version>
+        <pdfbox.version>2.0.31</pdfbox.version>
+        <poi.version>5.3.0</poi.version>
+        <openai-java.version>4.32.0</openai-java.version>
+        <reactor.version>3.6.2</reactor.version>
+        <h2.version>2.2.224</h2.version>
 
         <!-- Test dependencies -->
         <junit.version>5.10.2</junit.version>
@@ -42,6 +47,10 @@
         <jacoco.version>0.8.11</jacoco.version>
         <surefire.groups></surefire.groups>
         <surefire.excludedGroups>system-test</surefire.excludedGroups>
+
+        <!-- Plugin versions -->
+        <maven-compiler-plugin.version>3.12.1</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
     </properties>
 
     <dependencies>
@@ -127,17 +136,17 @@
         <dependency>
             <groupId>org.apache.pdfbox</groupId>
             <artifactId>pdfbox</artifactId>
-            <version>2.0.31</version>
+            <version>${pdfbox.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
-            <version>5.3.0</version>
+            <version>${poi.version}</version>
         </dependency>
         <dependency>
             <groupId>com.openai</groupId>
             <artifactId>openai-java</artifactId>
-            <version>4.32.0</version>
+            <version>${openai-java.version}</version>
         </dependency>
         <dependency>
             <groupId>com.alibaba</groupId>
@@ -148,12 +157,12 @@
         <dependency>
             <groupId>io.projectreactor</groupId>
             <artifactId>reactor-core</artifactId>
-            <version>3.6.2</version>
+            <version>${reactor.version}</version>
         </dependency>
         <dependency>
             <groupId>io.projectreactor</groupId>
             <artifactId>reactor-test</artifactId>
-            <version>3.6.2</version>
+            <version>${reactor.version}</version>
             <scope>test</scope>
         </dependency>
 
@@ -185,7 +194,7 @@
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <version>2.2.224</version>
+            <version>${h2.version}</version>
             <scope>test</scope>
         </dependency>
         <dependency>
@@ -212,7 +221,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.12.1</version>
+                <version>${maven-compiler-plugin.version}</version>
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
@@ -229,11 +238,14 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
-                <version>3.2.5</version>
+                <version>${maven-surefire-plugin.version}</version>
                 <configuration>
                     <argLine>@{argLine} -Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
                     <groups>${surefire.groups}</groups>
                     <excludedGroups>${surefire.excludedGroups}</excludedGroups>
+                    <!-- Prevent a single hung test from blocking the whole suite forever (e.g. MCP stdio). -->
+                    <forkedProcessTimeoutInSeconds>900</forkedProcessTimeoutInSeconds>
+                    <reportFormat>plain</reportFormat>
                 </configuration>
             </plugin>
             <plugin>

@@ -34,7 +34,7 @@ class DeepAgentSpecCompatibilityTest {
 
     @Test
     void shouldCreateWorkspaceSpec() {
-        WorkspaceSpec spec = WorkspaceSpec.builder().rootPath("/tmp/ws").language("en").stableBase(true).build();
+        WorkspaceSpec spec = WorkspaceSpec.builder().rootPath("/tmp/ws").language("en").isStableBase(true).build();
         assertThat(spec.getRootPath()).isEqualTo("/tmp/ws");
         assertThat(spec.getLanguage()).isEqualTo("en");
         assertThat(spec.isStableBase()).isTrue();
@@ -61,7 +61,7 @@ class DeepAgentSpecCompatibilityTest {
 
     @Test
     void shouldCreateProgressiveToolSpec() {
-        ProgressiveToolSpec spec = ProgressiveToolSpec.builder().enabled(true).maxLoadedTools(10)
+        ProgressiveToolSpec spec = ProgressiveToolSpec.builder().isEnabled(true).maxLoadedTools(10)
                 .alwaysVisibleTools(List.of("read_file")).build();
         assertThat(spec.isEnabled()).isTrue();
         assertThat(spec.getMaxLoadedTools()).isEqualTo(10);
@@ -71,10 +71,10 @@ class DeepAgentSpecCompatibilityTest {
     @Test
     void shouldCreateDeepAgentSpec() {
         DeepAgentSpec spec = DeepAgentSpec.builder().systemPrompt("You are a helpful assistant").maxIterations(20)
-                .enableTaskLoop(true).build();
+                .isTaskLoopEnabled(true).build();
         assertThat(spec.getSystemPrompt()).isEqualTo("You are a helpful assistant");
         assertThat(spec.getMaxIterations()).isEqualTo(20);
-        assertThat(spec.isEnableTaskLoop()).isTrue();
+        assertThat(spec.isTaskLoopEnabled()).isTrue();
     }
 
     @Test

@@ -232,7 +232,7 @@ public class AgentSessionApi implements Session {
 
     /**
      * writeStream.
-     * 
+     *
      * @param data data
      * @since 0.1.7
      */
@@ -242,6 +242,25 @@ public class AgentSessionApi implements Session {
         if (writer != null) {
             writer.write(data);
         }
+    }
+
+    /**
+     * Check whether the underlying stream emitter has been closed.
+     *
+     * <p>Used by streaming callers (e.g. {@code ReActAgent.railedModelStreamCall})
+     * to break out of an {@code Iterator.hasNext()} loop early once the session
+     * is finished, instead of continuing to consume upstream LLM chunks that
+     * would only be discarded by {@code StreamWriter.doWrite}.</p>
+     *
+     * @return {@code true} if the stream emitter is null or has been closed;
+     *         {@code false} otherwise
+     * @since 0.1.7
+     */
+    public boolean isStreamClosed() {
+        var manager = inner.streamWriterManager();
+        return manager == null
+                || manager.getStreamEmitter() == null
+                || manager.getStreamEmitter().isClosed();
     }
 
     /**
@@ -324,6 +343,7 @@ public class AgentSessionApi implements Session {
         if ((runState.getAndUpdate(s -> s | POST_DONE) & POST_DONE) != 0) {
             return;
         }
+        // Close_stream first, then commit/post_agent_execute.
         inner.streamWriterManager().getStreamEmitter().close();
         if (inner.checkpointerTyped() != null) {
             inner.checkpointerTyped().postAgentExecute(inner);

@@ -267,7 +267,7 @@ public class LeaderTeammateAgentTeam {
      * @since 0.1.7
      */
     public boolean isHittEnabled() {
-        return spec.isEnableHitt();
+        return spec.isHittEnabled();
     }
 
     /**
@@ -651,14 +651,14 @@ public class LeaderTeammateAgentTeam {
         }
 
         /**
-         * exposeHumanAgentsToTeammates.
-         * 
-         * @param enabled enabled
+         * isExposeHumanAgentsToTeammates.
+         *
+         * @param isEnabled enabled
          * @return the result
          * @since 0.1.7
          */
-        public Builder exposeHumanAgentsToTeammates(boolean enabled) {
-            this.isExposeHumanAgentsToTeammates = enabled;
+        public Builder isExposeHumanAgentsToTeammates(boolean isEnabled) {
+            this.isExposeHumanAgentsToTeammates = isEnabled;
             return this;
         }
 
@@ -688,7 +688,7 @@ public class LeaderTeammateAgentTeam {
                     .lifecycle(lifecycle).teammateMode(teammateMode).spawnMode(spawnMode).transport(transport)
                     .storage(storage).connectionString(connectionString).teamMode(resolvedTeamMode).language(language)
                     .members(members).humanAgentEnabled(isHumanAgentEnabled)
-                    .exposeHumanAgentsToTeammates(isExposeHumanAgentsToTeammates).build();
+                    .isExposeHumanAgentsToTeammates(isExposeHumanAgentsToTeammates).build();
 
             return new LeaderTeammateAgentTeam(builtSpec);
         }

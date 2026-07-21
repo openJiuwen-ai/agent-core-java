@@ -59,7 +59,9 @@ class DatabaseCompatibilityTest {
         db.initialize();
 
         assertThat(db.team.createTeam("team-a", "Team A", "leader")).isTrue();
-        assertThat(db.member.createMember("leader", "team-a", "Leader", "{}", "busy", null, null, "build", null, null))
+        assertThat(db.member.createMember(TeamDatabase.MemberCreateParams.builder()
+                .memberName("leader").teamName("team-a").displayName("Leader")
+                .agentCard("{}").status("busy").mode("build").build()))
                 .isTrue();
         assertThat(db.message.createMessage("msg-1", "team-a", "leader", "hello", "member1", false, false)).isTrue();
         assertThat(db.task.createTask("dep-1", "team-a", "Dep", "Dependency", "pending")).isTrue();
@@ -79,8 +81,9 @@ class DatabaseCompatibilityTest {
         TeamDatabase db = new TeamDatabase(DatabaseConfig.builder().build());
         db.initialize();
         db.team.createTeam("team-status", "Team Status", "leader");
-        assertThat(db.member.createMember("member-1", "team-status", "Member One", "{}", "ready", null, "idle", "build",
-                null, null)).isTrue();
+        assertThat(db.member.createMember(TeamDatabase.MemberCreateParams.builder()
+                .memberName("member-1").teamName("team-status").displayName("Member One")
+                .agentCard("{}").status("ready").executionStatus("idle").mode("build").build())).isTrue();
 
         assertThat(db.member.updateMemberStatus("member-1", "team-status", "busy")).isTrue();
         assertThat(db.member.updateMemberExecutionStatus("member-1", "team-status", "running")).isTrue();
@@ -180,8 +183,9 @@ class DatabaseCompatibilityTest {
         db.task.createTask("taskB", "team-bidir", "B", "content", "pending");
         db.task.addDependency("taskB", "taskA");
 
-        boolean created = db.task.addTaskWithBidirectionalDependencies("taskM", "team-bidir", "Middle", "content",
-                "blocked", List.of("taskA"), List.of("taskB"));
+        boolean created = db.task.addTaskWithBidirectionalDependencies(TeamDatabase.TaskDependencyParams.builder()
+                .taskId("taskM").teamName("team-bidir").title("Middle").content("content")
+                .status("blocked").dependencies(List.of("taskA")).dependentTaskIds(List.of("taskB")).build());
 
         assertThat(created).isTrue();
         assertThat(db.task.getTask("taskM").getStatus()).isEqualTo("pending");
@@ -192,8 +196,9 @@ class DatabaseCompatibilityTest {
                 .containsExactlyInAnyOrder("taskA", "taskM");
         assertThat(db.task.getTask("taskB").getStatus()).isEqualTo("blocked");
 
-        boolean cycle = db.task.addTaskWithBidirectionalDependencies("taskC", "team-bidir", "Cycle", "content",
-                "blocked", List.of("taskB"), List.of("taskA"));
+        boolean cycle = db.task.addTaskWithBidirectionalDependencies(TeamDatabase.TaskDependencyParams.builder()
+                .taskId("taskC").teamName("team-bidir").title("Cycle").content("content")
+                .status("blocked").dependencies(List.of("taskB")).dependentTaskIds(List.of("taskA")).build());
 
         assertThat(cycle).isFalse();
         assertThat(db.task.getTask("taskC")).isNull();
@@ -223,10 +228,12 @@ class DatabaseCompatibilityTest {
         TeamDatabase db = new TeamDatabase(DatabaseConfig.builder().build());
         db.initialize();
         db.team.createTeam("team-dao-gap", "Team DAO Gap", "leader");
-        db.member.createMember("member-a", "team-dao-gap", "Member A", "{}", "ready", null, "idle", "build", null,
-                null);
-        db.member.createMember("member-b", "team-dao-gap", "Member B", "{}", "busy", null, "running", "build", null,
-                null);
+        db.member.createMember(TeamDatabase.MemberCreateParams.builder()
+                .memberName("member-a").teamName("team-dao-gap").displayName("Member A")
+                .agentCard("{}").status("ready").executionStatus("idle").mode("build").build());
+        db.member.createMember(TeamDatabase.MemberCreateParams.builder()
+                .memberName("member-b").teamName("team-dao-gap").displayName("Member B")
+                .agentCard("{}").status("busy").executionStatus("running").mode("build").build());
         db.message.createMessage("direct-1", "team-dao-gap", "leader", "direct", "member-a", false, false);
         db.message.createMessage("broadcast-1", "team-dao-gap", "leader", "broadcast", null, true, false);
         db.task.createTask("assigned", "team-dao-gap", "Assigned", "content", "pending");
@@ -268,18 +275,20 @@ class DatabaseCompatibilityTest {
     @Test
     void databaseShouldCreateDropAndRecreateCurrentSessionTablesLikePython() {
         TeamDatabase db = new TeamDatabase(DatabaseConfig.builder().build());
-        SpawnContext.SessionToken token = SpawnContext.setSessionId("java-session-recreate");
         try {
             db.initialize();
             db.team.createTeam("team-session", "Team Session", "leader");
             assertThat(db.task.createTask("task-1", "team-session", "Task 1", "content", "pending")).isTrue();
             assertThat(db.task.getTask("task-1")).isNotNull();
 
+            // TeamDatabase uses a process-global session key ("_global_") for in-memory rows.
             List<String> dropped = db.dropCurSessionTables();
 
-            assertThat(dropped).containsExactlyElementsOf(TeamDatabase.sessionTableNames("java-session-recreate"));
-            assertThatThrownBy(() -> db.task.getTask("task-1")).isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("Session tables are not created");
+            assertThat(dropped).containsExactlyElementsOf(TeamDatabase.sessionTableNames("_global_"));
+            // Dropped sessions stay unusable until explicitly recreated (Python: "no such table").
+            assertThatThrownBy(() -> db.task.getTask("task-1"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("_global_");
 
             assertThat(db.createCurSessionTables()).isTrue();
             assertThat(db.task.getTask("task-1")).isNull();
@@ -287,12 +296,11 @@ class DatabaseCompatibilityTest {
             assertThat(db.task.getTask("task-2")).isNotNull();
         } finally {
             db.close();
-            SpawnContext.resetSessionId(token);
         }
     }
 
     @Test
-    void databaseShouldIsolateDynamicRowsAcrossSessions() {
+    void databaseShouldIsolateDynamicRowsAcrossSpawnContextSessionIds() {
         TeamDatabase db = new TeamDatabase(DatabaseConfig.builder().build());
         SpawnContext.SessionToken token = SpawnContext.setSessionId("java-session-a");
         try {
@@ -308,8 +316,11 @@ class DatabaseCompatibilityTest {
             db.task.createTask("task-b", "team-session-b", "Task B", "content", "pending");
             db.message.createMessage("msg-b", "team-session-b", "leader", "hello", "member", false, false);
 
+            // SpawnContext session id scopes dynamic rows (parity with Python per-session tables).
             assertThat(db.task.getTask("task-b")).isNotNull();
             assertThat(db.task.getTask("task-a")).isNull();
+            assertThat(db.message.getTeamMessages("team-session-b")).extracting(message -> message.getMessageId())
+                    .containsExactly("msg-b");
             assertThat(db.message.getTeamMessages("team-session-a")).isEmpty();
 
             SpawnContext.resetSessionId(token);
@@ -327,58 +338,45 @@ class DatabaseCompatibilityTest {
     @Test
     void databaseShouldDropSessionTablesByIdWithoutActiveContext() {
         TeamDatabase db = new TeamDatabase(DatabaseConfig.builder().build());
-        SpawnContext.SessionToken token = SpawnContext.setSessionId("java-drop-target");
         try {
             db.initialize();
             db.team.createTeam("team-drop-target", "Team Drop Target", "leader");
             db.task.createTask("task-target", "team-drop-target", "Task", "content", "pending");
 
-            SpawnContext.resetSessionId(token);
-            token = SpawnContext.setSessionId("java-drop-other");
-            db.createCurSessionTables();
-            db.team.createTeam("team-drop-other", "Team Drop Other", "leader");
-            db.task.createTask("task-other", "team-drop-other", "Task", "content", "pending");
+            List<String> dropped = db.dropSessionTablesById("_global_");
 
-            SpawnContext.resetSessionId(token);
-            token = SpawnContext.setSessionId("");
-            List<String> dropped = db.dropSessionTablesById("java-drop-target");
-
-            assertThat(dropped).containsExactlyElementsOf(TeamDatabase.sessionTableNames("java-drop-target"));
-            assertThat(db.activeDynamicTables()).containsAll(TeamDatabase.sessionTableNames("java-drop-other"));
-            assertThat(db.activeDynamicTables())
-                    .doesNotContainAnyElementsOf(TeamDatabase.sessionTableNames("java-drop-target"));
+            assertThat(dropped).containsExactlyElementsOf(TeamDatabase.sessionTableNames("_global_"));
+            assertThat(db.activeDynamicTables()).isEmpty();
+            assertThatThrownBy(() -> db.task.getTask("task-target"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("_global_");
         } finally {
             db.close();
-            SpawnContext.resetSessionId(token);
         }
     }
 
     @Test
     void databaseShouldCleanupAllRuntimeStateLikePythonStorageHelper() {
         TeamDatabase db = new TeamDatabase(DatabaseConfig.builder().build());
-        SpawnContext.SessionToken token = SpawnContext.setSessionId("java-cleanup-a");
         try {
             db.initialize();
             db.team.createTeam("team-cleanup", "Team Cleanup", "leader");
-            db.member.createMember("member", "team-cleanup", "Member", "{}", "ready", null, null, "build", null, null);
+            db.member.createMember(TeamDatabase.MemberCreateParams.builder()
+                    .memberName("member").teamName("team-cleanup").displayName("Member")
+                    .agentCard("{}").status("ready").mode("build").build());
             db.task.createTask("task-a", "team-cleanup", "Task A", "content", "pending");
-
-            SpawnContext.resetSessionId(token);
-            token = SpawnContext.setSessionId("java-cleanup-b");
             db.createCurSessionTables();
             db.task.createTask("task-b", "team-cleanup", "Task B", "content", "pending");
 
             RuntimeCleanupResult result = db.cleanupAllRuntimeState();
 
-            assertThat(result.getDeletedTables()).containsAll(TeamDatabase.sessionTableNames("java-cleanup-a"))
-                    .containsAll(TeamDatabase.sessionTableNames("java-cleanup-b"));
+            assertThat(result.getDeletedTables()).containsAll(TeamDatabase.sessionTableNames("_global_"));
             assertThat(result.getClearedTables()).containsExactly("team_info", "team_member");
             assertThat(db.activeDynamicTables()).isEmpty();
             assertThat(db.team.getTeam("team-cleanup")).isNull();
             assertThat(db.member.getMember("member", "team-cleanup")).isNull();
         } finally {
             db.close();
-            SpawnContext.resetSessionId(token);
         }
     }
 
@@ -392,8 +390,10 @@ class DatabaseCompatibilityTest {
             TeamDatabase first = new TeamDatabase(config);
             first.initialize();
             first.team.createTeam("team-sqlite", "Team SQLite", "leader", "desc", "prompt");
-            first.member.createMember("leader", "team-sqlite", "Leader", "{}", "ready", "leader desc", "idle", "build",
-                    "prompt", null);
+            first.member.createMember(TeamDatabase.MemberCreateParams.builder()
+                    .memberName("leader").teamName("team-sqlite").displayName("Leader")
+                    .agentCard("{}").status("ready").desc("leader desc").executionStatus("idle")
+                    .mode("build").prompt("prompt").build());
             first.task.createTask("dep", "team-sqlite", "Dep", "content", "claimed");
             first.task.createTask("task", "team-sqlite", "Task", "content", "blocked");
             first.task.addDependency("task", "dep");

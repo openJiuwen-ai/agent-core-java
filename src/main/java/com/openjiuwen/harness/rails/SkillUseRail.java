@@ -182,6 +182,7 @@ public class SkillUseRail extends DeepAgentRail {
             deepAgent.registerHarnessTool(tool);
         }
 
+        syncRemoteSkills(deepAgent, skillsRoot);
         reloadSkills();
     }
 

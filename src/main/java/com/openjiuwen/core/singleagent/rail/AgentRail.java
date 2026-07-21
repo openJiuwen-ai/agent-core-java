@@ -6,6 +6,7 @@ package com.openjiuwen.core.singleagent.rail;
 
 import com.openjiuwen.core.foundation.tool.ToolCard;
 
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -281,8 +282,17 @@ public abstract class AgentRail {
             return ctx -> {
                 try {
                     method.invoke(this, ctx);
-                } catch (Exception e) {
-                    throw new RuntimeException("Error invoking rail callback: " + methodName, e);
+                } catch (InvocationTargetException e) {
+                    Throwable cause = e.getCause() != null ? e.getCause() : e;
+                    if (cause instanceof RuntimeException runtimeException) {
+                        throw runtimeException;
+                    }
+                    if (cause instanceof Error error) {
+                        throw error;
+                    }
+                    throw new IllegalStateException("Error invoking rail callback: " + methodName, cause);
+                } catch (IllegalAccessException e) {
+                    throw new IllegalStateException("Error invoking rail callback: " + methodName, e);
                 }
             };
         } catch (NoSuchMethodException e) {

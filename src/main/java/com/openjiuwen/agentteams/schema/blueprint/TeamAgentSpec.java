@@ -66,9 +66,9 @@ public class TeamAgentSpec {
     @Builder.Default
     private String teamMode = null;
     @Builder.Default
-    private boolean enableHitt = false;
+    private boolean isHittEnabled = false;
     @Builder.Default
-    private boolean exposeHumanAgentsToTeammates = false;
+    private boolean isExposeHumanAgentsToTeammates = false;
     private String language;
     private TeamMemoryConfig memory;
 
@@ -79,10 +79,10 @@ public class TeamAgentSpec {
      */
     public static class TeamAgentSpecBuilder {
         /**
-         * humanAgentEnabled.
-         * 
-         * @param value value
-         * @return the result
+         * Set whether the human agent is enabled.
+         *
+         * @param value whether human agent is enabled
+         * @return this builder
          * @since 0.1.7
          */
         public TeamAgentSpecBuilder humanAgentEnabled(boolean value) {
@@ -91,9 +91,9 @@ public class TeamAgentSpec {
     }
 
     /**
-     * build.
-     * 
-     * @return the result
+     * Build and validate the TeamAgentSpec.
+     *
+     * @return the built TeamAgentSpec
      * @since 0.1.7
      */
     public TeamAgentSpec build() {
@@ -107,8 +107,8 @@ public class TeamAgentSpec {
     }
 
     /**
-     * defaultTransportForSpawnMode.
-     * 
+     * Get the default transport for the configured spawn mode.
+     *
      * @since 0.1.7
      */
     public void defaultTransportForSpawnMode() {
@@ -118,8 +118,9 @@ public class TeamAgentSpec {
     }
 
     /**
-     * validate.
-     * 
+     * Validate the spec: check leader exists and member names are unique.
+     *
+     * @throws IllegalArgumentException if validation fails
      * @since 0.1.7
      */
     public void validate() {
@@ -152,24 +153,26 @@ public class TeamAgentSpec {
     }
 
     /**
-     * validateHittConsistency.
-     * 
+     * Validate HITT consistency across members.
+     *
+     * @throws IllegalArgumentException if validation fails
      * @since 0.1.7
      */
     public void validateHittConsistency() {
-        if (enableHitt) {
+        if (isHumanAgentEnabled || isHittEnabled) {
             return;
         }
         boolean hasHumanAgent = members.stream().anyMatch(member -> member.getRole() == TeamRole.HUMAN_AGENT);
         if (hasHumanAgent) {
-            throw new IllegalArgumentException("predefined_members contains HUMAN_AGENT role(s) but enableHitt=false; "
-                    + "set enableHitt=true or remove the human member(s)");
+            throw new IllegalArgumentException(
+                    "predefined_members contains HUMAN_AGENT role(s) but isHittEnabled=false; "
+                            + "set isHittEnabled=true or remove the human member(s)");
         }
     }
 
     /**
-     * ensureLeader.
-     * 
+     * Ensure at least one leader member exists in the spec.
+     *
      * @since 0.1.7
      */
     public void ensureLeader() {

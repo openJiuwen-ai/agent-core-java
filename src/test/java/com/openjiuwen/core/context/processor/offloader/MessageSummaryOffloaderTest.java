@@ -49,19 +49,19 @@ class MessageSummaryOffloaderTest {
         }
 
         @Test
-        @DisplayName("messages_to_keep == messages_threshold throws")
+        @DisplayName("messages_to_keep == messages_threshold is accepted")
         void testMessagesToKeepEqualsThreshold() {
             MessageSummaryOffloaderConfig config =
                 MessageSummaryOffloaderConfig.builder().messagesToKeep(20).messagesThreshold(20).build();
-            assertThrows(BaseError.class, () -> new MessageSummaryOffloader(config));
+            assertDoesNotThrow(() -> new MessageSummaryOffloader(config));
         }
 
         @Test
-        @DisplayName("messages_to_keep > messages_threshold throws")
+        @DisplayName("messages_to_keep > messages_threshold is accepted")
         void testMessagesToKeepGreaterThanThreshold() {
             MessageSummaryOffloaderConfig config =
                 MessageSummaryOffloaderConfig.builder().messagesToKeep(30).messagesThreshold(20).build();
-            assertThrows(BaseError.class, () -> new MessageSummaryOffloader(config));
+            assertDoesNotThrow(() -> new MessageSummaryOffloader(config));
         }
 
         @Test

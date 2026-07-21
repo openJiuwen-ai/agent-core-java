@@ -24,7 +24,7 @@ import java.util.List;
 @AllArgsConstructor
 public class ProgressiveToolSpec {
     @Builder.Default
-    private boolean enabled = true;
+    private boolean isEnabled = true;
     @Builder.Default
     /**
      * ArrayList<>.

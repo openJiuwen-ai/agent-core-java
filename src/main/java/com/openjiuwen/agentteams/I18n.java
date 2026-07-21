@@ -19,15 +19,6 @@ import java.util.Map;
  * @since 0.1.7
  */
 public final class I18n {
-    /**
-     * Language.
-     * 
-     * @since 0.1.7
-     */
-    public enum Language {
-        CN,
-        EN
-    }
 
     private static volatile Language currentLanguage = Language.CN;
 
@@ -37,6 +28,12 @@ public final class I18n {
 
     static {
         Map<String, String> cn = new LinkedHashMap<>();
+        cn.put("time.just_now", "\u521a\u521a");
+        cn.put("time.seconds_ago", "{0} \u79d2\u524d");
+        cn.put("time.minutes_ago", "{0} \u5206\u949f\u524d");
+        cn.put("time.hours_ago", "{0} \u5c0f\u65f6\u524d");
+        cn.put("time.days_ago", "{0} \u5929\u524d");
+        cn.put("time.unknown", "\u65f6\u95f4\u672a\u77e5");
         cn.put("blueprint.default_persona", "\u5929\u624d\u9879\u76ee\u7ba1\u7406\u4e13\u5bb6");
         cn.put("team.shutdown_request_content",
                 "\u5f53\u524d\u4efb\u52a1\u5df2\u5168\u90e8\u5b8c\u6210\uff0c\u8bf7\u7ed3\u675f\u6d41\u7a0b");
@@ -57,16 +54,30 @@ public final class I18n {
                         + "\u672a\u5b8c\u6210\u7684\u4efb\u52a1\uff08"
                         + "\u5171 {0} \u4e2a\uff09\uff0c\u8bf7\u7ee7\u7eed\u63a8\u8fdb\uff1a");
         cn.put("dispatcher.stale_claim_self",
-                "[\u50ac\u4fc3] \u4f60\u5df2\u8ba4\u9886\u7684\u4efb\u52a1 [{0}] {1} \u5df2\u8d85"
-                        + "\u8fc7 10 mins \u4ecd\u672a\u5b8c\u6210\uff0c\u8bf7\u7ee7\u7eed\u63a8\u8fdb\uff1a{2}");
+                "[\u50ac\u4fc3] \u4f60\u5df2\u8ba4\u9886\u7684\u4efb\u52a1 [{0}] {1}\uff08\u8ba4\u9886\u4e8e "
+                        + "{2}\uff09\u4ecd\u672a\u5b8c\u6210\uff0c"
+                        + "\u8bf7\u7ee7\u7eed\u63a8\u8fdb\uff1a{3}");
         cn.put("dispatcher.task_assigned_to_self",
                 "[\u4efb\u52a1\u6307\u6d3e] \u4efb\u52a1 [{0}] \u5df2\u6307\u6d3e\u7ed9\u4f60\uff0c"
                         + "\u8bf7\u901a\u8fc7 view_task \u5de5\u5177\u67e5\u770b\u4efb\u52a1\u8be6\u60c5"
                         + "\u5e76\u6267\u884c\u3002");
+        cn.put("dispatcher.task_plan_approved_to_self",
+                "[\u8ba1\u5212\u5df2\u6279\u51c6] \u4efb\u52a1 [{0}]"
+                        + " \u7684\u6267\u884c\u8ba1\u5212\u5df2\u901a\u8fc7\u3002"
+                        + "\u8bf7\u5f00\u59cb\u6267\u884c\uff0c\u5b8c\u6210\u540e\u7528 "
+                        + "claim_task(status='completed') "
+                        + "\u6807\u8bb0\u5b8c\u6210\u3002{1}");
+        cn.put("dispatcher.task_plan_rejected_to_self",
+                "[\u8ba1\u5212\u5df2\u9a73\u56de] \u4efb\u52a1 [{0}] "
+                        + "\u7684\u6267\u884c\u8ba1\u5212\u88ab\u9a73\u56de\u3002"
+                        + "\u8bf7\u6839\u636e\u53cd\u9988\u4fee\u6539\u540e\u91cd\u65b0\u63d0\u4ea4\u3002{1}");
         cn.put("dispatcher.msg_type_broadcast", "\u5e7f\u64ad\u6d88\u606f");
         cn.put("dispatcher.msg_type_direct", "\u5355\u64ad\u6d88\u606f");
         cn.put("dispatcher.msg_received",
-                "[\u6536\u5230{0}] message_id={1}, " + "\u6765\u81ea: {2}\n" + "\u5185\u5bb9: {3}\n"
+                "[\u6536\u5230{0}] message_id={1}, "
+                        + "\u6765\u81ea: {2}\n"
+                        + "\u65f6\u95f4: {3}\n"
+                        + "\u5185\u5bb9: {4}\n"
                         + "\u63d0\u793a: \u5982\u679c\u5bf9\u65b9\u5728\u63d0\u95ee\u6216\u7b49\u5f85\u56de\u590d\uff0c"
                         + "\u8bf7\u52a1\u5fc5\u901a\u8fc7 send_message \u5de5\u5177\u56de\u590d {2}");
         cn.put("dispatcher.all_done_persistent",
@@ -104,9 +115,53 @@ public final class I18n {
                         + "\u56de\u590d\u6d88\u606f\u3001\u53c2\u4e0e\u534f\u4f5c\u3002");
         cn.put("hitt.human_agent_spawned",
                 "[\u6210\u5458\u4e8b\u4ef6] \u4eba\u7c7b\u6210\u5458 human_agent \u5df2\u52a0\u5165\u56e2\u961f");
+        cn.put("hitt.task_assigned_to_self_human",
+                "[\u4efb\u52a1\u6307\u6d3e\u7ed9\u63a7\u5236\u8005] \u4f60\u88ab\u6307\u6d3e\u4e86\u65b0\u4efb\u52a1 "
+                        + "[{0}] {1}\u3002\n"
+                        + "**\u8fd9\u662f\u7ed9\u63a7\u5236\u8005\u770b\u7684\u901a\u77e5\uff0c"
+                        + "\u4e0d\u662f\u7ed9\u4f60\u7684\u5de5\u4f5c\u6307\u4ee4**\uff1b"
+                        + "\u8fd0\u884c\u65f6\u5df2\u7ecf\u628a\u901a\u77e5\u539f\u6837\u5c55\u793a\u7ed9"
+                        + "\u63a7\u5236\u8005\u3002\n"
+                        + "**\u4e25\u683c\u7981\u6b62\u4efb\u4f55\u81ea\u4e3b\u884c\u4e3a**\uff1a"
+                        + "\u7981\u6b62\u4e3b\u52a8\u56de\u590d\u53d1\u8d77\u6307\u6d3e\u7684\u6210\u5458\u3001"
+                        + "\u7981\u6b62\u81ea\u4e3b\u8c03\u7528 send_message / member_complete_task / claim_task / "
+                        + "\u6587\u4ef6 / shell \u7b49\u4efb\u4f55\u5de5\u5177\u53bb\u56de\u5e94\u6216\u63a8\u8fdb"
+                        + "\u4efb\u52a1\u3001"
+                        + "\u7981\u6b62\u7528\u7eaf\u6587\u672c\u8f93\u51fa\u8868\u8fbe\u610f\u56fe\u6216\u627f"
+                        + "\u8bfa\u3002\n"
+                        + "**\u4fdd\u6301\u9759\u9ed8**\uff0c"
+                        + "\u7b49\u63a7\u5236\u8005\u5728 Inbox \u91cc\u4e0b\u8fbe\u660e\u786e\u6307\u4ee4\u540e"
+                        + "\u518d\u884c\u52a8\u3002");
+        cn.put("hitt.msg_received_for_human",
+                "[\u8f6c\u53d1\u7ed9\u63a7\u5236\u8005\u7684{0}] message_id={1}, "
+                        + "\u6765\u81ea: {2}\n"
+                        + "\u65f6\u95f4: {3}\n"
+                        + "\u5185\u5bb9: {4}\n"
+                        + "**\u8fd9\u6761\u6d88\u606f\u5df2\u7ecf\u539f\u6837\u8f6c\u7ed9\u63a7\u5236\u8005\uff0c"
+                        + "\u4e0d\u662f\u8981\u4f60\u56de\u5e94\u7684\u6307\u4ee4**\u3002\n"
+                        + "**\u4e25\u683c\u7981\u6b62\u4efb\u4f55\u81ea\u4e3b\u884c\u4e3a**\uff1a"
+                        + "\u7981\u6b62\u4e3b\u52a8\u56de\u590d\u53d1\u9001\u65b9\uff08\u5305\u62ec\u8c03\u7528 "
+                        + "send_message\uff09\u3001"
+                        + "\u7981\u6b62\u81ea\u4e3b\u8c03\u7528\u4efb\u4f55\u5176\u5b83\u5de5\u5177\u53bb\u56de"
+                        + "\u5e94\u6216\u91c7\u53d6\u884c\u52a8\u3001"
+                        + "\u7981\u6b62\u7528\u7eaf\u6587\u672c\u8f93\u51fa\u8868\u8fbe\u610f\u56fe\u6216\u627f"
+                        + "\u8bfa\u3002\n"
+                        + "**\u4fdd\u6301\u9759\u9ed8**\uff0c"
+                        + "\u7b49\u63a7\u5236\u8005\u5728 Inbox \u91cc\u660e\u786e\u6307\u793a\u4f60\u8f6c\u544a"
+                        + "\u6216\u56de\u590d\u65f6\u518d\u8c03 send_message\u3002");
+        cn.put("workflow.started",
+                "[\u5de5\u4f5c\u6d41] \u300c{0}\u300d\u7f16\u6392\u5df2\u542f\u52a8\uff0c"
+                        + "\u6211\u5c06\u5728\u6bcf\u4e2a\u9636\u6bb5\u5411\u4f60\u6c47\u62a5\u8fdb\u5c55\u3002");
+        cn.put("workflow.phase", "[\u5de5\u4f5c\u6d41] \u8fdb\u5165\u9636\u6bb5\uff1a{0}");
         CN_STRINGS = Collections.unmodifiableMap(cn);
 
         Map<String, String> en = new LinkedHashMap<>();
+        en.put("time.just_now", "just now");
+        en.put("time.seconds_ago", "{0}s ago");
+        en.put("time.minutes_ago", "{0}m ago");
+        en.put("time.hours_ago", "{0}h ago");
+        en.put("time.days_ago", "{0}d ago");
+        en.put("time.unknown", "unknown time");
         en.put("blueprint.default_persona", "Genius project management expert");
         en.put("team.shutdown_request_content", "All tasks are complete. Please wrap up and exit.");
         en.put("team.cancel_request_content",
@@ -121,12 +176,19 @@ public final class I18n {
         en.put("dispatcher.stale_claim_header",
                 "Detected {0} task(s) you claimed that have been open for over 10 minutes. Please push forward:");
         en.put("dispatcher.stale_claim_self",
-                "[Nudge] Your claimed task [{0}] {1} has been open for over 10 mins. Please continue: {2}");
+                "[Nudge] Your claimed task [{0}] {1} (claimed {2}) is still open. Please continue: {3}");
         en.put("dispatcher.task_assigned_to_self", "[Task Assigned] Task [{0}] has been assigned to you. "
                 + "Use view_task to inspect the details and start working on it.");
+        en.put("dispatcher.task_plan_approved_to_self",
+                "[Plan Approved] Your execution plan for task [{0}] was approved. "
+                        + "Start execution and call claim_task(status='completed') when done. {1}");
+        en.put("dispatcher.task_plan_rejected_to_self",
+                "[Plan Rejected] Your execution plan for task [{0}] was rejected. "
+                        + "Please revise based on the feedback and resubmit. {1}");
         en.put("dispatcher.msg_type_broadcast", "broadcast");
         en.put("dispatcher.msg_type_direct", "direct message");
-        en.put("dispatcher.msg_received", "[Received {0}] message_id={1}, " + "from: {2}\n" + "content: {3}\n"
+        en.put("dispatcher.msg_received", "[Received {0}] message_id={1}, " + "from: {2}\n" + "time: {3}\n"
+                + "content: {4}\n"
                 + "tip: If the sender is asking or waiting for a reply, make sure to reply to {2} via send_message");
         en.put("dispatcher.all_done_persistent", "All tasks are complete. Please summarize this round''s results. "
                 + "The team remains running and awaits new task instructions.");
@@ -153,6 +215,34 @@ public final class I18n {
                         + "the leader and teammates; driven by a real operator, can "
                         + "receive tasks, reply to messages, and collaborate.");
         en.put("hitt.human_agent_spawned", "[Member Event] Human member 'human_agent' joined the team");
+        en.put("hitt.task_assigned_to_self_human",
+                "[Task Assigned For Controller] You have been assigned task "
+                        + "[{0}] \"{1}\".\n"
+                        + "**This is a notification for your controller, NOT a work "
+                        + "instruction for you**; the runtime has already surfaced the "
+                        + "notification to the controller as-is.\n"
+                        + "**Autonomous behavior is strictly forbidden**: do not reply "
+                        + "to the assigner, do not autonomously call send_message / "
+                        + "member_complete_task / claim_task / file tools / shell tools "
+                        + "or any other tool to act on the assignment, and do not emit "
+                        + "plain-text intent or promises.\n"
+                        + "**Stay silent** and act only after the controller issues an "
+                        + "explicit instruction via the Inbox.");
+        en.put("hitt.msg_received_for_human",
+                "[For-Controller {0}] message_id={1}, "
+                        + "from: {2}\n"
+                        + "time: {3}\n"
+                        + "content: {4}\n"
+                        + "**This message has been forwarded to the controller as-is; "
+                        + "it is NOT an instruction for you to respond to**.\n"
+                        + "**Autonomous behavior is strictly forbidden**: do not reply "
+                        + "to the sender (including calling send_message), do not "
+                        + "autonomously call any other tool to respond or take action, "
+                        + "and do not emit plain-text intent or promises.\n"
+                        + "**Stay silent** and act only after the controller explicitly "
+                        + "instructs you via the Inbox to relay or reply.");
+        en.put("workflow.started", "[Workflow] \"{0}\" orchestration started. I will report progress at each phase.");
+        en.put("workflow.phase", "[Workflow] Entered phase: {0}");
         EN_STRINGS = Collections.unmodifiableMap(en);
 
         Map<Language, Map<String, String>> all = new LinkedHashMap<>();
@@ -162,17 +252,17 @@ public final class I18n {
     }
 
     /**
-     * I18n.
-     * 
+     * Utility class, no instances.
+     *
      * @since 0.1.7
      */
     private I18n() {
     }
 
     /**
-     * setLanguage.
-     * 
-     * @param lang lang
+     * Switch the process-wide runtime language.
+     *
+     * @param lang the target language; must be a supported {@link Language}
      * @since 0.1.7
      */
     public static void setLanguage(Language lang) {
@@ -183,9 +273,9 @@ public final class I18n {
     }
 
     /**
-     * getLanguage.
-     * 
-     * @return the result
+     * Get the currently active runtime language.
+     *
+     * @return the active {@link Language}
      * @since 0.1.7
      */
     public static Language getLanguage() {
@@ -193,11 +283,11 @@ public final class I18n {
     }
 
     /**
-     * t.
-     * 
-     * @param key key
-     * @param args args
-     * @return the result
+     * Resolve a localized string for the current language and substitute placeholders.
+     *
+     * @param key the i18n key, e.g. {@code "dispatcher.member_online"}
+     * @param args the positional arguments substituted into {@code {0}, {1}, ...} placeholders
+     * @return the formatted localized string
      * @since 0.1.7
      */
     public static String t(String key, Object... args) {
@@ -213,11 +303,11 @@ public final class I18n {
     }
 
     /**
-     * formatMessage.
-     * 
-     * @param template template
-     * @param args args
-     * @return the result
+     * Replace {@code {0}, {1}, ...} placeholders in the template with the supplied arguments.
+     *
+     * @param template the template string containing positional placeholders
+     * @param args the values to substitute, in order
+     * @return the formatted string
      * @since 0.1.7
      */
     private static String formatMessage(String template, Object... args) {
@@ -226,5 +316,15 @@ public final class I18n {
             result = result.replace("{" + i + "}", args[i] != null ? args[i].toString() : "null");
         }
         return result;
+    }
+
+    /**
+     * Supported runtime languages for agent team strings.
+     *
+     * @since 0.1.7
+     */
+    public enum Language {
+        CN,
+        EN
     }
 }
