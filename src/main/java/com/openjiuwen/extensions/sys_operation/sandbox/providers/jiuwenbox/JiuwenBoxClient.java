@@ -94,7 +94,8 @@ public class JiuwenBoxClient {
             this.client = injectedClient;
         } else {
             this.client = new OkHttpClient.Builder().connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
-                    .readTimeout(timeoutSeconds, TimeUnit.SECONDS).writeTimeout(timeoutSeconds, TimeUnit.SECONDS).build();
+                    .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
+                    .writeTimeout(timeoutSeconds, TimeUnit.SECONDS).build();
         }
     }
 
