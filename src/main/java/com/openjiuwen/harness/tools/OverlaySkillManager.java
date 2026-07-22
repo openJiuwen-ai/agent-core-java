@@ -1,5 +1,6 @@
 package com.openjiuwen.harness.tools;
 
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
@@ -141,7 +142,8 @@ public class OverlaySkillManager {
                       String name = p.getFileName().toString().replace(".override", "");
                       names.add(name);
                   });
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            Loggers.TOOL.warn("Failed to list overlay skill directory: {}", overlayDir, e);
         }
         return names;
     }
@@ -160,7 +162,8 @@ public class OverlaySkillManager {
             if (Files.isDirectory(tenantSkillDir) && !isOverridden(publicName)) {
                 try {
                     overrideSkill(publicName);
-                } catch (IOException ignored) {
+                } catch (IOException e) {
+                    Loggers.TOOL.warn("Failed to migrate implicit override for skill: {}", publicName, e);
                 }
             }
         }

@@ -34,7 +34,8 @@ public class ListSkillTool {
         this(skillsRoot, workspaceResolver, null);
     }
 
-    public ListSkillTool(String skillsRoot, TenantWorkspaceResolver workspaceResolver, OverlaySkillManager overlaySkillManager) {
+    public ListSkillTool(String skillsRoot, TenantWorkspaceResolver workspaceResolver,
+            OverlaySkillManager overlaySkillManager) {
         this.skillsRoot = Path.of(skillsRoot).toAbsolutePath().normalize();
         this.workspaceResolver = workspaceResolver;
         this.overlaySkillManager = overlaySkillManager;

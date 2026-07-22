@@ -57,8 +57,8 @@ public final class RedisKVStoreProvider implements KVStoreProvider {
                 jedisClass.getMethod("auth", String.class).invoke(jedis, password);
             }
             return jedis;
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create Redis client via reflection: " + e.getMessage(), e);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to create Redis client via reflection: " + e.getMessage(), e);
         }
     }
 }

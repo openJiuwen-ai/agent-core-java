@@ -33,7 +33,8 @@ public class SkillTool {
         this(skillsRoot, workspaceResolver, null);
     }
 
-    public SkillTool(String skillsRoot, TenantWorkspaceResolver workspaceResolver, OverlaySkillManager overlaySkillManager) {
+    public SkillTool(String skillsRoot, TenantWorkspaceResolver workspaceResolver,
+            OverlaySkillManager overlaySkillManager) {
         this.skillsRoot = Path.of(skillsRoot).toAbsolutePath().normalize();
         this.workspaceResolver = workspaceResolver;
         this.overlaySkillManager = overlaySkillManager;
@@ -52,7 +53,8 @@ public class SkillTool {
                 if (tenantSkillRoot != null) {
                     Path tenantSkillDir = tenantSkillRoot.resolve(skillName).normalize();
                     Path tenantTarget = tenantSkillDir.resolve(
-                        (relativeFilePath == null || relativeFilePath.isBlank()) ? "SKILL.md" : relativeFilePath).normalize();
+                        (relativeFilePath == null || relativeFilePath.isBlank())
+                            ? "SKILL.md" : relativeFilePath).normalize();
                     if (Files.exists(tenantTarget)) {
                         return readSkillFile(tenantSkillDir, tenantTarget);
                     }

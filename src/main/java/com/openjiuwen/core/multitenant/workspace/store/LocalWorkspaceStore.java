@@ -2,6 +2,8 @@ package com.openjiuwen.core.multitenant.workspace.store;
 
 import com.openjiuwen.core.multitenant.workspace.WorkspaceStore;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -41,8 +43,8 @@ public class LocalWorkspaceStore implements WorkspaceStore {
             for (String subDir : new String[]{"skills", "tmp", "checkpoints", "team_memory", "todo"}) {
                 Files.createDirectories(root.resolve(subDir));
             }
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create tenant directories", e);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to create tenant directories", e);
         }
     }
 
@@ -51,8 +53,8 @@ public class LocalWorkspaceStore implements WorkspaceStore {
         for (String subDir : new String[]{"skills", "tmp", "checkpoints", "team_memory", "todo"}) {
             try {
                 Files.createDirectories(resolveDefaultPath(subDir));
-            } catch (Exception e) {
-                throw new RuntimeException("Failed to create default directory: " + subDir, e);
+            } catch (IOException e) {
+                throw new UncheckedIOException("Failed to create default directory: " + subDir, e);
             }
         }
     }

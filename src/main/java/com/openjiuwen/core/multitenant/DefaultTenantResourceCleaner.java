@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.stream.Stream;
 
 public class DefaultTenantResourceCleaner implements TenantResourceCleaner {
     private final TenantWorkspaceResolver workspaceResolver;
@@ -100,12 +101,18 @@ public class DefaultTenantResourceCleaner implements TenantResourceCleaner {
 
     private void deleteDirectory(Path dir) {
         if (dir == null || !Files.exists(dir)) return;
-        try {
-            Files.walk(dir).sorted(Comparator.reverseOrder())
-                .forEach(p -> { try { Files.delete(p); } catch (IOException ignored) {} });
-            Loggers.AGENT.info("Cleaned up directory: " + dir);
+        try (Stream<Path> stream = Files.walk(dir)) {
+            stream.sorted(Comparator.reverseOrder())
+                .forEach(p -> {
+                    try {
+                        Files.delete(p);
+                    } catch (IOException e) {
+                        Loggers.AGENT.warn("Failed to delete file during cleanup: {}", p, e);
+                    }
+                });
+            Loggers.AGENT.info("Cleaned up directory: {}", dir);
         } catch (IOException e) {
-            Loggers.AGENT.warning("Failed to cleanup directory: " + dir + " - " + e.getMessage());
+            Loggers.AGENT.warn("Failed to cleanup directory: {} - {}", dir, e.getMessage());
         }
     }
 }

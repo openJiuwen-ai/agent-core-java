@@ -1,5 +1,6 @@
 package com.openjiuwen.harness.tools;
 
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.security.JsonUtils;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
@@ -11,6 +12,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Stream;
 
 public class FileTodoStorage implements TodoStorage {
     private final Path workspace;
@@ -57,8 +59,16 @@ public class FileTodoStorage implements TodoStorage {
     public void delete(String sessionId) throws IOException {
         Path dir = resolveWorkspace().resolve(sessionId);
         if (Files.exists(dir)) {
-            Files.walk(dir).sorted(Comparator.reverseOrder())
-                .forEach(p -> { try { Files.delete(p); } catch (IOException ignored) {} });
+            try (Stream<Path> stream = Files.walk(dir)) {
+                stream.sorted(Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try {
+                            Files.delete(p);
+                        } catch (IOException e) {
+                            Loggers.TOOL.warn("Failed to delete todo file: {}", p, e);
+                        }
+                    });
+            }
         }
     }
 }

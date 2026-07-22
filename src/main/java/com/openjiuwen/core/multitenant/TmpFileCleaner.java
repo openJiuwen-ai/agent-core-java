@@ -36,7 +36,7 @@ public class TmpFileCleaner {
     public void start() {
         scheduler.scheduleAtFixedRate(this::scanAndClean,
             scanInterval.toMillis(), scanInterval.toMillis(), TimeUnit.MILLISECONDS);
-        Loggers.AGENT.info("TmpFileCleaner started with TTL=" + ttl + ", scanInterval=" + scanInterval);
+        Loggers.AGENT.info("TmpFileCleaner started with TTL={}, scanInterval={}", ttl, scanInterval);
     }
 
     public void stop() {
@@ -69,11 +69,13 @@ public class TmpFileCleaner {
                   .forEach(p -> {
                       try {
                           Files.delete(p);
-                          Loggers.AGENT.debug("Deleted expired tmp file: " + p);
-                      } catch (IOException ignored) {
+                          Loggers.AGENT.debug("Deleted expired tmp file: {}", p);
+                      } catch (IOException e) {
+                          Loggers.AGENT.warn("Failed to delete expired tmp file: {}", p, e);
                       }
                   });
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            Loggers.AGENT.warn("Failed to walk tmp directory: {}", dir, e);
         }
     }
 
@@ -86,7 +88,8 @@ public class TmpFileCleaner {
                       Path tmpDir = tenantDir.resolve("tmp");
                       cleanDirectory(tmpDir, cutoff);
                   });
-        } catch (IOException ignored) {
+        } catch (IOException e) {
+            Loggers.AGENT.warn("Failed to list tenants directory: {}", tenantsRoot, e);
         }
     }
 
