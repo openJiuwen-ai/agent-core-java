@@ -38,6 +38,7 @@ import com.openjiuwen.core.memory.manage.search.SearchManager;
 import com.openjiuwen.core.memory.manage.search.SearchParams;
 import com.openjiuwen.core.memory.migration.RunMigrations;
 import com.openjiuwen.core.memory.process.extract.Generator;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.retrieval.embedding.APIEmbedding;
 import com.openjiuwen.core.retrieval.embedding.Embedding;
 import com.openjiuwen.core.retrieval.vector_store.VectorStore;
@@ -279,7 +280,7 @@ public class LongTermMemory {
             MemoryScopeConfig encryptedConfig = MAPPER.readValue(encryptedJson, MemoryScopeConfig.class);
             scopeConfig.put(scopeId, encryptedConfig);
 
-            String configKey = SCOPE_CONFIG_KEY + "/" + scopeId;
+            String configKey = TenantKVStoreKeyResolver.resolveKey(SCOPE_CONFIG_KEY + "/" + scopeId);
             kvStore.set(configKey, encryptedJson);
 
             scopeEmbedding.remove(scopeId);
@@ -303,7 +304,7 @@ public class LongTermMemory {
             MEMORY_LOGGER.error("[{}] Invalid scope_id format.", LogEventType.MEMORY_RETRIEVE);
             return null;
         }
-        String configKey = SCOPE_CONFIG_KEY + "/" + scopeId;
+        String configKey = TenantKVStoreKeyResolver.resolveKey(SCOPE_CONFIG_KEY + "/" + scopeId);
         Object configJson = kvStore.get(configKey);
         if (configJson == null) {
             return null;
@@ -333,7 +334,7 @@ public class LongTermMemory {
             return false;
         }
         try {
-            String configKey = SCOPE_CONFIG_KEY + "/" + scopeId;
+            String configKey = TenantKVStoreKeyResolver.resolveKey(SCOPE_CONFIG_KEY + "/" + scopeId);
             kvStore.delete(configKey);
             scopeConfig.remove(scopeId);
             scopeEmbedding.remove(scopeId);

@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.cli;
 
+import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.factory.HarnessFactory;
 import com.openjiuwen.harness.schema.config.DeepAgentConfig;
@@ -34,8 +35,24 @@ public class HarnessCli {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("prompt", prompt);
         result.put("output_format", outputFormat);
-        result.put("response", agent.invoke(Map.of("query", prompt)));
+        TenantContext tenantCtx = buildTenantContext(opts);
+        if (tenantCtx != null) {
+            result.put("response", agent.invoke(Map.of("query", prompt), tenantCtx));
+        } else {
+            result.put("response", agent.invoke(Map.of("query", prompt)));
+        }
         return result;
+    }
+
+    static TenantContext buildTenantContext(CLIOptions opts) {
+        if (opts == null) {
+            return null;
+        }
+        String tenantId = opts.getTenantId();
+        if (tenantId != null && !tenantId.isBlank()) {
+            return TenantContext.builder().tenantId(tenantId).build();
+        }
+        return null;
     }
 
     /**

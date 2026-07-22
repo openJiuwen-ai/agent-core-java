@@ -4,6 +4,9 @@
 
 package com.openjiuwen.core.memory.common;
 
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,6 +37,15 @@ public final class MemoryUtils {
      */
     public static String generateIdxName(String userId, String scopeId, String memType) {
         return String.format("uid_%s_gid_%s_mtype_%s", userId, scopeId, memType);
+    }
+
+    public static String generateTenantAwareIdxName(String userId, String scopeId, String memType) {
+        String baseName = generateIdxName(userId, scopeId, memType);
+        TenantContext ctx = TenantContextHolder.getCurrentTenant();
+        if (ctx != null && ctx.isTenantAware() && ctx.safeTenantId() != null) {
+            return ctx.safeTenantId() + "_" + baseName;
+        }
+        return baseName;
     }
 
     /**

@@ -5,6 +5,7 @@
 package com.openjiuwen.core.runner;
 
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopicSubscription;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
@@ -388,5 +389,45 @@ public final class Runner {
     public static Flux<Object> runAgentStreamingAsync(Object agent, Object inputs, Object session, ModelContext context,
             List<StreamMode> streamModes, Map<String, Object> envs) {
         return GLOBAL_RUNNER.runAgentStreamingAsync(agent, inputs, session, context, streamModes, envs);
+    }
+
+    public static Object runWorkflow(Object workflow, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runWorkflow(workflow, inputs, session, context, envs, tenantCtx);
+    }
+
+    public static Iterator<WorkflowChunk> runWorkflowStreaming(Object workflow, Object inputs, Object session,
+            ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runWorkflowStreaming(workflow, inputs, session, context, streamModes, envs, tenantCtx);
+    }
+
+    public static Object runAgent(Object agent, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runAgent(agent, inputs, session, context, envs, tenantCtx);
+    }
+
+    public static Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context,
+            List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runAgentStreaming(agent, inputs, session, context, streamModes, envs, tenantCtx);
+    }
+
+    public static Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runAgentGroup(agentGroup, inputs, session, context, envs, tenantCtx);
+    }
+
+    public static Iterator<Object> runAgentGroupStreaming(Object agentGroup, Object inputs, Object session,
+            ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runAgentGroupStreaming(agentGroup, inputs, session, context, streamModes, envs, tenantCtx);
+    }
+
+    public static Mono<Object> runAgentAsync(Object agent, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runAgentAsync(agent, inputs, session, context, envs, tenantCtx);
+    }
+
+    public static Flux<Object> runAgentStreamingAsync(Object agent, Object inputs, Object session, ModelContext context,
+            List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runAgentStreamingAsync(agent, inputs, session, context, streamModes, envs, tenantCtx);
     }
 }

@@ -5,6 +5,9 @@
 package com.openjiuwen.core.session.checkpointer;
 
 import com.openjiuwen.core.graph.store.Store;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantNamespaceFactory;
+import com.openjiuwen.core.multitenant.TenantNamespaceFactories;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.internal.NodeSession;
@@ -38,6 +41,16 @@ public abstract class Checkpointer {
      * @since 0.1.7
      */
     public static final String WORKFLOW_NAMESPACE_GRAPH = "workflow-graph";
+
+    private TenantNamespaceFactory namespaceFactory = TenantNamespaceFactories.KV_STORE_DEFAULT;
+
+    public void setNamespaceFactory(TenantNamespaceFactory namespaceFactory) {
+        this.namespaceFactory = namespaceFactory != null ? namespaceFactory : TenantNamespaceFactories.KV_STORE_DEFAULT;
+    }
+
+    public TenantNamespaceFactory getNamespaceFactory() {
+        return namespaceFactory;
+    }
 
     /**
      * Get the thread ID for a session (session_id:workflow_id).
@@ -166,5 +179,20 @@ public abstract class Checkpointer {
             sb.append(':').append(suffix);
         }
         return sb.toString();
+    }
+
+    public static String buildKeyWithTenant(TenantContext ctx, String... parts) {
+        return buildKeyWithTenant(TenantNamespaceFactories.KV_STORE_DEFAULT, ctx, parts);
+    }
+
+    public static String buildKeyWithTenant(TenantNamespaceFactory factory, TenantContext ctx, String... parts) {
+        TenantNamespaceFactory nsFactory = factory != null ? factory : TenantNamespaceFactories.KV_STORE_DEFAULT;
+        String rawKey = buildKey(parts);
+        return nsFactory.namespace(ctx, rawKey);
+    }
+
+    public String buildKeyWithTenantInstance(TenantContext ctx, String... parts) {
+        String rawKey = buildKey(parts);
+        return namespaceFactory.namespace(ctx, rawKey);
     }
 }

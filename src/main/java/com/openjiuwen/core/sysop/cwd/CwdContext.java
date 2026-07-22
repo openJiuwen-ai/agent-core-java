@@ -14,6 +14,8 @@ import java.nio.file.Path;
 public final class CwdContext {
     private static final InheritableThreadLocal<CwdState> STATE = new InheritableThreadLocal<>();
 
+    private static final InheritableThreadLocal<String> TENANT_ROOT = new InheritableThreadLocal<>();
+
     /**
      * CwdContext.
      * 
@@ -176,8 +178,27 @@ public final class CwdContext {
      * 
      * @since 0.1.7
      */
+    public static String getTenantRoot() {
+        return TENANT_ROOT.get();
+    }
+
+    public static void setTenantRoot(String tenantRoot) {
+        TENANT_ROOT.set(tenantRoot);
+    }
+
+    public static boolean isWithinTenantRoot(Path path) {
+        String root = getTenantRoot();
+        if (root == null) {
+            return true;
+        }
+        Path normalized = path.toAbsolutePath().normalize();
+        Path rootPath = Path.of(root).toAbsolutePath().normalize();
+        return normalized.startsWith(rootPath);
+    }
+
     public static void reset() {
         STATE.remove();
+        TENANT_ROOT.remove();
     }
 
     /**

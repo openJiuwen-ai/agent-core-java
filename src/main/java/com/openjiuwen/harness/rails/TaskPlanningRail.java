@@ -22,9 +22,15 @@ import com.openjiuwen.harness.prompts.sections.tools.ToolMetadataRegistry;
 import com.openjiuwen.harness.task_loop.TaskIterationContext;
 import com.openjiuwen.harness.task_loop.TaskPlan;
 import com.openjiuwen.harness.task_loop.TaskPlanSnapshot;
+import com.openjiuwen.harness.tools.FileTodoStorage;
+import com.openjiuwen.harness.tools.KvTodoStorage;
+import com.openjiuwen.harness.tools.TodoStorage;
+import com.openjiuwen.harness.tools.TodoStorageFactory;
 import com.openjiuwen.harness.tools.TodoTool;
 import com.openjiuwen.harness.tools.TodoItem;
 import com.openjiuwen.harness.tools.TodoStatus;
+import com.openjiuwen.core.common.logging.Loggers;
+import com.openjiuwen.spi.store.BaseKVStore;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -146,7 +152,32 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
             return;
         }
         owner = deepAgent;
-        todoTool = new TodoTool(deepAgent.getWorkspace().root().resolve(".todo").toString());
+        String todoStorageType = deepAgent.getConfig().getTodoStorageType();
+        TodoStorage todoStorage;
+        if (TodoStorageFactory.hasProvider(todoStorageType)) {
+            Map<String, Object> conf = new java.util.HashMap<>();
+            if ("kv".equals(todoStorageType)) {
+                BaseKVStore kvStore = deepAgent.getKvStore();
+                if (kvStore != null) {
+                    conf.put("kvStoreType", "shared");
+                    conf.put("sharedKvStore", kvStore);
+                } else {
+                    Map<String, Object> kvConf = deepAgent.getConfig().getKvStoreConfig();
+                    if (kvConf != null) {
+                        conf.put("kvStoreConf", kvConf);
+                    }
+                }
+            } else {
+                conf.put("basePath", deepAgent.getWorkspace().root().resolve(".todo").toString());
+            }
+            todoStorage = TodoStorageFactory.create(todoStorageType, conf);
+        } else {
+            if ("kv".equals(todoStorageType)) {
+                Loggers.TOOL.warning("todoStorageType is 'kv' but no provider registered, falling back to file storage");
+            }
+            todoStorage = new FileTodoStorage(deepAgent.getWorkspace().root().resolve(".todo"));
+        }
+        todoTool = new TodoTool(todoStorage);
         language = deepAgent.getWorkspace().getLanguage();
         tools.add(new LocalFunction(card("todo_create", deepAgent, language),
                 inputs -> todoTool.create(sessionId(inputs), objectList(inputs.get("tasks")))));

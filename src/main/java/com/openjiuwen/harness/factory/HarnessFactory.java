@@ -24,6 +24,8 @@ import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 import com.openjiuwen.harness.subagents.SubAgentConfig;
 import com.openjiuwen.harness.workspace.Workspace;
+import com.openjiuwen.spi.store.BaseKVStore;
+import com.openjiuwen.spi.store.KVStoreFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -70,7 +72,21 @@ public final class HarnessFactory {
         DeepAgentConfig effectiveConfig = enrichConfig(effectiveCard, config, workspace);
         Workspace effectiveWorkspace = resolveWorkspace(effectiveConfig, workspace);
         registerToolInstances(effectiveConfig.getTools());
-        return new DeepAgent(effectiveCard, effectiveConfig, effectiveWorkspace);
+        DeepAgent agent = new DeepAgent(effectiveCard, effectiveConfig, effectiveWorkspace);
+        injectKvStore(agent, effectiveConfig);
+        return agent;
+    }
+
+    private static void injectKvStore(DeepAgent agent, DeepAgentConfig config) {
+        Map<String, Object> kvStoreConfig = config.getKvStoreConfig();
+        if (kvStoreConfig == null || kvStoreConfig.get("type") == null) {
+            return;
+        }
+        String type = (String) kvStoreConfig.get("type");
+        Map<String, Object> conf = kvStoreConfig.get("conf") instanceof Map
+            ? (Map<String, Object>) kvStoreConfig.get("conf") : Map.of();
+        BaseKVStore kvStore = KVStoreFactory.create(type, conf);
+        agent.setKvStore(kvStore);
     }
 
     /**
@@ -184,7 +200,12 @@ public final class HarnessFactory {
                 .isAsyncSubagentEnabled(source.isEnableAsyncSubagent())
                 .addGeneralPurposeAgent(source.isAddGeneralPurposeAgent())
                 .restrictToWorkDir(source.isRestrictToWorkDir()).sysOperation(sysOperation)
-                .permissionHost(source.getPermissionHost()).build();
+                .permissionHost(source.getPermissionHost())
+                .enableTenantIsolation(source.isEnableTenantIsolation())
+                .tenantDataRoot(source.getTenantDataRoot())
+                .todoStorageType(source.getTodoStorageType())
+                .sessionStoreType(source.getSessionStoreType())
+                .kvStoreConfig(source.getKvStoreConfig()).build();
     }
 
     /**

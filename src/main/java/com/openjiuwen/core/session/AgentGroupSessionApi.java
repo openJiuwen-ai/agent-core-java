@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.session;
 
+import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamWriter;
 
@@ -52,6 +53,12 @@ public class AgentGroupSessionApi extends AgentSessionApi {
      */
     public AgentGroupSessionApi(String sessionId) {
         this(sessionId, null);
+    }
+
+    @Override
+    public AgentGroupSessionApi withTenantContext(TenantContext ctx) {
+        super.withTenantContext(ctx);
+        return this;
     }
 
     /**

@@ -9,6 +9,7 @@ import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.security.ToolPermissionHost;
 import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 
+import java.time.Duration;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -122,6 +123,20 @@ public class DeepAgentConfig {
     private boolean isRestrictToWorkDirEnabled = true;
     private SysOperation sysOperation;
     private ToolPermissionHost permissionHost;
+    @Builder.Default
+    private boolean enableTenantIsolation = false;
+    private String tenantDataRoot;
+    private java.util.List<String> workspaceSecondaryTiers;
+    private java.util.Map<String, java.util.Map<String, Object>> workspaceTierConfigs;
+    @Builder.Default
+    private String todoStorageType = "file";
+    @Builder.Default
+    private String sessionStoreType = "file";
+    private Map<String, Object> kvStoreConfig;
+    @Builder.Default
+    private Duration tmpTtl = Duration.ofHours(24);
+    @Builder.Default
+    private Duration tmpTtlScanInterval = Duration.ofHours(1);
 
     /**
      * DeepAgentConfigBuilder.

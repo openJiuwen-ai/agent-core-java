@@ -11,6 +11,10 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
+import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
+
 /**
  * Public class SkillTool used by the Java parity implementation.
  * 
@@ -18,29 +22,50 @@ import java.util.Map;
  */
 public class SkillTool {
     private final Path skillsRoot;
+    private final TenantWorkspaceResolver workspaceResolver;
+    private final OverlaySkillManager overlaySkillManager;
 
-    /**
-     * SkillTool.
-     * 
-     * @param skillsRoot skillsRoot
-     * @since 0.1.7
-     */
     public SkillTool(String skillsRoot) {
-        this.skillsRoot = Path.of(skillsRoot).toAbsolutePath().normalize();
+        this(skillsRoot, null, null);
     }
 
-    /**
-     * readSkill.
-     * 
-     * @param skillName skillName
-     * @param relativeFilePath relativeFilePath
-     * @return the result
-     * @since 0.1.7
-     */
+    public SkillTool(String skillsRoot, TenantWorkspaceResolver workspaceResolver) {
+        this(skillsRoot, workspaceResolver, null);
+    }
+
+    public SkillTool(String skillsRoot, TenantWorkspaceResolver workspaceResolver, OverlaySkillManager overlaySkillManager) {
+        this.skillsRoot = Path.of(skillsRoot).toAbsolutePath().normalize();
+        this.workspaceResolver = workspaceResolver;
+        this.overlaySkillManager = overlaySkillManager;
+    }
+
     public ToolOutput readSkill(String skillName, String relativeFilePath) {
+        if (overlaySkillManager != null) {
+            Path tenantTarget = overlaySkillManager.resolveSkillFile(skillName, relativeFilePath);
+            if (tenantTarget != null) {
+                return readSkillFile(tenantTarget.getParent(), tenantTarget);
+            }
+        } else {
+            TenantContext tenantCtx = TenantContextHolder.getCurrentTenant();
+            if (tenantCtx != null && tenantCtx.isTenantAware() && workspaceResolver != null) {
+                Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantCtx);
+                if (tenantSkillRoot != null) {
+                    Path tenantSkillDir = tenantSkillRoot.resolve(skillName).normalize();
+                    Path tenantTarget = tenantSkillDir.resolve(
+                        (relativeFilePath == null || relativeFilePath.isBlank()) ? "SKILL.md" : relativeFilePath).normalize();
+                    if (Files.exists(tenantTarget)) {
+                        return readSkillFile(tenantSkillDir, tenantTarget);
+                    }
+                }
+            }
+        }
         String fileName = (relativeFilePath == null || relativeFilePath.isBlank()) ? "SKILL.md" : relativeFilePath;
         Path skillDir = skillsRoot.resolve(skillName).normalize();
         Path target = skillDir.resolve(fileName).normalize();
+        return readSkillFile(skillDir, target);
+    }
+
+    private ToolOutput readSkillFile(Path skillDir, Path target) {
         try {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("skill_directory", skillDir.toString());

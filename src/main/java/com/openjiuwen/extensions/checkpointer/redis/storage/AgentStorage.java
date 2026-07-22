@@ -6,6 +6,7 @@ package com.openjiuwen.extensions.checkpointer.redis.storage;
 
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.extensions.store.kv.RedisStore;
 import com.openjiuwen.spi.store.KVStorePipeline;
 
@@ -54,10 +55,12 @@ public class AgentStorage extends BaseRedisStorage {
                 return CompletableFuture.completedFuture(null);
             }
 
-            String dumpTypeKey = Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
-                    agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
-                    agentId, STATE_BLOBS);
+            String dumpTypeKey = TenantKVStoreKeyResolver.resolveKey(
+                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
+                    agentId, STATE_BLOBS_DUMP_TYPE));
+            String blobKey = TenantKVStoreKeyResolver.resolveKey(
+                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
+                    agentId, STATE_BLOBS));
 
             KVStorePipeline pipeline = redisStore.pipeline();
             pipeline.set(dumpTypeKey, stateBlob.type(), ttlSeconds);
@@ -84,10 +87,12 @@ public class AgentStorage extends BaseRedisStorage {
             String sessionId = baseSession.sessionId();
             String agentId = resolveAgentId(baseSession);
 
-            String dumpTypeKey = Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
-                    agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
-                    agentId, STATE_BLOBS);
+            String dumpTypeKey = TenantKVStoreKeyResolver.resolveKey(
+                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
+                    agentId, STATE_BLOBS_DUMP_TYPE));
+            String blobKey = TenantKVStoreKeyResolver.resolveKey(
+                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
+                    agentId, STATE_BLOBS));
 
             KVStorePipeline pipeline = redisStore.pipeline();
             pipeline.get(dumpTypeKey);
@@ -124,10 +129,12 @@ public class AgentStorage extends BaseRedisStorage {
      */
     public CompletableFuture<Void> clear(String agentId, String sessionId) {
         try {
-            String dumpTypeKey = Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
-                    agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
-                    agentId, STATE_BLOBS);
+            String dumpTypeKey = TenantKVStoreKeyResolver.resolveKey(
+                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
+                    agentId, STATE_BLOBS_DUMP_TYPE));
+            String blobKey = TenantKVStoreKeyResolver.resolveKey(
+                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
+                    agentId, STATE_BLOBS));
             redisStore.batchDelete(List.of(dumpTypeKey, blobKey), null);
             return CompletableFuture.completedFuture(null);
         } catch (Throwable throwable) {
@@ -148,10 +155,12 @@ public class AgentStorage extends BaseRedisStorage {
             String sessionId = baseSession.sessionId();
             String agentId = resolveAgentId(baseSession);
 
-            String dumpTypeKey = Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
-                    agentId, STATE_BLOBS_DUMP_TYPE);
-            String blobKey = Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
-                    agentId, STATE_BLOBS);
+            String dumpTypeKey = TenantKVStoreKeyResolver.resolveKey(
+                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
+                    agentId, STATE_BLOBS_DUMP_TYPE));
+            String blobKey = TenantKVStoreKeyResolver.resolveKey(
+                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.SESSION_NAMESPACE_AGENT,
+                    agentId, STATE_BLOBS));
 
             KVStorePipeline pipeline = redisStore.pipeline();
             pipeline.isExists(dumpTypeKey);

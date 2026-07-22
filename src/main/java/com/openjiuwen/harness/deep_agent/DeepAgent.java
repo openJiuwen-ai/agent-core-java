@@ -5,6 +5,18 @@
 package com.openjiuwen.harness.deep_agent;
 
 import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
+import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
+import com.openjiuwen.core.multitenant.TmpFileCleaner;
+import com.openjiuwen.core.multitenant.workspace.TieredWorkspaceManager;
+import com.openjiuwen.core.multitenant.workspace.WorkspaceResolution;
+import com.openjiuwen.core.multitenant.workspace.WorkspaceStore;
+import com.openjiuwen.core.multitenant.workspace.WorkspaceType;
+import com.openjiuwen.core.multitenant.workspace.WorkspaceStoreFactory;
+import com.openjiuwen.core.multitenant.workspace.store.LocalWorkspaceStore;
+import com.openjiuwen.core.sysop.cwd.CwdContext;
+import com.openjiuwen.spi.store.BaseKVStore;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
 import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
@@ -49,6 +61,7 @@ import com.openjiuwen.harness.tools.SessionToolkit;
 import com.openjiuwen.harness.workspace.Workspace;
 
 import lombok.Getter;
+import lombok.Setter;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -72,7 +85,7 @@ import java.util.function.Supplier;
  * @since 0.1.7
  */
 @Getter
-public class DeepAgent {
+public class DeepAgent implements AutoCloseable {
     private final AgentCard card;
     private final DeepAgentConfig config;
     private final Workspace workspace;
@@ -100,6 +113,9 @@ public class DeepAgent {
      */
     private final List<McpServerConfig> registeredMcps = new CopyOnWriteArrayList<>();
     private SessionToolkit sessionToolkit;
+    private TenantWorkspaceResolver workspaceResolver;
+    private TieredWorkspaceManager tieredWorkspaceManager;
+    private TmpFileCleaner tmpFileCleaner;
     private final AtomicLong requestSeq = new AtomicLong(0);
 
     /**
@@ -123,6 +139,8 @@ public class DeepAgent {
     private Path planFilePath;
     private boolean isInitialized;
     private TaskCompletionRail taskCompletionRail;
+    @Setter
+    private BaseKVStore kvStore;
     private CompletionPromiseEvaluator completionPromiseEvaluator;
     private boolean isExplicitCompletionPolicy;
 
@@ -147,6 +165,14 @@ public class DeepAgent {
         Model configuredModel = resolveConfiguredModel();
         if (configuredModel != null) {
             this.agent.setLlm(configuredModel);
+        }
+        if (this.config.isEnableTenantIsolation()) {
+            String basePath = this.config.getTenantDataRoot() != null
+                    ? this.config.getTenantDataRoot() : this.config.getWorkspacePath();
+            this.workspaceResolver = new TenantWorkspaceResolver(basePath);
+            this.tmpFileCleaner = new TmpFileCleaner(
+                this.config.getTmpTtl(), this.config.getTmpTtlScanInterval(), basePath, this.workspaceResolver);
+            this.tmpFileCleaner.start();
         }
     }
 
@@ -575,7 +601,19 @@ public class DeepAgent {
      * @since 0.1.7
      */
     public Map<String, Object> invoke(Map<String, Object> inputs) {
-        return invoke(inputs, null);
+        return invoke(inputs, (AgentSessionApi) null);
+    }
+
+    public Map<String, Object> invoke(Map<String, Object> inputs, TenantContext tenantCtx) {
+        requireTenantContext(tenantCtx);
+        TenantContextHolder.setCurrentTenant(tenantCtx);
+        try {
+            bindTenantWorkspace(tenantCtx);
+            return invoke(inputs);
+        } finally {
+            TenantContextHolder.clearCurrentTenant();
+            unbindTenantWorkspace();
+        }
     }
 
     /**
@@ -589,6 +627,22 @@ public class DeepAgent {
      * @return 执行结果
      */
     public Map<String, Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
+        TenantContext ctx = (session != null) ? session.getTenantContext() : null;
+        requireTenantContext(ctx);
+        if (ctx != null && ctx.isTenantAware()) {
+            TenantContextHolder.setCurrentTenant(ctx);
+            try {
+                bindTenantWorkspace(ctx);
+                return invokeInternal(inputs, session);
+            } finally {
+                TenantContextHolder.clearCurrentTenant();
+                unbindTenantWorkspace();
+            }
+        }
+        return invokeInternal(inputs, session);
+    }
+
+    private Map<String, Object> invokeInternal(Map<String, Object> inputs, AgentSessionApi session) {
         ensureInitialized();
         Map<String, Object> normalized = new LinkedHashMap<>(inputs);
         normalized.putIfAbsent("conversation_id", card.getName() + "_session");
@@ -599,12 +653,10 @@ public class DeepAgent {
             AgentSessionApi effectiveSession = session != null
                     ? new AgentSessionApi(requestLevelSessionId, session.getEnvs(), card)
                     : new AgentSessionApi(requestLevelSessionId, null, card);
-            // 将外部 session 的状态传播到 effectiveSession（关键：中断恢复依赖此步骤）
             if (session != null) {
                 copySessionState(session, effectiveSession);
             }
             Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
-            // 将 effectiveSession 的状态反向传播到外部 session（关键：中断状态保存依赖此步骤）
             if (session != null) {
                 copySessionState(effectiveSession, session);
             }
@@ -629,6 +681,18 @@ public class DeepAgent {
         return stream(inputs, List.of(StreamMode.OUTPUT));
     }
 
+    public java.util.Iterator<Object> stream(Map<String, Object> inputs, TenantContext tenantCtx) {
+        requireTenantContext(tenantCtx);
+        TenantContextHolder.setCurrentTenant(tenantCtx);
+        try {
+            bindTenantWorkspace(tenantCtx);
+            return stream(inputs);
+        } finally {
+            TenantContextHolder.clearCurrentTenant();
+            unbindTenantWorkspace();
+        }
+    }
+
     /**
      * stream.
      * 
@@ -650,6 +714,19 @@ public class DeepAgent {
         return stream(inputs, session, streamModes);
     }
 
+    public java.util.Iterator<Object> stream(Map<String, Object> inputs, List<StreamMode> streamModes,
+            TenantContext tenantCtx) {
+        requireTenantContext(tenantCtx);
+        TenantContextHolder.setCurrentTenant(tenantCtx);
+        try {
+            bindTenantWorkspace(tenantCtx);
+            return stream(inputs, streamModes);
+        } finally {
+            TenantContextHolder.clearCurrentTenant();
+            unbindTenantWorkspace();
+        }
+    }
+
     /**
      * stream.
      * 
@@ -660,6 +737,23 @@ public class DeepAgent {
      * @since 0.1.7
      */
     public java.util.Iterator<Object> stream(Map<String, Object> inputs, AgentSessionApi session,
+            List<StreamMode> streamModes) {
+        TenantContext ctx = (session != null) ? session.getTenantContext() : null;
+        requireTenantContext(ctx);
+        if (ctx != null && ctx.isTenantAware()) {
+            TenantContextHolder.setCurrentTenant(ctx);
+            try {
+                bindTenantWorkspace(ctx);
+                return streamInternal(inputs, session, streamModes);
+            } finally {
+                TenantContextHolder.clearCurrentTenant();
+                unbindTenantWorkspace();
+            }
+        }
+        return streamInternal(inputs, session, streamModes);
+    }
+
+    private java.util.Iterator<Object> streamInternal(Map<String, Object> inputs, AgentSessionApi session,
             List<StreamMode> streamModes) {
         ensureInitialized();
         Map<String, Object> normalized = new LinkedHashMap<>(inputs);
@@ -1631,5 +1725,83 @@ public class DeepAgent {
      */
     private static <T> T nullValue() {
         return null;
+    }
+
+    private void requireTenantContext(TenantContext ctx) {
+        if (!config.isEnableTenantIsolation()) {
+            return;
+        }
+        TenantContext current = TenantContextHolder.getCurrentTenant();
+        if (current != null && current.isTenantAware()) {
+            return;
+        }
+        if (ctx == null || !ctx.isTenantAware()) {
+            throw new IllegalStateException(
+                "Tenant isolation is enabled but no tenantId was provided. "
+                + "Either pass a valid TenantContext with non-empty tenantId, "
+                + "or disable enableTenantIsolation in DeepAgentConfig.");
+        }
+    }
+
+    private void bindTenantWorkspace(TenantContext ctx) {
+        if (ctx != null && ctx.isTenantAware()) {
+            if (tieredWorkspaceManager != null) {
+                tieredWorkspaceManager.initializeTenantSpace(ctx);
+                WorkspaceResolution workspaceRes = tieredWorkspaceManager.resolve(ctx, WorkspaceType.WORKSPACE);
+                Path tenantWorkspace = workspaceRes.getLocalPath();
+                CwdContext.setWorkspace(tenantWorkspace.toString());
+                CwdContext.setOriginalCwd(tenantWorkspace.toString());
+                CwdContext.setTenantRoot(tenantWorkspace.toString());
+                workspaceResolver = new TenantWorkspaceResolver(
+                    config.getTenantDataRoot() != null ? config.getTenantDataRoot() : config.getWorkspacePath(),
+                    tieredWorkspaceManager.getNamespaceFactory());
+            } else {
+                String baseWorkspace = config.getTenantDataRoot() != null ? config.getTenantDataRoot() : config.getWorkspacePath();
+                workspaceResolver = new TenantWorkspaceResolver(baseWorkspace);
+                Path tenantWorkspace = workspaceResolver.resolveWorkspaceRoot(ctx);
+                workspaceResolver.initializeTenantSpace(ctx);
+                CwdContext.setWorkspace(tenantWorkspace.toString());
+                CwdContext.setOriginalCwd(tenantWorkspace.toString());
+                CwdContext.setTenantRoot(tenantWorkspace.toString());
+            }
+        }
+    }
+
+    private void unbindTenantWorkspace() {
+        CwdContext.reset();
+    }
+
+    public void destroy() {
+        if (tmpFileCleaner != null) {
+            tmpFileCleaner.stop();
+            tmpFileCleaner = null;
+        }
+    }
+
+    @Override
+    public void close() {
+        destroy();
+    }
+
+    public TieredWorkspaceManager getTieredWorkspaceManager() {
+        return tieredWorkspaceManager;
+    }
+
+    public void setTieredWorkspaceManager(TieredWorkspaceManager manager) {
+        this.tieredWorkspaceManager = manager;
+    }
+
+    public void initTieredWorkspaceManager() {
+        String basePath = config.getTenantDataRoot() != null ? config.getTenantDataRoot() : config.getWorkspacePath();
+        WorkspaceStore primaryStore = new LocalWorkspaceStore(basePath);
+        java.util.List<WorkspaceStore> secondaryStores = new java.util.ArrayList<>();
+        if (config.getWorkspaceSecondaryTiers() != null) {
+            for (String tier : config.getWorkspaceSecondaryTiers()) {
+                if (WorkspaceStoreFactory.hasProvider(tier)) {
+                    secondaryStores.add(WorkspaceStoreFactory.create(tier, config.getWorkspaceTierConfigs().getOrDefault(tier, Map.of())));
+                }
+            }
+        }
+        this.tieredWorkspaceManager = new TieredWorkspaceManager(primaryStore, secondaryStores);
     }
 }

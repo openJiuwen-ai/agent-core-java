@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.session;
 
+import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.config.Config;
 import com.openjiuwen.core.session.interaction.SimpleAgentInteraction;
@@ -46,6 +47,7 @@ public class AgentSessionApi implements Session {
      */
     private final AtomicInteger runState = new AtomicInteger(0);
     private SimpleAgentInteraction interaction;
+    private TenantContext tenantContext;
 
     /**
      * Create a new AgentSessionApi.
@@ -370,6 +372,28 @@ public class AgentSessionApi implements Session {
      */
     public AgentSession getInner() {
         return inner;
+    }
+
+    /**
+     * Get the tenant context associated with this session.
+     *
+     * @return the tenant context, or null if not set
+     * @since 0.1.7
+     */
+    public TenantContext getTenantContext() {
+        return tenantContext;
+    }
+
+    /**
+     * Set the tenant context for this session (chain-style).
+     *
+     * @param ctx the tenant context to associate (nullable)
+     * @return this session for chaining
+     * @since 0.1.7
+     */
+    public AgentSessionApi withTenantContext(TenantContext ctx) {
+        this.tenantContext = ctx;
+        return this;
     }
 
     /**

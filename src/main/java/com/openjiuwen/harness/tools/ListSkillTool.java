@@ -7,9 +7,14 @@ package com.openjiuwen.harness.tools;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
+
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
+import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
 
 /**
  * Public class ListSkillTool used by the Java parity implementation.
@@ -18,30 +23,56 @@ import java.util.stream.Stream;
  */
 public class ListSkillTool {
     private final Path skillsRoot;
+    private final TenantWorkspaceResolver workspaceResolver;
+    private final OverlaySkillManager overlaySkillManager;
 
-    /**
-     * ListSkillTool.
-     * 
-     * @param skillsRoot skillsRoot
-     * @since 0.1.7
-     */
     public ListSkillTool(String skillsRoot) {
-        this.skillsRoot = Path.of(skillsRoot).toAbsolutePath().normalize();
+        this(skillsRoot, null, null);
     }
 
-    /**
-     * listSkills.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
+    public ListSkillTool(String skillsRoot, TenantWorkspaceResolver workspaceResolver) {
+        this(skillsRoot, workspaceResolver, null);
+    }
+
+    public ListSkillTool(String skillsRoot, TenantWorkspaceResolver workspaceResolver, OverlaySkillManager overlaySkillManager) {
+        this.skillsRoot = Path.of(skillsRoot).toAbsolutePath().normalize();
+        this.workspaceResolver = workspaceResolver;
+        this.overlaySkillManager = overlaySkillManager;
+    }
+
     public ToolOutput listSkills() {
-        try (Stream<Path> stream = Files.list(skillsRoot)) {
-            List<String> skills = stream.filter(Files::isDirectory).sorted(Comparator.comparing(Path::getFileName))
-                    .map(path -> path.getFileName().toString()).toList();
-            return ToolOutput.builder().success(true).data(skills).build();
+        List<String> skills;
+        if (overlaySkillManager != null) {
+            skills = overlaySkillManager.getAllVisibleSkillNames();
+        } else {
+            skills = listDirectoryNames(skillsRoot);
+            TenantContext tenantCtx = TenantContextHolder.getCurrentTenant();
+            if (tenantCtx != null && tenantCtx.isTenantAware() && workspaceResolver != null) {
+                Path tenantSkillRoot = workspaceResolver.resolveSkillRoot(tenantCtx);
+                if (tenantSkillRoot != null && Files.isDirectory(tenantSkillRoot)) {
+                    List<String> tenantSkills = listDirectoryNames(tenantSkillRoot);
+                    List<String> merged = new ArrayList<>(skills);
+                    for (String ts : tenantSkills) {
+                        if (!merged.contains(ts)) {
+                            merged.add(ts);
+                        }
+                    }
+                    merged.sort(Comparator.naturalOrder());
+                    skills = merged;
+                }
+            }
+        }
+        return ToolOutput.builder().success(true).data(skills).build();
+    }
+
+    private List<String> listDirectoryNames(Path root) {
+        try (Stream<Path> stream = Files.list(root)) {
+            return stream.filter(Files::isDirectory)
+                         .sorted(Comparator.comparing(Path::getFileName))
+                         .map(path -> path.getFileName().toString())
+                         .toList();
         } catch (IOException ex) {
-            return ToolOutput.builder().success(false).error(ex.getMessage()).build();
+            return List.of();
         }
     }
 }

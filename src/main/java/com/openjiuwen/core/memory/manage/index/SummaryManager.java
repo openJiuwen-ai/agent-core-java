@@ -89,7 +89,7 @@ public class SummaryManager extends BaseMemoryManager {
         newData.put("time", time);
         memStore.update(userId, scopeId, memId, newData);
 
-        String tableName = MemoryUtils.generateIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());
+        String tableName = MemoryUtils.generateTenantAwareIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());
         semanticStore.deleteDocs(List.of(memId), tableName);
         semanticStore.addDocs(List.of(new AbstractMap.SimpleEntry<>(memId, newMemory)), tableName);
     }
@@ -113,7 +113,7 @@ public class SummaryManager extends BaseMemoryManager {
             return false;
         }
         memStore.delete(userId, scopeId, memId);
-        String tableName = MemoryUtils.generateIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());
+        String tableName = MemoryUtils.generateTenantAwareIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());
         semanticStore.deleteDocs(List.of(memId), tableName);
         return true;
     }
@@ -141,7 +141,7 @@ public class SummaryManager extends BaseMemoryManager {
             memIds.add(String.valueOf(item.get("id")));
         }
         memStore.batchDelete(userId, scopeId, memIds);
-        String tableName = MemoryUtils.generateIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());
+        String tableName = MemoryUtils.generateTenantAwareIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());
         semanticStore.deleteTable(tableName);
         return true;
     }
@@ -179,7 +179,7 @@ public class SummaryManager extends BaseMemoryManager {
     public List<Map<String, Object>> search(String userId, String scopeId, String query, int topK,
             Map<String, Object> kwargs) {
         SemanticStore semanticStore = getSemanticStore("search", kwargs);
-        String tableName = MemoryUtils.generateIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());
+        String tableName = MemoryUtils.generateTenantAwareIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());
         List<Map.Entry<String, Double>> hitInfo = semanticStore.search(query, tableName, topK);
         MemoryUtils.HitParseResult parsed = MemoryUtils.parseMemoryHitInfos(hitInfo);
 
@@ -265,7 +265,7 @@ public class SummaryManager extends BaseMemoryManager {
             throw ErrorHelper.buildError(StatusCode.MEMORY_ADD_MEMORY_EXECUTION_ERROR, "memory_type", "summary",
                     "error_msg", "vector store must not be None");
         }
-        String tableName = MemoryUtils.generateIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());
+        String tableName = MemoryUtils.generateTenantAwareIdxName(userId, scopeId, MemoryType.SUMMARY.getValue());
         return semanticStore.addDocs(List.of(new AbstractMap.SimpleEntry<>(unit.getMemId(), unit.getSummary())),
                 tableName);
     }

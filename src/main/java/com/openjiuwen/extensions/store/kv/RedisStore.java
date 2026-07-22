@@ -343,6 +343,33 @@ public class RedisStore extends BaseKVStore {
     }
 
     /**
+     * Release the underlying Redis client resources by invoking its
+     * {@code close()} method via reflection.
+     * <p>
+     * The {@code redisClient} field is typed as {@link Object} to support
+     * multiple Redis client libraries (Jedis, Lettuce, Redisson), so the
+     * {@code close()} call must go through reflection. If the client does
+     * not expose a {@code close()} method, this is a no-op logged at WARN.
+     * Safe to call multiple times.
+     *
+     * @since 0.1.13
+     */
+    @Override
+    public void close() {
+        try {
+            InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"close", "shutdown", "disconnect"});
+            if (!outcome.handled()) {
+                logger.warn("Redis client {} does not expose a close/shutdown/disconnect method; skip close",
+                        redisClient.getClass().getName());
+            } else {
+                logger.debug("Closed Redis client: {}", redisClient.getClass().getName());
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to close Redis client: {}", e.getMessage());
+        }
+    }
+
+    /**
      * detectClusterMode.
      * 
      * @param client client

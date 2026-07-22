@@ -87,4 +87,24 @@ public final class ApiConfigLoader {
     public static String getEmbeddingSslCert() {
         return load().getOrDefault("EMBEDDING_SSL_CERT", load().get("LLM_SSL_CERT"));
     }
+
+    /**
+     * Redis connection URL for B-group system tests that verify KV-store
+     * tenant isolation against a real Redis instance. Returns {@code null}
+     * when Redis is not configured, in which case B-group tests are skipped.
+     *
+     * @return Redis URL such as {@code redis://127.0.0.1:6379}, or {@code null}
+     */
+    public static String getRedisUrl() {
+        return load().get("REDIS_URL");
+    }
+
+    /**
+     * Whether Redis is in cluster mode. Defaults to {@code false}.
+     *
+     * @return {@code true} if cluster mode is enabled
+     */
+    public static boolean getRedisClusterMode() {
+        return Boolean.parseBoolean(load().getOrDefault("REDIS_CLUSTER_MODE", "false"));
+    }
 }
