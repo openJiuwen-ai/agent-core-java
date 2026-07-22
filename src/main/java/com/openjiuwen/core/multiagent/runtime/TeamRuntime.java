@@ -262,6 +262,7 @@ public class TeamRuntime {
             resolvedSession.updateState(
                     Map.of(CALL_DEPTH_KEY, depth + 1, ROOT_SENDER_KEY, rootSender, ROOT_RECIPIENT_KEY, rootRecipient));
         }
+        String previousAgentId = resolvedSession != null ? resolvedSession.getCurrentAgentId() : null;
         try {
             if (resolvedSession != null) {
                 resolvedSession.setCurrentAgentId(recipient);
@@ -269,7 +270,7 @@ public class TeamRuntime {
             return agent.invoke(envelope.getMessage(), resolvedSession);
         } finally {
             if (resolvedSession != null) {
-                resolvedSession.setCurrentAgentId(null);
+                resolvedSession.setCurrentAgentId(previousAgentId);
                 int nextDepth = 0;
                 Object currentDepth = resolvedSession.getState(CALL_DEPTH_KEY);
                 if (currentDepth instanceof Number n) {
@@ -298,13 +299,14 @@ public class TeamRuntime {
         MessageEnvelope envelope = MessageEnvelope.builder().messageId(UUID.randomUUID().toString()).message(message)
                 .sender(sender).topicId(topicId).sessionId(sessionId).build();
         AgentGroupSessionApi resolvedSession = resolveSession(sessionId, session);
+        String previousAgentId = resolvedSession != null ? resolvedSession.getCurrentAgentId() : null;
         for (String subscriber : subscriptionManager.getSubscribers(topicId)) {
             if (resolvedSession != null) {
                 resolvedSession.setCurrentAgentId(subscriber);
             }
             resolveAgent(subscriber).invoke(envelope.getMessage(), resolvedSession);
             if (resolvedSession != null) {
-                resolvedSession.setCurrentAgentId(null);
+                resolvedSession.setCurrentAgentId(previousAgentId);
             }
         }
     }
