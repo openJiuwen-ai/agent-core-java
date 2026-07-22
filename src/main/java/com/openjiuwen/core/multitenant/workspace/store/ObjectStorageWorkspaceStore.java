@@ -38,10 +38,12 @@ public class ObjectStorageWorkspaceStore implements WorkspaceStore {
 
     @Override
     public void createDirectories(String namespace) {
+        // Object storage is flat; no directory creation needed.
     }
 
     @Override
     public void createDefaultDirectories() {
+        // Object storage is flat; no directory creation needed.
     }
 
     public String getBucketPrefix() {

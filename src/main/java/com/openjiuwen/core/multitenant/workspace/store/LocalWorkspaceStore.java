@@ -22,17 +22,25 @@ public class LocalWorkspaceStore implements WorkspaceStore {
     @Override
     public Path resolvePath(String namespace, String subDirectory) {
         if (subDirectory == null || subDirectory.isEmpty()) {
-            return Path.of(basePath, namespace).toAbsolutePath().normalize();
+            return toRealOrAbsolutePath(Path.of(basePath, namespace));
         }
-        return Path.of(basePath, namespace, subDirectory).toAbsolutePath().normalize();
+        return toRealOrAbsolutePath(Path.of(basePath, namespace, subDirectory));
     }
 
     @Override
     public Path resolveDefaultPath(String subDirectory) {
         if (subDirectory == null || subDirectory.isEmpty()) {
-            return Path.of(basePath).toAbsolutePath().normalize();
+            return toRealOrAbsolutePath(Path.of(basePath));
         }
-        return Path.of(basePath, subDirectory).toAbsolutePath().normalize();
+        return toRealOrAbsolutePath(Path.of(basePath, subDirectory));
+    }
+
+    private static Path toRealOrAbsolutePath(Path p) {
+        try {
+            return p.toRealPath();
+        } catch (IOException e) {
+            return p.toAbsolutePath().normalize();
+        }
     }
 
     @Override
