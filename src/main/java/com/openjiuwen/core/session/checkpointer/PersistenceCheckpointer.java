@@ -265,9 +265,9 @@ public class PersistenceCheckpointer extends Checkpointer {
             String agentId = getAgentId(session);
 
             String dumpTypeKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
             String blobKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
 
             KVStorePipeline pipeline = kvStore.pipeline();
             pipeline.set(dumpTypeKey, "java_serialized");
@@ -291,9 +291,9 @@ public class PersistenceCheckpointer extends Checkpointer {
             String agentId = getAgentId(session);
 
             String dumpTypeKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
             String blobKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
 
             KVStorePipeline pipeline = kvStore.pipeline();
             pipeline.get(dumpTypeKey);
@@ -332,9 +332,9 @@ public class PersistenceCheckpointer extends Checkpointer {
          */
         public void clear(String agentId, String sessionId) {
             String dumpTypeKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
             String blobKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
             kvStore.delete(dumpTypeKey);
             kvStore.delete(blobKey);
             Loggers.SESSION.debug("Agent checkpoint cleared, sessionId={}, agentId={}", sessionId, agentId);
@@ -353,9 +353,9 @@ public class PersistenceCheckpointer extends Checkpointer {
             String agentId = getAgentId(session);
 
             String dumpTypeKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS_DUMP_TYPE);
             String blobKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_AGENT, agentId, STATE_BLOBS);
 
             return kvStore.isExists(dumpTypeKey) && kvStore.isExists(blobKey);
         }
@@ -408,9 +408,9 @@ public class PersistenceCheckpointer extends Checkpointer {
 
             // Save main state
             String dumpTypeKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
             String blobKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
             pipeline.set(dumpTypeKey, "java_serialized");
             pipeline.set(blobKey, state);
 
@@ -419,10 +419,9 @@ public class PersistenceCheckpointer extends Checkpointer {
                 Map<String, Object> updates = commitState.getUpdates();
                 if (updates != null) {
                     String updatesDumpTypeKey =
-                        TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId,
-                            UPDATE_BLOBS_DUMP_TYPE));
+                        resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
                     String updatesBlobKey =
-                        TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS));
+                        resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
                     pipeline.set(updatesDumpTypeKey, "java_serialized");
                     pipeline.set(updatesBlobKey, updates);
                 }
@@ -447,13 +446,13 @@ public class PersistenceCheckpointer extends Checkpointer {
 
             KVStorePipeline pipeline = kvStore.pipeline();
             String stateDumpTypeKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
             String stateBlobKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
             String updatesDumpTypeKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
             String updatesBlobKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
 
             pipeline.get(stateDumpTypeKey);
             pipeline.get(stateBlobKey);
@@ -505,13 +504,13 @@ public class PersistenceCheckpointer extends Checkpointer {
          */
         public void clear(String workflowId, String sessionId) {
             String stateDumpTypeKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
             String stateBlobKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
             String updatesDumpTypeKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS_DUMP_TYPE);
             String updatesBlobKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, UPDATE_BLOBS);
 
             kvStore.delete(stateDumpTypeKey);
             kvStore.delete(stateBlobKey);
@@ -534,9 +533,9 @@ public class PersistenceCheckpointer extends Checkpointer {
             String sessionId = session.sessionId();
 
             String stateDumpTypeKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS_DUMP_TYPE);
             String stateBlobKey =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS));
+                resolveNsKey(sessionId, SESSION_NAMESPACE_WORKFLOW, workflowId, STATE_BLOBS);
 
             return kvStore.isExists(stateDumpTypeKey) && kvStore.isExists(stateBlobKey);
         }
@@ -617,9 +616,9 @@ public class PersistenceCheckpointer extends Checkpointer {
         @Override
         public Optional<GraphStoreState> get(String sessionId, String ns) {
             String keyType =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE));
+                resolveNsKey(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
             String keyValue =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE));
+                resolveNsKey(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
 
             KVStorePipeline pipeline = kvStore.pipeline();
             pipeline.get(keyType);
@@ -653,9 +652,9 @@ public class PersistenceCheckpointer extends Checkpointer {
         @Override
         public void save(String sessionId, String ns, GraphStoreState state) {
             String keyType =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE));
+                resolveNsKey(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
             String keyValue =
-                TenantKVStoreKeyResolver.resolveKey(buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE));
+                resolveNsKey(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
 
             KVStorePipeline pipeline = kvStore.pipeline();
             pipeline.set(keyType, "java_serialized");
@@ -679,8 +678,7 @@ public class PersistenceCheckpointer extends Checkpointer {
                     TenantKVStoreKeyResolver.resolvePrefix(buildKey(sessionId, WORKFLOW_NAMESPACE_GRAPH));
                 kvStore.deleteByPrefix(prefix, null);
             } else {
-                String prefix =
-                    TenantKVStoreKeyResolver.resolvePrefix(buildKeyWithNamespace(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns));
+                String prefix = resolveNsPrefix(sessionId, WORKFLOW_NAMESPACE_GRAPH, ns);
                 kvStore.deleteByPrefix(prefix, null);
             }
             Loggers.SESSION.debug("Graph checkpoint cleared, sessionId={}, ns={}", sessionId, ns);

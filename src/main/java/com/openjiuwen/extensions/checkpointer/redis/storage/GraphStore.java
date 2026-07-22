@@ -48,9 +48,9 @@ public class GraphStore extends BaseRedisStorage {
     public CompletableFuture<Object> get(String sessionId, String ns) {
         try {
             String keyType =
-                TenantKVStoreKeyResolver.resolveKey(Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE));
+                Checkpointer.resolveNsKey(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
             String keyValue =
-                TenantKVStoreKeyResolver.resolveKey(Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE));
+                Checkpointer.resolveNsKey(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
 
             KVStorePipeline pipeline = redisStore.pipeline();
             pipeline.get(keyType);
@@ -96,9 +96,9 @@ public class GraphStore extends BaseRedisStorage {
             }
 
             String keyType =
-                TenantKVStoreKeyResolver.resolveKey(Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE));
+                Checkpointer.resolveNsKey(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
             String keyValue =
-                TenantKVStoreKeyResolver.resolveKey(Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE));
+                Checkpointer.resolveNsKey(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
 
             KVStorePipeline pipeline = redisStore.pipeline();
             pipeline.set(keyType, stateBlob.type(), ttlSeconds);

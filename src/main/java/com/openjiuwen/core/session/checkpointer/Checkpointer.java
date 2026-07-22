@@ -6,6 +6,7 @@ package com.openjiuwen.core.session.checkpointer;
 
 import com.openjiuwen.core.graph.store.Store;
 import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactory;
 import com.openjiuwen.core.multitenant.TenantNamespaceFactories;
 import com.openjiuwen.core.session.BaseSession;
@@ -179,6 +180,40 @@ public abstract class Checkpointer {
             sb.append(':').append(suffix);
         }
         return sb.toString();
+    }
+
+    /**
+     * Build a namespaced key and resolve it against the current tenant context.
+     * Convenience wrapper around {@link #buildKeyWithNamespace} and
+     * {@link TenantKVStoreKeyResolver#resolveKey(String)}.
+     *
+     * @param sessionId sessionId
+     * @param namespace namespace
+     * @param entityId entityId
+     * @param suffixes suffixes
+     * @return the tenant-resolved key
+     * @since 0.1.7
+     */
+    public static String resolveNsKey(String sessionId, String namespace, String entityId,
+            String... suffixes) {
+        return TenantKVStoreKeyResolver.resolveKey(
+            buildKeyWithNamespace(sessionId, namespace, entityId, suffixes));
+    }
+
+    /**
+     * Build a namespaced prefix and resolve it against the current tenant context.
+     *
+     * @param sessionId sessionId
+     * @param namespace namespace
+     * @param entityId entityId
+     * @param suffixes suffixes
+     * @return the tenant-resolved prefix
+     * @since 0.1.7
+     */
+    public static String resolveNsPrefix(String sessionId, String namespace, String entityId,
+            String... suffixes) {
+        return TenantKVStoreKeyResolver.resolvePrefix(
+            buildKeyWithNamespace(sessionId, namespace, entityId, suffixes));
     }
 
     public static String buildKeyWithTenant(TenantContext ctx, String... parts) {
