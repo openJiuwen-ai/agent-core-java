@@ -175,18 +175,32 @@ public final class CwdContext {
     }
 
     /**
-     * reset.
-     * 
+     * getTenantRoot.
+     *
+     * @return the result
      * @since 0.1.7
      */
     public static String getTenantRoot() {
         return TENANT_ROOT.get();
     }
 
+    /**
+     * setTenantRoot.
+     *
+     * @param tenantRoot tenantRoot
+     * @since 0.1.7
+     */
     public static void setTenantRoot(String tenantRoot) {
         TENANT_ROOT.set(tenantRoot);
     }
 
+    /**
+     * isWithinTenantRoot.
+     *
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
     public static boolean isWithinTenantRoot(Path path) {
         String root = getTenantRoot();
         if (root == null) {
@@ -205,6 +219,11 @@ public final class CwdContext {
         }
     }
 
+    /**
+     * reset.
+     *
+     * @since 0.1.7
+     */
     public static void reset() {
         STATE.remove();
         TENANT_ROOT.remove();

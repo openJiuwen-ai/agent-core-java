@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.core.common.logging.Loggers;
@@ -16,6 +20,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+/**
+ * OverlaySkillManager.
+ *
+ * @since 0.1.7
+ */
 public class OverlaySkillManager {
     private final SkillManager tenantSkillManager;
     private final SkillManager publicSkillManager;
@@ -30,6 +39,15 @@ public class OverlaySkillManager {
         this.workspaceResolver = workspaceResolver;
     }
 
+    /**
+     * resolveSkillFile.
+     *
+     * @param skillName skillName
+     * @param relativeFilePath relativeFilePath
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     public Path resolveSkillFile(String skillName, String relativeFilePath) {
         String fileName = (relativeFilePath == null || relativeFilePath.isBlank()) ? "SKILL.md" : relativeFilePath;
         TenantContext ctx = TenantContextHolder.getCurrentTenant();
@@ -45,6 +63,12 @@ public class OverlaySkillManager {
         return null;
     }
 
+    /**
+     * getAllVisibleSkills.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
     public List<Skill> getAllVisibleSkills() {
         TenantContext ctx = TenantContextHolder.getCurrentTenant();
         if (ctx == null || !ctx.isTenantAware() || workspaceResolver == null) {
@@ -73,6 +97,12 @@ public class OverlaySkillManager {
         return result;
     }
 
+    /**
+     * getAllVisibleSkillNames.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
     public List<String> getAllVisibleSkillNames() {
         TenantContext ctx = TenantContextHolder.getCurrentTenant();
         if (ctx == null || !ctx.isTenantAware() || workspaceResolver == null) {
@@ -100,6 +130,13 @@ public class OverlaySkillManager {
         return result;
     }
 
+    /**
+     * overrideSkill.
+     *
+     * @param skillName skillName
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     public void overrideSkill(String skillName) throws IOException {
         TenantContext ctx = TenantContextHolder.getCurrentTenant();
         if (ctx == null || !ctx.isTenantAware() || overlayDir == null) {
@@ -110,6 +147,13 @@ public class OverlaySkillManager {
         Files.writeString(marker, "");
     }
 
+    /**
+     * revokeOverride.
+     *
+     * @param skillName skillName
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     public void revokeOverride(String skillName) throws IOException {
         if (overlayDir == null) {
             return;
@@ -118,6 +162,13 @@ public class OverlaySkillManager {
         Files.deleteIfExists(marker);
     }
 
+    /**
+     * isOverridden.
+     *
+     * @param skillName skillName
+     * @return the result
+     * @since 0.1.7
+     */
     public boolean isOverridden(String skillName) {
         if (overlayDir == null) {
             return false;
@@ -138,16 +189,21 @@ public class OverlaySkillManager {
         }
         try (var stream = Files.list(overlayDir)) {
             stream.filter(p -> p.getFileName().toString().endsWith(".override"))
-                  .forEach(p -> {
-                      String name = p.getFileName().toString().replace(".override", "");
-                      names.add(name);
-                  });
+                .forEach(p -> {
+                    String name = p.getFileName().toString().replace(".override", "");
+                    names.add(name);
+                });
         } catch (IOException e) {
             Loggers.TOOL.warn("Failed to list overlay skill directory: {}", overlayDir, e);
         }
         return names;
     }
 
+    /**
+     * migrateImplicitOverrides.
+     *
+     * @since 0.1.7
+     */
     public void migrateImplicitOverrides() {
         TenantContext ctx = TenantContextHolder.getCurrentTenant();
         if (ctx == null || !ctx.isTenantAware() || workspaceResolver == null || overlayDir == null) {

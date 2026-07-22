@@ -4,6 +4,7 @@
 
 package com.openjiuwen.harness.deep_agent;
 
+import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.multitenant.TenantContextHolder;
@@ -75,6 +76,8 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -143,6 +146,20 @@ public class DeepAgent implements AutoCloseable {
     private BaseKVStore kvStore;
     private CompletionPromiseEvaluator completionPromiseEvaluator;
     private boolean isExplicitCompletionPolicy;
+
+    private static final AtomicLong streamThreadSeq = new AtomicLong(0);
+
+    private static final ThreadPoolExecutor streamExecutor = new ThreadPoolExecutor(
+            0, 8, 60L, TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(128),
+            r -> {
+                Thread thread = new Thread(r, "deep-agent-stream-" + streamThreadSeq.incrementAndGet());
+                thread.setDaemon(true);
+                thread.setUncaughtExceptionHandler((t, error) -> Loggers.AGENT.exception(
+                        "deep-agent stream task failed", error));
+                return thread;
+            },
+            new ThreadPoolExecutor.CallerRunsPolicy());
 
     /**
      * DeepAgent.
@@ -601,9 +618,18 @@ public class DeepAgent implements AutoCloseable {
      * @since 0.1.7
      */
     public Map<String, Object> invoke(Map<String, Object> inputs) {
-        return invoke(inputs, (AgentSessionApi) null);
+        AgentSessionApi session = null;
+        return invoke(inputs, session);
     }
 
+    /**
+     * invoke.
+     * 
+     * @param inputs inputs
+     * @param tenantCtx tenantCtx
+     * @return the result
+     * @since 0.1.7
+     */
     public Map<String, Object> invoke(Map<String, Object> inputs, TenantContext tenantCtx) {
         requireTenantContext(tenantCtx);
         TenantContextHolder.setCurrentTenant(tenantCtx);
@@ -681,6 +707,14 @@ public class DeepAgent implements AutoCloseable {
         return stream(inputs, List.of(StreamMode.OUTPUT));
     }
 
+    /**
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param tenantCtx tenantCtx
+     * @return Iterator<Object>
+     * @since 0.1.7
+     */
     public java.util.Iterator<Object> stream(Map<String, Object> inputs, TenantContext tenantCtx) {
         requireTenantContext(tenantCtx);
         TenantContextHolder.setCurrentTenant(tenantCtx);
@@ -714,6 +748,15 @@ public class DeepAgent implements AutoCloseable {
         return stream(inputs, session, streamModes);
     }
 
+    /**
+     * stream.
+     * 
+     * @param inputs inputs
+     * @param streamModes streamModes
+     * @param tenantCtx tenantCtx
+     * @return Iterator<Object>
+     * @since 0.1.7
+     */
     public java.util.Iterator<Object> stream(Map<String, Object> inputs, List<StreamMode> streamModes,
             TenantContext tenantCtx) {
         requireTenantContext(tenantCtx);
@@ -756,65 +799,67 @@ public class DeepAgent implements AutoCloseable {
     private java.util.Iterator<Object> streamInternal(Map<String, Object> inputs, AgentSessionApi session,
             List<StreamMode> streamModes) {
         ensureInitialized();
+        Map<String, Object> normalized = normalizeStreamInputs(inputs);
+        AgentSessionApi effectiveSession = buildEffectiveStreamSession(normalized, session, streamModes);
+        effectiveSession.preRun(normalized);
+        if (session != null) {
+            copySessionState(session, effectiveSession);
+        }
+        if (config.isEnableTaskLoop()) {
+            return streamTaskLoop(normalized, effectiveSession, session);
+        }
+        return streamInvokeOnce(normalized, effectiveSession, session);
+    }
+
+    private Map<String, Object> normalizeStreamInputs(Map<String, Object> inputs) {
         Map<String, Object> normalized = new LinkedHashMap<>(inputs);
         normalized.putIfAbsent("conversation_id", card.getName() + "_session");
         normalized.putIfAbsent("query", "");
         if (config.isEnableTaskLoop()) {
             normalized.put("_collect_inner_stream", true);
         }
+        return normalized;
+    }
+
+    private AgentSessionApi buildEffectiveStreamSession(Map<String, Object> normalized, AgentSessionApi session,
+            List<StreamMode> streamModes) {
         String baseConversationId = String.valueOf(normalized.get("conversation_id"));
         String requestLevelSessionId = baseConversationId + "_" + requestSeq.incrementAndGet();
-        AgentSessionApi effectiveSession = session != null
-                ? new AgentSessionApi(requestLevelSessionId, session.getEnvs(), this.card,
-                        session.getInner().streamWriterManager().getEnabledModes())
-                : new AgentSessionApi(
-                requestLevelSessionId,
-                null,
-                this.card,
-                streamModes == null || streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes
-        );
-        effectiveSession.preRun(normalized);
-        // 将输入 session 的状态传播到 effectiveSession（关键：中断恢复依赖此步骤）
-        // 在 preRun 之后执行，遵循 invokeInnerRoundStreaming 的既定模式
         if (session != null) {
-            copySessionState(session, effectiveSession);
+            return new AgentSessionApi(requestLevelSessionId, session.getEnvs(), this.card,
+                    session.getInner().streamWriterManager().getEnabledModes());
         }
-        if (config.isEnableTaskLoop()) {
-            Thread streamThread = new Thread(() -> {
-                try {
-                    runTaskLoop(normalized, effectiveSession);
-                } catch (RuntimeException ex) {
-                    effectiveSession.writeStream(new OutputSchema("error", 0,
-                            Map.of("output", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
-                                    "result_type", "error")));
-                } finally {
-                    effectiveSession.postRun();
-                    // 将 effectiveSession 的状态反向传播到输入 session（关键：中断状态保存依赖此步骤）
-                    if (session != null) {
-                        copySessionState(effectiveSession, session);
-                    }
+        return new AgentSessionApi(requestLevelSessionId, null, this.card,
+                streamModes == null || streamModes.isEmpty() ? List.of(StreamMode.OUTPUT) : streamModes);
+    }
+
+    private java.util.Iterator<Object> streamTaskLoop(Map<String, Object> normalized,
+            AgentSessionApi effectiveSession, AgentSessionApi session) {
+        streamExecutor.execute(() -> {
+            try {
+                runTaskLoop(normalized, effectiveSession);
+            } catch (IllegalArgumentException | IllegalStateException ex) {
+                writeStreamError(effectiveSession, 0, ex);
+            } finally {
+                effectiveSession.postRun();
+                if (session != null) {
+                    copySessionState(effectiveSession, session);
                 }
-            }, "deep-agent-stream-" + effectiveSession.getSessionId());
-            streamThread.setDaemon(true);
-            streamThread
-                    .setUncaughtExceptionHandler((thread,
-                            error) -> effectiveSession.writeStream(new OutputSchema("error", 0, Map.of("output",
-                                    error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage(),
-                                    "result_type", "error"))));
-            streamThread.start();
-            return effectiveSession.streamIterator();
-        }
+            }
+        });
+        return effectiveSession.streamIterator();
+    }
+
+    private java.util.Iterator<Object> streamInvokeOnce(Map<String, Object> normalized,
+            AgentSessionApi effectiveSession, AgentSessionApi session) {
         List<Object> outputs = new ArrayList<>();
         try {
             Map<String, Object> result = invoke(normalized);
             writeTopLevelStreamResult(effectiveSession, outputs.size(), result);
-        } catch (RuntimeException ex) {
-            effectiveSession.writeStream(new OutputSchema("error", outputs.size(),
-                    Map.of("output", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
-                            "result_type", "error")));
+        } catch (IllegalStateException ex) {
+            writeStreamError(effectiveSession, outputs.size(), ex);
         } finally {
             effectiveSession.postRun();
-            // 将 effectiveSession 的状态反向传播到输入 session
             if (session != null) {
                 copySessionState(effectiveSession, session);
             }
@@ -824,6 +869,12 @@ public class DeepAgent implements AutoCloseable {
             outputs.add(iterator.next());
         }
         return outputs.iterator();
+    }
+
+    private void writeStreamError(AgentSessionApi session, int index, Throwable ex) {
+        session.writeStream(new OutputSchema("error", index,
+                Map.of("output", ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage(),
+                        "result_type", "error")));
     }
 
     /**
@@ -1756,7 +1807,8 @@ public class DeepAgent implements AutoCloseable {
                     config.getTenantDataRoot() != null ? config.getTenantDataRoot() : config.getWorkspacePath(),
                     tieredWorkspaceManager.getNamespaceFactory());
             } else {
-                String baseWorkspace = config.getTenantDataRoot() != null ? config.getTenantDataRoot() : config.getWorkspacePath();
+                String baseWorkspace = config.getTenantDataRoot() != null
+                        ? config.getTenantDataRoot() : config.getWorkspacePath();
                 workspaceResolver = new TenantWorkspaceResolver(baseWorkspace);
                 Path tenantWorkspace = workspaceResolver.resolveWorkspaceRoot(ctx);
                 workspaceResolver.initializeTenantSpace(ctx);
@@ -1771,6 +1823,11 @@ public class DeepAgent implements AutoCloseable {
         CwdContext.reset();
     }
 
+    /**
+     * destroy.
+     * 
+     * @since 0.1.7
+     */
     public void destroy() {
         if (tmpFileCleaner != null) {
             tmpFileCleaner.stop();
@@ -1791,6 +1848,11 @@ public class DeepAgent implements AutoCloseable {
         this.tieredWorkspaceManager = manager;
     }
 
+    /**
+     * initTieredWorkspaceManager.
+     * 
+     * @since 0.1.7
+     */
     public void initTieredWorkspaceManager() {
         String basePath = config.getTenantDataRoot() != null ? config.getTenantDataRoot() : config.getWorkspacePath();
         WorkspaceStore primaryStore = new LocalWorkspaceStore(basePath);
@@ -1798,7 +1860,8 @@ public class DeepAgent implements AutoCloseable {
         if (config.getWorkspaceSecondaryTiers() != null) {
             for (String tier : config.getWorkspaceSecondaryTiers()) {
                 if (WorkspaceStoreFactory.hasProvider(tier)) {
-                    secondaryStores.add(WorkspaceStoreFactory.create(tier, config.getWorkspaceTierConfigs().getOrDefault(tier, Map.of())));
+                    secondaryStores.add(WorkspaceStoreFactory.create(tier,
+                            config.getWorkspaceTierConfigs().getOrDefault(tier, Map.of())));
                 }
             }
         }

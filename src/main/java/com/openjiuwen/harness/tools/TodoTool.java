@@ -4,7 +4,6 @@
 
 package com.openjiuwen.harness.tools;
 
-
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -30,11 +29,26 @@ public class TodoTool {
         this.storage = Objects.requireNonNull(storage);
     }
 
+    /**
+     * fromConfig.
+     *
+     * @param storageType storageType
+     * @param conf conf
+     * @return the result
+     * @since 0.1.7
+     */
     public static TodoTool fromConfig(String storageType, Map<String, Object> conf) {
         if (TodoStorageFactory.hasProvider(storageType)) {
             return new TodoTool(TodoStorageFactory.create(storageType, conf));
         }
-        return new TodoTool((String) (conf != null ? conf.getOrDefault("basePath", ".") : "."));
+        String basePath = ".";
+        if (conf != null) {
+            Object raw = conf.getOrDefault("basePath", ".");
+            if (raw instanceof String s) {
+                basePath = s;
+            }
+        }
+        return new TodoTool(basePath);
     }
 
     /**
@@ -62,10 +76,26 @@ public class TodoTool {
         }
     }
 
+    /**
+     * load.
+     *
+     * @param sessionId sessionId
+     * @return the result
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     public List<TodoItem> load(String sessionId) throws IOException {
         return storage.load(sessionId);
     }
 
+    /**
+     * save.
+     *
+     * @param sessionId sessionId
+     * @param todos todos
+     * @throws IOException IOException
+     * @since 0.1.7
+     */
     public void save(String sessionId, List<TodoItem> todos) throws IOException {
         storage.save(sessionId, todos);
     }

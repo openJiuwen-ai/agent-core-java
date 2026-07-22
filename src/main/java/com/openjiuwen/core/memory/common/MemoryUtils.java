@@ -39,6 +39,15 @@ public final class MemoryUtils {
         return String.format("uid_%s_gid_%s_mtype_%s", userId, scopeId, memType);
     }
 
+    /**
+     * Generate tenant-aware vector index name from user id, scope id and memory type.
+     *
+     * @param userId userId
+     * @param scopeId scopeId
+     * @param memType memType
+     * @return the result
+     * @since 0.1.7
+     */
     public static String generateTenantAwareIdxName(String userId, String scopeId, String memType) {
         String baseName = generateIdxName(userId, scopeId, memType);
         TenantContext ctx = TenantContextHolder.getCurrentTenant();

@@ -10,6 +10,11 @@ import com.openjiuwen.spi.store.KVStoreProvider;
 
 import java.util.Map;
 
+/**
+ * SPI provider that creates Redis-backed {@link BaseKVStore} instances.
+ *
+ * @since 0.1.7
+ */
 public final class RedisKVStoreProvider implements KVStoreProvider {
     @Override
     public String typeName() {
@@ -33,13 +38,13 @@ public final class RedisKVStoreProvider implements KVStoreProvider {
             ? ((Number) conf.getOrDefault("port", 6379)).intValue() : 6379;
         String password = conf.get("password") instanceof String
             ? (String) conf.get("password") : null;
-        boolean cluster = Boolean.parseBoolean(String.valueOf(conf.getOrDefault("cluster", "false")));
-        return createClientByReflection(host, port, password, cluster);
+        boolean isCluster = Boolean.parseBoolean(String.valueOf(conf.getOrDefault("cluster", "false")));
+        return createClientByReflection(host, port, password, isCluster);
     }
 
-    private Object createClientByReflection(String host, int port, String password, boolean cluster) {
+    private Object createClientByReflection(String host, int port, String password, boolean isCluster) {
         try {
-            if (cluster) {
+            if (isCluster) {
                 Class<?> poolConfigClass = Class.forName("redis.clients.jedis.JedisPoolConfig");
                 Object poolConfig = poolConfigClass.getDeclaredConstructor().newInstance();
                 Class<?> clusterClass = Class.forName("redis.clients.jedis.JedisCluster");

@@ -55,12 +55,6 @@ public class AgentGroupSessionApi extends AgentSessionApi {
         this(sessionId, null);
     }
 
-    @Override
-    public AgentGroupSessionApi withTenantContext(TenantContext ctx) {
-        super.withTenantContext(ctx);
-        return this;
-    }
-
     /**
      * AgentGroupSessionApi.
      * 
@@ -68,6 +62,12 @@ public class AgentGroupSessionApi extends AgentSessionApi {
      */
     public AgentGroupSessionApi() {
         this(null, null);
+    }
+
+    @Override
+    public AgentGroupSessionApi withTenantContext(TenantContext ctx) {
+        super.withTenantContext(ctx);
+        return this;
     }
 
     /**

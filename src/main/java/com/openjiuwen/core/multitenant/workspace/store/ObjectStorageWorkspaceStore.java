@@ -1,9 +1,18 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.multitenant.workspace.store;
 
 import com.openjiuwen.core.multitenant.workspace.WorkspaceStore;
 
 import java.nio.file.Path;
 
+/**
+ * Workspace store backed by flat object storage with a tier name and bucket prefix.
+ *
+ * @since 0.1.7
+ */
 public class ObjectStorageWorkspaceStore implements WorkspaceStore {
     private final String tierName;
     private final String bucketPrefix;

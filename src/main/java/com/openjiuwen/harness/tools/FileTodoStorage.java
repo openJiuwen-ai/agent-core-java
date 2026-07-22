@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.harness.tools;
 
 import com.openjiuwen.core.common.logging.Loggers;
@@ -14,13 +18,17 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
 
+/**
+ * FileTodoStorage.
+ *
+ * @since 0.1.7
+ */
 public class FileTodoStorage implements TodoStorage {
     private final Path workspace;
     private final TenantWorkspaceResolver workspaceResolver;
 
     public FileTodoStorage(Path workspace) {
-        this.workspace = workspace.toAbsolutePath().normalize();
-        this.workspaceResolver = null;
+        this(workspace, null);
     }
 
     public FileTodoStorage(Path workspace, TenantWorkspaceResolver workspaceResolver) {
@@ -41,9 +49,13 @@ public class FileTodoStorage implements TodoStorage {
     @Override
     public List<TodoItem> load(String sessionId) throws IOException {
         Path file = resolveWorkspace().resolve(sessionId).resolve("todo.json");
-        if (!Files.exists(file)) { return new ArrayList<>(); }
+        if (!Files.exists(file)) {
+            return new ArrayList<>();
+        }
         String json = Files.readString(file);
-        if (json.isBlank()) { return new ArrayList<>(); }
+        if (json.isBlank()) {
+            return new ArrayList<>();
+        }
         TodoItem[] items = JsonUtils.safeJsonLoads(json, TodoItem[].class, new TodoItem[0]);
         return new ArrayList<>(List.of(items));
     }

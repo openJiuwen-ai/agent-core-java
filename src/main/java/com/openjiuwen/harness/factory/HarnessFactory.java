@@ -79,10 +79,10 @@ public final class HarnessFactory {
 
     private static void injectKvStore(DeepAgent agent, DeepAgentConfig config) {
         Map<String, Object> kvStoreConfig = config.getKvStoreConfig();
-        if (kvStoreConfig == null || kvStoreConfig.get("type") == null) {
+        Object typeValue = kvStoreConfig == null ? null : kvStoreConfig.get("type");
+        if (!(typeValue instanceof String type)) {
             return;
         }
-        String type = (String) kvStoreConfig.get("type");
         Map<String, Object> conf = kvStoreConfig.get("conf") instanceof Map
             ? (Map<String, Object>) kvStoreConfig.get("conf") : Map.of();
         BaseKVStore kvStore = KVStoreFactory.create(type, conf);

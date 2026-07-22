@@ -1,7 +1,10 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.multitenant;
 
 import com.openjiuwen.core.common.logging.Loggers;
-import com.openjiuwen.core.multitenant.workspace.WorkspaceStore;
 import com.openjiuwen.spi.store.BaseKVStore;
 
 import java.io.IOException;
@@ -10,6 +13,11 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.stream.Stream;
 
+/**
+ * File-system and KV-store backed default implementation of {@link TenantResourceCleaner}.
+ *
+ * @since 0.1.7
+ */
 public class DefaultTenantResourceCleaner implements TenantResourceCleaner {
     private final TenantWorkspaceResolver workspaceResolver;
     private final BaseKVStore kvStore;
@@ -71,21 +79,27 @@ public class DefaultTenantResourceCleaner implements TenantResourceCleaner {
 
     @Override
     public void cleanupKVState(String tenantId) {
-        if (kvStore == null) return;
+        if (kvStore == null) {
+            return;
+        }
         String prefix = tenantId + ":";
         kvStore.deleteByPrefix(prefix, null);
     }
 
     @Override
     public void cleanupKVState(String tenantId, String sessionId) {
-        if (kvStore == null) return;
+        if (kvStore == null) {
+            return;
+        }
         String prefix = tenantId + ":" + sessionId + ":";
         kvStore.deleteByPrefix(prefix, null);
     }
 
     @Override
     public void cleanupDistributedLocks(String tenantId) {
-        if (kvStore == null) return;
+        if (kvStore == null) {
+            return;
+        }
         String prefix = tenantId + ":lock:";
         kvStore.deleteByPrefix(prefix, null);
     }
@@ -100,7 +114,9 @@ public class DefaultTenantResourceCleaner implements TenantResourceCleaner {
     }
 
     private void deleteDirectory(Path dir) {
-        if (dir == null || !Files.exists(dir)) return;
+        if (dir == null || !Files.exists(dir)) {
+            return;
+        }
         try (Stream<Path> stream = Files.walk(dir)) {
             stream.sorted(Comparator.reverseOrder())
                 .forEach(p -> {

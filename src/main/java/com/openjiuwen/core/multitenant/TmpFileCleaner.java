@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.multitenant;
 
 import com.openjiuwen.core.common.logging.Loggers;
@@ -8,11 +12,16 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
+/**
+ * Background cleaner that periodically purges expired files from tenant tmp directories.
+ *
+ * @since 0.1.7
+ */
 public class TmpFileCleaner {
     private final Duration ttl;
     private final Duration scanInterval;
@@ -26,19 +35,31 @@ public class TmpFileCleaner {
         this.scanInterval = scanInterval;
         this.baseWorkspacePath = baseWorkspacePath;
         this.workspaceResolver = workspaceResolver;
-        this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        this.scheduler = new ScheduledThreadPoolExecutor(1, r -> {
             Thread t = new Thread(r, "tmp-file-cleaner");
             t.setDaemon(true);
+            t.setUncaughtExceptionHandler((thread, ex) ->
+                Loggers.AGENT.warn("Uncaught exception in tmp-file-cleaner thread", ex));
             return t;
         });
     }
 
+    /**
+     * Start the scheduled tmp file scan loop.
+     *
+     * @since 0.1.7
+     */
     public void start() {
         scheduler.scheduleAtFixedRate(this::scanAndClean,
             scanInterval.toMillis(), scanInterval.toMillis(), TimeUnit.MILLISECONDS);
         Loggers.AGENT.info("TmpFileCleaner started with TTL={}, scanInterval={}", ttl, scanInterval);
     }
 
+    /**
+     * Stop the cleaner and shut down its scheduler, draining pending tasks.
+     *
+     * @since 0.1.7
+     */
     public void stop() {
         scheduler.shutdown();
         try {
@@ -47,7 +68,6 @@ public class TmpFileCleaner {
             }
         } catch (InterruptedException e) {
             scheduler.shutdownNow();
-            Thread.currentThread().interrupt();
         }
         Loggers.AGENT.info("TmpFileCleaner stopped");
     }
@@ -62,18 +82,20 @@ public class TmpFileCleaner {
     }
 
     private void cleanDirectory(Path dir, Instant cutoff) {
-        if (!Files.exists(dir)) return;
+        if (!Files.exists(dir)) {
+            return;
+        }
         try (Stream<Path> stream = Files.walk(dir)) {
             stream.filter(Files::isRegularFile)
-                  .filter(p -> isExpired(p, cutoff))
-                  .forEach(p -> {
-                      try {
-                          Files.delete(p);
-                          Loggers.AGENT.debug("Deleted expired tmp file: {}", p);
-                      } catch (IOException e) {
-                          Loggers.AGENT.warn("Failed to delete expired tmp file: {}", p, e);
-                      }
-                  });
+                .filter(p -> isExpired(p, cutoff))
+                .forEach(p -> {
+                    try {
+                        Files.delete(p);
+                        Loggers.AGENT.debug("Deleted expired tmp file: {}", p);
+                    } catch (IOException e) {
+                        Loggers.AGENT.warn("Failed to delete expired tmp file: {}", p, e);
+                    }
+                });
         } catch (IOException e) {
             Loggers.AGENT.warn("Failed to walk tmp directory: {}", dir, e);
         }
@@ -81,13 +103,15 @@ public class TmpFileCleaner {
 
     private void cleanTenantDirectories(Instant cutoff) {
         Path tenantsRoot = Path.of(baseWorkspacePath, "tenants").toAbsolutePath().normalize();
-        if (!Files.exists(tenantsRoot)) return;
+        if (!Files.exists(tenantsRoot)) {
+            return;
+        }
         try (Stream<Path> stream = Files.list(tenantsRoot)) {
             stream.filter(Files::isDirectory)
-                  .forEach(tenantDir -> {
-                      Path tmpDir = tenantDir.resolve("tmp");
-                      cleanDirectory(tmpDir, cutoff);
-                  });
+                .forEach(tenantDir -> {
+                    Path tmpDir = tenantDir.resolve("tmp");
+                    cleanDirectory(tmpDir, cutoff);
+                });
         } catch (IOException e) {
             Loggers.AGENT.warn("Failed to list tenants directory: {}", tenantsRoot, e);
         }

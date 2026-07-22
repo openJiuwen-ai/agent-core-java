@@ -23,7 +23,6 @@ import com.openjiuwen.harness.task_loop.TaskIterationContext;
 import com.openjiuwen.harness.task_loop.TaskPlan;
 import com.openjiuwen.harness.task_loop.TaskPlanSnapshot;
 import com.openjiuwen.harness.tools.FileTodoStorage;
-import com.openjiuwen.harness.tools.KvTodoStorage;
 import com.openjiuwen.harness.tools.TodoStorage;
 import com.openjiuwen.harness.tools.TodoStorageFactory;
 import com.openjiuwen.harness.tools.TodoTool;
@@ -153,30 +152,7 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         }
         owner = deepAgent;
         String todoStorageType = deepAgent.getConfig().getTodoStorageType();
-        TodoStorage todoStorage;
-        if (TodoStorageFactory.hasProvider(todoStorageType)) {
-            Map<String, Object> conf = new java.util.HashMap<>();
-            if ("kv".equals(todoStorageType)) {
-                BaseKVStore kvStore = deepAgent.getKvStore();
-                if (kvStore != null) {
-                    conf.put("kvStoreType", "shared");
-                    conf.put("sharedKvStore", kvStore);
-                } else {
-                    Map<String, Object> kvConf = deepAgent.getConfig().getKvStoreConfig();
-                    if (kvConf != null) {
-                        conf.put("kvStoreConf", kvConf);
-                    }
-                }
-            } else {
-                conf.put("basePath", deepAgent.getWorkspace().root().resolve(".todo").toString());
-            }
-            todoStorage = TodoStorageFactory.create(todoStorageType, conf);
-        } else {
-            if ("kv".equals(todoStorageType)) {
-                Loggers.TOOL.warning("todoStorageType is 'kv' but no provider registered, falling back to file storage");
-            }
-            todoStorage = new FileTodoStorage(deepAgent.getWorkspace().root().resolve(".todo"));
-        }
+        TodoStorage todoStorage = resolveTodoStorage(deepAgent, todoStorageType);
         todoTool = new TodoTool(todoStorage);
         language = deepAgent.getWorkspace().getLanguage();
         tools.add(new LocalFunction(card("todo_create", deepAgent, language),
@@ -190,6 +166,37 @@ public class TaskPlanningRail extends DeepAgentRail implements TaskIterationRail
         for (Tool tool : tools) {
             deepAgent.registerHarnessTool(tool);
         }
+    }
+
+    private TodoStorage resolveTodoStorage(DeepAgent deepAgent, String todoStorageType) {
+        if (TodoStorageFactory.hasProvider(todoStorageType)) {
+            Map<String, Object> conf = buildTodoStorageConfig(deepAgent, todoStorageType);
+            return TodoStorageFactory.create(todoStorageType, conf);
+        }
+        if ("kv".equals(todoStorageType)) {
+            Loggers.TOOL.warning("todoStorageType is 'kv' but no provider registered, "
+                    + "falling back to file storage");
+        }
+        return new FileTodoStorage(deepAgent.getWorkspace().root().resolve(".todo"));
+    }
+
+    private static Map<String, Object> buildTodoStorageConfig(DeepAgent deepAgent, String todoStorageType) {
+        Map<String, Object> conf = new HashMap<>();
+        if (!"kv".equals(todoStorageType)) {
+            conf.put("basePath", deepAgent.getWorkspace().root().resolve(".todo").toString());
+            return conf;
+        }
+        BaseKVStore kvStore = deepAgent.getKvStore();
+        if (kvStore != null) {
+            conf.put("kvStoreType", "shared");
+            conf.put("sharedKvStore", kvStore);
+            return conf;
+        }
+        Map<String, Object> kvConf = deepAgent.getConfig().getKvStoreConfig();
+        if (kvConf != null) {
+            conf.put("kvStoreConf", kvConf);
+        }
+        return conf;
     }
 
     /**

@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.multitenant.workspace;
 
 import com.openjiuwen.core.multitenant.TenantContext;
@@ -9,16 +13,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Manages tiered workspace resolution across a primary local store and remote stores.
+ *
+ * @since 0.1.7
+ */
 public class TieredWorkspaceManager {
+    /** Local storage tier name. */
+    public static final String TIER_LOCAL = "local";
+    /** OBS storage tier name. */
+    public static final String TIER_OBS = "obs";
+    /** HDFS storage tier name. */
+    public static final String TIER_HDFS = "hdfs";
+    /** S3 storage tier name. */
+    public static final String TIER_S3 = "s3";
+
     private final WorkspaceStore primaryStore;
     private final List<WorkspaceStore> secondaryStores;
     private final TenantNamespaceFactory namespaceFactory;
     private final ConcurrentHashMap<String, WorkspaceResolution> resolvedPaths = new ConcurrentHashMap<>();
-
-    public static final String TIER_LOCAL = "local";
-    public static final String TIER_OBS = "obs";
-    public static final String TIER_HDFS = "hdfs";
-    public static final String TIER_S3 = "s3";
 
     public TieredWorkspaceManager(WorkspaceStore primaryStore, List<WorkspaceStore> secondaryStores) {
         this(primaryStore, secondaryStores, TenantNamespaceFactories.PATH_DEFAULT);
@@ -43,6 +56,14 @@ public class TieredWorkspaceManager {
         return namespaceFactory;
     }
 
+    /**
+     * Resolves the workspace paths for a tenant context, caching the result.
+     *
+     * @param ctx the tenant context
+     * @param type the workspace type
+     * @return the resolved workspace paths
+     * @since 0.1.7
+     */
     public WorkspaceResolution resolve(TenantContext ctx, WorkspaceType type) {
         if (!ctx.isTenantAware()) {
             return resolveDefault(type);
@@ -59,6 +80,13 @@ public class TieredWorkspaceManager {
         });
     }
 
+    /**
+     * Resolves default workspace paths outside any tenant namespace.
+     *
+     * @param type the workspace type
+     * @return the resolved default workspace paths
+     * @since 0.1.7
+     */
     public WorkspaceResolution resolveDefault(WorkspaceType type) {
         Path localPath = primaryStore.resolveDefaultPath(type.subDirectory());
         Map<String, String> remotePaths = new java.util.LinkedHashMap<>();
@@ -68,8 +96,16 @@ public class TieredWorkspaceManager {
         return new WorkspaceResolution(localPath, remotePaths, type);
     }
 
+    /**
+     * Initializes the tenant workspace directories across all configured stores.
+     *
+     * @param ctx the tenant context
+     * @since 0.1.7
+     */
     public void initializeTenantSpace(TenantContext ctx) {
-        if (!ctx.isTenantAware()) return;
+        if (!ctx.isTenantAware()) {
+            return;
+        }
         String ns = namespaceFactory.namespace(ctx, "tenants");
         primaryStore.createDirectories(ns);
         for (WorkspaceStore store : secondaryStores) {

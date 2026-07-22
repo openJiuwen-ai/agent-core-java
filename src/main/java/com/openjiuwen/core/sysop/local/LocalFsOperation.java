@@ -12,7 +12,6 @@ import com.openjiuwen.core.sysop.FsConstants;
 import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 import com.openjiuwen.core.sysop.cwd.CwdContext;
-import com.openjiuwen.core.multitenant.TenantPathSecurity;
 import com.openjiuwen.core.sysop.registry.Operation;
 import com.openjiuwen.core.sysop.result.*;
 
@@ -54,6 +53,8 @@ import java.util.stream.Stream;
  */
 @Operation(name = "fs", mode = OperationMode.LOCAL, description = "local fs operation")
 public class LocalFsOperation extends BaseFsOperation {
+    private static final Pattern UNSAFE_CHAR_PATTERN = Pattern.compile("[^\\w.-]");
+
     /**
      * LocalFsOperation.
      * 
@@ -637,19 +638,12 @@ public class LocalFsOperation extends BaseFsOperation {
             Path root = toRealOrAbsolutePath(Path.of(tenantRoot));
             if (!normalized.startsWith(root)) {
                 throw new SecurityException(
-                    "Tenant boundary violation: path " + resolvedPath +
-                    " is outside tenant root " + tenantRoot);
+                    "Tenant boundary violation: path " + resolvedPath
+                        + " is outside tenant root " + tenantRoot);
             }
         }
         return resolvedPath;
     }
-
-    /**
-     * Resolve path relative to workDir if configured. Enforces sandbox.
-     * 
-     * @since 0.1.7
-     */
-    private static final Pattern UNSAFE_CHAR_PATTERN = Pattern.compile("[^\\w.-]");
 
     /**
      * resolvePath.

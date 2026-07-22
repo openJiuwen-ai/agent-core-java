@@ -216,16 +216,41 @@ public abstract class Checkpointer {
             buildKeyWithNamespace(sessionId, namespace, entityId, suffixes));
     }
 
+    /**
+     * Build a tenant-namespaced key from parts using the default namespace factory.
+     * 
+     * @param ctx the tenant context
+     * @param parts the key parts
+     * @return the tenant-namespaced key
+     * @since 0.1.7
+     */
     public static String buildKeyWithTenant(TenantContext ctx, String... parts) {
         return buildKeyWithTenant(TenantNamespaceFactories.KV_STORE_DEFAULT, ctx, parts);
     }
 
+    /**
+     * Build a tenant-namespaced key from parts using the given namespace factory.
+     * 
+     * @param factory the namespace factory, or null to use the default
+     * @param ctx the tenant context
+     * @param parts the key parts
+     * @return the tenant-namespaced key
+     * @since 0.1.7
+     */
     public static String buildKeyWithTenant(TenantNamespaceFactory factory, TenantContext ctx, String... parts) {
         TenantNamespaceFactory nsFactory = factory != null ? factory : TenantNamespaceFactories.KV_STORE_DEFAULT;
         String rawKey = buildKey(parts);
         return nsFactory.namespace(ctx, rawKey);
     }
 
+    /**
+     * Build a tenant-namespaced key from parts using this instance's namespace factory.
+     * 
+     * @param ctx the tenant context
+     * @param parts the key parts
+     * @return the tenant-namespaced key
+     * @since 0.1.7
+     */
     public String buildKeyWithTenantInstance(TenantContext ctx, String... parts) {
         String rawKey = buildKey(parts);
         return namespaceFactory.namespace(ctx, rawKey);

@@ -1,7 +1,15 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.multitenant;
 
+/**
+ * Built-in {@link TenantNamespaceFactory} implementations for KV-store keys and filesystem paths.
+ *
+ * @since 0.1.7
+ */
 public final class TenantNamespaceFactories {
-
     /**
      * KV 存储命名空间工厂：产出 {@code tenantId:rawKey}，无租户时原样返回 rawKey。
      */

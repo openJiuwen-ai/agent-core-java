@@ -1,3 +1,7 @@
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026-2026. All rights reserved.
+ */
+
 package com.openjiuwen.core.multitenant.workspace.store;
 
 import com.openjiuwen.core.multitenant.workspace.WorkspaceStore;
@@ -7,6 +11,11 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+/**
+ * Workspace store backed by the local filesystem under a configurable base path.
+ *
+ * @since 0.1.7
+ */
 public class LocalWorkspaceStore implements WorkspaceStore {
     private final String basePath;
 

@@ -11,6 +11,7 @@ import com.openjiuwen.harness.schema.config.DeepAgentConfig;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Public class HarnessCli used by the Java parity implementation.
@@ -45,14 +46,11 @@ public class HarnessCli {
     }
 
     static TenantContext buildTenantContext(CLIOptions opts) {
-        if (opts == null) {
-            return null;
-        }
-        String tenantId = opts.getTenantId();
-        if (tenantId != null && !tenantId.isBlank()) {
-            return TenantContext.builder().tenantId(tenantId).build();
-        }
-        return null;
+        return Optional.ofNullable(opts)
+                .map(CLIOptions::getTenantId)
+                .filter(id -> id != null && !id.isBlank())
+                .map(id -> TenantContext.builder().tenantId(id).build())
+                .orElse(null);
     }
 
     /**

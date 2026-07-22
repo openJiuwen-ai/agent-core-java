@@ -4,6 +4,11 @@
 
 package com.openjiuwen.core.memory.team;
 
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
+import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
+import com.openjiuwen.core.sysop.cwd.CwdContext;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -11,11 +16,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
-
-import com.openjiuwen.core.multitenant.TenantContext;
-import com.openjiuwen.core.multitenant.TenantContextHolder;
-import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
-import com.openjiuwen.core.sysop.cwd.CwdContext;
 
 /**
  * Read/write team-level TEAM_MEMORY.md under team-memory/.

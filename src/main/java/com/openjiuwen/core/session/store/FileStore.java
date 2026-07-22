@@ -36,8 +36,7 @@ public class FileStore extends Store {
     }
 
     public FileStore(Path storePath) {
-        this.storePath = storePath.toAbsolutePath().normalize();
-        this.workspaceResolver = null;
+        this(storePath, null);
     }
 
     public FileStore(Path storePath, TenantWorkspaceResolver workspaceResolver) {

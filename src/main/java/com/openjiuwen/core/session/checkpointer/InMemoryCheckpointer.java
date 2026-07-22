@@ -134,7 +134,8 @@ public class InMemoryCheckpointer extends Checkpointer {
                 BaseSession parent = null;
                 try {
                     parent = (BaseSession) session.getClass().getMethod("parent").invoke(session);
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    Loggers.SESSION.debug("Unable to resolve parent session, sessionId={}", session.sessionId(), e);
                 }
                 if (!(parent instanceof AgentSession)) {
                     workflowStores.remove(tid);
