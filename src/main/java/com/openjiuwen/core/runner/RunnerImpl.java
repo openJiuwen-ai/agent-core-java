@@ -665,7 +665,8 @@ public class RunnerImpl {
     }
 
     /**
-     * Reactive version of {@link #runAgentStreaming(Object, Object, Object, ModelContext, List, Map)} with tenant context binding.
+     * Reactive version of {@link #runAgentStreaming(Object, Object, Object, ModelContext, List, Map)}
+     * with tenant context binding.
      *
      * @param agent agent instance or identifier
      * @param inputs agent inputs

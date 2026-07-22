@@ -89,6 +89,20 @@ import java.util.function.Supplier;
  */
 @Getter
 public class DeepAgent implements AutoCloseable {
+    private static final AtomicLong STREAM_THREAD_SEQ = new AtomicLong(0);
+
+    private static final ThreadPoolExecutor STREAM_EXECUTOR = new ThreadPoolExecutor(
+            0, 8, 60L, TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(128),
+            r -> {
+                Thread thread = new Thread(r, "deep-agent-stream-" + STREAM_THREAD_SEQ.incrementAndGet());
+                thread.setDaemon(true);
+                thread.setUncaughtExceptionHandler((t, error) -> Loggers.AGENT.exception(
+                        "deep-agent stream task failed", error));
+                return thread;
+            },
+            new ThreadPoolExecutor.CallerRunsPolicy());
+
     private final AgentCard card;
     private final DeepAgentConfig config;
     private final Workspace workspace;
@@ -146,20 +160,6 @@ public class DeepAgent implements AutoCloseable {
     private BaseKVStore kvStore;
     private CompletionPromiseEvaluator completionPromiseEvaluator;
     private boolean isExplicitCompletionPolicy;
-
-    private static final AtomicLong streamThreadSeq = new AtomicLong(0);
-
-    private static final ThreadPoolExecutor streamExecutor = new ThreadPoolExecutor(
-            0, 8, 60L, TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(128),
-            r -> {
-                Thread thread = new Thread(r, "deep-agent-stream-" + streamThreadSeq.incrementAndGet());
-                thread.setDaemon(true);
-                thread.setUncaughtExceptionHandler((t, error) -> Loggers.AGENT.exception(
-                        "deep-agent stream task failed", error));
-                return thread;
-            },
-            new ThreadPoolExecutor.CallerRunsPolicy());
 
     /**
      * DeepAgent.
@@ -835,7 +835,7 @@ public class DeepAgent implements AutoCloseable {
 
     private java.util.Iterator<Object> streamTaskLoop(Map<String, Object> normalized,
             AgentSessionApi effectiveSession, AgentSessionApi session) {
-        streamExecutor.execute(() -> {
+        STREAM_EXECUTOR.execute(() -> {
             try {
                 runTaskLoop(normalized, effectiveSession);
             } catch (IllegalArgumentException | IllegalStateException ex) {

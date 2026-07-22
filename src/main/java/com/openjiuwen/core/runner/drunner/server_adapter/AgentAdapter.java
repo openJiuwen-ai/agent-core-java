@@ -135,7 +135,8 @@ public class AgentAdapter {
     Iterator<Object> handleStream(Map<String, Object> inputs) {
         Optional<TenantContext> tenantCtx = extractTenantContext(inputs);
         if (tenantCtx.isPresent()) {
-            return Runner.runAgentStreaming(agentId, inputs, null, null, List.of(StreamMode.OUTPUT), null, tenantCtx.get());
+            return Runner.runAgentStreaming(agentId, inputs, null, null,
+                    List.of(StreamMode.OUTPUT), null, tenantCtx.get());
         }
         return Runner.runAgentStreaming(agentId, inputs, null, null, List.of(StreamMode.OUTPUT));
     }

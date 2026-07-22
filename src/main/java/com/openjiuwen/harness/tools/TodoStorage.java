@@ -16,7 +16,6 @@ import java.util.List;
  * @since 0.1.7
  */
 public interface TodoStorage {
-
     /**
      * load.
      *

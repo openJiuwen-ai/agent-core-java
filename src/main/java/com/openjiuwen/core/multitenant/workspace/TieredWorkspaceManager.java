@@ -21,10 +21,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class TieredWorkspaceManager {
     /** Local storage tier name. */
     public static final String TIER_LOCAL = "local";
+
     /** OBS storage tier name. */
     public static final String TIER_OBS = "obs";
+
     /** HDFS storage tier name. */
     public static final String TIER_HDFS = "hdfs";
+
     /** S3 storage tier name. */
     public static final String TIER_S3 = "s3";
 

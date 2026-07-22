@@ -959,7 +959,7 @@ public class RedisStore extends BaseKVStore {
                 throw error;
             }
             throw new IllegalStateException(cause != null ? cause.getMessage() : e.getMessage(),
-                cause != null ? cause : e);
+                cause != null ? cause : (Throwable) e);
         }
     }
 

@@ -12,7 +12,6 @@ import java.util.Map;
  * @since 0.1.7
  */
 public interface TodoStorageProvider {
-
     /**
      * typeName.
      *
