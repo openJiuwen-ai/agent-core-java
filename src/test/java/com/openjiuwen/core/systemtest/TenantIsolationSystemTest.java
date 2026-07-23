@@ -19,6 +19,7 @@ import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.extensions.checkpointer.redis.RedisCheckpointer;
 import com.openjiuwen.extensions.store.kv.RedisStore;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.core.sysop.cwd.CwdContext;
@@ -474,47 +475,148 @@ class TenantIsolationSystemTest extends SystemTestSupport {
     }
 
     @Test
-    @DisplayName("ST-B2: Checkpointer session state isolation in real Redis via DeepAgent config")
+    @DisplayName("ST-B2: Checkpointer session save/restore and tenant isolation via DeepAgent execution")
     void testCheckpointer_redisTenantIsolation() throws Exception {
+        assumeRemoteModelAvailable();
         assumeRedisAvailable();
 
-        // Configure DeepAgent with Redis-backed KV store via framework SPI
+        // 1. Configure DeepAgent with Redis-backed KV store via framework SPI.
+        //    HarnessFactory → KVStoreFactory.create("redis") → RedisStore.
         DeepAgent agent = createRedisBackedAgent(uniqueId("cp-redis-agent"));
         RedisStore redisStore = (RedisStore) agent.getKvStore();
-        RedisCheckpointer checkpointer = new RedisCheckpointer(redisStore, Map.of());
+        assertNotNull(agent.getKvStore(), "kvStore should be injected by HarnessFactory");
+        assertTrue(agent.getKvStore() instanceof RedisStore,
+                "kvStore should be a RedisStore (framework SPI created Jedis + RedisStore)");
 
-        // Clean any leftover keys
+        // 2. Build a RedisCheckpointer backed by the same RedisStore and install
+        //    it as the global default. In production, RunnerImpl.start() does
+        //    exactly this: creates a checkpointer from RunnerConfig and calls
+        //    CheckpointerFactory.setDefaultCheckpointer(cp).
+        RedisCheckpointer cp = new RedisCheckpointer(redisStore, Map.of());
+        CheckpointerFactory.setDefaultCheckpointer(cp);
+
+        // Clean any leftover keys from previous runs
         redisStore.deleteByPrefix("cp_tenant_a:", null);
         redisStore.deleteByPrefix("cp_tenant_b:", null);
 
-        String sessionId = "cp-sess-" + UUID.randomUUID().toString().substring(0, 8);
+        String sessionId = trackSessionId("cp-e2e");
+        String markerKey = "st_b2_checkpoint_marker";
+        String markerValue = "tenant_a_state_" + UUID.randomUUID().toString().substring(0, 8);
 
-        // Tenant A: write a state key through the same resolver the checkpointer uses
+        // --- Phase 1: Tenant A executes with full checkpointer lifecycle ---
+        //    Manually orchestrate preRun → invoke → updateState → postRun,
+        //    mirroring RunnerImpl.runAgent(). The tenant context must be on
+        //    the thread when preRun/postRun fire so that
+        //    TenantKVStoreKeyResolver produces tenant-prefixed keys.
         TenantContext tenantA = TenantContext.builder().tenantId("cp_tenant_a").build();
         TenantContextHolder.setCurrentTenant(tenantA);
         try {
-            String stateKey = TenantKVStoreKeyResolver.resolveKey(
-                    sessionId + ":agent:react_agent:state_blobs");
-            assertTrue(stateKey.startsWith("cp_tenant_a:"),
-                    "tenant A state key should be prefixed: " + stateKey);
-            redisStore.set(stateKey, "stateA");
-            assertTrue(checkpointer.sessionExists(sessionId),
-                    "sessionExists should return true for tenant A's own session");
+            AgentSessionApi sessionA = AgentSessionApi.create(sessionId, null, agent.getCard())
+                    .withTenantContext(tenantA);
+
+            // preRun triggers checkpointer.preAgentExecute →
+            // agentStorage.recover (first run: no prior state in Redis)
+            // + writes INTERACTIVE_INPUT into session state.
+            Map<String, Object> inputsA = Map.of(
+                    "query", "Reply with the exact token CP_ACK.",
+                    "conversation_id", sessionId);
+            sessionA.preRun(inputsA);
+
+            // DeepAgent.invoke sets tenant context internally and runs the
+            // task loop (LLM-driven ReAct agent). After invoke returns,
+            // DeepAgent clears TenantContextHolder in its finally block.
+            agent.invoke(inputsA, sessionA);
+
+            // DeepAgent.invoke clears TenantContextHolder; re-set before
+            // postRun so the checkpointer resolves keys under tenant A.
+            TenantContextHolder.setCurrentTenant(tenantA);
+
+            // Inject a recognizable marker AFTER invoke, BEFORE postRun.
+            // This ensures the marker is captured in the checkpoint data
+            // that postAgentExecute serializes and writes to Redis.
+            sessionA.updateState(Map.of(markerKey, markerValue));
+
+            // postRun triggers checkpointer.postAgentExecute →
+            // agentStorage.save → serializes session state and writes two
+            // keys to Redis under the cp_tenant_a: prefix:
+            //   cp_tenant_a:{sessionId}:agent:{agentId}:agent_state_blobs_dump_type
+            //   cp_tenant_a:{sessionId}:agent:{agentId}:agent_state_blobs
+            sessionA.postRun();
         } finally {
             TenantContextHolder.clearCurrentTenant();
         }
 
-        // Tenant B: cannot see tenant A's session state
+        // --- Phase 2: Verify checkpoint was saved to Redis ---
+        TenantContextHolder.setCurrentTenant(tenantA);
+        try {
+            assertTrue(cp.sessionExists(sessionId),
+                    "RedisCheckpointer should report session exists after "
+                    + "postAgentExecute saved state to Redis");
+
+            Map<String, Object> keysA = redisStore.getByPrefix("cp_tenant_a:");
+            assertFalse(keysA.isEmpty(),
+                    "Redis should contain tenant A's checkpoint keys. Keys: " + keysA.keySet());
+            assertTrue(keysA.keySet().stream().anyMatch(k -> k.contains("agent_state_blobs")),
+                    "tenant A checkpoint should include agent_state_blobs keys. Keys: " + keysA.keySet());
+        } finally {
+            TenantContextHolder.clearCurrentTenant();
+        }
+
+        // --- Phase 3: Restore session under tenant A ---
+        //    Create a new AgentSessionApi with the same sessionId.
+        //    preRun triggers checkpointer.preAgentExecute →
+        //    agentStorage.recover, which reads the state from Redis
+        //    and calls session.state().setState(savedMap).
+        TenantContextHolder.setCurrentTenant(tenantA);
+        try {
+            AgentSessionApi restoredSession = AgentSessionApi.create(sessionId, null, agent.getCard())
+                    .withTenantContext(tenantA);
+
+            Map<String, Object> restoreInputs = Map.of(
+                    "query", "Continuing after checkpoint restore.",
+                    "conversation_id", sessionId);
+
+            // preRun → checkpointer.preAgentExecute → agentStorage.recover
+            // → deserializes state from Redis and restores via setState()
+            restoredSession.preRun(restoreInputs);
+
+            // The marker we injected before postRun should be present in the
+            // restored state, proving that agentStorage.recover successfully
+            // deserialized and restored the checkpoint from Redis.
+            Object restoredMarker = restoredSession.getState(markerKey);
+            assertEquals(markerValue, restoredMarker,
+                    "restored session should contain the marker value that was "
+                    + "checkpointed by tenant A's postAgentExecute");
+        } finally {
+            TenantContextHolder.clearCurrentTenant();
+        }
+
+        // --- Phase 4: Tenant B cannot see tenant A's checkpoint state ---
         TenantContext tenantB = TenantContext.builder().tenantId("cp_tenant_b").build();
         TenantContextHolder.setCurrentTenant(tenantB);
         try {
-            assertFalse(checkpointer.sessionExists(sessionId),
-                    "sessionExists should return false for tenant B (cannot see tenant A's session)");
+            // sessionExists resolves the prefix under tenant B's namespace,
+            // so it should find no keys for the same logical sessionId.
+            assertFalse(cp.sessionExists(sessionId),
+                    "tenant B's checkpointer.sessionExists should return false — "
+                    + "tenant A's checkpoint keys live under cp_tenant_a:, not cp_tenant_b:");
+
+            // Even if tenant B creates a session with the same sessionId,
+            // preRun recovers nothing (no checkpoint under cp_tenant_b: prefix).
+            AgentSessionApi sessionB = AgentSessionApi.create(sessionId, null, agent.getCard())
+                    .withTenantContext(tenantB);
+            sessionB.preRun(Map.of("query", "isolation probe", "conversation_id", sessionId));
+
+            Object crossTenantState = sessionB.getState(markerKey);
+            assertNull(crossTenantState,
+                    "tenant B's restored session should not contain tenant A's "
+                    + "checkpoint marker — cross-tenant state isolation holds");
         } finally {
             TenantContextHolder.clearCurrentTenant();
         }
 
-        // Cleanup Redis keys
+        // Cleanup: reset default checkpointer and delete Redis test keys
+        CheckpointerFactory.setDefaultCheckpointer(null);
         redisStore.deleteByPrefix("cp_tenant_a:", null);
         redisStore.deleteByPrefix("cp_tenant_b:", null);
 

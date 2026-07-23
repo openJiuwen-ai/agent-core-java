@@ -11,7 +11,6 @@ import com.openjiuwen.core.session.checkpointer.PersistenceCheckpointer;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -104,19 +103,6 @@ class TenantCheckpointerIsolationTest {
         assertThat(kvStore.get(resolvedKeyB)).isEqualTo("data_b");
     }
 
-    @Test
-    @Disabled("需 Redis 环境时启用：RedisCheckpointer 依赖真实 RedisStore/Redis 客户端")
-    void testRedisCheckpointer_tenantIsolation() {
-        // 骨架：当 Redis 可用时，验证 RedisCheckpointer 的租户隔离。
-        // RedisCheckpointer.sessionExists 与 release 通过
-        //   TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":")
-        // 计算 tenantId: 前缀，预期行为：
-        //   1) tenant_a 下写入 "tenant_a:session-1:agent:..." 键 → sessionExists("session-1") 为 true
-        //   2) 切换 tenant_b 后 sessionExists("session-1") 为 false（不同租户同 sessionId 隔离）
-        //   3) release("session-1") 在 tenant_a 下仅删除 "tenant_a:session-1:" 前缀键，tenant_b 数据保留
-        // 启用方式：构造 RedisStore(RedisClient) → new RedisCheckpointer(redisStore, ttl) 后填入上述断言。
-        assertThat(true).as("Redis 隔离骨架占位").isTrue();
-    }
 
     @Test
     void testCheckpointer_releaseByPrefix_deletesTenantData() {

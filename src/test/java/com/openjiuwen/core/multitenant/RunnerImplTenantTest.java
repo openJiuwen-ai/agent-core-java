@@ -1,3 +1,4 @@
+
 package com.openjiuwen.core.multitenant;
 
 import com.openjiuwen.core.runner.RunnerConfig;
@@ -8,7 +9,6 @@ import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.sysop.cwd.CwdContext;
 
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,6 +21,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -67,7 +68,8 @@ class RunnerImplTenantTest {
     private TenantContext invokeResolveTenantContext(Object session, TenantContext explicitCtx) throws Exception {
         Method method = RunnerImpl.class.getDeclaredMethod("resolveTenantContext", Object.class, TenantContext.class);
         method.setAccessible(true);
-        return (TenantContext) method.invoke(runner, session, explicitCtx);
+        Optional<TenantContext> result = (Optional<TenantContext>) method.invoke(runner, session, explicitCtx);
+        return result.orElse(null);
     }
 
     private void invokeBindTenantContext(TenantContext ctx) throws Exception {
@@ -151,8 +153,8 @@ class RunnerImplTenantTest {
     @Test
     @DisplayName("bindTenantContext: sets CwdContext when workspaceResolver is available")
     void testBindTenantContext_setsCwdContext() throws Exception {
-        RunnerConfig config = RunnerConfig.builder().distributedMode(false)
-                .enableTenantIsolation(true).tenantDataRoot(tempDir.toString()).build();
+        RunnerConfig config = RunnerConfig.builder().distributedMode(false).enableTenantIsolation(true)
+                .tenantDataRoot(tempDir.toString()).build();
         runner = new RunnerImpl("cwd-test", config);
         runner.start();
 
@@ -171,8 +173,8 @@ class RunnerImplTenantTest {
     @Test
     @DisplayName("runAgent with TenantContext: binds during execution, unbinds after")
     void testRunAgent_withTenantCtx_bindsAndUnbinds() {
-        RunnerConfig config = RunnerConfig.builder().distributedMode(false)
-                .enableTenantIsolation(true).tenantDataRoot(tempDir.toString()).build();
+        RunnerConfig config = RunnerConfig.builder().distributedMode(false).enableTenantIsolation(true)
+                .tenantDataRoot(tempDir.toString()).build();
         runner = new RunnerImpl("agent-bind-unbind", config);
         runner.start();
 
@@ -193,8 +195,8 @@ class RunnerImplTenantTest {
     @Test
     @DisplayName("runAgentStreaming: tenantUnbindIterator delays unbind until iterator exhausted")
     void testRunAgentStreaming_tenantUnbindIterator_delaysUnbind() {
-        RunnerConfig config = RunnerConfig.builder().distributedMode(false)
-                .enableTenantIsolation(true).tenantDataRoot(tempDir.toString()).build();
+        RunnerConfig config = RunnerConfig.builder().distributedMode(false).enableTenantIsolation(true)
+                .tenantDataRoot(tempDir.toString()).build();
         runner = new RunnerImpl("stream-delay", config);
         runner.start();
 
@@ -203,8 +205,8 @@ class RunnerImplTenantTest {
         String sessionId = "stream_delay_session";
         trackSession(sessionId);
 
-        Iterator<Object> iterator = runner.runAgentStreaming(
-                agent, Map.of("conversation_id", sessionId), null, null, null, null, tenantCtx);
+        Iterator<Object> iterator = runner.runAgentStreaming(agent, Map.of("conversation_id", sessionId), null, null,
+                null, null, tenantCtx);
 
         assertThat(TenantContextHolder.getCurrentTenant()).isNotNull();
         assertThat(TenantContextHolder.getCurrentTenant().getTenantId()).isEqualTo("stream_tenant");
@@ -228,8 +230,8 @@ class RunnerImplTenantTest {
     @Test
     @DisplayName("runAgentStreaming: tenantUnbindIterator unbinds on exception")
     void testRunAgentStreaming_tenantUnbindIterator_unbindsOnException() {
-        RunnerConfig config = RunnerConfig.builder().distributedMode(false)
-                .enableTenantIsolation(true).tenantDataRoot(tempDir.toString()).build();
+        RunnerConfig config = RunnerConfig.builder().distributedMode(false).enableTenantIsolation(true)
+                .tenantDataRoot(tempDir.toString()).build();
         runner = new RunnerImpl("stream-err", config);
         runner.start();
 
@@ -238,8 +240,8 @@ class RunnerImplTenantTest {
         String sessionId = "stream_err_session";
         trackSession(sessionId);
 
-        Iterator<Object> iterator = runner.runAgentStreaming(
-                agent, Map.of("conversation_id", sessionId), null, null, null, null, tenantCtx);
+        Iterator<Object> iterator = runner.runAgentStreaming(agent, Map.of("conversation_id", sessionId), null, null,
+                null, null, tenantCtx);
 
         assertThatThrownBy(() -> {
             while (iterator.hasNext()) {
@@ -273,8 +275,8 @@ class RunnerImplTenantTest {
     @Test
     @DisplayName("runAgentGroup with TenantContext: verifies TenantContext propagation")
     void testRunAgentGroup_withTenantCtx() {
-        RunnerConfig config = RunnerConfig.builder().distributedMode(false)
-                .enableTenantIsolation(true).tenantDataRoot(tempDir.toString()).build();
+        RunnerConfig config = RunnerConfig.builder().distributedMode(false).enableTenantIsolation(true)
+                .tenantDataRoot(tempDir.toString()).build();
         runner = new RunnerImpl("group-tenant", config);
         runner.start();
 
@@ -291,12 +293,6 @@ class RunnerImplTenantTest {
         assertThat(TenantContextHolder.getCurrentTenant()).isNull();
     }
 
-    @Test
-    @DisplayName("runWorkflow with TenantContext: skipped — requires registered Workflow instance")
-    void testRunWorkflow_withTenantCtx() {
-        Assumptions.assumeTrue(false,
-                "runWorkflow with TenantContext requires a registered Workflow instance; skipped in unit test");
-    }
 
     private static class TenantCaptureAgent {
         public Map<String, Object> invoke(Map<String, Object> inputs, AgentSessionApi session) {
