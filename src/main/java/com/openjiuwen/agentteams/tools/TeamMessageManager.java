@@ -259,25 +259,6 @@ public class TeamMessageManager {
     }
 
     /**
-     * Batch mark a list of messages read for one member.
-     *
-     * <p>Mirrors Python 0.1.15 {@code message_manager.mark_messages_read}.
-     * Returns the number of messages successfully marked read. Used by
-     * {@code MessageHandler._process_unread_messages} which collects
-     * delivered ids and batch-marks them in its {@code finally} block.</p>
-     *
-     * @param messageIds the message ids to mark read
-     * @param readerMemberName the member name reading the messages
-     * @return the number of messages successfully marked read
-     */
-    public int markMessagesRead(List<String> messageIds, String readerMemberName) {
-        if (db == null || messageIds == null || messageIds.isEmpty()) {
-            return 0;
-        }
-        return db.message.markMessagesRead(messageIds, readerMemberName);
-    }
-
-    /**
      * Restore a list of messages by clearing existing team messages and re-inserting the provided ones.
      *
      * @param restoredMessages the messages to restore; may be {@code null}

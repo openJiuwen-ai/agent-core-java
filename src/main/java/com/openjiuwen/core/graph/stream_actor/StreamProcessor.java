@@ -47,44 +47,77 @@ public class StreamProcessor {
 
     /**
      * LinkedBlockingQueue<>.
-     * 
+     *
      * @since 0.1.7
      */
     private final BlockingQueue<StreamPayload> queue = new LinkedBlockingQueue<>();
 
     /**
      * HashMap<>.
-     * 
+     *
      * @since 0.1.7
      */
     private final Map<String, List<BlockingQueue<Object>>> processorQueues = new HashMap<>();
+
+    /**
+     * Source groups (CNF OR-groups). The processor finishes once each group has
+     * at least one handled source. Mirrors Python {@code StreamProcessor.source_groups}.
+     *
+     * @since 0.1.7
+     */
+    private final List<Set<String>> sourceGroups;
+
+    /**
+     * Union of all source keys across groups, for fast membership tests.
+     *
+     * @since 0.1.7
+     */
     private final Set<String> sources;
+
     private final long timeoutSeconds;
 
     /**
      * StreamProcessor.
-     * 
+     *
      * @param nodeId nodeId
-     * @param sources sources
+     * @param sourceGroups sourceGroups (CNF OR-groups)
      * @param streamGeneratorTimeoutSeconds streamGeneratorTimeoutSeconds
      * @since 0.1.7
      */
-    public StreamProcessor(String nodeId, List<String> sources, long streamGeneratorTimeoutSeconds) {
+    public StreamProcessor(String nodeId, List<Set<String>> sourceGroups, long streamGeneratorTimeoutSeconds) {
         this.nodeId = nodeId;
-        this.sources = new HashSet<>(sources);
+        this.sourceGroups = new ArrayList<>();
+        Set<String> allSources = new HashSet<>();
+        if (sourceGroups != null) {
+            for (Set<String> group : sourceGroups) {
+                if (group != null && !group.isEmpty()) {
+                    Set<String> copy = new HashSet<>(group);
+                    this.sourceGroups.add(copy);
+                    allSources.addAll(copy);
+                }
+            }
+        }
+        this.sources = allSources;
         this.timeoutSeconds = streamGeneratorTimeoutSeconds > 0 ? streamGeneratorTimeoutSeconds : 0;
     }
 
     /**
      * Main processing loop. Reads from the queue and dispatches to processor queues.
      * Should be run on a virtual thread.
-     * 
+     *
+     * <p>Mirrors Python {@code StreamProcessor.run}: a consumer's stream
+     * processor finishes once every CNF OR-group has at least one handled source.
+     * For single-source groups that source must send its end frame; for
+     * multi-source groups (mutually-exclusive branches) any one source finishing
+     * completes the group.
+     *
      * @param ability the component ability being processed
      * @since 0.1.7
      */
     public void run(ComponentAbility ability) {
         Set<String> handleMap = new HashSet<>();
-        Map<ComponentAbility, Set<String>> sourceMap = new HashMap<>();
+        // source_path_map[producer_id] = set of schema paths this source produced.
+        Map<String, Set<String>> sourcePathMap = new HashMap<>();
 
         while (true) {
             StreamPayload payload;
@@ -102,28 +135,20 @@ public class StreamProcessor {
             if (isEndMessage(message)) {
                 String sourceId = getProducerId(message);
                 handleMap.add(sourceKey);
-                for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
-                    String path = SessionUtils.extractOriginKey(entry.getKey());
-                    boolean isHandled = false;
-                    Set<String> paths = sourceMap.get(sourceAbility);
-                    if (paths != null) {
-                        isHandled = paths.contains(path);
-                    }
-                    boolean isAllFinish = handleMap.equals(sources);
-                    if ((isHandled || isAllFinish) && isValueFromSource(path, sourceId)) {
-                        for (BlockingQueue<Object> q : entry.getValue()) {
-                            q.offer(END_SENTINEL);
-                        }
-                    }
+                closeQueuesForSourceKey(sourceId, sourceKey, sourcePathMap);
+
+                if (allSourceGroupsFinished(handleMap)) {
+                    closeAllQueues(sourceId);
                 }
             } else {
+                closeInactiveGroupSources(sourceKey);
                 for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
                     String path = SessionUtils.extractOriginKey(entry.getKey());
                     Object value = (message instanceof Map<?, ?> messageMap)
                             ? SessionUtils.getValueByNestedPath(path, (Map<String, Object>) messageMap)
                             : null;
                     if (value != null) {
-                        sourceMap.computeIfAbsent(sourceAbility, k -> new HashSet<>()).add(path);
+                        sourcePathMap.computeIfAbsent(sourceKey, k -> new HashSet<>()).add(path);
                         for (BlockingQueue<Object> q : entry.getValue()) {
                             q.offer(value);
                         }
@@ -131,8 +156,114 @@ public class StreamProcessor {
                 }
             }
 
-            if (handleMap.equals(sources)) {
+            if (allSourceGroupsFinished(handleMap)) {
                 break;
+            }
+        }
+    }
+
+    /**
+     * Check whether every source group has at least one handled source.
+     * Mirrors Python {@code StreamProcessor._all_source_groups_finished}.
+     *
+     * @param handledSources handledSources
+     * @return the result
+     * @since 0.1.7
+     */
+    private boolean allSourceGroupsFinished(Set<String> handledSources) {
+        if (sourceGroups.isEmpty()) {
+            return false;
+        }
+        for (Set<String> group : sourceGroups) {
+            boolean hasIntersection = false;
+            for (String source : group) {
+                if (handledSources.contains(source)) {
+                    hasIntersection = true;
+                    break;
+                }
+            }
+            if (!hasIntersection) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * For multi-source OR-groups, when one source starts producing, close the
+     * inactive alternatives so the consumer does not wait for them.
+     * Mirrors Python {@code StreamProcessor._close_inactive_group_sources}.
+     *
+     * @param activeSourceKey activeSourceKey
+     * @since 0.1.7
+     */
+    private void closeInactiveGroupSources(String activeSourceKey) {
+        for (Set<String> group : sourceGroups) {
+            if (!group.contains(activeSourceKey) || group.size() <= 1) {
+                continue;
+            }
+            for (String inactiveSourceKey : group) {
+                if (inactiveSourceKey.equals(activeSourceKey)) {
+                    continue;
+                }
+                String sourceId = producerIdFromSourceKey(inactiveSourceKey);
+                closeQueuesForSource(sourceId);
+            }
+        }
+    }
+
+    /**
+     * Offer END_SENTINEL to processor queues that the given source actually
+     * produced data for. Mirrors Python
+     * {@code StreamProcessor._close_queues_for_source_key}.
+     *
+     * @param sourceId sourceId
+     * @param sourceKey sourceKey
+     * @param sourcePathMap sourcePathMap
+     * @since 0.1.7
+     */
+    private void closeQueuesForSourceKey(String sourceId, String sourceKey,
+            Map<String, Set<String>> sourcePathMap) {
+        Set<String> handledPaths = sourcePathMap.get(sourceKey);
+        if (handledPaths == null) {
+            return;
+        }
+        for (String path : handledPaths) {
+            for (BlockingQueue<Object> q : processorQueues.getOrDefault(path, List.of())) {
+                q.offer(END_SENTINEL);
+            }
+        }
+    }
+
+    /**
+     * Offer END_SENTINEL to every processor queue whose origin path belongs to
+     * the given source. Mirrors Python {@code StreamProcessor._close_queues_for_source}.
+     *
+     * @param sourceId sourceId
+     * @since 0.1.7
+     */
+    private void closeQueuesForSource(String sourceId) {
+        for (Map.Entry<String, List<BlockingQueue<Object>>> entry : processorQueues.entrySet()) {
+            String path = SessionUtils.extractOriginKey(entry.getKey());
+            if (isValueFromSource(path, sourceId)) {
+                for (BlockingQueue<Object> q : entry.getValue()) {
+                    q.offer(END_SENTINEL);
+                }
+            }
+        }
+    }
+
+    /**
+     * Offer END_SENTINEL to every processor queue.
+     * Mirrors Python {@code StreamProcessor._close_all_queues}.
+     *
+     * @param sourceId sourceId
+     * @since 0.1.7
+     */
+    private void closeAllQueues(String sourceId) {
+        for (List<BlockingQueue<Object>> queues : processorQueues.values()) {
+            for (BlockingQueue<Object> q : queues) {
+                q.offer(END_SENTINEL);
             }
         }
     }
@@ -265,6 +396,19 @@ public class StreamProcessor {
         String sourceId = getProducerId(payload.getMessage());
         String ability = payload.getSourceAbility().name();
         return sourceId + "-" + ability;
+    }
+
+    /**
+     * Extract the producer id from a "{producer_id}-{ABILITY}" source key.
+     * Mirrors Python {@code StreamProcessor._producer_id_from_source_key}.
+     *
+     * @param sourceKey sourceKey
+     * @return the result
+     * @since 0.1.7
+     */
+    private static String producerIdFromSourceKey(String sourceKey) {
+        int idx = sourceKey.lastIndexOf('-');
+        return idx > 0 ? sourceKey.substring(0, idx) : sourceKey;
     }
 
     @SuppressWarnings("unchecked")

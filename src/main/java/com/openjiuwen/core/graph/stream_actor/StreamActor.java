@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -58,20 +59,20 @@ public class StreamActor {
 
     /**
      * StreamActor.
-     * 
+     *
      * @param nodeId nodeId
      * @param vertex vertex
      * @param abilities abilities
-     * @param sources sources
+     * @param sourceGroups source groups (CNF OR-groups) consumed by this vertex
      * @param streamGeneratorTimeoutSeconds streamGeneratorTimeoutSeconds
      * @since 0.1.7
      */
-    public StreamActor(String nodeId, StreamConsumer vertex, List<ComponentAbility> abilities, List<String> sources,
-            long streamGeneratorTimeoutSeconds) {
+    public StreamActor(String nodeId, StreamConsumer vertex, List<ComponentAbility> abilities,
+            List<Set<String>> sourceGroups, long streamGeneratorTimeoutSeconds) {
         this.nodeId = nodeId;
         this.vertex = vertex;
         for (ComponentAbility ability : abilities) {
-            processors.put(ability, new StreamProcessor(nodeId, sources, streamGeneratorTimeoutSeconds));
+            processors.put(ability, new StreamProcessor(nodeId, sourceGroups, streamGeneratorTimeoutSeconds));
         }
     }
 

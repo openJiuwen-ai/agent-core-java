@@ -7,16 +7,13 @@ package com.openjiuwen.agentteams.teamworkspace;
 import com.openjiuwen.core.common.concurrent.OpenJiuwenExecutors;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -45,13 +42,6 @@ public class TeamWorkspaceManager {
      * @since 0.1.7
      */
     private final Map<String, WorkspaceFileLock> locks = new LinkedHashMap<>();
-
-    /**
-     * ArrayList<>.
-     * 
-     * @since 0.1.7
-     */
-    private final List<String> cleanupPaths = new ArrayList<>();
 
     /**
      * TeamWorkspaceManager.
@@ -93,36 +83,6 @@ public class TeamWorkspaceManager {
             Files.createDirectories(Path.of(workspacePath).resolve(dir));
         }
         Files.createDirectories(Path.of(workspacePath).resolve("skills"));
-    }
-
-    /**
-     * mountIntoWorkspace.
-     * 
-     * @param workspaceRoot workspaceRoot
-     * @throws IOException IOException
-     * @since 0.1.7
-     */
-    public void mountIntoWorkspace(String workspaceRoot) throws IOException {
-        Path teamDir = Path.of(workspaceRoot).resolve(".team");
-        Files.createDirectories(teamDir);
-        Path linkPath = teamDir.resolve(teamName);
-        if (!Files.exists(linkPath)) {
-            mountDirectory(Path.of(workspacePath), linkPath);
-        }
-    }
-
-    /**
-     * mountIntoWorktree.
-     * 
-     * @param worktreePath worktreePath
-     * @throws IOException IOException
-     * @since 0.1.7
-     */
-    public void mountIntoWorktree(String worktreePath) throws IOException {
-        Path linkPath = Path.of(worktreePath).resolve(".team");
-        if (!Files.exists(linkPath)) {
-            mountDirectory(Path.of(workspacePath), linkPath);
-        }
     }
 
     /**
@@ -291,66 +251,6 @@ public class TeamWorkspaceManager {
             return new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             return "";
-        }
-    }
-
-    /**
-     * registerCleanupPath.
-     * 
-     * @param path path
-     * @since 0.1.7
-     */
-    public void registerCleanupPath(String path) {
-        if (path != null && !path.isBlank()) {
-            cleanupPaths.add(path);
-        }
-    }
-
-    /**
-     * removeCleanupPaths.
-     * 
-     * @throws IOException IOException
-     * @since 0.1.7
-     */
-    public void removeCleanupPaths() throws IOException {
-        cleanupPaths.stream().sorted(Comparator.<String>comparingInt(path -> Path.of(path).getNameCount()).reversed())
-                .map(path -> Path.of(path)).filter(Files::exists).forEach(path -> {
-                    try {
-                        if (Files.isDirectory(path)) {
-                            try (var stream = Files.walk(path)) {
-                                stream.sorted(Comparator.reverseOrder()).forEach(p -> {
-                                    try {
-                                        Files.deleteIfExists(p);
-                                    } catch (IOException e) {
-                                        throw new UncheckedIOException(e);
-                                    }
-                                });
-                            }
-                        } else {
-                            Files.deleteIfExists(path);
-                        }
-                    } catch (IOException e) {
-                        throw new UncheckedIOException(e);
-                    }
-                });
-    }
-
-    /**
-     * mountDirectory.
-     * 
-     * @param targetPath targetPath
-     * @param linkPath linkPath
-     * @throws IOException IOException
-     * @since 0.1.7
-     */
-    private void mountDirectory(Path targetPath, Path linkPath) throws IOException {
-        try {
-            Files.createSymbolicLink(linkPath, targetPath);
-        } catch (UnsupportedOperationException | IOException ex) {
-            if (!System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win")) {
-                throw ex;
-            }
-            throw ex;
         }
     }
 

@@ -133,7 +133,9 @@ public class End extends WorkflowComponent {
                         filtered.put(entry.getKey(), entry.getValue());
                     }
                 }
-                return filtered.isEmpty() ? null : Map.of("output", filtered);
+                // Mirrors Python End.invoke: {"output": output} when output is not None,
+                // including the empty-dict case (inputs Map whose values are all null).
+                return Map.of("output", filtered.isEmpty() ? Map.of() : filtered);
             }
             return Map.of("output", inputs);
         }

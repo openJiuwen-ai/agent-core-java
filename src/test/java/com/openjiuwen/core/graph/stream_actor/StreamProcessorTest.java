@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -25,7 +26,8 @@ class StreamProcessorTest {
     @Test
     @DisplayName("generator routes stream chunks to schema iterators and ends cleanly")
     void testGeneratorRoutesChunks() throws Exception {
-        StreamProcessor processor = new StreamProcessor("collector", List.of("producer-STREAM"), 1);
+        StreamProcessor processor =
+                new StreamProcessor("collector", List.of(Set.of("producer-STREAM")), 1);
         List<Object> callbacks = new CopyOnWriteArrayList<>();
 
         Map<String, Object> generated = processor.generator(

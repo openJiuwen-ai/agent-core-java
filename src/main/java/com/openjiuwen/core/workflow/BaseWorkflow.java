@@ -27,6 +27,8 @@ import com.openjiuwen.core.workflow.component.loop.LoopGroup;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -417,6 +419,77 @@ public class BaseWorkflow implements HasDrawable {
         completeLoopNodeAbilities(edgeTopology, userProvided);
         completeStreamNodeAbilities(edgeTopology, userProvided);
         completeInvokeAbilities(edgeTopology, userProvided);
+        completeStreamSourceGroups(edgeTopology);
+    }
+
+    /**
+     * Build stream consumer source groups aligned with Pregel barrier groups.
+     * Mirrors Python {@code BaseWorkflow._complete_stream_source_groups}.
+     *
+     * <p>Java has no branch-target resolver yet, so each producer-id group is
+     * used as-is. For a single-producer group, the group expands to one source
+     * per STREAM/TRANSFORM ability of that producer (COLLECT is excluded — it
+     * is a batch-out ability and never produces stream chunks on the wire).
+     *
+     * @param edgeTopology edgeTopology
+     * @since 0.1.7
+     */
+    private void completeStreamSourceGroups(EdgeTopology edgeTopology) {
+        Map<String, List<Set<String>>> sourceGroups = new LinkedHashMap<>();
+        for (Map.Entry<String, List<String>> entry : edgeTopology.getTargetStreamMap().entrySet()) {
+            List<Set<String>> streamGroups = buildStreamGroupsForConsumer(entry.getValue());
+            if (!streamGroups.isEmpty()) {
+                sourceGroups.put(entry.getKey(), streamGroups);
+            }
+        }
+        workflowSpec.setStreamSourceGroups(sourceGroups);
+    }
+
+    /**
+     * Build the list of CNF OR-groups for one consumer. Each producer-id group
+     * from the edge topology becomes one OR-group. A single-producer group is
+     * expanded into one OR-group per STREAM/TRANSFORM ability of that producer
+     * (COLLECT is excluded — it is a batch-out ability and never produces stream
+     * chunks on the wire). A multi-producer group is collapsed into a single
+     * multi-source OR-group.
+     *
+     * @param producerIds producerIds
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<Set<String>> buildStreamGroupsForConsumer(List<String> producerIds) {
+        List<Set<String>> streamGroups = new ArrayList<>();
+        for (String producerId : producerIds) {
+            List<Set<String>> abilityGroups = collectStreamAbilityGroups(producerId);
+            streamGroups.addAll(abilityGroups);
+        }
+        return streamGroups;
+    }
+
+    /**
+     * Collect STREAM/TRANSFORM source keys (producer-id + ability name) for a
+     * single producer. Each ability becomes its own single-source OR-group, so
+     * the result is a list of singletons rather than one combined set. Returns
+     * an empty list when the producer has no such abilities or is not in the
+     * workflow spec.
+     *
+     * @param producerId producerId
+     * @return the result
+     * @since 0.1.7
+     */
+    private List<Set<String>> collectStreamAbilityGroups(String producerId) {
+        List<Set<String>> abilityGroups = new ArrayList<>();
+        NodeConfig producerConfig = workflowSpec.getCompConfigs().get(producerId);
+        if (producerConfig != null && producerConfig.getAbilities() != null) {
+            for (ComponentAbility ability : producerConfig.getAbilities()) {
+                if (ability == ComponentAbility.STREAM || ability == ComponentAbility.TRANSFORM) {
+                    Set<String> singleAbility = new LinkedHashSet<>();
+                    singleAbility.add(producerId + "-" + ability.name());
+                    abilityGroups.add(singleAbility);
+                }
+            }
+        }
+        return abilityGroups;
     }
 
     /**

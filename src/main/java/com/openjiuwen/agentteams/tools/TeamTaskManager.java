@@ -177,40 +177,6 @@ public class TeamTaskManager {
     }
 
     /**
-     * Configure where member plan files and approvals are persisted.
-     *
-     * <p>Mirrors Python {@code task_manager.configure_plan_storage}. Allows
-     * the hosting TeamAgent to override the default plan storage location
-     * after construction (used when the actual user-customized workspace
-     * path is resolved later than the manager constructor).</p>
-     *
-     * @param plansDir plans directory; null is ignored
-     * @param teamPlanId team plan id; null/blank is ignored
-     */
-    public void configurePlanStorage(Path plansDir, String teamPlanId) {
-        if (plansDir != null) {
-            this.plansDir = plansDir;
-        }
-        if (teamPlanId != null && !teamPlanId.isBlank()) {
-            this.teamPlanId = safeToken(teamPlanId, "team_plan");
-        }
-    }
-
-    /**
-     * Set the leader member name used for member plan review notifications.
-     *
-     * <p>Mirrors the lazy {@code _resolve_leader_member_name} fallback in
-     * Python {@code task_manager}. Setter form so callers that learn the
-     * leader name late (e.g. after a DB row read) can wire it without
-     * reconstructing the manager.</p>
-     *
-     * @param leaderMemberName leader member name; null is treated as empty
-     */
-    public void setLeaderMemberName(String leaderMemberName) {
-        this.leaderMemberName = leaderMemberName != null ? leaderMemberName.trim() : "";
-    }
-
-    /**
      * Create a task with no explicit id or dependencies.
      *
      * @param title task title
@@ -333,39 +299,6 @@ public class TeamTaskManager {
             });
         }
         return chain;
-    }
-
-    /**
-     * Create a task with forward and reverse dependency edges.
-     * Mirrors Python {@code task_manager.add_with_priority}.
-     *
-     * @param title task title
-     * @param content task content
-     * @param taskId task id; null generates a random UUID
-     * @param dependsOn task ids this task depends on
-     * @param dependedBy task ids that depend on this new task
-     * @return CompletableFuture with the created TeamTask
-     */
-    public CompletableFuture<TeamTask> addWithPriority(
-            String title, String content, String taskId,
-            List<String> dependsOn, List<String> dependedBy) {
-        String resolvedId = taskId != null ? taskId : UUID.randomUUID().toString();
-        List<String> allDeps = new ArrayList<>();
-        if (dependsOn != null) {
-            allDeps.addAll(dependsOn);
-        }
-
-        // dependedBy: other tasks that depend on this new task
-        // (mirrors Python add_with_priority depended_by parameter)
-        if (dependedBy != null && !dependedBy.isEmpty()) {
-            for (String depTaskId : dependedBy) {
-                // Add dependency edges: depTaskId -> this task
-                if (db != null) {
-                    db.task.addDependency(depTaskId, resolvedId);
-                }
-            }
-        }
-        return add(title, content, resolvedId, allDeps);
     }
 
     /**
@@ -1670,90 +1603,6 @@ public class TeamTaskManager {
             return List.of();
         }
         return db.task.getDependencies(taskId);
-    }
-
-    /**
-     * List tasks with dependency information.
-     * Mirrors Python list_tasks_with_deps(status).
-     *
-     * @param status optional status filter
-     * @return list of task maps with depends_on and depended_by info
-     */
-    public List<Map<String, Object>> listTasksWithDeps(String status) {
-        List<TeamTask> tasks = list();
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (TeamTask task : tasks) {
-            if (status != null && !status.equals(task.getStatus())) {
-                continue;
-            }
-            Map<String, Object> entry = new java.util.LinkedHashMap<>();
-            entry.put("task_id", task.getTaskId());
-            entry.put("title", task.getTitle());
-            entry.put("status", task.getStatus());
-            entry.put("assignee", task.getAssignee());
-            entry.put("content", task.getContent());
-
-            // depends_on: what this task depends on
-            List<String> deps = getDependencies(task.getTaskId());
-            entry.put("depends_on", deps);
-
-            // depended_by: tasks that depend on this task
-            List<String> dependedBy = db != null
-                    ? db.task.getTasksDependingOn(task.getTaskId()).stream()
-                    .map(com.openjiuwen.agentteams.tools.database.TaskRecord::getTaskId)
-                    .toList()
-                    : List.of();
-            entry.put("depended_by", dependedBy);
-            result.add(entry);
-        }
-        return result;
-    }
-
-    /**
-     * Get detailed task information including dependency graph.
-     * Mirrors Python get_task_detail(task_id).
-     *
-     * @param taskId the task ID
-     * @return an {@link Optional} containing the detailed task map,
-     *     or {@link Optional#empty()} if the task is not found
-     */
-    public Optional<Map<String, Object>> getTaskDetail(String taskId) {
-        Optional<TeamTask> taskOpt = get(taskId);
-        if (taskOpt.isEmpty()) {
-            return Optional.empty();
-        }
-        TeamTask task = taskOpt.get();
-        Map<String, Object> detail = new java.util.LinkedHashMap<>();
-        detail.put("task_id", task.getTaskId());
-        detail.put("team_name", task.getTeamName());
-        detail.put("title", task.getTitle());
-        detail.put("content", task.getContent());
-        detail.put("status", task.getStatus());
-        detail.put("assignee", task.getAssignee());
-        detail.put("updated_at", task.getUpdatedAt());
-
-        // depends_on details
-        List<String> deps = getDependencies(taskId);
-        List<String> depStatuses = new ArrayList<>();
-        for (String depId : deps) {
-            Optional<TeamTask> depOpt = get(depId);
-            if (depOpt.isPresent()) {
-                depStatuses.add(depId + ":" + depOpt.get().getStatus());
-            } else {
-                depStatuses.add(depId + ":unknown");
-            }
-        }
-        detail.put("depends_on", deps);
-        detail.put("depends_on_statuses", depStatuses);
-
-        // tasks that depend on this (blocks)
-        List<String> blocks = db != null
-                ? db.task.getTasksDependingOn(taskId).stream()
-                .map(com.openjiuwen.agentteams.tools.database.TaskRecord::getTaskId)
-                .toList()
-                : List.of();
-        detail.put("blocks", blocks);
-        return Optional.of(detail);
     }
 
     private static String stringValue(Object value) {
