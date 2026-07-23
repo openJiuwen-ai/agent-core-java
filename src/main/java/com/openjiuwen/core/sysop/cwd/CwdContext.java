@@ -4,7 +4,6 @@
 
 package com.openjiuwen.core.sysop.cwd;
 
-import java.io.IOException;
 import java.nio.file.Path;
 
 /**
@@ -206,17 +205,13 @@ public final class CwdContext {
         if (root == null) {
             return true;
         }
-        Path normalized = toRealOrAbsolutePath(path);
-        Path rootPath = toRealOrAbsolutePath(Path.of(root));
+        // Use toAbsolutePath().normalize() for both sides to ensure consistent
+        // comparison on platforms like Windows where toRealPath() may produce
+        // a different path representation (e.g. short names, case differences)
+        // for existing directories vs non-existing files.
+        Path normalized = path.toAbsolutePath().normalize();
+        Path rootPath = Path.of(root).toAbsolutePath().normalize();
         return normalized.startsWith(rootPath);
-    }
-
-    private static Path toRealOrAbsolutePath(Path p) {
-        try {
-            return p.toRealPath();
-        } catch (IOException e) {
-            return p.toAbsolutePath().normalize();
-        }
     }
 
     /**
