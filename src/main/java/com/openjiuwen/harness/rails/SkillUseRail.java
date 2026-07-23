@@ -67,10 +67,12 @@ public class SkillUseRail extends DeepAgentRail {
      */
     private final List<Tool> tools = new ArrayList<>();
     private boolean enableCache = true;
-    private List<Map.Entry<String, Long>> skillsSnapshotSignature = null;
+
     OverlaySkillManager overlaySkillManager;
     SkillManager tenantSkillManager;
     TenantWorkspaceResolver railWorkspaceResolver;
+
+    private List<Map.Entry<String, Long>> skillsSnapshotSignature = null;
 
     /**
      * SkillUseRail.
@@ -185,7 +187,8 @@ public class SkillUseRail extends DeepAgentRail {
             tenantSkillManager = new SkillManager(deepAgent.getCard().getId() + ".tenant");
             Path overlayDir = railWorkspaceResolver.resolveTenantRoot(
                     TenantContext.builder().tenantId("_placeholder").build()).resolve(".overlay");
-            overlaySkillManager = new OverlaySkillManager(tenantSkillManager, skillManager, overlayDir, railWorkspaceResolver);
+            overlaySkillManager = new OverlaySkillManager(tenantSkillManager, skillManager,
+                overlayDir, railWorkspaceResolver);
             listSkillTool = new ListSkillTool(skillsRoot.toString(), railWorkspaceResolver, overlaySkillManager);
             skillTool = new SkillTool(skillsRoot.toString(), railWorkspaceResolver, overlaySkillManager);
         } else {
