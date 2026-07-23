@@ -841,9 +841,13 @@ public class DeepAgent implements AutoCloseable {
             } catch (IllegalArgumentException | IllegalStateException ex) {
                 writeStreamError(effectiveSession, 0, ex);
             } finally {
-                effectiveSession.postRun();
-                if (session != null) {
-                    copySessionState(effectiveSession, session);
+                try {
+                    // 关闭流前先传播状态，避免 Runner 收到 EOF 后保存到旧的外层状态。
+                    if (session != null) {
+                        copySessionState(effectiveSession, session);
+                    }
+                } finally {
+                    effectiveSession.postRun();
                 }
             }
         });
