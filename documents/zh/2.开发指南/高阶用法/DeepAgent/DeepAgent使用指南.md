@@ -18,6 +18,7 @@ DeepAgent 是 openjiuwen Java Harness 层的高阶智能体封装，在核心 `R
   - [3. Rail 使用](#3-rail-使用llm-调用前注入用户偏好)
   - [4. 权限中断](#4-权限中断禁止用户发起的文件删除)
 - [Demo 命令速查](#demo-命令速查)
+- [多租户隔离](#多租户隔离)
 - [注意事项](#注意事项)
 
 ---
@@ -427,6 +428,35 @@ mvn -q exec:java "-Dexec.args=permission-delete"
 # 全部 demo 列表
 mvn -q exec:java "-Dexec.args=list"
 ```
+
+---
+
+## 多租户隔离
+
+DeepAgent 自 `0.1.7` 起支持多租户数据隔离。在 `DeepAgentConfig` 上设置 `enableTenantIsolation(true)` 即进入**严格模式**：每次调用必须携带有效 `TenantContext`，否则 `invoke` / `stream` 在绑定工作区之前直接抛 `IllegalStateException`（`Tenant isolation is enabled but no tenantId was provided`），不会静默回退到默认工作区。
+
+传入 tenantId 的两种 DeepAgent 入口：
+
+```java
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.session.AgentSessionApi;
+
+TenantContext tenantCtx = TenantContext.builder().tenantId("dept-01").build();
+
+// 快捷入口：直接 bind/unbind
+Map<String, Object> result = agent.invoke(inputs, tenantCtx);
+
+// Session 内嵌（推荐）：session 携带 tenantContext，invoke(inputs, session) 自动提取
+AgentSessionApi session = AgentSessionApi.create(sessionId, null, agent.getCard())
+        .withTenantContext(tenantCtx);
+agent.invoke(inputs, session);
+```
+
+- `enableTenantIsolation=false`（默认）时行为与历史完全一致，不传 tenantId 也不会报错。
+- `tenantId` 必须匹配 `[a-zA-Z0-9_-]+`，否则 `TenantContextHolder.setCurrentTenant()` 抛 `IllegalArgumentException`。
+- DeepAgent 实现 `AutoCloseable`，`close()` 会停止 `TmpFileCleaner`，适合 try-with-resources 管理生命周期。
+
+完整的隔离资源清单、目录结构、KV 前缀、安全防护与清理接口，见 [多租户数据隔离](../多租户数据隔离.md)。
 
 ---
 
