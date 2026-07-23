@@ -24,7 +24,18 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class AgentGroupSessionApi extends AgentSessionApi {
     private String teamId;
-    private String currentAgentId;
+
+    /**
+     * Per-thread current agent id. Stored in a {@link ThreadLocal} so that
+     * concurrent tool-call execution (e.g. {@code AbilityManager}'s parallel
+     * dispatch) does not let one dispatching thread overwrite the
+     * {@code source_agent_id} another thread writes via {@link #writeStream}.
+     * Mirrors the call-stack-scoped current-agent semantics of Python's
+     * {@code ContextVar}-backed session.
+     *
+     * @since 0.1.14
+     */
+    private final ThreadLocal<String> currentAgentId = new ThreadLocal<>();
 
     /**
      * AtomicInteger.
@@ -102,7 +113,7 @@ public class AgentGroupSessionApi extends AgentSessionApi {
      * @since 0.1.7
      */
     public String getCurrentAgentId() {
-        return currentAgentId;
+        return currentAgentId.get();
     }
 
     /**
@@ -112,7 +123,7 @@ public class AgentGroupSessionApi extends AgentSessionApi {
      * @since 0.1.7
      */
     public void setCurrentAgentId(String currentAgentId) {
-        this.currentAgentId = currentAgentId;
+        this.currentAgentId.set(currentAgentId);
     }
 
     /**
@@ -151,8 +162,9 @@ public class AgentGroupSessionApi extends AgentSessionApi {
             if (teamId != null && !map.containsKey("source_team_id")) {
                 map.put("source_team_id", teamId);
             }
-            if (!p2pPayload && currentAgentId != null && !map.containsKey("source_agent_id")) {
-                map.put("source_agent_id", currentAgentId);
+            String agentId = getCurrentAgentId();
+            if (!p2pPayload && agentId != null && !map.containsKey("source_agent_id")) {
+                map.put("source_agent_id", agentId);
             }
             return map;
         }
@@ -164,8 +176,9 @@ public class AgentGroupSessionApi extends AgentSessionApi {
                 if (teamId != null && !map.containsKey("source_team_id")) {
                     map.put("source_team_id", teamId);
                 }
-                if (!p2pPayload && currentAgentId != null && !map.containsKey("source_agent_id")) {
-                    map.put("source_agent_id", currentAgentId);
+                String agentId = getCurrentAgentId();
+                if (!p2pPayload && agentId != null && !map.containsKey("source_agent_id")) {
+                    map.put("source_agent_id", agentId);
                 }
                 schema.setPayload(map);
             }
