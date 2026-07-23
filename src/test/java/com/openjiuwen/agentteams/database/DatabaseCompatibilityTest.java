@@ -13,6 +13,8 @@ import com.openjiuwen.agentteams.tools.database.TaskDependencyRecord;
 import com.openjiuwen.agentteams.tools.database.TaskMutationResult;
 import com.openjiuwen.agentteams.tools.database.TeamDatabase;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -22,6 +24,22 @@ import java.util.List;
 class DatabaseCompatibilityTest {
     @TempDir
     Path tempDir;
+
+    private SpawnContext.SessionToken savedToken;
+
+    @BeforeEach
+    void clearSpawnContext() {
+        // Reset SpawnContext's InheritableThreadLocal before each test so that
+        // session-id leaks from earlier test classes (e.g. TeamAgentCompatibilityTest
+        // which pins a generated UUID via TeamAgent.applySessionId) do not poison
+        // the _global_ fallback relied upon by the non-SpawnContext tests below.
+        savedToken = SpawnContext.setSessionId("");
+    }
+
+    @AfterEach
+    void restoreSpawnContext() {
+        SpawnContext.resetSessionId(savedToken);
+    }
 
     @Test
     void databaseConfigShouldExposeExpectedDefaults() {
