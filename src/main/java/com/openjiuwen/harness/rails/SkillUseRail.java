@@ -49,6 +49,10 @@ public class SkillUseRail extends DeepAgentRail {
     private static final String SKILL_SECTION = "skills";
     private static final int SKILL_SECTION_PRIORITY = 90;
 
+    OverlaySkillManager overlaySkillManager;
+    SkillManager tenantSkillManager;
+    TenantWorkspaceResolver railWorkspaceResolver;
+
     private DeepAgent owner;
     private SkillManager skillManager;
     private ListSkillTool listSkillTool;
@@ -67,11 +71,6 @@ public class SkillUseRail extends DeepAgentRail {
      */
     private final List<Tool> tools = new ArrayList<>();
     private boolean enableCache = true;
-
-    OverlaySkillManager overlaySkillManager;
-    SkillManager tenantSkillManager;
-    TenantWorkspaceResolver railWorkspaceResolver;
-
     private List<Map.Entry<String, Long>> skillsSnapshotSignature = null;
 
     /**
