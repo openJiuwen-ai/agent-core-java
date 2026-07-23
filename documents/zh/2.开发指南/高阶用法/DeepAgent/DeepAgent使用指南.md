@@ -468,6 +468,7 @@ agent.invoke(inputs, session);
 4. **自定义 Tool**：派生 `Tool` 并实现 `invoke()` / `stream()`；`LocalFunction` 适用于简单函数包装。
 5. **权限配置**：`permissions.enabled=true` 时 `ensureInitialized()` 自动挂载 `PermissionInterruptRail`；可与自定义 Guard Rail 叠加。
 6. **LLM 配置**：编辑 `apiconfig.json`，或通过环境变量 `API_KEY`、`API_BASE` 等覆盖。
+7. **Todo 存储配置**：默认使用本地文件（`todoStorageType="file"`）；生产环境可配置 `todoStorageType="kv"` + `kvStoreConfig` 切换到 Redis 存储，Todo 与 Checkpointer 共享同一套 KV 连接配置。详见 [多租户数据隔离](../多租户数据隔离.md) 的「Todo 存储可替换」章节。
 
 ---
 
