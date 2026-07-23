@@ -4,10 +4,7 @@
 
 package com.openjiuwen.harness.tools;
 
-import com.openjiuwen.core.common.security.JsonUtils;
-
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,16 +19,36 @@ import java.util.UUID;
  * @since 0.1.7
  */
 public class TodoTool {
-    private final Path workspace;
+    private final TodoStorage storage;
+
+    public TodoTool(String workspace) {
+        this.storage = new FileTodoStorage(Path.of(workspace != null ? workspace : "."));
+    }
+
+    public TodoTool(TodoStorage storage) {
+        this.storage = Objects.requireNonNull(storage);
+    }
 
     /**
-     * TodoTool.
-     * 
-     * @param workspace workspace
+     * fromConfig.
+     *
+     * @param storageType storageType
+     * @param conf conf
+     * @return the result
      * @since 0.1.7
      */
-    public TodoTool(String workspace) {
-        this.workspace = Path.of(workspace != null ? workspace : ".").toAbsolutePath().normalize();
+    public static TodoTool fromConfig(String storageType, Map<String, Object> conf) {
+        if (TodoStorageFactory.hasProvider(storageType)) {
+            return new TodoTool(TodoStorageFactory.create(storageType, conf));
+        }
+        String basePath = ".";
+        if (conf != null) {
+            Object raw = conf.getOrDefault("basePath", ".");
+            if (raw instanceof String s) {
+                basePath = s;
+            }
+        }
+        return new TodoTool(basePath);
     }
 
     /**
@@ -61,37 +78,26 @@ public class TodoTool {
 
     /**
      * load.
-     * 
+     *
      * @param sessionId sessionId
      * @return the result
      * @throws IOException IOException
      * @since 0.1.7
      */
     public List<TodoItem> load(String sessionId) throws IOException {
-        Path file = filePath(sessionId);
-        if (!Files.exists(file)) {
-            return new ArrayList<>();
-        }
-        String json = Files.readString(file);
-        if (json.isBlank()) {
-            return new ArrayList<>();
-        }
-        TodoItem[] items = JsonUtils.safeJsonLoads(json, TodoItem[].class, new TodoItem[0]);
-        return new ArrayList<>(List.of(items));
+        return storage.load(sessionId);
     }
 
     /**
      * save.
-     * 
+     *
      * @param sessionId sessionId
      * @param todos todos
      * @throws IOException IOException
      * @since 0.1.7
      */
     public void save(String sessionId, List<TodoItem> todos) throws IOException {
-        Path file = filePath(sessionId);
-        Files.createDirectories(file.getParent());
-        Files.writeString(file, JsonUtils.safeJsonDumps(todos, "[]"));
+        storage.save(sessionId, todos);
     }
 
     /**
@@ -190,17 +196,6 @@ public class TodoTool {
         } catch (RuntimeException | IOException e) {
             return ToolOutput.builder().success(false).error(e.getMessage()).build();
         }
-    }
-
-    /**
-     * filePath.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
-    private Path filePath(String sessionId) {
-        return workspace.resolve(sessionId).resolve("todo.json");
     }
 
     /**

@@ -80,6 +80,18 @@ class RunnerConfigTest {
         }
 
         @Test
+        @DisplayName("DEFAULT has enableTenantIsolation=false")
+        void defaultEnableTenantIsolation() {
+            assertFalse(RunnerConfig.DEFAULT.isEnableTenantIsolation());
+        }
+
+        @Test
+        @DisplayName("DEFAULT has null tenantDataRoot")
+        void defaultTenantDataRoot() {
+            assertNull(RunnerConfig.DEFAULT.getTenantDataRoot());
+        }
+
+        @Test
         @DisplayName("DEFAULT has non-null instanceId")
         void defaultInstanceId() {
             assertNotNull(RunnerConfig.DEFAULT.getInstanceId());
@@ -472,6 +484,8 @@ class RunnerConfigTest {
             assertNull(config.getKvStoreConfig());
             assertNull(config.getVectorStoreConfig());
             assertNull(config.getObjectStorageConfig());
+            assertFalse(config.isEnableTenantIsolation());
+            assertNull(config.getTenantDataRoot());
         }
 
         @Test
@@ -483,7 +497,7 @@ class RunnerConfigTest {
             Map<String, Object> obsConfig = Map.of("type", "s3");
 
             RunnerConfig config = new RunnerConfig(false, new DistributedConfig(), "test", "instance-1", cpConfig,
-                    List.of(), kvConfig, vsConfig, obsConfig);
+                    List.of(), kvConfig, vsConfig, obsConfig, true, "/data/tenants");
 
             assertFalse(config.isDistributedMode());
             assertEquals("test", config.getEnvPrefix());
@@ -492,6 +506,82 @@ class RunnerConfigTest {
             assertEquals("in_memory", config.getKvStoreConfig().get("type"));
             assertEquals("chroma", config.getVectorStoreConfig().get("type"));
             assertEquals("s3", config.getObjectStorageConfig().get("type"));
+            assertTrue(config.isEnableTenantIsolation());
+            assertEquals("/data/tenants", config.getTenantDataRoot());
+        }
+    }
+
+    // ========== Tenant isolation config ==========
+
+    @Nested
+    @DisplayName("Tenant isolation config")
+    class TenantIsolationConfig {
+        @Test
+        @DisplayName("DEFAULT has enableTenantIsolation=false")
+        void testDefaultEnableTenantIsolation() {
+            assertFalse(RunnerConfig.DEFAULT.isEnableTenantIsolation());
+        }
+
+        @Test
+        @DisplayName("DEFAULT has null tenantDataRoot")
+        void testDefaultTenantDataRoot() {
+            assertNull(RunnerConfig.DEFAULT.getTenantDataRoot());
+        }
+
+        @Test
+        @DisplayName("Builder sets enableTenantIsolation=true and tenantDataRoot")
+        void testBuilderSetsTenantFields() {
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false)
+                    .enableTenantIsolation(true).tenantDataRoot("/data/tenants").build();
+
+            assertTrue(config.isEnableTenantIsolation());
+            assertEquals("/data/tenants", config.getTenantDataRoot());
+        }
+
+        @Test
+        @DisplayName("No-arg constructor has enableTenantIsolation=false and null tenantDataRoot")
+        void testNoArgConstructorTenantDefaults() {
+            RunnerConfig config = new RunnerConfig();
+            assertFalse(config.isEnableTenantIsolation());
+            assertNull(config.getTenantDataRoot());
+        }
+
+        @Test
+        @DisplayName("All-args constructor with 11 args sets tenant fields")
+        void testAllArgsConstructorTenantFields() {
+            Map<String, Object> cpConfig = Map.of("type", "redis");
+            Map<String, Object> kvConfig = Map.of("type", "in_memory");
+            Map<String, Object> vsConfig = Map.of("type", "chroma");
+            Map<String, Object> obsConfig = Map.of("type", "s3");
+
+            RunnerConfig config = new RunnerConfig(false, new DistributedConfig(), "test", "instance-1",
+                    cpConfig, List.of(), kvConfig, vsConfig, obsConfig, true, "/data/tenants");
+
+            assertTrue(config.isEnableTenantIsolation());
+            assertEquals("/data/tenants", config.getTenantDataRoot());
+        }
+
+        @Test
+        @DisplayName("setRunnerConfig preserves tenant fields")
+        void testGlobalConfigPreservesTenantFields() {
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false)
+                    .enableTenantIsolation(true).tenantDataRoot("/data/tenants").build();
+            RunnerConfig.setRunnerConfig(config);
+
+            RunnerConfig retrieved = RunnerConfig.getRunnerConfig();
+            assertTrue(retrieved.isEnableTenantIsolation());
+            assertEquals("/data/tenants", retrieved.getTenantDataRoot());
+        }
+
+        @Test
+        @DisplayName("RunnerImpl with tenant-enabled config")
+        void testRunnerImplWithTenantEnabledConfig() {
+            RunnerConfig config = RunnerConfig.builder().distributedMode(false)
+                    .enableTenantIsolation(true).tenantDataRoot("/data/tenants").build();
+
+            RunnerImpl runner = new RunnerImpl("tenant-runner", config);
+            assertTrue(runner.getConfig().isEnableTenantIsolation());
+            assertEquals("/data/tenants", runner.getConfig().getTenantDataRoot());
         }
     }
 

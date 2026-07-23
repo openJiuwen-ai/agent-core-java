@@ -9,6 +9,9 @@ import com.openjiuwen.core.common.exception.ErrorHelper;
 import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.common.reactive.ReactiveAdapters;
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
+import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.MessageQueueFactory;
@@ -26,6 +29,7 @@ import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.WorkflowSessionApi;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.stream.StreamMode;
+import com.openjiuwen.core.sysop.cwd.CwdContext;
 import com.openjiuwen.core.workflow.Workflow;
 import com.openjiuwen.core.workflow.WorkflowChunk;
 
@@ -38,11 +42,13 @@ import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -64,6 +70,8 @@ public class RunnerImpl {
     private final ResourceMgr resourceManager;
     private final LocalMessageQueue messageQueue;
     private final CallbackFramework callbackFramework;
+
+    private TenantWorkspaceResolver workspaceResolver;
 
     /** Distributed message queue (null if not in distributed mode). */
     private volatile MessageQueueBase distributeMessageQueue;
@@ -196,6 +204,15 @@ public class RunnerImpl {
                 logger.error("Failed to initializing checkpointer with type: {}, runnerId={}", type, runnerId, e);
                 throw e;
             }
+        }
+
+        if (RunnerConfig.getRunnerConfig().isEnableTenantIsolation()) {
+            String dataRoot = RunnerConfig.getRunnerConfig().getTenantDataRoot();
+            if (dataRoot == null || dataRoot.isEmpty()) {
+                dataRoot = System.getProperty("user.dir");
+            }
+            workspaceResolver = new TenantWorkspaceResolver(dataRoot);
+            logger.info("Tenant isolation enabled, dataRoot={}", dataRoot);
         }
 
         if (RunnerConfig.getRunnerConfig().isDistributedMode()) {
@@ -435,6 +452,250 @@ public class RunnerImpl {
         groupSession.preRun(inputs);
         Iterator<Object> iterator = streamAgentGroup(groupInstance, inputs, groupSession, context);
         return wrapStreamingIterator(iterator, groupSession);
+    }
+
+    private void bindTenantContext(TenantContext ctx) {
+        if (ctx != null && ctx.isTenantAware()) {
+            TenantContextHolder.setCurrentTenant(ctx);
+            if (workspaceResolver != null) {
+                workspaceResolver.initializeTenantSpace(ctx);
+                Path tenantWorkspace = workspaceResolver.resolveWorkspaceRoot(ctx);
+                CwdContext.setWorkspace(tenantWorkspace.toString());
+                CwdContext.setOriginalCwd(tenantWorkspace.toString());
+                CwdContext.setTenantRoot(workspaceResolver.resolveTenantRoot(ctx).toString());
+            }
+        }
+    }
+
+    private void unbindTenantContext() {
+        TenantContextHolder.clearCurrentTenant();
+        CwdContext.reset();
+    }
+
+    private Optional<TenantContext> resolveTenantContext(Object session, TenantContext explicitTenantCtx) {
+        if (explicitTenantCtx != null) {
+            return Optional.of(explicitTenantCtx);
+        }
+        if (session instanceof AgentSessionApi apiSession) {
+            TenantContext sessionCtx = apiSession.getTenantContext();
+            if (sessionCtx != null && sessionCtx.isTenantAware()) {
+                return Optional.of(sessionCtx);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Execute a workflow with tenant context binding.
+     *
+     * @param workflow workflow instance or identifier
+     * @param inputs workflow inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return workflow execution result
+     * @since 0.1.7
+     */
+    public Object runWorkflow(Object workflow, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs, TenantContext tenantCtx) {
+        bindTenantContext(resolveTenantContext(session, tenantCtx).orElse(null));
+        try {
+            return runWorkflow(workflow, inputs, session, context, envs);
+        } finally {
+            unbindTenantContext();
+        }
+    }
+
+    /**
+     * Execute a workflow with streaming output support and tenant context binding.
+     *
+     * @param workflow workflow instance or identifier
+     * @param inputs workflow inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param streamModes stream output modes
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return Iterator of streaming chunks
+     * @since 0.1.7
+     */
+    public Iterator<WorkflowChunk> runWorkflowStreaming(Object workflow, Object inputs, Object session,
+            ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
+        bindTenantContext(resolveTenantContext(session, tenantCtx).orElse(null));
+        boolean isSuccessful = false;
+        try {
+            Iterator<WorkflowChunk> inner = runWorkflowStreaming(workflow, inputs, session, context, streamModes, envs);
+            isSuccessful = true;
+            return wrapTenantUnbindIterator(inner);
+        } finally {
+            if (!isSuccessful) {
+                unbindTenantContext();
+            }
+        }
+    }
+
+    /**
+     * Execute an agent with tenant context binding.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return agent execution result
+     * @since 0.1.7
+     */
+    public Object runAgent(Object agent, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs, TenantContext tenantCtx) {
+        bindTenantContext(resolveTenantContext(session, tenantCtx).orElse(null));
+        try {
+            return runAgent(agent, inputs, session, context, envs);
+        } finally {
+            unbindTenantContext();
+        }
+    }
+
+    /**
+     * Execute an agent with streaming output support and tenant context binding.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param streamModes stream output modes
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return Iterator of streaming chunks
+     * @since 0.1.7
+     */
+    public Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context,
+            List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
+        bindTenantContext(resolveTenantContext(session, tenantCtx).orElse(null));
+        boolean isSuccessful = false;
+        try {
+            Iterator<Object> inner = runAgentStreaming(agent, inputs, session, context, streamModes, envs);
+            isSuccessful = true;
+            return wrapTenantUnbindIterator(inner);
+        } finally {
+            if (!isSuccessful) {
+                unbindTenantContext();
+            }
+        }
+    }
+
+    /**
+     * Execute a group of agents with tenant context binding.
+     *
+     * @param agentGroup agent group instance or identifier
+     * @param inputs input data for the agent group
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return agent group execution result
+     * @since 0.1.7
+     */
+    public Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs, TenantContext tenantCtx) {
+        bindTenantContext(resolveTenantContext(session, tenantCtx).orElse(null));
+        try {
+            return runAgentGroup(agentGroup, inputs, session, context, envs);
+        } finally {
+            unbindTenantContext();
+        }
+    }
+
+    /**
+     * Execute a group of agents with streaming output support and tenant context binding.
+     *
+     * @param agentGroup agent group instance or identifier
+     * @param inputs input data for the agent group
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param streamModes stream output modes
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return Iterator of streaming chunks
+     * @since 0.1.7
+     */
+    public Iterator<Object> runAgentGroupStreaming(Object agentGroup, Object inputs, Object session,
+            ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
+        bindTenantContext(resolveTenantContext(session, tenantCtx).orElse(null));
+        boolean isSuccessful = false;
+        try {
+            Iterator<Object> inner = runAgentGroupStreaming(agentGroup, inputs, session, context, streamModes, envs);
+            isSuccessful = true;
+            return wrapTenantUnbindIterator(inner);
+        } finally {
+            if (!isSuccessful) {
+                unbindTenantContext();
+            }
+        }
+    }
+
+    /**
+     * Reactive version of {@link #runAgent(Object, Object, Object, ModelContext, Map)} with tenant context binding.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return Mono emitting the agent result
+     * @since 0.1.7
+     */
+    public Mono<Object> runAgentAsync(Object agent, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs, TenantContext tenantCtx) {
+        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+        if (resolved.isEmpty()) {
+            return runAgentAsync(agent, inputs, session, context, envs);
+        }
+        TenantContext captured = resolved.get();
+        return ReactiveAdapters.fromCallable(() -> {
+            bindTenantContext(captured);
+            try {
+                return runAgent(agent, inputs, session, context, envs);
+            } finally {
+                unbindTenantContext();
+            }
+        });
+    }
+
+    /**
+     * Reactive version of {@link #runAgentStreaming(Object, Object, Object, ModelContext, List, Map)}
+     * with tenant context binding.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param streamModes stream output modes
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return Flux emitting stream chunks
+     * @since 0.1.7
+     */
+    public Flux<Object> runAgentStreamingAsync(Object agent, Object inputs, Object session, ModelContext context,
+            List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
+        Optional<TenantContext> resolved = resolveTenantContext(session, tenantCtx);
+        if (resolved.isEmpty()) {
+            return runAgentStreamingAsync(agent, inputs, session, context, streamModes, envs);
+        }
+        TenantContext captured = resolved.get();
+        return deferWithSessionCleanup(sessRef -> {
+            bindTenantContext(captured);
+            Object agentInstance = prepareAgent(agent);
+            AgentSessionApi sess = prepareAgentSession(agentInstance, inputs, session, streamModes);
+            sessRef.set(sess);
+            return ReactiveAdapters.fromAutoCloseableIterator(
+                () -> streamAgent(agentInstance, inputs, sess, context, streamModes));
+        }, (AgentSessionApi sess) -> {
+            sess.postRun();
+            unbindTenantContext();
+        });
     }
 
     /**
@@ -1071,6 +1332,58 @@ public class RunnerImpl {
             }
         }
         return new CloseableStreamingIterator();
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> Iterator<T> wrapTenantUnbindIterator(Iterator<T> delegate) {
+        class TenantUnbindIterator implements Iterator<T>, AutoCloseable {
+            private boolean isUnbound;
+
+            @Override
+            public boolean hasNext() {
+                boolean hasNext = delegate.hasNext();
+                if (!hasNext) {
+                    unbind();
+                }
+                return hasNext;
+            }
+
+            @Override
+            public T next() {
+                try {
+                    T next = delegate.next();
+                    if (!delegate.hasNext()) {
+                        unbind();
+                    }
+                    return next;
+                } catch (NoSuchElementException e) {
+                    unbind();
+                    throw e;
+                } catch (RuntimeException e) {
+                    unbind();
+                    throw e;
+                }
+            }
+
+            private void unbind() {
+                if (!isUnbound) {
+                    unbindTenantContext();
+                    isUnbound = true;
+                }
+            }
+
+            @Override
+            public void close() throws Exception {
+                try {
+                    if (delegate instanceof AutoCloseable closeable) {
+                        closeable.close();
+                    }
+                } finally {
+                    unbind();
+                }
+            }
+        }
+        return new TenantUnbindIterator();
     }
 
     /**

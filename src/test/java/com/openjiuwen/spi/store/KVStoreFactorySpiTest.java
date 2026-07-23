@@ -42,8 +42,8 @@ class KVStoreFactorySpiTest {
     @DisplayName("create() with unknown type throws IllegalArgumentException")
     void createUnknownTypeThrows() {
         IllegalArgumentException ex =
-            assertThrows(IllegalArgumentException.class, () -> KVStoreFactory.create("redis", Map.of()));
-        assertTrue(ex.getMessage().contains("redis"));
+            assertThrows(IllegalArgumentException.class, () -> KVStoreFactory.create("hbase", Map.of()));
+        assertTrue(ex.getMessage().contains("hbase"));
     }
 
     // ========== Manual register() ==========

@@ -5,6 +5,7 @@
 package com.openjiuwen.core.runner;
 
 import com.openjiuwen.core.context.ModelContext;
+import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.runner.callback.CallbackFramework;
 import com.openjiuwen.core.runner.drunner.dmessage_queue.dsubscription.ReplyTopicSubscription;
 import com.openjiuwen.core.runner.mq.LocalMessageQueue;
@@ -388,5 +389,146 @@ public final class Runner {
     public static Flux<Object> runAgentStreamingAsync(Object agent, Object inputs, Object session, ModelContext context,
             List<StreamMode> streamModes, Map<String, Object> envs) {
         return GLOBAL_RUNNER.runAgentStreamingAsync(agent, inputs, session, context, streamModes, envs);
+    }
+
+    /**
+     * Execute a workflow with tenant context binding.
+     *
+     * @param workflow workflow instance or identifier
+     * @param inputs workflow inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return workflow execution result
+     * @since 0.1.7
+     */
+    public static Object runWorkflow(Object workflow, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runWorkflow(workflow, inputs, session, context, envs, tenantCtx);
+    }
+
+    /**
+     * Execute a workflow with streaming output support and tenant context binding.
+     *
+     * @param workflow workflow instance or identifier
+     * @param inputs workflow inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param streamModes stream output modes
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return Iterator of streaming chunks
+     * @since 0.1.7
+     */
+    public static Iterator<WorkflowChunk> runWorkflowStreaming(Object workflow, Object inputs, Object session,
+            ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runWorkflowStreaming(workflow, inputs, session, context, streamModes, envs, tenantCtx);
+    }
+
+    /**
+     * Execute an agent with tenant context binding.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return agent execution result
+     * @since 0.1.7
+     */
+    public static Object runAgent(Object agent, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runAgent(agent, inputs, session, context, envs, tenantCtx);
+    }
+
+    /**
+     * Execute an agent with streaming output support and tenant context binding.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param streamModes stream output modes
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return Iterator of streaming chunks
+     * @since 0.1.7
+     */
+    public static Iterator<Object> runAgentStreaming(Object agent, Object inputs, Object session, ModelContext context,
+            List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runAgentStreaming(agent, inputs, session, context, streamModes, envs, tenantCtx);
+    }
+
+    /**
+     * Execute a group of agents with tenant context binding.
+     *
+     * @param agentGroup agent group instance or identifier
+     * @param inputs input data for the agent group
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return agent group execution result
+     * @since 0.1.7
+     */
+    public static Object runAgentGroup(Object agentGroup, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runAgentGroup(agentGroup, inputs, session, context, envs, tenantCtx);
+    }
+
+    /**
+     * Execute a group of agents with streaming output support and tenant context binding.
+     *
+     * @param agentGroup agent group instance or identifier
+     * @param inputs input data for the agent group
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param streamModes stream output modes
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return Iterator of streaming chunks
+     * @since 0.1.7
+     */
+    public static Iterator<Object> runAgentGroupStreaming(Object agentGroup, Object inputs, Object session,
+            ModelContext context, List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runAgentGroupStreaming(agentGroup, inputs, session, context, streamModes, envs, tenantCtx);
+    }
+
+    /**
+     * Reactive version of {@link #runAgent(Object, Object, Object, ModelContext, Map)} with tenant context binding.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return Mono emitting the agent result
+     * @since 0.1.7
+     */
+    public static Mono<Object> runAgentAsync(Object agent, Object inputs, Object session, ModelContext context,
+            Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runAgentAsync(agent, inputs, session, context, envs, tenantCtx);
+    }
+
+    /**
+     * Reactive version of {@link #runAgentStreaming(Object, Object, Object, ModelContext, List, Map)}
+     * with tenant context binding.
+     *
+     * @param agent agent instance or identifier
+     * @param inputs agent inputs
+     * @param session session object, nullable
+     * @param context model context, nullable
+     * @param streamModes stream output modes
+     * @param envs environment values, nullable
+     * @param tenantCtx tenant context, nullable
+     * @return Flux emitting stream chunks
+     * @since 0.1.7
+     */
+    public static Flux<Object> runAgentStreamingAsync(Object agent, Object inputs, Object session, ModelContext context,
+            List<StreamMode> streamModes, Map<String, Object> envs, TenantContext tenantCtx) {
+        return GLOBAL_RUNNER.runAgentStreamingAsync(agent, inputs, session, context, streamModes, envs, tenantCtx);
     }
 }

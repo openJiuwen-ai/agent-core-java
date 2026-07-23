@@ -7,6 +7,7 @@ package com.openjiuwen.core.memory.manage.index;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.foundation.llm.Model;
 import com.openjiuwen.core.memory.common.KvPrefixRegistry;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.memory.manage.mem_model.BaseMemoryUnit;
 import com.openjiuwen.core.memory.manage.mem_model.VariableUnit;
 import com.openjiuwen.spi.store.BaseKVStore;
@@ -137,8 +138,8 @@ public class VariableManager extends BaseMemoryManager {
             MEMORY_LOGGER.error("[{}] kv_store cannot be None", LogEventType.MEMORY_STORE);
             return false;
         }
-        String userPrefix = USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
-        String sessionPrefix = SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
+        String userPrefix = makeVariablePrefix(USER_VAR_PREFIX, userId, scopeId);
+        String sessionPrefix = makeVariablePrefix(SESSION_VAR_PREFIX, userId, scopeId);
         kvStore.deleteByPrefix(userPrefix, null);
         kvStore.deleteByPrefix(sessionPrefix, null);
         return true;
@@ -208,7 +209,7 @@ public class VariableManager extends BaseMemoryManager {
     public Map<String, String> queryVariable(String userId, String scopeId, String name, String sessionId) {
         checkUserAndScopeId(userId, scopeId);
         if (name == null || name.isBlank()) {
-            String prefix = USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
+            String prefix = makeVariablePrefix(USER_VAR_PREFIX, userId, scopeId);
             Map<String, Object> kvRet = kvStore.getByPrefix(prefix);
             Map<String, String> result = new LinkedHashMap<>();
             if (kvRet != null) {
@@ -223,10 +224,9 @@ public class VariableManager extends BaseMemoryManager {
 
         String key;
         if (sessionId != null) {
-            key = SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + sessionId + SEPARATOR
-                    + name;
+            key = makeVariableKey(userId, scopeId, name, sessionId);
         } else {
-            key = USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + name;
+            key = makeVariableKey(userId, scopeId, name, null);
         }
         Object kvRet = kvStore.get(key);
         String decrypted = decryptMemoryIfNeeded(cryptoKey, kvRet != null ? String.valueOf(kvRet) : null);
@@ -248,11 +248,28 @@ public class VariableManager extends BaseMemoryManager {
      * @since 0.1.7
      */
     private String makeVariableKey(String userId, String scopeId, String varName, String sessionId) {
+        String rawKey;
         if (sessionId != null) {
-            return SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + sessionId + SEPARATOR
+            rawKey = SESSION_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + sessionId + SEPARATOR
                     + varName;
+        } else {
+            rawKey = USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + varName;
         }
-        return USER_VAR_PREFIX + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR + varName;
+        return TenantKVStoreKeyResolver.resolveKey(rawKey);
+    }
+
+    /**
+     * makeVariablePrefix.
+     *
+     * @param prefix prefix
+     * @param userId userId
+     * @param scopeId scopeId
+     * @return the result
+     * @since 0.1.7
+     */
+    private String makeVariablePrefix(String prefix, String userId, String scopeId) {
+        String rawPrefix = prefix + SEPARATOR + userId + SEPARATOR + scopeId + SEPARATOR;
+        return TenantKVStoreKeyResolver.resolvePrefix(rawPrefix);
     }
 
     /**

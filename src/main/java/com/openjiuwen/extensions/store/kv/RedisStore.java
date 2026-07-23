@@ -343,6 +343,33 @@ public class RedisStore extends BaseKVStore {
     }
 
     /**
+     * Release the underlying Redis client resources by invoking its
+     * {@code close()} method via reflection.
+     * <p>
+     * The {@code redisClient} field is typed as {@link Object} to support
+     * multiple Redis client libraries (Jedis, Lettuce, Redisson), so the
+     * {@code close()} call must go through reflection. If the client does
+     * not expose a {@code close()} method, this is a no-op logged at WARN.
+     * Safe to call multiple times.
+     *
+     * @since 0.1.13
+     */
+    @Override
+    public void close() {
+        try {
+            InvocationOutcome outcome = tryInvoke(redisClient, new String[]{"close", "shutdown", "disconnect"});
+            if (!outcome.handled()) {
+                logger.warn("Redis client {} does not expose a close/shutdown/disconnect method; skip close",
+                        redisClient.getClass().getName());
+            } else {
+                logger.debug("Closed Redis client: {}", redisClient.getClass().getName());
+            }
+        } catch (ReflectiveOperationException | IllegalStateException e) {
+            logger.warn("Failed to close Redis client: {}", e.getMessage());
+        }
+    }
+
+    /**
      * detectClusterMode.
      * 
      * @param client client
@@ -852,10 +879,11 @@ public class RedisStore extends BaseKVStore {
      * @param methodNames methodNames
      * @param args args
      * @return the result
-     * @throws Exception Exception
+     * @throws ReflectiveOperationException ReflectiveOperationException
      * @since 0.1.7
      */
-    private InvocationOutcome invokeRequired(Object target, String[] methodNames, Object... args) throws Exception {
+    private InvocationOutcome invokeRequired(Object target, String[] methodNames, Object... args)
+            throws ReflectiveOperationException {
         InvocationOutcome outcome = tryInvoke(target, methodNames, args);
         if (!outcome.handled()) {
             throw new IllegalStateException("Redis client does not support " + Arrays.toString(methodNames));
@@ -870,10 +898,11 @@ public class RedisStore extends BaseKVStore {
      * @param methodNames methodNames
      * @param args args
      * @return the result
-     * @throws Exception Exception
+     * @throws ReflectiveOperationException ReflectiveOperationException
      * @since 0.1.7
      */
-    private InvocationOutcome tryInvoke(Object target, String[] methodNames, Object... args) throws Exception {
+    private InvocationOutcome tryInvoke(Object target, String[] methodNames, Object... args)
+            throws ReflectiveOperationException {
         return tryInvoke(target, methodNames, null, args);
     }
 
@@ -885,11 +914,11 @@ public class RedisStore extends BaseKVStore {
      * @param requiredFirstParamType requiredFirstParamType
      * @param args args
      * @return the result
-     * @throws Exception Exception
+     * @throws ReflectiveOperationException ReflectiveOperationException
      * @since 0.1.7
      */
     private InvocationOutcome tryInvoke(Object target, String[] methodNames, Class<?> requiredFirstParamType,
-            Object... args) throws Exception {
+            Object... args) throws ReflectiveOperationException {
         MethodMatch bestMatch = null;
         for (int nameIndex = 0; nameIndex < methodNames.length; nameIndex++) {
             String methodName = methodNames[nameIndex];
@@ -926,13 +955,11 @@ public class RedisStore extends BaseKVStore {
             return new InvocationOutcome(true, bestMatch.method().invoke(target, bestMatch.arguments()));
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
-            if (cause instanceof Exception exception) {
-                throw exception;
-            }
             if (cause instanceof Error error) {
                 throw error;
             }
-            throw e;
+            throw new IllegalStateException(cause != null ? cause.getMessage() : e.getMessage(),
+                cause != null ? cause : (Throwable) e);
         }
     }
 
