@@ -133,7 +133,6 @@ public class DeepAgent implements AutoCloseable {
     private TenantWorkspaceResolver workspaceResolver;
     private TieredWorkspaceManager tieredWorkspaceManager;
     private TmpFileCleaner tmpFileCleaner;
-    private final AtomicLong requestSeq = new AtomicLong(0);
 
     /**
      * ConcurrentHashMap<>.
@@ -694,15 +693,16 @@ public class DeepAgent implements AutoCloseable {
         normalized.putIfAbsent("conversation_id", card.getName() + "_session");
         normalized.putIfAbsent("query", "");
         if (config.isEnableTaskLoop()) {
-            String requestLevelSessionId = String.valueOf(normalized.get("conversation_id"))
-                    + "_" + requestSeq.incrementAndGet();
+            String requestLevelSessionId = String.valueOf(normalized.get("conversation_id"));
             AgentSessionApi effectiveSession = session != null
                     ? new AgentSessionApi(requestLevelSessionId, session.getEnvs(), card)
                     : new AgentSessionApi(requestLevelSessionId, null, card);
+            effectiveSession.preRun(normalized);
             if (session != null) {
                 copySessionState(session, effectiveSession);
             }
             Map<String, Object> result = runTaskLoop(normalized, effectiveSession);
+            effectiveSession.postRun();
             if (session != null) {
                 copySessionState(effectiveSession, session);
             }
@@ -757,8 +757,7 @@ public class DeepAgent implements AutoCloseable {
      */
     public java.util.Iterator<Object> stream(Map<String, Object> inputs, List<StreamMode> streamModes) {
         String requestLevelSessionId = String.valueOf(inputs.getOrDefault("conversation_id",
-        card.getName() + "_session"))
-                + "_" + requestSeq.incrementAndGet();
+        card.getName() + "_session"));
         AgentSessionApi session = new AgentSessionApi(
                 requestLevelSessionId,
                 null,
@@ -843,8 +842,7 @@ public class DeepAgent implements AutoCloseable {
 
     private AgentSessionApi buildEffectiveStreamSession(Map<String, Object> normalized, AgentSessionApi session,
             List<StreamMode> streamModes) {
-        String baseConversationId = String.valueOf(normalized.get("conversation_id"));
-        String requestLevelSessionId = baseConversationId + "_" + requestSeq.incrementAndGet();
+        String requestLevelSessionId = String.valueOf(normalized.get("conversation_id"));
         if (session != null) {
             return new AgentSessionApi(requestLevelSessionId, session.getEnvs(), this.card,
                     session.getInner().streamWriterManager().getEnabledModes());
