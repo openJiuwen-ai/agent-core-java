@@ -27,6 +27,7 @@ import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.RunnerConfig;
 import com.openjiuwen.core.runner.base.TagMatchStrategy;
 import com.openjiuwen.core.session.AgentSessionApi;
+import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.Session;
 import com.openjiuwen.core.session.checkpointer.CheckpointerFactory;
 import com.openjiuwen.core.session.checkpointer.InMemoryCheckpointer;
@@ -35,6 +36,7 @@ import com.openjiuwen.core.session.interaction.InteractiveInput;
 import com.openjiuwen.core.session.stream.OutputSchema;
 import com.openjiuwen.core.session.stream.StreamMode;
 import com.openjiuwen.core.singleagent.interrupt.InterruptRequest;
+import com.openjiuwen.core.singleagent.interrupt.ToolInterruptionState;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.schema.AgentCard;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
@@ -67,6 +69,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 class HarnessCompatibilityTest {
     private static final String HARNESS_INTERRUPT_PROVIDER = "HarnessInterruptRegression";
@@ -429,6 +432,56 @@ class HarnessCompatibilityTest {
         }
     }
 
+    private static final class DelayedNestedPostRunCheckpointer extends InMemoryCheckpointer {
+        private final String outerSessionId;
+        private final AtomicInteger nestedPostRunCalls = new AtomicInteger();
+        private final CountDownLatch nestedPostRunBlocked = new CountDownLatch(1);
+        private final CountDownLatch releaseNestedPostRun = new CountDownLatch(1);
+        private final CountDownLatch nestedPostRunCompleted = new CountDownLatch(1);
+
+        private DelayedNestedPostRunCheckpointer(String outerSessionId) {
+            this.outerSessionId = outerSessionId;
+        }
+
+        @Override
+        public void postAgentExecute(BaseSession session) {
+            if (!shouldDelay(session)) {
+                super.postAgentExecute(session);
+                return;
+            }
+            nestedPostRunBlocked.countDown();
+            try {
+                if (!releaseNestedPostRun.await(10, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("Timed out waiting to release nested postRun");
+                }
+                super.postAgentExecute(session);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("Interrupted while delaying nested postRun", ex);
+            } finally {
+                nestedPostRunCompleted.countDown();
+            }
+        }
+
+        private boolean shouldDelay(BaseSession session) {
+            String sessionId = session != null ? session.sessionId() : null;
+            return sessionId != null && sessionId.startsWith(outerSessionId + "_")
+                    && nestedPostRunCalls.incrementAndGet() == 2;
+        }
+
+        private boolean awaitNestedPostRunBlocked() throws InterruptedException {
+            return nestedPostRunBlocked.await(10, TimeUnit.SECONDS);
+        }
+
+        private void releaseNestedPostRun() {
+            releaseNestedPostRun.countDown();
+        }
+
+        private boolean awaitNestedPostRunCompleted() throws InterruptedException {
+            return nestedPostRunCompleted.await(10, TimeUnit.SECONDS);
+        }
+    }
+
     private static final class HarnessInterruptTestModelFactory implements Model.ModelClientFactory {
         @Override
         public String providerName() {
@@ -459,8 +512,14 @@ class HarnessCompatibilityTest {
             List<BaseMessage> messageList = toMessages(messages);
             String lastToolContent = findLastContent(messageList, "tool");
             if (lastToolContent == null) {
-                return AssistantMessage.builder().content("").toolCalls(List.of(ToolCall.builder().id("ask-user-call")
-                        .name("ask_user").arguments("{\"question\":\"Please provide your name\"}").build())).build();
+                return AssistantMessage.builder().content("").toolCalls(List.of(
+                        ToolCall.builder().id("ask-user-call-a").name("ask_user")
+                                .arguments("{\"question\":\"Please provide value A\"}").build(),
+                        ToolCall.builder().id("ask-user-call-b").name("ask_user")
+                                .arguments("{\"question\":\"Please provide value B\"}").build(),
+                        ToolCall.builder().id("ask-user-call-c").name("ask_user")
+                                .arguments("{\"question\":\"Please provide value C\"}").build()))
+                        .build();
             }
             return new AssistantMessage("FINAL:" + lastToolContent);
         }
@@ -763,6 +822,46 @@ class HarnessCompatibilityTest {
 
         assertThat(chunks).isNotEmpty();
         assertStreamEventuallyAnswers(chunks, "stream scheduled round");
+    }
+
+    @Test
+    void deepAgentTaskLoopRunnerStreamShouldCheckpointParallelInterruptsBeforeEof() throws InterruptedException {
+        String sessionId = "harness-interrupt-session";
+        DelayedNestedPostRunCheckpointer checkpointer = new DelayedNestedPostRunCheckpointer(sessionId);
+        CheckpointerFactory.setDefaultCheckpointer(checkpointer);
+        DeepAgent agent = HarnessFactory.createDeepAgent(
+                AgentCard.builder().id("harness-interrupt-agent").name("harness-interrupt-agent")
+                        .description("interrupt harness agent").build(),
+                DeepAgentConfig.builder().workspacePath("./repo").enableTaskLoop(true).maxIterations(2)
+                        .rails(List.of(new HarnessAskUserInterruptRail()))
+                        .backend(Map.of("client_provider", HARNESS_INTERRUPT_PROVIDER, "api_key", "test-key",
+                                "api_base", "mirror://single-agent-interrupt"))
+                        .model(Map.of("model", "interrupt-test-model")).build(),
+                null);
+        agent.ensureInitialized();
+        Tool askUserTool = createHarnessAskUserTool();
+        Runner.resourceMgr().addTool(askUserTool, agent.getCard().getId());
+        agent.getAgent().getAbilityManager().add(askUserTool.getCard());
+
+        try {
+            List<Object> firstTurn = collect(Runner.runAgentStreaming(agent,
+                    Map.of("query", "start interrupt flow", "conversation_id", sessionId), null, null,
+                    List.of(StreamMode.OUTPUT)));
+
+            assertNotNull(findInteractionChunk(firstTurn));
+            assertThat(checkpointer.awaitNestedPostRunBlocked()).isTrue();
+
+            AgentSessionApi restoredSession =
+                    AgentSessionApi.create(sessionId, null, agent.getCard(), List.of(StreamMode.OUTPUT));
+            restoredSession.preRun(null);
+            ToolInterruptionState interruptionState = assertInstanceOf(ToolInterruptionState.class,
+                    restoredSession.getState(ToolInterruptionState.INTERRUPTION_KEY));
+            assertThat(interruptionState.getInterruptedTools()).extracting(entry -> entry.getToolCall().getId())
+                    .containsExactly("ask-user-call-a", "ask-user-call-b", "ask-user-call-c");
+        } finally {
+            checkpointer.releaseNestedPostRun();
+        }
+        assertThat(checkpointer.awaitNestedPostRunCompleted()).isTrue();
     }
 
     @Test

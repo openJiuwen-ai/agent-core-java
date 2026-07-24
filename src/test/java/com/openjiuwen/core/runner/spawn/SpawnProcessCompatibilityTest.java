@@ -363,23 +363,20 @@ class SpawnProcessCompatibilityTest {
     private static Message sendInputUntilDone(SpawnedProcessHandle handle, Message input, long timeoutSeconds)
             throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds);
-        AssertionError lastTimeout = null;
-        while (System.nanoTime() < deadline) {
+        while (handle.isAlive() && System.nanoTime() < deadline) {
             handle.sendMessage(input);
-            long remainingSeconds = Math.max(1L, TimeUnit.NANOSECONDS.toSeconds(deadline - System.nanoTime()));
-            try {
-                Message message = receiveMessage(handle, Math.min(3L, remainingSeconds));
-                if (message.getType() == MessageType.DONE || message.getType() == MessageType.ERROR
-                        || message.getType() == MessageType.STREAM_CHUNK) {
+            long retryDeadline = Math.min(deadline, System.nanoTime() + TimeUnit.SECONDS.toNanos(3L));
+            while (handle.isAlive() && System.nanoTime() < retryDeadline) {
+                if (!handle.getStdout().ready()) {
+                    Thread.sleep(10L);
+                    continue;
+                }
+                Message message = handle.receiveMessage();
+                if (message != null && (message.getType() == MessageType.DONE || message.getType() == MessageType.ERROR
+                        || message.getType() == MessageType.STREAM_CHUNK)) {
                     return message;
                 }
-            } catch (AssertionError assertionError) {
-                lastTimeout = assertionError;
-                Thread.sleep(50L);
             }
-        }
-        if (lastTimeout != null) {
-            throw lastTimeout;
         }
         throw new AssertionError("Timed out waiting for DONE after INPUT");
     }

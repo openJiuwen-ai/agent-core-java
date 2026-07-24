@@ -1,5 +1,6 @@
 package com.openjiuwen.core.sysop.cwd;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
@@ -9,6 +10,11 @@ class CwdContextTenantTest {
 
     @BeforeEach
     void reset() {
+        CwdContext.reset();
+    }
+
+    @AfterEach
+    void cleanup() {
         CwdContext.reset();
     }
 
