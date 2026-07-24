@@ -37,7 +37,7 @@ public class AskUserRail extends BaseInterruptRail {
     @Override
     protected InterruptDecision resolveInterrupt(AgentCallbackContext ctx, ToolCall toolCall, Object userInput) {
         if (userInput != null) {
-            return approve();
+            return reject(userInput);
         }
         return interrupt(InterruptRequest.builder().message("ask_user").build());
     }

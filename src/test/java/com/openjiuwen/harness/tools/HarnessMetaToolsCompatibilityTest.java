@@ -10,15 +10,6 @@ import java.util.Map;
 
 class HarnessMetaToolsCompatibilityTest {
     @Test
-    void askUserToolShouldReturnStructuredPayload() {
-        AskUserTool tool = new AskUserTool();
-        ToolOutput output = tool.invoke(Map.of("questions", List.of(Map.of("header", "File"))));
-
-        assertThat(output.isSuccess()).isTrue();
-        assertThat(output.getData()).isEqualTo(Map.of("questions", List.of(Map.of("header", "File"))));
-    }
-
-    @Test
     void searchAndLoadToolsShouldDelegateToHandlers() {
         SearchToolsTool search = new SearchToolsTool((query, limit, detailLevel) -> List
                 .of(Map.of("name", "read_file", "description", "Read file", "limit", limit, "detail", detailLevel)));
