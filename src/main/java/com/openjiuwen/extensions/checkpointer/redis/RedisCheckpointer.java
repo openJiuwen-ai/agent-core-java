@@ -10,6 +10,7 @@ import com.openjiuwen.core.common.exception.StatusCode;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.graph.store.Store;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
 import com.openjiuwen.core.session.checkpointer.CheckpointerProvider;
@@ -174,7 +175,7 @@ public class RedisCheckpointer extends Checkpointer {
             return false;
         }
 
-        return !redisStore.getByPrefix(sessionId + ":").isEmpty();
+        return !redisStore.getByPrefix(TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":")).isEmpty();
     }
 
     /**
@@ -195,7 +196,7 @@ public class RedisCheckpointer extends Checkpointer {
         if (agentId != null) {
             agentStorage.clear(agentId, sessionId).join();
         } else {
-            redisStore.deleteByPrefix(sessionId + ":", 500);
+            redisStore.deleteByPrefix(TenantKVStoreKeyResolver.resolvePrefix(sessionId + ":"), 500);
         }
     }
 

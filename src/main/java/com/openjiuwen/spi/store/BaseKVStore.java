@@ -12,10 +12,15 @@ import java.util.Map;
  * <p>
  * Mirrors Python's {@code BaseKVStore} ABC. In Java, the async methods
  * are replaced with synchronous blocking calls (to be run on virtual threads).
- * 
+ * <p>
+ * Implements {@link AutoCloseable} so that implementations can override
+ * {@link #close()} to release underlying resources (e.g. Redis connection
+ * pool, in-memory map). The default {@link #close()} is a no-op for backward
+ * compatibility with existing implementations that have no resources to release.
+ *
  * @since 0.1.7
  */
-public abstract class BaseKVStore {
+public abstract class BaseKVStore implements AutoCloseable {
     /**
      * set.
      * 
@@ -106,4 +111,21 @@ public abstract class BaseKVStore {
      * @since 0.1.7
      */
     public abstract KVStorePipeline pipeline();
+
+    /**
+     * Release underlying resources associated with this store.
+     * <p>
+     * Default implementation is a no-op for backward compatibility.
+     * Implementations that hold resources (e.g. Redis connection pool,
+     * in-memory map) should override this method to perform cleanup.
+     * <p>
+     * After {@code close()}, the store instance should not be used;
+     * behaviour of subsequent operations is undefined.
+     *
+     * @since 0.1.13
+     */
+    @Override
+    public void close() {
+        // no-op default
+    }
 }

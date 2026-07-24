@@ -12,7 +12,7 @@
 | --- | --- | --- |
 | `Runner` | 全局单例门面，统一暴露 `start()`、`runWorkflow(...)`、`runAgent(...)`、`release(...)` 等静态入口 | 日常调用时 |
 | `RunnerImpl` | 真实执行器，负责 session 准备、资源管理、消息队列启动、checkpointer 初始化 | 理解运行时行为时 |
-| `RunnerConfig` | 运行配置，包含分布式模式、环境前缀、实例 ID 和 `checkpointerConfig` | 启动前配置时 |
+| `RunnerConfig` | 运行配置，包含分布式模式、环境前缀、实例 ID、`checkpointerConfig` 与多租户隔离开关（`enableTenantIsolation` / `tenantDataRoot`） | 启动前配置时 |
 | `DistributedConfig` | 分布式运行相关参数，如 topic 模板、超时、并发数和消息队列配置 | 需要跨进程执行时 |
 | `ResourceMgr` | 统一管理 workflow、agent、group、tool、model、prompt、sysop 等资源 | 你想按 ID 注册 / 获取资源时 |
 | `CallbackFramework` | 事件回调框架，支持 filter、priority、chain、rollback、retry、timeout、metrics 等能力 | 你要观测运行过程或挂接自定义回调时 |
@@ -311,6 +311,22 @@ while (stream.hasNext()) {
 - 执行失败后的回滚 / 降级
 
 就应该从 `CallbackFramework` 和 `runner/callback` 子包继续往下看。
+
+## 多租户隔离入口
+
+`Runner` 暴露了一组带 `TenantContext tenantCtx` 末参的静态重载，签名与各自的无租户版本一致，仅末尾追加 `tenantCtx`：`runWorkflow` / `runWorkflowStreaming` / `runAgent` / `runAgentStreaming` / `runAgentGroup` / `runAgentGroupStreaming` / `runAgentAsync` / `runAgentStreamingAsync`。
+
+```java
+import com.openjiuwen.core.runner.Runner;
+import com.openjiuwen.core.multitenant.TenantContext;
+
+TenantContext tenantCtx = TenantContext.builder().tenantId("dept-01").build();
+Object result = Runner.runAgent(agent, inputs, session, context, envs, tenantCtx);
+```
+
+`RunnerImpl` 统一完成 `resolveTenantContext(session, explicitCtx)` → `bindTenantContext()` → 执行 → `unbindTenantContext()`；流式入口用 `TenantUnbindIterator` 包装器，在迭代结束或异常时才 unbind。`enableTenantIsolation=true` 时入口必须携带有效 `tenantId`，否则严格模式快速失败。
+
+完整的多租户隔离说明（严格模式、隔离资源、目录结构、KV 前缀、安全防护、清理接口）见 [多租户数据隔离](多租户数据隔离.md)。
 
 ## 清理：`release(sessionId)` 做什么
 

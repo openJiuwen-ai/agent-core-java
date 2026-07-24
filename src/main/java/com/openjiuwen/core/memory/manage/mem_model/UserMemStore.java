@@ -13,6 +13,7 @@ import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
 import com.openjiuwen.core.memory.common.KvPrefixRegistry;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.spi.store.BaseKVStore;
 
 import java.util.ArrayList;
@@ -376,7 +377,7 @@ public class UserMemStore {
         for (String field : fields) {
             keyStr.append(SEPARATOR).append(field);
         }
-        return keyStr.toString();
+        return TenantKVStoreKeyResolver.resolveKey(keyStr.toString());
     }
 
     /**

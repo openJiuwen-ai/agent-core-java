@@ -14,6 +14,8 @@ import java.nio.file.Path;
 public final class CwdContext {
     private static final InheritableThreadLocal<CwdState> STATE = new InheritableThreadLocal<>();
 
+    private static final InheritableThreadLocal<String> TENANT_ROOT = new InheritableThreadLocal<>();
+
     /**
      * CwdContext.
      * 
@@ -172,12 +174,54 @@ public final class CwdContext {
     }
 
     /**
+     * getTenantRoot.
+     *
+     * @return the result
+     * @since 0.1.7
+     */
+    public static String getTenantRoot() {
+        return TENANT_ROOT.get();
+    }
+
+    /**
+     * setTenantRoot.
+     *
+     * @param tenantRoot tenantRoot
+     * @since 0.1.7
+     */
+    public static void setTenantRoot(String tenantRoot) {
+        TENANT_ROOT.set(tenantRoot);
+    }
+
+    /**
+     * isWithinTenantRoot.
+     *
+     * @param path path
+     * @return the result
+     * @since 0.1.7
+     */
+    public static boolean isWithinTenantRoot(Path path) {
+        String root = getTenantRoot();
+        if (root == null) {
+            return true;
+        }
+        // Use toAbsolutePath().normalize() for both sides to ensure consistent
+        // comparison on platforms like Windows where toRealPath() may produce
+        // a different path representation (e.g. short names, case differences)
+        // for existing directories vs non-existing files.
+        Path normalized = path.toAbsolutePath().normalize();
+        Path rootPath = Path.of(root).toAbsolutePath().normalize();
+        return normalized.startsWith(rootPath);
+    }
+
+    /**
      * reset.
-     * 
+     *
      * @since 0.1.7
      */
     public static void reset() {
         STATE.remove();
+        TENANT_ROOT.remove();
     }
 
     /**

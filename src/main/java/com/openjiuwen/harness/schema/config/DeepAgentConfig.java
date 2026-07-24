@@ -4,16 +4,17 @@
 
 package com.openjiuwen.harness.schema.config;
 
+import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 import com.openjiuwen.core.sysop.SysOperation;
 import com.openjiuwen.harness.schema.AgentMode;
 import com.openjiuwen.harness.security.ToolPermissionHost;
-import com.openjiuwen.core.foundation.tool.mcp.McpServerConfig;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -122,6 +123,20 @@ public class DeepAgentConfig {
     private boolean isRestrictToWorkDirEnabled = true;
     private SysOperation sysOperation;
     private ToolPermissionHost permissionHost;
+    @Builder.Default
+    private boolean isEnableTenantIsolation = false;
+    private String tenantDataRoot;
+    private java.util.List<String> workspaceSecondaryTiers;
+    private java.util.Map<String, java.util.Map<String, Object>> workspaceTierConfigs;
+    @Builder.Default
+    private String todoStorageType = "file";
+    @Builder.Default
+    private String sessionStoreType = "file";
+    private Map<String, Object> kvStoreConfig;
+    @Builder.Default
+    private Duration tmpTtl = Duration.ofHours(24);
+    @Builder.Default
+    private Duration tmpTtlScanInterval = Duration.ofHours(1);
 
     /**
      * DeepAgentConfigBuilder.
@@ -193,6 +208,17 @@ public class DeepAgentConfig {
          */
         public DeepAgentConfigBuilder addGeneralPurposeAgent(boolean isEnabled) {
             return this.isGeneralPurposeAgentEnabled(isEnabled);
+        }
+
+        /**
+         * enableTenantIsolation.
+         * 
+         * @param isEnabled isEnabled
+         * @return the result
+         * @since 0.1.7
+         */
+        public DeepAgentConfigBuilder enableTenantIsolation(boolean isEnabled) {
+            return this.isEnableTenantIsolation(isEnabled);
         }
     }
 

@@ -27,4 +27,5 @@ public class CLIOptions {
     @Builder.Default
     private boolean isVerbose = false;
     private String workspace;
+    private String tenantId;
 }

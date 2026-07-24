@@ -6,6 +6,9 @@ package com.openjiuwen.core.session.store;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
+import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
 import com.openjiuwen.core.session.utils.SessionUtils;
 
 import java.io.IOException;
@@ -26,24 +29,30 @@ public class FileStore extends Store {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final Path storePath;
+    private final TenantWorkspaceResolver workspaceResolver;
 
-    /**
-     * FileStore.
-     * 
-     * @since 0.1.7
-     */
     public FileStore() {
         this(Path.of("session_store.json"));
     }
 
-    /**
-     * FileStore.
-     * 
-     * @param storePath storePath
-     * @since 0.1.7
-     */
     public FileStore(Path storePath) {
+        this(storePath, null);
+    }
+
+    public FileStore(Path storePath, TenantWorkspaceResolver workspaceResolver) {
         this.storePath = storePath.toAbsolutePath().normalize();
+        this.workspaceResolver = workspaceResolver;
+    }
+
+    private Path resolveStorePath() {
+        if (workspaceResolver != null) {
+            TenantContext ctx = TenantContextHolder.getCurrentTenant();
+            if (ctx != null && ctx.isTenantAware()) {
+                Path tenantWorkspace = workspaceResolver.resolveWorkspaceRoot(ctx);
+                return tenantWorkspace.resolve(storePath.getFileName()).toAbsolutePath().normalize();
+            }
+        }
+        return storePath;
     }
 
     /**
@@ -99,11 +108,12 @@ public class FileStore extends Store {
      * @since 0.1.7
      */
     private Map<String, Object> loadData() {
-        if (!Files.exists(storePath)) {
+        Path resolvedPath = resolveStorePath();
+        if (!Files.exists(resolvedPath)) {
             return new LinkedHashMap<>();
         }
         try {
-            String raw = Files.readString(storePath);
+            String raw = Files.readString(resolvedPath);
             if (raw.isBlank()) {
                 return new LinkedHashMap<>();
             }
@@ -122,10 +132,11 @@ public class FileStore extends Store {
      */
     private void persist(Map<String, Object> data) {
         try {
-            if (storePath.getParent() != null) {
-                Files.createDirectories(storePath.getParent());
+            Path resolvedPath = resolveStorePath();
+            if (resolvedPath.getParent() != null) {
+                Files.createDirectories(resolvedPath.getParent());
             }
-            Files.writeString(storePath, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(data));
+            Files.writeString(resolvedPath, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(data));
         } catch (IOException ex) {
             throw new UncheckedIOException(ex);
         }

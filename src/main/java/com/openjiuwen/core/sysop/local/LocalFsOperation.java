@@ -54,6 +54,8 @@ import java.util.stream.Stream;
  */
 @Operation(name = "fs", mode = OperationMode.LOCAL, description = "local fs operation")
 public class LocalFsOperation extends BaseFsOperation {
+    private static final Pattern UNSAFE_CHAR_PATTERN = Pattern.compile("[^\\w.-]");
+
     /**
      * LocalFsOperation.
      * 
@@ -96,6 +98,7 @@ public class LocalFsOperation extends BaseFsOperation {
 
             // Resolve path
             Path filePath = resolvePath(path, false);
+            filePath = validateTenantBoundary(filePath);
             if (!Files.isRegularFile(filePath)) {
                 return buildFsErrorResult("File not found: " + filePath, ReadFileResult::new, null);
             }
@@ -150,6 +153,7 @@ public class LocalFsOperation extends BaseFsOperation {
             validateReadParams(effectiveHead, effectiveTail, lineRange, mode);
 
             Path filePath = resolvePath(path, false);
+            filePath = validateTenantBoundary(filePath);
             if (!Files.isRegularFile(filePath)) {
                 results.add(buildFsErrorResult("File not found: " + filePath, ReadFileStreamResult::new, null));
                 return results.iterator();
@@ -204,6 +208,7 @@ public class LocalFsOperation extends BaseFsOperation {
 
         try {
             Path filePath = resolvePath(path, true);
+            filePath = validateTenantBoundary(filePath);
             if (Files.isDirectory(filePath)) {
                 return buildFsErrorResult("Target path is a directory: " + filePath, WriteFileResult::new, null);
             }
@@ -272,6 +277,7 @@ public class LocalFsOperation extends BaseFsOperation {
         try {
             Path src = Path.of(localPath).toAbsolutePath().normalize();
             Path dst = resolvePath(targetPath, isCreateParentDirs);
+            dst = validateTenantBoundary(dst);
 
             if (!Files.isRegularFile(src)) {
                 return buildFsErrorResult("Source not found: " + src, UploadFileResult::new, null);
@@ -320,6 +326,7 @@ public class LocalFsOperation extends BaseFsOperation {
         try {
             Path src = Path.of(localPath).toAbsolutePath().normalize();
             Path dst = resolvePath(targetPath, isCreateParentDirs);
+            dst = validateTenantBoundary(dst);
 
             if (!Files.isRegularFile(src)) {
                 results.add(buildFsErrorResult("Source not found: " + src, UploadFileStreamResult::new, null));
@@ -387,6 +394,7 @@ public class LocalFsOperation extends BaseFsOperation {
 
         try {
             Path src = resolvePath(sourcePath, false);
+            src = validateTenantBoundary(src);
             Path dst = Path.of(localPath).toAbsolutePath().normalize();
 
             if (!Files.isRegularFile(src)) {
@@ -439,6 +447,7 @@ public class LocalFsOperation extends BaseFsOperation {
 
         try {
             Path src = resolvePath(sourcePath, false);
+            src = validateTenantBoundary(src);
             Path dst = Path.of(localPath).toAbsolutePath().normalize();
 
             if (!Files.isRegularFile(src)) {
@@ -515,6 +524,7 @@ public class LocalFsOperation extends BaseFsOperation {
 
         try {
             Path basePath = resolvePath(path, false);
+            basePath = validateTenantBoundary(basePath);
             if (!Files.isDirectory(basePath)) {
                 return buildFsErrorResult("Path is not a directory: " + basePath, ListFilesResult::new, null);
             }
@@ -556,6 +566,7 @@ public class LocalFsOperation extends BaseFsOperation {
 
         try {
             Path basePath = resolvePath(path, false);
+            basePath = validateTenantBoundary(basePath);
             if (!Files.isDirectory(basePath)) {
                 return buildFsErrorResult("Path is not a directory: " + basePath, ListDirsResult::new, null);
             }
@@ -595,6 +606,7 @@ public class LocalFsOperation extends BaseFsOperation {
 
         try {
             Path basePath = resolvePath(path, false);
+            basePath = validateTenantBoundary(basePath);
             if (!Files.isDirectory(basePath)) {
                 return buildFsErrorResult("Path is not a directory: " + basePath, SearchFilesResult::new, null);
             }
@@ -618,11 +630,28 @@ public class LocalFsOperation extends BaseFsOperation {
     // ==================== Private Helper Methods ====================
 
     /**
-     * Resolve path relative to workDir if configured. Enforces sandbox.
-     * 
+     * Validate that the resolved path is within the tenant boundary.
+     * When CwdContext.getTenantRoot() is set, this ensures the path
+     * does not escape the tenant root directory.
+     *
+     * @param resolvedPath the path after resolvePath
+     * @return the same path if valid
+     * @throws SecurityException if path escapes tenant boundary
      * @since 0.1.7
      */
-    private static final Pattern UNSAFE_CHAR_PATTERN = Pattern.compile("[^\\w.-]");
+    protected Path validateTenantBoundary(Path resolvedPath) {
+        String tenantRoot = CwdContext.getTenantRoot();
+        if (tenantRoot != null) {
+            Path normalized = toRealOrAbsolutePath(resolvedPath);
+            Path root = toRealOrAbsolutePath(Path.of(tenantRoot));
+            if (!normalized.startsWith(root)) {
+                throw new SecurityException(
+                    "Tenant boundary violation: path " + resolvedPath
+                        + " is outside tenant root " + tenantRoot);
+            }
+        }
+        return resolvedPath;
+    }
 
     /**
      * resolvePath.

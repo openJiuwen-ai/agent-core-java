@@ -36,6 +36,7 @@ import com.openjiuwen.core.workflow.WorkflowCard;
 import org.junit.jupiter.api.AfterEach;
 
 import java.lang.reflect.Array;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -56,6 +57,35 @@ abstract class SystemTestSupport {
         assumeTrue(isNotBlank(ApiConfigLoader.getApiKey()), "API_KEY is required");
         assumeTrue(isNotBlank(ApiConfigLoader.getModelProvider()), "MODEL_PROVIDER is required");
         assumeTrue(isNotBlank(ApiConfigLoader.getModelName()), "MODEL_NAME is required");
+    }
+
+    /**
+     * Skips the test when Redis is not configured via {@code REDIS_URL} in
+     * {@code apiconfig.json}. B-group system tests rely on a real Redis
+     * instance to verify KV-store tenant key isolation end-to-end.
+     */
+    protected void assumeRedisAvailable() {
+        assumeTrue(isNotBlank(ApiConfigLoader.getRedisUrl()), "REDIS_URL is required for Redis-backed tests");
+    }
+
+    /**
+     * Parses the host from {@code REDIS_URL} (e.g. {@code redis://127.0.0.1:6379}).
+     *
+     * @return Redis host, defaults to {@code 127.0.0.1} if absent
+     */
+    protected String redisHost() {
+        String host = URI.create(ApiConfigLoader.getRedisUrl()).getHost();
+        return host != null ? host : "127.0.0.1";
+    }
+
+    /**
+     * Parses the port from {@code REDIS_URL}.
+     *
+     * @return Redis port, defaults to {@code 6379} if absent
+     */
+    protected int redisPort() {
+        int port = URI.create(ApiConfigLoader.getRedisUrl()).getPort();
+        return port > 0 ? port : 6379;
     }
 
     protected String trackSessionId(String prefix) {

@@ -1,0 +1,6 @@
+interface:
+  display_name: "GitCode Issue Evolver Setup"
+  short_description: "Set up and start the GitCode Issue Evolver demo"
+  default_prompt: "Use $gitcode-issue-evolver to validate local configuration, start the webhook service and Quick Tunnel, and report the webhook URL."
+policy:
+  allow_implicit_invocation: false

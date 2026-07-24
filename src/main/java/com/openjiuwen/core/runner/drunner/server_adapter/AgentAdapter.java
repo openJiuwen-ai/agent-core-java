@@ -4,6 +4,7 @@
 
 package com.openjiuwen.core.runner.drunner.server_adapter;
 
+import com.openjiuwen.core.multitenant.TenantContext;
 import com.openjiuwen.core.runner.Runner;
 import com.openjiuwen.core.runner.drunner.DistributedRunner;
 import com.openjiuwen.core.session.stream.StreamMode;
@@ -11,6 +12,7 @@ import com.openjiuwen.core.session.stream.StreamMode;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Exposes a local agent over the distributed-runner MQ transport.
@@ -115,7 +117,11 @@ public class AgentAdapter {
      * @return the result
      * @since 0.1.7
      */
-    private Object handleInvoke(Map<String, Object> inputs) {
+    Object handleInvoke(Map<String, Object> inputs) {
+        Optional<TenantContext> tenantCtx = extractTenantContext(inputs);
+        if (tenantCtx.isPresent()) {
+            return Runner.runAgent(agentId, inputs, null, null, null, tenantCtx.get());
+        }
         return Runner.runAgent(agentId, inputs, null, null);
     }
 
@@ -126,7 +132,22 @@ public class AgentAdapter {
      * @return the result
      * @since 0.1.7
      */
-    private Iterator<Object> handleStream(Map<String, Object> inputs) {
+    Iterator<Object> handleStream(Map<String, Object> inputs) {
+        Optional<TenantContext> tenantCtx = extractTenantContext(inputs);
+        if (tenantCtx.isPresent()) {
+            return Runner.runAgentStreaming(agentId, inputs, null, null,
+                    List.of(StreamMode.OUTPUT), null, tenantCtx.get());
+        }
         return Runner.runAgentStreaming(agentId, inputs, null, null, List.of(StreamMode.OUTPUT));
+    }
+
+    private Optional<TenantContext> extractTenantContext(Map<String, Object> inputs) {
+        if (inputs != null) {
+            Object tenantId = inputs.get("tenant_id");
+            if (tenantId instanceof String tid && !tid.isBlank()) {
+                return Optional.of(TenantContext.builder().tenantId(tid).build());
+            }
+        }
+        return Optional.empty();
     }
 }

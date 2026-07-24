@@ -94,6 +94,11 @@ public class RunnerConfig {
      */
     private Map<String, Object> objectStorageConfig;
 
+    @Builder.Default
+    private boolean enableTenantIsolation = false;
+
+    private String tenantDataRoot;
+
     /**
      * Get agent topic template with environment prefix.
      * 

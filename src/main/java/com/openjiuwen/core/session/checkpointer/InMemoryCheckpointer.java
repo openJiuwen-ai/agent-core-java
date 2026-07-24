@@ -11,6 +11,8 @@ import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.graph.pregel.PregelConstants;
 import com.openjiuwen.core.graph.store.InMemoryStore;
 import com.openjiuwen.core.graph.store.Store;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
 import com.openjiuwen.core.session.BaseSession;
 import com.openjiuwen.core.session.constants.SessionConstants;
 import com.openjiuwen.core.session.interaction.InteractiveInput;
@@ -35,49 +37,36 @@ import java.util.concurrent.ConcurrentHashMap;
 public class InMemoryCheckpointer extends Checkpointer {
     private final Map<String, InMemoryAgentStorage> agentStores = new ConcurrentHashMap<>();
 
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private final Map<String, InMemoryWorkflowStorage> workflowStores = new ConcurrentHashMap<>();
 
-    /**
-     * ConcurrentHashMap<>.
-     * 
-     * @since 0.1.7
-     */
     private final Map<String, Set<String>> sessionToWorkflowIds = new ConcurrentHashMap<>();
 
-    /**
-     * InMemoryStore.
-     * 
-     * @since 0.1.7
-     */
     private final Store graphStore = new InMemoryStore();
 
-    /**
-     * preWorkflowExecute.
-     * 
-     * @param session session
-     * @param inputs inputs
-     * @since 0.1.7
-     */
+    String tenantAwareSessionId(String sessionId) {
+        TenantContext ctx = TenantContextHolder.getCurrentTenant();
+        if (ctx != null && ctx.isTenantAware()) {
+            return ctx.safeTenantId() + ":" + sessionId;
+        }
+        return sessionId;
+    }
+
     @Override
     public void preWorkflowExecute(BaseSession session, InteractiveInput inputs) {
         String sessionId = session.sessionId();
         String workflowId = getWorkflowId(session);
+        String tid = tenantAwareSessionId(sessionId);
 
-        boolean isNewStore = !workflowStores.containsKey(sessionId);
+        boolean isNewStore = !workflowStores.containsKey(tid);
         InMemoryWorkflowStorage workflowStore =
-            workflowStores.computeIfAbsent(sessionId, k -> new InMemoryWorkflowStorage());
+            workflowStores.computeIfAbsent(tid, k -> new InMemoryWorkflowStorage());
 
         if (isNewStore) {
             Loggers.SESSION.info("Create new workflow checkpointer store, sessionId={}, workflowId={}", sessionId,
                     workflowId);
         }
 
-        sessionToWorkflowIds.computeIfAbsent(sessionId, k -> ConcurrentHashMap.newKeySet());
+        sessionToWorkflowIds.computeIfAbsent(tid, k -> ConcurrentHashMap.newKeySet());
 
         if (inputs != null) {
             Loggers.SESSION.info("Begin to restore workflow session, sessionId={}, workflowId={}", sessionId,
@@ -105,19 +94,12 @@ public class InMemoryCheckpointer extends Checkpointer {
         }
     }
 
-    /**
-     * postWorkflowExecute.
-     * 
-     * @param session session
-     * @param result result
-     * @param exception exception
-     * @since 0.1.7
-     */
     @Override
     public void postWorkflowExecute(BaseSession session, Object result, Exception exception) {
         String sessionId = session.sessionId();
         String workflowId = getWorkflowId(session);
-        InMemoryWorkflowStorage workflowStore = workflowStores.get(sessionId);
+        String tid = tenantAwareSessionId(sessionId);
+        InMemoryWorkflowStorage workflowStore = workflowStores.get(tid);
 
         if (exception != null) {
             if (workflowStore == null) {
@@ -136,16 +118,15 @@ public class InMemoryCheckpointer extends Checkpointer {
             return;
         }
 
-        // Normal completion - clear checkpoints
         Loggers.SESSION.info("Clear workflow checkpoints on completion, sessionId={}, workflowId={}", sessionId,
                 workflowId);
         graphStore.delete(sessionId, workflowId);
         if (workflowStore != null) {
-            Set<String> workflowIds = sessionToWorkflowIds.get(sessionId);
+            Set<String> workflowIds = sessionToWorkflowIds.get(tid);
             if (workflowIds != null) {
                 workflowIds.remove(workflowId);
                 if (workflowIds.isEmpty()) {
-                    sessionToWorkflowIds.remove(sessionId);
+                    sessionToWorkflowIds.remove(tid);
                 }
             }
             workflowStore.clear(workflowId);
@@ -153,29 +134,23 @@ public class InMemoryCheckpointer extends Checkpointer {
                 BaseSession parent = null;
                 try {
                     parent = (BaseSession) session.getClass().getMethod("parent").invoke(session);
-                } catch (Exception ignored) {
-                    // Best effort: only preserve parent-owned stores when session exposes parent().
+                } catch (Exception e) {
+                    Loggers.SESSION.debug("Unable to resolve parent session, sessionId={}", session.sessionId(), e);
                 }
                 if (!(parent instanceof AgentSession)) {
-                    workflowStores.remove(sessionId);
+                    workflowStores.remove(tid);
                 }
             }
         }
     }
 
-    /**
-     * preAgentExecute.
-     * 
-     * @param session session
-     * @param inputs inputs
-     * @since 0.1.7
-     */
     @Override
     public void preAgentExecute(BaseSession session, Object inputs) {
         String sessionId = session.sessionId();
+        String tid = tenantAwareSessionId(sessionId);
 
-        boolean isNewStore = !agentStores.containsKey(sessionId);
-        InMemoryAgentStorage agentStore = agentStores.computeIfAbsent(sessionId, k -> new InMemoryAgentStorage());
+        boolean isNewStore = !agentStores.containsKey(tid);
+        InMemoryAgentStorage agentStore = agentStores.computeIfAbsent(tid, k -> new InMemoryAgentStorage());
 
         if (isNewStore) {
             Loggers.SESSION.info("Create new agent checkpointer store, sessionId={}", sessionId);
@@ -192,16 +167,11 @@ public class InMemoryCheckpointer extends Checkpointer {
         }
     }
 
-    /**
-     * interruptAgentExecute.
-     * 
-     * @param session session
-     * @since 0.1.7
-     */
     @Override
     public void interruptAgentExecute(BaseSession session) {
         String sessionId = session.sessionId();
-        InMemoryAgentStorage agentStore = agentStores.get(sessionId);
+        String tid = tenantAwareSessionId(sessionId);
+        InMemoryAgentStorage agentStore = agentStores.get(tid);
         if (agentStore == null) {
             throw ErrorHelper.buildError(StatusCode.CHECKPOINTER_INTERRUPT_AGENT_ERROR, "reason",
                     "agent store not found");
@@ -212,16 +182,11 @@ public class InMemoryCheckpointer extends Checkpointer {
         Loggers.SESSION.info("Succeed to save agent checkpoint on interruption, sessionId={}", sessionId);
     }
 
-    /**
-     * postAgentExecute.
-     * 
-     * @param session session
-     * @since 0.1.7
-     */
     @Override
     public void postAgentExecute(BaseSession session) {
         String sessionId = session.sessionId();
-        InMemoryAgentStorage agentStore = agentStores.get(sessionId);
+        String tid = tenantAwareSessionId(sessionId);
+        InMemoryAgentStorage agentStore = agentStores.get(tid);
         if (agentStore == null) {
             throw ErrorHelper.buildError(StatusCode.CHECKPOINTER_POST_AGENT_EXECUTION_ERROR, "reason",
                     "agent store not found");
@@ -232,27 +197,16 @@ public class InMemoryCheckpointer extends Checkpointer {
         Loggers.SESSION.info("Succeed to save agent checkpoint on completion, sessionId={}", sessionId);
     }
 
-    /**
-     * sessionExists.
-     * 
-     * @param sessionId sessionId
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public boolean sessionExists(String sessionId) {
-        return agentStores.containsKey(sessionId) || workflowStores.containsKey(sessionId);
+        String tid = tenantAwareSessionId(sessionId);
+        return agentStores.containsKey(tid) || workflowStores.containsKey(tid);
     }
 
-    /**
-     * release.
-     * 
-     * @param sessionId sessionId
-     * @since 0.1.7
-     */
     @Override
     public void release(String sessionId) {
-        Set<String> workflowIds = sessionToWorkflowIds.remove(sessionId);
+        String tid = tenantAwareSessionId(sessionId);
+        Set<String> workflowIds = sessionToWorkflowIds.remove(tid);
         if (workflowIds != null) {
             Loggers.SESSION.info("Clear workflow checkpoints on release, sessionId={}, workflowIds={}", sessionId,
                     workflowIds);
@@ -260,34 +214,20 @@ public class InMemoryCheckpointer extends Checkpointer {
                 graphStore.delete(sessionId, workflowId);
             }
         }
-        workflowStores.remove(sessionId);
-        agentStores.remove(sessionId);
+        workflowStores.remove(tid);
+        agentStores.remove(tid);
         Loggers.SESSION.info("Cleared all checkpoints on release, sessionId={}", sessionId);
     }
 
-    /**
-     * graphStore.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
     @Override
     public Store graphStore() {
         return graphStore;
     }
 
-    /**
-     * saveWorkflowCheckpoint.
-     * 
-     * @param workflowId workflowId
-     * @param sessionId sessionId
-     * @param session session
-     * @param reason reason
-     * @since 0.1.7
-     */
     private void saveWorkflowCheckpoint(String workflowId, String sessionId, BaseSession session, String reason) {
-        InMemoryWorkflowStorage workflowStore = workflowStores.get(sessionId);
-        Set<String> workflowIds = sessionToWorkflowIds.get(sessionId);
+        String tid = tenantAwareSessionId(sessionId);
+        InMemoryWorkflowStorage workflowStore = workflowStores.get(tid);
+        Set<String> workflowIds = sessionToWorkflowIds.get(tid);
         Loggers.SESSION.info("Save workflow checkpoint on {}, sessionId={}, workflowId={}", reason, sessionId,
                 workflowId);
         if (workflowStore != null) {
@@ -300,11 +240,6 @@ public class InMemoryCheckpointer extends Checkpointer {
                 sessionId, workflowId);
     }
 
-    // ---- Inner Storage Classes ----
-
-    /**
-     * In-memory agent storage.
-     */
     private static class InMemoryAgentStorage {
         private final Map<String, Map<String, Object>> stateBlobs = new ConcurrentHashMap<>();
 
@@ -328,13 +263,6 @@ public class InMemoryCheckpointer extends Checkpointer {
             stateBlobs.remove(agentId);
         }
 
-        /**
-         * getAgentId.
-         * 
-         * @param session session
-         * @return the result
-         * @since 0.1.7
-         */
         private static String getAgentId(BaseSession session) {
             try {
                 Object id = session.getClass().getMethod("agentId").invoke(session);
@@ -345,17 +273,9 @@ public class InMemoryCheckpointer extends Checkpointer {
         }
     }
 
-    /**
-     * In-memory workflow storage.
-     */
     private static class InMemoryWorkflowStorage {
         private final Map<String, Map<String, Object>> stateBlobs = new ConcurrentHashMap<>();
 
-        /**
-         * ConcurrentHashMap<>.
-         * 
-         * @since 0.1.7
-         */
         private final Map<String, Map<String, Object>> stateUpdatesBlobs = new ConcurrentHashMap<>();
 
         void save(String workflowId, BaseSession session) {
@@ -405,13 +325,6 @@ public class InMemoryCheckpointer extends Checkpointer {
         }
 
         @SuppressWarnings("unchecked")
-        /**
-         * processInteractiveInputs.
-         * 
-         * @param session session
-         * @param inputs inputs
-         * @since 0.1.7
-         */
         private void processInteractiveInputs(BaseSession session, InteractiveInput inputs) {
             if (inputs.getRawInputs() != null) {
                 if (session.state() instanceof WorkflowCommitState workflowState) {
@@ -441,13 +354,6 @@ public class InMemoryCheckpointer extends Checkpointer {
         }
 
         @SuppressWarnings("unchecked")
-        /**
-         * deepCopyMap.
-         * 
-         * @param source source
-         * @return the result
-         * @since 0.1.7
-         */
         private Map<String, Object> deepCopyMap(Map<String, Object> source) {
             Map<String, Object> copy = new HashMap<>();
             for (Map.Entry<String, Object> entry : source.entrySet()) {
@@ -457,13 +363,6 @@ public class InMemoryCheckpointer extends Checkpointer {
         }
 
         @SuppressWarnings("unchecked")
-        /**
-         * deepCopyObject.
-         * 
-         * @param value value
-         * @return the result
-         * @since 0.1.7
-         */
         private Object deepCopyObject(Object value) {
             if (value instanceof Map<?, ?> map) {
                 Map<String, Object> copy = new HashMap<>();

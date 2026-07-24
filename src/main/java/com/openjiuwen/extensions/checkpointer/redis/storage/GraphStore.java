@@ -6,6 +6,7 @@ package com.openjiuwen.extensions.checkpointer.redis.storage;
 
 import com.openjiuwen.core.graph.store.GraphStoreState;
 import com.openjiuwen.core.session.checkpointer.Checkpointer;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.extensions.store.kv.RedisStore;
 import com.openjiuwen.spi.store.KVStorePipeline;
 
@@ -47,9 +48,9 @@ public class GraphStore extends BaseRedisStorage {
     public CompletableFuture<Object> get(String sessionId, String ns) {
         try {
             String keyType =
-                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
+                Checkpointer.resolveNsKey(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
             String keyValue =
-                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
+                Checkpointer.resolveNsKey(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
 
             KVStorePipeline pipeline = redisStore.pipeline();
             pipeline.get(keyType);
@@ -95,9 +96,9 @@ public class GraphStore extends BaseRedisStorage {
             }
 
             String keyType =
-                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
+                Checkpointer.resolveNsKey(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_TYPE);
             String keyValue =
-                Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
+                Checkpointer.resolveNsKey(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns, DATA_VALUE);
 
             KVStorePipeline pipeline = redisStore.pipeline();
             pipeline.set(keyType, stateBlob.type(), ttlSeconds);
@@ -120,10 +121,11 @@ public class GraphStore extends BaseRedisStorage {
     public CompletableFuture<Void> delete(String sessionId, String ns) {
         try {
             if (ns == null || ns.isEmpty()) {
-                redisStore.deleteByPrefix(Checkpointer.buildKey(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH), 500);
+                redisStore.deleteByPrefix(TenantKVStoreKeyResolver.resolvePrefix(
+                    Checkpointer.buildKey(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH)), 500);
             } else {
-                redisStore.deleteByPrefix(
-                        Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns), 500);
+                redisStore.deleteByPrefix(TenantKVStoreKeyResolver.resolvePrefix(
+                        Checkpointer.buildKeyWithNamespace(sessionId, Checkpointer.WORKFLOW_NAMESPACE_GRAPH, ns)), 500);
             }
             return CompletableFuture.completedFuture(null);
         } catch (Throwable throwable) {

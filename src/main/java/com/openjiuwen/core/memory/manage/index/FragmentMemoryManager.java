@@ -180,7 +180,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         Map<String, Object> oldMem = memStore.get(userId, scopeId, memId);
         String memType = oldMem == null ? null : String.valueOf(oldMem.get("mem_type"));
         memStore.update(userId, scopeId, memId, newData);
-        String tableName = MemoryUtils.generateIdxName(userId, scopeId, memType);
+        String tableName = MemoryUtils.generateTenantAwareIdxName(userId, scopeId, memType);
         semanticStore.deleteDocs(List.of(memId), tableName);
         semanticStore.addDocs(List.of(new AbstractMap.SimpleEntry<>(memId, newMemory)), tableName);
     }
@@ -208,7 +208,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         List<String> memIds = new ArrayList<>();
         Map<String, Double> scores = new HashMap<>();
         for (String currentType : memTypes) {
-            String tableName = MemoryUtils.generateIdxName(userId, scopeId, currentType);
+            String tableName = MemoryUtils.generateTenantAwareIdxName(userId, scopeId, currentType);
             List<Map.Entry<String, Double>> hitInfo = semanticStore.search(query, tableName, topK);
             MemoryUtils.HitParseResult parsed = MemoryUtils.parseMemoryHitInfos(hitInfo);
             memIds.addAll(parsed.ids());
@@ -313,7 +313,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         memStore.delete(userId, scopeId, memId);
         List<String> memTypes = memType == null || memType.isBlank() ? FRAGMENT_MEMORY_TYPES : List.of(memType);
         for (String currentType : memTypes) {
-            String tableName = MemoryUtils.generateIdxName(userId, scopeId, currentType);
+            String tableName = MemoryUtils.generateTenantAwareIdxName(userId, scopeId, currentType);
             semanticStore.deleteDocs(List.of(memId), tableName);
         }
         return true;
@@ -349,7 +349,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         }
         memStore.batchDelete(userId, scopeId, memIds);
         for (String memType : FRAGMENT_MEMORY_TYPES) {
-            String tableName = MemoryUtils.generateIdxName(userId, scopeId, memType);
+            String tableName = MemoryUtils.generateTenantAwareIdxName(userId, scopeId, memType);
             semanticStore.deleteTable(tableName);
         }
         return true;
@@ -455,7 +455,7 @@ public class FragmentMemoryManager extends BaseMemoryManager {
         memStore.write(userId, scopeId, memId, data);
 
         // Add to vector store (use unencrypted content for embedding)
-        String tableName = MemoryUtils.generateIdxName(userId, scopeId, memory.getMemType().getValue());
+        String tableName = MemoryUtils.generateTenantAwareIdxName(userId, scopeId, memory.getMemType().getValue());
         boolean vectorSuccess =
             semanticStore.addDocs(List.of(new AbstractMap.SimpleEntry<>(memId, memory.getContent())), tableName);
         if (!vectorSuccess) {

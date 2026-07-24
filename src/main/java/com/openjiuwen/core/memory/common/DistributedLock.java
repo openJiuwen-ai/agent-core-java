@@ -7,6 +7,7 @@ package com.openjiuwen.core.memory.common;
 import com.openjiuwen.core.common.logging.LoggerProtocol;
 import com.openjiuwen.core.common.logging.Loggers;
 import com.openjiuwen.core.common.logging.events.LogEventType;
+import com.openjiuwen.core.multitenant.TenantKVStoreKeyResolver;
 import com.openjiuwen.spi.store.BaseKVStore;
 
 import java.util.UUID;
@@ -34,7 +35,7 @@ public class DistributedLock implements AutoCloseable {
      */
     public DistributedLock(BaseKVStore store, String lockName) {
         this.store = store;
-        this.lockKey = "_lock/" + lockName;
+        this.lockKey = TenantKVStoreKeyResolver.resolveKey("_lock/" + lockName);
         this.ttl = 10;
         this.retryDelayMs = 10;
     }
