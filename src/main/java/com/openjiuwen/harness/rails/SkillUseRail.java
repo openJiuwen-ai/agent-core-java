@@ -8,6 +8,9 @@ import com.openjiuwen.core.foundation.llm.schema.SystemMessage;
 import com.openjiuwen.core.foundation.tool.Tool;
 import com.openjiuwen.core.foundation.tool.ToolCard;
 import com.openjiuwen.core.foundation.tool.function.LocalFunction;
+import com.openjiuwen.core.multitenant.TenantContext;
+import com.openjiuwen.core.multitenant.TenantContextHolder;
+import com.openjiuwen.core.multitenant.TenantWorkspaceResolver;
 import com.openjiuwen.core.singleagent.rail.AgentCallbackContext;
 import com.openjiuwen.core.singleagent.rail.ModelCallInputs;
 import com.openjiuwen.core.singleagent.skills.GitHubTree;
@@ -17,6 +20,7 @@ import com.openjiuwen.core.singleagent.skills.SkillManager;
 import com.openjiuwen.harness.deep_agent.DeepAgent;
 import com.openjiuwen.harness.prompts.sections.tools.ToolMetadataRegistry;
 import com.openjiuwen.harness.tools.ListSkillTool;
+import com.openjiuwen.harness.tools.OverlaySkillManager;
 import com.openjiuwen.harness.tools.SkillTool;
 import com.openjiuwen.harness.tools.ToolOutput;
 import com.openjiuwen.harness.workspace.Workspace;
@@ -44,6 +48,10 @@ import java.util.Set;
 public class SkillUseRail extends DeepAgentRail {
     private static final String SKILL_SECTION = "skills";
     private static final int SKILL_SECTION_PRIORITY = 90;
+
+    OverlaySkillManager overlaySkillManager;
+    SkillManager tenantSkillManager;
+    TenantWorkspaceResolver railWorkspaceResolver;
 
     private DeepAgent owner;
     private SkillManager skillManager;
@@ -173,8 +181,20 @@ public class SkillUseRail extends DeepAgentRail {
         skillsRoot = resolveSkillsRoot(deepAgent);
         skillManager = new SkillManager(deepAgent.getCard().getId());
 
-        listSkillTool = new ListSkillTool(skillsRoot.toString());
-        skillTool = new SkillTool(skillsRoot.toString());
+        if (deepAgent.isTenantIsolationEnabled() && deepAgent.getWorkspaceResolver() != null) {
+            railWorkspaceResolver = deepAgent.getWorkspaceResolver();
+            tenantSkillManager = new SkillManager(deepAgent.getCard().getId() + ".tenant");
+            Path overlayDir = railWorkspaceResolver.resolveTenantRoot(
+                    TenantContext.builder().tenantId("_placeholder").build()).resolve(".overlay");
+            overlaySkillManager = new OverlaySkillManager(tenantSkillManager, skillManager,
+                overlayDir, railWorkspaceResolver);
+            listSkillTool = new ListSkillTool(skillsRoot.toString(), railWorkspaceResolver, overlaySkillManager);
+            skillTool = new SkillTool(skillsRoot.toString(), railWorkspaceResolver, overlaySkillManager);
+        } else {
+            listSkillTool = new ListSkillTool(skillsRoot.toString());
+            skillTool = new SkillTool(skillsRoot.toString());
+        }
+
         String language = deepAgent.getWorkspace().getLanguage();
         tools.add(new LocalFunction(card("list_skill", deepAgent, language), inputs -> listSkill(inputs)));
         tools.add(new LocalFunction(card("skill_tool", deepAgent, language), inputs -> readSkill(inputs)));
@@ -204,6 +224,9 @@ public class SkillUseRail extends DeepAgentRail {
         listSkillTool = null;
         skillTool = null;
         skillManager = null;
+        overlaySkillManager = null;
+        tenantSkillManager = null;
+        railWorkspaceResolver = null;
         skillsRoot = null;
         owner = null;
     }
@@ -385,6 +408,16 @@ public class SkillUseRail extends DeepAgentRail {
         if (skillManager != null) {
             skillManager.refreshIncrementally(roots);
         }
+        // Refresh tenant skill manager when tenant context is available
+        if (tenantSkillManager != null && overlaySkillManager != null) {
+            TenantContext ctx = TenantContextHolder.getCurrentTenant();
+            if (ctx != null && ctx.isTenantAware() && railWorkspaceResolver != null) {
+                Path tenantSkillRoot = railWorkspaceResolver.resolveSkillRoot(ctx);
+                if (tenantSkillRoot != null && Files.isDirectory(tenantSkillRoot)) {
+                    tenantSkillManager.refreshIncrementally(List.of(tenantSkillRoot));
+                }
+            }
+        }
     }
 
     /**
@@ -408,6 +441,16 @@ public class SkillUseRail extends DeepAgentRail {
         }
         if (skillsRoot != null && Files.isDirectory(skillsRoot)) {
             roots.add(skillsRoot);
+        }
+        // Include tenant skill root when tenant context is available
+        if (overlaySkillManager != null && railWorkspaceResolver != null) {
+            TenantContext ctx = TenantContextHolder.getCurrentTenant();
+            if (ctx != null && ctx.isTenantAware()) {
+                Path tenantSkillRoot = railWorkspaceResolver.resolveSkillRoot(ctx);
+                if (tenantSkillRoot != null && Files.isDirectory(tenantSkillRoot)) {
+                    roots.add(tenantSkillRoot);
+                }
+            }
         }
         return new ArrayList<>(roots);
     }
@@ -459,8 +502,14 @@ public class SkillUseRail extends DeepAgentRail {
      * @since 0.1.7
      */
     private void injectSkillPrompt(AgentCallbackContext ctx) {
+        List<Skill> visibleSkills;
+        if (overlaySkillManager != null) {
+            visibleSkills = overlaySkillManager.getAllVisibleSkills();
+        } else {
+            visibleSkills = skillManager.getAllInOrder();
+        }
         String prompt = buildSkillPrompt(owner.getWorkspace().getLanguage(), skillMode,
-                configuredSkills(skillManager.getAllInOrder()));
+                configuredSkills(visibleSkills));
         owner.getAgent().addPromptBuilderSection(SKILL_SECTION, prompt, SKILL_SECTION_PRIORITY);
         if (ctx != null && ctx.getInputs() instanceof ModelCallInputs inputs && inputs.getMessages() != null) {
             boolean isPromptAlreadyInjected = inputs.getMessages().stream().filter(SystemMessage.class::isInstance)
@@ -501,8 +550,13 @@ public class SkillUseRail extends DeepAgentRail {
             return Map.of("success", false, "error", "skill tool is not initialized");
         }
         String skillName = stringArg(inputs, "skill_name", "");
-        if (skillManager == null || configuredSkills(skillManager.getAllInOrder()).stream()
-                .noneMatch(skill -> value(skill.getName()).equals(skillName))) {
+        List<Skill> visibleSkills;
+        if (overlaySkillManager != null) {
+            visibleSkills = overlaySkillManager.getAllVisibleSkills();
+        } else {
+            visibleSkills = configuredSkills(skillManager.getAllInOrder());
+        }
+        if (visibleSkills.stream().noneMatch(skill -> value(skill.getName()).equals(skillName))) {
             return ToolOutput.builder().success(false).error("skill is not available: " + skillName).build();
         }
         String relativePath = stringArg(inputs, "relative_file_path", "SKILL.md");
@@ -516,7 +570,17 @@ public class SkillUseRail extends DeepAgentRail {
      * @return the result
      * @since 0.1.7
      */
-    private List<Skill> filterSkills(String query) {
+    List<Skill> filterSkills(String query) {
+        if (overlaySkillManager != null) {
+            List<Skill> all = overlaySkillManager.getAllVisibleSkills();
+            List<Skill> filtered = configuredSkills(all);
+            if (query == null || query.isBlank()) {
+                return filtered;
+            }
+            String needle = query.toLowerCase(Locale.ROOT);
+            return filtered.stream().filter(skill -> value(skill.getName()).toLowerCase(Locale.ROOT).contains(needle)
+                    || value(skill.getDescription()).toLowerCase(Locale.ROOT).contains(needle)).toList();
+        }
         if (skillManager == null) {
             return List.of();
         }
@@ -526,7 +590,7 @@ public class SkillUseRail extends DeepAgentRail {
         }
         String needle = query.toLowerCase(Locale.ROOT);
         return all.stream().filter(skill -> value(skill.getName()).toLowerCase(Locale.ROOT).contains(needle)
-                || value(skill.getDescription()).toLowerCase(Locale.ROOT).contains(needle)).toList();
+                    || value(skill.getDescription()).toLowerCase(Locale.ROOT).contains(needle)).toList();
     }
 
     /**

@@ -194,6 +194,26 @@ public class DeepAgent implements AutoCloseable {
     }
 
     /**
+     * Get the TenantWorkspaceResolver, null if tenant isolation is not enabled.
+     *
+     * @return the workspaceResolver or null
+     * @since 0.1.13
+     */
+    public TenantWorkspaceResolver getWorkspaceResolver() {
+        return workspaceResolver;
+    }
+
+    /**
+     * Check if tenant isolation is enabled.
+     *
+     * @return true if tenant isolation is enabled
+     * @since 0.1.13
+     */
+    public boolean isTenantIsolationEnabled() {
+        return config != null && config.isEnableTenantIsolation();
+    }
+
+    /**
      * buildReActAgentConfig.
      * 
      * @return the result
