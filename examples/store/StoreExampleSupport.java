@@ -50,7 +50,7 @@ final class StoreExampleSupport {
     private static final String OBJECT_NAME = resolveStringSetting(
             "openjiuwen.example.store.objectName",
             "STORE_OBJECT_NAME",
-            "demo/test.txt"
+            "demo-test.txt"
     );
     private static final boolean KEEP_ARTIFACTS = Boolean.parseBoolean(resolveStringSetting(
             "openjiuwen.example.store.keepArtifacts",

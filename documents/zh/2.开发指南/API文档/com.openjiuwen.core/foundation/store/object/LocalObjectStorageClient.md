@@ -28,4 +28,5 @@ public class LocalObjectStorageClient extends BaseObjectStorageClient
 ## 使用说明
 
 - `location` 参数当前未参与本地实现逻辑。
+- `bucketName` 和 `objectName` 必须是单级名称，不能包含 `..`、`/` 或 `\`；解析后的真实路径必须位于构造时指定的根目录内。
 - `listObjects` 返回的对象信息包含 `bucket`、`object_name` 和 `size`。

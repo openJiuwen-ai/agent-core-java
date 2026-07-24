@@ -10,9 +10,12 @@ import com.openjiuwen.agentteams.schema.events.EventMessage;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Remote worktree request dispatcher.
@@ -21,6 +24,9 @@ import java.security.NoSuchAlgorithmException;
  */
 public class WorktreeRemoteHandler {
     private final WorktreeManager manager;
+    private final Path allowedRoot;
+    private final Path realAllowedRoot;
+    private final boolean shouldIncludeManagedRoots;
 
     /**
      * WorktreeRemoteHandler.
@@ -29,7 +35,33 @@ public class WorktreeRemoteHandler {
      * @since 0.1.7
      */
     public WorktreeRemoteHandler(WorktreeManager manager) {
+        this(manager, defaultAllowedRoot(manager), true);
+    }
+
+    /**
+     * WorktreeRemoteHandler with an explicit trusted worktree root.
+     *
+     * @param manager manager
+     * @param allowedRoot trusted root containing worktree paths
+     * @since 0.1.13
+     */
+    public WorktreeRemoteHandler(WorktreeManager manager, Path allowedRoot) {
+        this(manager, allowedRoot, false);
+    }
+
+    private WorktreeRemoteHandler(WorktreeManager manager, Path allowedRoot, boolean shouldIncludeManagedRoots) {
+        if (manager == null || allowedRoot == null) {
+            throw new IllegalArgumentException("Worktree manager and allowed root must not be null.");
+        }
         this.manager = manager;
+        this.shouldIncludeManagedRoots = shouldIncludeManagedRoots;
+        try {
+            Files.createDirectories(allowedRoot);
+            this.allowedRoot = allowedRoot.toAbsolutePath().normalize();
+            this.realAllowedRoot = this.allowedRoot.toRealPath();
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Unable to resolve allowed worktree root.", e);
+        }
     }
 
     /**
@@ -69,7 +101,7 @@ public class WorktreeRemoteHandler {
                 default -> WorktreeRemoteResponse.builder().isSuccess(false)
                         .error("Unknown action: " + request.getAction()).build();
             };
-        } catch (IllegalStateException | IOException exception) {
+        } catch (IllegalStateException | IllegalArgumentException | SecurityException | IOException exception) {
             return WorktreeRemoteResponse.builder().isSuccess(false).error(exception.getMessage()).build();
         }
     }
@@ -116,12 +148,64 @@ public class WorktreeRemoteHandler {
      * 
      * @param request request
      * @return the result
+     * @throws IOException if the worktree path cannot be resolved
      * @since 0.1.7
      */
-    private WorktreeRemoteResponse handleExists(WorktreeRemoteRequest request) {
+    private WorktreeRemoteResponse handleExists(WorktreeRemoteRequest request) throws IOException {
         String path = request.getWorktreePath();
-        boolean isExists = path != null && java.nio.file.Files.exists(java.nio.file.Path.of(path));
+        boolean isExists = path != null && !path.isBlank() && Files.exists(resolveSafeWorktreePath(path));
         return WorktreeRemoteResponse.builder().isExists(isExists).build();
+    }
+
+    private Path resolveSafeWorktreePath(String path) throws IOException {
+        List<Path> lexicalRoots = new ArrayList<>();
+        lexicalRoots.add(allowedRoot);
+        List<Path> realRoots = new ArrayList<>();
+        realRoots.add(realAllowedRoot);
+        if (shouldIncludeManagedRoots) {
+            for (Path managedRoot : manager.getManagedWorktreeRoots()) {
+                if (!realRoots.contains(managedRoot)) {
+                    lexicalRoots.add(managedRoot);
+                    realRoots.add(managedRoot);
+                }
+            }
+        }
+
+        Path requestedPath = Path.of(path);
+        if (requestedPath.isAbsolute()) {
+            return validateCandidate(requestedPath.toAbsolutePath().normalize(), lexicalRoots, realRoots);
+        }
+        for (Path root : lexicalRoots) {
+            Path candidate = root.resolve(requestedPath).normalize();
+            if (Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
+                return validateCandidate(candidate, lexicalRoots, realRoots);
+            }
+        }
+        return validateCandidate(allowedRoot.resolve(requestedPath).normalize(), lexicalRoots, realRoots);
+    }
+
+    private static Path validateCandidate(Path candidate, List<Path> lexicalRoots, List<Path> realRoots)
+            throws IOException {
+        if (!Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
+            if (lexicalRoots.stream().noneMatch(candidate::startsWith)) {
+                throw new SecurityException("Worktree path is outside the allowed workspace root.");
+            }
+            return candidate;
+        }
+
+        Path realCandidate = candidate.toRealPath();
+        if (realRoots.stream().noneMatch(realCandidate::startsWith)) {
+            throw new SecurityException("Worktree path is outside the allowed workspace root.");
+        }
+        return realCandidate;
+    }
+
+    private static Path defaultAllowedRoot(WorktreeManager manager) {
+        if (manager != null && manager.getConfig() != null && manager.getConfig().getBaseDir() != null
+                && !manager.getConfig().getBaseDir().isBlank()) {
+            return Path.of(manager.getConfig().getBaseDir());
+        }
+        return agentTeamsHome();
     }
 
     /**

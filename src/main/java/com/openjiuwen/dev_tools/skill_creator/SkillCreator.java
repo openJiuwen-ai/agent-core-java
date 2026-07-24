@@ -14,7 +14,9 @@ import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 
+import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -41,6 +43,7 @@ import java.util.concurrent.CompletableFuture;
  */
 public class SkillCreator {
     private ReActAgent agent;
+    private final Path allowedOutputRoot;
 
     /**
      * Default constructor.
@@ -48,7 +51,20 @@ public class SkillCreator {
      * @since 0.1.7
      */
     public SkillCreator() {
-        // Empty constructor, agent is initialized in createAgent()
+        this(Path.of(""));
+    }
+
+    /**
+     * Create a skill creator restricted to an allowed output directory.
+     *
+     * @param allowedOutputRoot trusted root directory for generated files
+     * @since 0.1.13
+     */
+    public SkillCreator(Path allowedOutputRoot) {
+        if (allowedOutputRoot == null) {
+            throw new IllegalArgumentException("Allowed output root must not be null.");
+        }
+        this.allowedOutputRoot = allowedOutputRoot.toAbsolutePath().normalize();
     }
 
     /**
@@ -147,7 +163,7 @@ public class SkillCreator {
 
             // Register skills if directory isExists
             if (Files.exists(skillsDir)) {
-                this.agent.registerSkill(skillsDir.toString());
+                this.agent.registerSkill(skillsDir.toString(), Path.of("").toAbsolutePath().normalize());
             } else {
                 throw new RuntimeException("Directory " + skillsDir + " does not exist.");
             }
@@ -164,11 +180,11 @@ public class SkillCreator {
      */
     public CompletableFuture<Object> generate(String requirement, String outputPath) {
         return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
+            Path outputDir = resolveSafeOutputDirectory(outputPath);
             if (this.agent == null) {
                 throw new IllegalStateException("Agent not initialized. Call createAgent() first.");
             }
 
-            Path outputDir = Paths.get(outputPath);
             String query = requirement + "\nPut all generated files at " + outputDir;
 
             Map<String, Object> inputs = new HashMap<>();
@@ -177,6 +193,43 @@ public class SkillCreator {
 
             return Runner.runAgent(this.agent, inputs, null, null);
         });
+    }
+
+    Path resolveSafeOutputDirectory(String outputPath) {
+        if (outputPath == null || outputPath.isBlank()) {
+            throw new IllegalArgumentException("Output path must not be blank.");
+        }
+        try {
+            Files.createDirectories(allowedOutputRoot);
+            Path requestedPath = Paths.get(outputPath);
+            Path targetPath = requestedPath.isAbsolute()
+                    ? requestedPath.toAbsolutePath().normalize()
+                    : allowedOutputRoot.resolve(requestedPath).normalize();
+            if (!targetPath.startsWith(allowedOutputRoot)) {
+                throw new SecurityException("Output path is outside the allowed directory: " + outputPath);
+            }
+
+            Path existingAncestor = targetPath;
+            while (existingAncestor != null && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
+                existingAncestor = existingAncestor.getParent();
+            }
+            Path realRoot = allowedOutputRoot.toRealPath();
+            if (existingAncestor == null || !existingAncestor.toRealPath().startsWith(realRoot)) {
+                throw new SecurityException("Output path is outside the allowed directory: " + outputPath);
+            }
+
+            Files.createDirectories(targetPath);
+            Path realOutputPath = targetPath.toRealPath();
+            if (!realOutputPath.startsWith(realRoot)) {
+                throw new SecurityException("Output path is outside the allowed directory: " + outputPath);
+            }
+            if (!Files.isDirectory(realOutputPath)) {
+                throw new IllegalArgumentException("Output path must be a directory: " + outputPath);
+            }
+            return realOutputPath;
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Unable to resolve output path: " + outputPath, e);
+        }
     }
 
     /**

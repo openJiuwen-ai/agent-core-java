@@ -19,15 +19,20 @@ public class ImageCaptioner
 
 保存模型客户端；若后续没有客户端，caption 结果会是空字符串。
 
+### `public ImageCaptioner(BaseModelClient llmClient, Path allowedBaseDir)`
+
+同时指定受信图片缓存根目录；环境变量给出的目标目录必须位于该根目录内。
+
 ## 公开静态方法
 
 - `cpImage(String imageLoc)`：复制图片到环境变量 `OPENJIUWEN_SAVED_IMAGES_DIR` 指定目录，若未设置则写入 `images`。
-- `cpImage(String imageLoc, String targetDir)`：复制到指定目录；源图不存在时抛 `IllegalArgumentException`。
+- `cpImage(String imageLoc, String targetDir)`：复制到当前工作目录内的指定目录。
+- `cpImage(String imageLoc, String targetDir, Path allowedBaseDir)`：校验源图片真实文件，并使用 `toRealPath()` 确认目标位于受信根目录内；路径穿越和根外符号链接会被拒绝。
 
 ## 公开方法
 
-- `captionImages(List<String> imageLocs)`：逐张图片生成 caption；不存在的文件会返回空字符串占位。
+- `captionImages(List<String> imageLocs)`：逐张图片生成 caption；每个路径都会先解析为真实普通文件，无效路径返回空字符串占位。
 
 ## 内部行为
 
-- `llmCall(String imageLoc)` 会读取图片字节、探测 MIME 类型、构造 OpenAI 风格多模态消息，并调用 `llmClient.invoke(...)`。
+- `llmCall(String imageLoc)` 只读取通过真实普通文件校验的图片，再探测 MIME 类型、构造 OpenAI 风格多模态消息，并调用 `llmClient.invoke(...)`。

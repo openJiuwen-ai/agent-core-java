@@ -34,4 +34,5 @@ public class RemoteSkillUtil
 ## 说明
 
 - `uploadSkillFromGitHub(...)` 会在写入前自动创建目标父目录。
+- 远程文件可以保留技能目录内的相对子目录，但绝对路径、`..` 穿越和指向 `skillsDir` 之外的符号链接会被拒绝。
 - `searchGitHubForSkills(...)` 只把包含 `SKILL.md` 的目录识别为技能根目录，并按父目录名生成本地技能目录名。

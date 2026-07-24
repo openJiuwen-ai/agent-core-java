@@ -15,6 +15,7 @@ import com.openjiuwen.core.sysop.OperationMode;
 import com.openjiuwen.core.sysop.SysOperationCard;
 import com.openjiuwen.core.sysop.config.LocalWorkConfig;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -48,6 +49,7 @@ public class SkillEvaluator {
      */
     private final List<Object> tools = new ArrayList<>();
     private Path skillsDir;
+    private Path targetSkillsRoot;
     private Path outputDir;
 
     /**
@@ -58,10 +60,12 @@ public class SkillEvaluator {
      */
     public CompletableFuture<Void> createAgent() {
         return OpenJiuwenExecutors.runBackgroundAsync(() -> {
-            Path resolvedSkillsDir = resolveSkillsDir();
+            Path resolvedSkillsDir = resolveDefaultSkillsDir();
+            Path resolvedTargetSkillsRoot = resolveTargetSkillsRoot();
             Path resolvedOutputDir = resolvePathConfig("OUTPUT_DIR", Path.of(DEFAULT_OUTPUT_DIR));
 
             this.skillsDir = resolvedSkillsDir;
+            this.targetSkillsRoot = resolvedTargetSkillsRoot;
             this.outputDir = resolvedOutputDir;
             this.agent = new ReActAgent(
                     AgentCard.builder().name("skill_evaluator_agent").description("Skill Evaluator Agent").build());
@@ -96,14 +100,14 @@ public class SkillEvaluator {
             addSysOpTool(sysopCard.getId(), "code", "executeCode");
 
             this.agent.getAbilityManager().add(createSubagentTool());
-            this.agent.registerSkill(resolvedSkillsDir.toString());
+            this.agent.registerSkill(resolvedSkillsDir.toString(), Path.of("").toAbsolutePath().normalize());
         });
     }
 
     /**
      * Evaluate a skill and write reports into the requested output directory.
      * 
-     * @param skillPath skill path
+     * @param skillPath relative skill path within {@code SKILLS_DIR}
      * @param requirement extra requirement text
      * @param outputPath output directory
      * @return async evaluation result object
@@ -112,7 +116,7 @@ public class SkillEvaluator {
     public CompletableFuture<Object> evaluate(String skillPath, String requirement, String outputPath) {
         return OpenJiuwenExecutors.supplyBackgroundAsync(() -> {
             ensureAgentReady();
-            Path resolvedSkillPath = Paths.get(skillPath).toAbsolutePath().normalize();
+            Path resolvedSkillPath = resolveTargetSkillPath(skillPath, targetSkillsRoot);
             Path reportDir = resolveReportDir(outputPath, outputDir);
             String query = buildEvaluationQuery(resolvedSkillPath, reportDir, requirement);
 
@@ -126,14 +130,14 @@ public class SkillEvaluator {
     /**
      * evaluate.
      * 
-     * @param skillPath skillPath
+     * @param skillPath relative skill path within {@code SKILLS_DIR}
      * @param requirement requirement
      * @param outputPath outputPath
      * @return the result
      * @since 0.1.7
      */
     public CompletableFuture<Object> evaluate(Path skillPath, String requirement, Path outputPath) {
-        return evaluate(skillPath.toAbsolutePath().normalize().toString(), requirement,
+        return evaluate(skillPath.toString(), requirement,
                 outputPath != null ? outputPath.toAbsolutePath().normalize().toString() : null);
     }
 
@@ -223,27 +227,62 @@ public class SkillEvaluator {
      * @since 0.1.7
      */
     private void ensureAgentReady() {
-        if (agent == null || config == null || skillsDir == null || outputDir == null) {
+        if (agent == null || config == null || skillsDir == null || targetSkillsRoot == null || outputDir == null) {
             throw new IllegalStateException("Agent not initialized. Call createAgent() first.");
         }
     }
 
-    /**
-     * resolveSkillsDir.
-     * 
-     * @return the result
-     * @since 0.1.7
-     */
-    private Path resolveSkillsDir() {
+    private Path resolveTargetSkillsRoot() {
         String configured = resolveStringConfig("SKILLS_DIR", "");
-        if (configured != null && !configured.isBlank()) {
-            Path path = Paths.get(configured).toAbsolutePath().normalize();
-            if (!Files.isDirectory(path)) {
-                throw new IllegalStateException("Configured SKILLS_DIR does not exist: " + path);
+        Path path = configured == null || configured.isBlank()
+                ? Path.of("")
+                : Paths.get(configured);
+        try {
+            Path realPath = path.toAbsolutePath().normalize().toRealPath();
+            if (!Files.isDirectory(realPath)) {
+                throw new IllegalStateException("Configured SKILLS_DIR is not a directory: " + realPath);
             }
-            return path;
+            return realPath;
+        } catch (IOException e) {
+            throw new IllegalStateException("Configured SKILLS_DIR does not exist: " + path, e);
         }
-        return resolveDefaultSkillsDir();
+    }
+
+    static Path resolveTargetSkillPath(String skillPath, Path skillsRoot) {
+        if (skillPath == null || skillPath.isBlank()) {
+            throw new IllegalArgumentException("Skill path must not be blank.");
+        }
+        Path requestedPath = Path.of(skillPath);
+        if (requestedPath.isAbsolute()) {
+            throw new SecurityException("Skill path must be relative to SKILLS_DIR.");
+        }
+        for (Path segment : requestedPath) {
+            if ("..".equals(segment.toString())) {
+                throw new SecurityException("Skill path must not contain '..'.");
+            }
+        }
+
+        try {
+            Path realSkillsRoot = skillsRoot.toRealPath();
+            Path targetPath = realSkillsRoot.resolve(requestedPath).normalize();
+            if (!targetPath.startsWith(realSkillsRoot)) {
+                throw new SecurityException("Skill path is outside SKILLS_DIR.");
+            }
+            Path realTargetPath = targetPath.toRealPath();
+            if (!realTargetPath.startsWith(realSkillsRoot)) {
+                throw new SecurityException("Skill path is outside SKILLS_DIR.");
+            }
+            if (!Files.isDirectory(realTargetPath)) {
+                throw new IllegalArgumentException("Skill path must identify a directory.");
+            }
+            if (!Files.isRegularFile(realTargetPath.resolve("SKILL.md"))
+                    && !Files.isRegularFile(realTargetPath.resolve("Skill.md"))) {
+                throw new IllegalArgumentException("Skill directory does not contain SKILL.md.");
+            }
+            return realTargetPath;
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Unable to resolve skill path within SKILLS_DIR.", e);
+        }
     }
 
     /**
@@ -348,7 +387,7 @@ public class SkillEvaluator {
             for (Object tool : tools) {
                 subAgent.getAbilityManager().add(tool);
             }
-            subAgent.registerSkill(subagentSkillsDir.toString());
+            subAgent.registerSkill(subagentSkillsDir.toString(), Path.of("").toAbsolutePath().normalize());
 
             Map<String, Object> runInputs = new LinkedHashMap<>();
             runInputs.put("query", userPrompt);

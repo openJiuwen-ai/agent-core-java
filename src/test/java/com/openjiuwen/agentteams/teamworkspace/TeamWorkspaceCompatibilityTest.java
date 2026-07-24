@@ -2,6 +2,7 @@
 package com.openjiuwen.agentteams.teamworkspace;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -73,5 +74,24 @@ class TeamWorkspaceCompatibilityTest {
         assertThat(wrongRelease.getHolder()).containsEntry("holder_id", "m1");
         assertThat(released.isGranted()).isTrue();
         assertThat(manager.getLock("artifacts/code/app.java")).isEmpty();
+    }
+
+    @Test
+    void historyPathShouldRemainWithinWorkspaceAndRejectOptionStrings() throws Exception {
+        Path workspace = tempDir.resolve("history-workspace");
+        Files.createDirectories(workspace);
+        TeamWorkspaceManager manager = new TeamWorkspaceManager(
+                TeamWorkspaceConfig.builder().versionControl(true).build(), workspace.toString(), "team-alpha");
+
+        assertThat(manager.resolveSafeHistoryPath("artifacts/docs/report.md"))
+                .isEqualTo(Path.of("artifacts/docs/report.md").toString());
+        assertThat(manager.resolveSafeHistoryPath(workspace.resolve("deleted-file.md").toString()))
+                .isEqualTo("deleted-file.md");
+        assertThatThrownBy(() -> manager.resolveSafeHistoryPath("../outside.txt"))
+                .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> manager.resolveSafeHistoryPath(tempDir.resolve("outside.txt").toString()))
+                .isInstanceOf(SecurityException.class);
+        assertThatThrownBy(() -> manager.resolveSafeHistoryPath("-n1"))
+                .isInstanceOf(SecurityException.class);
     }
 }

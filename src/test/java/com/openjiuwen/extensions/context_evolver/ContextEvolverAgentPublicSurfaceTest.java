@@ -4,6 +4,7 @@ package com.openjiuwen.extensions.context_evolver;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.openjiuwen.core.foundation.llm.schema.AssistantMessage;
@@ -98,7 +99,7 @@ class ContextEvolverAgentPublicSurfaceTest {
             AgentCard.builder().id("summarizer-agent").name("summarizer-agent").description("summarizer").build();
 
         ContextEvolvingReActAgent agent =
-            new ContextEvolvingReActAgent(card, "demo-user", memoryService, true, tempDir.toString());
+            new ContextEvolvingReActAgent(card, "demo-user", memoryService, true, ".", tempDir);
 
         SummarizeTrajectoriesInput input = new SummarizeTrajectoriesInput("How should I write Java docs?",
                 List.of("first trajectory", "second trajectory"), "sequential", List.of("harmful", "helpful"),
@@ -115,6 +116,38 @@ class ContextEvolverAgentPublicSurfaceTest {
         assertTrue(Files.exists(persisted));
         String raw = Files.readString(persisted, StandardCharsets.UTF_8);
         assertTrue(raw.contains("cache docs examples"));
+    }
+
+    @Test
+    void memoryDirectoryMustRemainWithinApplicationDataRoot() throws Exception {
+        Path applicationDataRoot = Files.createDirectories(tempDir.resolve("application-data"));
+
+        Path memoryDirectory =
+            ContextEvolvingReActAgent.resolveMemoryDirectory(applicationDataRoot, "memory_files");
+
+        assertEquals(applicationDataRoot.resolve("memory_files").toRealPath(), memoryDirectory);
+        assertThrows(SecurityException.class,
+                () -> ContextEvolvingReActAgent.resolveMemoryDirectory(applicationDataRoot, "../outside"));
+        assertThrows(SecurityException.class,
+                () -> ContextEvolvingReActAgent.resolveMemoryDirectory(
+                        applicationDataRoot, tempDir.resolve("absolute-outside").toString()));
+
+        Path outside = Files.createDirectories(tempDir.resolve("outside"));
+        Files.createSymbolicLink(applicationDataRoot.resolve("linked"), outside);
+        assertThrows(SecurityException.class,
+                () -> ContextEvolvingReActAgent.resolveMemoryDirectory(applicationDataRoot, "linked"));
+    }
+
+    @Test
+    void memoryFileNameRejectsPathSequences() {
+        assertEquals("memory_ACE_demo-user.json",
+                ContextEvolvingReActAgent.buildMemoryFileName("ACE", "demo-user"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ContextEvolvingReActAgent.buildMemoryFileName("ACE", "../outside"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ContextEvolvingReActAgent.buildMemoryFileName("ACE", "nested/user"));
+        assertThrows(IllegalArgumentException.class,
+                () -> ContextEvolvingReActAgent.buildMemoryFileName("../ACE", "demo-user"));
     }
 
     @Test

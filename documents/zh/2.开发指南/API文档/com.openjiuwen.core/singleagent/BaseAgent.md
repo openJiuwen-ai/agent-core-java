@@ -19,6 +19,7 @@ public abstract class BaseAgent implements AgentCallbackFirer
 | `public AgentCallbackManager getAgentCallbackManager()` | 返回回调管理器。 |
 | `public SkillUtil getSkillUtil()` | 返回技能工具对象。 |
 | `public void registerSkill(Object skillPath)` | 从本地路径注册技能。 |
+| `public void registerSkill(Object skillPath, Path skillsRoot)` | 校验真实路径位于受信技能根目录后注册技能。 |
 | `public void registerRemoteSkills(String skillsDir, GitHubTree githubTree, String token)` | 根据 `GitHubTree` 注册远端技能。 |
 | `public BaseAgent registerCallback(AgentCallbackEvent event, Consumer<AgentCallbackContext> callback, int priority)` | 为指定事件注册回调。 |
 | `public BaseAgent registerRail(AgentRail rail)` | 注册 rail 实例。 |

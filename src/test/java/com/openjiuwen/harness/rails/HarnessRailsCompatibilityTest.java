@@ -469,8 +469,8 @@ class HarnessRailsCompatibilityTest {
         String serverId = "stdio-fixture-" + java.util.UUID.randomUUID().toString().replace("-", "");
         McpServerConfig serverConfig = McpServerConfig.builder().serverId(serverId).serverName("stdio-fixture")
                 .clientType("stdio").serverPath(javaBin())
-                .params(Map.of("command", javaBin(), "args", List.of("-cp", System.getProperty("java.class.path"),
-                        "com.openjiuwen.harness.rails.fixtures.StdioMcpResourceServer")))
+                .params(Map.of("command", javaBin(), "args", List.of("-cp", stdioFixtureClasspath(),
+                        com.openjiuwen.harness.rails.fixtures.StdioMcpResourceServer.class.getName())))
                 .build();
         Runner.resourceMgr().addMcpServer(serverConfig, "mcp-stdio-fixture-test", null);
         try {
@@ -1670,7 +1670,21 @@ class HarnessRailsCompatibilityTest {
     }
 
     private static String javaBin() {
-        return Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        return ProcessHandle.current().info().command()
+                .orElseThrow(() -> new IllegalStateException("Current Java executable is unavailable."));
+    }
+
+    private static String stdioFixtureClasspath() throws Exception {
+        List<String> entries = new ArrayList<>();
+        for (Class<?> type : List.of(com.openjiuwen.harness.rails.fixtures.StdioMcpResourceServer.class,
+                com.fasterxml.jackson.databind.ObjectMapper.class, com.fasterxml.jackson.core.JsonFactory.class,
+                com.fasterxml.jackson.annotation.JsonInclude.class)) {
+            String entry = Path.of(type.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
+            if (!entries.contains(entry)) {
+                entries.add(entry);
+            }
+        }
+        return String.join(java.io.File.pathSeparator, entries);
     }
 
     private static final class RecordingLspServer {
