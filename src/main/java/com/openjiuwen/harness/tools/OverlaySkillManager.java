@@ -31,6 +31,7 @@ public class OverlaySkillManager {
     private final SkillManager publicSkillManager;
     private final Path overlayDir;
     private final TenantWorkspaceResolver workspaceResolver;
+
     // 按 tenantId 缓存的租户技能管理器，避免并发请求时共享 tenantSkillManager 互相覆盖
     private final ConcurrentHashMap<String, SkillManager> tenantSkillManagerCache = new ConcurrentHashMap<>();
 
